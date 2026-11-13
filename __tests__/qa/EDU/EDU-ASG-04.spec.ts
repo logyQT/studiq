@@ -1,4 +1,11 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Request,
+  type Response,
+} from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
@@ -173,30 +180,41 @@ async function createDraft(
   return detail;
 }
 
-/** The picker options rendered in the MultiSelect popover, in order. */
-async function pickTarget(page: Page, card: Locator, pickerIndex: number, label: string) {
+/**
+ * Pick an option in the MultiSelect popover.
+ *
+ * The panel debounces the target save by 500 ms. With `waitForSave: false` the
+ * pending save response is handed back instead of awaited, so the caller can
+ * publish straight after the pick — the path #1126 fixed, where „Opublikuj”
+ * used to race the debounced save and be rejected for having no targets.
+ */
+async function pickTarget(
+  page: Page,
+  card: Locator,
+  pickerIndex: number,
+  label: string,
+  waitForSave = true,
+): Promise<{ saved: Promise<Response> } | undefined> {
   const picker = card.getByRole('combobox').nth(pickerIndex);
   await picker.click();
 
   const option = page.getByRole('option', { name: label, exact: true });
   await expect(option, `„${label}” is offered by the picker`).toBeVisible();
 
-  // The panel debounces the target save by 500 ms; publishing before it lands
-  // would answer 400 (the server refuses a publish without targets). Wait for the
-  // save the selection triggers, exactly like a teacher who pauses before
-  // clicking „Opublikuj”.
   const saved = page.waitForResponse(
     (response) =>
       /\/api\/v1\/teacher\/assignments\/[^/]+\/targets$/.test(new URL(response.url()).pathname) &&
       response.request().method() === 'PUT',
   );
   await option.click();
-  const saveResponse = await saved;
-  expect(saveResponse.status(), 'PUT the selected audience').toBe(200);
 
   // The multi-select keeps its popover open after a pick; Escape closes it.
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0);
+
+  if (!waitForSave) return { saved };
+  expect((await saved).status(), 'PUT the selected audience').toBe(200);
+  return undefined;
 }
 
 /** Fill the publication panel's „Termin” field. */
@@ -206,27 +224,52 @@ async function setDeadline(card: Locator, value: string): Promise<void> {
   await expect(deadline).toHaveValue(value);
 }
 
-/** Publish through the panel button and wait for the API to accept it. */
-async function publish(card: Locator, assignmentId: string, page: Page): Promise<void> {
+/**
+ * Publish through the panel button and assert the wire order the fix produces:
+ * the queued target save is flushed **before** the publish, and nothing re-saves
+ * the targets afterwards (the pre-#1126 code published first and then re-saved,
+ * which the server answered with 400 when the save had not landed yet).
+ */
+async function publish(
+  card: Locator,
+  assignmentId: string,
+  page: Page,
+  pendingSave?: Promise<Response>,
+): Promise<void> {
   const button = card.getByRole('button', { name: COPY.publish, exact: true });
   await expect(button).toBeEnabled();
+
+  const sent: string[] = [];
+  const record = (request: Request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === `/api/v1/teacher/assignments/${assignmentId}/publish`) sent.push('publish');
+    if (path === `/api/v1/teacher/assignments/${assignmentId}/targets`) sent.push('targets');
+  };
+  page.on('request', record);
 
   const published = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === `/api/v1/teacher/assignments/${assignmentId}/publish` &&
       response.request().method() === 'POST',
   );
-  // `handlePublish` publishes first and then re-saves the targets; wait for that
-  // second save too, so the student context never reads the delete/insert gap.
-  const resaved = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname === `/api/v1/teacher/assignments/${assignmentId}/targets` &&
-      response.request().method() === 'PUT',
-  );
 
-  await button.click();
-  expect((await published).status(), 'POST publish').toBe(200);
-  expect((await resaved).status(), 'PUT targets after publish').toBe(200);
+  try {
+    await button.click();
+    expect((await published).status(), 'POST publish').toBe(200);
+  } finally {
+    page.off('request', record);
+  }
+
+  if (pendingSave) {
+    expect((await pendingSave).status(), 'PUT the targets queued before publish').toBe(200);
+  }
+
+  const publishIndex = sent.indexOf('publish');
+  expect(publishIndex, 'the publish request was sent').toBeGreaterThanOrEqual(0);
+  expect(
+    sent.slice(publishIndex + 1),
+    'no target save follows the publish — the queued one is flushed first',
+  ).toEqual([]);
 }
 
 test.describe('@case:EDU-ASG-04 @area:EDU @prio:P1 assignment publishing', () => {
@@ -329,12 +372,14 @@ test.describe('@case:EDU-ASG-04 @area:EDU @prio:P1 assignment publishing', () =>
       studentPanel.getByRole('button', { name: COPY.publish, exact: true }),
     ).toBeDisabled();
 
-    await pickTarget(page, studentPanel, 1, studentLabel);
+    // Do not wait for the debounced save here: publishing right after the pick is
+    // the behaviour #1126 fixes, and `publish` asserts the save still lands first.
+    const pendingStudentSave = await pickTarget(page, studentPanel, 1, studentLabel, false);
     await expect(studentPanel.getByRole('combobox').nth(1)).toContainText(studentLabel);
     await expect(studentPanel.getByText(COPY.noTargets, { exact: true })).toHaveCount(0);
 
     await setDeadline(studentPanel, localDateTime(new Date(Date.now() + 4 * 24 * 60 * 60 * 1000)));
-    await publish(studentPanel, studentDraft.id, page);
+    await publish(studentPanel, studentDraft.id, page, pendingStudentSave?.saved);
     await expect(statusBadge(page, COPY.published)).toBeVisible();
     await expect(publishCard(page)).toHaveCount(0);
 
