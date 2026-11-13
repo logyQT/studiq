@@ -43,36 +43,38 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
 ## 3. Rules (earned, not invented)
 
-| #   | Rule                                                                                                                    | Earned from                                              |
-| --- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                     | `check-migration-timestamps` fails on duplicate prefixes |
-| R2  | `packages/server/src/types/database.ts` is regenerated after merge, never hand-resolved.                                | it is generated and committed                            |
-| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                           | both hooks run `knip --treat-config-hints-as-errors`     |
-| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                       | FP-01 is exploitable through PostgREST                   |
-| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation. | audit §0.2: 41 of 45 gates are permission checks         |
-| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                              | the corpus is the product contract                       |
-| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                | prose is not a verdict                                   |
+| #   | Rule                                                                                                                    | Earned from                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                     | `check-migration-timestamps` fails on duplicate prefixes           |
+| R2  | `packages/server/src/types/database.ts` is regenerated after merge, never hand-resolved.                                | it is generated and committed                                      |
+| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                           | both hooks run `knip --treat-config-hints-as-errors`               |
+| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                       | FP-01 is exploitable through PostgREST                             |
+| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation. | audit §0.2: 41 of 45 gates are permission checks                   |
+| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                              | the corpus is the product contract                                 |
+| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                | prose is not a verdict                                             |
+| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.             | a v1 scope change left six sections describing the deferred table  |
+| R9  | Every number in a doc is produced by a command, not by memory.                                                          | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine |
 
 ## 4. Decisions
 
 All settled 2026-11-13; the full wording is ADR-0015 §15.
 
-| #   | Decision                                                                                  |
-| --- | ----------------------------------------------------------------------------------------- |
-| D1  | `org.admin` is a real permission for ownership only; no superuser override                |
-| D2  | Managers get a free `solo` plan; `launch` is organization-only                            |
-| D3  | Personal plans are portable for `personalPortable` keys and user-scope quotas only        |
-| D4  | A seat can only raise a user-scope limit: `max(org, seat, personal)`, `-1` short-circuits |
-| D5  | v1 ships `entitlement_profile` (`all \| learner \| none`); allocation is deferred         |
-| D6  | Teacher `all`, Member `learner`, Custom `none`                                            |
-| D7  | Class invites use `group.invite` for existing org members; no external invites in v1      |
-| D8  | Flags are a kill switch only (`is_enabled = false`); no rollout percentage                |
-| D9  | `flashcards` and `quiz` are baseline, always on, never gated                              |
-| D10 | `account_type` is not renamed in this programme; the semantics change only                |
-| D11 | This programme fixes control-plane RLS only; content RLS is a separate security ADR       |
-| D12 | Overrides bypass flags                                                                    |
-| D13 | A `student` persona may hold the Admin role                                               |
-| D14 | Persona is a UI filter for plan purchases, never a server gate                            |
+| #   | Decision                                                                                              |
+| --- | ----------------------------------------------------------------------------------------------------- |
+| D1  | `org.admin` is a real permission for ownership only; no superuser override                            |
+| D2  | Managers get a free `solo` plan; `launch` is organization-only                                        |
+| D3  | Personal plans are portable for `personalPortable` keys and user-scope quotas only                    |
+| D4  | A seat can only raise a user-scope limit: `max(org, seat, personal)`, `-1` short-circuits             |
+| D5  | v1 ships `entitlement_profile` (`all \| learner \| none`); allocation is deferred                     |
+| D6  | Teacher `all`, Member `learner`, Custom `none`                                                        |
+| D7  | Class invites use `group.invite` for existing org members; no external invites in v1                  |
+| D8  | Flags are a kill switch only (`is_enabled = false`); no rollout percentage                            |
+| D9  | `flashcards` and `quiz` are baseline, always on, never gated                                          |
+| D10 | `account_type` is not renamed in this programme; the semantics change only                            |
+| D11 | This programme fixes control-plane RLS only; content RLS is a separate security ADR                   |
+| D12 | Overrides bypass flags                                                                                |
+| D13 | A `student` persona may hold the Admin role                                                           |
+| D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience` |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -92,7 +94,8 @@ Why: the branch added a serialization point without removing risk, and the ADR
 already said each batch is independently shippable.
 Fix: re-verified all 22 findings, renumbered the ADR, and replaced the queue
 with direct PRs to `main`.
-Rule: see section 2 — the ledger and the per-PR gate replace the branch.
+Rule: a queue of small PRs into `main`, gated per PR, replaces a long-lived
+integration branch — the branch added a serialization point and no safety.
 
 #### 2026-11-13 — ADR number collision
 
@@ -114,6 +117,19 @@ Fix: one three-valued column (`all | learner | none`) with the learner set as a
 constant in `@studiq/authz`; no table, no trigger, no prune.
 Rule: when a boolean cannot express a settled decision, widen the enum rather
 than reintroduce the deferred table.
+
+#### 2026-11-13 — the review caught a contract/queue collision
+
+What: the first draft deferred the allocation table but kept six sections
+describing it as the v1 shape; the queue claimed phase 3 closes FP-08 while its
+residual sits in phase 4; the QA map mixed two corpus counts; and the audit's
+"no paid key is enforced" was false (`branding` is).
+Why: the v1 scope was settled _after_ the ADR was written, so only the touched
+sections were updated — and two numbers came from a summary instead of a command.
+Fix: marked the allocation design v1.1 everywhere, moved the N1 backfill and the
+seat-tier revalidation to their phases, split the counts, corrected the FP-10
+row, and added N3 (seat↔role tier not revalidated on role change).
+Rule: R8 and R9.
 
 ### Phase 0b — batch 0
 

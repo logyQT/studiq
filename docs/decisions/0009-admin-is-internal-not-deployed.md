@@ -85,7 +85,7 @@ landed on `main`.
    This is the foundational blocker. It replaces persona-based route gates,
    `org.manage`, plan-seeded `org_role_features` and the mixed
    `FEATURES`/`permissions` catalog with roles, scopes and separated
-   entitlements. It also updates the admin app to the new catalog (Slice 1/2).
+   entitlements. It also updates the admin app to the new catalog (phases 1/2).
    Admin auth, grant scopes and audit must be written against that model, not
    the one being deleted. See
    [`docs/decisions/0015-role-based-authority.md`](0015-role-based-authority.md)

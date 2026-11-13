@@ -98,7 +98,7 @@ Closed: <FP ids>
 Ledger: updated (status, difficulty entries: <n>)
 Decisions added: <none | D## …>
 Blocked: <none | what, why, what you need>
-Next phase: <n+1> — first action
+Next phase: <next in 0, 0b, 1–7> — first action
 ```
 
 ## 8. Failure protocol

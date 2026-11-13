@@ -27,7 +27,7 @@ decision itself is kept)
    truth.** A role may _allocate a subset_ of the org's purchased entitlements
    (`role_entitlements ⊆ org_plan_entitlements`), but a role can never create an
    entitlement the org did not buy. **v1 ships inheritance only**
-   (`inherit_org_entitlements`); allocation is deferred to a follow-up PR (§5.3).
+   (`entitlement_profile`); the allocation table is deferred to a follow-up PR (§5.3).
 5. **Entitlement keys and permission keys are disjoint namespaces.**
    `ai.chat`, `branding`, `advanced.stats` are entitlements. `org.member.manage`
    (old `member.manage`), `org.role.manage` (old `role.builder`), `group.manage`,
@@ -83,23 +83,23 @@ The purpose of this ADR is to fix the model, not just the #971 symptom.
 
 ## 3. Layer model
 
-Five independent layers. Each answers exactly one question.
+Seven independent layers. Each answers exactly one question.
 
-| Layer             | Answers                                                               | Must never decide                                        |
-| ----------------- | --------------------------------------------------------------------- | -------------------------------------------------------- |
-| **Persona**       | onboarding, default dashboard, which personal plan family you can buy | authorization, org authority                             |
-| **Personal plan** | portable personal entitlements + per-member quotas                    | org authority, org capacity                              |
-| **Org plan**      | the org's entitlement **ceiling**, org capacity, seat license         | which member gets which entitlement                      |
-| **Org role**      | permissions (with scopes); optional entitlement **allocation subset** | purchasing, quota values, anything above the org ceiling |
-| **Group role**    | group-scoped permissions (class management)                           | org authority                                            |
-| **Seat**          | per-member entitlement/quota grant within the org's license           | permissions, org capacity                                |
-| **Flag**          | rollout / temporary kill switch                                       | granting anything                                        |
+| Layer             | Answers                                                                 | Must never decide                                        |
+| ----------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| **Persona**       | onboarding, default dashboard, which personal plan family you can buy   | authorization, org authority                             |
+| **Personal plan** | portable personal entitlements + per-member quotas                      | org authority, org capacity                              |
+| **Org plan**      | the org's entitlement **ceiling**, org capacity, seat license           | which member gets which entitlement                      |
+| **Org role**      | permissions (with scopes); entitlement profile `all \| learner \| none` | purchasing, quota values, anything above the org ceiling |
+| **Group role**    | group-scoped permissions (class management)                             | org authority                                            |
+| **Seat**          | per-member entitlement/quota grant within the org's license             | permissions, org capacity                                |
+| **Flag**          | temporary kill switch                                                   | granting anything                                        |
 
 ### 3.1 Authority vs entitlement
 
 ```
 PERMISSIONS  = f(org role, group role)                 // authority
-ENTITLEMENTS = f(org plan, role allocation, seat, personal plan, override, flag)  // product access
+ENTITLEMENTS = f(org plan, role profile, seat, personal plan, override, flag)  // product access
 LIMITS       = f(org plan, seat, personal plan)        // quotas
 ```
 
@@ -126,9 +126,9 @@ Rules:
   have a personal `pro` plan. That is the multi-org case the model must support.
 - Persona is still allowed to gate: public signup, "which personal plans can I
   buy", and org creation itself (until/unless `org.create` becomes a permission).
-- Rename the concept to `account_kind` in code/docs. The database enum values can
-  stay (`student|educator|manager`) for a later mechanical migration; the point
-  is that nothing authorizes on them.
+- Stop authorizing on the persona everywhere. The name stays `account_type` in
+  code and docs for now (D10); the mechanical rename to `account_kind` is a
+  separate change. The point is that nothing authorizes on it.
 - `manager` is not "the admin persona". If product later lets any persona create
   an org, `manager` can disappear without touching authorization.
 
@@ -225,7 +225,7 @@ never a single `isAdmin` flag.
 `org_roles` stays. A role has:
 
 - `name` (immutable for system roles), `display_name`, `is_system`
-- `inherit_org_entitlements boolean not null default false`
+- `entitlement_profile text not null default 'none'` (check `all`, `learner`, `none`)
 - permissions in `org_role_permissions (org_role_id, permission_key, scope)`
 
 **System role templates** (seeded; admins can add permissions but cannot rename
@@ -240,7 +240,7 @@ or delete them):
 | **Billing**   | `org.billing.manage`, `org.seat.manage`                                                                                                            |
 | **Read-only** | every `*.read` at `organization` (auditors)                                                                                                        |
 
-Custom roles start **empty** (no permissions, `inherit_org_entitlements = false`).
+Custom roles start **empty** (no permissions, `entitlement_profile = 'none'`).
 An empty role can do nothing and gets no paid surface. This is the inverse of
 today's "zero rows means inherit everything".
 
@@ -364,46 +364,35 @@ It contains only entitlement keys (never permissions).
 > PR. This removes roughly a week from the critical path and keeps the
 > fail-closed property.
 
-`org_roles.inherit_org_entitlements`:
+**Default profiles (v1):**
 
-- `true` → the role gets the full org ceiling (minus any explicit removals, if
-  removal rows are added later).
-- `false` → the role gets exactly `org_role_entitlements` rows.
+- Admin and Teacher: `all` — the full org ceiling.
+- Member: `learner` — `LEARNER_ENTITLEMENTS ∩ ceiling` (`flashcards`, `quiz`,
+  `ai.chat`, `branding` where the plan owns them). `documents` joins the set
+  only when it has a surface (§5.1).
+- Custom: `none`, empty. An empty role can do nothing and gets no paid surface.
 
-`org_role_entitlements (org_role_id, entitlement_key)`:
-
-- FK to the entitlement catalog.
-- **Subset invariant:** every key must exist in
-  `plan_entitlements(organizations.plan)`. Enforced by trigger on write and by
-  intersection at resolution time (so a downgrade fails closed even before the
-  prune job runs).
-- **No permission keys** (check constraint / trigger).
-- On plan change, prune rows outside the new ceiling and re-seed the system-role
-  templates in one transaction.
-
-Default templates:
-
-- Admin: `inherit_org_entitlements = true`.
-- Teacher: `true` (an educator in a Hub org gets Hub's AI/branding/etc.).
-- Member: `false` + explicit learner set (`flashcards`, `quiz`, `ai.chat`,
-  `documents`, `branding` where the plan has them).
-- Custom: `false`, empty.
-
-The admin UI can toggle inheritance and allocate entitlements per role. This is
-the safe version of "roles have entitlements": the org plan is the ceiling, the
-role only distributes below it.
+**v1.1 — per-role allocation (deferred).** The target shape, kept here so the
+follow-up has a contract: an `org_role_entitlements (org_role_id,
+entitlement_key)` table with a write-time subset check against
+`plan_entitlements(organizations.plan)`, a prune-on-downgrade step, and a role
+editor that allocates below the ceiling. It is **not** part of v1;
+`entitlement_profile` covers the Member set without a table. When it lands,
+`entitlement_profile` collapses to `all | none` plus explicit rows.
 
 ### 5.4 Seats
 
 A seat is a per-member personal-plan grant within the org's license.
 
 - `org_seat_pools.plan_key` FK → `subscription_plans(key)` with
-  `scope = 'personal'` and `seatEligible = true`.
+  `scope = 'personal'`, and the org must hold `org_seat_licenses` for it.
+  (`seatEligible` is entitlement metadata, §5.1 — it is not a plan column.)
 - The org must hold a seat license for that plan. Add
   `org_seat_licenses (organization_id, plan_key, seats)`; plan changes seed it
   from the org plan's included seats. `POST /seats/pools` validates against it.
-- `assignSeat` validates the target's `account_kind` against the plan
-  `audience` (not against a hardcoded role-name tier map).
+- `assignSeat` validates the target's persona against the plan `audience`, not
+  against a hardcoded role-name tier map. This is the **one** server-side use of
+  `audience`; it does not gate a purchase (D14).
 - Seat entitlements are intersected with the org ceiling: a seat cannot grant an
   entitlement the org did not buy.
 - Seats never grant permissions and never raise `scope: 'org'` limits.
@@ -427,7 +416,7 @@ personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
   rejected by the model.
 - Overrides are applied after role/seat/personal, before flags. They can add or
   remove an entitlement, but they cannot change a limit; a comp that needs a
-  quota gets a `user_limit_override` (new, optional) or a trial plan.
+  quota gets a `user_limit_overrides` row (new, optional) or a trial plan.
 - Overrides bypass flags (a comp account should not be switched off by a
   rollout).
 - `feature_flags` (rename to `entitlement_flags`) accepts entitlement keys only.
@@ -455,7 +444,9 @@ resolveEntitlements(ctx):
     limits.user = personalLimits
   else:
     ceiling  = planEntitlements(organizations.plan)
-    roleSet  = role.inherit ? ceiling : roleEntitlements(role) ∩ ceiling
+    roleSet  = role.profile === 'all'     ? ceiling
+             : role.profile === 'learner' ? LEARNER_ENTITLEMENTS ∩ ceiling
+             : ∅
     seatSet  = seat ? planEntitlements(seat.plan) ∩ ceiling : ∅
     personal = personalPlanApplies(ctx) ? personalEntitlements ∩ PERSONAL_PORTABLE : ∅
     set      = roleSet ∪ seatSet ∪ personal
@@ -464,7 +455,7 @@ resolveEntitlements(ctx):
     limits.org  = orgPlan                                   // never personal/seat
 
   set = applyOverrides(set)          // entitlement keys only
-  set = applyFlags(set)              // kill switch + rollout; overrides bypass rollout
+  set = applyFlags(set)              // kill switch only; overrides bypass flags (D12)
 
   effective = { k ∈ set | quota(k) == null OR limits[k.quota] != 0 }
 
@@ -637,7 +628,7 @@ org_seat_licenses ( organization_id, plan_key, seats int not null )      -- what
 -- overrides / flags ---------------------------------------------------------
 user_entitlement_overrides ( user_id, entitlement_key, is_enabled, expires_at, ... )
 user_limit_overrides       ( user_id, limit_key, limit_value, expires_at, ... )  -- optional
-entitlement_flags          ( key, is_enabled, rollout_percentage )               -- renamed
+entitlement_flags          ( key, is_enabled )                                   -- renamed; no rollout column
 
 -- groups --------------------------------------------------------------------
 group_members ( ..., role text not null check (role in ('teacher','member')) )
@@ -669,7 +660,7 @@ invitations ( ..., group_id uuid null references groups(id), target_group_role t
 
 - `org.manage` and the `ADMIN_ONLY_FEATURES`/`ORG_SCOPED_FEATURES` denylists.
 - Plan-seeded `org_role_features` snapshots (replaced by
-  `org_role_entitlements` + `inherit_org_entitlements`).
+  `entitlement_profile`; the allocation table is v1.1).
 - `allowed_roles` (already dead), `feature_permissions` (already dropped).
 - `permissions` rows whose name is an entitlement key (`ai.chat`,
   `org.manage`, `study.*`, `test.*`).
@@ -689,8 +680,8 @@ The role editor is a first-class admin screen, not an API-only feature.
 1. Template picker (Teacher / Assistant / Billing / Read-only / Blank).
 2. Permission list grouped by category; each row has a scope selector
    (`own | group | organization`) limited to the permission's `allowed_scopes`.
-3. "Entitlements this role receives" — checkboxes limited to the org's current
-   ceiling, or "inherit the org's entitlements".
+3. "Entitlements this role receives" — a profile picker (`all`, `learner`,
+   `none`) in v1; per-entitlement checkboxes arrive with allocation (v1.1).
 4. Effective preview: "A member with this role will be able to …" and "will
    receive …".
 5. Save → audit row + cache invalidation for affected members.
@@ -751,7 +742,7 @@ without any org-wide management capability.
 - More granular permissions mean more UI states; templates are essential.
 - `max` for user-scope limits is a deliberate reversal of #233 Q1 for those
   keys; the org can no longer cap a member below a personal purchase. This is a
-  product decision (see §14).
+  product decision (see §6.2 and §15 #4).
 - Custom roles add support burden; start with templates and hide the advanced
   editor behind an "Advanced roles" affordance.
 - The RLS content-scope gap (FP-03) is not solved by this ADR; it needs a
@@ -801,6 +792,11 @@ batches. Pre-market allows a big-bang at the end if preferred.
 > queue and per-phase acceptance criteria; this section records what each batch
 > _contains_, not when it ships. `docs/plans/role-authority-plan.md` is the live
 > status and memory ledger.
+>
+> Batch numbers are **not** phase numbers. Rough mapping: batch 0 → phase 0b,
+> batch 1 → phase 1, batches 2 + 6 → phases 2 and 7, batch 3 → v1.1, batches 4 +
+> 5 → phases 4 and 5. Where a batch's FP list differs from the queue, the queue
+> wins: it is the only place FP placement is authoritative.
 
 ### Batch 0 — cleanup and guardrails (no behaviour change)
 
@@ -832,12 +828,11 @@ batches. Pre-market allows a big-bang at the end if preferred.
 - Add the self-edit/no-escalation/closed-catalog guards to role editing.
 - Maps to FP-01 (permissions half), FP-04, FP-05, FP-09, FP-21.
 
-### Batch 3 — entitlement allocation
+### Batch 3 — entitlement allocation (v1.1; not in the queue)
 
-- Add `org_roles.inherit_org_entitlements` and `org_role_entitlements` with the
-  subset trigger.
-- Replace `org_role_features` and the plan-seeded snapshots; seed admin/teacher
-  inherit and member explicit learner template.
+- Add `org_role_entitlements` with the subset trigger, and collapse
+  `entitlement_profile` to `all | none` plus explicit rows.
+- Replace `org_role_features` and the plan-seeded snapshots.
 - Rewrite `apply_org_plan` → `change_org_plan` (update plan, prune allocations,
   re-seed templates, no `org.manage` exception).
 - Maps to FP-01 (entitlements half), FP-06, FP-15, FP-16.
@@ -866,7 +861,8 @@ batches. Pre-market allows a big-bang at the end if preferred.
 
 - `rls_caller_has_permission(org, key)` for control-plane policies; delete
   `has_org_feature` or regenerate it from permissions only.
-- Decide FP-03 (tenant floor vs scoped RLS vs service-role content access).
+- FP-03 is settled (D11): control-plane only in this programme; content RLS
+  (tenant floor vs scoped vs service-role access) is a separate security ADR.
 - Add a "RLS never wider than API" integration test.
 - Maps to FP-03, FP-11.
 
@@ -897,14 +893,15 @@ batches. Pre-market allows a big-bang at the end if preferred.
 - A plan/seat/personal plan/override cannot grant a permission key.
 - A custom role with zero permissions/entitlements can do nothing and sees no
   paid surface.
-- A role cannot allocate an entitlement the org does not own.
+- A role cannot allocate an entitlement the org does not own (v1.1, with
+  allocation).
 - A role editor cannot edit its own role or grant beyond its own authority.
 - `group.manage`/`group.invite` at `group` scope work for a class teacher and
   do not grant org member management.
 - A free seat cannot lower a user-scope limit below the org or personal plan.
 - An entitlement with quota `0` is unavailable through API and UI.
 - A plan downgrade atomically removes the entitlements it no longer includes.
-- A custom role inherits nothing unless `inherit_org_entitlements = true`.
+- A custom role (`entitlement_profile = 'none'`) resolves no entitlement.
 - `/me/entitlements` and enforcement agree after checkout/seat/role/flag changes.
 - No `permissions` row is an entitlement key and vice versa.
 - Every active plan defines every limit key.
@@ -917,16 +914,16 @@ batches. Pre-market allows a big-bang at the end if preferred.
 
 | Personal \ Org | free org (`launch`)                                                   | paid org (`hub`/`campus`)                                  |
 | -------------- | --------------------------------------------------------------------- | ---------------------------------------------------------- |
-| free personal  | role allocation only; no AI; 0 AI tokens                              | role allocation; AI if the role allocates it               |
+| free personal  | profile only (`learner` at most); no AI; 0 AI tokens                  | profile-based; AI only if the profile includes it          |
 | paid personal  | personal-portable keys added (`ai.chat`, builder, stats) + max limits | union; personal adds portable keys, org capacity unchanged |
 
-Plus: seated/unseated, custom role, manager, override, kill switch, rollout,
-downgrade, forged cookie.
+Plus: seated/unseated, custom role, manager, override, kill switch, downgrade,
+forged cookie.
 
 ### 14.3 Test layers
 
 - Unit: catalog invariants, resolver truth tables, permission scope evaluation,
-  role allocation subset, override/flag ordering.
+  entitlement profile resolution, override/flag ordering.
 - Integration: schema constraints/triggers, plan change, seat licensing, group
   permissions, RLS parity, cache invalidation via API headers/version.
 - E2E: teacher class management without org member management; manager creates
@@ -934,7 +931,8 @@ downgrade, forged cookie.
   AI; member with a free seat in a paid org does not lose the org budget.
 
 **The product regression gate is the QA suite** (`qa/cases` + `__tests__/qa`,
-188 tenant-isolated cases in 176 specs) plus the E2E suite. Unit and integration tests are
+188 case documents, 170 of them with a spec and 6 temporary re-runs) plus the E2E suite.
+Unit and integration tests are
 implementation tests: they are expected to change in large numbers, and they are
 not the compatibility contract. The QA case text, spec and `qa/coverage.md` are
 the product specification; a case that encodes a current bug is edited with

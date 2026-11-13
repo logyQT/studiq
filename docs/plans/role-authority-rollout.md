@@ -49,26 +49,28 @@ conductor, the second environment and the flag. Each phase is a PR into `main`.
 
 ## 3. The queue
 
-| Phase  | PR                                                                                                   | Closes                                    | QA shards                         | Depends |
-| ------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- | ------- |
-| **0**  | `docs(authority)`: audit + ADR-0015 + this plan + the ledger + the orchestrator contract             | —                                         | `checks`                          | —       |
-| **0b** | `chore(authority)`: batch-0 cleanup, zero behaviour change                                           | N1, part of FP-20                         | `checks`, `unit`, `integration`   | 0       |
-| **1**  | `refactor(catalog)`: one entitlement catalog, one permission catalog, plan scope                     | FP-06, FP-13, FP-19, rest of FP-20        | `PUB`, `ADM`, `LIM`, `BIL`        | 0b      |
-| **2**  | `feat(authority)`: role permissions, group scopes, route gates, control-plane RLS                    | FP-01, FP-04, FP-09, FP-21, part of FP-11 | `AUT`, `MGR`, `EDU`, `SEC`        | 1       |
-| **3**  | `feat(entitlements)`: one resolver, entitlement profiles, `max` limits, fail-closed flags            | FP-07, FP-08, FP-12, FP-15, FP-16         | `LIM`, `BIL`, `STU`               | 2       |
-| **4**  | `feat(seats)`: plan scope, `solo`, licences, audience                                                | FP-02, FP-05, FP-14                       | `MGR`, `BIL`, `LIM`               | 3       |
-| **5**  | `feat(enforcement)`: `requireEntitlement` / `requirePermission` on every paid and management surface | FP-10, FP-22                              | `STU`, `EDU`, `MGR`, `PUB`        | 2, 3    |
-| **6**  | `feat(ui)`: `/me/entitlements`, `/me/permissions`, permission nav, org-keyed cache                   | FP-17                                     | `PUB`, `AUT`, `MGR`, `STU`, `EDU` | 2, 3, 5 |
-| **7**  | `chore(authority)`: delete the legacy surface, full QA + E2E                                         | FP-18, FP-11                              | **all 188** + E2E                 | 1–6     |
+| Phase  | PR                                                                                                   | Closes                                                         | QA shards                         | Depends |
+| ------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------- | ------- |
+| **0**  | `docs(authority)`: audit + ADR-0015 + this plan + the ledger + the orchestrator contract             | — (FP-03 deferred, D11)                                        | `checks`                          | —       |
+| **0b** | `chore(authority)`: batch-0 cleanup, zero behaviour change                                           | N1 (catalog rows + guard), part of FP-20                       | `checks`, `unit`, `integration`   | 0       |
+| **1**  | `refactor(catalog)`: one entitlement catalog, one permission catalog, plan scope                     | FP-06, FP-13, FP-19, rest of FP-20                             | `PUB`, `ADM`, `LIM`, `BIL`        | 0b      |
+| **2**  | `feat(authority)`: role permissions, group scopes, route gates, control-plane RLS                    | FP-01, FP-04, FP-09, FP-11 (control plane), FP-21, N1 backfill | `AUT`, `MGR`, `EDU`, `SEC`        | 1       |
+| **3**  | `feat(entitlements)`: one resolver, entitlement profiles, `max` limits, fail-closed flags            | FP-07, FP-08, FP-12, FP-15, FP-16                              | `LIM`, `BIL`, `STU`               | 2       |
+| **4**  | `feat(seats)`: plan scope, `solo`, licences, audience                                                | FP-02, FP-05, FP-14, N3                                        | `MGR`, `BIL`, `LIM`               | 3       |
+| **5**  | `feat(enforcement)`: `requireEntitlement` / `requirePermission` on every paid and management surface | FP-10, FP-22                                                   | `STU`, `EDU`, `MGR`, `PUB`        | 2, 3    |
+| **6**  | `feat(ui)`: `/me/entitlements`, `/me/permissions`, permission nav, org-keyed cache                   | FP-17                                                          | `PUB`, `AUT`, `MGR`, `STU`, `EDU` | 2, 3, 5 |
+| **7**  | `chore(authority)`: delete the legacy surface, full QA + E2E                                         | FP-18, FP-11                                                   | **all 188** + E2E                 | 1–6     |
 
-Critical path: `0 → 0b → 1 → 2 → 3 → 7`. Phases 4 and 5 may start once 3 is in;
-6 merges after 5. Phase 2 is the largest and should be a stack of 2–3 PRs
+Critical path: `0 → 0b → 1 → 2 → 3 → {4, 5} → 6 → 7`. Phases 4 and 5 may start
+once 3 is in; 6 merges after 5. Phase 2 is the largest and should be a stack of 2–3 PRs
 (permission catalog seeding; route gates; control-plane RLS) merged as one tip.
 
 ## 4. QA map — the 37 at-risk specs
 
-Verified against the corpus, not guessed. The other 139 specs are model-neutral
-and only need the seeder to keep working.
+Verified against the corpus, not guessed. The other 139 **spec files** are
+model-neutral and only need the seeder to keep working. (The corpus has two
+counts: 176 spec files — 170 distinct cases plus 6 temporary re-runs — and 188
+case documents, 18 of which have no spec yet.)
 
 | Case        | Asserts today                                                                       | Required change                                                           | Phase |
 | ----------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----- |
@@ -79,7 +81,7 @@ and only need the seeder to keep working.
 | AUT-18      | manager 3xx off `/app`, `/edu`                                                      | role-derived shell                                                        | 6     |
 | AUT-19      | student 403 on `/teacher/*`, `/organization/members`                                | permission check replaces account-type gate                               | 2     |
 | BIL-01      | `/me/plan` = one plan key with `features[]` + `limits{}`                            | effective plan union + one contract                                       | 3     |
-| BIL-04      | checkout re-syncs snapshots, lifts branding/builder locks                           | profiles + `/me/entitlements`; atomic plan change                         | 3     |
+| BIL-04      | checkout re-syncs snapshots, lifts branding/builder locks                           | profiles + atomic plan change (endpoint rename in 6)                      | 3 → 6 |
 | BIL-05      | 403 when `for_account_type` ≠ caller                                                | `scope`/`audience`; audience is a filter                                  | 4     |
 | EDU-02      | sidebar from `/features/me`; `group.manage` per role                                | `group.manage` permission from `group_members.role`                       | 2     |
 | EDU-GRP-01  | „Nowa grupa” shown from the role's feature snapshot                                 | group-scope permission                                                    | 2     |
@@ -101,14 +103,14 @@ and only need the seeder to keep working.
 | MGR-SEAT-03 | releasing a seat returns the member to base                                         | effective plan union + `max` limits                                       | 4     |
 | MGR-SET-01  | Launch branding lock; rename unaffected                                             | entitlement + `org.settings.manage` for rename too                        | 3     |
 | MGR-SET-02  | upserts `org_role_features` to grant branding                                       | entitlement profile ⊆ plan ceiling; no snapshot                           | 3     |
-| MGR-SET-05  | downgrade hides the logo; `/features/me` drops branding                             | `change_org_plan` + `/me/entitlements`                                    | 3     |
+| MGR-SET-05  | downgrade hides the logo; `/features/me` drops branding                             | `change_org_plan`; endpoint rename in 6                                   | 3 → 6 |
 | ONB-07      | org switch keeps `/edu`; active-org content only                                    | shell follows the active org; org-keyed cache                             | 6     |
 | PUB-02      | `/features` sells „Zarządzanie Organizacją”, „Masowe Zaproszenia”                   | permissions are not plan contents                                         | 1     |
 | PUB-03      | `?for=manager` → launch/team/hub/campus                                             | manager personal = `solo`; scope/audience                                 | 4     |
 | PUB-04      | plan cards render `features[]` incl. „Zarządzanie Grupami”                          | plan entitlements only                                                    | 1     |
 | SEC-05      | student 403 on `/teacher/*` writes and teacher stats                                | own-scope content permissions                                             | 2     |
 | SEC-06      | student+teacher 403 on member/role writes; manager needs both keys                  | `org.member.manage` / `org.role.manage`                                   | 2     |
-| STU-03      | sidebar from `/features/me`; member role grants flashcards/quiz/documents           | `/me/entitlements`; `learner` profile                                     | 3     |
+| STU-03      | sidebar from `/features/me`; member role grants flashcards/quiz/documents           | `/me/entitlements`; `learner` profile without `documents`                 | 3 → 6 |
 
 Corrections to the older guess list, recorded so they are not re-litigated:
 `LIM-02..04` are personal caps / a personal upgrade / org-scope capacity, not
@@ -127,7 +129,11 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
 ### 0b — batch-0 cleanup (zero behaviour change)
 
 - Add the missing `assignment.read` / `assignment.update` rows to the
-  `permissions` catalog (N1), or delete the two checks.
+  `permissions` catalog (N1). No `org_role_permissions` backfill here —
+  `withAuth` reads that table, so a backfill changes behaviour and belongs to
+  phase 2. Do not delete the checks either: `getById` has no other guard.
+- Add a unit guard that every `permissionScopes['…']` literal in code exists in
+  the catalog, so a phantom key cannot recur.
 - Drop `resource_permissions` (only reference is the generated type file).
 - Delete the dead `X-Feature-Rollout` header and its two comments.
 - Add the catalog invariants as integration tests: permissions ∩ entitlements =
@@ -144,6 +150,9 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
   deleted, not aliased.
 - DB: `feature_flags` → `entitlement_flags`; `plan_features` →
   `plan_entitlements`; `permissions` contents replaced; `limit_catalog` added.
+- Rewrite the live `org_role_permissions.permission_name` rows to the new keys in
+  the same migration. Phase 2 puts a foreign key on that column; existing orgs'
+  rows would otherwise block it.
 - Remove `org.manage`, `member.manage`, `role.builder`, `group.manage` from
   plan entitlements. `documents` leaves the catalog until it has a surface.
 - One catalog module feeds server, admin and tests; delete the duplicate
@@ -165,6 +174,8 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
   (org creation, classroom creation) and the 5 embedded membership checks.
 - Role editor guards: closed catalog, no self-edit, no grant beyond your own
   authority, system roles protected, every change audited.
+- Backfill `org_role_permissions` for existing orgs with the seeded template
+  scopes (N1) — the org-creation trigger only seeds new orgs.
 - Class invites use `group.invite` at group scope for existing org members;
   delete the `can_assign_org_role` teacher-name exception.
 - **Control-plane RLS in the same PR**: `rls_caller_has_permission(org, key)`
@@ -189,8 +200,9 @@ plan }`; delete `FeatureResolver` and `LimitsResolver`.
   no snapshot).
 
 **Exit:** truth tables for the four quadrants; custom role with `none` resolves
-nothing; `base` in `hub` is "feature off", not "on with 0 tokens"; `LIM`,
-`BIL`, `STU` green.
+nothing; a `base` seat in a `hub` org keeps the org budget — `ai.chat` on with
+the hub allowance, never 0 tokens — and is off only when the profile is `none`;
+`LIM`, `BIL`, `STU` green.
 
 ### 4 — seats and personal plans
 
@@ -200,6 +212,8 @@ nothing; `base` in `hub` is "feature off", not "on with 0 tokens"; `LIM`,
 - `addPool` validates the licence; `assignSeat` validates `audience`, not role
   names; seats intersect the ceiling, never grant permissions, never touch org
   capacity, never lower a limit.
+- Revalidate or release the seat on role change and invitation accept (N3): a
+  seat must not outlive the tier it was assigned under.
 
 **Exit:** seat/licence invariants; `solo`; `MGR`, `BIL`, `LIM` green.
 

@@ -39,30 +39,30 @@ catalog rows).
 The `Status` column in §1 below records how the _original_ 2026-10-31 audit
 verified each claim. It is not current status; this section is.
 
-| FP    | Verdict    | What is true today                                                                                                                                                                                                                                                                      |
-| ----- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FP-01 | STILL TRUE | A custom role with zero `org_role_features` rows inherits the whole org plan, including `member.manage`/`role.builder` (`feature.resolver.ts:173-190`). **The database agrees**: `is_org_manager()` is `has_org_feature('member.manage')`, so the escalation also works over PostgREST. |
-| FP-02 | STILL TRUE | No licence check on `POST /seats/pools`; a non-admin custom role seated on `creator`/`master` gains `group.manage` (the strip covers only three keys).                                                                                                                                  |
-| FP-03 | STILL TRUE | Content RLS is tenant-wide (`created_by = auth.uid() OR organization_id ∈ my orgs`); `own`/`group` exist only in the service layer.                                                                                                                                                     |
-| FP-04 | STILL TRUE | A `role.builder` holder can PUT its own role id with free-string permission names and scopes; there is no self-edit, ceiling or catalog check (`org-role.service.ts:255-301`).                                                                                                          |
-| FP-05 | STILL TRUE | `org.manage` remains the admin marker, exempt from plan downgrade; a seated admin in a fresh `hub`/`campus` org loses `member.manage`/`role.builder`.                                                                                                                                   |
-| FP-06 | STILL TRUE | Plans still sell `org.manage`, `member.manage`, `role.builder`, `group.manage` (`seeds/00_plans.sql`).                                                                                                                                                                                  |
-| FP-07 | STILL TRUE | `#971` fixed only the **unseated** limits path. A seated member's user-scope limit is still the seat plan alone, so `base` in a `hub` org gives `ai.chat` with 0 tokens (`limits.resolver.ts:62-65`).                                                                                   |
-| FP-08 | PARTIAL    | The `enabled.size === 0` personal fallback is gone. The seat branch still silently drops the org plan for a seated user with zero role rows (`feature.resolver.ts:162`).                                                                                                                |
-| FP-09 | STILL TRUE | Four admin definitions remain live: `org_roles.name = 'admin'` (billing), the `org.manage` row (resolver), `member.manage` (RLS), `account_type` (proxy).                                                                                                                               |
-| FP-10 | STILL TRUE | **No paid key has an API entitlement check.** AI is `account_type` + quota (`ai/chat/route.ts:73`); `quiz.builder`, `advanced.stats` and `documents` are unenforced; `quiz` is a quota only.                                                                                            |
-| FP-11 | STILL TRUE | `has_org_feature` ignores flags, overrides and (now) the removed rollout layer, and grants every key to a role named `admin` (`rls_all_public_tables.sql:130`).                                                                                                                         |
-| FP-12 | STILL TRUE | `user_feature_overrides` accepts `org.manage`/`member.manage`/`role.builder` and is applied **after** the admin-only strip.                                                                                                                                                             |
-| FP-13 | STILL TRUE | `permissions` still holds `ai.chat`, `org.manage`, `study.*`, `test.*`; the new-org trigger copies them into `org_role_permissions`, and `/api/v1/permissions/me` returns them as scopes.                                                                                               |
-| FP-14 | STILL TRUE | Outside an org, `personalPlanApplies` is true for managers, so a legacy `campus` personal plan still yields campus features and limits.                                                                                                                                                 |
-| FP-15 | STILL TRUE | Limits resolve live from `organizations.plan`; features are a snapshot rewritten only by `apply_org_plan`. Admin plan-feature edits re-sync nothing.                                                                                                                                    |
-| FP-16 | STILL TRUE | Missing flag row = no gate (fail-open); missing limit row = 0 (fail-closed). Deleting a flag leaves the role rows.                                                                                                                                                                      |
-| FP-17 | STILL TRUE | 5-minute `staleTime`; checkout, seat assign and role edits invalidate nothing; `/features/me` query key is not org-scoped.                                                                                                                                                              |
-| FP-18 | STILL TRUE | Token usage is read-modify-write after the stream; two parallel calls at the cap both pass.                                                                                                                                                                                             |
-| FP-19 | STILL TRUE | Two `FEATURES` arrays, four `ADMIN_ONLY_FEATURES` copies, a third `ORG_SCOPED_FEATURES`, and admin/service catalogs that disagree.                                                                                                                                                      |
-| FP-20 | PARTIAL    | The named legacy tables are genuinely dropped. Remaining: dead keys (`quiz.builder`, `advanced.stats`, `documents`), the empty `resource_permissions` table, and archived docs that state the pre-#971 limit rule.                                                                      |
-| FP-21 | STILL TRUE | Management surfaces use four mechanisms: feature key, RBAC permission, RLS predicate, `account_type` route gate.                                                                                                                                                                        |
-| FP-22 | STILL TRUE | A manager sees `ai.chat` in `/features/me` but every AI call 403s; `X-Feature-Rollout` is set and has zero readers.                                                                                                                                                                     |
+| FP    | Verdict    | What is true today                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| FP-01 | STILL TRUE | A custom role with zero `org_role_features` rows inherits the whole org plan, including `member.manage`/`role.builder` (`feature.resolver.ts:173-190`). **The database agrees**: `is_org_manager()` is `has_org_feature('member.manage')`, so the escalation also works over PostgREST.                                                                                                                                  |
+| FP-02 | STILL TRUE | No licence check on `POST /seats/pools`; a non-admin custom role seated on `creator`/`master` gains `group.manage` (the strip covers only three keys).                                                                                                                                                                                                                                                                   |
+| FP-03 | STILL TRUE | Content RLS is tenant-wide (`created_by = auth.uid() OR organization_id ∈ my orgs`); `own`/`group` exist only in the service layer.                                                                                                                                                                                                                                                                                      |
+| FP-04 | STILL TRUE | A `role.builder` holder can PUT its own role id with free-string permission names and scopes; there is no self-edit, ceiling or catalog check (`org-role.service.ts:255-301`).                                                                                                                                                                                                                                           |
+| FP-05 | STILL TRUE | `org.manage` remains the admin marker, exempt from plan downgrade; a seated admin in a fresh `hub`/`campus` org loses `member.manage`/`role.builder`.                                                                                                                                                                                                                                                                    |
+| FP-06 | STILL TRUE | Plans still sell `org.manage`, `member.manage`, `role.builder`, `group.manage` (`seeds/00_plans.sql`).                                                                                                                                                                                                                                                                                                                   |
+| FP-07 | STILL TRUE | `#971` fixed only the **unseated** limits path. A seated member's user-scope limit is still the seat plan alone, so `base` in a `hub` org gives `ai.chat` with 0 tokens (`limits.resolver.ts:62-65`).                                                                                                                                                                                                                    |
+| FP-08 | PARTIAL    | The `enabled.size === 0` personal fallback is gone. The seat branch still silently drops the org plan for a seated user with zero role rows (`feature.resolver.ts:162`).                                                                                                                                                                                                                                                 |
+| FP-09 | STILL TRUE | Four admin definitions remain live: `org_roles.name = 'admin'` (billing), the `org.manage` row (resolver), `member.manage` (RLS), `account_type` (proxy).                                                                                                                                                                                                                                                                |
+| FP-10 | STILL TRUE | **Five paid keys have no API entitlement check.** AI is `account_type` + quota (`ai/chat/route.ts:73`); `quiz` is a quota; `quiz.builder`, `advanced.stats` and `documents` have no reader at all. **`branding` is the exception** — the logo and settings writes call `requireFeature('branding')` (`organization/[id]/logo/route.ts:29`, `organization.controller.ts:101`), so the enforcement pattern already exists. |
+| FP-11 | STILL TRUE | `has_org_feature` ignores flags, overrides and (now) the removed rollout layer, and grants every key to a role named `admin` (`rls_all_public_tables.sql:130`).                                                                                                                                                                                                                                                          |
+| FP-12 | STILL TRUE | `user_feature_overrides` accepts `org.manage`/`member.manage`/`role.builder` and is applied **after** the admin-only strip.                                                                                                                                                                                                                                                                                              |
+| FP-13 | STILL TRUE | `permissions` still holds `ai.chat`, `org.manage`, `study.*`, `test.*`; the new-org trigger copies them into `org_role_permissions`, and `/api/v1/permissions/me` returns them as scopes.                                                                                                                                                                                                                                |
+| FP-14 | STILL TRUE | Outside an org, `personalPlanApplies` is true for managers, so a legacy `campus` personal plan still yields campus features and limits.                                                                                                                                                                                                                                                                                  |
+| FP-15 | STILL TRUE | Limits resolve live from `organizations.plan`; features are a snapshot rewritten only by `apply_org_plan`. Admin plan-feature edits re-sync nothing.                                                                                                                                                                                                                                                                     |
+| FP-16 | STILL TRUE | Missing flag row = no gate (fail-open); missing limit row = 0 (fail-closed). Deleting a flag leaves the role rows.                                                                                                                                                                                                                                                                                                       |
+| FP-17 | STILL TRUE | 5-minute `staleTime`; checkout, seat assign and role edits invalidate nothing; `/features/me` query key is not org-scoped.                                                                                                                                                                                                                                                                                               |
+| FP-18 | STILL TRUE | Token usage is read-modify-write after the stream; two parallel calls at the cap both pass.                                                                                                                                                                                                                                                                                                                              |
+| FP-19 | STILL TRUE | Two `FEATURES` arrays, four `ADMIN_ONLY_FEATURES` copies, a third `ORG_SCOPED_FEATURES`, and admin/service catalogs that disagree.                                                                                                                                                                                                                                                                                       |
+| FP-20 | PARTIAL    | The named legacy tables are genuinely dropped. Remaining: dead keys (`quiz.builder`, `advanced.stats`, `documents`), the empty `resource_permissions` table, and one archived plan that still states `max(personal, org)`. `docs/limits.md` is stale in the other direction — it already describes the current seat-exclusive contract.                                                                                  |
+| FP-21 | STILL TRUE | Management surfaces use four mechanisms: feature key, RBAC permission, RLS predicate, `account_type` route gate.                                                                                                                                                                                                                                                                                                         |
+| FP-22 | STILL TRUE | A manager sees `ai.chat` in `/features/me` but every AI call 403s; `X-Feature-Rollout` is set and has zero readers.                                                                                                                                                                                                                                                                                                      |
 
 ### 0.1 Corrections to this audit
 
@@ -81,8 +81,13 @@ verified each claim. It is not current status; this section is.
   `assignment.*` row exists in `permissions` in any seed or migration. The scope
   is always `undefined`, so `get()` returns `FORBIDDEN` for every non-creator
   and `list()` only returns your own. Teachers cannot see a colleague's
-  assignment today. Fixed in batch 0 by adding the catalog rows (or deleting
-  the checks).
+  assignment today. Phase 0b adds the catalog rows and a guard test that every
+  `permissionScopes[...]` literal in code exists in the catalog; the backfill
+  for existing orgs is phase 2, because `withAuth` reads `org_role_permissions`
+  and only the org-creation trigger seeds those rows
+  (`with-auth.ts:73-81`, `20260707000006:35-47`). Adding rows alone grants
+  nothing to an existing org; deleting the checks would remove `getById`'s only
+  tenant guard.
 - **New — N2, the "cases that encode current bugs" list is wrong in six
   places.** `LIM-02..04` assert personal caps, a personal upgrade and org-scope
   capacity — not org precedence or seat exclusivity. `MGR-MEM-*` assert no
@@ -91,22 +96,36 @@ verified each claim. It is not current status; this section is.
   in the QA corpus (they are admin unit tests, outside the product gate).
   The verified list replaces it in
   [`docs/plans/role-authority-rollout.md`](../plans/role-authority-rollout.md) §4.
+- **New — N3, the seat↔role tier invariant is enforced once.** `assignSeat`
+  checks the pool tier (`seat.service.ts:327-331`), but `changeRole`
+  (`organization-member.service.ts:140-175`) and invitation accept
+  (`invitation.service.ts:651-655`) change the role without revalidating or
+  releasing the seat, and `getSeatPlanKey` applies the seat plan unchecked
+  (`seat.plan.ts:13-34`). A `creator`/`master` seat that then lands on a custom
+  role keeps `group.manage` past the three-key strip — this is the reachable
+  path behind FP-02, and it keeps FP-08's seated branch alive. Phase 4.
 
 ### 0.2 Inventories produced in this pass
 
-- **Routes:** 45 persona-gated files plus 2 ungated ones — 41 become
-  `requirePermission`, 2 are legitimate persona exceptions (org create,
-  classroom create), 2 are entitlement surfaces (`ai.chat`), 2 routes disappear
-  (`/features/me`, `/permissions/me`). Five of the 41 also carry an embedded
-  membership check that must survive the key swap.
-- **QA:** 37 of 176 specs are at risk (`MGR` 13, `EDU` 7, `AUT` 6, `BIL` 3,
-  `PUB` 3, `SEC` 2, `LIM` 1, `ONB` 1, `STU` 1, `NFR` 0). The other 139 are
-  model-neutral. The full list is in the rollout plan §4.
-- **RLS:** `has_org_feature` is the authorization primitive for seven
-  control-plane families (members, roles, role permissions, organizations, seat
-  pools, seat assignments, invitations). Four write paths mutate
-  `org_role_features`; admin plan edits bypass all four, which is FP-15's
-  mechanism.
+- **Routes:** 45 persona-gated files, plus the 2 ungated routes that disappear.
+  Of the 45: 40 become `requirePermission`, 2 are legitimate persona exceptions
+  (org create, classroom create), 3 are entitlement surfaces (`ai.chat`,
+  `ai/usage`, and the `branding`-only logo write), 0 are public. Five of the 40
+  also carry an embedded membership check that must survive the key swap. The
+  other 82 `withAuth` routes carry no persona gate and are out of scope; 12
+  routes have no `withAuth` at all and are the documented public prefixes
+  (`auth`, `health`, `avatar`, `subscription-plans`, `stripe/webhook`).
+- **QA:** 37 of 176 spec files are at risk (`MGR` 13, `EDU` 7, `AUT` 6, `BIL` 3,
+  `PUB` 3, `SEC` 2, `LIM` 1, `ONB` 1, `STU` 1, `NFR` 0). Note the two counts are
+  different bases: 176 spec files (170 distinct cases + 6 `-temp` re-runs) and
+  188 case documents (18 have no spec yet). "The other 139" means the remaining
+  spec files, not the remaining case documents. The full list is in the rollout
+  plan §4.
+- **RLS:** `has_org_feature` is the authorization primitive for nine
+  control-plane tables — members, roles, role permissions, organizations, seat
+  pools, seat assignments, invitations, **groups** and **group_members**.
+  Four write paths mutate `org_role_features`; admin plan edits bypass all four,
+  which is FP-15's mechanism.
 
 ---
 
