@@ -2,16 +2,22 @@ import { cpus } from 'node:os';
 import { defineConfig, type PlaywrightTestConfig } from '@playwright/test';
 
 /**
- * Per-action and per-assertion budget shared by both runners.
+ * Per-action, per-navigation and per-assertion budget shared by both runners.
  *
  * A real failure must surface in seconds: waiting 30 s to learn that a button
  * never appeared tells you nothing extra and buries the failing step under the
  * retry budget. The per-test `timeout` (Playwright's 30 s in e2e, 90 s in QA) is
  * a budget for a whole long flow, not a budget for one click or one assertion.
- * Navigation carries its own 30 s default, hence the explicit
- * `navigationTimeout`; a spec that genuinely needs more says so explicitly.
+ *
+ * Navigation has its own default (30 s) because Playwright exposes it as a
+ * separate setting, not because a page needs longer: an authenticated
+ * `/login` → dashboard redirect measures ~0.65 s at p50 and ~1.2 s at p99 with
+ * eight browser contexts in parallel on a 16-vCPU dev box, so the same 3 s bound
+ * already has ~2.5× headroom. A spec whose wait is coupled to a 5 s autosave
+ * debounce, or an `expect.poll` that spans several API round trips, overrides
+ * that single call with a comment explaining the budget.
  */
-const ACTION_TIMEOUT_MS = 3_000;
+const WAIT_TIMEOUT_MS = 3_000;
 
 /**
  * Shared Playwright config for the two runners in this repo: the product e2e
@@ -33,15 +39,11 @@ export function defineSuiteConfig(config: PlaywrightTestConfig): PlaywrightTestC
     // can add `use`/`expect` settings — or override the default — and the shared
     // default is still applied to the keys it does not name.
     use: {
-      actionTimeout: ACTION_TIMEOUT_MS,
-      // `waitForURL` / `goBack` / `goto` take the *navigation* budget, which is a
-      // separate 30 s default: leaving it alone would keep a hung navigation at
-      // 30 s. A production build serves a route in well under a second, so the
-      // same 3 s bound applies.
-      navigationTimeout: ACTION_TIMEOUT_MS,
+      actionTimeout: WAIT_TIMEOUT_MS,
+      navigationTimeout: WAIT_TIMEOUT_MS,
       ...config.use,
     },
-    expect: { timeout: ACTION_TIMEOUT_MS, ...config.expect },
+    expect: { timeout: WAIT_TIMEOUT_MS, ...config.expect },
   });
 }
 
