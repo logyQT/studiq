@@ -41,6 +41,12 @@ export function createPendingSave(delayMs = 500): PendingSave {
     return result.then(() => undefined);
   }
 
+  function takeRetry(): (() => Promise<unknown>) | undefined {
+    const save = retry;
+    retry = undefined;
+    return save;
+  }
+
   return {
     schedule(save) {
       clearTimer();
@@ -57,8 +63,16 @@ export function createPendingSave(delayMs = 500): PendingSave {
       const next = queued ?? retry;
       queued = undefined;
       retry = undefined;
-      if (next) await start(next);
-      else await tail;
+      if (next) {
+        await start(next);
+        return;
+      }
+      await tail;
+      // A save that was already in flight when the flush started can still fail
+      // while we wait for it; the publish would then go out without targets and
+      // be rejected, which is the bug this helper exists to prevent.
+      const failed = takeRetry();
+      if (failed) await start(failed);
     },
     cancel() {
       clearTimer();

@@ -82,6 +82,38 @@ describe('assignment publish after a failed background save (#1126)', () => {
     vi.useRealTimers();
   });
 
+  it('retries a save that fails while the flush waits for it', async () => {
+    const events: string[] = [];
+    let attempts = 0;
+    let rejectFirst: ((error: Error) => void) | undefined;
+    const targets = createPendingSave();
+
+    targets.schedule(() => {
+      attempts += 1;
+      events.push(`targets:${attempts}`);
+      if (attempts === 1) {
+        return new Promise<void>((_resolve, reject) => {
+          rejectFirst = reject;
+        });
+      }
+      return Promise.resolve();
+    });
+    // The timer fired: the first save is in flight, not failed yet.
+    await vi.advanceTimersByTimeAsync(500);
+
+    const publishing = publishWithPendingTargets(targets, () => {
+      events.push('publish');
+      return Promise.resolve();
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(events, 'the flush is still waiting for the in-flight save').toEqual(['targets:1']);
+
+    rejectFirst?.(new Error('transient'));
+    await publishing;
+
+    expect(events).toEqual(['targets:1', 'targets:2', 'publish']);
+  });
+
   it('retries the failed save before publishing instead of sending a targets-less publish', async () => {
     const events: string[] = [];
     let attempts = 0;
