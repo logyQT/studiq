@@ -288,6 +288,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     // ── Student: submits the attempt, with a photo on the open question ──────
     const studentContext = await browser.newContext({ baseURL });
     let uploadedImageUrl: string;
+    let attemptId: string | undefined;
     try {
       const studentPage = await studentContext.newPage();
       const studentErrors: string[] = [];
@@ -297,7 +298,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
       const started = await studentPage.request.post(`/api/v1/assignments/${assignment.id}/start`);
       expect(started.status(), 'POST /api/v1/assignments/:id/start').toBe(200);
-      const attemptId = (await json<ApiEnvelope<{ id: string }>>(started)).data.id;
+      attemptId = (await json<ApiEnvelope<{ id: string }>>(started)).data.id;
 
       const uploaded = await studentPage.request.post(
         `/api/v1/assignments/${assignment.id}/upload-image`,
@@ -332,6 +333,8 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
       await studentContext.close();
     }
 
+    if (!attemptId) throw new Error(`${CASE} the student attempt was not created`);
+
     // ── Step 1: the results table offers „Oceń” for the submitted attempt ────
     await page.goto(`/edu/assignments/${assignment.id}/results`);
     await expect(page).toHaveURL(new RegExp(`/edu/assignments/${assignment.id}/results$`));
@@ -345,7 +348,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
     await row.getByRole('link', { name: COPY.grade, exact: true }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/edu/assignments/${assignment.id}/results/${student.id}$`),
+      new RegExp(`/edu/assignments/${assignment.id}/results/${attemptId}$`),
     );
 
     // ── Step 2: „Oceń ucznia” shows the answers and the uploaded photo ───────
@@ -400,7 +403,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await expect(saveButton, '„Zapisz ocenę” is inactive without points').toBeDisabled();
 
     // ── Step 3: points outside 0…max are rejected, never sent ────────────────
-    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${student.id}`;
+    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${attemptId}`;
     let gradeRequests = 0;
     page.on('request', (request) => {
       if (request.method() === 'PUT' && new URL(request.url()).pathname === gradingPath) {

@@ -314,6 +314,8 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
 
       await studentPage.getByRole('button', { name: COPY.startQuiz }).click();
       await expect(studentPage).toHaveURL(/\/take\?attemptId=/);
+      const attemptId = new URL(studentPage.url()).searchParams.get('attemptId');
+      if (!attemptId) throw new Error(`${CASE} the take URL carries no attemptId`);
 
       await expect(
         studentPage.getByText(QUESTION_CONTENT, { exact: true }),
@@ -340,7 +342,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       const answers = await api<StudentAnswers>(
         page.request,
         'GET',
-        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
+        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${attemptId}`,
       );
       const answer = answers.quiz_answers.find(
         (answerRow) =>
@@ -351,7 +353,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       expect(answers.graded_at, 'the answer still waits for the teacher').toBeNull();
 
       // The teacher grades the submitted text by hand.
-      await page.goto(`/edu/assignments/${assignmentId}/results/${student.id}`);
+      await page.goto(`/edu/assignments/${assignmentId}/results/${attemptId}`);
       await expect(
         page.getByRole('heading', { name: COPY.gradingTitle, exact: true }),
       ).toBeVisible();
@@ -377,7 +379,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       const graded = await api<StudentAnswers>(
         page.request,
         'GET',
-        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
+        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${attemptId}`,
       );
       const gradedAnswer = graded.quiz_answers.find(
         (answerRow) => answerRow.question_id === created!.id,
