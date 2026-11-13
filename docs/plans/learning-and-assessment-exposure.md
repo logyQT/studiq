@@ -143,10 +143,11 @@ null` with `graded: boolean`, and an explicit `ungradedCount`. `correct: boolean
 | **Manager**                            | override reservations, see fairness reports, resolve disputes, author makeups                 | unreserve a live class, un-reveal                                                                                                           |
 | **Student**                            | practise open items, take assigned assessments, see their own score, read reviews after close | read a key for a sealed item, read classmates' answers, retake unless the teacher allowed it, retake the same set unless explicitly enabled |
 
-**Class** is the isolation unit for reservation and reveal, and maps to the **org group(s) an
-assessment targets**. A student may belong to several groups; an item is sealed for that student if
-any targeted group contains them. **Cohort** = the union of members of the targeted groups; a
-**makeup** is a separate assessment.
+**Class** is the isolation unit for reservation and reveal. An assessment targets **groups and/or
+individual students** (the existing assignment targets already allow both): a group target seals the
+item for its members, and a student target seals it for that student only (a singleton class). A
+student in several targeted groups is sealed once. **Cohort** = the union of targeted students and
+members of targeted groups; a **makeup** is a separate assessment.
 
 ## Domain model
 
@@ -168,12 +169,13 @@ any targeted group contains them. **Cohort** = the union of members of the targe
 // per student, per item
 sealed(item, student) := exists active Reservation r where
     r.item = item
-    and student.groups ∩ r.classes ≠ ∅          // classes are org groups
+    and (student.id ∈ r.students or student.groups ∩ r.groups ≠ ∅)
     and now ∈ [r.opensAt, r.closesAt)          // or r held open by withholdFromReview
 
 eligible(item, student) := not sealed(item, student)
-    and no PracticeEvent(item, student)        // unless the assessment item is taughtItem
-    and no Answer(item, student)               // the student has never been shown it in an attempt
+    and not taughtItem(item, assessment)
+    and no ExposureEvent(item, student)       // any key/explanation shown
+    and no Answer(item, student)              // the student has never been shown it in an attempt
 
 // per assessment, per student
 canStartAttempt := now ∈ [opensAt, closesAt)
@@ -251,9 +253,12 @@ close the withheld item is absent from review and still sealed for that class; `
 assessment serves the published version. _Test:_ edit bound item → live assessment unchanged; new
 practice sees the new version.
 
-**R12 — An assessment has exactly one window and one class set.** Extending `closesAt` before close is
-allowed (it delays reveal for everyone); reopening after close is not — it requires a new assessment.
-_Test:_ extend before close → review remains locked; reopen after close → `409 ASSESSMENT_CLOSED`.
+**R12 — An assessment has exactly one window and one class set.** A **scheduled** (not yet live)
+assessment can be withdrawn back to draft — no exposure exists yet, so this is the phase-2 repair
+path for a wrong publish. Extending `closesAt` before close is allowed (it delays reveal for everyone);
+reopening after close is not — it requires a new assessment. _Test:_ withdraw a scheduled run → draft,
+publish corrected; extend before close → review remains locked; reopen after close →
+`409 ASSESSMENT_CLOSED`.
 
 **R13 — Items cannot be added to or removed from a live assessment.** _Test:_ composer edit on a live
 assessment → `409 ASSESSMENT_LIVE`.
@@ -285,8 +290,11 @@ cannot be made to return a key.
 
 **R19 — Every refusal is a product state with a code**: `404` for an item sealed to you (identical to
 nonexistent, no oracle), `403 REVIEW_LOCKED`, `403 EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` /
-`409 NO_UNSEEN_ITEMS` / `409 ASSESSMENT_LIVE` / `409 ASSESSMENT_CLOSED` / `409 RELEASE_NOT_WITHHELD` /
-`409 RESERVATION_CONFLICT`, `422` for explanation/model-answer rules.
+`ATTEMPT_EXPIRED` / `ALREADY_SUBMITTED` / `ATTEMPT_IN_PROGRESS` / `NO_ATTEMPTS_LEFT` /
+`NO_UNSEEN_ITEMS` / `ASSESSMENT_LIVE` / `ASSESSMENT_NOT_LIVE` / `ASSESSMENT_CLOSED` /
+`ASSESSMENT_NOT_PUBLISHED` / `ASSESSMENT_ALREADY_PUBLISHED` / `ASSESSMENT_CANCELLED` /
+`RELEASE_NOT_WITHHELD` / `RESERVATION_CONFLICT` / `EXPOSURE_ACK_REQUIRED`, `422` for explanation/
+model-answer rules and invalid publish config.
 
 **R20 — Managers may change windows but never unseal a live class.** Overrides shrink or extend
 windows, resolve conflicts and author makeups; they cannot release a live reservation or un-reveal.
@@ -379,13 +387,15 @@ POST   /practice/:bankId/answers   → {answers:[{itemId, value}]}
                                      open (unsealed) item only; sealed → 404, no event
 POST   /assessments/:id/attempts   → {attemptId, state:'in_progress', items:[{itemId, stem, type,
                                      options:[{id, content}]}]}
-                                     409 ATTEMPT_IN_PROGRESS / NO_ATTEMPTS_LEFT / NO_UNSEEN_ITEMS
-GET    /attempts/current           → 200 in-progress attempt or 404
+                                     409 ATTEMPTS_NOT_OPEN / ATTEMPT_IN_PROGRESS / NO_ATTEMPTS_LEFT /
+                                     NO_UNSEEN_ITEMS
+GET    /attempts/current           → 200 {attemptId, assessmentId, itemIds} | 404
 POST   /attempts/:id/submit        → {score: {earned, possible} | null, ungradedCount,
                                       results:[{itemId, graded: boolean, correct: boolean | null}]}
                                      409 ALREADY_SUBMITTED / ATTEMPT_EXPIRED / ATTEMPTS_CLOSED
-GET    /assessments/:id/review            → latest submitted attempt
-GET    /assessments/:id/attempts/:id/review → a specific submitted attempt
+GET    /assessments/:id/review            → latest submitted attempt (tie-break by attempt id); renders the key, so it writes
+                                     the exposure event (idempotent, one per item/student)
+GET    /assessments/:id/attempts/:id/review → a specific submitted attempt; same exposure write
                                      403 REVIEW_LOCKED (before close / no attempt); 404 when show_results=false
                                      {attemptId, score: {earned, possible} | null, ungradedCount,
                                       items:[{itemId, graded, correct: boolean | null,
@@ -402,6 +412,8 @@ POST   /assessments/:id/publish    → validates classes/window/maxAttempts; 422
 POST   /assessments/:id/override   → manager: extend/shrink window, resolve RESERVATION_CONFLICT;
                                      cannot unseal a live class or un-reveal
 PUT    /items/:id                  → 422 for explanation/model-answer rules (per-field paths)
+GET    /api/v1/quiz/:attemptId            → practice-quiz review; renders the key, so it writes the
+                                     same exposure event (and the existing assignment review path does too)
 GET    /items/:id/ledger           → staff: exposure events + pre-exposed counts
 ```
 
@@ -450,7 +462,7 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
 3. Practice on an open item returns correctness + explanation and writes exactly one event.
 4. Practice on a sealed item → 404, no event.
 5. Start attempt → `in_progress`, no key fields, stable `attemptId`; second start → 409.
-6. Submit → score + boolean per item; no key; second submit → 409; after close → 409.
+6. Submit → score/ungraded per item; no key; second submit → 409; after close → 409.
 7. Review → 403 before close; 200 at close for every student, including one with an unused attempt.
 8. Close → review shows key/explanation; withheld item absent and still sealed.
 9. Retake draws a disjoint sample; exhausted inventory → 409 `NO_UNSEEN_ITEMS`.
@@ -477,16 +489,17 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
 
 ## Phased build (after MVP validation)
 
-The phases map one-to-one to the epic's issues; each is a shippable PR sequence within the
-400-line budget, and 1 → 2 → 3 is a real dependency chain.
+The phases map to the epic's issues (phases 2 and 5 split #1171/#1174 scope; each phase is a
+shippable PR sequence within the 400-line budget, and 1 → 2 → 3 is a real dependency chain).
 
 1. **Database boundary** (#1170, independent): revoke the key column, author-scoped writes, one
    server-side key reader, reader-safe projections/export; fix the classmates'-answers row policy
    (#1165). _Migration first, app in the same release._
 2. **Items in time** (#1171): open/retired/deleted items, per-class reservations from window open,
    frozen snapshots, publish-once, **durable close**, sealed items absent from practice/browse/export,
-   close-time reveal, withheld items + release, blocking cross-class acknowledgement, held notices.
-   **Exposure events start here** (the review is the first surface that renders a key).
+   close-time reveal, withheld items + release, blocking cross-class acknowledgement, held notices,
+   and withdrawn-to-draft for a scheduled run. **Exposure events start here** (the review is the first
+   surface that renders a key). _Migrations first, app in the same release._
 3. **Exposure ledger** (#1172): eligibility per student (ledger + prior answers), `taughtItem` waiver,
    pre-exposed warnings and fairness flags. Recording already exists from phase 2.
 4. **Explanation/model answer** (#1173): required for choice items, 2 040 cap, mechanical checks,
