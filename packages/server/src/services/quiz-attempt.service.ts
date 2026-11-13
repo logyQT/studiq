@@ -11,6 +11,7 @@ import { failure, isFailure, type ServiceResult, success } from '@studiq/server/
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type {
   QuizAnswerEntry,
   SaveQuizAnswersInput,
@@ -73,10 +74,15 @@ export class QuizAttemptService {
 
   /**
    * Loads the signed-in student's in-progress attempt for a write and refuses
-   * answers that name a question outside it. Both the draft save and the submit
-   * go through this gate: such a row is one the take page never asked for — it
-   * feeds the per-question accuracy index and, on a practice attempt, adds to
-   * the score (#1065).
+   * an answer sheet that does not fit it. Both the draft save and the submit go
+   * through this gate, so the two paths cannot drift again (#1065).
+   *
+   * The storage contract is one `student_answers` row per question: the answer
+   * value carries the selection. An entry for a question the attempt never
+   * asked is therefore not something the take page can produce — it feeds the
+   * per-question accuracy index (#204) and, on a practice attempt, adds to the
+   * score. The attempt's own size is also the authoritative payload bound: with
+   * every entry in-attempt, a longer sheet can only be junk.
    */
   private async loadAnswerableAttempt(
     supabase: SupabaseClient<Database>,
@@ -102,8 +108,24 @@ export class QuizAttemptService {
     if (questionsError) return toDbFailure(questionsError);
 
     const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
-    if (answers.some((answer) => !allowedIds.has(answer.questionId))) {
-      return failure('UNPROCESSABLE_ENTITY');
+
+    // Distinct ids, so a draft that re-sends one question (last entry wins)
+    // is not measured as two answers.
+    if (new Set(answers.map((answer) => answer.questionId)).size > allowedIds.size) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['answers'], message: ValidationErrorCode.TOO_MANY },
+      ]);
+    }
+
+    const outsideIndex = answers.findIndex((answer) => !allowedIds.has(answer.questionId));
+    if (outsideIndex !== -1) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        {
+          code: 'custom',
+          path: ['answers', outsideIndex, 'questionId'],
+          message: ValidationErrorCode.INVALID_INPUT,
+        },
+      ]);
     }
 
     return success({ id: attempt.id, assignment_id: attempt.assignment_id });
@@ -383,8 +405,9 @@ export class QuizAttemptService {
         isCorrect = answer?.is_correct ?? false;
       }
       if (isCorrect && !awardedQuestions.has(ans.questionId)) {
-        // One question can produce several answer rows (multi-select /
-        // matching), so award its points at most once.
+        // One row per question is the write contract (#1065) and the schema
+        // rejects a repeated question id, so this only covers a caller that
+        // bypasses it: a question must never be counted twice.
         awardedQuestions.add(ans.questionId);
         score += attempt.assignment_id ? (assignmentPoints.get(ans.questionId) ?? 0) : 1;
       }

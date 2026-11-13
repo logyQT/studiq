@@ -42,24 +42,24 @@ describe('SubmitQuizAttemptSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects more than 100 answers (#1065)', () => {
+  it('accepts 101 distinct answers so a large assignment can still submit (#1065)', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
       answers: Array.from({ length: 101 }, (_, i) => ({
         questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
       })),
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it('accepts 100 distinct answers (#1065)', () => {
+  it('rejects more than 500 answers, the absolute parser bound (#1065)', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
-      answers: Array.from({ length: 100 }, (_, i) => ({
+      answers: Array.from({ length: 501 }, (_, i) => ({
         questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
       })),
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it('rejects the same questionId twice and points at the repeated entry (#1065)', () => {
@@ -198,10 +198,10 @@ describe('SaveQuizAnswersSchema (#349)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects more than 100 answers', () => {
+  it('rejects more than 500 answers, the absolute parser bound (#1065)', () => {
     const result = SaveQuizAnswersSchema.safeParse({
       attemptId,
-      answers: Array.from({ length: 101 }, (_, i) => ({
+      answers: Array.from({ length: 501 }, (_, i) => ({
         questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
       })),
     });

@@ -875,7 +875,7 @@ describe('QuizAttemptService', () => {
 
     it('rejects an answer for a question outside the attempt and writes nothing (#1065)', async () => {
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
 
       const result = await service.submit(
         {
@@ -891,11 +891,81 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      // The 422 names the offending entry, like the schema-level errors do.
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 1, 'questionId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
       // No score lookup, no completion, no answer rows: the payload is refused whole.
       expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).toEqual([
         'quiz_attempts',
         'quiz_attempt_questions',
       ]);
+    });
+
+    it('rejects a payload longer than the attempt, not a fixed cap (#1065)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          // Three distinct questions is more than this attempt can contain, even
+          // though it is far below the parser bound.
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-2', selectedAnswerId: 'ans-2' },
+            { questionId: 'q-3', selectedAnswerId: 'ans-3' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          { code: 'custom', path: ['answers'], message: 'VALIDATION_INVALID_TOO_MANY' },
+        ]);
+      }
+    });
+
+    it('submits an attempt with more than 100 questions (#1065)', async () => {
+      const questionIds = Array.from({ length: 101 }, (_, index) => `q-${index}`);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb(...questionIds));
+      mock.from.mockReturnValueOnce(qb(questionIds.map((id) => ({ id, type: 'mcq' }))));
+      questionIds.forEach(() => {
+        mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      });
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      const insertQb = qb(null);
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: questionIds.map((questionId, index) => ({
+            questionId,
+            selectedAnswerId: `ans-${index}`,
+          })),
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      // Every question is correct and each is counted once.
+      expect(expectSuccess(result).score).toBe(101);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ question_id: 'q-100' })]),
+      );
+      expect(insertQb.insert.mock.calls[0]?.[0]).toHaveLength(101);
     });
 
     it('returns INTERNAL_SERVER when the attempt questions cannot be loaded (#1065)', async () => {
@@ -996,6 +1066,54 @@ describe('QuizAttemptService', () => {
       expect(updateQb.update).toHaveBeenCalledWith({
         draft_answers: { 'q-1': { selected_answer_id: 'ans-2', text_answer: null } },
       });
+    });
+
+    it('saves a draft for an assignment with more than 100 questions (#1065)', async () => {
+      const updateQb = qb(null);
+      const questionIds = Array.from({ length: 101 }, (_, index) => `q-${index}`);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb(...questionIds));
+      mock.from.mockReturnValueOnce(updateQb);
+
+      const result = await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: questionIds.map((questionId, index) => ({
+            questionId,
+            selectedAnswerId: `ans-${index}`,
+          })),
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).saved).toBe(101);
+    });
+
+    it('rejects a draft longer than the attempt, not a fixed cap (#1065)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+
+      const result = await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-2', selectedAnswerId: 'ans-2' },
+            { questionId: 'q-stranger', selectedAnswerId: 'ans-3' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          { code: 'custom', path: ['answers'], message: 'VALIDATION_INVALID_TOO_MANY' },
+        ]);
+      }
     });
 
     it('returns NOT_FOUND for a foreign or missing attempt', async () => {

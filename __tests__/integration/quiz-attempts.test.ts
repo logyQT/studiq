@@ -471,6 +471,56 @@ describe(`Quiz Attempts Integration`, () => {
       expect(attempt?.completed_at).toBeNull();
     });
 
+    it('refuses a payload longer than the attempt, not a fixed cap (#1065)', async () => {
+      mockUser(student.user);
+
+      const supabase = createServiceClient();
+      const { data: attemptQuestions } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
+
+      const { data: options } = await supabase
+        .from('question_options')
+        .select('id, question_id')
+        .in(
+          'question_id',
+          (attemptQuestions ?? []).map((q) => q.question_id),
+        )
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
+
+      // Every attempt question plus one stranger: four entries for a three-question
+      // attempt, refused by the attempt's own size before any scoring.
+      const answers = [
+        ...oneAnswerPerQuestion(options ?? []),
+        { questionId: crypto.randomUUID(), selectedAnswerId: crypto.randomUUID() },
+      ];
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      const body = await json<
+        ApiErrorPayload & { issues?: { properties?: { answers?: { errors: string[] } } } }
+      >(response);
+
+      expect(response.status).toBe(422);
+      expect(body.issues?.properties?.answers?.errors).toEqual(['VALIDATION_INVALID_TOO_MANY']);
+
+      const { data: stored } = await supabase
+        .from('student_answers')
+        .select('id')
+        .eq('attempt_id', attemptId);
+      expect(stored).toHaveLength(0);
+    });
+
     it('refuses the same answer twice in one payload (#1065)', async () => {
       mockUser(student.user);
 
