@@ -297,11 +297,13 @@ test.describe('@case:EDU-QZ-03 @area:EDU @prio:P2 quiz question order and points
     ).toEqual([1, 5, 1]);
 
     // ── Step 3: delete the question that holds 5 points ─────────────────────
+    // The autosave debounce is 5 s (see below), so this wait outlives the 3 s
+    // per-action budget on purpose.
     const autosave = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === `/api/v1/teacher/quizzes/${quizId}/bulk` &&
         response.request().method() === 'PUT',
-      { timeout: 30_000 },
+      { timeout: 10_000 },
     );
     await rowFor(page, first).locator('button').last().click({ timeout: 10_000 });
 

@@ -79,10 +79,14 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
       await expect(footer(page)).toHaveText('1 pytanie · Suma punktów: 1');
 
       // Persist explicitly (autosave is debounced by 5 s) and prove it survives a reload.
+      // The explicit save is sometimes coalesced into that debounce instead of firing
+      // immediately, so this one network wait can legitimately take ~5 s — it outlives
+      // the 3 s per-action budget on purpose.
       const saved = page.waitForResponse(
         (response) =>
           response.url().includes(`/api/v1/teacher/quizzes/${quizId}/bulk`) &&
           response.request().method() === 'PUT',
+        { timeout: 10_000 },
       );
       await page.getByRole('button', { name: t('EduQuizEditPage.save') }).click();
       expect((await saved).status()).toBe(200);
