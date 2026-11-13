@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
@@ -7,7 +8,12 @@ import {
   createTestUser,
   type TestUserFixture,
 } from '#test/helpers/test-user';
-import { useRealSupabase, cleanupOrganizationDeep, mockUser } from '#test/integration/helpers';
+import {
+  useRealSupabase,
+  cleanupOrganizationDeep,
+  mockUser,
+  seedOrgMembership,
+} from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { DELETE as deleteAssignment } from '@/app/(backend)/api/v1/organization/seats/assignments/[id]/route';
 import {
@@ -51,7 +57,7 @@ type AssignmentBody = { success: boolean; data: SeatAssignment };
 interface SeatsErrorBody {
   success: boolean;
   error?: string;
-  issues?: { properties: Record<'quantity', { errors: string[] }> };
+  issues?: { properties: Partial<Record<'quantity' | 'total', { errors: string[] }>> };
 }
 
 describe(`Seats Integration`, () => {
@@ -235,6 +241,44 @@ describe(`Seats Integration`, () => {
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
+    });
+
+    it('returns 422 and keeps the pool when total would drop below assigned (#1068)', async () => {
+      mockUser(fixture.user);
+      const supabase = createSeedDb();
+      const { error: seatError } = await supabase
+        .from('org_seat_assignments')
+        .insert({ organization_id: orgId, pool_id: poolId, user_id: assigneeC.id });
+      expect(seatError).toBeNull();
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/organization/seats/pools/${poolId}`,
+        { id: poolId },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total: 0 }),
+        },
+        orgCookies(),
+      );
+
+      const response = await updatePool(request, { params });
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.issues!.properties.total!.errors).toContain('VALIDATION_INVALID_TOO_SMALL');
+      const pool = await supabase
+        .from('org_seat_pools')
+        .select('total, assigned')
+        .eq('id', poolId)
+        .single();
+      expect(pool.data).toEqual({ total: 5, assigned: 1 });
+
+      await supabase
+        .from('org_seat_assignments')
+        .delete()
+        .eq('organization_id', orgId)
+        .eq('user_id', assigneeC.id);
     });
   });
 
@@ -445,6 +489,48 @@ describe(`Seats Integration`, () => {
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
     });
+
+    it('returns 400 and writes nothing when the member role tier does not match (#1068)', async () => {
+      // `guide` is educator-tier: a member (student tier) must be refused even
+      // though the pool has room.
+      const supabase = createSeedDb();
+      const memberRole = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'member')
+        .single();
+      if (!memberRole.data) throw new Error('seed org is missing the member role');
+      const studentMember = await createTestUser({ role: 'student' });
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: studentMember.id,
+        orgRoleId: memberRole.data.id,
+      });
+      mockUser(fixture.user);
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: studentMember.id, poolId }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createAssignment(req);
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('BAD_REQUEST');
+      const written = await supabase
+        .from('org_seat_assignments')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('user_id', studentMember.id);
+      expect(written.data).toEqual([]);
+    });
   });
 
   describe('DELETE /assignments/[id]', () => {
@@ -497,12 +583,21 @@ describe(`Seats Integration`, () => {
   });
 
   describe('Hard block: pool capacity', () => {
-    beforeEach(async () => {
-      const supabase = createSeedDb();
-      await supabase.from('org_seat_pools').update({ total: 0 }).eq('id', poolId);
-    });
-
     it('returns USAGE_LIMIT_EXCEEDED when pool is full', async () => {
+      // A pool is full at `total = assigned`; `org_seat_pools_total_not_below_assigned`
+      // forbids dropping it below that (#1068), so the fixture fills the pool.
+      const supabase = createSeedDb();
+      const assignedSeats = dbRows(
+        (await supabase.from('org_seat_assignments').select('id').eq('organization_id', orgId))
+          .data,
+      );
+      const { error: fillError } = await supabase
+        .from('org_seat_pools')
+        .update({ total: assignedSeats.length })
+        .eq('id', poolId);
+      expect(fillError).toBeNull();
+
+      const newcomer = await createTestUser({ role: 'educator' });
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -511,7 +606,7 @@ describe(`Seats Integration`, () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: assigneeC.id,
+            userId: newcomer.id,
             poolId,
           }),
         },
