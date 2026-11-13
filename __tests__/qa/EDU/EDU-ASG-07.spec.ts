@@ -308,10 +308,10 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     const gradeLink = row.getByRole('link', { name: COPY.grade, exact: true });
     await expect(gradeLink, 'Akcje').toHaveAttribute(
       'href',
-      `/edu/assignments/${assignmentId}/results/${student.id}`,
+      `/edu/assignments/${assignmentId}/results/${attempt.id}`,
     );
     await gradeLink.click();
-    await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results/${student.id}$`), {
+    await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results/${attempt.id}$`), {
       timeout: 20_000,
     });
     await expect(

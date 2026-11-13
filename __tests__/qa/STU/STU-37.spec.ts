@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-37 — student summary of a completed, graded quiz (`/app/assignments`).
@@ -281,11 +281,10 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       ).toBeNull();
 
       // ── Teacher grades the open answer of the visible quiz ─────────────────
-      const student = tenantUser(tenant, 'student');
       await api<unknown>(
         page,
         'PUT',
-        `/api/v1/teacher/assignments/${visible.id}/results/${student.id}`,
+        `/api/v1/teacher/assignments/${visible.id}/results/${visibleAttempt.attemptId}`,
         { questionId: open.id, points: 1, feedback },
       );
 

@@ -49,6 +49,37 @@ function chain(result: unknown, count?: number) {
   return c;
 }
 
+/**
+ * `quiz_attempts` stub with PostgREST cardinality: equality filters that match
+ * more than one row make `.single()`/`.maybeSingle()` fail with PGRST116, which
+ * is what a student's second attempt does to a read filtered by
+ * `(assignment_id, user_id)` (#1062).
+ */
+function attemptRowsChain(rows: Array<Record<string, unknown>>) {
+  const c = chain(rows);
+  const filters: Array<[string, unknown]> = [];
+  c.eq = vi.fn((column: string, value: unknown) => {
+    filters.push([column, value]);
+    return c;
+  });
+  const resolve = () => {
+    const found = rows.filter((row) => filters.every(([column, value]) => row[column] === value));
+    if (found.length > 1) {
+      return Promise.resolve({
+        data: null,
+        error: {
+          code: 'PGRST116',
+          message: 'JSON object requested, multiple (or no) rows returned',
+        },
+      });
+    }
+    return Promise.resolve({ data: found[0] ?? null, error: null });
+  };
+  c.single = vi.fn(resolve);
+  c.maybeSingle = c.single;
+  return c;
+}
+
 /** A chain whose every terminal (await, `.single()`, `.maybeSingle()`) fails. */
 function failingChain(failure: { code: string; message: string }) {
   const c = chain(null);
@@ -836,10 +867,61 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain(attempt))
         .mockReturnValueOnce(chain([]));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(asJson<{ id: string }>(result.data).id).toBe('attempt-1');
+    });
+
+    it('loads the requested attempt when the student has two attempts (#1062)', async () => {
+      const attempts = attemptRowsChain([
+        {
+          ...attempt,
+          id: 'attempt-1',
+          quiz_answers: [{ id: 'answer-1', question_id: 'q-open' }],
+        },
+        {
+          ...attempt,
+          id: 'attempt-2',
+          quiz_answers: [{ id: 'answer-2', question_id: 'q-open' }],
+        },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(attempts)
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-2', ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const loaded = asJson<{ id: string; quiz_answers: Array<{ id: string }> }>(result.data);
+        expect(loaded.id).toBe('attempt-2');
+        expect(loaded.quiz_answers.map((answer) => answer.id)).toEqual(['answer-2']);
+      }
+      // The attempt id alone must not resolve: `assignment_id` is the IDOR guard.
+      expect(attempts.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+    });
+
+    it('returns NOT_FOUND for an attempt of another assignment (#1062)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          attemptRowsChain([
+            { ...attempt, id: 'attempt-foreign', assignment_id: 'assignment-other' },
+          ]),
+        )
+        .mockReturnValue(chain([]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-foreign', ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
 
     it('attaches the per-question maximum and null for a removed question (#169)', async () => {
@@ -858,7 +940,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain(gradedAttempt))
         .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -876,7 +958,7 @@ describe('TeacherAssignmentService', () => {
         )
         .mockReturnValue(chain(null));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
@@ -885,7 +967,7 @@ describe('TeacherAssignmentService', () => {
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
@@ -898,8 +980,89 @@ describe('TeacherAssignmentService', () => {
   };
 
   describe('gradeAnswer', () => {
+    it('grades only the requested attempt when the student has two attempts (#1062)', async () => {
+      const attemptUpdate = chain(null);
+      const attempts = attemptRowsChain([
+        { id: 'attempt-1', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
+        { id: 'attempt-2', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
+      ]);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(attempts)
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
+        .mockReturnValueOnce(chain({ id: 'answer-2' }))
+        .mockReturnValueOnce(chain(null)) // student_answers update
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
+        .mockReturnValueOnce(
+          chain([{ question_id: 'q-open', is_correct: false, teacher_points: 2 }]),
+        )
+        .mockReturnValueOnce(attemptUpdate);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-2',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(attemptUpdate.update).toHaveBeenCalledWith({
+        score: 2,
+        graded_at: anyTimestamp,
+      });
+      expect(attemptUpdate.eq).toHaveBeenCalledWith('id', 'attempt-2');
+      // The attempt id alone must not resolve: `assignment_id` is the IDOR guard.
+      expect(attempts.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+    });
+
+    it('does not grade an attempt of another assignment (#1062)', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(
+          attemptRowsChain([
+            {
+              id: 'attempt-foreign',
+              assignment_id: 'assignment-other',
+              user_id: 'student-1',
+              graded_at: null,
+            },
+          ]),
+        )
+        .mockReturnValue(chain([]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-foreign',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // Ownership + the attempt read only: nothing was graded or scored.
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('maps an attempt-read failure instead of reporting NOT_FOUND', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(failingChain({ code: 'XX000', message: 'connection reset' }))
+        .mockReturnValue(chain([]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-1',
+        { questionId: 'q-open', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
     it('updates existing answer grade and recomputes the attempt score', async () => {
-      const attemptChain = chain({ id: 'attempt-1' });
+      const attemptChain = chain({ id: 'attempt-1', user_id: 'student-1' });
       const questionsChain = chain([
         { question_id: 'q-mcq', points: 1 },
         { question_id: 'q-open', points: 2 },
@@ -922,7 +1085,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-open', points: 2, feedback: 'Good' },
         ctx,
       );
@@ -938,12 +1101,12 @@ describe('TeacherAssignmentService', () => {
     it('rejects points above the question maximum (#169)', async () => {
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-open', points: 5 },
         ctx,
       );
@@ -955,7 +1118,7 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('accepts points equal to the question maximum (#169)', async () => {
-      const attemptChain = chain({ id: 'attempt-1' });
+      const attemptChain = chain({ id: 'attempt-1', user_id: 'student-1' });
       const questionsChain = chain([{ question_id: 'q-open', points: 2 }]);
       const answersChain = chain([{ question_id: 'q-open', is_correct: false, teacher_points: 2 }]);
       const updateChain = chain(null);
@@ -972,7 +1135,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-open', points: 2 },
         ctx,
       );
@@ -987,12 +1150,12 @@ describe('TeacherAssignmentService', () => {
     it('rejects a question that is not part of the assignment (#169)', async () => {
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-forged', points: 1 },
         ctx,
       );
@@ -1007,7 +1170,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(
           chain([
             { question_id: 'q-open', points: 2 },
@@ -1033,7 +1196,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-other', points: 1 },
         ctx,
       );
@@ -1051,7 +1214,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-mcq', points: 1 }]))
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
@@ -1061,7 +1224,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-mcq', points: 0 },
         ctx,
       );
@@ -1078,7 +1241,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 1 }]))
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
@@ -1093,7 +1256,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 1 },
         ctx,
       );
@@ -1110,7 +1273,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 5 }]))
         .mockReturnValueOnce(chain(null)) // no existing answer
         .mockReturnValueOnce(chain(null)) // student_answers insert
@@ -1120,7 +1283,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 5 },
         ctx,
       );
@@ -1138,7 +1301,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 3 },
         ctx,
       );
@@ -1152,7 +1315,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 3 },
         ctx,
       );

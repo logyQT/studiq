@@ -99,7 +99,7 @@ describe('TeacherAssignmentService notifies students', () => {
   function gradeWith(attempt: Record<string, unknown>) {
     mock.from
       .mockReturnValueOnce(owned())
-      .mockReturnValueOnce(chain(attempt))
+      .mockReturnValueOnce(chain({ user_id: 'student-1', ...attempt }))
       .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }])) // max points
       .mockReturnValueOnce(chain({ id: 'answer-1' }))
       .mockReturnValueOnce(chain(null)) // answer update
@@ -170,7 +170,7 @@ describe('TeacherAssignmentService notifies students', () => {
 
       const result = await service.gradeAnswer(
         'a1',
-        'student-1',
+        'attempt-1',
         { questionId: 'q1', points: 2, feedback: 'ok' },
         ctx,
       );
@@ -188,7 +188,7 @@ describe('TeacherAssignmentService notifies students', () => {
 
       await service.gradeAnswer(
         'a1',
-        'student-1',
+        'attempt-1',
         { questionId: 'q1', points: 2, feedback: 'ok' },
         ctx,
       );
@@ -204,7 +204,7 @@ describe('TeacherAssignmentService notifies students', () => {
 
       const result = await service.gradeAnswer(
         'a1',
-        'student-1',
+        'attempt-1',
         { questionId: 'q1', points: 9, feedback: '' },
         ctx,
       );
