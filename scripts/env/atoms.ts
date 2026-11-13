@@ -25,6 +25,7 @@ export type EnvCommand =
   | 'logs'
   | 'setup'
   | 'verify'
+  | 'observability'
   | 'help';
 
 export type RuntimeChoice = 'native' | 'docker';
@@ -79,6 +80,11 @@ export interface VerifyOptions {
   full: boolean;
 }
 
+export interface ObservabilityOptions {
+  mode: 'status' | 'ensure';
+  force: boolean;
+}
+
 export interface ParsedCommand {
   command: EnvCommand;
   json: boolean;
@@ -93,6 +99,7 @@ export interface ParsedCommand {
   logs: LogsOptions | null;
   setup: SetupOptions | null;
   verify: VerifyOptions | null;
+  observability: ObservabilityOptions | null;
   yes: boolean;
   /** Suppress informative stderr lines (`--quiet`). */
   quiet: boolean;
@@ -129,6 +136,7 @@ export const USAGE = [
   '  env:logs     [--no-follow]                      Stack logs + .dev/web.log',
   '  env:setup    [--force] [--vault]                Human-only: scaffold .env.local (or optional vault refs)',
   '  env:verify   [--full] [--json]                  Read-only env/schema check (names only)',
+  '  env:observability [status|ensure] [--force]     Validate/mint the Grafana MCP token (read-only by default)',
   '  env:ports    [--json]                           Print a free APP_PORT',
   '  env:doctor   [--json]                           Explain runtime/stack/registry problems',
   '',
@@ -204,6 +212,7 @@ function empty(command: EnvCommand): ParsedCommand {
     logs: null,
     setup: null,
     verify: null,
+    observability: null,
     yes: false,
     quiet: false,
     verbose: false,
@@ -494,6 +503,43 @@ function parseVerify(rest: string[]): ParsedCommand {
   );
 }
 
+/**
+ * `status` is read-only; `ensure` mints only when the token is missing or stale.
+ * `--force` re-mints a token that still validates (manual recovery). Flags and
+ * the mode may appear in any order: agents compose flags-first calls.
+ */
+function parseObservability(rest: string[]): ParsedCommand {
+  const parsed = empty('observability');
+  let mode: 'status' | 'ensure' = 'status';
+  let explicitMode = false;
+  let force = false;
+  for (const token of rest) {
+    if (token === '--help' || token === '-h') return empty('help');
+    if (token === 'status' || token === 'ensure') {
+      if (explicitMode && mode !== token) {
+        throw new UsageError(`'observability' takes one mode, not '${mode}' and '${token}'`);
+      }
+      mode = token;
+      explicitMode = true;
+      continue;
+    }
+    if (!token.startsWith('--')) {
+      throw new UsageError(`unexpected argument '${token}' for 'observability'`);
+    }
+    const { name, inline } = flagToken(token);
+    if (inline !== undefined) throw new UsageError(`'${name}' does not take a value`);
+    if (name === '--force') {
+      force = true;
+      continue;
+    }
+    if (parseCommon(parsed, name)) continue;
+    throw new UsageError(`unknown option '${name}' for 'observability'`);
+  }
+  if (force && mode !== 'ensure') throw new UsageError("'--force' requires 'ensure'");
+  parsed.observability = { mode, force };
+  return parsed;
+}
+
 function parseFlagCommand(command: FlagCommand, rest: string[]): ParsedCommand {
   const parsed = empty(command);
   for (const arg of rest) {
@@ -574,6 +620,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
   if (command === 'logs') return parseLogs(rest);
   if (command === 'setup') return parseSetup(rest);
   if (command === 'verify') return parseVerify(rest);
+  if (command === 'observability') return parseObservability(rest);
   if (!(FLAG_COMMANDS as ReadonlyArray<string>).includes(command)) {
     throw new UsageError(`unknown command '${command}'`);
   }

@@ -4,6 +4,13 @@ import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
+import {
+  grafanaAuthLabel,
+  grafanaBaseUrl,
+  grafanaTokenAge,
+  inspectGrafana,
+  type GrafanaAuthState,
+} from '../lib/grafana';
 import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
@@ -30,6 +37,14 @@ export interface ObservabilityStatus {
   loki: number;
   prometheus: number;
   otlp: number;
+  /** Whether agents can actually read Grafana (not just whether it answers). */
+  auth: GrafanaAuthState;
+  authDetail: string | null;
+  tokenFile: string;
+  tokenMintedAt: string | null;
+  serviceAccount: string | null;
+  role: string | null;
+  mcpBinary: boolean;
 }
 
 export interface DoctorReport {
@@ -131,8 +146,11 @@ async function buildReport(): Promise<DoctorReport> {
   // read-only so an agent in a worktree gets the start command that cannot
   // create a second stack.
   const primary = primaryCheckoutPath();
+  // `GRAFANA_URL` is what the MCP actually talks to; it defaults to the
+  // machine-wide stack. Probing the same URL keeps doctor honest for both.
+  const grafanaBase = grafanaBaseUrl();
   const [grafana, tempo, loki, prometheus, otlp] = await Promise.all([
-    probeHttp(OBSERVABILITY_URLS.grafanaHealth, OBSERVABILITY_PROBE_MS),
+    probeHttp(`${grafanaBase}/api/health`, OBSERVABILITY_PROBE_MS),
     probeHttp(OBSERVABILITY_URLS.tempoReady, OBSERVABILITY_PROBE_MS),
     probeHttp(OBSERVABILITY_URLS.lokiReady, OBSERVABILITY_PROBE_MS),
     probeHttp(OBSERVABILITY_URLS.prometheusReady, OBSERVABILITY_PROBE_MS),
@@ -142,6 +160,12 @@ async function buildReport(): Promise<DoctorReport> {
     join(primary, 'docker-compose.yml'),
     OBSERVABILITY_PROJECT,
   );
+  // `/api/health` is unauthenticated: it proves the container answers, not that
+  // an agent can read traces/logs. Validate the service-account token too.
+  const grafanaAuth = await inspectGrafana({
+    healthCode: grafana,
+    healthTimeoutMs: OBSERVABILITY_PROBE_MS,
+  });
   const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
   const observability: ObservabilityStatus = {
     up: upCount === 5,
@@ -154,6 +178,13 @@ async function buildReport(): Promise<DoctorReport> {
     loki,
     prometheus,
     otlp,
+    auth: grafanaAuth.state,
+    authDetail: grafanaAuth.detail,
+    tokenFile: grafanaAuth.tokenFile,
+    tokenMintedAt: grafanaAuth.mintedAt,
+    serviceAccount: grafanaAuth.serviceAccount,
+    role: grafanaAuth.role,
+    mcpBinary: grafanaAuth.mcpBinary,
   };
 
   const problems: string[] = [];
@@ -239,6 +270,13 @@ async function buildReport(): Promise<DoctorReport> {
   );
 
   const observabilityStatus = observabilityLabel(upCount, 5);
+  const authLabel = grafanaAuthLabel({
+    state: observability.auth,
+    serviceAccount: observability.serviceAccount,
+    role: observability.role,
+    mintedAt: observability.tokenMintedAt,
+  });
+  const tokenAge = grafanaTokenAge(observability.tokenMintedAt);
 
   lines.push(
     '',
@@ -251,10 +289,16 @@ async function buildReport(): Promise<DoctorReport> {
     `  loki       http=${httpLabel(observability.loki)}`,
     `  prometheus http=${httpLabel(observability.prometheus)}`,
     `  otlp       http=${httpLabel(observability.otlp)}`,
+    `  auth       ${authLabel}`,
+    `  token      ${observability.tokenFile}${tokenAge ? ` (minted ${tokenAge})` : ''}`,
+    `  mcp        ${observability.mcpBinary ? 'mcp-grafana on PATH' : 'mcp-grafana NOT on PATH'}`,
     `  start      ${observability.start}`,
   );
   if (!observability.up) {
     lines.push('  note       start it once from the primary checkout, never from a worktree');
+    lines.push(
+      '  note       traces/logs are not readable by agents; do not substitute a local trace id',
+    );
     if (!observability.primaryReady) {
       lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
     }
@@ -263,6 +307,10 @@ async function buildReport(): Promise<DoctorReport> {
         '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
       );
     }
+  } else if (observability.auth !== 'ok') {
+    lines.push(
+      '  note       the MCP token is not valid — run `bun run env:observability ensure`; do not substitute a local trace id',
+    );
   }
 
   lines.push('', '▸ Ports');
