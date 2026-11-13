@@ -8,11 +8,37 @@ export const QuizAnswerEntrySchema = z.object({
   textAnswer: z.string().trim().max(10000, { error: ValidationErrorCode.TOO_LONG }).optional(),
 });
 
+export type QuizAnswerEntry = z.infer<typeof QuizAnswerEntrySchema>;
+
+/** Submit mirrors the draft's cap so one request cannot carry an unbounded answer sheet (#1065). */
+const QuizAnswersArraySchema = z
+  .array(QuizAnswerEntrySchema)
+  .max(100, { error: ValidationErrorCode.TOO_MANY });
+
+/**
+ * Submit is a single write of the whole answer sheet, so the same question twice
+ * would store a duplicate `student_answers` row (#1065). The draft save instead
+ * keys its map by question id, where the last entry wins.
+ */
+function rejectRepeatedQuestions(answers: QuizAnswerEntry[], ctx: z.RefinementCtx) {
+  const seen = new Set<string>();
+  answers.forEach((answer, index) => {
+    if (seen.has(answer.questionId)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [index, 'questionId'],
+        message: ValidationErrorCode.INVALID_INPUT,
+      });
+    }
+    seen.add(answer.questionId);
+  });
+}
+
 export const SubmitQuizAttemptSchema = registry.register(
   'SubmitQuizAttemptRequest',
   z.object({
     attemptId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
-    answers: z.array(QuizAnswerEntrySchema),
+    answers: QuizAnswersArraySchema.superRefine(rejectRepeatedQuestions),
   }),
 );
 
@@ -20,7 +46,7 @@ export const SaveQuizAnswersSchema = registry.register(
   'SaveQuizAnswersRequest',
   z.object({
     attemptId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
-    answers: z.array(QuizAnswerEntrySchema).max(100, { error: ValidationErrorCode.TOO_MANY }),
+    answers: QuizAnswersArraySchema,
   }),
 );
 

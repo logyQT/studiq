@@ -42,6 +42,41 @@ describe('SubmitQuizAttemptSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('rejects more than 100 answers (#1065)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: Array.from({ length: 101 }, (_, i) => ({
+        questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
+      })),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts 100 distinct answers (#1065)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: Array.from({ length: 100 }, (_, i) => ({
+        questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
+      })),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects the same questionId twice and points at the repeated entry (#1065)', () => {
+    const questionId = '550e8400-e29b-41d4-a716-446655440001';
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [
+        { questionId, selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002' },
+        { questionId, selectedAnswerId: '550e8400-e29b-41d4-a716-446655440003' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 1, 'questionId']);
+    }
+  });
+
   it('fails when questionId is not a valid UUID', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',

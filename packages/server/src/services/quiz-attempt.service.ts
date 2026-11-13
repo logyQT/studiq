@@ -12,6 +12,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
+  QuizAnswerEntry,
   SaveQuizAnswersInput,
   SubmitQuizAttemptInput,
 } from '@studiq/server/models/quiz-attempt.model';
@@ -69,6 +70,44 @@ export type QuizAttemptListItem = Omit<
 
 export class QuizAttemptService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
+
+  /**
+   * Loads the signed-in student's in-progress attempt for a write and refuses
+   * answers that name a question outside it. Both the draft save and the submit
+   * go through this gate: such a row is one the take page never asked for — it
+   * feeds the per-question accuracy index and, on a practice attempt, adds to
+   * the score (#1065).
+   */
+  private async loadAnswerableAttempt(
+    supabase: SupabaseClient<Database>,
+    attemptId: string,
+    userId: string,
+    answers: readonly QuizAnswerEntry[],
+  ): Promise<ServiceResult<{ id: string; assignment_id: string | null }>> {
+    const { data: attempt, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, assignment_id, completed_at')
+      .eq('id', attemptId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !attempt) return failure('NOT_FOUND');
+    if (attempt.completed_at) return failure('BAD_REQUEST');
+
+    const { data: attemptQuestions, error: questionsError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .eq('attempt_id', attemptId);
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
+    if (answers.some((answer) => !allowedIds.has(answer.questionId))) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
+
+    return success({ id: attempt.id, assignment_id: attempt.assignment_id });
+  }
 
   async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
     const supabase = await this.clientFactory();
@@ -224,29 +263,13 @@ export class QuizAttemptService {
   ): Promise<ServiceResult<{ saved: number }>> {
     const supabase = await this.clientFactory();
 
-    const { data: attempt, error: attemptError } = await supabase
-      .from('quiz_attempts')
-      .select('id, completed_at')
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (attemptError || !attempt) return failure('NOT_FOUND');
-    if (attempt.completed_at) return failure('BAD_REQUEST');
-
-    // Only questions that belong to this attempt can be stored, so a client
-    // cannot grow the draft with junk keys.
-    const { data: attemptQuestions, error: questionsError } = await supabase
-      .from('quiz_attempt_questions')
-      .select('question_id')
-      .eq('attempt_id', data.attemptId);
-
-    if (questionsError) return toDbFailure(questionsError);
-
-    const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
-    if (data.answers.some((a) => !allowedIds.has(a.questionId))) {
-      return failure('UNPROCESSABLE_ENTITY');
-    }
+    const attempt = await this.loadAnswerableAttempt(
+      supabase,
+      data.attemptId,
+      ctx.userId,
+      data.answers,
+    );
+    if (isFailure(attempt)) return attempt;
 
     const draft: Record<string, DraftAnswer> = {};
     for (const answer of data.answers) {
@@ -275,15 +298,16 @@ export class QuizAttemptService {
   ): Promise<ServiceResult<{ score: number | null; totalQuestions: number }>> {
     const supabase = await this.clientFactory();
 
-    const { data: attempt, error: attemptCheckError } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (attemptCheckError || !attempt) return failure('NOT_FOUND');
-    if (attempt.completed_at) return failure('BAD_REQUEST');
+    // Refuse the whole payload before scoring, completing the attempt or writing
+    // a single row: the request must only carry this attempt's own questions.
+    const attemptResult = await this.loadAnswerableAttempt(
+      supabase,
+      data.attemptId,
+      ctx.userId,
+      data.answers,
+    );
+    if (isFailure(attemptResult)) return attemptResult;
+    const attempt = attemptResult.data;
 
     // Check deadline if this attempt belongs to an assignment
     let showResults = true;
