@@ -467,11 +467,12 @@ either key in `.env.local` to override it. If you previously pinned the old
 | OTLP intake                             | http://localhost:7318 |
 
 The Grafana admin login is `admin` / `admin` by default and is **local-only**
-(the stack publishes on `127.0.0.1`). To set a different password, export
-`GRAFANA_ADMIN_PASSWORD` in the shell that runs `docker compose up -d`, or run
-`docker compose --env-file .env.local up -d` with the key in `.env.local` — the
-repo's only hand-edited values file. Never create a root `.env`: `bun run lint`
-rejects it.
+(the stack publishes on `127.0.0.1`). To set a different password, run the start
+command from the primary checkout with `GRAFANA_ADMIN_PASSWORD` exported
+(`GRAFANA_ADMIN_PASSWORD='<pw>' docker compose up -d`), or run
+`docker compose --env-file .env.local up -d` there with the key in `.env.local` —
+the repo's only hand-edited values file. Never create a root `.env`: `bun run
+lint` rejects it.
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).

@@ -107,10 +107,12 @@ The admin credential used **only** for minting comes from
 and it is **local-only**: the stack publishes on `127.0.0.1` and it is only a
 fresh `grafana_data` volume's first-boot password. `env:observability` reads the
 names from the process environment, and `docker compose` interpolates the same
-names from the shell that runs it. To override, either export it for the compose
-process or point compose at the repo's one values file:
+names from the shell that runs it. To override, run the start command **from the
+primary checkout** (never a worktree) with the value exported, or point compose
+at the repo's one values file:
 
 ```bash
+cd /workspaces/studiq                                # the primary checkout (see above)
 GRAFANA_ADMIN_PASSWORD='<pw>' docker compose up -d   # compose process environment
 docker compose --env-file .env.local up -d           # .env.local, the only values file
 ```

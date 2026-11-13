@@ -69,12 +69,13 @@ services:
     environment:
       # Local-only defaults for a fresh `grafana_data` volume: the stack is
       # published on 127.0.0.1 only, so `admin`/`admin` never leaves the host.
-      # Override by exporting these in the shell that runs `docker compose`
-      # (`GRAFANA_ADMIN_PASSWORD=... docker compose up -d`), or by pointing
-      # compose at the one values file (`docker compose --env-file .env.local
-      # up -d` when `.env.local` holds the key). A root `.env` is rejected by
-      # `bun run lint`. An existing volume keeps its first-boot password; reset
-      # it with `docker compose exec grafana grafana cli admin reset-admin-password`.
+      # Override by exporting these in the shell that runs `docker compose` from
+      # the primary checkout (`GRAFANA_ADMIN_PASSWORD=... docker compose up -d`),
+      # or by pointing compose at the one values file (`docker compose
+      # --env-file .env.local up -d` when `.env.local` holds the key). A root
+      # `.env` is rejected by `bun run lint`. An existing volume keeps its
+      # first-boot password; reset it with
+      # `docker compose exec grafana grafana cli admin reset-admin-password`.
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     depends_on:
