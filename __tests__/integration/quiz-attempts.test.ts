@@ -1087,6 +1087,85 @@ describe(`Quiz Attempts Integration`, () => {
       },
     );
 
+    it.skipIf(!localDatabaseUrl)(
+      'completes nothing when a second call races the first inside the function (#1064)',
+      async () => {
+        mockUser(student.user);
+        const { options } = await loadAttemptAnswers();
+        const sheet = oneAnswerPerQuestion(options).map((answer) => ({
+          question_id: answer.questionId,
+          question_type: 'mcq',
+          selected_option_id: answer.selectedAnswerId,
+          text_answer: null,
+          is_correct: false,
+        }));
+
+        // The route gate refuses a re-submit long before the function runs, so
+        // the function's own guard needs a caller that bypasses it — the same
+        // direct call any student's JWT can make. Two connections act as that
+        // caller the way PostgREST does (`role` + JWT claims), which lets the
+        // first transaction stay open while the second call is in flight.
+        const first = postgres(localDatabaseUrl!, { max: 1, onnotice: () => {} });
+        const second = postgres(localDatabaseUrl!, {
+          max: 1,
+          onnotice: () => {},
+          connection: { application_name: 'studiq_test_racer' },
+        });
+        const probe = postgres(localDatabaseUrl!, { max: 1, onnotice: () => {} });
+        /** Blocks until the racing backend is waiting on a lock, so the commit cannot outrun it. */
+        const waitForRacerToBlock = async () => {
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline) {
+            const [waiting] = await probe.unsafe(
+              `SELECT 1 FROM pg_stat_activity
+               WHERE application_name = 'studiq_test_racer' AND wait_event_type = 'Lock'`,
+            );
+            if (waiting) return;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          throw new Error('the racing submit never blocked on a lock');
+        };
+        const asStudent = async (sql: Pick<ReturnType<typeof postgres>, 'unsafe'>) => {
+          await sql.unsafe('SET LOCAL role authenticated');
+          await sql.unsafe("SELECT set_config('request.jwt.claims', $1, true)", [
+            JSON.stringify({ sub: student.user.id, role: 'authenticated' }),
+          ]);
+        };
+        const submit = (sql: Pick<ReturnType<typeof postgres>, 'unsafe'>, score: number) =>
+          sql.unsafe(
+            'SELECT * FROM public.submit_quiz_attempt($1::uuid, $2::uuid, $3::int, $4::text::jsonb)',
+            [attemptId, student.user.id, score, JSON.stringify(sheet)],
+          );
+
+        try {
+          await first.unsafe('BEGIN');
+          await asStudent(first);
+          expect(await submit(first, 1)).toHaveLength(1);
+
+          // Started while the first transaction still holds the attempt row:
+          // it must wait for the lock, then read `completed_at` set and write
+          // nothing. Without the lock it writes first and aborts on the
+          // completion predicate (a 500 at the route), and without the guard it
+          // completes a second time.
+          const racer = second.begin(async (tx) => {
+            await asStudent(tx);
+            return submit(tx, 99);
+          });
+          await waitForRacerToBlock();
+          await first.unsafe('COMMIT');
+
+          expect(await racer).toHaveLength(0);
+          // The losing call's score never lands, and the sheet stays the first one.
+          expect((await loadAttemptRow()).score).toBe(1);
+          expect(await countStudentAnswers()).toBe(sheet.length);
+        } finally {
+          await first.end();
+          await second.end();
+          await probe.end();
+        }
+      },
+    );
+
     it('returns 400 when submitting already completed attempt', async () => {
       mockUser(student.user);
 

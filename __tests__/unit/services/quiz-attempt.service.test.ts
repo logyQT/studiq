@@ -133,7 +133,7 @@ function qb(data: unknown, error: unknown = null) {
 type AttemptQuestionFixture = { id: string; type?: string; options?: string[] };
 
 /** The atomic submit RPC answers the attempt it completed; `[]` means another submit won (#1064). */
-const rpcCompleted = (data: unknown = [{ attempt_id: 'a-1' }]) => ({ data, error: null });
+const rpcCompleted = (data: unknown = [{ completed_attempt_id: 'a-1' }]) => ({ data, error: null });
 
 /** What every read of the racing attempt answers, keyed by table. */
 function racingReadResult(table: string): QueryResult {
