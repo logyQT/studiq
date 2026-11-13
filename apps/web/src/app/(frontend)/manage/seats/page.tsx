@@ -36,6 +36,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { availableSeats } from '@/lib/seats';
 
 interface Pool {
   id: string;
@@ -431,7 +432,7 @@ export default function ManageSeatsPage() {
                   </TableHeader>
                   <TableBody>
                     {pools.map((pool) => {
-                      const available = pool.total - pool.assigned;
+                      const available = availableSeats(pool.total, pool.assigned);
                       // Only flag a pool once seats have actually been assigned; a fresh
                       // single-seat pool (1/0/1) is not "low", it is simply untouched.
                       const nearFull =
