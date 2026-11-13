@@ -2676,6 +2676,10 @@ export type Database = {
           rank: number;
         }[];
       };
+      submit_quiz_attempt: {
+        Args: { p_answers: Json; p_attempt_id: string; p_score: number; p_user_id: string };
+        Returns: { completed_attempt_id: string }[];
+      };
     };
     Enums: {
       account_type: 'student' | 'educator' | 'manager';

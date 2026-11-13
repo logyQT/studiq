@@ -107,6 +107,7 @@ GRANT EXECUTE ON FUNCTION public.get_teacher_activity_feed(uuid, uuid, integer) 
 GRANT EXECUTE ON FUNCTION public.get_teacher_stats(uuid[], uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_user_group_ids(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.search_flashcards(text, integer, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_quiz_attempt(uuid, uuid, integer, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_org_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_org_user_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_has_org_feature(uuid, text) TO authenticated;
