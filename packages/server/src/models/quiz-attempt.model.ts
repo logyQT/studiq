@@ -58,18 +58,15 @@ export const QuizAnswerEntrySchema = QuizAnswerValueSchema.superRefine(requireOn
 export type QuizAnswerEntry = z.infer<typeof QuizAnswerEntrySchema>;
 
 /**
- * Parser bound only, not the product limit: an answer sheet cannot be longer
- * than the attempt's own question list, and `QuizAttemptService` enforces that
- * once it has loaded the attempt (#1065). Nothing caps an assignment's size
- * (`AddQuestionsSchema` takes any number of questions), so a fixed low bound
- * would reject a legitimate submit; 500 is above any plausible assignment
- * while still keeping one request from carrying a pathological array.
+ * No fixed entry cap: an assignment's question list is unbounded
+ * (`AddQuestionsSchema` accepts any number of questions), so any constant here
+ * would reject a legitimate submission of a large assignment. `QuizAttemptService`
+ * refuses a sheet longer than the attempt's own question list once it has loaded
+ * it (#1065), and that is the authoritative bound; `toSaveAnswersPayload` emits
+ * exactly one entry per question (including explicit `skipped` ones), so the
+ * payload length mirrors the attempt rather than an arbitrary parser limit.
  */
-const MAX_ANSWER_ENTRIES = 500;
-
-const QuizAnswersArraySchema = z
-  .array(QuizAnswerEntrySchema)
-  .max(MAX_ANSWER_ENTRIES, { error: ValidationErrorCode.TOO_MANY });
+const QuizAnswersArraySchema = z.array(QuizAnswerEntrySchema);
 
 /**
  * One `student_answers` row per question is the write contract (#1065): the
