@@ -151,17 +151,17 @@ members of targeted groups; a **makeup** is a separate assessment.
 
 ## Domain model
 
-| Entity            | Fields (conceptual)                                                                                                                               | Notes                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Bank`            | id, org, owner, name, readers                                                                                                                     | curation only; **no type**                                                                |
-| `Item`            | id, bank, stem, type (`mcq`/`true_false`/`open`), options, correct option, explanation, modelAnswer, version, status (`open`/`retired`/`deleted`) | edits after binding create a new version                                                  |
-| `Assessment`      | id, org, owner, classes[], `opensAt`, `closesAt`, state (`draft`/`scheduled`/`live`/`closed`), scoring rules, `maxAttempts`                       | **one window**                                                                            |
-| `AssessmentItem`  | assessment, item, version, flags (`taughtItem`, `withholdFromReview`)                                                                             | immutable once published                                                                  |
-| `Reservation`     | item, assessment, classes[], effective window                                                                                                     | **derived**: active from `opensAt` to `closesAt` (or explicit release for withheld items) |
-| `Attempt`         | assessment, student, state (`in_progress`/`submitted`/`expired`), started/finished, score, answers                                                | one in progress at a time; attempts only in-window                                        |
-| `Answer`          | attempt, item, submitted value, correctness (`correct`/`incorrect`/`ungraded`)                                                                    | never exposed before reveal                                                               |
-| `PracticeEvent`   | student, item, class, `seenCorrect: true`, timestamp                                                                                              | the **exposure ledger**; written when feedback renders                                    |
-| `PracticeAttempt` | student, bank/item set, answers, score                                                                                                            | unlimited, no stakes                                                                      |
+| Entity            | Fields (conceptual)                                                                                                                                                 | Notes                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `Bank`            | id, org, owner, name, readers                                                                                                                                       | curation only; **no type**                                                                |
+| `Item`            | id, bank, stem, type (`mcq`/`true_false`/`open`), options, correct option, explanation, modelAnswer, version, status (`open`/`retired`/`deleted`)                   | edits after binding create a new version                                                  |
+| `Assessment`      | id, org, owner, groups[], studentIds[], `opensAt`, `closesAt`, state (`draft`/`scheduled`/`live`/`closed`/`cancelled`), scoring rules, `maxAttempts`, `showResults` | **one window**; publish-once applies from `live`                                          |
+| `AssessmentItem`  | assessment, item, version, flags (`taughtItem`, `withholdFromReview`)                                                                                               | immutable once published                                                                  |
+| `Reservation`     | item, assessment, groups[], studentIds[], effective window                                                                                                          | **derived**: active from `opensAt` to `closesAt` (or explicit release for withheld items) |
+| `Attempt`         | assessment, student, state (`in_progress`/`submitted`/`expired`), started/finished, score, answers                                                                  | one in progress at a time; attempts only in-window                                        |
+| `Answer`          | attempt, item, submitted value, correctness (`correct`/`incorrect`/`ungraded`)                                                                                      | never exposed before reveal                                                               |
+| `ExposureEvent`   | student, item, group(s), `seenCorrect: true`, timestamp                                                                                                             | the **exposure ledger**; written when a key/explanation renders (idempotent)              |
+| `PracticeAttempt` | student, bank/item set, answers, score                                                                                                                              | unlimited, no stakes                                                                      |
 
 ### Derived visibility
 
@@ -203,7 +203,8 @@ them freely before and during 8A's window.
 
 **R3 — Cross-class exposure is a blocking acknowledgement, not a dismissible warning.** On publish the
 composer lists items still open to other classes and requires an explicit acknowledgement; each
-assessment offers **"seal for the whole org"** (then all classes' reservations include it). The
+assessment offers **"seal for the whole org"** (then every targeted group _and_ every targeted
+student is sealed). The
 default stays per class per decision (a). _Test:_ publish without acknowledgement is rejected; with
 it, reservations target the assessment's classes; with org-wide, all classes.
 
@@ -256,7 +257,7 @@ practice sees the new version.
 **R12 — An assessment has exactly one window and one class set.** A **scheduled** (not yet live)
 assessment can be withdrawn back to draft — no exposure exists yet, so this is the phase-2 repair
 path for a wrong publish. Extending `closesAt` before close is allowed (it delays reveal for everyone);
-reopening after close is not — it requires a new assessment. _Test:_ withdraw a scheduled run → draft,
+reopening after close is not — it requires a new assessment (new window, new snapshot). _Test:_ withdraw a scheduled run → draft,
 publish corrected; extend before close → review remains locked; reopen after close →
 `409 ASSESSMENT_CLOSED`.
 
@@ -289,7 +290,7 @@ permission boundary (see #1165); in the MVP it is the API layer. _Test:_ the stu
 cannot be made to return a key.
 
 **R19 — Every refusal is a product state with a code**: `404` for an item sealed to you (identical to
-nonexistent, no oracle), `403 REVIEW_LOCKED`, `403 EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` /
+nonexistent, no oracle), `403 REVIEW_LOCKED`, `403 EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` / `ATTEMPTS_NOT_OPEN` /
 `ATTEMPT_EXPIRED` / `ALREADY_SUBMITTED` / `ATTEMPT_IN_PROGRESS` / `NO_ATTEMPTS_LEFT` /
 `NO_UNSEEN_ITEMS` / `ASSESSMENT_LIVE` / `ASSESSMENT_NOT_LIVE` / `ASSESSMENT_CLOSED` /
 `ASSESSMENT_NOT_PUBLISHED` / `ASSESSMENT_ALREADY_PUBLISHED` / `ASSESSMENT_CANCELLED` /
@@ -329,10 +330,12 @@ used-in count.
    acknowledgement** (R3), optional org-wide seal, `taughtItem` / `withholdFromReview` flags.
 4. Publish freezes versions (R11); reservations activate at `opensAt`.
 
-### 3. Practice
+### 3. Learning surface
 
-Student opens a bank; sealed items are absent (R14). Answer → immediate correctness + explanation →
-ledger event (R8). Unlimited retries; errors enter a revisit queue.
+Today a student learns from the **post-submission review**: sealed items are absent from the bank
+(R14), and opening a reviewed item writes the exposure event (R8). Practice quizzes deliver their
+feedback through the same review. A dedicated in-bank study/practice surface with immediate feedback
+and a revisit queue is #1175 (needs-design); it writes the same event when it exists.
 
 ### 4. Take
 
@@ -389,7 +392,7 @@ POST   /assessments/:id/attempts   → {attemptId, state:'in_progress', items:[{
                                      options:[{id, content}]}]}
                                      409 ATTEMPTS_NOT_OPEN / ATTEMPT_IN_PROGRESS / NO_ATTEMPTS_LEFT /
                                      NO_UNSEEN_ITEMS
-GET    /attempts/current           → 200 {attemptId, assessmentId, itemIds} | 404
+GET    /attempts/current           → 200 {attemptId, assessmentId, items} (same shape as start) | 404
 POST   /attempts/:id/submit        → {score: {earned, possible} | null, ungradedCount,
                                       results:[{itemId, graded: boolean, correct: boolean | null}]}
                                      409 ALREADY_SUBMITTED / ATTEMPT_EXPIRED / ATTEMPTS_CLOSED
@@ -402,23 +405,25 @@ GET    /assessments/:id/attempts/:id/review → a specific submitted attempt; sa
                                               explanation?, modelAnswer?, correctOption?}]}
 POST   /assessments/:id/retake     → fresh sample; 409 NO_UNSEEN_ITEMS / ATTEMPTS_CLOSED / NO_ATTEMPTS_LEFT
 POST   /assessments/:id/close      → sets closedAt := now, expires in-progress attempts, ends reservations
-                                     (withheld items stay sealed); 409 ASSESSMENT_CLOSED / NOT_PUBLISHED / NOT_LIVE
-POST   /assessments/:id/cancel     → closes a scheduled/live run; 409 ASSESSMENT_CLOSED
+                                     (withheld items stay sealed); 409 ASSESSMENT_CLOSED /
+                                     ASSESSMENT_NOT_PUBLISHED / ASSESSMENT_NOT_LIVE
+POST   /assessments/:id/cancel     → closes a scheduled/live run; state `cancelled`; 409 ASSESSMENT_CLOSED
+POST   /assessments/:id/withdraw   → scheduled → draft (no exposure yet); 409 ASSESSMENT_LIVE / ASSESSMENT_ALREADY_PUBLISHED
 POST   /assessments/:id/extend     → {closesAt} before close; 409 ASSESSMENT_CLOSED; re-opens nobody's review
 PUT    /assessments/:id            → 409 ASSESSMENT_LIVE when items/window change after publish
 POST   /assessments/:id/items/:itemId/release → releases a withholdFromReview item; 409 RELEASE_NOT_WITHHELD
 POST   /assessments/:id/publish    → validates classes/window/maxAttempts; 422 invalid, 409
-                                     EXPOSURE_ACK_REQUIRED / ALREADY_PUBLISHED / CANCELLED
+                                     EXPOSURE_ACK_REQUIRED / ASSESSMENT_ALREADY_PUBLISHED / ASSESSMENT_CANCELLED
 POST   /assessments/:id/override   → manager: extend/shrink window, resolve RESERVATION_CONFLICT;
                                      cannot unseal a live class or un-reveal
 PUT    /items/:id                  → 422 for explanation/model-answer rules (per-field paths)
-GET    /api/v1/quiz/:attemptId            → practice-quiz review; renders the key, so it writes the
+GET    /quiz/:attemptId                   → practice-quiz review; renders the key, so it writes the
                                      same exposure event (and the existing assignment review path does too)
 GET    /items/:id/ledger           → staff: exposure events + pre-exposed counts
 ```
 
 Errors (every refusal carries one of these in `error`): `404` sealed-or-nonexistent (no oracle),
-`403 REVIEW_LOCKED` / `EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` / `ATTEMPT_EXPIRED` /
+`403 REVIEW_LOCKED` / `EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` / `ATTEMPTS_NOT_OPEN` / `ATTEMPT_EXPIRED` /
 `ALREADY_SUBMITTED` / `ATTEMPT_IN_PROGRESS` / `NO_ATTEMPTS_LEFT` / `NO_UNSEEN_ITEMS` /
 `ASSESSMENT_LIVE` / `ASSESSMENT_NOT_LIVE` / `ASSESSMENT_CLOSED` / `ASSESSMENT_NOT_PUBLISHED` /
 `ASSESSMENT_ALREADY_PUBLISHED` / `ASSESSMENT_CANCELLED` / `RELEASE_NOT_WITHHELD` /
@@ -495,10 +500,10 @@ shippable PR sequence within the 400-line budget, and 1 → 2 → 3 is a real de
 1. **Database boundary** (#1170, independent): revoke the key column, author-scoped writes, one
    server-side key reader, reader-safe projections/export; fix the classmates'-answers row policy
    (#1165). _Migration first, app in the same release._
-2. **Items in time** (#1171): open/retired/deleted items, per-class reservations from window open,
+2. **Items in time** (#1171): open/retired/deleted items, per-group/per-student reservations from window open,
    frozen snapshots, publish-once, **durable close**, sealed items absent from practice/browse/export,
    close-time reveal, withheld items + release, blocking cross-class acknowledgement, held notices,
-   and withdrawn-to-draft for a scheduled run. **Exposure events start here** (the review is the first
+   and withdraw-to-draft for a scheduled run (publish-once applies from live). **Exposure events start here** (the review is the first
    surface that renders a key). _Migrations first, app in the same release._
 3. **Exposure ledger** (#1172): eligibility per student (ledger + prior answers), `taughtItem` waiver,
    pre-exposed warnings and fairness flags. Recording already exists from phase 2.
