@@ -662,8 +662,8 @@ export class TeacherAssignmentService {
   /**
    * Awarded points for an assignment attempt: manual teacher points win,
    * otherwise a correct auto-graded answer earns the question's points.
-   * Answers are deduplicated per question because multi-select / matching
-   * questions store one row per selected unit.
+   * Answers are keyed per question because rows written before the one-row
+   * contract (#1065) could repeat one — a question must never score twice.
    */
   private async computeAttemptScore(
     supabase: SupabaseClient<Database>,

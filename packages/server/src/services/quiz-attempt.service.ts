@@ -11,7 +11,9 @@ import { failure, isFailure, type ServiceResult, success } from '@studiq/server/
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type {
+  QuizAnswerEntry,
   SaveQuizAnswersInput,
   SubmitQuizAttemptInput,
 } from '@studiq/server/models/quiz-attempt.model';
@@ -69,6 +71,65 @@ export type QuizAttemptListItem = Omit<
 
 export class QuizAttemptService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
+
+  /**
+   * Loads the signed-in student's in-progress attempt for a write and refuses
+   * an answer sheet that does not fit it. Both the draft save and the submit go
+   * through this gate, so the two paths cannot drift again (#1065).
+   *
+   * The storage contract is one `student_answers` row per question: the answer
+   * value carries the selection. An entry for a question the attempt never
+   * asked is therefore not something the take page can produce — it feeds the
+   * per-question accuracy index (#204) and, on a practice attempt, adds to the
+   * score. The attempt's own size is also the authoritative payload bound: with
+   * every entry in-attempt, a longer sheet can only be junk.
+   */
+  private async loadAnswerableAttempt(
+    supabase: SupabaseClient<Database>,
+    attemptId: string,
+    userId: string,
+    answers: readonly QuizAnswerEntry[],
+  ): Promise<ServiceResult<{ id: string; assignment_id: string | null }>> {
+    const { data: attempt, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, assignment_id, completed_at')
+      .eq('id', attemptId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !attempt) return failure('NOT_FOUND');
+    if (attempt.completed_at) return failure('BAD_REQUEST');
+
+    const { data: attemptQuestions, error: questionsError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .eq('attempt_id', attemptId);
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
+
+    // Distinct ids, so a draft that re-sends one question (last entry wins)
+    // is not measured as two answers.
+    if (new Set(answers.map((answer) => answer.questionId)).size > allowedIds.size) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['answers'], message: ValidationErrorCode.TOO_MANY },
+      ]);
+    }
+
+    const outsideIndex = answers.findIndex((answer) => !allowedIds.has(answer.questionId));
+    if (outsideIndex !== -1) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        {
+          code: 'custom',
+          path: ['answers', outsideIndex, 'questionId'],
+          message: ValidationErrorCode.INVALID_INPUT,
+        },
+      ]);
+    }
+
+    return success({ id: attempt.id, assignment_id: attempt.assignment_id });
+  }
 
   async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
     const supabase = await this.clientFactory();
@@ -224,29 +285,13 @@ export class QuizAttemptService {
   ): Promise<ServiceResult<{ saved: number }>> {
     const supabase = await this.clientFactory();
 
-    const { data: attempt, error: attemptError } = await supabase
-      .from('quiz_attempts')
-      .select('id, completed_at')
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (attemptError || !attempt) return failure('NOT_FOUND');
-    if (attempt.completed_at) return failure('BAD_REQUEST');
-
-    // Only questions that belong to this attempt can be stored, so a client
-    // cannot grow the draft with junk keys.
-    const { data: attemptQuestions, error: questionsError } = await supabase
-      .from('quiz_attempt_questions')
-      .select('question_id')
-      .eq('attempt_id', data.attemptId);
-
-    if (questionsError) return toDbFailure(questionsError);
-
-    const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
-    if (data.answers.some((a) => !allowedIds.has(a.questionId))) {
-      return failure('UNPROCESSABLE_ENTITY');
-    }
+    const attempt = await this.loadAnswerableAttempt(
+      supabase,
+      data.attemptId,
+      ctx.userId,
+      data.answers,
+    );
+    if (isFailure(attempt)) return attempt;
 
     const draft: Record<string, DraftAnswer> = {};
     for (const answer of data.answers) {
@@ -275,15 +320,16 @@ export class QuizAttemptService {
   ): Promise<ServiceResult<{ score: number | null; totalQuestions: number }>> {
     const supabase = await this.clientFactory();
 
-    const { data: attempt, error: attemptCheckError } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (attemptCheckError || !attempt) return failure('NOT_FOUND');
-    if (attempt.completed_at) return failure('BAD_REQUEST');
+    // Refuse the whole payload before scoring, completing the attempt or writing
+    // a single row: the request must only carry this attempt's own questions.
+    const attemptResult = await this.loadAnswerableAttempt(
+      supabase,
+      data.attemptId,
+      ctx.userId,
+      data.answers,
+    );
+    if (isFailure(attemptResult)) return attemptResult;
+    const attempt = attemptResult.data;
 
     // Check deadline if this attempt belongs to an assignment
     let showResults = true;
@@ -359,8 +405,9 @@ export class QuizAttemptService {
         isCorrect = answer?.is_correct ?? false;
       }
       if (isCorrect && !awardedQuestions.has(ans.questionId)) {
-        // One question can produce several answer rows (multi-select /
-        // matching), so award its points at most once.
+        // One row per question is the write contract (#1065) and the schema
+        // rejects a repeated question id, so this only covers a caller that
+        // bypasses it: a question must never be counted twice.
         awardedQuestions.add(ans.questionId);
         score += attempt.assignment_id ? (assignmentPoints.get(ans.questionId) ?? 0) : 1;
       }

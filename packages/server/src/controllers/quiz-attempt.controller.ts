@@ -54,7 +54,7 @@ export class QuizAttemptController {
 
     const result = await this.service.submit(parsed.data, ctx);
 
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
 
     return controllerResponse.success(result.data);
   }
@@ -80,7 +80,7 @@ export class QuizAttemptController {
 
     const result = await this.service.saveDraft(parsed.data, ctx);
 
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
 
     return controllerResponse.success(result.data);
   }

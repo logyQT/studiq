@@ -130,6 +130,10 @@ function qb(data: unknown, error: unknown = null) {
 
 const questionsQb = () => qb([{ question_id: 'q-1' }, { question_id: 'q-2' }]);
 
+/** The attempt snapshot `submit` and `saveDraft` validate the answers against. */
+const attemptQuestionsQb = (...questionIds: string[]) =>
+  qb(questionIds.map((question_id) => ({ question_id })));
+
 describe('QuizAttemptService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: QuizAttemptService;
@@ -613,6 +617,7 @@ describe('QuizAttemptService', () => {
       const insertQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb(answer));
       mock.from.mockReturnValueOnce(qb(null));
@@ -646,6 +651,7 @@ describe('QuizAttemptService', () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
@@ -673,6 +679,7 @@ describe('QuizAttemptService', () => {
       const insertQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-open'));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-open', type: 'open' }]));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(insertQb);
@@ -703,7 +710,7 @@ describe('QuizAttemptService', () => {
         },
       ]);
       // No option lookup is performed for an open question.
-      expect(mock.from).toHaveBeenCalledTimes(4);
+      expect(mock.from).toHaveBeenCalledTimes(5);
     });
 
     it('awards assignment points instead of counting correct answers (#167)', async () => {
@@ -715,6 +722,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true })); // teacher_assignments
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
@@ -743,6 +751,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: false }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
@@ -770,6 +779,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
@@ -795,6 +805,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
@@ -827,6 +838,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
@@ -861,11 +873,117 @@ describe('QuizAttemptService', () => {
       expect(result.error).toBe('BAD_REQUEST');
     });
 
+    it('rejects an answer for a question outside the attempt and writes nothing (#1065)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          // q-1 belongs to the attempt; the stranger must sink the whole payload.
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-stranger', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      // The 422 names the offending entry, like the schema-level errors do.
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 1, 'questionId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+      // No score lookup, no completion, no answer rows: the payload is refused whole.
+      expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        'quiz_attempts',
+        'quiz_attempt_questions',
+      ]);
+    });
+
+    it('rejects a payload longer than the attempt, not a fixed cap (#1065)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          // Three distinct questions is more than this attempt can contain, even
+          // though it is far below the parser bound.
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-2', selectedAnswerId: 'ans-2' },
+            { questionId: 'q-3', selectedAnswerId: 'ans-3' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          { code: 'custom', path: ['answers'], message: 'VALIDATION_INVALID_TOO_MANY' },
+        ]);
+      }
+    });
+
+    it('submits an attempt with more than 100 questions (#1065)', async () => {
+      const questionIds = Array.from({ length: 101 }, (_, index) => `q-${index}`);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb(...questionIds));
+      mock.from.mockReturnValueOnce(qb(questionIds.map((id) => ({ id, type: 'mcq' }))));
+      questionIds.forEach(() => {
+        mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      });
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      const insertQb = qb(null);
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: questionIds.map((questionId, index) => ({
+            questionId,
+            selectedAnswerId: `ans-${index}`,
+          })),
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      // Every question is correct and each is counted once.
+      expect(expectSuccess(result).score).toBe(101);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ question_id: 'q-100' })]),
+      );
+      expect(insertQb.insert.mock.calls[0]?.[0]).toHaveLength(101);
+    });
+
+    it('returns INTERNAL_SERVER when the attempt questions cannot be loaded (#1065)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.submit({ attemptId: 'a-1', answers: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
     it('clears the draft in the same update that completes the attempt (#349)', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const updateQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(updateQb);
@@ -948,6 +1066,54 @@ describe('QuizAttemptService', () => {
       expect(updateQb.update).toHaveBeenCalledWith({
         draft_answers: { 'q-1': { selected_answer_id: 'ans-2', text_answer: null } },
       });
+    });
+
+    it('saves a draft for an assignment with more than 100 questions (#1065)', async () => {
+      const updateQb = qb(null);
+      const questionIds = Array.from({ length: 101 }, (_, index) => `q-${index}`);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb(...questionIds));
+      mock.from.mockReturnValueOnce(updateQb);
+
+      const result = await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: questionIds.map((questionId, index) => ({
+            questionId,
+            selectedAnswerId: `ans-${index}`,
+          })),
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).saved).toBe(101);
+    });
+
+    it('rejects a draft longer than the attempt, not a fixed cap (#1065)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+
+      const result = await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-2', selectedAnswerId: 'ans-2' },
+            { questionId: 'q-stranger', selectedAnswerId: 'ans-3' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          { code: 'custom', path: ['answers'], message: 'VALIDATION_INVALID_TOO_MANY' },
+        ]);
+      }
     });
 
     it('returns NOT_FOUND for a foreign or missing attempt', async () => {

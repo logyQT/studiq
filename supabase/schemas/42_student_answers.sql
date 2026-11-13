@@ -1,6 +1,12 @@
 -- ==========================================
 -- TABLE: student_answers
--- One row per atomic answer unit for all question types.
+-- One row per question per attempt: the answer value carries the student's
+-- selection (`selected_option_id` for choice questions, `text_answer` for open
+-- ones). Every product path builds the answer sheet as one entry per question
+-- and `quiz-attempt.service` refuses a repeated question id (#1065); #1066's
+-- `UNIQUE (attempt_id, question_id)` is the storage enforcement of that
+-- contract. `submitted_position` / `match_pair_id` are reserved for multi-unit
+-- question types and are never written today.
 -- Depends on: 39_quiz_attempts.sql, 24_questions.sql, 27_question_options.sql
 -- ==========================================
 

@@ -1069,9 +1069,10 @@ $$;
 -- ==========================================
 -- get_teacher_problematic_questions (#204, EDU-ST-02)
 -- Per-question accuracy for the caller's own questions, aggregated in SQL so
--- the PostgREST 1000-row cap cannot truncate the answer sample. One answer per
--- (attempt, question) via bool_or, matching the submit scoring rule; `open`
--- questions are excluded because an ungraded row is `is_correct = false`.
+-- the PostgREST 1000-row cap cannot truncate the answer sample. One row per
+-- (attempt, question) is the storage contract (#1065), so the `bool_or`
+-- grouping only matters for rows written before it; `open` questions are
+-- excluded because an ungraded row is `is_correct = false`.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_teacher_problematic_questions(
