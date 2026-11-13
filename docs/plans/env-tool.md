@@ -45,20 +45,23 @@ Only these commands exist in v1:
 ```
 env:ensure   --profile <name> [atoms] [--json]   # idempotent; the blessed path
 env:status   [--json]                            # never mutates; works with no stack
-env:down     [--all] [--yes]                     # stop web; --all also stops the stack
+env:down     [--all] [--stack <name>] [--yes]    # stop web; --all also stops the stack
 env:build    [--force] [--json]                  # explicit build only
 env:serve    [--json]                            # serve an existing build
 env:dev      [atoms]                             # human-only HMR
 env:supa     <args…>                             # bunx supabase with the contract exported
 env:reset-db [--yes]                             # destructive; this checkout only
 env:logs     [--no-follow]                       # stack logs + .dev/web.log
-env:setup    [--force]                           # human-only, mutating, idempotent
+env:setup    [--force] [--vault]                 # human-only, mutating, idempotent
 env:verify   [--full] [--json]                   # read-only, agent-safe
+env:observability [status|ensure] [--force]      # validate/mint the Grafana MCP token; read-only by default
 env:ports    [--json]                            # app port
 env:doctor   [--json]                            # explain state; exit 1 on a real conflict
 ```
 
-`ensure` is the only command an agent normally calls; `status`/`doctor`/`ports` are read-only. `down --all` and
+`ensure` is the only command an agent normally calls; `status`/`doctor`/`ports` and `observability status` are
+read-only. `observability ensure` mints the machine-wide Grafana MCP token when it is missing or stale (and
+revokes the credential it supersedes); `--force` re-mints a token that still validates. `down --all` and
 `reset-db` require `--yes` when non-interactive; all commands print JSON-only stdout with `--json`.
 
 `supa` forwards arguments unchanged, except: starts carry the **selected runtime**; `stop --all`, `destroy`, `db

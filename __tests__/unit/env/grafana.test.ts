@@ -24,6 +24,8 @@ interface GrafanaStatus {
   ok: boolean;
   minted: boolean;
   mintError: string | null;
+  revokedTokenId: number | null;
+  revokeError: string | null;
   url: string;
   tokenFile: string;
   serviceAccount: string | null;
@@ -44,6 +46,12 @@ interface GrafanaModule {
     healthTimeoutMs?: number;
     requestTimeoutMs?: number;
   }): Promise<GrafanaStatus>;
+  grafanaAuthLabel(status: {
+    state: string;
+    serviceAccount: string | null;
+    role: string | null;
+    mintedAt: string | null;
+  }): string;
 }
 
 const grafana = await loadEnvModule<GrafanaModule>('lib/grafana.ts');
@@ -163,6 +171,89 @@ describe('Grafana MCP token', () => {
     expect(readFileSync(tokenFile(), 'utf8')).not.toBe(first);
   });
 
+  it('revokes the superseded token on a forced re-mint', async () => {
+    const fixture = await startFixture();
+    await grafana.ensureGrafanaToken();
+
+    const forced = await grafana.ensureGrafanaToken({ force: true });
+
+    expect(forced).toMatchObject({ minted: true, revokedTokenId: 1, revokeError: null });
+    expect(fixture.revokedTokenIds).toEqual([1]);
+    // Only the credential in the token file is still accepted.
+    expect([...fixture.validTokens]).toEqual(['glsa_test_2']);
+    expect(JSON.parse(readFileSync(metaFile(), 'utf8'))).toMatchObject({ tokenId: 2 });
+  });
+
+  it('keeps the new token and reports a failed revoke', async () => {
+    const fixture = await startFixture({ failRevoke: true });
+    await grafana.ensureGrafanaToken();
+
+    const forced = await grafana.ensureGrafanaToken({ force: true });
+
+    expect(forced).toMatchObject({ state: 'ok', ok: true, minted: true, revokedTokenId: null });
+    expect(forced.revokeError).toMatch(/HTTP 500/);
+    expect(readFileSync(tokenFile(), 'utf8')).toBe('glsa_test_2');
+    expect(fixture.revokedTokenIds).toEqual([]);
+  });
+
+  it('names the minting command in every auth remediation', async () => {
+    await startFixture();
+    const status = await grafana.inspectGrafana();
+
+    expect(status).toMatchObject({ state: 'no-token', revokedTokenId: null, revokeError: null });
+    expect(grafana.grafanaAuthLabel(status)).toContain('bun run env:observability ensure');
+    expect(grafana.grafanaAuthLabel({ ...status, state: 'stale-token' })).toContain(
+      'bun run env:observability ensure',
+    );
+  });
+
+  it('does not carry a token identity when no usable token exists', async () => {
+    const fixture = await startFixture();
+    // A complete meta record on disk must not leak into an auth report whose
+    // state says there is no usable token.
+    mkdirSync(dirname(metaFile()), { recursive: true });
+    writeFileSync(
+      metaFile(),
+      JSON.stringify({
+        serviceAccountId: 1,
+        serviceAccountName: 'studiq-mcp',
+        role: 'Viewer',
+        tokenId: 7,
+        tokenName: 'mcp-test',
+        mintedAt: new Date().toISOString(),
+        url: fixture.url,
+      }),
+      { mode: 0o600 },
+    );
+
+    const noToken = await grafana.inspectGrafana();
+    expect(noToken.state).toBe('no-token');
+    expect(noToken).toMatchObject({
+      serviceAccount: null,
+      role: null,
+      tokenId: null,
+      mintedAt: null,
+    });
+
+    writeFileSync(tokenFile(), 'glsa_stale\n', { mode: 0o600 });
+    expect(await grafana.inspectGrafana()).toMatchObject({
+      state: 'stale-token',
+      serviceAccount: null,
+      role: null,
+      tokenId: null,
+      mintedAt: null,
+    });
+
+    process.env.GRAFANA_URL = 'http://127.0.0.1:1';
+    expect(await grafana.inspectGrafana({ healthTimeoutMs: 200 })).toMatchObject({
+      state: 'unreachable',
+      serviceAccount: null,
+      role: null,
+      tokenId: null,
+      mintedAt: null,
+    });
+  });
+
   it('refuses to rebind the shared token to another GRAFANA_URL without --force', async () => {
     const fixtureA = await startFixture();
     await grafana.ensureGrafanaToken();
@@ -183,6 +274,11 @@ describe('Grafana MCP token', () => {
 
     expect(forced.minted).toBe(true);
     expect(fixtureB.mintCount).toBe(1);
+    // The old credential belongs to the other Grafana: it cannot be revoked
+    // here, and the report must not pretend it was.
+    expect(fixtureA.revokedTokenIds).toEqual([]);
+    expect(forced.revokedTokenId).toBeNull();
+    expect(forced.revokeError).toContain(fixtureA.url);
   });
 
   it('does not write a token when the admin credential is rejected', async () => {
@@ -314,6 +410,28 @@ describe('env:observability', () => {
     expect(payload).toMatchObject({ state: 'ok', ok: true, minted: false });
     expect(payload.mintError).toMatch(/401/);
     expect(fixture.mintCount).toBe(1);
+  });
+
+  it('accepts flags before the mode', async () => {
+    const harness = newHarness();
+    const fixture = await startGrafanaServer();
+    harness.track(() => fixture.close());
+
+    const result = await harness.run(['observability', '--json', 'ensure'], {
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    expect(parseJsonObject(result.stdout)).toMatchObject({ state: 'ok', minted: true });
+  });
+
+  it('rejects two conflicting modes', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['observability', 'ensure', '--json', 'status']);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('takes one mode');
   });
 
   it('exits 2 when --force is used without ensure', async () => {

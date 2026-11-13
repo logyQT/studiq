@@ -434,16 +434,21 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
 > `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
 > `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318`, so one collector can tell
 > worktrees apart; an explicit value in `.env.local` still wins.
-> The agent MCP token is provisioned, not pasted: `bun run env:observability`
+> The agent MCP token is provisioned, not pasted: `bun run env:observability ensure`
 > mints a Viewer service-account token into
-> `~/.config/studiq/observability/grafana-mcp-token` (0600), `env:ensure` does it
-> best-effort, and `opencode.jsonc` reads it with `{file:...}`. `env:doctor`
-> reports `observability.auth`; after a re-mint, run `opencode service restart`
+> `~/.config/studiq/observability/grafana-mcp-token` (0600) and revokes the
+> credential it supersedes; `env:ensure` does it best-effort, and
+> `opencode.jsonc` reads it with `{file:...}`. `env:doctor` reports
+> `observability.auth`; after a re-mint, run `opencode service restart`
 > (a config reload does not respawn an already-running MCP server).
+> The Grafana admin password is a local-only `admin` default: override it in the
+> `docker compose` process environment or with `--env-file .env.local`, never a
+> root `.env` (`.env.local` is the only values file and `bun run lint` rejects
+> the former).
 > If the stack or MCP is down, agents must not substitute a local correlation id
 > for a trace id or file a server-side root cause without the span/log. Run
-> `bun run env:doctor` and `bun run env:observability`; if you do not own the
-> primary checkout, stop and report `BLOCKED/env` for the coordinator to start it.
+> `bun run env:doctor` and `bun run env:observability ensure`; if you do not own
+> the primary checkout, stop and report `BLOCKED/env` for the coordinator to start it.
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
   exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a

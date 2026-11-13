@@ -137,6 +137,14 @@ describe('env:doctor', () => {
     expect(report).toHaveProperty('observability.auth', 'no-token');
     expect(report.ok).toBe(true);
     expect(report.problems).toEqual([]);
+
+    // The remediation must name the command that mints: `status` (the default
+    // mode) prints the same line but never creates a token.
+    const text = await harness.run(['doctor'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+    expect(text.stdout).toContain('bun run env:observability ensure');
   });
 
   it('reports a stale token when the token file cannot be read', async () => {

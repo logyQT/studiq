@@ -42,13 +42,13 @@ The primary checkout must contain `name: studiq-observability` in its
 `docker-compose.yml`; if `env:doctor` says it predates the fixed project name,
 update that checkout first.
 
-| UI         | URL                                       |
-| ---------- | ----------------------------------------- |
-| Grafana    | http://localhost:7001 (`admin` / `admin`) |
-| Prometheus | http://localhost:7090                     |
-| Tempo API  | http://localhost:7200                     |
-| Loki       | http://localhost:7100                     |
-| OTLP       | http://localhost:7318                     |
+| UI         | URL                                                   |
+| ---------- | ----------------------------------------------------- |
+| Grafana    | http://localhost:7001 (`admin` / `admin`, local-only) |
+| Prometheus | http://localhost:7090                                 |
+| Tempo API  | http://localhost:7200                                 |
+| Loki       | http://localhost:7100                                 |
+| OTLP       | http://localhost:7318                                 |
 
 The Next.js app sends OTLP (traces + metrics + logs) to the collector on
 `http://localhost:7318`. `env:ensure` sets that endpoint and a per-checkout
@@ -70,13 +70,19 @@ setting: `bun run env:observability` mints a Viewer token into
 and the config reads it with `{file:...}`. `env:ensure` runs the same
 idempotent step, so a fresh checkout needs no per-worktree setup. There is no
 rotation or TTL: a token that fails validation is replaced on the next
-`env:ensure` / `env:observability ensure`.
+`env:ensure` / `env:observability ensure`, and the credential it supersedes is
+revoked (`revokedTokenId`; a revoke that fails is reported as `revokeError`
+while the new token stays valid).
 
 ```bash
-bun run env:observability          # read-only: URL, auth state, token age, mcp binary
-bun run env:observability ensure   # mint only when missing or stale
-bun run env:doctor                 # includes the same auth line in JSON and text
+bun run env:observability                 # read-only: URL, auth state, token age, mcp binary
+bun run env:observability ensure          # mint only when missing or stale
+bun run env:observability ensure --force  # re-mint a token that still validates
+bun run env:doctor                        # includes the same auth line in JSON and text
 ```
+
+The read-only `status` never mints: when `auth` says `no token` / `stale
+token`, the remediation it prints is `bun run env:observability ensure`.
 
 After a re-mint, restart the OpenCode service so the MCP process re-reads the file
 (a config reload does not respawn an already-running MCP server):
@@ -97,11 +103,21 @@ the CLI looks healthy. `ensure` also refuses to overwrite the shared token when
 it was minted for a different URL unless you pass `--force`.
 
 The admin credential used **only** for minting comes from
-`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` (default `admin` / `admin`).
-Docker Compose does not read `.env.local`: `docker compose up -d` interpolates
-those names from its own environment, or from a `.env` file beside the compose
-file in the primary checkout, so that source must hold the same value. An
-existing `grafana_data` volume keeps its first-boot password; reset it with
+`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`. The default is `admin` / `admin`
+and it is **local-only**: the stack publishes on `127.0.0.1` and it is only a
+fresh `grafana_data` volume's first-boot password. `env:observability` reads the
+names from the process environment, and `docker compose` interpolates the same
+names from the shell that runs it. To override, either export it for the compose
+process or point compose at the repo's one values file:
+
+```bash
+GRAFANA_ADMIN_PASSWORD='<pw>' docker compose up -d   # compose process environment
+docker compose --env-file .env.local up -d           # .env.local, the only values file
+```
+
+Never create a root `.env` for this: `bun run lint` rejects that file, and root
+`.env.local` is the only hand-edited values file. An existing `grafana_data`
+volume keeps its first-boot password; reset it with
 `docker compose exec grafana grafana cli admin reset-admin-password <pw>`.
 
 The `mcp-grafana` binary must be on the OpenCode server's PATH.

@@ -112,12 +112,17 @@ async function ensureGrafanaBestEffort(): Promise<void> {
       );
     } else if (!status.ok) {
       writeStderrLine(
-        `env: Grafana MCP auth ${status.state}; run 'bun run env:observability'${status.detail ? ` (${status.detail})` : ''}`,
+        `env: Grafana MCP auth ${status.state}; run 'bun run env:observability ensure'${status.detail ? ` (${status.detail})` : ''}`,
       );
+    }
+    // The new token is valid; a superseded credential that survived is its own
+    // line so a leaked old token is never silently forgotten.
+    if (status.revokeError) {
+      writeStderrLine(`env: superseded Grafana MCP token not revoked (${status.revokeError})`);
     }
   } catch (error) {
     writeStderrLine(
-      `env: Grafana MCP token not configured (${error instanceof Error ? error.message : String(error)}); run 'bun run env:observability'`,
+      `env: Grafana MCP token not configured (${error instanceof Error ? error.message : String(error)}); run 'bun run env:observability ensure'`,
     );
   }
 }

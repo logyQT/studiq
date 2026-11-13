@@ -366,6 +366,8 @@ export interface GrafanaFixtureOptions {
   adminPassword?: string;
   /** Make token minting fail (a reachable stack that refuses the call). */
   failMint?: boolean;
+  /** Make token revocation fail while minting keeps working. */
+  failRevoke?: boolean;
 }
 
 export interface GrafanaFixture {
@@ -374,6 +376,8 @@ export interface GrafanaFixture {
   validTokens: Set<string>;
   serviceAccounts: Array<{ id: number; name: string; role: string }>;
   mintCount: number;
+  /** Token ids the fixture actually revoked, in order. */
+  revokedTokenIds: number[];
   close(): Promise<void>;
 }
 
@@ -388,6 +392,9 @@ export async function startGrafanaServer(
   const admin = `Basic ${Buffer.from(`admin:${options.adminPassword ?? 'admin'}`).toString('base64')}`;
   const validTokens = new Set<string>(options.token ? [options.token] : []);
   const serviceAccounts: GrafanaFixture['serviceAccounts'] = [];
+  /** Minted token id → key, so DELETE can invalidate the right credential. */
+  const mintedTokenKeys = new Map<number, string>();
+  const revokedTokenIds: number[] = [];
   let nextAccountId = 1;
   let nextTokenId = 1;
   const fixture: GrafanaFixture = {
@@ -396,6 +403,7 @@ export async function startGrafanaServer(
     validTokens,
     serviceAccounts,
     mintCount: 0,
+    revokedTokenIds,
     close: async () => {
       await new Promise<void>((done) => {
         server.close(() => done());
@@ -440,8 +448,21 @@ export async function startGrafanaServer(
       const id = nextTokenId++;
       const key = `glsa_test_${id}`;
       validTokens.add(key);
+      mintedTokenKeys.set(id, key);
       fixture.mintCount += 1;
       return send(201, { id, name: `mcp-test-${id}`, key });
+    }
+    const revoke = /^\/api\/serviceaccounts\/(\d+)\/tokens\/(\d+)$/.exec(url.pathname);
+    if (revoke && request.method === 'DELETE') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      if (options.failRevoke) return send(500, { message: 'revoke failed' });
+      const id = Number(revoke[2]);
+      const key = mintedTokenKeys.get(id);
+      if (key === undefined) return send(404, { message: 'token not found' });
+      mintedTokenKeys.delete(id);
+      validTokens.delete(key);
+      revokedTokenIds.push(id);
+      return send(200, { message: 'Token deleted' });
     }
     return send(404, { message: 'not found' });
   });

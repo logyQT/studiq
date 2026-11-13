@@ -27,6 +27,11 @@ function printStatus(status: GrafanaStatus, mode: 'status' | 'ensure'): void {
   }
   if (status.detail && !status.ok) writeLine(`  detail     ${status.detail}`);
   if (status.mintError) writeLine(`  mint       failed: ${status.mintError}`);
+  if (status.revokedTokenId !== null) {
+    writeLine(`  revoked    superseded token ${status.revokedTokenId}`);
+  }
+  if (status.revokeError)
+    writeLine(`  warning    superseded token not revoked: ${status.revokeError}`);
   if (mode === 'ensure' && status.minted) {
     writeLine(
       "  note       run 'opencode service restart' (or start a new session) to pick up the new token",

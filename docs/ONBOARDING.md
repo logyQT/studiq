@@ -458,13 +458,20 @@ traces from different worktrees are distinguishable in one collector; set
 either key in `.env.local` to override it. If you previously pinned the old
 `http://localhost:4318` there, update or remove it — an explicit value wins.
 
-| UI                          | URL                   |
-| --------------------------- | --------------------- |
-| Grafana (`admin` / `admin`) | http://localhost:7001 |
-| Prometheus                  | http://localhost:7090 |
-| Loki                        | http://localhost:7100 |
-| Tempo                       | http://localhost:7200 |
-| OTLP intake                 | http://localhost:7318 |
+| UI                                      | URL                   |
+| --------------------------------------- | --------------------- |
+| Grafana (`admin` / `admin`, local-only) | http://localhost:7001 |
+| Prometheus                              | http://localhost:7090 |
+| Loki                                    | http://localhost:7100 |
+| Tempo                                   | http://localhost:7200 |
+| OTLP intake                             | http://localhost:7318 |
+
+The Grafana admin login is `admin` / `admin` by default and is **local-only**
+(the stack publishes on `127.0.0.1`). To set a different password, export
+`GRAFANA_ADMIN_PASSWORD` in the shell that runs `docker compose up -d`, or run
+`docker compose --env-file .env.local up -d` with the key in `.env.local` — the
+repo's only hand-edited values file. Never create a root `.env`: `bun run lint`
+rejects it.
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).

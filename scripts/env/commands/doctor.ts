@@ -309,7 +309,7 @@ async function buildReport(): Promise<DoctorReport> {
     }
   } else if (observability.auth !== 'ok') {
     lines.push(
-      '  note       the MCP token is not valid — run `bun run env:observability`; do not substitute a local trace id',
+      '  note       the MCP token is not valid — run `bun run env:observability ensure`; do not substitute a local trace id',
     );
   }
 

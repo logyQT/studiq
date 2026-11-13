@@ -505,21 +505,24 @@ function parseVerify(rest: string[]): ParsedCommand {
 
 /**
  * `status` is read-only; `ensure` mints only when the token is missing or stale.
- * `--force` re-mints a token that still validates (manual recovery).
+ * `--force` re-mints a token that still validates (manual recovery). Flags and
+ * the mode may appear in any order: agents compose flags-first calls.
  */
 function parseObservability(rest: string[]): ParsedCommand {
   const parsed = empty('observability');
   let mode: 'status' | 'ensure' = 'status';
+  let explicitMode = false;
   let force = false;
-  let index = 0;
-  const first = rest[0];
-  if (first === 'status' || first === 'ensure') {
-    mode = first;
-    index = 1;
-  }
-  for (; index < rest.length; index += 1) {
-    const token = rest[index] as string;
+  for (const token of rest) {
     if (token === '--help' || token === '-h') return empty('help');
+    if (token === 'status' || token === 'ensure') {
+      if (explicitMode && mode !== token) {
+        throw new UsageError(`'observability' takes one mode, not '${mode}' and '${token}'`);
+      }
+      mode = token;
+      explicitMode = true;
+      continue;
+    }
     if (!token.startsWith('--')) {
       throw new UsageError(`unexpected argument '${token}' for 'observability'`);
     }

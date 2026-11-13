@@ -36,6 +36,13 @@ export interface GrafanaStatus {
    * must not be reported as broken just because a forced re-mint failed.
    */
   mintError: string | null;
+  /** Id of the superseded token this call revoked, or null when none was revoked. */
+  revokedTokenId: number | null;
+  /**
+   * Why the superseded token could not be revoked. The new token is already
+   * written and valid when this is set, so the failure is reported, not fatal.
+   */
+  revokeError: string | null;
   url: string;
   tokenFile: string;
   serviceAccount: string | null;
@@ -153,9 +160,9 @@ export function grafanaAuthLabel(
       return `ok (${parts.join(', ')})`;
     }
     case 'no-token':
-      return "no token — run 'bun run env:observability'";
+      return "no token — run 'bun run env:observability ensure'";
     case 'stale-token':
-      return "stale token — run 'bun run env:observability'";
+      return "stale token — run 'bun run env:observability ensure'";
     case 'unreachable':
       return 'unreachable';
   }
@@ -189,17 +196,22 @@ export async function inspectGrafana(
   const url = grafanaBaseUrl();
   const tokenFile = grafanaTokenFile();
   const meta = readGrafanaMeta(grafanaMetaFile(tokenFile));
+  // A token identity is only meaningful when the token on disk validates: an
+  // `unreachable`/`no-token`/`stale-token` report must not let a consumer read
+  // "service account X minted at Y" off a statement that no usable token exists.
   const base: GrafanaStatus = {
     state: 'unreachable',
     ok: false,
     minted: false,
     mintError: null,
+    revokedTokenId: null,
+    revokeError: null,
     url,
     tokenFile,
-    serviceAccount: meta?.serviceAccountName ?? null,
-    role: meta?.role ?? null,
-    tokenId: meta?.tokenId ?? null,
-    mintedAt: meta?.mintedAt ?? null,
+    serviceAccount: null,
+    role: null,
+    tokenId: null,
+    mintedAt: null,
     mcpBinary: hasMcpBinary(),
     detail: null,
   };
@@ -228,7 +240,17 @@ export async function inspectGrafana(
     { authorization: `Bearer ${token}` },
     options.requestTimeoutMs ?? 1500,
   );
-  if (code === 200) return { ...base, state: 'ok', ok: true };
+  if (code === 200) {
+    return {
+      ...base,
+      state: 'ok',
+      ok: true,
+      serviceAccount: meta?.serviceAccountName ?? null,
+      role: meta?.role ?? null,
+      tokenId: meta?.tokenId ?? null,
+      mintedAt: meta?.mintedAt ?? null,
+    };
+  }
   return { ...base, state: 'stale-token', detail: `datasources HTTP ${code}` };
 }
 
@@ -237,7 +259,7 @@ export async function inspectGrafana(
  *
  * Idempotent: a valid token is returned untouched. There is deliberately no
  * rotation or TTL — a dead token is replaced on the next `env:ensure` or
- * `env:observability ensure`.
+ * `env:observability ensure`, and the credential it replaces is revoked.
  */
 export async function ensureGrafanaToken(
   options: {
@@ -253,9 +275,9 @@ export async function ensureGrafanaToken(
 
   // The token file is machine-wide, so a checkout-local GRAFANA_URL must not
   // silently rebind the token every other checkout's MCP reads.
-  const meta = readGrafanaMeta(grafanaMetaFile(current.tokenFile));
-  if (options.force !== true && meta?.url && meta.url !== current.url) {
-    const message = `the shared token was minted for ${meta.url}; align GRAFANA_URL with opencode.jsonc or re-run with --force`;
+  const previous = readGrafanaMeta(grafanaMetaFile(current.tokenFile));
+  if (options.force !== true && previous?.url && previous.url !== current.url) {
+    const message = `the shared token was minted for ${previous.url}; align GRAFANA_URL with opencode.jsonc or re-run with --force`;
     return { ...current, minted: false, mintError: message, detail: message };
   }
 
@@ -282,12 +304,16 @@ export async function ensureGrafanaToken(
     };
     writePrivateFile(current.tokenFile, minted.key);
     writePrivateFile(grafanaMetaFile(current.tokenFile), `${JSON.stringify(meta, null, 2)}\n`);
+    // Only now, with the new credential safely on disk, is the old one retired.
+    const revoked = await revokeSupersededToken(current.url, previous, minted.id, timeoutMs);
 
     return {
       ...current,
       state: 'ok',
       ok: true,
       minted: true,
+      revokedTokenId: revoked.revokedTokenId,
+      revokeError: revoked.error,
       serviceAccount: account.name,
       role: account.role,
       tokenId: minted.id,
@@ -300,6 +326,57 @@ export async function ensureGrafanaToken(
     // signal so a machine consumer cannot read `state: 'ok'` as "the command
     // that just ran succeeded".
     return { ...current, minted: false, mintError: message, detail: message };
+  }
+}
+
+/**
+ * Retire the credential the new token supersedes.
+ *
+ * Runs after the new token is written and validated, so a failure here leaves a
+ * working installation and one stale credential rather than the reverse: the
+ * caller reports `revokeError` and keeps the mint. A token recorded for another
+ * URL belongs to a different Grafana and is not revoked from this one.
+ */
+async function revokeSupersededToken(
+  url: string,
+  previous: GrafanaTokenMeta | null,
+  mintedId: number | null,
+  timeoutMs: number,
+): Promise<{ revokedTokenId: number | null; error: string | null }> {
+  const tokenId = previous?.tokenId ?? null;
+  if (tokenId === null) return { revokedTokenId: null, error: null };
+  // Token ids are scoped to the Grafana that minted them, so the URL decides
+  // first: an id can collide across servers.
+  if (previous?.url && previous.url !== url) {
+    return {
+      revokedTokenId: null,
+      error: `superseded token ${tokenId} belongs to ${previous.url}; revoke it there`,
+    };
+  }
+  if (tokenId === mintedId) return { revokedTokenId: null, error: null };
+  if (!previous?.serviceAccountId) {
+    return {
+      revokedTokenId: null,
+      error: `superseded token ${tokenId} has no recorded service account; revoke it by hand`,
+    };
+  }
+  try {
+    const result = await requestJson(
+      `${url}/api/serviceaccounts/${previous.serviceAccountId}/tokens/${tokenId}`,
+      { method: 'DELETE', headers: { authorization: basicAuth() } },
+      timeoutMs,
+    );
+    // A 404 is the goal state reached earlier (revoked by hand): nothing to do.
+    if (result.status === 404) return { revokedTokenId: null, error: null };
+    if (result.status >= 200 && result.status < 300) {
+      return { revokedTokenId: tokenId, error: null };
+    }
+    return { revokedTokenId: null, error: `revoke failed (HTTP ${result.status})` };
+  } catch (error) {
+    return {
+      revokedTokenId: null,
+      error: `revoke failed (${error instanceof Error ? error.message : String(error)})`,
+    };
   }
 }
 
