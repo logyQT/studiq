@@ -54,15 +54,15 @@ export default function PerQuestionGradingClient() {
 
   const gradeMutation = useApiMutation({
     mutationFn: async ({
-      studentId,
+      attemptId,
       points,
       feedback,
     }: {
-      studentId: string;
+      attemptId: string;
       points: number;
       feedback: string;
     }) => {
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${studentId}`, {
+      const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${attemptId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questionId: qId, points, feedback }),
@@ -81,8 +81,10 @@ export default function PerQuestionGradingClient() {
   const handleGrade = async (studentId: string) => {
     const g = getGrade(studentId);
     const points = parseGradePoints(g.points);
-    if (points === null) return;
-    await gradeMutation.mutateAsync({ studentId, points, feedback: g.feedback });
+    // The grading route addresses an attempt; this view has no attempt dimension.
+    const attemptId = results?.find((r) => r.user_id === studentId)?.id;
+    if (points === null || !attemptId) return;
+    await gradeMutation.mutateAsync({ attemptId, points, feedback: g.feedback });
   };
 
   const getStudentAnswer = (studentId: string) => {

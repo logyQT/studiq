@@ -57,12 +57,13 @@ interface StudentAnswers {
 }
 
 export default function StudentGradingClient() {
+  // The folder segment is `[studentId]`; the value it carries is the attempt id (#1062).
   const { id, studentId } = useParams<{ id: string; studentId: string }>();
   const t = useTranslations('EduGradingPage');
   const [grades, setGrades] = useState<Record<string, Partial<GradeDraft>>>({});
 
   const { data: attempt, isLoading } = useApiQuery<StudentAnswers>({
-    queryKey: assignmentKeys.studentResults(id, studentId),
+    queryKey: assignmentKeys.attemptResults(id, studentId),
     url: `/api/v1/teacher/assignments/${id}/results/${studentId}`,
   });
 

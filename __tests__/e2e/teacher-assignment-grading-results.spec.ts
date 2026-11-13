@@ -112,7 +112,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       await expect(row.getByText(t('EduAssignmentResultsPage.submitted'))).toBeVisible();
 
       await row.getByRole('link', { name: t('EduAssignmentResultsPage.grade') }).click();
-      await page.waitForURL(new RegExp(`/results/${STUDENT_ID}$`, 'i'));
+      await page.waitForURL(new RegExp(`/results/${attemptId}$`, 'i'));
 
       // `POST …/questions` does not take points, so `assignment_questions.points`
       // stays at the schema default 1 (#169 rejects anything above it).
@@ -121,7 +121,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       const saveGrade = page.waitForResponse(
         (res) =>
           res.request().method() === 'PUT' &&
-          res.url().toLowerCase().includes(`/results/${STUDENT_ID}`.toLowerCase()),
+          res.url().toLowerCase().includes(`/results/${attemptId}`.toLowerCase()),
       );
       await page.getByRole('button', { name: t('EduGradingPage.save') }).click();
       expect((await saveGrade).status()).toBe(200);

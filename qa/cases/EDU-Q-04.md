@@ -70,7 +70,7 @@ tenant and never the legacy accounts.
   the free-text field „Wpisz swoją odpowiedź…” (plus the optional „Prześlij zdjęcie”)
   instead of answer options; „Wyślij” completes the attempt and the detail page shows
   „Ukończono”.
-- `/edu/assignments/<id>/results/<studentId>` („Oceń ucznia”) shows the question, the raw
+- `/edu/assignments/<id>/results/<attemptId>` („Oceń ucznia”) shows the question, the raw
   type badge `open`, the model answer as „Wyjaśnienie: …”, the student's text as
   „Odpowiedź ucznia: …”, a „Punkty (0–1)” input and „Informacja zwrotna”. „Zapisz ocenę”
   changes the header from „Wynik: 0/1” to „Wynik: 1/1 (ocenione)” and stores

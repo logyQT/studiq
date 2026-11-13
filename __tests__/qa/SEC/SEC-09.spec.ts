@@ -589,6 +589,11 @@ test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results
       'the result row carries the classroom student’s e-mail',
     ).toBe(classroomStudent.email);
 
+    expect(
+      await getData<ResultRow>(page, `${quizUrl}/results/${attemptId}`),
+      'the classroom teacher reads the attempt’s answers',
+    ).toMatchObject({ id: attemptId, user_id: classroomStudent.id });
+
     await page.goto(`/edu/assignments/${assignment.id}/results`);
     await expect(page.locator('h1')).toHaveText(COPY.resultsTitle);
     await expect(
@@ -666,8 +671,8 @@ test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results
     // and the answers export.
     expectRejected(await call(page, 'GET', quizUrl), 'T1 GET /teacher/assignments/<quiz>');
     expectRejected(
-      await call(page, 'GET', `${quizUrl}/results/${classroomStudent.id}`),
-      'T1 GET /teacher/assignments/<quiz>/results/<SC>',
+      await call(page, 'GET', `${quizUrl}/results/${attemptId}`),
+      'T1 GET /teacher/assignments/<quiz>/results/<attemptId SC>',
     );
     expectRejected(
       await call(page, 'GET', `${quizUrl}/export-answers`),
