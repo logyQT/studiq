@@ -1,0 +1,964 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Exposure model — throwaway MVP</title>
+<style>
+  :root { color-scheme: light dark; --b:#d6d6d6; --muted:#666; --bg:#fafafa; --card:#fff; --acc:#2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --b:#3a3a3a; --muted:#9aa0a6; --bg:#141414; --card:#1d1d1d; --acc:#7aa2ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); }
+  header { position:sticky; top:0; background:var(--card); border-bottom:1px solid var(--b); padding:10px 14px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; z-index:5; }
+  header h1 { font-size:15px; margin:0 8px 0 0; font-weight:650; }
+  .pill { border:1px solid var(--b); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--muted); }
+  main { display:grid; grid-template-columns: minmax(0,1fr) 380px; gap:14px; padding:14px; align-items:start; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  section.card { background:var(--card); border:1px solid var(--b); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+  section.card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  select, input, textarea, button { font:inherit; }
+  select, input[type=text], input[type=number], textarea { width:100%; padding:6px 8px; border:1px solid var(--b); border-radius:7px; background:transparent; color:inherit; }
+  textarea { min-height:64px; resize:vertical; }
+  button { border:1px solid var(--b); background:var(--card); border-radius:7px; padding:6px 10px; cursor:pointer; }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 6px; border-bottom:1px solid var(--b); vertical-align:top; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .sealed { color:#b45309; font-weight:600; }
+  .ok { color:#15803d; font-weight:600; }
+  .no { color:#b91c1c; font-weight:600; }
+  .muted { color:var(--muted); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
+  pre.log { margin:0; max-height:520px; overflow:auto; background:transparent; white-space:pre-wrap; font-size:11.5px; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .tabs button.active { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .warn { border-left:3px solid #b45309; padding:6px 10px; background:rgba(180,83,9,.08); border-radius:6px; margin:8px 0; }
+  .err { color:#b91c1c; }
+  .small { font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Exposure model — throwaway MVP</h1>
+  <span class="pill">in-memory · no RLS · resets on reload</span>
+  <label style="margin:0">Account
+    <select id="who" aria-label="Account" onchange="switchAccount(this.value)"></select>
+  </label>
+  <span class="pill" id="clock"></span>
+  <button onclick="advance(60*60*1000)">+1h</button>
+  <button onclick="advance(24*60*60*1000)">+1d</button>
+  <button onclick="jump('open')">jump to open</button>
+  <button onclick="jump('close')">jump to close</button>
+</header>
+
+<main>
+  <div>
+    <div class="tabs" id="tabs"></div>
+    <div id="view"></div>
+  </div>
+  <div>
+    <section class="card">
+      <h2>API log (last 40 calls)</h2>
+      <pre class="log mono" id="log"></pre>
+    </section>
+    <section class="card">
+      <h2>Rules being demonstrated</h2>
+      <div class="small muted" id="rules"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * In-memory "database" and the app-level contracts (no RLS, no auth)  *
+ * ------------------------------------------------------------------ */
+
+const HOUR = 3600e3, DAY = 24 * HOUR;
+const T0 = new Date('2026-11-16T08:00:00Z').getTime();
+
+const db = {
+  now: T0,
+  classes: [{ id: '8A', name: '8A' }, { id: '8B', name: '8B' }, { id: '8C', name: '8C' }],
+  users: [
+    { id: 'tA', name: 'Teacher A (owner)', role: 'teacher', answersRead: true },
+    { id: 'tB', name: 'Teacher B (colleague)', role: 'teacher', answersRead: false },
+    { id: 'mgr', name: 'Manager', role: 'manager', answersRead: true },
+    { id: 's8a1', name: 'Student 8A/1', role: 'student', classId: '8A' },
+    { id: 's8a2', name: 'Student 8A/2', role: 'student', classId: '8A' },
+    { id: 's8b1', name: 'Student 8B/1', role: 'student', classId: '8B' },
+    { id: 's8c1', name: 'Student 8C/1', role: 'student', classId: '8C' },
+  ],
+  banks: [
+    { id: 'bank1', name: 'Biologia — komórka', owner: 'tA' },
+    { id: 'bank2', name: 'Historia — XIX w.', owner: 'tA' },
+  ],
+  items: [],
+  assessments: [],
+  attempts: [],
+  ledger: [],
+  answers: [],   // {attemptId, itemId, value, correct}
+  tick: 0,
+};
+
+let itemSeq = 0, assessSeq = 0, attemptSeq = 0;
+
+function seed() {
+  const mk = (bankId, type, stem, options, correct, explanation, modelAnswer) => {
+    const id = 'i' + String(++itemSeq).padStart(2, '0');
+    db.items.push({ id, bankId, type, stem, options, correct, explanation, modelAnswer: modelAnswer || null,
+      version: 1, status: 'open', frozen: {} });
+    return id;
+  };
+  // Biologia (10)
+  mk('bank1', 'mcq', 'Który organellum wytwarza ATP?', ['Mitochondrium', 'Rybosom', 'Aparat Golgiego', 'Lizosom'], 0,
+    'To organellum prowadzi oddychanie komórkowe i wytwarza większość ATP; syntezą białek zajmuje się inna struktura komórki, a nie to organellum.', null);
+  mk('bank1', 'mcq', 'Gdzie zachodzi transkrypcja u eukariontów?', ['W jądrze', 'W cytoplazmie', 'W rybosomie', 'W lizosomie'], 0,
+    'Transkrypcja zachodzi w jądrze, gdzie DNA jest dostępne; rybosom to miejsce translacji, a nie przepisywania DNA na RNA.', null);
+  mk('bank1', 'true_false', 'Błona komórkowa jest przepuszczalna dla wszystkich cząsteczek bez wyjątku.', ['Prawda', 'Fałsz'], 1,
+    'Błona jest selektywnie przepuszczalna: małe i niepolarne cząsteczki przechodzą łatwo, a jony i duże cząsteczki wymagają transportu.', null);
+  mk('bank1', 'mcq', 'Co zawiera chloroplast?', ['Chlorofil', 'Hemoglobinę', 'Keratynę', 'Insulinę'], 0,
+    'Chloroplast zawiera chlorofil pochłaniający światło; hemoglobina transportuje tlen we krwi, keratyna buduje naskórek, a insulina jest hormonem.', null);
+  mk('bank1', 'open', 'Wyjaśnij różnicę między mitozą a mejozą.', [], null,
+    null, 'Mitochondrium i jądro są miejscem... — oczekiwana odpowiedź: mitoza daje dwie komórki diploidalne, mejoza cztery haploidalne z rekombinacją.');
+  mk('bank1', 'mcq', 'Jaki cukier występuje w DNA?', ['Deoksyryboza', 'Ryboza', 'Glukoza', 'Fruktoza'], 0,
+    'DNA zawiera deoksyrybozę, RNA rybozę; glukoza i fruktoza to cukry energetyczne, nie składniki kwasów nukleinowych.', null);
+  mk('bank1', 'true_false', 'Rybosomy występują zarówno u prokariontów, jak i eukariontów.', ['Prawda', 'Fałsz'], 0,
+    'Rybosomy są uniwersalne: występują u prokariontów i eukariontów, różnią się jedynie szczegółami budowy i wielkością podjednostek.', null);
+  mk('bank1', 'mcq', 'Co jest jednostką funkcjonalną nerki?', ['Nefron', 'Alweola', 'Wątroba', 'Tchawica'], 0,
+    'Nefron filtruje krew i tworzy mocz; alweola należy do płuc, wątroba pełni funkcje metaboliczne, a tchawica prowadzi powietrze.', null);
+  mk('bank1', 'mcq', 'Który proces nie wymaga tlenu?', ['Glikoliza', 'Cykl Krebsa', 'Łańcuch oddechowy', 'Fosforylacja oksydacyjna'], 0,
+    'Ten proces zachodzi w cytoplazmie bez udziału tlenu; pozostałe etapy oddychania wymagają tlenu jako akceptora elektronów.', null);
+  mk('bank1', 'open', 'Podaj funkcję aparatu Golgiego.', [], null,
+    null, 'Oczekiwana odpowiedź: modyfikacja, sortowanie i pakowanie białek oraz tworzenie pęcherzyków transportowych.');
+
+  // Historia (10)
+  mk('bank2', 'mcq', 'W którym roku wybuchło powstanie listopadowe?', ['1830', '1794', '1863', '1848'], 0,
+    'Powstanie listopadowe wybuchło w 1830 roku; 1794 to insurekcja kościuszkowska, 1863 powstanie styczniowe, a 1848 Wiosna Ludów.', null);
+  mk('bank2', 'mcq', 'Kto był pierwszym cesarzem Francuzów?', ['Napoleon Bonaparte', 'Ludwik XVI', 'Karol Wielki', 'Napoleon III'], 0,
+    'Cesarstwo proklamowano we Francji w 1804 roku; wcześniej krajem rządził król, a nie cesarz. Nie należy mylić tego z wcześniejszym cesarstwem rzymskim.', null);
+  mk('bank2', 'true_false', 'Kongres wiedeński odbył się po upadku Napoleona.', ['Prawda', 'Fałsz'], 0,
+    'Kongres wiedeński (1814–1815) ustalał porządek po klęsce Napoleona; toczył się równolegle z jego powrotem z Elby.', null);
+  mk('bank2', 'mcq', 'Które państwo było zwane „warsztatem Europy” w XIX w.?', ['Wielka Brytania', 'Francja', 'Rosja', 'Austria'], 0,
+    'Państwo wyspiarskie przodowało w industrializacji i handlu, stąd określenie „warsztat świata”; pozostałe państwa doganiały je później.', null);
+  mk('bank2', 'open', 'Wyjaśnij znaczenie „Wiosny Ludów”.', [], null,
+    null, 'Oczekiwana odpowiedź: seria rewolucji 1848–1849 w Europie, walka o prawa obywatelskie i niepodległość, m.in. w Niemczech, Włoszech, na Węgrzech.');
+  mk('bank2', 'mcq', 'Kto dowodził wojskami polskimi pod Racławicami?', ['Tadeusz Kościuszko', 'Józef Poniatowski', 'Jan Henryk Dąbrowski', 'Kazimierz Pułaski'], 0,
+    'Bitwą pod Racławicami dowodził późniejszy naczelnik insurekcji; Legiony we Włoszech tworzył inny dowódca, a kolejny walczył u boku Napoleona.', null);
+  mk('bank2', 'true_false', 'Zabór pruski obejmował Kraków po 1815 roku.', ['Prawda', 'Fałsz'], 1,
+    'Po 1815 Kraków był wolnym miastem (Rzeczpospolita Krakowska), a nie częścią zaboru pruskiego; Prusy objęły Wielkopolskę i Pomorze.', null);
+  mk('bank2', 'mcq', 'Co głosiła Konstytucja 3 maja?', ['Reformę ustroju Rzeczypospolitej', 'Likwidację sejmu', 'Podział kraju', 'Zniesienie armii'], 0,
+    'Konstytucja 3 maja reformowała ustrój: wzmacniała władzę wykonawczą i ograniczała liberum veto; nie dzieliła kraju ani nie likwidowała sejmu.', null);
+  mk('bank2', 'mcq', 'W którym roku Polska odzyskała niepodległość?', ['1918', '1914', '1920', '1939'], 0,
+    'Niepodległość ogłoszono w 1918 po I wojnie światowej; 1920 to wojna polsko-bolszewicka, 1914 wybuch I wojny, 1939 wybuch II wojny.', null);
+  mk('bank2', 'open', 'Wymień dwie przyczyny emigracji zarobkowej w XIX w.', [], null,
+    null, 'Oczekiwana odpowiedź: przeludnienie i brak ziemi na wsi, industrializacja i poszukiwanie pracy w miastach oraz za granicą.');
+}
+
+/* ------------------------------------------------------------------ *
+ * Helpers                                                             *
+ * ------------------------------------------------------------------ */
+
+const user = id => db.users.find(u => u.id === id);
+const bank = id => db.banks.find(b => b.id === id);
+const cls = id => db.classes.find(c => c.id === id);
+const now = () => db.now;
+
+function assessmentState(a) {
+  if (a.closedAt) return 'closed';
+  if (!a.published) return 'draft';
+  if (now() < a.opensAt) return 'scheduled';
+  if (now() < a.closesAt) return 'live';
+  return 'closed';
+}
+
+/** Reservations active for a class: assessment window plus withheld items. */
+function sealedFor(itemId, userObj) {
+  if (!userObj.classId) return false;
+  for (const a of db.assessments) {
+    if (!a.published) continue;
+    const state = assessmentState(a);
+    const inWindow = state === 'live';
+    const withheld = a.withheld.includes(itemId) && !a.released.includes(itemId);
+    if (!a.classes.includes(userObj.classId)) continue;
+    if (!a.itemIds.includes(itemId)) continue;
+    if (inWindow) return true;
+    if (withheld && state === 'closed') return true;
+  }
+  return false;
+}
+
+function hasLedger(itemId, userId) {
+  return db.ledger.some(e => e.itemId === itemId && e.userId === userId);
+}
+
+function hasAnswer(itemId, userId) {
+  return db.answers.some(ans => ans.itemId === itemId && attemptUserId(ans.attemptId) === userId);
+}
+function attemptUserId(attemptId) { return db.attempts.find(a => a.id === attemptId)?.userId; }
+
+function eligible(itemId, userId) {
+  const u = user(userId);
+  if (sealedFor(itemId, u)) return false;
+  if (hasLedger(itemId, userId) && !isTaughtItem(itemId)) return false;
+  if (hasAnswer(itemId, userId)) return false;
+  return true;
+}
+function unseenByStudent(itemId, userId) {
+  if (hasAnswer(itemId, userId)) return false;
+  if (hasLedger(itemId, userId) && !isTaughtItem(itemId)) return false;
+  return true;
+}
+
+function isTaughtItem(itemId) {
+  return db.assessments.some(a => a.taughtItems.includes(itemId));
+}
+
+const frozenOf = (item, a) => a.snapshot?.[item.id] || item;
+const frozenFor = (item, a, attempt) => attempt?.snapshot?.[item.id] || a.snapshot?.[item.id] || item;
+function shuffle(arr) {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Contracts (the page calls exactly these; the tests would too)       *
+ * ------------------------------------------------------------------ */
+
+const log = [];
+const KEY_FIELDS = new Set(['correct', 'explanation', 'modelAnswer', 'correctOption']);
+function redact(value) {
+  if (Array.isArray(value)) return value.map(redact);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) if (!KEY_FIELDS.has(k)) out[k] = redact(v);
+    return out;
+  }
+  return value;
+}
+function emit(method, path, status, body) {
+  log.unshift({ at: new Date(db.now).toISOString().slice(11, 16), method, path, status, body });
+  if (log.length > 40) log.pop();
+}
+
+function api(method, path, body) {
+  const result = route(method, path, body);
+  emit(method, path, result.status, result.body);
+  return result;
+}
+
+const ok = (body) => ({ status: 200, body });
+const err = (status, code, message) => ({ status, body: { error: code, message } });
+const isStaff = (u) => u.role !== 'student';
+const canManage = (a, u) => u.role === 'manager' || (u.role === 'teacher' && a.owner === u.id);
+
+function route(method, path, body) {
+  const u = user(state.who);
+  let m;
+
+  if (method === 'GET' && (m = path.match(/^\/banks\/([^/]+)\/items$/))) {
+    const b = bank(m[1]);
+    if (!b) return err(404, 'NOT_FOUND', 'bank not found');
+    const items = db.items.filter(i => i.bankId === b.id && i.status !== 'deleted');
+    const visible = items.filter(i => !sealedFor(i.id, u));
+    const held = items.length - visible.length;
+    const heldUntil = db.assessments
+      .filter(a => a.classes.includes(u.classId) && a.published && assessmentState(a) === 'live')
+      .map(a => a.closesAt)[0];
+    const staffCanSeeKeys = u.role !== 'student' && u.answersRead;
+    const payload = visible.map(i => ({
+      id: i.id, stem: i.stem, type: i.type, version: i.version,
+      options: i.options.map((content, idx) => ({ id: `${i.id}o${idx}`, content })),
+      ...(staffCanSeeKeys ? { correct: i.correct, explanation: i.explanation, modelAnswer: i.modelAnswer } : {}),
+    }));
+    return ok({ bank: b.id, items: payload, heldCount: held, heldUntil: heldUntil ? new Date(heldUntil).toISOString() : null });
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/practice\/([^/]+)\/answers$/))) {
+    if (isStaff(u)) return err(403, 'FORBIDDEN', 'practice is for students');
+    if (!Array.isArray(body)) return err(422, 'VALIDATION_INVALID_INPUT', 'body must be an array');
+    const b = bank(m[1]);
+    if (!b) return err(404, 'NOT_FOUND', 'bank not found');
+    const out = [];
+    for (const ans of body) {
+      if (!ans || typeof ans !== 'object') return err(422, 'VALIDATION_INVALID_INPUT', 'each answer must be an object');
+      const item = db.items.find(i => i.id === ans.itemId);
+      if (!item || item.status === 'deleted' || item.bankId !== b.id) return err(404, 'NOT_FOUND', 'item not found');
+      if (item.type === 'open' ? (typeof ans.value !== 'string' || !ans.value.trim()) : typeof ans.value !== 'string')
+        return err(422, 'VALIDATION_INVALID_INPUT', 'each answer needs a value');
+      if (sealedFor(item.id, u)) return err(404, 'NOT_FOUND', 'item not found'); // no oracle
+      // feedback is rendered either way (choice key or open model answer) -> the item is burned,
+      // once per student (showing it twice does not burn it twice)
+      if (!db.ledger.some(e => e.itemId === item.id && e.userId === u.id))
+        db.ledger.push({ itemId: item.id, userId: u.id, classId: u.classId, at: now(), seenCorrect: true });
+      if (item.type === 'open') {
+        out.push({ itemId: item.id, ungraded: true, modelAnswer: item.modelAnswer });
+      } else {
+        out.push({ itemId: item.id, correct: gradeValue(item, ans.value),
+          explanation: item.explanation, correctOption: item.correct });
+      }
+    }
+    return ok({ results: out });
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/assessments\/([^/]+)\/attempts$/))) {
+    if (isStaff(u)) return err(403, 'FORBIDDEN', 'attempts are for students');
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    const st = assessmentState(a);
+    if (st !== 'live') return err(409, 'ATTEMPTS_CLOSED', `assessment is ${st}`);
+    if (!a.classes.includes(u.classId)) return err(403, 'FORBIDDEN', 'not your class');
+    if (db.attempts.some(t => t.assessmentId === a.id && t.userId === u.id && t.state === 'in_progress'))
+      return err(409, 'ATTEMPT_IN_PROGRESS', 'finish the current attempt first');
+    const used = db.attempts.filter(t => t.assessmentId === a.id && t.userId === u.id).length;
+    if (used >= a.maxAttempts) return err(409, 'NO_ATTEMPTS_LEFT', 'no attempts left');
+    const pool = a.itemIds.filter(id => a.allowSameItemRetake ? true : unseenByStudent(id, u.id));
+    if (!pool.length) return err(409, 'NO_UNSEEN_ITEMS', 'no eligible items left');
+    const sample = shuffle(pool).slice(0, Math.min(a.size, pool.length));
+    const attempt = { id: 'a' + (++attemptSeq), assessmentId: a.id, userId: u.id, state: 'in_progress',
+      itemIds: sample, version: a.snapshotVersion,
+      snapshot: Object.fromEntries(sample.map(id => [id, structuredClone(a.snapshot?.[id] || db.items.find(i => i.id === id))])),
+      optionOrder: {}, startedAt: now(), submittedAt: null, score: null };
+    db.attempts.push(attempt);
+    return ok({ attemptId: attempt.id, state: attempt.state,
+      items: sample.map(id => {
+        const item = db.items.find(i => i.id === id);
+        const f = frozenFor(item, a, attempt);
+        const order = shuffle(f.options.map((_, idx) => idx));
+        attempt.optionOrder[id] = order;
+        return { itemId: id, stem: f.stem, type: f.type,
+          options: order.map(idx => ({ id: `${id}o${idx}`, content: f.options[idx] })) };
+      }) });
+  }
+
+  if (method === 'GET' && path === '/attempts/current') {
+    const t = db.attempts.find(x => x.userId === u.id && x.state === 'in_progress');
+    return t ? ok({ attemptId: t.id, assessmentId: t.assessmentId, itemIds: t.itemIds }) : err(404, 'NOT_FOUND', 'no attempt');
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/attempts\/([^/]+)\/submit$/))) {
+    if (!Array.isArray(body)) return err(422, 'VALIDATION_INVALID_INPUT', 'body must be an array of answers');
+    const t = db.attempts.find(x => x.id === m[1]);
+    if (!t) return err(404, 'NOT_FOUND', 'attempt not found');
+    if (t.userId !== u.id) return err(403, 'FORBIDDEN', 'not your attempt');
+    const a = db.assessments.find(x => x.id === t.assessmentId);
+    if (t.state === 'expired') return err(409, 'ATTEMPT_EXPIRED', 'attempt expired when the assessment closed');
+    if (t.state !== 'in_progress') return err(409, 'ALREADY_SUBMITTED', 'attempt already submitted');
+    if (now() >= a.closesAt) {
+      t.state = 'expired';
+      return err(409, 'ATTEMPTS_CLOSED', 'assessment closed');
+    }
+    let earned = 0, possible = 0;
+    const results = [];
+    if (body.some(x => !x || typeof x !== 'object' || typeof x.itemId !== 'string'))
+      return err(422, 'VALIDATION_INVALID_INPUT', 'each answer must be {itemId, value}');
+    for (const id of t.itemIds) {
+      const item = db.items.find(i => i.id === id);
+      const f = frozenFor(item, a, t);
+      const val = body.find(x => x.itemId === id)?.value;
+      const correct = gradeValue(f, val);
+      if (correct === null) { results.push({ itemId: id, ungraded: true }); }
+      else { possible++; if (correct) earned++; results.push({ itemId: id, correct }); }
+      db.answers.push({ attemptId: t.id, itemId: id, value: val, correct });
+    }
+    t.state = 'submitted'; t.submittedAt = now(); t.score = { earned, possible };
+    return ok({ score: possible === 0 ? null : { earned, possible }, results });
+  }
+
+  if (method === 'GET' && (m = path.match(/^\/assessments\/([^/]+)\/review$/))) {
+    if (isStaff(u)) return err(403, 'FORBIDDEN', 'the review is the student\'s view');
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    if (assessmentState(a) !== 'closed') return err(403, 'REVIEW_LOCKED', 'assessment has not closed');
+    const attempt = db.attempts
+      .filter(t => t.assessmentId === a.id && t.userId === u.id && t.state === 'submitted')
+      .sort((x, y) => ((y.submittedAt ?? 0) - (x.submittedAt ?? 0)) || (Number(y.id.slice(1)) - Number(x.id.slice(1))))[0];
+    if (!attempt) return err(403, 'REVIEW_LOCKED', 'no submitted attempt');
+    const items = attempt.itemIds.filter(id => !(a.withheld.includes(id) && !a.released.includes(id))).map(id => {
+      const item = db.items.find(i => i.id === id);
+      const f = frozenFor(item, a, attempt);
+      const ans = db.answers.find(x => x.attemptId === attempt.id && x.itemId === id);
+      return {
+        itemId: id, stem: f.stem,
+        ...(f.type === 'open'
+          ? { modelAnswer: f.modelAnswer, ungraded: true }
+          : { correct: ans?.correct, correctOption: f.correct, explanation: f.explanation, options: f.options }),
+      };
+    });
+    return ok({ score: attempt.score, items });
+  }
+
+  if (method === 'GET' && (m = path.match(/^\/assessments\/([^/]+)\/attempts\/([^/]+)\/review$/))) {
+    if (isStaff(u)) return err(403, 'FORBIDDEN', 'the review is the student\'s view');
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    if (assessmentState(a) !== 'closed') return err(403, 'REVIEW_LOCKED', 'assessment has not closed');
+    const attempt = db.attempts.find(t => t.id === m[2] && t.assessmentId === a.id && t.userId === u.id && t.state === 'submitted');
+    if (!attempt) return err(403, 'REVIEW_LOCKED', 'no submitted attempt');
+    const items = attempt.itemIds.filter(id => !(a.withheld.includes(id) && !a.released.includes(id))).map(id => {
+      const item = db.items.find(i => i.id === id);
+      const f = frozenFor(item, a, attempt);
+      const ans = db.answers.find(x => x.attemptId === attempt.id && x.itemId === id);
+      return { itemId: id, stem: f.stem,
+        ...(f.type === 'open' ? { modelAnswer: f.modelAnswer, ungraded: true }
+          : { correct: ans?.correct, correctOption: f.correct, explanation: f.explanation, options: f.options }) };
+    });
+    return ok({ attemptId: attempt.id, score: attempt.score, items });
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/assessments\/([^/]+)\/retake$/))) {
+    return route('POST', `/assessments/${m[1]}/attempts`, body);
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/assessments\/([^/]+)\/close$/))) {
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    if (!canManage(a, u)) return err(403, 'FORBIDDEN', 'assessment owner or manager only');
+    if (!a.published) return err(409, 'ASSESSMENT_NOT_PUBLISHED', 'only a published assessment can be closed');
+    if (a.closedAt || assessmentState(a) === 'closed') return err(409, 'ASSESSMENT_CLOSED', 'already closed');
+    if (assessmentState(a) !== 'live') return err(409, 'ASSESSMENT_NOT_LIVE', 'only a live assessment can be closed');
+    a.closedAt = now();
+    a.closesAt = Math.min(a.closesAt, now());
+    for (const t of db.attempts.filter(t => t.assessmentId === a.id && t.state === 'in_progress')) t.state = 'expired';
+    return ok({ id: a.id, state: 'closed', closesAt: new Date(a.closesAt).toISOString() });
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/assessments\/([^/]+)\/cancel$/))) {
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    if (!canManage(a, u)) return err(403, 'FORBIDDEN', 'assessment owner or manager only');
+    if (!a.published) return err(409, 'ASSESSMENT_NOT_PUBLISHED', 'a draft cannot be cancelled');
+    if (a.closedAt) return err(409, 'ASSESSMENT_CLOSED', 'already closed');
+    a.cancelled = true;
+    a.closedAt = now();
+    a.closesAt = Math.min(a.closesAt, now());
+    for (const t of db.attempts.filter(t => t.assessmentId === a.id && t.state === 'in_progress')) t.state = 'expired';
+    return ok({ id: a.id, state: 'closed', cancelled: true });
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/assessments\/([^/]+)\/publish$/))) {
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    if (!canManage(a, u)) return err(403, 'FORBIDDEN', 'assessment owner or manager only');
+    if (a.cancelled) return err(409, 'ASSESSMENT_CANCELLED', 'a cancelled assessment cannot be published');
+    if (a.published) return err(409, 'ASSESSMENT_ALREADY_PUBLISHED', 'already published — create a new assessment to change it');
+    const orgWide = !!body?.orgWide;
+    const classes = orgWide ? db.classes.map(c => c.id) : (Array.isArray(body?.classes) ? body.classes : a.classes);
+    const opensAt = Number.isFinite(body?.opensAt) ? body.opensAt : a.opensAt;
+    const closesAt = Number.isFinite(body?.closesAt) ? body.closesAt : a.closesAt;
+    const maxAttempts = Number.isInteger(body?.maxAttempts) ? body.maxAttempts : a.maxAttempts;
+    const known = new Set(db.classes.map(c => c.id));
+    if (!classes.length || classes.some(c => !known.has(c)))
+      return err(422, 'VALIDATION_INVALID_INPUT', 'classes must be a non-empty subset of known classes');
+    if (!(closesAt > opensAt)) return err(422, 'VALIDATION_INVALID_INPUT', 'closesAt must be after opensAt');
+    if (closesAt <= now()) return err(422, 'VALIDATION_INVALID_INPUT', 'the window must end in the future');
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1)
+      return err(422, 'VALIDATION_INVALID_INPUT', 'maxAttempts must be a positive integer');
+    const exposure = crossClassExposure({ ...a, classes, itemIds: a.itemIds });
+    if (exposure.count > 0 && !body?.acknowledge)
+      return err(409, 'EXPOSURE_ACK_REQUIRED', `acknowledge ${exposure.count} item(s) still open to other classes`);
+    a.published = true;
+    a.orgWide = orgWide;
+    a.classes = classes;
+    a.opensAt = opensAt;
+    a.closesAt = closesAt;
+    a.maxAttempts = maxAttempts;
+    a.snapshotVersion = (a.snapshotVersion || 0) + 1;
+    a.snapshot = Object.fromEntries(a.itemIds.map(id => {
+      const it = db.items.find(i => i.id === id);
+      return [id, { id: it.id, stem: it.stem, type: it.type, options: [...it.options],
+        correct: it.correct, explanation: it.explanation, modelAnswer: it.modelAnswer, version: it.version }];
+    }));
+    return ok({ id: a.id, classes: a.classes, orgWide: a.orgWide, snapshotVersion: a.snapshotVersion, reservations: reservationForecast(a) });
+  }
+
+  if (method === 'POST' && (m = path.match(/^\/assessments\/([^/]+)\/items\/([^/]+)\/release$/))) {
+    const a = db.assessments.find(x => x.id === m[1]);
+    if (!a) return err(404, 'NOT_FOUND', 'assessment not found');
+    if (!canManage(a, u)) return err(403, 'FORBIDDEN', 'assessment owner or manager only');
+    if (!a.withheld.includes(m[2])) return err(409, 'RELEASE_NOT_WITHHELD', 'item is not withheld');
+    if (!a.released.includes(m[2])) a.released.push(m[2]);
+    return ok({ itemId: m[2], released: true });
+  }
+
+  if (method === 'PUT' && (m = path.match(/^\/items\/([^/]+)$/))) {
+    const item = db.items.find(i => i.id === m[1]);
+    if (!item) return err(404, 'NOT_FOUND', 'item not found');
+    const b = bank(item.bankId);
+    if (!(u.role === 'manager' || (u.role === 'teacher' && b.owner === u.id)))
+      return err(403, 'FORBIDDEN', 'bank owner or manager only');
+    const problems = validateItem({ ...item, ...body });
+    if (problems.length) return { status: 422, body: { error: 'UNPROCESSABLE_ENTITY', problems } };
+    item.version++;
+    Object.assign(item, body);
+    return ok({ id: item.id, version: item.version });
+  }
+
+  if (method === 'GET' && (m = path.match(/^\/items\/([^/]+)\/ledger$/))) {
+    if (isStaff(u) === false) return err(403, 'FORBIDDEN', 'staff only');
+    const item = db.items.find(i => i.id === m[1]);
+    if (!item) return err(404, 'NOT_FOUND', 'item not found');
+    const events = db.ledger.filter(e => e.itemId === item.id);
+    return ok({ itemId: item.id, events, preExposed: new Set(events.map(e => e.userId)).size });
+  }
+
+  return err(404, 'NOT_FOUND', `no route ${method} ${path}`);
+}
+
+function gradeValue(item, value) {
+  if (item.type === 'open') return null;
+  if (typeof value !== 'string') return false;
+  const idx = item.options.findIndex((_, i) => `${item.id}o${i}` === value);
+  return idx >= 0 ? idx === item.correct : false;
+}
+
+function crossClassExposure(a) {
+  const ids = a.itemIds.filter(id => db.classes.some(c =>
+    !a.classes.includes(c.id) && !sealedForClass(id, c.id)));
+  return { count: ids.length, ids };
+}
+function sealedForClass(itemId, classId) {
+  return db.assessments.some(x => x.published && x.classes.includes(classId) && x.itemIds.includes(itemId) &&
+    (assessmentState(x) === 'live' || (x.withheld.includes(itemId) && !x.released.includes(itemId) && assessmentState(x) === 'closed')));
+}
+
+function reservationForecast(a) {
+  return a.classes.map(c => ({
+    classId: c,
+    items: a.itemIds.length,
+    from: new Date(a.opensAt).toISOString(),
+    to: new Date(a.closesAt).toISOString(),
+    preExposed: new Set(db.ledger.filter(e => a.itemIds.includes(e.itemId) && user(e.userId)?.classId === c).map(e => e.userId)).size,
+  }));
+}
+
+function validateItem(item) {
+  const problems = [];
+  if (item.type === 'open') {
+    if (!item.modelAnswer || item.modelAnswer.trim().length < 40)
+      problems.push({ field: 'modelAnswer', code: 'REQUIRED', message: 'open items need a model answer (≥ 40 chars)' });
+    return problems;
+  }
+  if (item.type !== 'open') {
+    if (Array.isArray(item.options)) {
+      const seen = new Set(item.options.map(o => String(o).trim().toLowerCase()));
+      if (seen.size !== item.options.length)
+        problems.push({ field: 'options', code: 'DUPLICATE', message: 'option texts must be distinct' });
+    }
+    if (!Array.isArray(item.options) || item.options.length < 2)
+      problems.push({ field: 'options', code: 'REQUIRED', message: 'a choice item needs at least two options' });
+    if (!Number.isInteger(item.correct) || item.correct < 0 || item.correct >= (item.options?.length ?? 0))
+      problems.push({ field: 'correct', code: 'INVALID', message: 'correct must index one of the options' });
+  }
+  const ex = (item.explanation || '').trim();
+  if (!ex) problems.push({ field: 'explanation', code: 'REQUIRED', message: 'explanation is required for choice items' });
+  else {
+    if (ex.length < 80) problems.push({ field: 'explanation', code: 'TOO_SHORT', message: 'explanation must be ≥ 80 characters' });
+    if (ex.length > 2040) problems.push({ field: 'explanation', code: 'TOO_LONG', message: 'explanation must be ≤ 2040 characters' });
+    if (/^(?:[A-Da-d]|\(?[A-Da-d]\)|[1-9])[).:\-–\s]/.test(ex) || /\b(?:opcj[ai]|odpowiedź|answer)\s*(?:nr\.?\s*)?[A-Da-d1-9]\b/i.test(ex))
+      problems.push({ field: 'explanation', code: 'OPTION_LETTER', message: 'do not name an option letter/ordinal' });
+    for (const opt of item.options || []) {
+      const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (opt && opt.length >= 12 && norm(ex).includes(norm(opt)))
+        problems.push({ field: 'explanation', code: 'OPTION_TEXT', message: `do not quote the option verbatim: "${opt}"` });
+    }
+  }
+  return problems;
+}
+
+/* ------------------------------------------------------------------ *
+ * UI                                                                  *
+ * ------------------------------------------------------------------ */
+
+const state = { who: 'tA', tab: 'bank', bankId: 'bank1', assessmentId: null, attemptId: null, answers: {} };
+
+function switchAccount(id) {
+  state.who = id;
+  log.length = 0;
+  state.attemptId = null;
+  state.answers = {};
+  state.practicePick = null;
+  state.practiceResult = null;
+  state.reviewAttemptId = null;
+  state.composer = null;
+  state.tab = user(id).role === 'student' ? 'bank' : 'bank';
+  render();
+}
+
+function advance(ms) { db.now += ms; settleClosures(); render(); }
+function settleClosures() {
+  for (const a of db.assessments) {
+    if (a.published && !a.closedAt && db.now >= a.closesAt) a.closedAt = a.closesAt;
+  }
+}
+function jump(which) {
+  const a = db.assessments[0];
+  if (!a) return;
+  if (a.closedAt || (a.published && db.now >= a.closesAt)) {
+    alert('this assessment is closed; the clock cannot reopen it');
+    return;
+  }
+  db.now = which === 'open' ? a.opensAt : a.closesAt;
+  settleClosures();
+  render();
+}
+const iso = ms => new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function render() {
+  document.getElementById('who').innerHTML = db.users.map(u =>
+    `<option value="${u.id}" ${u.id === state.who ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
+  document.getElementById('clock').textContent = 'now ' + iso(db.now);
+  document.getElementById('rules').innerHTML = [
+    'R1 banks don’t gate answers; reservation + answers.read do',
+    'R2 per-class reservation, live window only',
+    'R4 no key on any student path for a sealed item',
+    'R5 reveal at close, whole cohort',
+    'R7 attempts only in-window; retakes fresh-sample',
+    'R8 practice feedback writes the ledger',
+    'R9 taughtItem grades a taught item (never unseals)',
+    'R10 withhold keeps an item sealed past close',
+    'R14 students see a held count/date, never the item',
+    'Per-class scope is deliberate: 8B can practise 8A’s live items (cross-class risk, acknowledged at publish)',
+    'Demo only: identity is the select, no real auth; every contract rejects a student where a staff role is required',
+  ].map(r => '• ' + r).join('<br>');
+
+  const eu = user(state.who);
+  const tabs = eu.role === 'student'
+    ? ['bank', 'practice', 'assessments']
+    : ['bank', 'assessments', ...[canManage(db.assessments[0], eu) ? 'composer' : null, 'ledger'].filter(Boolean)];
+  if (!tabs.includes(state.tab)) state.tab = tabs[0];
+  document.getElementById('tabs').innerHTML = tabs.map(t =>
+    `<button class="${state.tab === t ? 'active' : ''}" onclick="state.tab='${t}';render()">${t}</button>`).join('') +
+    (eu.role === 'student' ? '' : '');
+
+  const v = document.getElementById('view');
+  if (state.tab === 'bank') v.innerHTML = viewBank(eu);
+  else if (state.tab === 'practice') v.innerHTML = viewPractice(eu);
+  else if (state.tab === 'assessments') v.innerHTML = viewAssessments(eu);
+  else if (state.tab === 'composer') v.innerHTML = viewComposer(eu);
+  else v.innerHTML = viewLedger(eu);
+
+  const viewer = user(state.who);
+  document.getElementById('log').textContent = log.map(l => {
+    const body = viewer.role === 'student' ? redact(l.body) : l.body;
+    return `${l.at} ${l.status} ${l.method} ${l.path}\n${JSON.stringify(body).slice(0, 700)}`;
+  }).join('\n\n');
+}
+
+function viewBank(eu) {
+  const res = api('GET', `/banks/${state.bankId}/items`);
+  const b = bank(state.bankId);
+  const held = res.body.heldCount
+    ? `<div class="warn">${res.body.heldCount} question(s) are held for your assessment${res.body.heldUntil ? ' until ' + iso(Date.parse(res.body.heldUntil)) : ''}.</div>`
+    : '';
+  const rows = res.body.items.map(i => `
+    <tr><td>${esc(i.stem)}</td><td class="mono">${i.type}</td><td>v${i.version}</td>
+    <td>${'correct' in i
+      ? (i.type === 'open' ? `<span class="muted">model: ${esc(i.modelAnswer || '—')}</span>`
+        : `<span class="ok">✓ ${esc(i.options[i.correct]?.content ?? '?')}</span><br><span class="muted small">${esc(i.explanation || '')}</span>`)
+      : '<span class="muted">no key access</span>'}</td></tr>`).join('');
+  return `<section class="card"><h2>${esc(b.name)}</h2>
+    <div class="row"><select aria-label="Bank" onchange="state.bankId=this.value;render()">
+      ${db.banks.map(x => `<option value="${x.id}" ${x.id === state.bankId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+    </select><span class="pill">${eu.name}</span></div>${held}
+    <table><thead><tr><th>Item</th><th>Type</th><th>Ver</th><th>${eu.role === 'student' ? '' : 'Key / explanation'}</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" class="muted">nothing visible</td></tr>'}</tbody></table>
+    ${eu.role !== 'student' && (eu.role === 'manager' || bank(state.bankId).owner === eu.id) ? `<h2 style="margin-top:14px">Edit an item (validation + versioning)</h2>
+      <div class="row"><select id="editItem" aria-label="Item to edit">${db.items.filter(i => i.bankId === state.bankId).map(i => `<option value="${i.id}">${esc(i.stem.slice(0, 48))}</option>`).join('')}</select>
+      <button onclick="editItem()">Edit explanation…</button></div>` : ''}
+  </section>`;
+}
+
+function editItem() {
+  const id = document.getElementById('editItem').value;
+  const item = db.items.find(i => i.id === id);
+  const next = prompt('New explanation (choice items: 80–2040 chars, no "B"/option text; open: model answer):',
+    item.type === 'open' ? (item.modelAnswer || '') : (item.explanation || ''));
+  if (next === null) return;
+  const body = item.type === 'open' ? { modelAnswer: next } : { explanation: next };
+  const r = api('PUT', `/items/${id}`, body);
+  if (r.status === 422) alert('422 ' + JSON.stringify(r.body.problems, null, 2));
+  render();
+}
+
+function viewPractice(eu) {
+  if (eu.role !== 'student') return `<section class="card"><h2>Practice</h2><p class="muted">Practice is for student accounts only.</p></section>`;
+  const res = api('GET', `/banks/${state.bankId}/items`);
+  const held = res.body.heldCount || 0;
+  const heldUntil = res.body.heldUntil;
+  const item = res.body.items[(state.practiceIdx || 0) % Math.max(1, res.body.items.length)];
+  const notice = held
+    ? `<div class="warn">${held} question(s) held${heldUntil ? ' until ' + iso(Date.parse(heldUntil)) : ' until released'} — they are absent from this list.</div>`
+    : '';
+  if (!item) return `<section class="card"><h2>Practice</h2>${notice}<p class="muted">No visible items right now.</p></section>`;
+  const last = state.practiceResult;
+  const picked = item.type === 'open'
+    ? true
+    : !!state.practicePick;
+  return `<section class="card"><h2>Practice — ${esc(eu.name)}</h2>${notice}
+    <div class="row"><select aria-label="Bank" onchange="state.bankId=this.value;state.practiceIdx=0;state.practiceResult=null;state.practicePick=null;render()">
+      ${db.banks.map(x => `<option value="${x.id}" ${x.id === state.bankId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+    </select><button onclick="state.practiceIdx=(state.practiceIdx||0)+1;state.practiceResult=null;state.practicePick=null;render()">next item</button></div>
+    <p><strong>${esc(item.stem)}</strong></p>
+    ${item.options.map(o => `<label><input type="radio" name="opt" value="${o.id}" ${state.practicePick === o.id ? 'checked' : ''}
+      onchange="state.practicePick='${o.id}'"> ${esc(o.content)}</label>`).join('')}
+    ${item.type === 'open' ? `<textarea id="openAnswer" placeholder="your answer"></textarea>` : ''}
+    <div class="row" style="margin-top:8px"><button class="primary" onclick="practiceAnswer('${item.id}')">Answer</button>
+      ${!picked && !last ? '<span class="small muted">pick an option (or type an answer) first</span>' : ''}
+      ${last ? `<span class="${last.ungraded ? 'muted' : last.correct ? 'ok' : 'no'}">${last.ungraded ? 'ungraded — model: ' + esc(last.modelAnswer) : last.correct ? 'correct' : 'incorrect'}</span>` : ''}</div>
+    ${last && !last.ungraded ? `<div class="warn"><strong>Explanation:</strong> ${esc(last.explanation)}</div>` : ''}
+    <p class="small muted">Feedback writes an exposure event; that item leaves this student’s graded sample unless the teacher marks it taught.</p>
+  </section>`;
+}
+
+function practiceAnswer(itemId) {
+  const item = db.items.find(i => i.id === itemId);
+  const val = item.type === 'open' ? document.getElementById('openAnswer')?.value : state.practicePick;
+  if (item.type === 'open' ? !val?.trim() : !val) return alert('pick an option (or type an answer) first');
+  const r = api('POST', `/practice/${state.bankId}/answers`, [{ itemId, value: val }]);
+  state.practiceResult = r.body.results?.[0];
+  state.practicePick = null;
+  render(); // keep the answered item visible so its feedback sits under it
+}
+
+function viewAssessments(eu) {
+  const a = db.assessments[0];
+  const st = assessmentState(a);
+  const attempts = db.attempts.filter(t => t.assessmentId === a.id && t.userId === eu.id);
+  const submitted = attempts.filter(t => t.state === 'submitted').sort((x, y) => (y.submittedAt ?? 0) - (x.submittedAt ?? 0) || Number(y.id.slice(1)) - Number(x.id.slice(1)));
+  const current = attempts.find(t => t.state === 'in_progress');
+  const chosen = submitted.find(t => t.id === state.reviewAttemptId) || submitted[0];
+  const inClass = eu.role === 'student' && a.classes.includes(eu.classId);
+  const review = !inClass ? null : chosen
+    ? api('GET', `/assessments/${a.id}/attempts/${chosen.id}/review`)
+    : api('GET', `/assessments/${a.id}/review`);
+  const ungraded = review?.status === 200 ? review.body.items.filter(i => i.ungraded).length : 0;
+  return `<section class="card"><h2>Assessment — ${esc(a.name)}</h2>
+    <div class="row"><span class="pill">state: ${st}${a.cancelled ? ' (cancelled)' : ''}</span>
+      <span class="pill">classes: ${a.classes.join(', ')}</span>
+      <span class="pill">window: ${iso(a.opensAt)} → ${iso(a.closesAt)}</span>
+      ${eu.role === 'student' ? `<span class="pill">your attempts ${attempts.length}/${a.maxAttempts}</span>` : ''}
+      <span class="pill">${a.orgWide ? 'sealed org-wide' : 'per class'}</span></div>
+    ${inClass ? `
+      ${current ? takeForm(current, a) : st === 'live' && attempts.length < a.maxAttempts ? `<div class="row" style="margin-top:8px">
+        <button class="primary" onclick="startAttempt()">start attempt</button>
+        ${attempts.length ? `<button onclick="retake()">retake</button>` : ''}</div>`
+        : `<p class="small muted">${st !== 'live' ? 'The window is ' + st + '; attempts are only possible while it is live.' : 'No attempts left.'}</p>`}
+      <h2 style="margin-top:14px">Review</h2>
+      ${submitted.length > 1 ? `<div class="row" style="margin-bottom:6px"><label style="margin:0">attempt
+        <select aria-label="Attempt to review" onchange="state.reviewAttemptId=this.value;render()">
+          ${submitted.map((t, i) => `<option value="${t.id}" ${t.id === chosen.id ? 'selected' : ''}>attempt ${submitted.length - i} — ${t.score ? t.score.earned + '/' + t.score.possible : 'ungraded'}</option>`).join('')}
+        </select></label></div>` : ''}
+      ${review.status === 200
+        ? `<div class="ok">unlocked — score ${review.body.score ? review.body.score.earned + '/' + review.body.score.possible : 'n/a'}${ungraded ? ' · ' + ungraded + ' open item(s) not scored' : ''}</div>` +
+          (review.body.items.length
+            ? review.body.items.map(i => `<div class="warn"><strong>${esc(i.stem)}</strong><br>
+                ${i.ungraded ? 'ungraded — model answer: ' + esc(i.modelAnswer) : (i.correct ? '✓ correct' : '✗ incorrect') + ' — ' + esc(i.options[i.correctOption]) + '<br>' + esc(i.explanation)}</div>`).join('')
+            : '<p class="small muted">Nothing to show — every item in this attempt is withheld from review.</p>')
+        : `<div class="muted">${review.status} ${esc(review.body.error)} — ${esc(review.body.message)}</div>`}`
+      : `<p class="muted small">${eu.role === 'student' ? `This assessment targets ${a.classes.join(', ')}; switch to one of those student accounts.` : 'Staff view — switch to a student account to see their review.'}</p>`}
+    ${eu.role !== 'student' ? `${canManage(a, eu) ? `<div class="row" style="margin-top:10px">
+      <button onclick="closeAssessment()" ${st !== 'live' ? 'disabled' : ''}>close now</button>
+      <button onclick="cancelAssessment()" ${st === 'closed' || !a.published ? 'disabled' : ''}>cancel assessment</button>
+      <button onclick="releaseItem()">release a withheld item</button></div>` : '<p class="small muted">Read-only: only the owner or a manager can close, cancel or release.</p>'}
+      <table style="margin-top:10px"><thead><tr><th>Student</th><th>Attempts</th><th>Score</th><th>State</th></tr></thead>
+      <tbody>${db.users.filter(u => u.role === 'student' && a.classes.includes(u.classId)).map(u => {
+        const ts = db.attempts.filter(t => t.assessmentId === a.id && t.userId === u.id);
+        return `<tr><td>${esc(u.name)}</td><td>${ts.length}</td><td>${ts.map(t => {
+          if (!t.score) return '—';
+          const open = t.itemIds.filter(id => db.items.find(i => i.id === id)?.type === 'open').length;
+          return `${t.score.earned}/${t.score.possible}${open ? ` (+${open} open)` : ''}`;
+        }).join(', ') || '—'}</td><td>${ts.map(t => t.state).join(', ') || '—'}</td></tr>`;
+      }).join('')}</tbody></table>` : ''}
+  </section>`;
+}
+
+function takeForm(t, a) {
+  const items = t.itemIds.map(id => {
+    const item = db.items.find(i => i.id === id);
+    const f = frozenFor(item, a, t);
+    return { item, f };
+  });
+  return `<div class="warn"><strong>Attempt in progress</strong> — no key, no explanations; submit returns only the score and right/wrong. Frozen snapshot v${t.version}.</div>
+    ${items.map(({ item, f }) => `<div style="margin:10px 0"><strong>${esc(f.stem)}</strong>
+      ${f.type === 'open'
+        ? `<textarea data-item="${item.id}" placeholder="answer"></textarea>`
+        : (t.optionOrder?.[item.id] || f.options.map((_, i) => i)).map(idx => {
+            const oid = `${item.id}o${idx}`;
+            return `<label><input type="radio" name="a_${item.id}" value="${oid}" ${state.answers[item.id] === oid ? 'checked' : ''}
+              onchange="state.answers['${item.id}']='${oid}'"> ${esc(f.options[idx])}</label>`;
+          }).join('')}
+    </div>`).join('')}
+    <button class="primary" onclick="submitAttempt('${t.id}')">submit</button>`;
+}
+
+function startAttempt() {
+  const a = db.assessments[0];
+  const r = api('POST', `/assessments/${a.id}/attempts`, {});
+  if (r.status !== 200) return alert(`${r.status} ${r.body.error}: ${r.body.message}`);
+  state.attemptId = r.body.attemptId; state.answers = {};
+  render();
+}
+function retake() { startAttempt(); }
+
+function submitAttempt(id) {
+  const body = [];
+  const t = db.attempts.find(x => x.id === id);
+  for (const itemId of t.itemIds) {
+    const item = db.items.find(i => i.id === itemId);
+    const val = item.type === 'open'
+      ? (document.querySelector(`textarea[data-item="${itemId}"]`)?.value ?? '')
+      : state.answers[itemId];
+    body.push({ itemId, value: val });
+  }
+  const r = api('POST', `/attempts/${id}/submit`, body);
+  if (r.status !== 200) alert(`${r.status} ${r.body.error}: ${r.body.message}`);
+  state.attemptId = null; state.answers = {};
+  render();
+}
+
+function cancelAssessment() {
+  if (!confirm('Cancel this assessment? It closes immediately and cannot be published again.')) return;
+  const a = db.assessments[0];
+  const r = api('POST', `/assessments/${a.id}/cancel`, {});
+  alert(`${r.status} ${JSON.stringify(r.body)}`);
+  render();
+}
+
+function closeAssessment() {
+  const a = db.assessments[0];
+  const r = api('POST', `/assessments/${a.id}/close`, {});
+  alert(`${r.status} ${JSON.stringify(r.body)}`);
+  render();
+}
+function releaseItem() {
+  const a = db.assessments[0];
+  const candidates = a.withheld.filter(id => !a.released.includes(id));
+  if (!candidates.length) return alert('no withheld items left');
+  const id = prompt('item id to release: ' + candidates.join(', '), candidates[0]);
+  if (!id) return;
+  const r = api('POST', `/assessments/${a.id}/items/${id}/release`, {});
+  alert(`${r.status} ${JSON.stringify(r.body)}`);
+  render();
+}
+
+function composerForm(a) {
+  if (!state.composer) state.composer = {
+    opensIn: Math.max(0, Math.round((a.opensAt - db.now) / DAY)),
+    closesIn: Math.max(0, Math.round((a.closesAt - db.now) / DAY)),
+    maxAttempts: a.maxAttempts,
+    classes: [...a.classes], orgWide: a.orgWide, ack: false,
+  };
+  return state.composer;
+}
+function composerField(k, v) { state.composer[k] = Number(v); } // commit on blur; render would destroy the focused control
+function composerClasses(el) { state.composer.classes = [...el.selectedOptions].map(o => o.value); render(); document.querySelector('select[aria-label=\"Classes\"]')?.focus(); }
+
+function viewComposer(eu) {
+  const a = db.assessments[0];
+  const cf = composerForm(a);
+  const proposal = { ...a, classes: cf.orgWide ? db.classes.map(c => c.id) : cf.classes,
+    opensAt: db.now + cf.opensIn * DAY, closesAt: db.now + cf.closesIn * DAY };
+  const forecast = reservationForecast(proposal);
+  const exposure = crossClassExposure(proposal);
+  const st = assessmentState(a);
+  return `<section class="card"><h2>Assessment composer (throwaway)</h2>
+    <div class="row"><span class="pill">state: ${st}</span>
+      <span class="pill">published: ${a.published ? 'yes' : 'no'}</span>
+      ${a.cancelled ? '<span class="pill">cancelled</span>' : ''}
+      <span class="pill">${a.orgWide ? 'sealed org-wide' : 'per class'}</span></div>
+    <p class="small muted">Scheduling only <em>forecasts</em>; reservations become active at window open. Once published, an assessment cannot be republished — cancel it and create a new one.</p>
+    <div class="row"><label style="margin:0">Classes
+      <select multiple size="3" aria-label="Classes" onchange="composerClasses(this)">
+        ${db.classes.map(c => `<option value="${c.id}" ${cf.classes.includes(c.id) ? 'selected' : ''}>${c.id}</option>`).join('')}
+      </select></label>
+      <label style="margin:0">opens in (days) <input type="number" id="opensIn" aria-label="Opens in days" value="${cf.opensIn}" onchange="composerField('opensIn', this.value)" style="width:70px"></label>
+      <label style="margin:0">closes in (days) <input type="number" id="closesIn" aria-label="Closes in days" value="${cf.closesIn}" onchange="composerField('closesIn', this.value)" style="width:70px"></label>
+      <label style="margin:0">max attempts <input type="number" id="maxAttempts" aria-label="Max attempts" value="${cf.maxAttempts}" onchange="composerField('maxAttempts', this.value)" style="width:60px"></label>
+      <label style="margin:0"><input type="checkbox" id="orgWide" ${cf.orgWide ? 'checked' : ''} onchange="state.composer.orgWide=this.checked;render()"> seal org-wide</label>
+      <label style="margin:0"><input type="checkbox" id="ack" ${cf.ack ? 'checked' : ''} onchange="state.composer.ack=this.checked"> acknowledge cross-class exposure (${exposure.count})</label>
+      <button onclick="render()">recalculate forecast</button>
+      <button class="primary" onclick="publish()" ${a.published || a.cancelled ? 'disabled' : ''}>${a.published ? 'published' : a.cancelled ? 'cancelled' : 'publish'}</button></div>
+    <h2 style="margin-top:14px">Reservation forecast</h2>
+    <table><thead><tr><th>Class</th><th>Items</th><th>Window</th><th>Pre-exposed students</th></tr></thead><tbody>
+      ${forecast.map(f => `<tr><td>${f.classId}</td><td>${f.items}</td><td class="mono small">${iso(Date.parse(f.from))} → ${iso(Date.parse(f.to))}</td><td>${f.preExposed}</td></tr>`).join('')}
+    </tbody></table>
+    <p class="small muted">Cross-class exposure: ${exposure.count} item(s) still open to at least one other class (${exposure.ids.join(', ') || 'none'}) — publishing without acknowledgement is refused.</p>
+    <h2 style="margin-top:14px">Flags</h2>
+    <div class="row small">taught items: ${a.taughtItems.map(i => esc(i)).join(', ') || '—'} ·
+      withheld: ${a.withheld.map(i => esc(i)).join(', ') || '—'}</div>
+    <div class="row" style="margin-top:6px"><select id="flagItem" aria-label="Item to flag" ${a.published ? 'disabled' : ''}>
+      ${a.itemIds.map(id => `<option value="${id}">${id} — ${esc(db.items.find(i => i.id === id).stem.slice(0, 40))}</option>`).join('')}
+      </select><button onclick="flagItem('taught')" ${a.published ? 'disabled' : ''}>mark taughtItem</button>
+      <button onclick="flagItem('withheld')" ${a.published ? 'disabled' : ''}>withhold from review</button></div>
+    <p class="small muted">Flags are set before publishing; a published run is frozen. Withheld items can be released from the assessments tab.</p>
+  </section>`;
+}
+
+function flagItem(kind) {
+  const a = db.assessments[0];
+  if (a.published) return alert('the assessment is published; flags are frozen');
+  const id = document.getElementById('flagItem').value;
+  const list = kind === 'taught' ? a.taughtItems : a.withheld;
+  if (!list.includes(id)) list.push(id);
+  render();
+}
+
+function publish() {
+  const a = db.assessments[0];
+  const cf = composerForm(a);
+  const payload = {
+    acknowledge: !!cf.ack,
+    orgWide: cf.orgWide,
+    classes: cf.classes,
+    opensAt: db.now + cf.opensIn * DAY,
+    closesAt: db.now + cf.closesIn * DAY,
+    maxAttempts: cf.maxAttempts,
+  };
+  const r = api('POST', `/assessments/${a.id}/publish`, payload);
+  if (r.status === 200) {
+    Object.assign(a, {
+      classes: r.body.classes, orgWide: r.body.orgWide,
+      opensAt: payload.opensAt, closesAt: payload.closesAt, maxAttempts: payload.maxAttempts,
+    });
+    state.composer = null;
+  }
+  alert(`${r.status} ${JSON.stringify(r.body)}`);
+  render();
+}
+
+function viewLedger(eu) {
+  if (eu.role === 'student') return `<section class="card"><h2>Ledger</h2><p class="muted">Staff only.</p></section>`;
+  const rows = db.ledger.map(e => `<tr><td>${esc(e.itemId)}</td><td>${esc(user(e.userId)?.name || e.userId)}</td>
+    <td>${esc(e.classId || '')}</td><td class="mono small">${iso(e.at)}</td></tr>`).join('');
+  const a = db.assessments[0];
+  const pre = a.itemIds.map(id => ({ id, n: db.ledger.filter(e => e.itemId === id).length })).filter(x => x.n);
+  return `<section class="card"><h2>Exposure ledger</h2>
+    <p class="small muted">Written when practice renders feedback. Pre-exposed items are excluded from that student’s graded sample unless marked <span class="mono">taughtItem</span>.</p>
+    ${pre.length ? `<div class="warn">Assessment items already practised: ${pre.map(p => `${p.id} × ${p.n}`).join(', ')}</div>` : ''}
+    <table><thead><tr><th>Item</th><th>Student</th><th>Class</th><th>At</th></tr></thead><tbody>
+      ${rows || '<tr><td colspan="4" class="muted">no events yet</td></tr>'}</tbody></table></section>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Boot                                                                *
+ * ------------------------------------------------------------------ */
+seed();
+const A = {
+  id: 'a1', name: 'Sprawdzian — komórka', owner: 'tA', published: false, orgWide: false,
+  classes: ['8A'], opensAt: T0 + 1 * DAY, closesAt: T0 + 3 * DAY, maxAttempts: 2, size: 3,
+  itemIds: ['i01', 'i02', 'i03', 'i05', 'i06', 'i09'], snapshotVersion: 1,
+  taughtItems: [], withheld: [], released: [],
+};
+db.assessments.push(A);
+render();
+</script>
+</body>
+</html>
