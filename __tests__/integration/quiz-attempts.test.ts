@@ -129,6 +129,17 @@ async function rejectAnswerInserts(
   };
 }
 
+/** Acts as the student's own client the way PostgREST does: role + JWT claims. */
+async function actAsStudent(
+  sql: Pick<ReturnType<typeof postgres>, 'unsafe'>,
+  userId: string,
+): Promise<void> {
+  await sql.unsafe('SET LOCAL role authenticated');
+  await sql.unsafe("SELECT set_config('request.jwt.claims', $1, true)", [
+    JSON.stringify({ sub: userId, role: 'authenticated' }),
+  ]);
+}
+
 /** Fields of `GET /api/v1/quiz/[attemptId]` the assertions below read. */
 interface QuizAnswerPayload {
   is_correct?: boolean;
@@ -1090,7 +1101,6 @@ describe(`Quiz Attempts Integration`, () => {
     it.skipIf(!localDatabaseUrl)(
       'completes nothing when a second call races the first inside the function (#1064)',
       async () => {
-        mockUser(student.user);
         const { options } = await loadAttemptAnswers();
         const sheet = oneAnswerPerQuestion(options).map((answer) => ({
           question_id: answer.questionId,
@@ -1125,12 +1135,6 @@ describe(`Quiz Attempts Integration`, () => {
           }
           throw new Error('the racing submit never blocked on a lock');
         };
-        const asStudent = async (sql: Pick<ReturnType<typeof postgres>, 'unsafe'>) => {
-          await sql.unsafe('SET LOCAL role authenticated');
-          await sql.unsafe("SELECT set_config('request.jwt.claims', $1, true)", [
-            JSON.stringify({ sub: student.user.id, role: 'authenticated' }),
-          ]);
-        };
         const submit = (sql: Pick<ReturnType<typeof postgres>, 'unsafe'>, score: number) =>
           sql.unsafe(
             'SELECT * FROM public.submit_quiz_attempt($1::uuid, $2::uuid, $3::int, $4::text::jsonb)',
@@ -1139,7 +1143,7 @@ describe(`Quiz Attempts Integration`, () => {
 
         try {
           await first.unsafe('BEGIN');
-          await asStudent(first);
+          await actAsStudent(first, student.user.id);
           expect(await submit(first, 1)).toHaveLength(1);
 
           // Started while the first transaction still holds the attempt row:
@@ -1148,7 +1152,7 @@ describe(`Quiz Attempts Integration`, () => {
           // completion predicate (a 500 at the route), and without the guard it
           // completes a second time.
           const racer = second.begin(async (tx) => {
-            await asStudent(tx);
+            await actAsStudent(tx, student.user.id);
             return submit(tx, 99);
           });
           await waitForRacerToBlock();
