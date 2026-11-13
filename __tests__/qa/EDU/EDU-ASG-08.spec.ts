@@ -3,7 +3,7 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
- * EDU-ASG-08 — grading a student's submission, per student (`/edu/assignments/:id/results/:studentId`).
+ * EDU-ASG-08 — grading a student's submission, per attempt (`/edu/assignments/:id/results/:attemptId`).
  *
  * Case steps: „Oceń” next to a student in the results table, grade the open
  * question (points + feedback, „Zapisz ocenę”), then try points above the maximum

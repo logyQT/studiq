@@ -902,6 +902,26 @@ describe('TeacherAssignmentService', () => {
         expect(loaded.id).toBe('attempt-2');
         expect(loaded.quiz_answers.map((answer) => answer.id)).toEqual(['answer-2']);
       }
+      // The attempt id alone must not resolve: `assignment_id` is the IDOR guard.
+      expect(attempts.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+    });
+
+    it('returns NOT_FOUND for an attempt of another assignment (#1062)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          attemptRowsChain([
+            { ...attempt, id: 'attempt-foreign', assignment_id: 'assignment-other' },
+          ]),
+        )
+        .mockReturnValue(chain([]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-foreign', ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
 
     it('attaches the per-question maximum and null for a removed question (#169)', async () => {
@@ -962,15 +982,14 @@ describe('TeacherAssignmentService', () => {
   describe('gradeAnswer', () => {
     it('grades only the requested attempt when the student has two attempts (#1062)', async () => {
       const attemptUpdate = chain(null);
+      const attempts = attemptRowsChain([
+        { id: 'attempt-1', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
+        { id: 'attempt-2', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
+      ]);
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(
-          attemptRowsChain([
-            { id: 'attempt-1', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
-            { id: 'attempt-2', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
-          ]),
-        )
+        .mockReturnValueOnce(attempts)
         .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
         .mockReturnValueOnce(chain({ id: 'answer-2' }))
         .mockReturnValueOnce(chain(null)) // student_answers update
@@ -993,6 +1012,53 @@ describe('TeacherAssignmentService', () => {
         graded_at: anyTimestamp,
       });
       expect(attemptUpdate.eq).toHaveBeenCalledWith('id', 'attempt-2');
+      // The attempt id alone must not resolve: `assignment_id` is the IDOR guard.
+      expect(attempts.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+    });
+
+    it('does not grade an attempt of another assignment (#1062)', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(
+          attemptRowsChain([
+            {
+              id: 'attempt-foreign',
+              assignment_id: 'assignment-other',
+              user_id: 'student-1',
+              graded_at: null,
+            },
+          ]),
+        )
+        .mockReturnValue(chain([]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-foreign',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // Ownership + the attempt read only: nothing was graded or scored.
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('maps an attempt-read failure instead of reporting NOT_FOUND', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(failingChain({ code: 'XX000', message: 'connection reset' }))
+        .mockReturnValue(chain([]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-1',
+        { questionId: 'q-open', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('updates existing answer grade and recomputes the attempt score', async () => {

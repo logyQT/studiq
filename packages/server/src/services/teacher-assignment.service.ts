@@ -567,13 +567,14 @@ export class TeacherAssignmentService {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
-    const { data: attempt } = await supabase
+    const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
       .select('id, graded_at, user_id')
       .eq('id', attemptId)
       .eq('assignment_id', id)
       .maybeSingle();
 
+    if (attemptError) return toDbFailure(attemptError);
     if (!attempt?.user_id) return failure('NOT_FOUND');
     const firstGrade = !attempt.graded_at;
 
