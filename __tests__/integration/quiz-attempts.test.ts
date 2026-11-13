@@ -704,8 +704,10 @@ describe(`Quiz Attempts Integration`, () => {
       const { options } = await loadAttemptAnswers();
       const answers = oneAnswerPerQuestion(options);
 
-      // Same sheet, sent together: both requests read the attempt before either
-      // completes it, so the conditional completion write has to pick one.
+      // Same sheet, sent together: the conditional completion write picks one
+      // winner and the loser answers exactly like a later re-submit. The status
+      // pair alone does not prove the interleaving (a serialized loser produces
+      // the same one), but a winner that wrote a second sheet would.
       const submitOnce = () =>
         attemptPost(
           createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {

@@ -1956,6 +1956,7 @@ export type Database = {
         Row: {
           ai_graded: boolean;
           attempt_id: string | null;
+          created_at: string;
           id: string;
           is_correct: boolean;
           match_pair_id: string | null;
@@ -1972,6 +1973,7 @@ export type Database = {
         Insert: {
           ai_graded?: boolean;
           attempt_id?: string | null;
+          created_at?: string;
           id?: string;
           is_correct?: boolean;
           match_pair_id?: string | null;
@@ -1987,6 +1989,7 @@ export type Database = {
         Update: {
           ai_graded?: boolean;
           attempt_id?: string | null;
+          created_at?: string;
           id?: string;
           is_correct?: boolean;
           match_pair_id?: string | null;

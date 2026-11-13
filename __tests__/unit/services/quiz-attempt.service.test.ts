@@ -155,10 +155,14 @@ function racingReadResult(table: string): QueryResult {
  * A client double whose completion write is the arbiter: both submits read the
  * same open attempt, the first conditional write flips it and the second affects
  * no row — the interleaving a queue of `mockReturnValueOnce` cannot express.
+ * The filters each write carried are recorded too, because the double decides
+ * the outcome itself: without them a dropped `completed_at IS NULL` predicate
+ * would leave this interleaving green.
  */
 function racingClient() {
   let completionWrites = 0;
   const upserts: unknown[][] = [];
+  const completionFilters: [string, unknown[]][][] = [];
 
   const from = vi.fn((table: string) => {
     const read = Promise.resolve(racingReadResult(table));
@@ -176,11 +180,19 @@ function racingClient() {
       catch: read.catch.bind(read),
       finally: read.finally.bind(read),
       update: vi.fn(() => {
+        const filters: [string, unknown[]][] = [];
         const write = {
-          eq: () => write,
-          is: () => write,
+          eq: (...args: unknown[]) => {
+            filters.push(['eq', args]);
+            return write;
+          },
+          is: (...args: unknown[]) => {
+            filters.push(['is', args]);
+            return write;
+          },
           select: () => {
             completionWrites += 1;
+            completionFilters.push(filters);
             return Promise.resolve(
               completionWrites === 1
                 ? { data: [{ id: 'a-1' }], error: null }
@@ -204,6 +216,7 @@ function racingClient() {
     client: { from } as unknown as ReturnType<typeof mockSupabaseClient>,
     upserts,
     completionWrites: () => completionWrites,
+    completionFilters,
   };
 }
 
@@ -1108,7 +1121,7 @@ describe('QuizAttemptService', () => {
     });
 
     it('lets exactly one of two concurrent submits complete the attempt (#1066)', async () => {
-      const { client, upserts, completionWrites } = racingClient();
+      const { client, upserts, completionWrites, completionFilters } = racingClient();
       const racing = new QuizAttemptService(() => Promise.resolve(client));
 
       const [first, second] = await Promise.all([
@@ -1127,6 +1140,14 @@ describe('QuizAttemptService', () => {
       // Both requests passed the gate, so the completion write is the only arbiter.
       expect(completionWrites()).toBe(2);
       expect(upserts).toHaveLength(1);
+      // And each write is conditional on the attempt still being open and on the
+      // caller owning it — that predicate is what makes the second write affect
+      // no row, so it is asserted here rather than left to the integration test.
+      expect(completionFilters).toHaveLength(2);
+      for (const filters of completionFilters) {
+        expect(filters).toContainEqual(['is', ['completed_at', null]]);
+        expect(filters).toContainEqual(['eq', ['user_id', ctx.userId]]);
+      }
     });
   });
 
