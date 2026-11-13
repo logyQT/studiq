@@ -1,3 +1,4 @@
+import postgres from 'postgres';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import { before, createTestUser } from '#test/helpers/test-user';
@@ -12,6 +13,19 @@ import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bu
 import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/**
+ * `#1067` needs a write *inside* `accept_org_invitation()` to fail, and only a
+ * trigger can do that here (see the default-group case). `SUPABASE_DB_URL` is
+ * the harness's only SQL surface; it is optional, so the case that needs it is
+ * skipped when the var is absent and never touches a non-local database.
+ */
+const localDatabaseUrl = (() => {
+  const raw = process.env.SUPABASE_DB_URL;
+  if (!raw) return null;
+  const { hostname } = new URL(raw);
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ? raw : null;
+})();
 
 /** The system-role ids of one organization, keyed by role name. */
 async function roleIds(orgId: string) {
@@ -426,12 +440,13 @@ describe(`Invite + accept regression (API-first)`, () => {
       );
 
     // Both requests are started together; whichever reaches the claim first
-    // wins and the other gets 410. A fully serialised run also yields
-    // [200, 410] (the read check rejects the second), so this is a smoke test
-    // for the race — the deterministic proof that the claim happens before any
-    // membership write is the unit test "claims the token before writing
-    // membership …" / "rejects the accept when the token was already claimed
-    // concurrently (GONE)".
+    // wins and the other gets 410. Removing `FOR UPDATE` from the function
+    // makes this case fail (3/3 locally) — both requests claim the token and
+    // insert — but the ordering is still timing-based, so the deterministic
+    // proof that the claim happens before any membership write is the unit
+    // tests "leaves the token to the function and never claims it with a
+    // separate write" and "rejects the accept when the token was already
+    // claimed concurrently (GONE)".
     const statuses = (await Promise.all([accept(), accept()])).map((r) => r.status).toSorted();
     expect(statuses).toEqual([200, 410]);
 
@@ -547,6 +562,129 @@ describe(`Invite + accept regression (API-first)`, () => {
       .single();
     expect(consumed?.is_accepted).toBe(true);
   });
+
+  // #1067, default-group half. The group INSERT is the last write in the same
+  // function, so the case has to make *that* statement raise: the function
+  // skips it when the organization has no default group (deleting the group
+  // proves nothing), and both of its foreign keys — `groups`, `profiles` — are
+  // already satisfied by the membership step above. A `BEFORE INSERT` trigger
+  // scoped to this invitee is therefore the only way to reach the failure, and
+  // it pins step 3 as fatal rather than best-effort.
+  it.skipIf(!localDatabaseUrl)(
+    'rolls back the claim and the membership when the default-group write fails, and a retry joins (#1067)',
+    async () => {
+      const fixture = await before({ role: 'manager', org: true });
+      createdOrgIds.push(fixture.orgId!);
+      const student = await createTestUser({ role: 'student' });
+      const { memberRoleId } = await roleIds(fixture.orgId!);
+
+      mockUser(fixture.user);
+      const inviteRes = await invitePost(
+        createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: student.email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: fixture.orgId! },
+        ),
+      );
+      expect(inviteRes.status).toBe(201);
+
+      const supabase = createTypedServiceClient();
+      const { data: invite } = await supabase
+        .from('invitations')
+        .select('token')
+        .eq('email', student.email)
+        .eq('organization_id', fixture.orgId!)
+        .single();
+      expect(invite).toBeTruthy();
+
+      const accept = () => {
+        mockUser(student);
+        return acceptPost(
+          createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: invite!.token }),
+          }),
+        );
+      };
+
+      const sql = postgres(localDatabaseUrl!, { max: 1, onnotice: () => {} });
+      const trigger = `test_fail_group_member_${suiteId}`;
+      try {
+        await sql.unsafe(`
+          create or replace function public.${trigger}() returns trigger
+          language plpgsql as $fn$
+          begin
+            raise exception 'injected default-group failure' using errcode = '23514';
+          end;
+          $fn$;
+        `);
+        await sql.unsafe(`
+          create trigger ${trigger}
+          before insert on public.group_members
+          for each row when (new.user_id = '${student.id}'::uuid)
+          execute function public.${trigger}()
+        `);
+
+        expect((await accept()).status).toBe(400);
+
+        const { data: afterFailure } = await supabase
+          .from('invitations')
+          .select('is_accepted')
+          .eq('token', invite!.token)
+          .single();
+        expect(afterFailure?.is_accepted).toBe(false);
+
+        const { count: memberships } = await supabase
+          .from('org_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', fixture.orgId!)
+          .eq('user_id', student.id);
+        expect(memberships).toBe(0);
+
+        const { count: groupRows } = await supabase
+          .from('group_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('group_id', fixture.defaultGroupId!)
+          .eq('user_id', student.id);
+        expect(groupRows).toBe(0);
+      } finally {
+        await sql.unsafe(`drop trigger if exists ${trigger} on public.group_members`);
+        await sql.unsafe(`drop function if exists public.${trigger}()`);
+        await sql.end({ timeout: 5 });
+      }
+
+      // The transient cause is gone: the same token must now complete the join.
+      expect((await accept()).status).toBe(200);
+
+      const { data: membership } = await supabase
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', fixture.orgId!)
+        .eq('user_id', student.id)
+        .maybeSingle();
+      expect(membership?.org_role_id).toBe(memberRoleId);
+
+      const { data: groupMember } = await supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('group_id', fixture.defaultGroupId!)
+        .eq('user_id', student.id)
+        .maybeSingle();
+      expect(groupMember).toBeTruthy();
+
+      const { data: consumed } = await supabase
+        .from('invitations')
+        .select('is_accepted')
+        .eq('token', invite!.token)
+        .single();
+      expect(consumed?.is_accepted).toBe(true);
+    },
+  );
 
   // End-to-end check for #182 (max_students was never enforced on accept). Note:
   // mockUser() uses a service-role client, so this cannot reproduce the RLS

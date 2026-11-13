@@ -1535,6 +1535,8 @@ BEGIN
     RETURN;
   END IF;
 
+  -- `IS TRUE` (not `<> false`) is null-safe: a legacy NULL row is still claimable
+  -- and a claimed one is not.
   IF v_invite.is_accepted IS TRUE THEN
     RETURN;
   END IF;
@@ -1547,6 +1549,7 @@ BEGIN
     RETURN;
   END IF;
 
+  -- A target role from another organization would grant that tenant's scopes.
   IF NOT EXISTS (
     SELECT 1
     FROM public.org_roles r

@@ -112,6 +112,15 @@ describe('anon role grants (#191)', () => {
         p_plan: 'launch',
       },
     ],
+    // Accepts an invitation as an arbitrary user id; only the service role
+    // issues it, so a signed-in caller must not be able to.
+    [
+      'accept_org_invitation',
+      {
+        p_token: 'anon-grants-probe',
+        p_user_id: '00000000-0000-4000-8001-000000000003',
+      },
+    ],
     // Role-authority helpers (#191 B1-B5) are internal; only the rls_caller_*
     // wrappers may be executed by `authenticated`.
     [
