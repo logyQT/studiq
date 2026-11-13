@@ -154,7 +154,7 @@ describe('SubmitQuizAttemptSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects more than 500 answers, the absolute parser bound (#1065)', () => {
+  it('accepts a sheet larger than the old 500-entry cap — the attempt decides (#1065)', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
       answers: Array.from({ length: 501 }, (_, i) => ({
@@ -162,7 +162,8 @@ describe('SubmitQuizAttemptSchema', () => {
         skipped: true,
       })),
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.answers).toHaveLength(501);
   });
 
   it('rejects the same questionId twice and points at the repeated entry (#1065)', () => {
@@ -331,7 +332,7 @@ describe('SaveQuizAnswersSchema (#349)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects more than 500 answers, the absolute parser bound (#1065)', () => {
+  it('accepts a sheet larger than the old 500-entry cap — the attempt decides (#1065)', () => {
     const result = SaveQuizAnswersSchema.safeParse({
       attemptId,
       answers: Array.from({ length: 501 }, (_, i) => ({
@@ -340,7 +341,8 @@ describe('SaveQuizAnswersSchema (#349)', () => {
       })),
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.answers).toHaveLength(501);
   });
 
   it('rejects a malformed attemptId', () => {
