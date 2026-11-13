@@ -92,9 +92,23 @@ interface AttemptListPayload {
   }[];
 }
 
-/** Error bodies only assert the envelope. */
+/** Error bodies assert the envelope plus the field-level details where they matter. */
 interface ApiErrorPayload {
   success: boolean;
+  error?: string;
+}
+
+/** `toNextResponse` treeifies a 422's issues (see `seats.test.ts`). */
+interface AnswerValueErrorPayload extends ApiErrorPayload {
+  issues?: {
+    properties?: {
+      answers?: {
+        items?: {
+          properties?: Partial<Record<'selectedAnswerId' | 'textAnswer', { errors: string[] }>>;
+        }[];
+      };
+    };
+  };
 }
 
 interface QuizCreatePayload {
@@ -108,6 +122,21 @@ interface SaveDraftPayload {
 
 interface SubmitPayload extends ApiErrorPayload {
   data: { score: number };
+}
+
+/** The id of the option the fixtures mark correct for `questionId`. */
+async function loadCorrectOptionId(questionId: string): Promise<string> {
+  const supabase = createServiceClient();
+  const { data: option } = await supabase
+    .from('question_options')
+    .select('id')
+    .eq('question_id', questionId)
+    .eq('is_correct', true)
+    .limit(1)
+    .maybeSingle()
+    .overrideTypes<{ id: string }, { merge: false }>();
+  if (!option) throw new Error(`question ${questionId} has no correct option`);
+  return option.id;
 }
 
 describe(`Quiz Attempts Integration`, () => {
@@ -563,47 +592,151 @@ describe(`Quiz Attempts Integration`, () => {
       expect(stored).toHaveLength(0);
     });
 
-    it('persists an open answer as text and submits (#176)', async () => {
+    it('refuses an option that belongs to another question and writes nothing (#1161)', async () => {
       mockUser(student.user);
 
+      const { questionIds } = await loadAttemptAnswers();
+      const answeredQuestionId = requiredAt(questionIds, 0, 'answered question');
+      const otherQuestionId = requiredAt(questionIds, 1, 'other question');
+      // The exploit: the other question's correct option used to be scored for
+      // this one because correctness was looked up by option id alone.
+      const otherCorrectOptionId = await loadCorrectOptionId(otherQuestionId);
+
+      const { request, params } = submitSheet([
+        { questionId: answeredQuestionId, selectedAnswerId: otherCorrectOptionId },
+      ]);
+      const response = await attemptPost(request, { params });
+      const body = await json<AnswerValueErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(
+        body.issues?.properties?.answers?.items?.[0]?.properties?.selectedAnswerId?.errors,
+      ).toEqual(['VALIDATION_INVALID_INPUT']);
+      expect(await countStudentAnswers()).toBe(0);
+
       const supabase = createServiceClient();
-      const { data: bank } = await supabase
-        .from('question_banks')
-        .select('id')
-        .eq('created_by', student.user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-        .overrideTypes<
-          Pick<Database['public']['Tables']['question_banks']['Row'], 'id'>,
-          {
-            merge: false;
-          }
-        >();
-      if (!bank) throw new Error('seed question bank not found');
-
-      const { data: openQuestion, error: openQuestionError } = await supabase
-        .from('questions')
-        .insert({
-          bank_id: bank.id,
-          created_by: student.user.id,
-          type: 'open',
-          content: 'seed-question-open-176',
-          explanation: 'Rozbiory, słaba władza centralna, liberum veto.',
-        })
-        .select('id')
+      const { data: attempt } = await supabase
+        .from('quiz_attempts')
+        .select('completed_at, score')
+        .eq('id', attemptId)
         .single()
-        .overrideTypes<OpenQuestionRow, { merge: false }>();
-      if (openQuestionError) {
-        throw new Error(`Failed to seed open question: ${openQuestionError.message}`);
-      }
+        .overrideTypes<{ completed_at: string | null; score: number }, { merge: false }>();
+      expect(attempt?.completed_at).toBeNull();
+      expect(attempt?.score).toBe(0);
+    });
 
-      await supabase.from('quiz_attempt_questions').insert({
-        attempt_id: attemptId,
-        question_id: openQuestion.id,
-        order_index: 3,
+    it('refuses free text sent for a choice question (#1161)', async () => {
+      mockUser(student.user);
+
+      const { questionIds } = await loadAttemptAnswers();
+      const choiceQuestionId = requiredAt(questionIds, 0, 'choice question');
+
+      const { request, params } = submitSheet([
+        { questionId: choiceQuestionId, textAnswer: 'Wisła' },
+      ]);
+      const response = await attemptPost(request, { params });
+      const body = await json<AnswerValueErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(body.issues?.properties?.answers?.items?.[0]?.properties?.textAnswer?.errors).toEqual([
+        'VALIDATION_INVALID_INPUT',
+      ]);
+      expect(await countStudentAnswers()).toBe(0);
+    });
+
+    it('refuses an option id sent for an open question (#1161)', async () => {
+      mockUser(student.user);
+
+      const open = await addQuestionToAttempt('open');
+      const { options } = await loadAttemptAnswers();
+      const option = requiredAt(options, 0, 'attempt option');
+
+      const { request, params } = submitSheet([
+        { questionId: open.id, selectedAnswerId: option.id },
+      ]);
+      const response = await attemptPost(request, { params });
+      const body = await json<AnswerValueErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(
+        body.issues?.properties?.answers?.items?.[0]?.properties?.selectedAnswerId?.errors,
+      ).toEqual(['VALIDATION_INVALID_INPUT']);
+      expect(await countStudentAnswers()).toBe(0);
+    });
+
+    it('scores a legitimate mcq/true_false/open sheet exactly once per correct answer (#1161)', async () => {
+      mockUser(student.user);
+
+      const trueFalse = await addQuestionToAttempt('true_false', [
+        { content: 'Prawda', isCorrect: true },
+        { content: 'Fałsz', isCorrect: false },
+      ]);
+      const open = await addQuestionToAttempt('open');
+      const { questionIds, options } = await loadAttemptAnswers();
+
+      const firstId = requiredAt(questionIds, 0, 'first mcq');
+      const secondId = requiredAt(questionIds, 1, 'second mcq');
+      const thirdId = requiredAt(questionIds, 2, 'third mcq');
+      const secondCorrectId = await loadCorrectOptionId(secondId);
+      const secondWrong = requiredAt(
+        options.filter(
+          (option) => option.question_id === secondId && option.id !== secondCorrectId,
+        ),
+        0,
+        'wrong option of the second mcq',
+      );
+      const trueOption = requiredAt(trueFalse.optionIds, 0, 'true_false correct option');
+
+      const { request, params } = submitSheet([
+        { questionId: firstId, selectedAnswerId: await loadCorrectOptionId(firstId) },
+        { questionId: secondId, selectedAnswerId: secondWrong.id },
+        { questionId: thirdId, selectedAnswerId: await loadCorrectOptionId(thirdId) },
+        { questionId: trueFalse.id, selectedAnswerId: trueOption },
+        { questionId: open.id, textAnswer: '  Rozbiory i liberum veto.  ' },
+      ]);
+      const response = await attemptPost(request, { params });
+      const body = await json<SubmitPayload>(response);
+
+      expect(response.status).toBe(200);
+      // The second mcq is wrong and the open answer is never auto-scored; the
+      // other three questions score exactly one point each (#176, #329).
+      expect(body.data.score).toBe(3);
+
+      const supabase = createServiceClient();
+      const { data: stored } = await supabase
+        .from('student_answers')
+        .select('question_id, question_type, selected_option_id, text_answer, is_correct')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<
+          Pick<
+            Database['public']['Tables']['student_answers']['Row'],
+            'question_id' | 'question_type' | 'selected_option_id' | 'text_answer' | 'is_correct'
+          >[],
+          { merge: false }
+        >();
+
+      expect(stored).toHaveLength(5);
+      const byQuestion = new Map(dbRows(stored).map((row) => [row.question_id, row] as const));
+      expect(byQuestion.get(firstId)?.is_correct).toBe(true);
+      expect(byQuestion.get(secondId)?.is_correct).toBe(false);
+      expect(byQuestion.get(thirdId)?.is_correct).toBe(true);
+      expect(byQuestion.get(trueFalse.id)?.is_correct).toBe(true);
+      expect(byQuestion.get(open.id)).toMatchObject({
+        question_type: 'open',
+        selected_option_id: null,
+        text_answer: 'Rozbiory i liberum veto.',
+        is_correct: false,
       });
+    });
 
+    it('persists an open answer as text and submits (#176)', async () => {
+      mockUser(student.user);
+      const openQuestion = await addQuestionToAttempt('open');
+
+      const supabase = createServiceClient();
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
@@ -816,6 +949,87 @@ describe(`Quiz Attempts Integration`, () => {
     return { questionIds, options: options ?? [] };
   }
 
+  /**
+   * Seeds a question of `type` in the student's bank and adds it to this
+   * attempt, the way a bank question would arrive on the sheet.
+   */
+  async function addQuestionToAttempt(
+    type: Database['public']['Enums']['question_type'],
+    answers: { content: string; isCorrect: boolean }[] = [],
+  ): Promise<{ id: string; optionIds: string[] }> {
+    const supabase = createServiceClient();
+    const { data: bank } = await supabase
+      .from('question_banks')
+      .select('id')
+      .eq('created_by', student.user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .overrideTypes<{ id: string }, { merge: false }>();
+    if (!bank) throw new Error('seed question bank not found');
+
+    const { data: question, error } = await supabase
+      .from('questions')
+      .insert({
+        bank_id: bank.id,
+        created_by: student.user.id,
+        type,
+        content: `seed-question-${type}-${crypto.randomUUID()}`,
+      })
+      .select('id')
+      .single()
+      .overrideTypes<OpenQuestionRow, { merge: false }>();
+    if (error) throw new Error(`Failed to seed ${type} question: ${error.message}`);
+
+    let optionIds: string[] = [];
+    if (answers.length > 0) {
+      const { data: options, error: optionsError } = await supabase
+        .from('question_options')
+        .insert(
+          answers.map((answer, orderIndex) => ({
+            question_id: question.id,
+            content: answer.content,
+            is_correct: answer.isCorrect,
+            order_index: orderIndex,
+          })),
+        )
+        .select('id')
+        .overrideTypes<{ id: string }[], { merge: false }>();
+      if (optionsError) throw new Error(`Failed to seed options: ${optionsError.message}`);
+      optionIds = dbRows(options).map((option) => option.id);
+    }
+
+    const { data: last } = await supabase
+      .from('quiz_attempt_questions')
+      .select('order_index')
+      .eq('attempt_id', attemptId)
+      .order('order_index', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .overrideTypes<{ order_index: number }, { merge: false }>();
+
+    const { error: linkError } = await supabase.from('quiz_attempt_questions').insert({
+      attempt_id: attemptId,
+      question_id: question.id,
+      order_index: (last?.order_index ?? -1) + 1,
+    });
+    if (linkError) throw new Error(`Failed to add the question: ${linkError.message}`);
+
+    return { id: question.id, optionIds };
+  }
+
+  function submitSheet(answers: unknown[]) {
+    return createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attemptId}`,
+      { attemptId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      },
+    );
+  }
+
   function draftRequest(answers: unknown[]) {
     return createNextRequestWithParams(
       `http://localhost/api/v1/quiz/${attemptId}/answers`,
@@ -929,6 +1143,36 @@ describe(`Quiz Attempts Integration`, () => {
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
+    });
+
+    it('refuses a draft option that belongs to another question (#1161)', async () => {
+      mockUser(student.user);
+
+      const { questionIds, options } = await loadAttemptAnswers();
+      const answeredQuestionId = requiredAt(questionIds, 0, 'answered question');
+      const otherQuestionId = requiredAt(questionIds, 1, 'other question');
+      const otherOptionId = requiredAt(
+        options.filter((option) => option.question_id === otherQuestionId),
+        0,
+        'option of the other question',
+      ).id;
+
+      const { request, params } = draftRequest([
+        { questionId: answeredQuestionId, selectedAnswerId: otherOptionId },
+      ]);
+      const response = await attemptAnswersPut(request, { params });
+      const body = await json<AnswerValueErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(
+        body.issues?.properties?.answers?.items?.[0]?.properties?.selectedAnswerId?.errors,
+      ).toEqual(['VALIDATION_INVALID_INPUT']);
+
+      // A draft that submit would refuse must never reach the column.
+      const { body: resume } = await getAttempt();
+      expect(resume.data.answers).toEqual({});
+      expect(await countStudentAnswers()).toBe(0);
     });
 
     it('still never exposes the answer key after a draft save (#331)', async () => {

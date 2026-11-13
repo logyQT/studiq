@@ -134,6 +134,26 @@ const questionsQb = () => qb([{ question_id: 'q-1' }, { question_id: 'q-2' }]);
 const attemptQuestionsQb = (...questionIds: string[]) =>
   qb(questionIds.map((question_id) => ({ question_id })));
 
+/** An in-attempt question's answer key, as the shared gate loads it. */
+type AnswerKeyFixture = {
+  id: string;
+  type?: string;
+  options?: { id: string; is_correct: boolean }[];
+};
+
+/**
+ * The answer keys of the in-attempt questions: each question's own type and
+ * options. One row per question, the shape `loadAnswerableAttempt` reads (#1161).
+ */
+const answerKeysQb = (...questions: AnswerKeyFixture[]) =>
+  qb(
+    questions.map((question) => ({
+      id: question.id,
+      type: question.type ?? 'mcq',
+      question_answers: question.options ?? [],
+    })),
+  );
+
 describe('QuizAttemptService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: QuizAttemptService;
@@ -613,13 +633,13 @@ describe('QuizAttemptService', () => {
   describe('submit', () => {
     it('submits answers and returns score', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
-      const answer = { id: 'ans-1', is_correct: true };
       const insertQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb(answer));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(insertQb);
 
@@ -652,9 +672,15 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({
+          id: 'q-1',
+          options: [
+            { id: 'ans-1', is_correct: true },
+            { id: 'ans-2', is_correct: true },
+          ],
+        }),
+      );
       mock.from.mockReturnValueOnce(qb(null)); // attempt update
       mock.from.mockReturnValueOnce(qb(null)); // answers insert
 
@@ -680,7 +706,7 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-open'));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-open', type: 'open' }]));
+      mock.from.mockReturnValueOnce(answerKeysQb({ id: 'q-open', type: 'open' }));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(insertQb);
 
@@ -709,7 +735,6 @@ describe('QuizAttemptService', () => {
           is_correct: false,
         },
       ]);
-      // No option lookup is performed for an open question.
       expect(mock.from).toHaveBeenCalledTimes(5);
     });
 
@@ -723,10 +748,11 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true })); // teacher_assignments
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true })); // question_options
       mock.from.mockReturnValueOnce(qb(null)); // attempt update
       mock.from.mockReturnValueOnce(qb(null)); // answers insert
 
@@ -752,10 +778,11 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: false }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb(null));
 
@@ -780,10 +807,11 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb(null));
 
@@ -806,11 +834,17 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({
+          id: 'q-1',
+          options: [
+            { id: 'ans-1', is_correct: true },
+            { id: 'ans-2', is_correct: true },
+          ],
+        }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb(null));
 
@@ -839,6 +873,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
@@ -908,6 +945,229 @@ describe('QuizAttemptService', () => {
       ]);
     });
 
+    it('rejects an option that belongs to another question and writes nothing (#1161)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          { id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] },
+          // The exploit: q-1 is answered with q-2's correct option, which used to
+          // be scored from `question_options.is_correct` alone.
+          { id: 'q-2', options: [{ id: 'ans-2', is_correct: true }] },
+        ),
+      );
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-2' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 0, 'selectedAnswerId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+      // No completion, no score, no answer row: the payload is refused whole.
+      expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        'quiz_attempts',
+        'quiz_attempt_questions',
+        'questions',
+      ]);
+    });
+
+    it('rejects an option id sent for an open question (#1161)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-open'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          { id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] },
+          { id: 'q-open', type: 'open' },
+        ),
+      );
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          // A real option of this attempt, but the wrong shape for an open question.
+          answers: [{ questionId: 'q-open', selectedAnswerId: 'ans-1' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 0, 'selectedAnswerId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects free text sent for a choice question (#1161)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-tf'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          { id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] },
+          {
+            id: 'q-tf',
+            type: 'true_false',
+            options: [
+              { id: 'tf-true', is_correct: true },
+              { id: 'tf-false', is_correct: false },
+            ],
+          },
+        ),
+      );
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-tf', textAnswer: 'Prawda' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 0, 'textAnswer'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects a true_false value outside its own option domain (#1161)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-mcq', 'q-tf'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          { id: 'q-mcq', options: [{ id: 'ans-1', is_correct: true }] },
+          {
+            id: 'q-tf',
+            type: 'true_false',
+            options: [
+              { id: 'tf-true', is_correct: true },
+              { id: 'tf-false', is_correct: false },
+            ],
+          },
+        ),
+      );
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-tf', selectedAnswerId: 'ans-1' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 0, 'selectedAnswerId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+    });
+
+    it('scores a legitimate mcq/true_false/open sheet exactly once per correct answer (#1161)', async () => {
+      const insertQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-mcq', 'q-wrong', 'q-tf', 'q-open'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          {
+            id: 'q-mcq',
+            options: [
+              { id: 'ans-right', is_correct: true },
+              { id: 'ans-wrong', is_correct: false },
+            ],
+          },
+          { id: 'q-wrong', options: [{ id: 'ans-wrong', is_correct: false }] },
+          {
+            id: 'q-tf',
+            type: 'true_false',
+            options: [
+              { id: 'tf-true', is_correct: true },
+              { id: 'tf-false', is_correct: false },
+            ],
+          },
+          { id: 'q-open', type: 'open' },
+        ),
+      );
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-mcq', selectedAnswerId: 'ans-right' },
+            { questionId: 'q-wrong', selectedAnswerId: 'ans-wrong' },
+            { questionId: 'q-tf', selectedAnswerId: 'tf-true' },
+            { questionId: 'q-open', textAnswer: '  Rozbiory, liberum veto.  ' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).score).toBe(2);
+      expect(expectSuccess(result).totalQuestions).toBe(4);
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        expect.objectContaining({
+          question_id: 'q-mcq',
+          question_type: 'mcq',
+          selected_option_id: 'ans-right',
+          is_correct: true,
+        }),
+        expect.objectContaining({
+          question_id: 'q-wrong',
+          question_type: 'mcq',
+          selected_option_id: 'ans-wrong',
+          is_correct: false,
+        }),
+        expect.objectContaining({
+          question_id: 'q-tf',
+          question_type: 'true_false',
+          selected_option_id: 'tf-true',
+          is_correct: true,
+        }),
+        expect.objectContaining({
+          question_id: 'q-open',
+          question_type: 'open',
+          selected_option_id: null,
+          text_answer: 'Rozbiory, liberum veto.',
+          is_correct: false,
+        }),
+      ]);
+    });
+
     it('rejects a payload longer than the attempt, not a fixed cap (#1065)', async () => {
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
@@ -940,10 +1200,14 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
       mock.from.mockReturnValueOnce(attemptQuestionsQb(...questionIds));
-      mock.from.mockReturnValueOnce(qb(questionIds.map((id) => ({ id, type: 'mcq' }))));
-      questionIds.forEach(() => {
-        mock.from.mockReturnValueOnce(qb({ is_correct: true }));
-      });
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          ...questionIds.map((id, index) => ({
+            id,
+            options: [{ id: `ans-${index}`, is_correct: true }],
+          })),
+        ),
+      );
       mock.from.mockReturnValueOnce(qb(null)); // attempt update
       const insertQb = qb(null);
       mock.from.mockReturnValueOnce(insertQb);
@@ -984,8 +1248,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1'));
-      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(updateQb);
       mock.from.mockReturnValueOnce(qb(null));
 
@@ -1007,6 +1272,12 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
       mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          { id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] },
+          { id: 'q-2', type: 'open' },
+        ),
+      );
       mock.from.mockReturnValueOnce(updateQb);
 
       const result = await service.saveDraft(
@@ -1050,6 +1321,15 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
       mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({
+          id: 'q-1',
+          options: [
+            { id: 'ans-1', is_correct: true },
+            { id: 'ans-2', is_correct: false },
+          ],
+        }),
+      );
       mock.from.mockReturnValueOnce(updateQb);
 
       await service.saveDraft(
@@ -1074,6 +1354,14 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
       mock.from.mockReturnValueOnce(attemptQuestionsQb(...questionIds));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          ...questionIds.map((id, index) => ({
+            id,
+            options: [{ id: `ans-${index}`, is_correct: true }],
+          })),
+        ),
+      );
       mock.from.mockReturnValueOnce(updateQb);
 
       const result = await service.saveDraft(
@@ -1147,9 +1435,48 @@ describe('QuizAttemptService', () => {
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
+    it('refuses a draft option that belongs to another question and keeps the stored draft (#1161)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(attemptQuestionsQb('q-1', 'q-2'));
+      mock.from.mockReturnValueOnce(
+        answerKeysQb(
+          { id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] },
+          { id: 'q-2', options: [{ id: 'ans-2', is_correct: true }] },
+        ),
+      );
+
+      const result = await service.saveDraft(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-2' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 0, 'selectedAnswerId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+      // A draft that submit would refuse must never reach the column: the only
+      // queries are the attempt, its questions and their answer keys.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        'quiz_attempts',
+        'quiz_attempt_questions',
+        'questions',
+      ]);
+    });
+
     it('returns INTERNAL_SERVER when the draft update fails', async () => {
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
       mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(
+        answerKeysQb({ id: 'q-1', options: [{ id: 'ans-1', is_correct: true }] }),
+      );
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.saveDraft(

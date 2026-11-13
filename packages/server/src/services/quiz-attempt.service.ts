@@ -49,6 +49,55 @@ function readDraftAnswers(value: unknown): Record<string, DraftAnswer> {
   return draft;
 }
 
+/** The `questions.type` enum, named so the answer-kind map below stays exhaustive. */
+type QuestionType = Database['public']['Enums']['question_type'];
+
+/**
+ * Where a question type's answer value lives. The product only creates `mcq`,
+ * `true_false` and `open` today, but every enum member is listed so a new type
+ * cannot be added without deciding how its answers are validated (#1161).
+ */
+const ANSWER_VALUE_KIND: Record<QuestionType, 'option' | 'text'> = {
+  mcq: 'option',
+  true_false: 'option',
+  multi_select: 'option',
+  matching: 'option',
+  ordering: 'option',
+  open: 'text',
+  fill_in_blank: 'text',
+};
+
+/** One in-attempt question's answer key: its type and its own options (`id → is_correct`). */
+type AnswerKey = {
+  type: QuestionType;
+  options: Map<string, boolean>;
+};
+
+/**
+ * The first field of `answer` that does not fit its question, or null when it
+ * does. An option id that belongs to another question of the same attempt is
+ * malformed, not merely wrong: scoring it from `question_options.is_correct`
+ * alone awarded a question the student never answered (#1161).
+ */
+function answerValueIssue(
+  answer: QuizAnswerEntry,
+  key: AnswerKey | undefined,
+): { field: 'selectedAnswerId' | 'textAnswer'; message: ValidationErrorCode } | null {
+  const kind = key ? ANSWER_VALUE_KIND[key.type] : null;
+
+  if (answer.selectedAnswerId !== undefined) {
+    if (!key || kind !== 'option' || !key.options.has(answer.selectedAnswerId)) {
+      return { field: 'selectedAnswerId', message: ValidationErrorCode.INVALID_INPUT };
+    }
+  }
+
+  if (answer.textAnswer !== undefined && kind !== 'text') {
+    return { field: 'textAnswer', message: ValidationErrorCode.INVALID_INPUT };
+  }
+
+  return null;
+}
+
 /** One row of the attempt history: the list columns plus the gradable-question
  * denominator derived from the attempt snapshot (score is withheld — `null` —
  * for assignments whose results are hidden). */
@@ -83,13 +132,24 @@ export class QuizAttemptService {
    * per-question accuracy index (#204) and, on a practice attempt, adds to the
    * score. The attempt's own size is also the authoritative payload bound: with
    * every entry in-attempt, a longer sheet can only be junk.
+   *
+   * Each value is then checked against its *own* question: an option id must be
+   * one of that question's options and free text only fits a text-answer type
+   * (#1161). The check lives here, before scoring, completion or any insert, so
+   * a rejected sheet writes nothing on either path.
    */
   private async loadAnswerableAttempt(
     supabase: SupabaseClient<Database>,
     attemptId: string,
     userId: string,
     answers: readonly QuizAnswerEntry[],
-  ): Promise<ServiceResult<{ id: string; assignment_id: string | null }>> {
+  ): Promise<
+    ServiceResult<{
+      id: string;
+      assignment_id: string | null;
+      answerKeys: Map<string, AnswerKey>;
+    }>
+  > {
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
       .select('id, assignment_id, completed_at')
@@ -128,7 +188,37 @@ export class QuizAttemptService {
       ]);
     }
 
-    return success({ id: attempt.id, assignment_id: attempt.assignment_id });
+    // The answer keys come from one query for the whole sheet: every in-attempt
+    // question's type and its own option ids. Both draft and submit validate
+    // against it, so a draft can never hold a value submit would refuse (#1161).
+    const answerKeys = new Map<string, AnswerKey>();
+    if (answers.length > 0) {
+      const { data: questionRows, error: keysError } = await supabase
+        .from('questions')
+        .select('id, type, question_answers:question_options(id, is_correct)')
+        .in('id', [...allowedIds]);
+
+      if (keysError) return toDbFailure(keysError);
+
+      for (const question of dbRows(questionRows)) {
+        answerKeys.set(question.id, {
+          type: question.type,
+          options: new Map(
+            dbRows(question.question_answers).map((option) => [option.id, option.is_correct]),
+          ),
+        });
+      }
+    }
+
+    for (const [index, answer] of answers.entries()) {
+      const issue = answerValueIssue(answer, answerKeys.get(answer.questionId));
+      if (!issue) continue;
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['answers', index, issue.field], message: issue.message },
+      ]);
+    }
+
+    return success({ id: attempt.id, assignment_id: attempt.assignment_id, answerKeys });
   }
 
   async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
@@ -373,37 +463,19 @@ export class QuizAttemptService {
     let score = 0;
     const answerRecords = [];
     const awardedQuestions = new Set<string>();
-
-    // One lookup per submit so an `open` answer is stored as text (never as an
-    // option id) and only auto-graded types are scored (#176).
-    const questionIds = [...new Set(data.answers.map((a) => a.questionId))];
-    let questionTypeById = new Map<string, string>();
-    if (questionIds.length > 0) {
-      const { data: questionRows, error: questionsError } = await supabase
-        .from('questions')
-        .select('id, type')
-        .in('id', questionIds);
-
-      if (questionsError) return toDbFailure(questionsError);
-
-      questionTypeById = new Map(dbRows(questionRows).map((q) => [q.id, q.type]));
-    }
+    const { answerKeys } = attempt;
 
     for (const ans of data.answers) {
-      const questionType = questionTypeById.get(ans.questionId) ?? null;
-      const textAnswer = ans.textAnswer?.trim() || null;
-      // Fall back to "open iff text was sent" when the question row is missing.
-      const isOpen = questionType === 'open' || (questionType === null && textAnswer !== null);
+      const key = answerKeys.get(ans.questionId);
+      const questionType = key?.type ?? null;
+      // A text-answer type stores its answer as text and is never auto-graded;
+      // an option type is scored from the same key the gate validated (#176).
+      const isOpen = questionType !== null && ANSWER_VALUE_KIND[questionType] === 'text';
 
-      let isCorrect = false;
-      if (!isOpen && ans.selectedAnswerId) {
-        const { data: answer } = await supabase
-          .from('question_options')
-          .select('is_correct')
-          .eq('id', ans.selectedAnswerId)
-          .single();
-        isCorrect = answer?.is_correct ?? false;
-      }
+      const isCorrect =
+        !isOpen && ans.selectedAnswerId !== undefined
+          ? (key?.options.get(ans.selectedAnswerId) ?? false)
+          : false;
       if (isCorrect && !awardedQuestions.has(ans.questionId)) {
         // One row per question is the write contract (#1065) and the schema
         // rejects a repeated question id, so this only covers a caller that
@@ -416,7 +488,7 @@ export class QuizAttemptService {
         question_id: ans.questionId,
         question_type: questionType,
         selected_option_id: isOpen ? null : (ans.selectedAnswerId ?? null),
-        text_answer: isOpen ? textAnswer : null,
+        text_answer: isOpen ? ans.textAnswer?.trim() || null : null,
         is_correct: isCorrect,
       });
     }
