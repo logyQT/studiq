@@ -70,6 +70,7 @@ export default function QuizTakingPage() {
   const [loading, setLoading] = useState(true);
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | undefined>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   // Last payload body the server acknowledged (or that we seeded from).
   const lastSavedRef = useRef<string>('');
@@ -150,7 +151,11 @@ export default function QuizTakingPage() {
   }, [attemptId]);
 
   async function submitQuiz() {
-    if (!attempt) return;
+    if (!attempt || submitting) return;
+    // A double click must not send the sheet twice: the server now completes an
+    // attempt once (#1066), but the second request would still be refused and
+    // its toast would race the review redirect.
+    setSubmitting(true);
 
     // A queued autosave must not land (and 400/toast) after the redirect.
     pendingRef.current = null;
@@ -163,6 +168,8 @@ export default function QuizTakingPage() {
       await queryClient.invalidateQueries({ queryKey: quizAttemptKeys.all });
       router.push(`/app/study/session/quiz/${attemptId}/review`);
     } catch {
+      // Stay on the page so the student can retry, e.g. after a network failure.
+      setSubmitting(false);
       toast.error(t('submit_failed'));
     }
   }
@@ -260,8 +267,8 @@ export default function QuizTakingPage() {
               {t('next')} <ArrowRight data-icon="inline-end" />
             </Button>
           ) : (
-            <Button onClick={submitQuiz}>
-              {t('submit')} <Send data-icon="inline-end" />
+            <Button onClick={submitQuiz} disabled={submitting}>
+              {submitting ? t('submitting') : t('submit')} <Send data-icon="inline-end" />
             </Button>
           )}
         </CardFooter>

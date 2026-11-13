@@ -845,12 +845,13 @@ describe(`Stats Integration`, () => {
           question_id: healthyId,
           is_correct: index < 3, // 3/5 = 60 % → not problematic
         });
-        // Multi-select stores one row per chosen option: two rows per attempt
-        // must still count as ONE answer (bool_or), not two.
-        answers.push(
-          { attempt_id: attemptId, question_id: multiId, is_correct: index < 2 },
-          { attempt_id: attemptId, question_id: multiId, is_correct: false },
-        );
+        // One row per question per attempt is the storage contract
+        // (#1065/#1066), so a multi_select answer is one row here too.
+        answers.push({
+          attempt_id: attemptId,
+          question_id: multiId,
+          is_correct: index < 2,
+        });
         answers.push({
           attempt_id: attemptId,
           question_id: openId,
@@ -923,7 +924,7 @@ describe(`Stats Integration`, () => {
       expect(body.data.subject.byType).toEqual({ mcq: 2, multi_select: 1, open: 1 });
     });
 
-    it('counts a multi-row attempt once, not once per answer row', async () => {
+    it('counts one answer per attempt for a multi_select question', async () => {
       mockUser(pqTeacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher', undefined, {
@@ -934,7 +935,7 @@ describe(`Stats Integration`, () => {
 
       const multi = body.data.subject.problematicQuestions.find((q) => q.id === multiId);
       expect(multi).toBeDefined();
-      // 10 answer rows → 5 attempts, 2 of them correct.
+      // 5 attempts, one answer each, 2 of them correct.
       expect(multi?.totalAnswers).toBe(5);
       expect(multi?.correctRate).toBeCloseTo(0.4, 4);
     });

@@ -500,7 +500,11 @@ export class QuizAttemptService {
       });
     }
 
-    const { error: updateError } = await supabase
+    // The gate above is a read: two submits that start together both pass it.
+    // The `completed_at IS NULL` predicate makes the completion write the
+    // arbiter — exactly one request flips the attempt, and the loser must answer
+    // like any later re-submit (#1066).
+    const { data: completed, error: updateError } = await supabase
       .from('quiz_attempts')
       .update({
         score,
@@ -508,11 +512,20 @@ export class QuizAttemptService {
         // The graded rows below are the record from now on.
         draft_answers: {},
       })
-      .eq('id', data.attemptId);
+      .eq('id', data.attemptId)
+      .eq('user_id', ctx.userId)
+      .is('completed_at', null)
+      .select('id');
 
     if (updateError) return toDbFailure(updateError);
+    if (dbRows(completed).length === 0) return failure('BAD_REQUEST');
 
-    const { error: answersError } = await supabase.from('student_answers').insert(answerRecords);
+    // `UNIQUE (attempt_id, question_id)` is the storage guard for the one-row
+    // contract: a row the earlier partial write already stored is kept, so a
+    // retry finishes the sheet instead of failing on the key.
+    const { error: answersError } = await supabase
+      .from('student_answers')
+      .upsert(answerRecords, { onConflict: 'attempt_id,question_id', ignoreDuplicates: true });
 
     if (answersError) return toDbFailure(answersError);
 

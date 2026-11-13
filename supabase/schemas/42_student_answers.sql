@@ -23,9 +23,17 @@ CREATE TABLE public.student_answers (
   teacher_feedback     text,
   text_answer          text,
   submitted_position   int,
-  match_pair_id        uuid
+  match_pair_id        uuid,
+  -- Insert time; the #1066 duplicate collapse is ordered by it.
+  created_at           timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_student_answers_attempt ON public.student_answers(attempt_id);
 -- Per-question accuracy aggregation (#204).
 CREATE INDEX idx_student_answers_question ON public.student_answers(question_id);
+-- One row per question per attempt (#1066): a double submit cannot write a
+-- second answer sheet for the same question. `NULL` question ids stay
+-- unconstrained (Postgres treats NULLs as distinct), which keeps the
+-- `question_id` `ON DELETE SET NULL` path working.
+CREATE UNIQUE INDEX student_answers_attempt_question_key
+  ON public.student_answers(attempt_id, question_id);
