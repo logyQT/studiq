@@ -23,9 +23,9 @@ type QueryChain = {
   then: Promise<QueryResult>['then'];
 };
 
-function chain(result: unknown, count?: number) {
+function chain(result: unknown, count?: number, error: unknown = null) {
   const resolved: QueryResult =
-    count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
+    count !== undefined ? { data: result, count, error } : { data: result, error };
   const promise = Promise.resolve(resolved);
   const terminal = vi.fn().mockResolvedValue(resolved);
   const c: QueryChain = {
@@ -209,6 +209,19 @@ describe('SeatService', () => {
       if (result.success) return;
       expect(result.error).toBe('FORBIDDEN');
     });
+
+    it('refuses an unmapped plan_key before writing (#1145)', async () => {
+      // `assignSeat` refuses such a pool, so creating it only stores a row that
+      // can never hold a seat.
+      const result = await service.addPool(ctx, { planKey: 'not-a-plan', quantity: 2 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.details?.[0]?.path).toEqual(['planKey']);
+      expect(mock.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('updatePool', () => {
@@ -227,6 +240,56 @@ describe('SeatService', () => {
         total: 10,
         assigned: 0,
       });
+    });
+
+    it('refuses a total below the assigned count as 422, not a DB error (#1068)', async () => {
+      // The table's check constraint is the enforcement point: the write is
+      // atomic with it, so a concurrent assignment cannot slip through.
+      const write = chain(null, undefined, {
+        code: '23514',
+        message:
+          'new row for relation "org_seat_pools" violates check constraint "org_seat_pools_total_not_below_assigned"',
+      });
+      mock.from.mockReturnValueOnce(write);
+
+      const result = await service.updatePool(ctx, 'pool-1', { total: 0 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.message).toBe(ValidationErrorCode.TOO_SMALL);
+      expect(result.details?.[0]?.path).toEqual(['total']);
+      expect(write.update).toHaveBeenCalledWith({ total: 0 });
+    });
+
+    it('keeps an unrelated check violation a generic 400, not "total too small" (#1145)', async () => {
+      // A second CHECK on the table would report the same SQLSTATE; narrowing by
+      // constraint name keeps the 422 meaning the assigned-count floor only.
+      const write = chain(null, undefined, {
+        code: '23514',
+        message:
+          'new row for relation "org_seat_pools" violates check constraint "org_seat_pools_some_other_check"',
+      });
+      mock.from.mockReturnValueOnce(write);
+
+      const result = await service.updatePool(ctx, 'pool-1', { total: 0 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(result.details).toBeUndefined();
+    });
+
+    it('accepts a total equal to the assigned count', async () => {
+      const write = chain({ id: 'pool-1', plan_key: 'pro', total: 3, assigned: 3 });
+      mock.from.mockReturnValueOnce(write);
+
+      const result = await service.updatePool(ctx, 'pool-1', { total: 3 });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data).toEqual({ id: 'pool-1', planKey: 'pro', total: 3, assigned: 3 });
+      expect(write.update).toHaveBeenCalledWith({ total: 3 });
     });
 
     it('returns NOT_FOUND when pool does not exist', async () => {
@@ -250,20 +313,7 @@ describe('SeatService', () => {
     });
 
     it('returns INTERNAL_SERVER on DB error', async () => {
-      mock.from.mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({
-                  data: null,
-                  error: { message: 'DB error', code: 'XXX' },
-                }),
-              }),
-            }),
-          }),
-        }),
-      });
+      mock.from.mockReturnValueOnce(chain(null, undefined, { message: 'DB error', code: 'XXX' }));
 
       const result = await service.updatePool(ctx, 'pool-1', { total: 5 });
 
@@ -428,6 +478,107 @@ describe('SeatService', () => {
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('refuses a pool whose plan has no seat tier (#1068)', async () => {
+      // An unmapped plan key means the tier cannot be checked. Skipping the
+      // check is the fail-open path: refuse instead, before any profile read.
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'not-a-plan' }));
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a mismatched tier when the member lookup errors (#1068)', async () => {
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
+      mock.from.mockReturnValueOnce(chain({ email: 'teacher@test.com' }));
+      mock.from.mockReturnValueOnce(
+        chain(null, undefined, { message: 'member lookup failed', code: 'XXX' }),
+      );
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('reads a one-element org_roles embed and refuses the mismatched tier (#1068)', async () => {
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
+      mock.from.mockReturnValueOnce(chain({ email: 'teacher@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: [{ name: 'teacher' }] }));
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('assigns a matching member whose org_roles embed arrives as a one-element array (#1068)', async () => {
+      // The array shape must resolve to the member's tier, not to `undefined`:
+      // reading `.name` off the array refuses a legitimate seat.
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
+      mock.from.mockReturnValueOnce(chain({ email: 'member@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: [{ name: 'member' }] }));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(
+        chain({
+          id: 'assign-new',
+          user_id: input.userId,
+          pool_id: input.poolId,
+          assigned_at: '2024-01-01T00:00:00Z',
+        }),
+      );
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.planKey).toBe('pro');
+      expect(result.data.userId).toBe(input.userId);
+    });
+
+    it('refuses a member whose org role has no seat tier', async () => {
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
+      mock.from.mockReturnValueOnce(chain({ email: 'assistant@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'assistant' } }));
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('assigns to a target with no org membership (no role tier to contradict)', async () => {
+      // Seat features resolve through org membership, so this seat is inert
+      // until the target joins — the code base allows staging one.
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
+      mock.from.mockReturnValueOnce(chain({ email: 'outsider@test.com' }));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(
+        chain({
+          id: 'assign-new',
+          user_id: input.userId,
+          pool_id: input.poolId,
+          assigned_at: '2024-01-01T00:00:00Z',
+        }),
+      );
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.planKey).toBe('pro');
     });
 
     it('returns NOT_FOUND when user does not exist', async () => {
