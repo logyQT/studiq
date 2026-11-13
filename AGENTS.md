@@ -576,6 +576,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 - **Mock**: `vi.mock('@studiq/server/lib/supabase/server')` is registered in `__tests__/setup.ts` — unit tests override via the `mockSupabaseClient()` helper
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
+- **Playwright wait budgets** come from `playwright/base.ts` (`defineSuiteConfig`), merged into both the e2e and QA runners: 3 s per action and per `expect`, 6 s per navigation (a document load through the proxy's session refresh plus the dashboard redirect, measured at p99 2.2 s under load; CI's 4-vCPU runner exceeded 3 s). The per-test `timeout` (Playwright's 30 s in e2e, 90 s in QA) is a whole-flow budget, not a wait budget — a step that genuinely needs longer (a 5 s autosave debounce, a poll across several API round trips) overrides that single call with `{ timeout: … }` and a comment.
 - Tests run sequentially within files (`sequence.concurrent: false`); file-level parallelism is on (`fileParallelism: true`)
 - Coverage targets `packages/server/src/**/*.ts` (excludes `routes.config.ts`)
 - **Load testing**: `scripts/load-test/` — `seed.ts` provisions accounts via the Supabase Admin API; `bots.ts` drives concurrent role-based journeys (`--shards` spreads them over CPU cores). See `scripts/load-test/README.md`

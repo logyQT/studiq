@@ -114,7 +114,13 @@ async function ensureBank(page: Page, name: string): Promise<BankRow> {
   const existing = banks.items.find((bank) => bank.name === name);
   if (existing) return existing;
 
-  const response = await page.request.post('/api/v1/questions/banks', { data: { name } });
+  // One API round trip, not a UI step: CI's 4-vCPU runner put this call at the
+  // 3 s action budget in both full runs (43445896876, 43447812598), so it keeps
+  // an explicit request budget instead.
+  const response = await page.request.post('/api/v1/questions/banks', {
+    data: { name },
+    timeout: 10_000,
+  });
   expect(
     response.status(),
     `POST /api/v1/questions/banks (${name}) → ${response.status()} ${await response.text()}`,

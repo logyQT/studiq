@@ -58,7 +58,7 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
 
     const generate = page.getByRole('button', { name: t('AppFlashcardStudyPage.generate_quiz') });
     // `useFeature()` resolves asynchronously; the button stays disabled until then.
-    await expect(generate).toBeEnabled({ timeout: 30_000 });
+    await expect(generate).toBeEnabled();
     await generate.click();
 
     await page.waitForURL(QUIZ_TAKE_URL, { timeout: 60_000 });
@@ -86,7 +86,7 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
     expect(body.answers).toHaveLength(1);
     expect(body.answers[0]).toEqual({ questionId: expect.any(String), textAnswer: openAnswer });
 
-    await expect(page).toHaveURL(/\/review$/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/review$/);
     // `exact` matches the answer span only; the explanation block renders
     // "Wyjaśnienie: …" and is therefore not an exact match.
     await expect(page.getByText(openAnswer, { exact: true })).toBeVisible();
