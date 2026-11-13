@@ -1015,6 +1015,34 @@ describe('QuizAttemptService', () => {
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
+    it('rejects an option id that still sits on the open question itself (#1161)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      // Editing an mcq question to `open` keeps its old option rows (the update
+      // only replaces them when answers are sent), so the type has to refuse
+      // them and not only the option's question id.
+      mock.from.mockReturnValueOnce(
+        attemptQuestionsQb({ id: 'q-open', type: 'open', options: ['ans-1'] }),
+      );
+
+      const result = await service.submit(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-open', selectedAnswerId: 'ans-1' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) {
+        expect(result.details).toEqual([
+          {
+            code: 'custom',
+            path: ['answers', 0, 'selectedAnswerId'],
+            message: 'VALIDATION_INVALID_INPUT',
+          },
+        ]);
+      }
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
     it('rejects free text sent for a choice question (#1161)', async () => {
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1'] }));
