@@ -15,6 +15,7 @@ export interface SavedAnswer {
   questionId: string;
   selectedAnswerId?: string;
   textAnswer?: string;
+  skipped?: true;
 }
 
 /**
@@ -44,18 +45,19 @@ export function seedQuizAnswers(
 
 /**
  * Build the wire payload for both autosave and submit from the local state.
- * Iterates the questions so an unknown id can never be sent; empty values are
- * dropped, which also clears a previously saved answer.
+ * Iterates the questions so an unknown id can never be sent, and emits exactly
+ * one entry per question: an explicit `skipped` replaces a dropped entry, which
+ * is how a cleared answer removes the previously saved one (#1161).
  */
 export function toSaveAnswersPayload(
   questions: DraftQuestion[],
   answers: Record<string, string | undefined>,
 ): SavedAnswer[] {
-  return questions.flatMap((question): SavedAnswer[] => {
+  return questions.map((question): SavedAnswer => {
     const value = answers[question.id]?.trim();
-    if (!value) return [];
+    if (!value) return { questionId: question.id, skipped: true };
     return question.type === 'open'
-      ? [{ questionId: question.id, textAnswer: value }]
-      : [{ questionId: question.id, selectedAnswerId: value }];
+      ? { questionId: question.id, textAnswer: value }
+      : { questionId: question.id, selectedAnswerId: value };
   });
 }
