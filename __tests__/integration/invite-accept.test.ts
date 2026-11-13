@@ -443,6 +443,111 @@ describe(`Invite + accept regression (API-first)`, () => {
     expect(count).toBe(1);
   });
 
+  // #1067: the accept used to claim the token, then upsert the membership, then
+  // the default group — three writes with no transaction. A failure in the
+  // middle consumed the token without joining the user, and the retry answered
+  // 410. The three writes now live in one RPC, so this test forces the
+  // membership INSERT to fail (its user_id FK points at profiles, so removing
+  // the profile makes that write fail inside the function) and expects the
+  // invitation to survive it.
+  it('keeps the invitation usable when the membership write fails, and a retry joins (#1067)', async () => {
+    const fixture = await before({ role: 'manager', org: true });
+    createdOrgIds.push(fixture.orgId!);
+    const student = await createTestUser({ role: 'student' });
+    const { memberRoleId } = await roleIds(fixture.orgId!);
+
+    mockUser(fixture.user);
+    const inviteRes = await invitePost(
+      createNextRequest(
+        'http://localhost/api/v1/organization/invites',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: student.email, targetOrgRoleId: memberRoleId }),
+        },
+        { active_org_id: fixture.orgId! },
+      ),
+    );
+    expect(inviteRes.status).toBe(201);
+
+    const supabase = createTypedServiceClient();
+    const { data: invite } = await supabase
+      .from('invitations')
+      .select('token')
+      .eq('email', student.email)
+      .eq('organization_id', fixture.orgId!)
+      .single();
+    expect(invite).toBeTruthy();
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', student.id)
+      .single();
+    expect(profile).toBeTruthy();
+    const removed = await supabase.from('profiles').delete().eq('id', student.id);
+    expect(removed.error).toBeNull();
+
+    const accept = () => {
+      mockUser(student);
+      return acceptPost(
+        createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: invite!.token }),
+        }),
+      );
+    };
+
+    const failed = await accept();
+    // The membership INSERT hit its profiles FK; the whole function rolled back.
+    expect(failed.status).toBe(400);
+
+    const { data: afterFailure } = await supabase
+      .from('invitations')
+      .select('is_accepted')
+      .eq('token', invite!.token)
+      .single();
+    expect(afterFailure?.is_accepted).toBe(false);
+
+    const { count: membershipAfterFailure } = await supabase
+      .from('org_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', fixture.orgId!)
+      .eq('user_id', student.id);
+    expect(membershipAfterFailure).toBe(0);
+
+    // The transient cause is gone: the same token must now complete the join.
+    const restored = await supabase.from('profiles').insert(profile!);
+    expect(restored.error).toBeNull();
+
+    const retry = await accept();
+    expect(retry.status).toBe(200);
+
+    const { data: membership } = await supabase
+      .from('org_members')
+      .select('org_role_id')
+      .eq('organization_id', fixture.orgId!)
+      .eq('user_id', student.id)
+      .maybeSingle();
+    expect(membership?.org_role_id).toBe(memberRoleId);
+
+    const { data: groupMember } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('group_id', fixture.defaultGroupId!)
+      .eq('user_id', student.id)
+      .maybeSingle();
+    expect(groupMember).toBeTruthy();
+
+    const { data: consumed } = await supabase
+      .from('invitations')
+      .select('is_accepted')
+      .eq('token', invite!.token)
+      .single();
+    expect(consumed?.is_accepted).toBe(true);
+  });
+
   // End-to-end check for #182 (max_students was never enforced on accept). Note:
   // mockUser() uses a service-role client, so this cannot reproduce the RLS
   // blindness that caused it; that is covered by the unit test asserting the

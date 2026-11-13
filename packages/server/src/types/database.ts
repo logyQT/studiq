@@ -2414,6 +2414,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      accept_org_invitation: {
+        Args: { p_token: string; p_user_id: string };
+        Returns: { organization_id: string; organization_name: string; org_role_id: string }[];
+      };
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
       apply_entitlement_fenced: {
