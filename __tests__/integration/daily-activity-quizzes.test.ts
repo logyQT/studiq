@@ -1,8 +1,10 @@
 import type { Database } from '@studiq/server/types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
-import { type BeforeResult, before } from '#test/helpers/test-user';
+import { type BeforeResult, before, type TestUserFixture } from '#test/helpers/test-user';
 import {
+  cleanupOrganizationDeep,
   cleanupQuestions,
   cleanupQuizAttempts,
   mockUser,
@@ -86,6 +88,36 @@ async function readAttempt(id: string): Promise<QuizAttemptRow> {
   return data;
 }
 
+/** The aggregate row(s) of one user, read with the service role so RLS cannot hide the result. */
+async function readDailyActivity(userId: string): Promise<DailyActivityRow[]> {
+  const result = (await service
+    .from('user_daily_activity')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: true })) as ActivityQuery;
+  if (result.error) throw new Error(`Failed to read activity: ${result.error.message}`);
+  return result.data ?? [];
+}
+
+/**
+ * A client that carries a real access token for `email`, the way a browser does:
+ * requests then run under that user's RLS policies instead of the service role.
+ */
+async function signIn(
+  email: string,
+  password: string | undefined,
+): Promise<SupabaseClient<Database>> {
+  if (!password) throw new Error(`No password for ${email}`);
+  const client = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(`Sign-in failed for ${email}: ${error.message}`);
+  return client;
+}
+
 describe('user_daily_activity quiz counters (#1082)', () => {
   let student!: BeforeResult;
 
@@ -111,26 +143,16 @@ describe('user_daily_activity quiz counters (#1082)', () => {
     await cleanupQuestions(student.user.id, 'seed-question-');
   });
 
-  async function readActivity(): Promise<DailyActivityRow[]> {
-    const result = (await service
-      .from('user_daily_activity')
-      .select('*')
-      .eq('user_id', student.user.id)
-      .order('date', { ascending: true })) as ActivityQuery;
-    if (result.error) throw new Error(`Failed to read activity: ${result.error.message}`);
-    return result.data ?? [];
-  }
-
   it('books a submitted attempt once, with its real score, on the completion date', async () => {
     const attempt = await startAttempt(2);
 
     // The start alone is not a completion.
-    expect(await readActivity()).toHaveLength(0);
+    expect(await readDailyActivity(student.user.id)).toHaveLength(0);
 
     const score = await submitCorrect(attempt);
     expect(score).toBe(2);
 
-    const activity = await readActivity();
+    const activity = await readDailyActivity(student.user.id);
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({
       date: todayUtc(),
@@ -143,7 +165,7 @@ describe('user_daily_activity quiz counters (#1082)', () => {
   it('does not book an abandoned attempt', async () => {
     await startAttempt(2);
 
-    expect(await readActivity()).toHaveLength(0);
+    expect(await readDailyActivity(student.user.id)).toHaveLength(0);
   });
 
   it('applies a regrade as a score delta without touching count or total', async () => {
@@ -157,7 +179,7 @@ describe('user_daily_activity quiz counters (#1082)', () => {
       .eq('id', attempt.id);
     if (upError) throw new Error(`Failed to regrade up: ${upError.message}`);
 
-    let activity = await readActivity();
+    let activity = await readDailyActivity(student.user.id);
     expect(activity[0]).toMatchObject({
       quizzes_count: 1,
       quizzes_score: completed.score + 3,
@@ -170,7 +192,7 @@ describe('user_daily_activity quiz counters (#1082)', () => {
       .eq('id', attempt.id);
     if (downError) throw new Error(`Failed to regrade down: ${downError.message}`);
 
-    activity = await readActivity();
+    activity = await readDailyActivity(student.user.id);
     expect(activity[0]).toMatchObject({
       quizzes_count: 1,
       quizzes_score: 1,
@@ -184,7 +206,7 @@ describe('user_daily_activity quiz counters (#1082)', () => {
       .eq('id', attempt.id);
     if (stampError) throw new Error(`Failed to stamp grade: ${stampError.message}`);
 
-    activity = await readActivity();
+    activity = await readDailyActivity(student.user.id);
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({
       quizzes_count: 1,
@@ -208,7 +230,7 @@ describe('user_daily_activity quiz counters (#1082)', () => {
       .single();
     if (insertError) throw new Error(`Failed to insert attempt: ${insertError.message}`);
 
-    expect(await readActivity()).toHaveLength(0);
+    expect(await readDailyActivity(student.user.id)).toHaveLength(0);
 
     const { error: completeError } = await service
       .from('quiz_attempts')
@@ -216,13 +238,87 @@ describe('user_daily_activity quiz counters (#1082)', () => {
       .eq('id', inserted.id);
     if (completeError) throw new Error(`Failed to complete attempt: ${completeError.message}`);
 
-    const activity = await readActivity();
+    const activity = await readDailyActivity(student.user.id);
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({
       date: todayUtc(),
       quizzes_count: 1,
       quizzes_score: 1,
       quizzes_total: 1,
+    });
+  });
+});
+
+describe('user_daily_activity regrade under RLS (#1082)', () => {
+  let teacher!: BeforeResult;
+  let student!: TestUserFixture;
+  let teacherSession!: SupabaseClient<Database>;
+  let studentSession!: SupabaseClient<Database>;
+
+  beforeAll(async () => {
+    // The student is a member of the teacher's organisation, which is what the
+    // same-org `quiz_attempts` policy requires for the teacher's write. The
+    // activity row keeps its own-row-only write policy.
+    teacher = await before({ role: 'educator', org: true, members: { count: 1 } });
+    const [member] = teacher.memberUsers;
+    if (!member) throw new Error('Seed created no member for the teacher organisation');
+    student = member;
+
+    teacherSession = await signIn(teacher.email, teacher.user.password);
+    studentSession = await signIn(student.email, student.password);
+  });
+
+  beforeEach(async () => {
+    await cleanupQuizAttempts(student.id);
+    const { error } = await service.from('user_daily_activity').delete().eq('user_id', student.id);
+    if (error) throw new Error(`Failed to clear activity: ${error.message}`);
+  });
+
+  afterAll(async () => {
+    await cleanupQuizAttempts(student.id);
+    await service.from('user_daily_activity').delete().eq('user_id', student.id);
+    if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
+  });
+
+  // The trigger is SECURITY DEFINER so that this write — a teacher's regrade of a
+  // student's attempt — lands on the student's activity row. With INVOKER rights
+  // the activity UPDATE matches 0 rows and the delta is lost silently, which is
+  // exactly what the service-role regrade case above cannot see.
+  it('applies the delta when a teacher regrades a student attempt through RLS', async () => {
+    const { data: attempt, error: startError } = await studentSession
+      .from('quiz_attempts')
+      .insert({ user_id: student.id, score: 0, total_questions: 2 })
+      .select('id')
+      .single();
+    if (startError) throw new Error(`Failed to start attempt: ${startError.message}`);
+
+    const { error: completeError } = await studentSession
+      .from('quiz_attempts')
+      .update({ score: 1, completed_at: new Date().toISOString() })
+      .eq('id', attempt.id);
+    if (completeError) throw new Error(`Failed to complete attempt: ${completeError.message}`);
+
+    let activity = await readDailyActivity(student.id);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ quizzes_count: 1, quizzes_score: 1, quizzes_total: 2 });
+
+    // The update `TeacherAssignmentService.gradeAnswer` issues, carried by the
+    // teacher's access token rather than the service role the unit mock returns.
+    const { error: regradeError } = await teacherSession
+      .from('quiz_attempts')
+      .update({ score: 5, graded_at: new Date().toISOString() })
+      .eq('id', attempt.id);
+    if (regradeError) throw new Error(`Failed to regrade: ${regradeError.message}`);
+
+    // The attempt itself moved under RLS, so a missing delta is the trigger's failure.
+    expect((await readAttempt(attempt.id)).score).toBe(5);
+
+    activity = await readDailyActivity(student.id);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({
+      quizzes_count: 1,
+      quizzes_score: 5,
+      quizzes_total: 2,
     });
   });
 });
