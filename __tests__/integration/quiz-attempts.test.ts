@@ -699,6 +699,118 @@ describe(`Quiz Attempts Integration`, () => {
       expect(attempt?.completed_at).not.toBeNull();
     });
 
+    it('completes an attempt once when two submits race (#1066)', async () => {
+      mockUser(student.user);
+      const { options } = await loadAttemptAnswers();
+      const answers = oneAnswerPerQuestion(options);
+
+      // Same sheet, sent together: both requests read the attempt before either
+      // completes it, so the conditional completion write has to pick one.
+      const submitOnce = () =>
+        attemptPost(
+          createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers }),
+          }),
+          { params: Promise.resolve({ attemptId }) },
+        );
+
+      const responses = await Promise.all([submitOnce(), submitOnce()]);
+      const statuses = responses.map((response) => response.status).toSorted();
+
+      expect(statuses).toEqual([200, 400]);
+      const refused = responses.find((response) => response.status === 400);
+      expect(await json<ApiErrorPayload>(refused!)).toMatchObject({ success: false });
+
+      // One answer row per question, not one sheet per request.
+      const supabase = createServiceClient();
+      const { data: rows, error } = await supabase
+        .from('student_answers')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<{ question_id: string | null }[], { merge: false }>();
+      if (error) throw new Error(`Failed to read answers: ${error.message}`);
+      const stored = dbRows(rows);
+      expect(stored).toHaveLength(answers.length);
+      expect(new Set(stored.map((row) => row.question_id)).size).toBe(answers.length);
+
+      const { data: attempt } = await supabase
+        .from('quiz_attempts')
+        .select('completed_at')
+        .eq('id', attemptId)
+        .single()
+        .overrideTypes<{ completed_at: string | null }, { merge: false }>();
+      expect(attempt?.completed_at).not.toBeNull();
+
+      // A later submit is the ordinary re-submit refusal, not a third write.
+      const later = await submitOnce();
+      expect(later.status).toBe(400);
+      expect(await countStudentAnswers()).toBe(answers.length);
+    });
+
+    it('answers a re-submit with 400 and stores no second sheet (#1066)', async () => {
+      mockUser(student.user);
+      const { options } = await loadAttemptAnswers();
+      const answers = oneAnswerPerQuestion(options);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        },
+      );
+      expect((await attemptPost(request, { params })).status).toBe(200);
+      const storedAfterSubmit = await countStudentAnswers();
+
+      const repeat = () =>
+        attemptPost(
+          createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers }),
+          }),
+          { params: Promise.resolve({ attemptId }) },
+        );
+
+      const refused = await repeat();
+      expect(refused.status).toBe(400);
+      expect(await json<ApiErrorPayload>(refused)).toMatchObject({ success: false });
+      expect(await countStudentAnswers()).toBe(storedAfterSubmit);
+    });
+
+    it('refuses a duplicate answer row for the same question at the storage layer (#1066)', async () => {
+      const supabase = createServiceClient();
+      const { data: attemptQuestions } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
+      const questionId = requiredAt(attemptQuestions ?? [], 0, 'attempt question').question_id;
+
+      const row = {
+        attempt_id: attemptId,
+        question_id: questionId,
+        question_type: 'mcq' as const,
+        is_correct: false,
+      };
+
+      const { error: duplicateError } = await supabase
+        .from('student_answers')
+        .insert([row, { ...row, is_correct: true }]);
+      // The unique key is the storage enforcement of the one-row contract.
+      expect(duplicateError?.code).toBe('23505');
+
+      // The shape the service writes tolerates the repeat instead.
+      const { error: upsertError } = await supabase
+        .from('student_answers')
+        .upsert([row], { onConflict: 'attempt_id,question_id', ignoreDuplicates: true });
+      expect(upsertError).toBeNull();
+    });
+
     it('returns 400 when submitting already completed attempt', async () => {
       mockUser(student.user);
 
@@ -737,6 +849,8 @@ describe(`Quiz Attempts Integration`, () => {
 
       expect(response.status).toBe(400);
       expect(body.success).toBe(false);
+      // Same refusal as a raced loser, and no second sheet (#1066).
+      expect(await countStudentAnswers()).toBe(submittedAnswers.length);
     });
 
     it('returns 404 for nonexistent attempt', async () => {

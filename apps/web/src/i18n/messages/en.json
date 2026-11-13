@@ -3135,6 +3135,7 @@
     "previous": "Previous",
     "next": "Next",
     "submit": "Submit quiz",
+    "submitting": "Submitting…",
     "answer_placeholder": "Type your answer…",
     "type_mcq": "Multiple choice",
     "type_true_false": "True / False",

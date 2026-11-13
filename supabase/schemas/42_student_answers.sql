@@ -29,3 +29,8 @@ CREATE TABLE public.student_answers (
 CREATE INDEX idx_student_answers_attempt ON public.student_answers(attempt_id);
 -- Per-question accuracy aggregation (#204).
 CREATE INDEX idx_student_answers_question ON public.student_answers(question_id);
+-- One row per question per attempt (#1066): a double submit cannot write a
+-- second answer sheet for the same question. `NULL` attempt/question ids stay
+-- unconstrained, which keeps the `ON DELETE SET NULL` paths working.
+CREATE UNIQUE INDEX student_answers_attempt_question_key
+  ON public.student_answers(attempt_id, question_id);
