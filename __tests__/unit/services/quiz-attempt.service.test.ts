@@ -1393,6 +1393,30 @@ describe('QuizAttemptService', () => {
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
+    it('keeps the last value when a question is sent twice, and a later skip clears it (#1161)', async () => {
+      const updateQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(updateQb);
+
+      const result = await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+            { questionId: 'q-1', skipped: true },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).saved).toBe(0);
+      expect(updateQb.update).toHaveBeenCalledWith({ draft_answers: {} });
+    });
+
     it('leaves an explicitly skipped answer out of the draft (#1161)', async () => {
       const updateQb = qb(null);
 

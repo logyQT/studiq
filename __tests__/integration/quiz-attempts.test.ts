@@ -895,7 +895,7 @@ describe(`Quiz Attempts Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers: [{ questionId: 'not-a-uuid' }] }),
+          body: JSON.stringify({ answers: [{ questionId: 'not-a-uuid', skipped: true }] }),
         },
       );
       const response = await attemptPost(request, { params });

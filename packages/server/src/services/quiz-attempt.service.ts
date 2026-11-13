@@ -9,7 +9,7 @@ import {
 } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type {
@@ -129,12 +129,9 @@ export class QuizAttemptService {
     const questions = new Map<string, AnswerableQuestion>();
     for (const row of dbRows(attemptQuestions)) {
       allowedIds.add(row.question_id);
-      // PostgREST returns a to-one embed as an object; a deleted / RLS-hidden
-      // question has no type, and an answer to it cannot be gated.
-      const embed = row.questions as {
-        type?: string;
-        question_options?: { id: string }[];
-      } | null;
+      // PostgREST types a to-one embed as always present, but an RLS-hidden
+      // question arrives as null; an answer to it cannot be gated.
+      const embed = dbNested(row.questions);
       if (!embed?.type) continue;
       questions.set(row.question_id, {
         type: embed.type,
@@ -379,9 +376,12 @@ export class QuizAttemptService {
 
     const draft: Record<string, DraftAnswer> = {};
     for (const answer of data.answers) {
-      // A cleared answer must disappear from the full-state replace, not leave
-      // a key that only re-sends the skip.
-      if (answer.skipped) continue;
+      // A skip removes the key instead of writing it, so a cleared answer
+      // disappears from the full-state replace and the last entry still wins.
+      if (answer.skipped) {
+        delete draft[answer.questionId];
+        continue;
+      }
       draft[answer.questionId] = {
         selected_answer_id: answer.selectedAnswerId ?? null,
         text_answer: answer.textAnswer?.trim() || null,
