@@ -67,9 +67,11 @@ not in shelves. Bank names such as "8A — learning" remain a convenience, never
 3. **Grading a pre-exposed item requires an explicit declaration.** Accidental exposure is excluded
    from that student's sample by default; including it requires `taughtItem`, which is labelled and
    excluded from fairness statistics.
-4. **Reveal at close is unconditional**, except for a student who still holds an explicit same-item
-   retake; that student's items stay reserved and their review stays withheld until the retake is
-   used or expires. Fresh-sample retakes do not block anyone's reveal because the sample is disjoint.
+4. **Reveal at close is unconditional and has no attempt condition.** Attempts exist only inside the
+   window (amendment 6), so at `closesAt` nothing can leak through a retake: a fresh-sample retake is
+   disjoint by construction, and a same-item retake must also have been taken before close. There is
+   therefore no "review withheld because an attempt remains" state — an unused allowance expires at
+   close. Item-level withholding (R10) stays a deliberate teacher action, not an attempt gate.
 5. **An assessment has one window.** "Per class" scopes *who is sealed*, not when they finish. A
    single `opensAt`/`closesAt` removes the multi-class reveal ambiguity and the "8A is revealed while
    8B is still live" leak.
@@ -108,7 +110,7 @@ not in shelves. Bank names such as "8A — learning" remain a convenience, never
 | **Teacher** (bank owner) | author items, see keys/explanations, reserve, compose, grade, review | rely on discipline instead of enforcement |
 | **Colleague** (can read a shared bank) | include its items in an assessment they own (reserves them, owner notified) | edit the bank; see keys without `answers.read` |
 | **Manager** | override reservations, see fairness reports, resolve disputes, author makeups | unreserve a live class, un-reveal |
-| **Student** | practise open items, take assigned assessments, see their own score, read reviews after close | read a key for a sealed item, read classmates' answers, retake with the same items |
+| **Student** | practise open items, take assigned assessments, see their own score, read reviews after close | read a key for a sealed item, read classmates' answers, retake unless the teacher allowed it, retake the same set unless explicitly enabled |
 
 **Class** is the isolation unit for reservation and reveal. A student has one class per org context in
 this model. **Cohort** = the classes an assessment targets; a **makeup** is a separate assessment.
@@ -138,15 +140,16 @@ sealed(item, student) := exists active Reservation r where
 
 eligible(item, student) := not sealed(item, student)
     and no PracticeEvent(item, student)        // unless the assessment item is taughtItem
+    and no Answer(item, student)               // the student has never been shown it in an attempt
 
 // per assessment, per student
 canStartAttempt := now ∈ [opensAt, closesAt)
     and attemptsUsed < maxAttempts
     and no attempt in_progress
-    and not revealedToStudent
+    and eligibleInventory(student) is not empty
+
+// attempts exist only inside the window, so close leaves nothing outstanding
 reviewUnlocked(student) := now >= closesAt
-    and attemptsUsed >= maxAttempts            // no attempt left
-    and not (same-item retake still permitted)
 ```
 
 `retired` and `deleted` are authoring states, not time states: retired blocks new binding, deleted
@@ -172,14 +175,16 @@ it, reservations target the assessment's classes; with org-wide, all classes.
 payloads, or direct data reads (the last is a database-boundary rule in production). *Test:* the
 student payload contains no `correct`/`explanation` field at all (absent, not null).
 
-**R5 — Answers reveal at close, cohort-wide.** Immediately after submit a student sees `score` and
-per-item `correct: boolean` only. At `closesAt`, students with no remaining attempt see the key and
-the explanation. *Test:* review endpoint `403 REVIEW_LOCKED` before close; 200 after.
+**R5 — Answers reveal at close, cohort-wide, for everyone.** Immediately after submit a student sees
+`score` and per-item `correct: boolean` only. At `closesAt`, review unlocks for every student in the
+cohort — an unused attempt allowance simply expires (attempts cannot exist after close, R7). *Test:*
+review endpoint `403 REVIEW_LOCKED` before close; 200 for a student who used one of three attempts,
+and for one who used none.
 
-**R6 — A same-item retake withholds that student's review.** If the teacher allowed
-`allowSameItemRetake`, students who still hold an attempt keep their items sealed and their review
-withheld until the retake is used or expires. Fresh-sample retakes never block reveal. *Test:* the
-student with a remaining same-item retake gets `403`; the others get 200.
+**R6 — Same-item retakes are an in-window choice, not a review gate.** `allowSameItemRetake` lets a
+student retake the same set up to `maxAttempts` *before* close; it never withholds review afterwards.
+Fresh-sample retakes are the default. *Test:* both retake modes finish inside the window and review
+unlocks at close with no special case.
 
 **R7 — Retakes happen inside the window and draw a fresh sample.** Up to `maxAttempts`; an
 in-progress attempt at close expires, counts as consumed, and cannot be submitted. After close no new
@@ -196,9 +201,11 @@ scores, is labelled in results, and is excluded from fairness reporting. It does
 item during the window (R2/R4 still apply). *Test:* `taughtItem` is eligible despite a ledger event,
 the key is still hidden while live.
 
-**R10 — `withholdFromReview` keeps an item sealed after close** until the teacher releases it.
-*Test:* after close, the withheld item is absent from review and still sealed for that class; release
-makes it visible.
+**R10 — `withholdFromReview` keeps an item sealed after close** until the teacher (or a manager)
+explicitly releases it; item-level withholding outranks the automatic release at `closesAt`, and it
+keeps the item sealed for the targeted classes, not just hidden in the review payload. *Test:* after
+close the withheld item is absent from review and still sealed for that class; `POST
+/assessments/:id/items/:itemId/release` makes it visible and practiceable again.
 
 **R11 — Items are frozen at publish.** Editing an item after publish creates a new version; the
 assessment serves the published version. *Test:* edit bound item → live assessment unchanged; new
@@ -220,9 +227,11 @@ refuses items sealed for a class the exporter cannot see. Student exports never 
 student export request → `403`; teacher export includes the key.
 
 **R16 — Explanations are required for choice items and are the post-close teaching artefact.** Cap
-**2 040 characters**, minimum 80. Open-text items require a **model answer** (not a key explanation)
-and are either manually graded or `ungraded` in the MVP. *Test:* `PUT /items/:id` → `422` without
-them; review shows them.
+**2 040 characters**, minimum 80. Open-text items require a **model answer** (not a key explanation);
+until manual grading exists they are `ungraded` and excluded from both `earned` and `possible` (a
+submission with only open items yields `possible: 0` and a score of `null`, not `0`). *Test:*
+`PUT /items/:id` → `422` without them; review shows them; the score denominator excludes ungraded
+items.
 
 **R17 — Explanation text must not hand over an option.** Mechanical checks reject option
 letters/ordinals ("B", "druga odpowiedź") and verbatim option text (normalised, ≥ 12 chars). Guidance:
@@ -234,8 +243,8 @@ cannot be made to return a key.
 
 **R19 — Every refusal is a product state with a code**: `404` for an item sealed to you (identical to
 nonexistent, no oracle), `403 REVIEW_LOCKED`, `403 EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` /
-`409 NO_UNSEEN_ITEMS` / `409 ASSESSMENT_LIVE` / `409 ASSESSMENT_CLOSED` / `409 RESERVATION_CONFLICT`,
-`422` for explanation/model-answer rules.
+`409 NO_UNSEEN_ITEMS` / `409 ASSESSMENT_LIVE` / `409 ASSESSMENT_CLOSED` / `409 RELEASE_NOT_WITHHELD` /
+`409 RESERVATION_CONFLICT`, `422` for explanation/model-answer rules.
 
 **R20 — Managers may change windows but never unseal a live class.** Overrides shrink or extend
 windows, resolve conflicts and author makeups; they cannot release a live reservation or un-reveal.
@@ -249,7 +258,6 @@ windows, resolve conflicts and author makeups; they cannot release a live reserv
 | During an attempt | yes | **no** | **no** | no | no | no |
 | Submitted, window open | yes | **no** | **no** | score + `correct` flag | no | no |
 | Closed, review unlocked | yes | **yes** | **yes** | yes | own only | yes, n ≥ 5 |
-| Closed, blocked by a same-item retake | yes | **no** | **no** | score + flag | no | no |
 | Next cohort | derived per class | derived | derived | — | no | yes, n ≥ 5 |
 
 Screenshots, verbal sharing and shared devices are out of scope: the guarantee is "the system never
@@ -278,14 +286,15 @@ Start attempt → `in_progress` with items carrying no key. Linear, no feedback,
 bank. Submit → `score` + per-item `correct` boolean. Attempts only inside the window (R7).
 
 ### 5. Close and reveal
-`closesAt` (or an explicit close) → in-progress attempts expire; reservations end except withheld
-items (R10); review unlocks for students with no remaining attempt (R5/R6). Review shows key,
-explanation/model answer, "practise these" links.
+`closesAt` (or an explicit close, which sets `closesAt := now`) → in-progress attempts expire;
+reservations end except withheld items (R10); review unlocks for the whole cohort (R5). Review shows
+key, explanation/model answer, "practise these" links.
 
 ### 6. Retake
-Inside the window, up to `maxAttempts`, fresh sample of items with no ledger event for that student
-(R7). Same-item retake only when the teacher allowed it, and then that student's review is withheld
-(R6). After close, a makeup is a separate assessment.
+Inside the window, up to `maxAttempts`, a fresh sample of items with no ledger event and no prior
+answer for that student (R7). A same-item retake is possible only when the teacher allowed it and
+also happens before close; it never withholds review (R6). After close, a makeup is a separate
+assessment.
 
 ## Edge cases
 
@@ -318,23 +327,30 @@ POST   /practice/:bankId/answers   → {itemId, value}[] → open items: correct
                                      one ledger event; sealed item → 404, no event
 POST   /assessments/:id/attempts   → {attemptId, state:'in_progress', items:[{itemId, stem, type,
                                      options:[{id, content}]}]}
+                                     409 NO_UNSEEN_ITEMS when nothing eligible remains
 GET    /attempts/current           → 200 in-progress attempt or 404
 POST   /attempts/:id/submit        → {score:{earned,possible}, results:[{itemId, correct:boolean}]}
                                      second submit / after close → 409
-GET    /assessments/:id/review     → 403 REVIEW_LOCKED until close + no remaining attempt
-                                     (or 403 REVIEW_WITHHELD for a same-item retake); then
+GET    /assessments/:id/review     → 403 REVIEW_LOCKED until close; then
                                      {items:[{itemId, correct, explanation?, modelAnswer?}]}
 POST   /assessments/:id/retake     → fresh sample; 409 NO_UNSEEN_ITEMS / 409 ATTEMPTS_CLOSED
-POST   /assessments/:id/close      → expires in-progress attempts, ends reservations
+POST   /assessments/:id/close      → sets closesAt := now, expires in-progress attempts, ends
+                                     reservations (withheld items stay sealed)
+POST   /assessments/:id/items/:itemId/release → releases a withholdFromReview item (teacher/manager);
+                                     409 RELEASE_NOT_WITHHELD otherwise
 POST   /assessments/:id/publish    → requires acknowledgement when cross-class exposure exists;
                                      409 without it
 PUT    /items/:id                  → 422 for explanation/model-answer rules (field paths)
 GET    /items/:id/ledger           → staff: exposure events + pre-exposed counts
 ```
 
-Errors: `404` sealed-or-nonexistent (no oracle), `403 REVIEW_LOCKED` / `REVIEW_WITHHELD` /
-`EXPORT_FORBIDDEN`, `409 ATTEMPTS_CLOSED` / `NO_UNSEEN_ITEMS` / `ASSESSMENT_LIVE` /
-`ASSESSMENT_CLOSED` / `RESERVATION_CONFLICT`, `422` with per-field paths.
+Errors: `404` sealed-or-nonexistent (no oracle), `403 REVIEW_LOCKED` / `EXPORT_FORBIDDEN`,
+`409 ATTEMPTS_CLOSED` / `NO_UNSEEN_ITEMS` / `ASSESSMENT_LIVE` / `ASSESSMENT_CLOSED` /
+`RELEASE_NOT_WITHHELD` / `RESERVATION_CONFLICT`, `422` with per-field paths.
+
+Aggregates in review are computed over **submitted attempts in the cohort** and suppressed below
+**5 respondents**; a class of 12 may therefore show none. Bank payloads for students carry
+`heldCount` and `heldUntil` (R14), never item ids.
 
 An injectable clock (`now`) is part of the MVP contract so window boundaries are testable.
 
@@ -344,8 +360,8 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
 
 - **In-memory store + the contract handlers above**, mounted in the page; the UI calls the same
   functions the tests call. Nothing persists; reload resets.
-- **Account switcher**: Teacher A (owner), Teacher B (colleague), Manager, Student 8A/1, 8A/2, 8B/1.
-  No auth.
+- **Account switcher**: Teacher A (owner), Teacher B (colleague), Manager, Student 8A/1, 8A/2,
+  8B/1, 8C/1. No auth.
 - **Seed**: 3 classes (8A, 8B, 8C), ~20 items across 2 banks, one scheduled assessment for 8A.
 - **Screens**: Bank (items with derived sealed state, author form with explanation rules), Practice,
   Composer (classes, window, attempts, sampling forecast, warnings, flags), Take, Results/Review,
@@ -355,9 +371,9 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
   2. Practising writes a ledger event; publish shows pre-exposed counts and blocks without
      acknowledgement.
   3. Submit → score + flags only; review locked until close; advancing the clock unlocks it.
-  4. Close → review reveals key/explanation; withheld items stay sealed and absent.
+  4. Close → review reveals key/explanation; withheld items stay sealed and absent until released.
   5. Retake inside the window draws a disjoint sample; after close → `ATTEMPTS_CLOSED`.
-  6. Same-item retake leaves that student's review withheld.
+  6. A same-item retake is possible in-window and does **not** withhold review at close.
   7. Edit a sealed item → new version; the live assessment unchanged.
   8. Explanation validation: missing, too short, "B"/ordinal, verbatim option.
   9. Cross-class warning and the org-wide seal toggle.
@@ -371,7 +387,7 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
 4. Practice on a sealed item → 404, no event.
 5. Start attempt → `in_progress`, no key fields, stable `attemptId`; second start → 409.
 6. Submit → score + boolean per item; no key; second submit → 409; after close → 409.
-7. Review → 403 before close; 403 with a same-item retake outstanding; 200 otherwise.
+7. Review → 403 before close; 200 at close for every student, including one with an unused attempt.
 8. Close → review shows key/explanation; withheld item absent and still sealed.
 9. Retake draws a disjoint sample; exhausted inventory → 409 `NO_UNSEEN_ITEMS`.
 10. Publish without acknowledging cross-class exposure → 409/422; with it → per-class reservations;
@@ -385,7 +401,7 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
 1. A student payload for a sealed item contains no correct-answer field.
 2. A direct data read cannot return `is_correct` for a sealed item to a student (database boundary;
    see #1165).
-3. Review is unreachable before close or with a same-item retake outstanding.
+3. Review is unreachable before close; at close it unlocks for the whole cohort.
 4. Retakes never repeat an item the student has seen, unless explicitly allowed and flagged.
 5. Publish blocks on cross-class exposure and warns about pre-exposed items.
 6. Editing a bound item never changes a live assessment.
@@ -425,4 +441,4 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
   explanations to pay off?
 - Open-text grading: manual now, or `ungraded` until a rubric workflow exists?
 - Does the org-wide toggle need a manager approval, or is the teacher's acknowledgement enough?
-- Is a same-item retake worth shipping at all, given the review-withholding complexity it brings?
+- Is a same-item retake worth shipping at all, given it shows the same items twice inside one window?
