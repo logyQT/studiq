@@ -9,6 +9,18 @@ import { request as httpsRequest } from 'node:https';
  * No keep-alive agent is kept, so a read-only command exits immediately.
  */
 export function probeHttp(url: string, timeoutMs = 2000): Promise<number> {
+  return probeHttpWithHeaders(url, {}, timeoutMs);
+}
+
+/**
+ * The same probe with request headers, for authenticated read-only checks (the
+ * Grafana token validation). No response body is read: only the status matters.
+ */
+export function probeHttpWithHeaders(
+  url: string,
+  headers: Readonly<Record<string, string>>,
+  timeoutMs = 2000,
+): Promise<number> {
   return new Promise((resolve) => {
     let settled = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -34,12 +46,16 @@ export function probeHttp(url: string, timeoutMs = 2000): Promise<number> {
     }
 
     const request = parsed.protocol === 'https:' ? httpsRequest : httpRequest;
-    const req = request(parsed, { method: 'GET', timeout: timeoutMs, agent: false }, (res) => {
-      const code = res.statusCode ?? 0;
-      res.resume();
-      res.on('end', () => finish(code >= 100 && code <= 599 ? code : 0));
-      res.on('error', () => finish(0));
-    });
+    const req = request(
+      parsed,
+      { method: 'GET', timeout: timeoutMs, agent: false, headers },
+      (res) => {
+        const code = res.statusCode ?? 0;
+        res.resume();
+        res.on('end', () => finish(code >= 100 && code <= 599 ? code : 0));
+        res.on('error', () => finish(0));
+      },
+    );
     // `timeout` above is a socket *inactivity* timeout: a response that keeps
     // streaming data without ever ending resets it forever. This absolute
     // deadline bounds the whole request lifecycle.

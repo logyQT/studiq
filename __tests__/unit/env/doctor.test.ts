@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +10,7 @@ import {
   nonLoopbackIPv4,
   parseJsonObject,
   stackStatusFixture,
+  startGrafanaServer,
   startHttpServer,
   startTcpListener,
   stoppedStackFixture,
@@ -82,6 +83,102 @@ describe('env:doctor', () => {
     expect(report).toHaveProperty('observability.primaryReady');
     expect(report).toHaveProperty('observability.up');
     expect(JSON.stringify(report.observability)).toContain('docker compose up -d');
+  });
+
+  it('reports Grafana auth ok when the MCP token validates', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer({ token: 'glsa_valid' });
+    harness.track(() => fixture.close());
+    const dir = join(harness.dir, '.config', 'studiq', 'observability');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'grafana-mcp-token'), 'glsa_valid\n', { mode: 0o600 });
+    writeFileSync(
+      join(dir, 'grafana-mcp.json'),
+      JSON.stringify({
+        serviceAccountId: 1,
+        serviceAccountName: 'studiq-mcp',
+        role: 'Viewer',
+        tokenId: 7,
+        tokenName: 'mcp-test',
+        mintedAt: new Date().toISOString(),
+        url: fixture.url,
+      }),
+      { mode: 0o600 },
+    );
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'ok');
+    expect(report).toHaveProperty('observability.serviceAccount', 'studiq-mcp');
+    expect(report).toHaveProperty('observability.tokenFile', join(dir, 'grafana-mcp-token'));
+  });
+
+  it('reports a missing Grafana MCP token without failing doctor', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer();
+    harness.track(() => fixture.close());
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'no-token');
+    expect(report.ok).toBe(true);
+    expect(report.problems).toEqual([]);
+
+    // The remediation must name the command that mints: `status` (the default
+    // mode) prints the same line but never creates a token.
+    const text = await harness.run(['doctor'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+    expect(text.stdout).toContain('bun run env:observability ensure');
+  });
+
+  it('reports a stale token when the token file cannot be read', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer({ token: 'glsa_valid' });
+    harness.track(() => fixture.close());
+    const dir = join(harness.dir, '.config', 'studiq', 'observability');
+    // A directory at the token path reproduces EISDIR deterministically; chmod
+    // 000 is not reliable under root, where CI may run.
+    mkdirSync(join(dir, 'grafana-mcp-token'), { recursive: true });
+    writeFileSync(
+      join(dir, 'grafana-mcp.json'),
+      JSON.stringify({
+        serviceAccountId: 1,
+        serviceAccountName: 'studiq-mcp',
+        role: 'Viewer',
+        tokenId: 7,
+        tokenName: 'mcp-test',
+        mintedAt: new Date().toISOString(),
+        url: fixture.url,
+      }),
+      { mode: 0o600 },
+    );
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'stale-token');
   });
 
   it('does not warn about a missing registry directory', async () => {
