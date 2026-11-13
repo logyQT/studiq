@@ -1,12 +1,59 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
-/** One answer the student gave during the attempt — shared by submit and draft save. */
-export const QuizAnswerEntrySchema = z.object({
+/**
+ * One answer the student gave during the attempt — shared by submit and draft
+ * save. The value is exactly one kind (#1161): an option choice, free text, or
+ * an explicit skip.
+ */
+const QuizAnswerValueSchema = z.object({
   questionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   selectedAnswerId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   textAnswer: z.string().trim().max(10000, { error: ValidationErrorCode.TOO_LONG }).optional(),
+  /** Explicitly unanswered: no `student_answers` row, no draft key, no score (#1161). */
+  skipped: z.literal(true, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
 });
+
+/**
+ * Scoring trusts the answer value it is handed, so an entry carrying two kinds
+ * of value (or none) has no single answer to score. Refusing it here keeps both
+ * write paths on one shape instead of guessing which field wins (#1161).
+ */
+function requireOneAnswerKind(answer: z.infer<typeof QuizAnswerValueSchema>, ctx: z.RefinementCtx) {
+  const kinds = [
+    answer.selectedAnswerId !== undefined,
+    answer.textAnswer !== undefined,
+    answer.skipped === true,
+  ].filter(Boolean).length;
+
+  if (kinds === 0) {
+    ctx.addIssue({ code: 'custom', message: ValidationErrorCode.REQUIRED });
+    return;
+  }
+
+  if (kinds > 1) {
+    // When an option came with free text, name the field the contract pairs
+    // with the question's type; any other mix is ambiguous as a whole.
+    const path =
+      answer.selectedAnswerId !== undefined && answer.textAnswer !== undefined
+        ? ['textAnswer']
+        : [];
+    ctx.addIssue({ code: 'custom', path, message: ValidationErrorCode.INVALID_INPUT });
+    return;
+  }
+
+  // `textAnswer` is trimmed, so this also covers whitespace-only input. A
+  // cleared answer is `skipped`; an empty string is not an answer.
+  if (answer.textAnswer?.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['textAnswer'],
+      message: ValidationErrorCode.REQUIRED,
+    });
+  }
+}
+
+export const QuizAnswerEntrySchema = QuizAnswerValueSchema.superRefine(requireOneAnswerKind);
 
 export type QuizAnswerEntry = z.infer<typeof QuizAnswerEntrySchema>;
 
