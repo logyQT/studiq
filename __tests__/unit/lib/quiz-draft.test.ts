@@ -47,26 +47,64 @@ describe('seedQuizAnswers (#349)', () => {
   });
 });
 
-describe('toSaveAnswersPayload (#349)', () => {
-  it('sends option ids for choice questions and text for open ones', () => {
+describe('toSaveAnswersPayload (#349, #1161)', () => {
+  it('sends option ids for choice questions, text for open ones, and a skip for the rest', () => {
     expect(toSaveAnswersPayload(questions, { 'q-mcq': 'ans-1', 'q-open': 'Wisła' })).toEqual([
       { questionId: 'q-mcq', selectedAnswerId: 'ans-1' },
       { questionId: 'q-open', textAnswer: 'Wisła' },
+      { questionId: 'q-unanswered', skipped: true },
     ]);
   });
 
-  it('trims values and drops empty answers', () => {
+  it('trims values and marks whitespace-only answers skipped', () => {
     expect(toSaveAnswersPayload(questions, { 'q-mcq': '  ans-1  ', 'q-open': '   ' })).toEqual([
       { questionId: 'q-mcq', selectedAnswerId: 'ans-1' },
+      { questionId: 'q-open', skipped: true },
+      { questionId: 'q-unanswered', skipped: true },
     ]);
   });
 
   it('ignores ids that are not part of the attempt', () => {
-    expect(toSaveAnswersPayload(questions, { 'q-stranger': 'ans-9' })).toEqual([]);
+    expect(toSaveAnswersPayload(questions, { 'q-stranger': 'ans-9' })).toEqual([
+      { questionId: 'q-mcq', skipped: true },
+      { questionId: 'q-open', skipped: true },
+      { questionId: 'q-unanswered', skipped: true },
+    ]);
   });
 
-  it('produces an empty list for freshly loaded state', () => {
-    expect(toSaveAnswersPayload(questions, {})).toEqual([]);
+  it('produces a skip for every question in freshly loaded state', () => {
+    expect(toSaveAnswersPayload(questions, {})).toEqual([
+      { questionId: 'q-mcq', skipped: true },
+      { questionId: 'q-open', skipped: true },
+      { questionId: 'q-unanswered', skipped: true },
+    ]);
+  });
+
+  it('emits one entry per question in question order for a mixed answer set', () => {
+    const mixed = [
+      { id: 'q-a', type: 'mcq' },
+      { id: 'q-b', type: 'open' },
+      { id: 'q-c', type: 'true_false' },
+      { id: 'q-d', type: 'open' },
+    ];
+
+    // Insertion order deliberately disagrees with question order.
+    const answers = { 'q-c': 'opt-c', 'q-b': 'Wisła' };
+
+    expect(toSaveAnswersPayload(mixed, answers)).toEqual([
+      { questionId: 'q-a', skipped: true },
+      { questionId: 'q-b', textAnswer: 'Wisła' },
+      { questionId: 'q-c', selectedAnswerId: 'opt-c' },
+      { questionId: 'q-d', skipped: true },
+    ]);
+  });
+
+  it('replaces a stored answer with a skip once the student clears it', () => {
+    const stored = toSaveAnswersPayload(questions, { 'q-mcq': 'ans-1' });
+    const cleared = toSaveAnswersPayload(questions, { 'q-mcq': '' });
+
+    expect(stored).toContainEqual({ questionId: 'q-mcq', selectedAnswerId: 'ans-1' });
+    expect(cleared).toContainEqual({ questionId: 'q-mcq', skipped: true });
   });
 
   it('sends a UUID-shaped open answer as text, never as an option id (#320)', () => {
@@ -86,6 +124,7 @@ describe('toSaveAnswersPayload (#349)', () => {
     expect(toSaveAnswersPayload(questions, seedQuizAnswers(questions, answers))).toEqual([
       { questionId: 'q-mcq', selectedAnswerId: 'ans-1' },
       { questionId: 'q-open', textAnswer: 'Wisła' },
+      { questionId: 'q-unanswered', skipped: true },
     ]);
   });
 });
