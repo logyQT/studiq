@@ -19,8 +19,8 @@ async function loginAsManager(page: import('@playwright/test').Page) {
   // first membership and pushes /manage. Wait for that arrival *and* for the
   // switcher to render the active org — that push races any navigation we make
   // before the org switch resolves (see manage-invites.spec.ts).
-  await page.waitForURL(/\/manage\/?$/, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible({ timeout: 30_000 });
+  await page.waitForURL(/\/manage\/?$/);
+  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 }
 
 /**
@@ -49,14 +49,14 @@ test.describe('Manager account and plan pages (#178)', () => {
 
     await invite.click();
 
-    await page.waitForURL(/\/manage\/invites$/, { timeout: 30_000 });
+    await page.waitForURL(/\/manage\/invites$/);
     await expect(page.locator('#email-0')).toBeVisible();
   });
 
   test('Konto opens the manager account page', async ({ page }) => {
     await openUserMenuAndPick(page, t('DashboardLayout.account'));
 
-    await page.waitForURL(/\/manage\/account$/, { timeout: 30_000 });
+    await page.waitForURL(/\/manage\/account$/);
     await expect(page.getByRole('heading', { name: t('AccountPage.title') })).toBeVisible();
     await expect(page.getByText(t('AccountPage.password_section'))).toBeVisible();
   });
@@ -64,7 +64,7 @@ test.describe('Manager account and plan pages (#178)', () => {
   test('Wybierz plan opens the manager plan page', async ({ page }) => {
     await openUserMenuAndPick(page, t('DashboardLayout.upgrade'));
 
-    await page.waitForURL(/\/manage\/upgrade$/, { timeout: 30_000 });
+    await page.waitForURL(/\/manage\/upgrade$/);
     await expect(page.getByRole('heading', { name: t('UpgradePage.title') })).toBeVisible();
 
     // The manager plan grid loaded. Assert on the cheapest paid CTA (a seeded

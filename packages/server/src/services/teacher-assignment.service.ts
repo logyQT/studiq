@@ -519,9 +519,14 @@ export class TeacherAssignmentService {
     return success(dbRows(attempts));
   }
 
+  /**
+   * The grading route addresses the attempt, not the student: `max_attempts`
+   * allows several attempts per `(assignment, user)`, so that pair is not a
+   * unique key (#1062).
+   */
   async getStudentAnswers(
     id: string,
-    studentId: string,
+    attemptId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
@@ -532,8 +537,8 @@ export class TeacherAssignmentService {
       .select(
         '*, quiz_attempt_questions(*, question:question_id(*, question_answers:question_options(*))), quiz_answers:student_answers(*), assignment_answer_images(*)',
       )
+      .eq('id', attemptId)
       .eq('assignment_id', id)
-      .eq('user_id', studentId)
       .maybeSingle();
 
     if (error) return toDbFailure(error);
@@ -555,21 +560,22 @@ export class TeacherAssignmentService {
 
   async gradeAnswer(
     id: string,
-    studentId: string,
+    attemptId: string,
     data: GradeAnswerInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
-    const { data: attempt } = await supabase
+    const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
-      .select('id, graded_at')
+      .select('id, graded_at, user_id')
+      .eq('id', attemptId)
       .eq('assignment_id', id)
-      .eq('user_id', studentId)
-      .single();
+      .maybeSingle();
 
-    if (!attempt) return failure('NOT_FOUND');
+    if (attemptError) return toDbFailure(attemptError);
+    if (!attempt?.user_id) return failure('NOT_FOUND');
     const firstGrade = !attempt.graded_at;
 
     // The bound is per question (`assignment_questions.points`), so it cannot
@@ -629,7 +635,9 @@ export class TeacherAssignmentService {
     if (gradeError) return toDbFailure(gradeError);
 
     // Every saved answer re-stamps `graded_at`; the student is told once, at the first grade.
-    if (firstGrade) await this.notifier.assignmentGraded({ assignmentId: id, studentId });
+    if (firstGrade) {
+      await this.notifier.assignmentGraded({ assignmentId: id, studentId: attempt.user_id });
+    }
 
     return success(null);
   }

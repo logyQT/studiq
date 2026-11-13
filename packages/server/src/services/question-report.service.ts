@@ -322,17 +322,10 @@ export class QuestionReportService {
     const report = await this.fetchAccessibleReport(id, ctx);
     if (!report) return failure('NOT_FOUND');
 
-    // Replying reopens a resolved thread for either participant (and the #276
-    // org admin). The message trigger then bumps `updated_at` + receipts.
-    if (report.status === 'resolved') {
-      const { error: reopenError } = await supabase
-        .from('question_reports')
-        .update({ status: 'open', resolved_at: null, resolved_by: null })
-        .eq('id', id);
-
-      if (reopenError) return toDbFailure(reopenError);
-    }
-
+    // Insert first: a reply the database rejects must not cost the thread its
+    // resolution. Replying reopens a resolved thread for either participant
+    // (and the #276 org admin); the message trigger then bumps `updated_at` +
+    // receipts.
     const { data: message, error } = await supabase
       .from('question_report_messages')
       .insert({ report_id: id, sender_id: ctx.userId, body: data.body })
@@ -340,6 +333,19 @@ export class QuestionReportService {
       .single();
 
     if (error) return toDbFailure(error);
+
+    if (report.status === 'resolved') {
+      // One statement clears both resolution fields, so the status/resolved_at
+      // CHECK constraint holds. Guarding on the column keeps the write a no-op
+      // if the thread was resolved again after the read above.
+      const { error: reopenError } = await supabase
+        .from('question_reports')
+        .update({ status: 'open', resolved_at: null, resolved_by: null })
+        .eq('id', id)
+        .eq('status', 'resolved');
+
+      if (reopenError) return toDbFailure(reopenError);
+    }
 
     // The other participant(s): the reporter or the recipient, whichever did not write it (an
     // org admin replying notifies both).

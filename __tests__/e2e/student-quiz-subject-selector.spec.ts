@@ -37,7 +37,7 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     const subjectSelect = page.getByRole('combobox', {
       name: t('AppFlashcardStudyPage.quiz_subject'),
     });
-    await expect(subjectSelect).toBeVisible({ timeout: 30_000 });
+    await expect(subjectSelect).toBeVisible();
     // Default is „Wszystkie przedmioty” (the sentinel item, not an empty value).
     await expect(subjectSelect).toContainText(t('AppFlashcardStudyPage.quiz_subject_placeholder'));
 
@@ -78,7 +78,7 @@ test.describe('Standalone quiz subject selector (#323)', () => {
 
     const generate = page.getByRole('button', { name: t('AppFlashcardStudyPage.generate_quiz') });
     // `useFeature()` resolves asynchronously; the button stays disabled until then.
-    await expect(generate).toBeEnabled({ timeout: 30_000 });
+    await expect(generate).toBeEnabled();
     await generate.click();
 
     const requestBody = asJson<{
@@ -104,6 +104,6 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     await expect(answerBox).toHaveCount(1);
     await answerBox.fill('QA-323 odpowiedź otwarta.');
     await page.getByRole('button', { name: t('AppQuizPage.submit') }).click();
-    await expect(page).toHaveURL(/\/review$/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/review$/);
   });
 });

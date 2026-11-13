@@ -525,19 +525,39 @@ describe('QuestionReportService', () => {
       expect(result.success).toBe(true);
     });
 
-    it('reopens a resolved report before inserting the message', async () => {
+    it('keeps the report resolved when the message insert fails', async () => {
+      const report = {
+        id: 'r-1',
+        reported_by: 'student-1',
+        teacher_id: 'teacher-1',
+        status: 'resolved',
+        resolved_at: '2024-01-02T00:00:00Z',
+        resolved_by: 'teacher-1',
+      };
+      // The rejected write is whichever one the service attempts first; a
+      // status update before the message lands is exactly the reported bug.
+      const failedWrite = qb(null, { code: '23514' });
+      mock.from.mockReturnValueOnce(qb(report)).mockReturnValue(failedWrite);
+
+      const result = await service.addMessage('r-1', { body: 'reply' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(failedWrite.update).not.toHaveBeenCalled();
+    });
+
+    it('inserts the reply first and only then reopens a resolved report', async () => {
       const report = {
         id: 'r-1',
         reported_by: 'student-1',
         teacher_id: 'teacher-1',
         status: 'resolved',
       };
-      const reopenQuery = qb(report);
       const insertQuery = qb({ id: 'm-1', body: 'reply' });
+      const reopenQuery = qb(report);
       mock.from
         .mockReturnValueOnce(qb(report))
-        .mockReturnValueOnce(reopenQuery)
-        .mockReturnValueOnce(insertQuery);
+        .mockReturnValueOnce(insertQuery)
+        .mockReturnValueOnce(reopenQuery);
 
       const result = await service.addMessage('r-1', { body: 'reply' }, ctx);
 
@@ -547,9 +567,9 @@ describe('QuestionReportService', () => {
         resolved_at: null,
         resolved_by: null,
       });
-      // Reopen lands before the insert (the trigger then bumps updated_at).
-      expect(reopenQuery.update.mock.invocationCallOrder[0]).toBeLessThan(
-        firstRecorded(insertQuery.insert.mock.invocationCallOrder, 'the insert call order'),
+      expect(reopenQuery.eq).toHaveBeenCalledWith('status', 'resolved');
+      expect(insertQuery.insert.mock.invocationCallOrder[0]).toBeLessThan(
+        firstRecorded(reopenQuery.update.mock.invocationCallOrder, 'the reopen call order'),
       );
     });
 

@@ -12,6 +12,7 @@ import {
   type UpdatePoolInput,
 } from '@studiq/server/models/seat.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ZodIssue } from 'zod';
 import type { Database } from '../types/database';
 
 /**
@@ -42,6 +43,34 @@ const ROLE_TIER_MAP: Record<string, string> = {
   teacher: 'educator',
   member: 'student',
 };
+
+/**
+ * A to-one embed (`org_roles!inner(name)`) is typed as an object, but the wire
+ * can deliver a one-element array for it (the guard `stripe-repository.ts` uses
+ * for the same relation on `org_members`). Read both shapes, because
+ * `undefined` here would skip the tier check (#1068).
+ */
+function embeddedRoleName(value: { name: string } | { name: string }[]): string | null {
+  const related = Array.isArray(value) ? value[0] : value;
+  return related?.name ?? null;
+}
+
+/**
+ * The table's `total >= assigned` check. PostgREST reports a check violation as
+ * `23514` without naming the constraint in a field of its own; the name is in
+ * the message, which is the only way to tell this one from the next CHECK added
+ * to the table.
+ */
+const TOTAL_FLOOR_CONSTRAINT = 'org_seat_pools_total_not_below_assigned';
+
+function isTotalFloorViolation(error: { code: string; message: string }): boolean {
+  return error.code === '23514' && error.message.includes(TOTAL_FLOOR_CONSTRAINT);
+}
+
+/** `total` below `assigned` would leave assignments that no longer fit the pool. */
+function totalTooSmallDetails(): ZodIssue[] {
+  return [{ code: 'custom', message: ValidationErrorCode.TOO_SMALL, path: ['total'] }];
+}
 
 export class SeatService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -75,6 +104,16 @@ export class SeatService {
     input: CreatePoolInput,
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
+    // `assignSeat` refuses a pool whose plan has no tier, so an unmapped key
+    // here would only create a pool that can never hold a seat. Refuse it at
+    // the door with the same map: a plan sold as a seat add-on has to be mapped
+    // there before its pool can be assigned from.
+    if (!PLAN_TIER_MAP[input.planKey]) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', message: ValidationErrorCode.INVALID_INPUT, path: ['planKey'] },
+      ]);
+    }
 
     const supabase = await this.clientFactory();
 
@@ -152,7 +191,18 @@ export class SeatService {
       .select('id, plan_key, total, assigned')
       .maybeSingle();
 
-    if (error) return toDbFailure(error);
+    if (error) {
+      // `assigned` is the floor: a smaller `total` orphans seats, drives
+      // `total - assigned` negative and leaves the pool permanently full
+      // (#1068). The table's check constraint rejects that in the same
+      // statement, so a concurrent assignment cannot slip between a read and
+      // this write; keep the response a 422 field error rather than the
+      // generic 400 an unrelated check violation maps to.
+      if (isTotalFloorViolation(error)) {
+        return failure('UNPROCESSABLE_ENTITY', totalTooSmallDetails());
+      }
+      return toDbFailure(error);
+    }
     if (!data) return failure('NOT_FOUND');
 
     return success({
@@ -243,6 +293,13 @@ export class SeatService {
     if (poolErr) return toDbFailure(poolErr);
     if (!pool) return failure('NOT_FOUND');
 
+    // Role-aware validation: the pool's plan tier must match the member's org
+    // role tier. Every unresolvable input refuses instead of skipping the check:
+    // skipping is what let a student-tier seat reach a teacher (#1068). A plan
+    // or role without a tier has to be added to the maps above to be assignable.
+    const poolTier = PLAN_TIER_MAP[pool.plan_key];
+    if (!poolTier) return failure('BAD_REQUEST');
+
     // Verify user exists
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
@@ -253,22 +310,24 @@ export class SeatService {
     if (profileErr) return toDbFailure(profileErr);
     if (!profile) return failure('NOT_FOUND');
 
-    // Role-aware validation: pool plan tier must match target user's org role tier
-    const poolTier = PLAN_TIER_MAP[pool.plan_key];
-    if (poolTier) {
-      const { data: member } = await supabase
-        .from('org_members')
-        .select('org_roles!inner(name)')
-        .eq('organization_id', ctx.activeOrgId)
-        .eq('user_id', input.userId)
-        .maybeSingle();
+    const { data: member, error: memberErr } = await supabase
+      .from('org_members')
+      .select('org_roles!inner(name)')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('user_id', input.userId)
+      .maybeSingle();
 
-      const roleName = member?.org_roles.name;
+    if (memberErr) return toDbFailure(memberErr);
+
+    // A target without an org membership holds no org role, so there is no tier
+    // to contradict; the seat grants nothing until they join (org features
+    // resolve through membership). Anything else resolves to a tier or refuses:
+    // an unmapped role, like an unmapped plan, is a refusal because skipping it
+    // is what let a student-tier seat reach a teacher (#1068).
+    if (member) {
+      const roleName = embeddedRoleName(member.org_roles);
       const userTier = roleName ? ROLE_TIER_MAP[roleName] : undefined;
-
-      if (userTier && userTier !== poolTier) {
-        return failure('BAD_REQUEST');
-      }
+      if (userTier !== poolTier) return failure('BAD_REQUEST');
     }
 
     // Check if user already has a seat in this org (will be caught by unique constraint, but let's be explicit)

@@ -336,7 +336,7 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
     // --- Step 4 (teacher view): the quiz answer and the report thread ---------
     await loginAs(page, TENANT, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
 
-    await page.goto(`/edu/assignments/${assignment.id}/results/${account(TENANT, 'student').id}`);
+    await page.goto(`/edu/assignments/${assignment.id}/results/${attempt.id}`);
     await expect(
       page
         .getByText(`Odpowiedź ucznia: ${PAYLOAD.script}`, { exact: true })

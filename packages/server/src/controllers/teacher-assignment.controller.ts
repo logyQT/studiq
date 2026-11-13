@@ -173,17 +173,17 @@ export class TeacherAssignmentController {
 
   async getStudentAnswers(
     id: string,
-    studentId: string,
+    attemptId: string,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    const result = await this.service.getStudentAnswers(id, studentId, ctx);
+    const result = await this.service.getStudentAnswers(id, attemptId, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async gradeAnswer(
     id: string,
-    studentId: string,
+    attemptId: string,
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
@@ -196,7 +196,7 @@ export class TeacherAssignmentController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.service.gradeAnswer(id, studentId, parsed.data, ctx);
+    const result = await this.service.gradeAnswer(id, attemptId, parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

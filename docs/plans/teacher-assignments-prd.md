@@ -78,7 +78,7 @@ CREATE TYPE assessment_status AS ENUM ('draft', 'published');
 ### 4. Teacher grades
 
 - `/edu/assessments/[id]/results` → table of students + scores
-- Click student → per-student grading page
+- Click an attempt → that attempt's grading page
 - **Per-question grading view** (vertical split):
   - Question content + correct answer at top
   - All students' answers listed below (text + uploaded images)
@@ -117,7 +117,7 @@ CREATE TYPE assessment_status AS ENUM ('draft', 'published');
 | `/edu/assessments/[id]`                        | Detail (manage + assign + publish)    |
 | `/edu/assessments/[id]/edit`                   | Edit (draft only)                     |
 | `/edu/assessments/[id]/results`                | Results table                         |
-| `/edu/assessments/[id]/results/[studentId]`    | Per-student grading                   |
+| `/edu/assessments/[id]/results/[attemptId]`    | Attempt grading (student answers)     |
 | `/edu/assessments/[id]/results/question/[qId]` | Per-question grading (vertical split) |
 | `/edu/assessments/[id]/print`                  | Print blank test                      |
 | `/edu/assessments/settings`                    | Teacher's PDF defaults                |
@@ -149,8 +149,8 @@ Follow existing patterns (POST/GET/PUT/DELETE, controller → service → supaba
 | POST   | `/api/v1/teacher/assessments/[id]/randomize`                 | Randomize + add       |
 | PUT    | `/api/v1/teacher/assessments/[id]/targets`                   | Set targets           |
 | GET    | `/api/v1/teacher/assessments/[id]/results`                   | Results overview      |
-| GET    | `/api/v1/teacher/assessments/[id]/results/[studentId]`       | Student answers       |
-| PUT    | `/api/v1/teacher/assessments/[id]/results/[studentId]/grade` | Grade open questions  |
+| GET    | `/api/v1/teacher/assessments/[id]/results/[attemptId]`       | Attempt answers       |
+| PUT    | `/api/v1/teacher/assessments/[id]/results/[attemptId]/grade` | Grade open questions  |
 | GET    | `/api/v1/teacher/assessments/[id]/export-answers`            | Download archival PDF |
 | GET    | `/api/v1/assessments`                                        | Student list          |
 | GET    | `/api/v1/assessments/[id]`                                   | Student detail        |
