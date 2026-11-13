@@ -20,12 +20,16 @@ async function loginAndOpenMembers(page: Page) {
 
   // Registered right before the navigation that triggers them: the login above
   // is the flow's slow part, and a response wait spanning it would be a
-  // per-action budget in name only.
+  // per-action budget in name only. Each wait covers the page mount plus one API
+  // round trip, so it gets a request budget: Firefox on CI's 4-vCPU runner
+  // exceeded the 3 s action budget here (run 43449364966).
   const membersLoaded = page.waitForResponse(
     (res) => res.url().includes(MEMBERS_URL) && res.request().method() === 'GET' && res.ok(),
+    { timeout: 10_000 },
   );
   const rolesLoaded = page.waitForResponse(
     (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
+    { timeout: 10_000 },
   );
   await page.goto('/manage/members');
   await page.waitForURL(/\/manage\/members$/);

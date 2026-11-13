@@ -23,9 +23,11 @@ async function loginAndOpenInvites(page: import('@playwright/test').Page) {
 
   // Registered right before the navigation that triggers it: the login above is
   // the flow's slow part, and a response wait spanning it would be a per-action
-  // budget in name only.
+  // budget in name only. The wait covers the page mount plus one API round trip,
+  // so it gets a request budget rather than the 3 s action budget.
   const rolesLoaded = page.waitForResponse(
     (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
+    { timeout: 10_000 },
   );
   await page.goto('/manage/invites');
 
