@@ -1069,9 +1069,10 @@ $$;
 -- ==========================================
 -- get_teacher_problematic_questions (#204, EDU-ST-02)
 -- Per-question accuracy for the caller's own questions, aggregated in SQL so
--- the PostgREST 1000-row cap cannot truncate the answer sample. One answer per
--- (attempt, question) via bool_or, matching the submit scoring rule; `open`
--- questions are excluded because an ungraded row is `is_correct = false`.
+-- the PostgREST 1000-row cap cannot truncate the answer sample. One row per
+-- (attempt, question) is the storage contract (#1065), so the `bool_or`
+-- grouping only matters for rows written before it; `open` questions are
+-- excluded because an ungraded row is `is_correct = false`.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_teacher_problematic_questions(
@@ -1505,3 +1506,93 @@ BEGIN
   RETURN result;
 END;
 $$;
+
+-- ==========================================
+-- accept_org_invitation(token, user) (#1067)
+-- Claim the invitation, upsert the membership and join the default group in one
+-- transaction. The token is claimed first (`SELECT … FOR UPDATE` + `UPDATE`) so
+-- concurrent accepts still produce exactly one membership, and the claim rolls
+-- back with the membership when any later step fails — otherwise a transient DB
+-- error burned the token without joining the invitee. Service role only.
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION public.accept_org_invitation(p_token text, p_user_id uuid)
+RETURNS TABLE (organization_id uuid, organization_name text, org_role_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_invite   public.invitations%ROWTYPE;
+  v_org_name text;
+  v_group_id uuid;
+BEGIN
+  SELECT i.* INTO v_invite
+  FROM public.invitations i
+  WHERE i.token = p_token
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- `IS TRUE` (not `<> false`) is null-safe: a legacy NULL row is still claimable
+  -- and a claimed one is not.
+  IF v_invite.is_accepted IS TRUE THEN
+    RETURN;
+  END IF;
+
+  IF v_invite.expires_at < now() THEN
+    RETURN;
+  END IF;
+
+  IF v_invite.organization_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- A target role from another organization would grant that tenant's scopes.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.org_roles r
+    WHERE r.id = v_invite.target_org_role_id
+      AND r.organization_id = v_invite.organization_id
+  ) THEN
+    RETURN;
+  END IF;
+
+  SELECT o.name INTO v_org_name
+  FROM public.organizations o
+  WHERE o.id = v_invite.organization_id;
+
+  IF v_org_name IS NULL THEN
+    RETURN;
+  END IF;
+
+  UPDATE public.invitations
+  SET is_accepted = true
+  WHERE id = v_invite.id;
+
+  INSERT INTO public.org_members (organization_id, user_id, org_role_id)
+  VALUES (v_invite.organization_id, p_user_id, v_invite.target_org_role_id)
+  -- Named constraint (not a column list): the OUT parameter `organization_id`
+  -- makes the bare conflict target ambiguous inside plpgsql.
+  ON CONFLICT ON CONSTRAINT org_members_organization_id_user_id_key
+  DO UPDATE SET org_role_id = EXCLUDED.org_role_id;
+
+  SELECT g.id INTO v_group_id
+  FROM public.groups g
+  WHERE g.organization_id = v_invite.organization_id
+    AND g.is_default;
+
+  IF v_group_id IS NOT NULL THEN
+    INSERT INTO public.group_members (group_id, user_id, role)
+    VALUES (v_group_id, p_user_id, 'member')
+    ON CONFLICT ON CONSTRAINT group_members_group_id_user_id_key DO NOTHING;
+  END IF;
+
+  RETURN QUERY SELECT v_invite.organization_id, v_org_name, v_invite.target_org_role_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.accept_org_invitation(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.accept_org_invitation(text, uuid) TO service_role;

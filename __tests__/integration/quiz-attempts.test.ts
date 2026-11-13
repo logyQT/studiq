@@ -36,7 +36,43 @@ interface AttemptOptionRow {
   id: string;
   question_id: string;
 }
+/** `question_options` row that also carries the key, for tests that need a known-correct pick. */
+interface CorrectableOptionRow extends AttemptOptionRow {
+  is_correct: boolean;
+}
 type OpenQuestionRow = Pick<Database['public']['Tables']['questions']['Row'], 'id'>;
+
+/** One answer per attempt question: `submit` refuses a repeated question id (#1065). */
+function oneAnswerPerQuestion(options: AttemptOptionRow[]): {
+  questionId: string;
+  selectedAnswerId: string;
+}[] {
+  const firstOptionByQuestion = new Map<string, string>();
+  for (const option of options) {
+    if (!firstOptionByQuestion.has(option.question_id)) {
+      firstOptionByQuestion.set(option.question_id, option.id);
+    }
+  }
+  return [...firstOptionByQuestion].map(([questionId, selectedAnswerId]) => ({
+    questionId,
+    selectedAnswerId,
+  }));
+}
+
+/** The id of the `question_options` row the fixtures mark correct for `questionId`. */
+async function loadCorrectOptionId(questionId: string): Promise<string> {
+  const supabase = createServiceClient();
+  const { data: option } = await supabase
+    .from('question_options')
+    .select('id')
+    .eq('question_id', questionId)
+    .eq('is_correct', true)
+    .limit(1)
+    .maybeSingle()
+    .overrideTypes<{ id: string }, { merge: false }>();
+  if (!option) throw new Error(`question ${questionId} has no correct option`);
+  return option.id;
+}
 
 /** Fields of `GET /api/v1/quiz/[attemptId]` the assertions below read. */
 interface QuizAnswerPayload {
@@ -75,9 +111,10 @@ interface AttemptListPayload {
   }[];
 }
 
-/** Error bodies only assert the envelope. */
+/** Error bodies only assert the envelope (plus the app error code where it matters). */
 interface ApiErrorPayload {
   success: boolean;
+  error?: string;
 }
 
 interface QuizCreatePayload {
@@ -255,10 +292,7 @@ describe(`Quiz Attempts Integration`, () => {
         )
         .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
-      const submittedAnswers = answers!.map((a) => ({
-        questionId: a.question_id,
-        selectedAnswerId: a.id,
-      }));
+      const submittedAnswers = oneAnswerPerQuestion(answers!);
 
       const { request: submitRequest, params: submitParams } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz/${attemptId}`,
@@ -314,10 +348,7 @@ describe(`Quiz Attempts Integration`, () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          answers: (options ?? []).map((o) => ({
-            questionId: o.question_id,
-            selectedAnswerId: o.id,
-          })),
+          answers: oneAnswerPerQuestion(options ?? []),
         }),
       });
       const submitRes = await attemptPost(submitReq, { params: Promise.resolve({ attemptId }) });
@@ -373,10 +404,7 @@ describe(`Quiz Attempts Integration`, () => {
         )
         .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
-      const submittedAnswers = answers!.map((a) => ({
-        questionId: a.question_id,
-        selectedAnswerId: a.id,
-      }));
+      const submittedAnswers = oneAnswerPerQuestion(answers!);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz/${attemptId}`,
@@ -395,7 +423,7 @@ describe(`Quiz Attempts Integration`, () => {
       expect(body.data.score).toBeDefined();
     });
 
-    it('persists an open answer as text and submits (#176)', async () => {
+    it('refuses an answer for a question outside the attempt and stores nothing (#1065)', async () => {
       mockUser(student.user);
 
       const supabase = createServiceClient();
@@ -408,39 +436,69 @@ describe(`Quiz Attempts Integration`, () => {
         .maybeSingle()
         .overrideTypes<
           Pick<Database['public']['Tables']['question_banks']['Row'], 'id'>,
-          {
-            merge: false;
-          }
+          { merge: false }
         >();
       if (!bank) throw new Error('seed question bank not found');
 
-      const { data: openQuestion, error: openQuestionError } = await supabase
+      const { data: outside, error: outsideError } = await supabase
         .from('questions')
         .insert({
           bank_id: bank.id,
           created_by: student.user.id,
-          type: 'open',
-          content: 'seed-question-open-176',
-          explanation: 'Rozbiory, słaba władza centralna, liberum veto.',
+          type: 'mcq',
+          content: 'seed-question-outside-1065',
         })
         .select('id')
         .single()
         .overrideTypes<OpenQuestionRow, { merge: false }>();
-      if (openQuestionError) {
-        throw new Error(`Failed to seed open question: ${openQuestionError.message}`);
-      }
+      if (outsideError)
+        throw new Error(`Failed to seed the outside question: ${outsideError.message}`);
 
-      await supabase.from('quiz_attempt_questions').insert({
-        attempt_id: attemptId,
-        question_id: openQuestion.id,
-        order_index: 3,
-      });
+      const { data: outsideOption, error: optionError } = await supabase
+        .from('question_options')
+        .insert({ question_id: outside.id, content: 'Tak', is_correct: true, order_index: 0 })
+        .select('id')
+        .single()
+        .overrideTypes<{ id: string }, { merge: false }>();
+      if (optionError) throw new Error(`Failed to seed the outside option: ${optionError.message}`);
 
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: [{ questionId: outside.id, selectedAnswerId: outsideOption.id }],
+          }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      expect(response.status).toBe(422);
+
+      const { data: stored } = await supabase
+        .from('student_answers')
+        .select('id')
+        .eq('attempt_id', attemptId);
+      expect(stored).toHaveLength(0);
+
+      const { data: attempt } = await supabase
+        .from('quiz_attempts')
+        .select('completed_at')
+        .eq('id', attemptId)
+        .single()
+        .overrideTypes<{ completed_at: string | null }, { merge: false }>();
+      expect(attempt?.completed_at).toBeNull();
+    });
+
+    it('refuses a payload longer than the attempt, not a fixed cap (#1065)', async () => {
+      mockUser(student.user);
+
+      const supabase = createServiceClient();
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
         .eq('attempt_id', attemptId)
-        .neq('question_id', openQuestion.id)
         .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
 
       const { data: options } = await supabase
@@ -448,9 +506,241 @@ describe(`Quiz Attempts Integration`, () => {
         .select('id, question_id')
         .in(
           'question_id',
-          attemptQuestions!.map((q) => q.question_id),
+          (attemptQuestions ?? []).map((q) => q.question_id),
         )
         .overrideTypes<AttemptOptionRow[], { merge: false }>();
+
+      // Every attempt question plus one stranger: four entries for a three-question
+      // attempt, refused by the attempt's own size before any scoring.
+      const answers = [
+        ...oneAnswerPerQuestion(options ?? []),
+        { questionId: crypto.randomUUID(), selectedAnswerId: crypto.randomUUID() },
+      ];
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      const body = await json<
+        ApiErrorPayload & { issues?: { properties?: { answers?: { errors: string[] } } } }
+      >(response);
+
+      expect(response.status).toBe(422);
+      expect(body.issues?.properties?.answers?.errors).toEqual(['VALIDATION_INVALID_TOO_MANY']);
+
+      const { data: stored } = await supabase
+        .from('student_answers')
+        .select('id')
+        .eq('attempt_id', attemptId);
+      expect(stored).toHaveLength(0);
+    });
+
+    it('refuses the same answer twice in one payload (#1065)', async () => {
+      mockUser(student.user);
+
+      const supabase = createServiceClient();
+      const { data: attemptQuestions } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
+      const questionId = requiredAt(attemptQuestions ?? [], 0, 'attempt question').question_id;
+
+      const { data: options } = await supabase
+        .from('question_options')
+        .select('id, question_id')
+        .eq('question_id', questionId)
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
+      const option = requiredAt(options ?? [], 0, 'attempt option');
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: [
+              { questionId, selectedAnswerId: option.id },
+              { questionId, selectedAnswerId: option.id },
+            ],
+          }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      expect(response.status).toBe(422);
+
+      const { data: stored } = await supabase
+        .from('student_answers')
+        .select('id')
+        .eq('attempt_id', attemptId);
+      expect(stored).toHaveLength(0);
+    });
+
+    it('refuses an option that belongs to another question and stores nothing (#1161)', async () => {
+      mockUser(student.user);
+
+      const supabase = createServiceClient();
+      const { questionIds } = await loadAttemptAnswers();
+      const answeredQuestionId = requiredAt(questionIds, 0, 'answered question');
+      const otherQuestionId = requiredAt(questionIds, 1, 'other question');
+
+      // The exploit: the other question's correct option scores for this one when
+      // the correctness lookup only sees the option id.
+      const otherCorrectOptionId = await loadCorrectOptionId(otherQuestionId);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: [{ questionId: answeredQuestionId, selectedAnswerId: otherCorrectOptionId }],
+          }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      const body = await json<ApiErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(await countStudentAnswers()).toBe(0);
+
+      const { data: attempt } = await supabase
+        .from('quiz_attempts')
+        .select('completed_at')
+        .eq('id', attemptId)
+        .single()
+        .overrideTypes<{ completed_at: string | null }, { merge: false }>();
+      expect(attempt?.completed_at).toBeNull();
+    });
+
+    it('refuses an option id sent for an open question and stores nothing (#1161)', async () => {
+      mockUser(student.user);
+
+      const openQuestionId = await addOpenQuestionToAttempt('seed-question-open-1161-option');
+      const { options } = await loadAttemptAnswers();
+      // Any option id is refused for an open question, even a real one from
+      // another question of this attempt.
+      const option = requiredAt(options, 0, 'attempt option');
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: [{ questionId: openQuestionId, selectedAnswerId: option.id }],
+          }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      const body = await json<ApiErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(await countStudentAnswers()).toBe(0);
+    });
+
+    it('refuses free text sent for a choice question and stores nothing (#1161)', async () => {
+      mockUser(student.user);
+
+      const { questionIds } = await loadAttemptAnswers();
+      const choiceQuestionId = requiredAt(questionIds, 0, 'choice question');
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: [{ questionId: choiceQuestionId, textAnswer: 'Wisła' }],
+          }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      const body = await json<ApiErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(await countStudentAnswers()).toBe(0);
+    });
+
+    it('scores a correct choice and writes no row for an explicitly skipped question (#1161)', async () => {
+      mockUser(student.user);
+
+      const supabase = createServiceClient();
+      const { questionIds } = await loadAttemptAnswers();
+      const answeredQuestionId = requiredAt(questionIds, 0, 'answered question');
+      const skippedQuestionId = requiredAt(questionIds, 1, 'skipped question');
+      const correctOptionId = await loadCorrectOptionId(answeredQuestionId);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: [
+              { questionId: answeredQuestionId, selectedAnswerId: correctOptionId },
+              { questionId: skippedQuestionId, skipped: true },
+            ],
+          }),
+        },
+      );
+      const response = await attemptPost(request, { params });
+      const body = await json<SubmitPayload>(response);
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+      // Two questions on the sheet, one answered: practice scoring counts it once.
+      expect(body.data.score).toBe(1);
+
+      const { data: stored } = await supabase
+        .from('student_answers')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<{ question_id: string | null }[], { merge: false }>();
+
+      expect(stored).toHaveLength(1);
+      expect(requiredAt(dbRows(stored), 0, 'stored answer').question_id).toBe(answeredQuestionId);
+      expect(await countStudentAnswers()).toBe(1);
+    });
+
+    it('persists an open answer as text and submits (#176)', async () => {
+      mockUser(student.user);
+
+      const supabase = createServiceClient();
+      const openQuestionId = await addOpenQuestionToAttempt(
+        'seed-question-open-176',
+        'Rozbiory, słaba władza centralna, liberum veto.',
+      );
+
+      const { data: attemptQuestions } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .neq('question_id', openQuestionId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
+
+      const { data: options } = await supabase
+        .from('question_options')
+        .select('id, question_id, is_correct')
+        .in(
+          'question_id',
+          attemptQuestions!.map((q) => q.question_id),
+        )
+        .overrideTypes<CorrectableOptionRow[], { merge: false }>();
 
       const attemptQuestionIds = attemptQuestions!.map((q) => q.question_id);
       const { data: attemptQuestionRows, error: typesError } = await supabase
@@ -471,10 +761,13 @@ describe(`Quiz Attempts Integration`, () => {
       // Go through the same client helper the take pages use, so a regression
       // that puts open text into `selectedAnswerId` fails here too (#320).
       const localAnswers: Record<string, string> = {};
-      // One option per question is exactly the helper's single-value contract;
-      // `multi_select` is outside it and not covered here.
-      for (const option of options ?? []) localAnswers[option.question_id] ??= option.id;
-      localAnswers[openQuestion.id] = textAnswer;
+      // Each choice question answered with its own known-correct option, so the
+      // score below is the exact graded count and not whatever option PostgREST
+      // happened to return first (#1161 keeps this scoring unchanged).
+      for (const option of options ?? []) {
+        if (option.is_correct) localAnswers[option.question_id] = option.id;
+      }
+      localAnswers[openQuestionId] = textAnswer;
 
       const submittedAnswers = toSaveAnswersPayload(
         [
@@ -483,7 +776,7 @@ describe(`Quiz Attempts Integration`, () => {
             if (!type) throw new Error(`Question ${id} not found for attempt ${attemptId}`);
             return { id, type };
           }),
-          { id: openQuestion.id, type: 'open' },
+          { id: openQuestionId, type: 'open' },
         ],
         localAnswers,
       );
@@ -498,16 +791,18 @@ describe(`Quiz Attempts Integration`, () => {
         },
       );
       const response = await attemptPost(request, { params });
-      const body = await json<ApiErrorPayload>(response);
+      const body = await json<SubmitPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
+      // One point per auto-graded question; the open one is stored but scored 0 (#329).
+      expect(body.data.score).toBe(attemptQuestionIds.length);
 
       const { data: storedAnswer } = await supabase
         .from('student_answers')
         .select('text_answer, selected_option_id, question_type, is_correct')
         .eq('attempt_id', attemptId)
-        .eq('question_id', openQuestion.id)
+        .eq('question_id', openQuestionId)
         .single()
         .overrideTypes<
           Pick<
@@ -531,6 +826,120 @@ describe(`Quiz Attempts Integration`, () => {
       expect(attempt?.completed_at).not.toBeNull();
     });
 
+    it('completes an attempt once when two submits race (#1066)', async () => {
+      mockUser(student.user);
+      const { options } = await loadAttemptAnswers();
+      const answers = oneAnswerPerQuestion(options);
+
+      // Same sheet, sent together: the conditional completion write picks one
+      // winner and the loser answers exactly like a later re-submit. The status
+      // pair alone does not prove the interleaving (a serialized loser produces
+      // the same one), but a winner that wrote a second sheet would.
+      const submitOnce = () =>
+        attemptPost(
+          createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers }),
+          }),
+          { params: Promise.resolve({ attemptId }) },
+        );
+
+      const responses = await Promise.all([submitOnce(), submitOnce()]);
+      const statuses = responses.map((response) => response.status).toSorted();
+
+      expect(statuses).toEqual([200, 400]);
+      const refused = responses.find((response) => response.status === 400);
+      expect(await json<ApiErrorPayload>(refused!)).toMatchObject({ success: false });
+
+      // One answer row per question, not one sheet per request.
+      const supabase = createServiceClient();
+      const { data: rows, error } = await supabase
+        .from('student_answers')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<{ question_id: string | null }[], { merge: false }>();
+      if (error) throw new Error(`Failed to read answers: ${error.message}`);
+      const stored = dbRows(rows);
+      expect(stored).toHaveLength(answers.length);
+      expect(new Set(stored.map((row) => row.question_id)).size).toBe(answers.length);
+
+      const { data: attempt } = await supabase
+        .from('quiz_attempts')
+        .select('completed_at')
+        .eq('id', attemptId)
+        .single()
+        .overrideTypes<{ completed_at: string | null }, { merge: false }>();
+      expect(attempt?.completed_at).not.toBeNull();
+
+      // A later submit is the ordinary re-submit refusal, not a third write.
+      const later = await submitOnce();
+      expect(later.status).toBe(400);
+      expect(await countStudentAnswers()).toBe(answers.length);
+    });
+
+    it('answers a re-submit with 400 and stores no second sheet (#1066)', async () => {
+      mockUser(student.user);
+      const { options } = await loadAttemptAnswers();
+      const answers = oneAnswerPerQuestion(options);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        },
+      );
+      expect((await attemptPost(request, { params })).status).toBe(200);
+      const storedAfterSubmit = await countStudentAnswers();
+
+      const repeat = () =>
+        attemptPost(
+          createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers }),
+          }),
+          { params: Promise.resolve({ attemptId }) },
+        );
+
+      const refused = await repeat();
+      expect(refused.status).toBe(400);
+      expect(await json<ApiErrorPayload>(refused)).toMatchObject({ success: false });
+      expect(await countStudentAnswers()).toBe(storedAfterSubmit);
+    });
+
+    it('refuses a duplicate answer row for the same question at the storage layer (#1066)', async () => {
+      const supabase = createServiceClient();
+      const { data: attemptQuestions } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id')
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
+      const questionId = requiredAt(attemptQuestions ?? [], 0, 'attempt question').question_id;
+
+      const row = {
+        attempt_id: attemptId,
+        question_id: questionId,
+        question_type: 'mcq' as const,
+        is_correct: false,
+      };
+
+      const { error: duplicateError } = await supabase
+        .from('student_answers')
+        .insert([row, { ...row, is_correct: true }]);
+      // The unique key is the storage enforcement of the one-row contract.
+      expect(duplicateError?.code).toBe('23505');
+
+      // The shape the service writes tolerates the repeat instead.
+      const { error: upsertError } = await supabase
+        .from('student_answers')
+        .upsert([row], { onConflict: 'attempt_id,question_id', ignoreDuplicates: true });
+      expect(upsertError).toBeNull();
+    });
+
     it('returns 400 when submitting already completed attempt', async () => {
       mockUser(student.user);
 
@@ -550,10 +959,7 @@ describe(`Quiz Attempts Integration`, () => {
         )
         .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
-      const submittedAnswers = answers!.map((a) => ({
-        questionId: a.question_id,
-        selectedAnswerId: a.id,
-      }));
+      const submittedAnswers = oneAnswerPerQuestion(answers!);
 
       const submitReq = createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
         method: 'POST',
@@ -572,6 +978,8 @@ describe(`Quiz Attempts Integration`, () => {
 
       expect(response.status).toBe(400);
       expect(body.success).toBe(false);
+      // Same refusal as a raced loser, and no second sheet (#1066).
+      expect(await countStudentAnswers()).toBe(submittedAnswers.length);
     });
 
     it('returns 404 for nonexistent attempt', async () => {
@@ -603,7 +1011,7 @@ describe(`Quiz Attempts Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers: [{ questionId: 'not-a-uuid' }] }),
+          body: JSON.stringify({ answers: [{ questionId: 'not-a-uuid', skipped: true }] }),
         },
       );
       const response = await attemptPost(request, { params });
@@ -649,6 +1057,67 @@ describe(`Quiz Attempts Integration`, () => {
       .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
     return { questionIds, options: options ?? [] };
+  }
+
+  /** Adds a fresh `open` question to this attempt, the way a bank question would arrive. */
+  async function addOpenQuestionToAttempt(content: string, explanation?: string): Promise<string> {
+    const supabase = createServiceClient();
+    const { data: bank } = await supabase
+      .from('question_banks')
+      .select('id')
+      .eq('created_by', student.user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .overrideTypes<
+        Pick<Database['public']['Tables']['question_banks']['Row'], 'id'>,
+        { merge: false }
+      >();
+    if (!bank) throw new Error('seed question bank not found');
+
+    const { data: question, error } = await supabase
+      .from('questions')
+      .insert({
+        bank_id: bank.id,
+        created_by: student.user.id,
+        type: 'open',
+        content,
+        ...(explanation ? { explanation } : {}),
+      })
+      .select('id')
+      .single()
+      .overrideTypes<OpenQuestionRow, { merge: false }>();
+    if (error) throw new Error(`Failed to seed open question: ${error.message}`);
+
+    const { data: last } = await supabase
+      .from('quiz_attempt_questions')
+      .select('order_index')
+      .eq('attempt_id', attemptId)
+      .order('order_index', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .overrideTypes<{ order_index: number }, { merge: false }>();
+
+    const { error: linkError } = await supabase.from('quiz_attempt_questions').insert({
+      attempt_id: attemptId,
+      question_id: question.id,
+      order_index: (last?.order_index ?? -1) + 1,
+    });
+    if (linkError) throw new Error(`Failed to add the open question: ${linkError.message}`);
+
+    return question.id;
+  }
+
+  /** The attempt's stored `draft_answers` map, read back through the service client. */
+  async function loadDraftAnswers() {
+    const supabase = createServiceClient();
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('draft_answers')
+      .eq('id', attemptId)
+      .single()
+      .overrideTypes<{ draft_answers: Record<string, unknown> }, { merge: false }>();
+    return attempt?.draft_answers;
   }
 
   function draftRequest(answers: unknown[]) {
@@ -736,7 +1205,7 @@ describe(`Quiz Attempts Integration`, () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          answers: options.map((a) => ({ questionId: a.question_id, selectedAnswerId: a.id })),
+          answers: oneAnswerPerQuestion(options),
         }),
       });
       const submitRes = await attemptPost(submitReq, { params: Promise.resolve({ attemptId }) });
@@ -846,6 +1315,97 @@ describe(`Quiz Attempts Integration`, () => {
           requiredEntry(reviewBody.data.answers, questionId, 'review answer').selected_answer_id,
         ).toBe(perQuestion.get(questionId));
       }
+    });
+
+    it('refuses a draft option that belongs to another question and keeps the stored draft (#1161)', async () => {
+      mockUser(student.user);
+      const { questionIds, options } = await loadAttemptAnswers();
+      const firstQuestionId = requiredAt(questionIds, 0, 'first attempt question');
+      const otherQuestionId = requiredAt(questionIds, 1, 'second attempt question');
+      const firstOption = requiredAt(
+        options.filter((option) => option.question_id === firstQuestionId),
+        0,
+        'option of the first question',
+      );
+      const otherOption = requiredAt(
+        options.filter((option) => option.question_id === otherQuestionId),
+        0,
+        'option of the second question',
+      );
+
+      // One valid answer first, so the refused autosave has a stored draft to leave alone.
+      const { request: saveRequest, params: saveParams } = draftRequest([
+        { questionId: firstQuestionId, selectedAnswerId: firstOption.id },
+      ]);
+      expect((await attemptAnswersPut(saveRequest, { params: saveParams })).status).toBe(200);
+
+      const storedBefore = await loadDraftAnswers();
+      expect(storedBefore).toEqual({
+        [firstQuestionId]: { selected_answer_id: firstOption.id, text_answer: null },
+      });
+
+      // The autosave the exploit would use: the *other* question's option, which
+      // the take page can only produce by tampering.
+      const { request, params } = draftRequest([
+        { questionId: firstQuestionId, selectedAnswerId: otherOption.id },
+      ]);
+      const response = await attemptAnswersPut(request, { params });
+      const body = await json<ApiErrorPayload>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(await loadDraftAnswers()).toEqual(storedBefore);
+    });
+
+    it('clears a saved draft value with an explicit skip (#1161)', async () => {
+      mockUser(student.user);
+      const { questionIds, options } = await loadAttemptAnswers();
+      const clearedQuestionId = requiredAt(questionIds, 0, 'cleared question');
+      const keptQuestionId = requiredAt(questionIds, 1, 'kept question');
+      const clearedOption = requiredAt(
+        options.filter((option) => option.question_id === clearedQuestionId),
+        0,
+        'option of the cleared question',
+      );
+      const keptOption = requiredAt(
+        options.filter((option) => option.question_id === keptQuestionId),
+        0,
+        'option of the kept question',
+      );
+
+      // Both questions carry a value first.
+      const { request: saveRequest, params: saveParams } = draftRequest([
+        { questionId: clearedQuestionId, selectedAnswerId: clearedOption.id },
+        { questionId: keptQuestionId, selectedAnswerId: keptOption.id },
+      ]);
+      expect((await attemptAnswersPut(saveRequest, { params: saveParams })).status).toBe(200);
+      expect(await loadDraftAnswers()).toEqual({
+        [clearedQuestionId]: { selected_answer_id: clearedOption.id, text_answer: null },
+        [keptQuestionId]: { selected_answer_id: keptOption.id, text_answer: null },
+      });
+
+      // Full-state replace: the skip removes the key instead of storing the skip.
+      const { request, params } = draftRequest([
+        { questionId: clearedQuestionId, skipped: true },
+        { questionId: keptQuestionId, selectedAnswerId: keptOption.id },
+      ]);
+      const response = await attemptAnswersPut(request, { params });
+      const body = await json<SaveDraftPayload>(response);
+
+      expect(response.status).toBe(200);
+      expect(body.data.saved).toBe(1);
+
+      const draft = await loadDraftAnswers();
+      expect(draft).toEqual({
+        [keptQuestionId]: { selected_answer_id: keptOption.id, text_answer: null },
+      });
+      expect(draft).not.toHaveProperty(clearedQuestionId);
+
+      // A resume no longer serves the cleared answer.
+      const { body: resumed } = await getAttempt();
+      expect(resumed.data.answers).toEqual({
+        [keptQuestionId]: { selected_answer_id: keptOption.id, text_answer: null },
+      });
     });
   });
 });

@@ -9,9 +9,11 @@ import {
 } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type {
+  QuizAnswerEntry,
   SaveQuizAnswersInput,
   SubmitQuizAttemptInput,
 } from '@studiq/server/models/quiz-attempt.model';
@@ -25,6 +27,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 type DraftAnswer = {
   selected_answer_id: string | null;
   text_answer: string | null;
+};
+
+/** What an answer may be scored against: the question's type and its own option ids. */
+type AnswerableQuestion = {
+  type: string;
+  optionIds: Set<string>;
 };
 
 /**
@@ -69,6 +77,140 @@ export type QuizAttemptListItem = Omit<
 
 export class QuizAttemptService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
+
+  /**
+   * Loads the signed-in student's in-progress attempt for a write and refuses
+   * an answer sheet that does not fit it. Both the draft save and the submit go
+   * through this gate, so the two paths cannot drift again (#1065).
+   *
+   * The storage contract is one `student_answers` row per question: the answer
+   * value carries the selection. An entry for a question the attempt never
+   * asked is therefore not something the take page can produce — it feeds the
+   * per-question accuracy index (#204) and, on a practice attempt, adds to the
+   * score. The attempt's own size is also the authoritative payload bound: with
+   * every entry in-attempt, a longer sheet can only be junk.
+   *
+   * The value is gated here too (#1161): scoring looks a choice up by option id
+   * alone, so an option belonging to another question would otherwise be scored
+   * as correct for this one. The same query that lists the attempt's questions
+   * loads each question's type and option ids, and the whole payload is refused
+   * before either write path scores or stores anything.
+   */
+  private async loadAnswerableAttempt(
+    supabase: SupabaseClient<Database>,
+    attemptId: string,
+    userId: string,
+    answers: readonly QuizAnswerEntry[],
+  ): Promise<
+    ServiceResult<{
+      id: string;
+      assignment_id: string | null;
+      questions: Map<string, AnswerableQuestion>;
+    }>
+  > {
+    const { data: attempt, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, assignment_id, completed_at')
+      .eq('id', attemptId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !attempt) return failure('NOT_FOUND');
+    if (attempt.completed_at) return failure('BAD_REQUEST');
+
+    const { data: attemptQuestions, error: questionsError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id, questions(type, question_options(id))')
+      .eq('attempt_id', attemptId);
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const allowedIds = new Set<string>();
+    const questions = new Map<string, AnswerableQuestion>();
+    for (const row of dbRows(attemptQuestions)) {
+      allowedIds.add(row.question_id);
+      // PostgREST types a to-one embed as always present, but an RLS-hidden
+      // question arrives as null; an answer to it cannot be gated.
+      const embed = dbNested(row.questions);
+      if (!embed?.type) continue;
+      questions.set(row.question_id, {
+        type: embed.type,
+        optionIds: new Set(dbRows(embed.question_options).map((option) => option.id)),
+      });
+    }
+
+    // Distinct ids, so a draft that re-sends one question (last entry wins)
+    // is not measured as two answers.
+    if (new Set(answers.map((answer) => answer.questionId)).size > allowedIds.size) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['answers'], message: ValidationErrorCode.TOO_MANY },
+      ]);
+    }
+
+    const outsideIndex = answers.findIndex((answer) => !allowedIds.has(answer.questionId));
+    if (outsideIndex !== -1) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        {
+          code: 'custom',
+          path: ['answers', outsideIndex, 'questionId'],
+          message: ValidationErrorCode.INVALID_INPUT,
+        },
+      ]);
+    }
+
+    for (const [index, answer] of answers.entries()) {
+      const question = questions.get(answer.questionId);
+      if (!question) {
+        return failure('UNPROCESSABLE_ENTITY', [
+          {
+            code: 'custom',
+            path: ['answers', index, 'questionId'],
+            message: ValidationErrorCode.INVALID_INPUT,
+          },
+        ]);
+      }
+
+      // A skip carries no value: it is stored as nothing and scores nothing.
+      if (answer.skipped) continue;
+
+      if (answer.selectedAnswerId !== undefined) {
+        if (question.type === 'open' || !question.optionIds.has(answer.selectedAnswerId)) {
+          return failure('UNPROCESSABLE_ENTITY', [
+            {
+              code: 'custom',
+              path: ['answers', index, 'selectedAnswerId'],
+              message: ValidationErrorCode.INVALID_INPUT,
+            },
+          ]);
+        }
+        continue;
+      }
+
+      // The schema already requires exactly one kind; a caller that bypassed it
+      // must not slip an entry with no value past the gate.
+      if (answer.textAnswer === undefined) {
+        return failure('UNPROCESSABLE_ENTITY', [
+          {
+            code: 'custom',
+            path: ['answers', index],
+            message: ValidationErrorCode.REQUIRED,
+          },
+        ]);
+      }
+
+      if (question.type !== 'open') {
+        return failure('UNPROCESSABLE_ENTITY', [
+          {
+            code: 'custom',
+            path: ['answers', index, 'textAnswer'],
+            message: ValidationErrorCode.INVALID_INPUT,
+          },
+        ]);
+      }
+    }
+
+    return success({ id: attempt.id, assignment_id: attempt.assignment_id, questions });
+  }
 
   async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
     const supabase = await this.clientFactory();
@@ -224,32 +366,22 @@ export class QuizAttemptService {
   ): Promise<ServiceResult<{ saved: number }>> {
     const supabase = await this.clientFactory();
 
-    const { data: attempt, error: attemptError } = await supabase
-      .from('quiz_attempts')
-      .select('id, completed_at')
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (attemptError || !attempt) return failure('NOT_FOUND');
-    if (attempt.completed_at) return failure('BAD_REQUEST');
-
-    // Only questions that belong to this attempt can be stored, so a client
-    // cannot grow the draft with junk keys.
-    const { data: attemptQuestions, error: questionsError } = await supabase
-      .from('quiz_attempt_questions')
-      .select('question_id')
-      .eq('attempt_id', data.attemptId);
-
-    if (questionsError) return toDbFailure(questionsError);
-
-    const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
-    if (data.answers.some((a) => !allowedIds.has(a.questionId))) {
-      return failure('UNPROCESSABLE_ENTITY');
-    }
+    const attempt = await this.loadAnswerableAttempt(
+      supabase,
+      data.attemptId,
+      ctx.userId,
+      data.answers,
+    );
+    if (isFailure(attempt)) return attempt;
 
     const draft: Record<string, DraftAnswer> = {};
     for (const answer of data.answers) {
+      // A skip removes the key instead of writing it, so a cleared answer
+      // disappears from the full-state replace and the last entry still wins.
+      if (answer.skipped) {
+        delete draft[answer.questionId];
+        continue;
+      }
       draft[answer.questionId] = {
         selected_answer_id: answer.selectedAnswerId ?? null,
         text_answer: answer.textAnswer?.trim() || null,
@@ -275,15 +407,16 @@ export class QuizAttemptService {
   ): Promise<ServiceResult<{ score: number | null; totalQuestions: number }>> {
     const supabase = await this.clientFactory();
 
-    const { data: attempt, error: attemptCheckError } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (attemptCheckError || !attempt) return failure('NOT_FOUND');
-    if (attempt.completed_at) return failure('BAD_REQUEST');
+    // Refuse the whole payload before scoring, completing the attempt or writing
+    // a single row: the request must only carry this attempt's own questions.
+    const attemptResult = await this.loadAnswerableAttempt(
+      supabase,
+      data.attemptId,
+      ctx.userId,
+      data.answers,
+    );
+    if (isFailure(attemptResult)) return attemptResult;
+    const attempt = attemptResult.data;
 
     // Check deadline if this attempt belongs to an assignment
     let showResults = true;
@@ -328,39 +461,32 @@ export class QuizAttemptService {
     const answerRecords = [];
     const awardedQuestions = new Set<string>();
 
-    // One lookup per submit so an `open` answer is stored as text (never as an
-    // option id) and only auto-graded types are scored (#176).
-    const questionIds = [...new Set(data.answers.map((a) => a.questionId))];
-    let questionTypeById = new Map<string, string>();
-    if (questionIds.length > 0) {
-      const { data: questionRows, error: questionsError } = await supabase
-        .from('questions')
-        .select('id, type')
-        .in('id', questionIds);
-
-      if (questionsError) return toDbFailure(questionsError);
-
-      questionTypeById = new Map(dbRows(questionRows).map((q) => [q.id, q.type]));
-    }
-
     for (const ans of data.answers) {
-      const questionType = questionTypeById.get(ans.questionId) ?? null;
+      // A skipped question was never answered: no row to store, nothing to score.
+      if (ans.skipped) continue;
+
+      // The gate already refused an unresolved question; this fallback is only
+      // what `Map.get` returns for a missing key.
+      const questionType = attempt.questions.get(ans.questionId)?.type ?? null;
+      const isOpen = questionType === 'open';
       const textAnswer = ans.textAnswer?.trim() || null;
-      // Fall back to "open iff text was sent" when the question row is missing.
-      const isOpen = questionType === 'open' || (questionType === null && textAnswer !== null);
 
       let isCorrect = false;
       if (!isOpen && ans.selectedAnswerId) {
         const { data: answer } = await supabase
           .from('question_options')
           .select('is_correct')
+          // Scoped to the question even though the value gate already checked
+          // it, so a scoring lookup can never read another question's key.
           .eq('id', ans.selectedAnswerId)
+          .eq('question_id', ans.questionId)
           .single();
         isCorrect = answer?.is_correct ?? false;
       }
       if (isCorrect && !awardedQuestions.has(ans.questionId)) {
-        // One question can produce several answer rows (multi-select /
-        // matching), so award its points at most once.
+        // One row per question is the write contract (#1065) and the schema
+        // rejects a repeated question id, so this only covers a caller that
+        // bypasses it: a question must never be counted twice.
         awardedQuestions.add(ans.questionId);
         score += attempt.assignment_id ? (assignmentPoints.get(ans.questionId) ?? 0) : 1;
       }
@@ -374,7 +500,11 @@ export class QuizAttemptService {
       });
     }
 
-    const { error: updateError } = await supabase
+    // The gate above is a read: two submits that start together both pass it.
+    // The `completed_at IS NULL` predicate makes the completion write the
+    // arbiter — exactly one request flips the attempt, and the loser must answer
+    // like any later re-submit (#1066).
+    const { data: completed, error: updateError } = await supabase
       .from('quiz_attempts')
       .update({
         score,
@@ -382,11 +512,20 @@ export class QuizAttemptService {
         // The graded rows below are the record from now on.
         draft_answers: {},
       })
-      .eq('id', data.attemptId);
+      .eq('id', data.attemptId)
+      .eq('user_id', ctx.userId)
+      .is('completed_at', null)
+      .select('id');
 
     if (updateError) return toDbFailure(updateError);
+    if (dbRows(completed).length === 0) return failure('BAD_REQUEST');
 
-    const { error: answersError } = await supabase.from('student_answers').insert(answerRecords);
+    // `UNIQUE (attempt_id, question_id)` is the storage guard for the one-row
+    // contract: a row the earlier partial write already stored is kept, so a
+    // retry finishes the sheet instead of failing on the key.
+    const { error: answersError } = await supabase
+      .from('student_answers')
+      .upsert(answerRecords, { onConflict: 'attempt_id,question_id', ignoreDuplicates: true });
 
     if (answersError) return toDbFailure(answersError);
 

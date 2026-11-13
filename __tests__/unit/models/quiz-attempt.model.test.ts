@@ -18,18 +18,119 @@ describe('SubmitQuizAttemptSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('passes with optional selectedAnswerId', () => {
+  it('rejects a bare entry that carries no answer value (#1161)', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
       answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001' }],
     });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0]);
+    }
+  });
+
+  it('accepts an explicitly skipped entry (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001', skipped: true }],
+    });
     expect(result.success).toBe(true);
+  });
+
+  it('rejects skipped: false, which is not an answer value (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [
+        {
+          questionId: '550e8400-e29b-41d4-a716-446655440001',
+          selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+          skipped: false,
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0, 'skipped']);
+    }
+  });
+
+  it('rejects an entry that sends both an option and free text (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [
+        {
+          questionId: '550e8400-e29b-41d4-a716-446655440001',
+          selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+          textAnswer: 'Wisła',
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0, 'textAnswer']);
+    }
+  });
+
+  it('rejects free text combined with skipped (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [
+        {
+          questionId: '550e8400-e29b-41d4-a716-446655440001',
+          textAnswer: 'Wisła',
+          skipped: true,
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0]);
+    }
+  });
+
+  it('rejects an option combined with skipped (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [
+        {
+          questionId: '550e8400-e29b-41d4-a716-446655440001',
+          selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+          skipped: true,
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0]);
+    }
+  });
+
+  it('rejects an empty textAnswer — a cleared answer is skipped, not "" (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001', textAnswer: '' }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0, 'textAnswer']);
+    }
+  });
+
+  it('rejects a whitespace-only textAnswer (#1161)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001', textAnswer: '   ' }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0, 'textAnswer']);
+    }
   });
 
   it('fails when attemptId is not a valid UUID', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: 'not-a-uuid',
-      answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001' }],
+      answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001', skipped: true }],
     });
     expect(result.success).toBe(false);
   });
@@ -42,10 +143,48 @@ describe('SubmitQuizAttemptSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts 101 distinct answers so a large assignment can still submit (#1065)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: Array.from({ length: 101 }, (_, i) => ({
+        questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
+        skipped: true,
+      })),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a sheet larger than the old 500-entry cap — the attempt decides (#1065)', () => {
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: Array.from({ length: 501 }, (_, i) => ({
+        questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
+        skipped: true,
+      })),
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.answers).toHaveLength(501);
+  });
+
+  it('rejects the same questionId twice and points at the repeated entry (#1065)', () => {
+    const questionId = '550e8400-e29b-41d4-a716-446655440001';
+    const result = SubmitQuizAttemptSchema.safeParse({
+      attemptId: '550e8400-e29b-41d4-a716-446655440000',
+      answers: [
+        { questionId, selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002' },
+        { questionId, selectedAnswerId: '550e8400-e29b-41d4-a716-446655440003' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 1, 'questionId']);
+    }
+  });
+
   it('fails when questionId is not a valid UUID', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
-      answers: [{ questionId: 'not-a-uuid' }],
+      answers: [{ questionId: 'not-a-uuid', skipped: true }],
     });
     expect(result.success).toBe(false);
   });
@@ -126,6 +265,36 @@ describe('SaveQuizAnswersSchema (#349)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts the same explicit skip entry as submit (#1161)', () => {
+    const result = SaveQuizAnswersSchema.safeParse({
+      attemptId,
+      answers: [{ questionId, skipped: true }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a bare entry (#1161)', () => {
+    const result = SaveQuizAnswersSchema.safeParse({ attemptId, answers: [{ questionId }] });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0]);
+    }
+  });
+
+  it('rejects an empty textAnswer (#1161)', () => {
+    const result = SaveQuizAnswersSchema.safeParse({
+      attemptId,
+      answers: [{ questionId, textAnswer: '  ' }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['answers', 0, 'textAnswer']);
+    }
+  });
+
   it('rejects a malformed questionId', () => {
     const result = SaveQuizAnswersSchema.safeParse({
       attemptId,
@@ -163,15 +332,17 @@ describe('SaveQuizAnswersSchema (#349)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects more than 100 answers', () => {
+  it('accepts a sheet larger than the old 500-entry cap — the attempt decides (#1065)', () => {
     const result = SaveQuizAnswersSchema.safeParse({
       attemptId,
-      answers: Array.from({ length: 101 }, (_, i) => ({
+      answers: Array.from({ length: 501 }, (_, i) => ({
         questionId: `${String(i).padStart(8, '0')}-e29b-41d4-a716-446655440001`,
+        skipped: true,
       })),
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.answers).toHaveLength(501);
   });
 
   it('rejects a malformed attemptId', () => {

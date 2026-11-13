@@ -24,6 +24,9 @@ CREATE TABLE public.invitations (
 -- client-supplied token with no grant-authority check); joining an organization
 -- happens through POST /api/v1/organization/invites/accept, which runs on the
 -- service-role client after checking can_assign_org_role(inviter, target role).
+-- That endpoint claims the token, upserts the membership and joins the default
+-- group through the single `accept_org_invitation` transaction (#1067), so a
+-- failed join cannot consume the invitation.
 -- Keeping the branch out of this trigger is what stops a stale/demoted inviter
 -- from minting an org role during signup.
 -- ==========================================
