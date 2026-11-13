@@ -1,16 +1,19 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  // Local observability stack tooling. `grafana/mcp-grafana` exposes Tempo
-  // (traces), Loki (logs) and Prometheus (metrics) as agent tools, with
-  // trace↔log correlation. See docs/observability-debugging.md.
+  // Local observability stack tooling: Tempo (traces), Loki (logs) and
+  // Prometheus (metrics) as agent tools, with trace↔log correlation.
+  //
+  // The service-account token is minted by `bun run env:observability` into
+  // ~/.config/studiq/observability/grafana-mcp-token and read here with {file:}.
+  // No env export, no per-worktree setup; a re-mint needs `opencode service restart`.
   "mcp": {
     "servers": {
       "grafana": {
         "type": "local",
-        "command": ["mcp-grafana", "-t", "stdio"],
+        "command": ["mcp-grafana", "-t", "stdio", "--disable-admin", "--disable-write"],
         "environment": {
           "GRAFANA_URL": "http://localhost:7001",
-          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}"
+          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{file:~/.config/studiq/observability/grafana-mcp-token}"
         }
       }
     }

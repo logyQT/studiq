@@ -33,6 +33,7 @@
     "env:logs": "bash scripts/env/varlock-run.sh logs",
     "env:setup": "bun scripts/env/cli.ts setup",
     "env:verify": "bun scripts/env/cli.ts verify",
+    "env:observability": "bash scripts/env/varlock-run.sh observability",
     "env:supa": "bash scripts/env/varlock-run.sh supa",
     "dev:web": "bun run --filter @studiq/web dev",
     "dev:admin": "varlock run --inject vars -- bun run --filter @studiq/admin dev",

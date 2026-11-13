@@ -42,13 +42,13 @@ The primary checkout must contain `name: studiq-observability` in its
 `docker-compose.yml`; if `env:doctor` says it predates the fixed project name,
 update that checkout first.
 
-| UI         | URL                                       |
-| ---------- | ----------------------------------------- |
-| Grafana    | http://localhost:7001 (`admin` / `admin`) |
-| Prometheus | http://localhost:7090                     |
-| Tempo API  | http://localhost:7200                     |
-| Loki       | http://localhost:7100                     |
-| OTLP       | http://localhost:7318                     |
+| UI         | URL                                                   |
+| ---------- | ----------------------------------------------------- |
+| Grafana    | http://localhost:7001 (`admin` / `admin`, local-only) |
+| Prometheus | http://localhost:7090                                 |
+| Tempo API  | http://localhost:7200                                 |
+| Loki       | http://localhost:7100                                 |
+| OTLP       | http://localhost:7318                                 |
 
 The Next.js app sends OTLP (traces + metrics + logs) to the collector on
 `http://localhost:7318`. `env:ensure` sets that endpoint and a per-checkout
@@ -57,33 +57,75 @@ an explicit value in `.env.local` wins. Make sure `OTEL_SDK_DISABLED` is **not**
 `true` when you want telemetry. See the
 [plan doc](./plans/archive/prometheus-metrics-monitoring.md).
 
-## Configure the Grafana MCP
+## The Grafana MCP is ready to use
 
-The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
+The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc). Its
+service-account token is **not** copied into a shell variable or an OpenCode
+setting: `bun run env:observability` mints a Viewer token into
 
-```jsonc
-{
-  "mcp": {
-    "servers": {
-      "grafana": {
-        "type": "local",
-        "command": ["mcp-grafana", "-t", "stdio"],
-        "environment": {
-          "GRAFANA_URL": "http://localhost:7001",
-          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}",
-        },
-      },
-    },
-  },
-}
+```text
+~/.config/studiq/observability/grafana-mcp-token   (mode 0600)
 ```
 
-Create a Grafana service account token (Grafana → **Administration → Users and
-access → Service accounts**), then export it as `GRAFANA_SERVICE_ACCOUNT_TOKEN`
-**in the environment of the OpenCode server** (the process that spawns MCP
-servers) and restart it with `opencode service restart`. The `mcp-grafana` binary
-must be on that same process's `PATH`. Verify with `opencode mcp list` →
-`✓ grafana connected`, then call `list_datasources`.
+and the config reads it with `{file:...}`. `env:ensure` runs the same
+idempotent step, so a fresh checkout needs no per-worktree setup. There is no
+rotation or TTL: a token that fails validation is replaced on the next
+`env:ensure` / `env:observability ensure`, and the credential it supersedes is
+revoked (`revokedTokenId`; a revoke that fails is reported as `revokeError`
+while the new token stays valid).
+
+```bash
+bun run env:observability                 # read-only: URL, auth state, token age, mcp binary
+bun run env:observability ensure          # mint only when missing or stale
+bun run env:observability ensure --force  # re-mint a token that still validates
+bun run env:doctor                        # includes the same auth line in JSON and text
+```
+
+The read-only `status` never mints: when `auth` says `no token` / `stale
+token`, the remediation it prints is `bun run env:observability ensure`.
+
+After a re-mint, restart the OpenCode service so the MCP process re-reads the file
+(a config reload does not respawn an already-running MCP server):
+
+```bash
+opencode service restart
+```
+
+A session started after the mint needs neither step.
+
+`GRAFANA_URL` defaults to `http://localhost:7001` and is what
+`env:observability` / `env:doctor` reach; the agent MCP target is the URL in
+`opencode.jsonc`. The token file is machine-wide, so pointing `GRAFANA_URL` at a
+different Grafana also needs `opencode.jsonc` changed (the MCP keeps calling
+`localhost:7001`) and a re-mint with
+`bun run env:observability ensure --force` — otherwise the MCP gets 401 while
+the CLI looks healthy. `ensure` also refuses to overwrite the shared token when
+it was minted for a different URL unless you pass `--force`.
+
+The admin credential used **only** for minting comes from
+`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`. The default is `admin` / `admin`
+and it is **local-only**: the stack publishes on `127.0.0.1` and it is only a
+fresh `grafana_data` volume's first-boot password. `env:observability` reads the
+names from the process environment, and `docker compose` interpolates the same
+names from the shell that runs it. To override, run the start command **from the
+primary checkout** (never a worktree) with the value exported, or point compose
+at the repo's one values file:
+
+```bash
+cd /workspaces/studiq                                # the primary checkout (see above)
+GRAFANA_ADMIN_PASSWORD='<pw>' docker compose up -d   # compose process environment
+docker compose --env-file .env.local up -d           # .env.local, the only values file
+```
+
+Never create a root `.env` for this: `bun run lint` rejects that file, and root
+`.env.local` is the only hand-edited values file. An existing `grafana_data`
+volume keeps its first-boot password; reset it with
+`docker compose exec grafana grafana cli admin reset-admin-password <pw>`.
+
+The `mcp-grafana` binary must be on the OpenCode server's PATH.
+
+The MCP starts with `--disable-admin --disable-write`: the debugging loop below
+is read-only, and a Viewer token is enough for it.
 
 > `GRAFANA_API_KEY` still works but is deprecated in favour of
 > `GRAFANA_SERVICE_ACCOUNT_TOKEN`.
@@ -99,6 +141,28 @@ container reaches the host's Grafana):
   "grafana/mcp-grafana", "-t", "stdio"
 ]
 ```
+
+with the token supplied by the same file, e.g.
+`-e GRAFANA_SERVICE_ACCOUNT_TOKEN="$(cat ~/.config/studiq/observability/grafana-mcp-token)"`.
+
+## If the stack or MCP is down
+
+Do **not** substitute a local correlation id for a trace id, and do not file a
+server-side root cause you could not observe. Run:
+
+```bash
+bun run env:doctor          # health, primary path, exact start command
+bun run env:observability   # MCP auth state and token path
+```
+
+- **You own the primary checkout:** start the stack there
+  (`cd <primary> && docker compose up -d`), wait for health, then run
+  `bun run env:observability ensure`.
+- **You do not own it** (a worktree/agent session): stop, report `BLOCKED/env`
+  with both outputs, and ask the coordinator/operator to start it. Never start
+  or stop a stack you do not own.
+- A response with no `x-trace-id`, or empty Tempo/Loki while the app answers, is
+  an environment fault, not a product bug. Do not invent an id to fill the gap.
 
 ## The loop
 

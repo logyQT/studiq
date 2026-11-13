@@ -29,7 +29,7 @@ export const OBSERVABILITY_PORTS = {
 } as const;
 
 export const OBSERVABILITY_URLS = {
-  grafanaHealth: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.grafana}/api/health`,
+  grafana: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.grafana}`,
   prometheusReady: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.prometheus}/-/ready`,
   lokiReady: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.loki}/ready`,
   tempoReady: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.tempo}/ready`,

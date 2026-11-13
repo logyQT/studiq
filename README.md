@@ -26,8 +26,15 @@ Quiz, flashcard and course-management platform for students, teachers and univer
 
 ```bash
 bun install                          # once per checkout
-bun run env:ensure --profile web     # stack (if needed) + build + serve on :3000
+docker compose up -d                 # once per machine: Grafana/Tempo/Loki (primary checkout only)
+bun run env:ensure --profile web     # Supabase + build + serve on :3000; also mints the MCP token
+bun run env:observability            # expect: auth ok (studiq-mcp, Viewer)
 ```
+
+> Start Grafana **before** `env:ensure` so the same run mints the MCP token. If
+> you started it afterwards, run `bun run env:observability ensure`. A session
+> that was already running before the token existed needs
+> `opencode service restart`.
 
 `env:ensure` is the blessed, idempotent path: it reads root `.env.local`
 (optional; see [`.env.schema`](.env.schema)), resolves this checkout's stack
@@ -60,13 +67,15 @@ server in the same checkout is refused — use another worktree. The optional
 admin panel (`:4000`, loopback) uses a fixed host port; observability is one
 machine-wide stack on `:7001`/`:7xxx`, owned by the primary checkout.
 
-The admin panel and observability stack are opt-in and outside the `env` tool:
+The admin panel is opt-in and outside the `env` tool:
 
 ```bash
 bun run dev:admin                    # apps/admin HMR on 127.0.0.1:4000 (human-only)
 bun run build:admin && bun run start:admin  # production build + serve
-docker compose up -d                 # Grafana on :7001 (primary checkout only)
 ```
+
+The observability stack is started in Quick Start above; `bun run env:doctor`
+reports its health and the exact start command. Never start it from a worktree.
 
 `.env.vault` is **opt-in**: a fresh checkout runs from `.env.local` alone. Only
 provider refs that cannot come from the local stack (LLM, Stripe) belong there;
