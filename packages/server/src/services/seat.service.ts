@@ -55,6 +55,18 @@ function embeddedRoleName(value: { name: string } | { name: string }[]): string 
   return related?.name ?? null;
 }
 
+/**
+ * The table's `total >= assigned` check. PostgREST reports a check violation as
+ * `23514` without naming the constraint in a field of its own; the name is in
+ * the message, which is the only way to tell this one from the next CHECK added
+ * to the table.
+ */
+const TOTAL_FLOOR_CONSTRAINT = 'org_seat_pools_total_not_below_assigned';
+
+function isTotalFloorViolation(error: { code: string; message: string }): boolean {
+  return error.code === '23514' && error.message.includes(TOTAL_FLOOR_CONSTRAINT);
+}
+
 /** `total` below `assigned` would leave assignments that no longer fit the pool. */
 function totalTooSmallDetails(): ZodIssue[] {
   return [{ code: 'custom', message: ValidationErrorCode.TOO_SMALL, path: ['total'] }];
@@ -92,6 +104,16 @@ export class SeatService {
     input: CreatePoolInput,
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
+    // `assignSeat` refuses a pool whose plan has no tier, so an unmapped key
+    // here would only create a pool that can never hold a seat. Refuse it at
+    // the door with the same map: a plan sold as a seat add-on has to be mapped
+    // there before its pool can be assigned from.
+    if (!PLAN_TIER_MAP[input.planKey]) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', message: ValidationErrorCode.INVALID_INPUT, path: ['planKey'] },
+      ]);
+    }
 
     const supabase = await this.clientFactory();
 
@@ -174,9 +196,9 @@ export class SeatService {
       // `total - assigned` negative and leaves the pool permanently full
       // (#1068). The table's check constraint rejects that in the same
       // statement, so a concurrent assignment cannot slip between a read and
-      // this write; keep the response a 422 field error rather than an opaque
-      // constraint violation.
-      if (error.code === '23514') {
+      // this write; keep the response a 422 field error rather than the
+      // generic 400 an unrelated check violation maps to.
+      if (isTotalFloorViolation(error)) {
         return failure('UNPROCESSABLE_ENTITY', totalTooSmallDetails());
       }
       return toDbFailure(error);

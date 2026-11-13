@@ -209,6 +209,19 @@ describe('SeatService', () => {
       if (result.success) return;
       expect(result.error).toBe('FORBIDDEN');
     });
+
+    it('refuses an unmapped plan_key before writing (#1145)', async () => {
+      // `assignSeat` refuses such a pool, so creating it only stores a row that
+      // can never hold a seat.
+      const result = await service.addPool(ctx, { planKey: 'not-a-plan', quantity: 2 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.details?.[0]?.path).toEqual(['planKey']);
+      expect(mock.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('updatePool', () => {
@@ -247,6 +260,24 @@ describe('SeatService', () => {
       expect(result.details?.[0]?.message).toBe(ValidationErrorCode.TOO_SMALL);
       expect(result.details?.[0]?.path).toEqual(['total']);
       expect(write.update).toHaveBeenCalledWith({ total: 0 });
+    });
+
+    it('keeps an unrelated check violation a generic 400, not "total too small" (#1145)', async () => {
+      // A second CHECK on the table would report the same SQLSTATE; narrowing by
+      // constraint name keeps the 422 meaning the assigned-count floor only.
+      const write = chain(null, undefined, {
+        code: '23514',
+        message:
+          'new row for relation "org_seat_pools" violates check constraint "org_seat_pools_some_other_check"',
+      });
+      mock.from.mockReturnValueOnce(write);
+
+      const result = await service.updatePool(ctx, 'pool-1', { total: 0 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(result.details).toBeUndefined();
     });
 
     it('accepts a total equal to the assigned count', async () => {
@@ -488,6 +519,30 @@ describe('SeatService', () => {
       if (result.success) return;
       expect(result.error).toBe('BAD_REQUEST');
       expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('assigns a matching member whose org_roles embed arrives as a one-element array (#1068)', async () => {
+      // The array shape must resolve to the member's tier, not to `undefined`:
+      // reading `.name` off the array refuses a legitimate seat.
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
+      mock.from.mockReturnValueOnce(chain({ email: 'member@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: [{ name: 'member' }] }));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(
+        chain({
+          id: 'assign-new',
+          user_id: input.userId,
+          pool_id: input.poolId,
+          assigned_at: '2024-01-01T00:00:00Z',
+        }),
+      );
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.planKey).toBe('pro');
+      expect(result.data.userId).toBe(input.userId);
     });
 
     it('refuses a member whose org role has no seat tier', async () => {

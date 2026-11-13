@@ -57,7 +57,9 @@ type AssignmentBody = { success: boolean; data: SeatAssignment };
 interface SeatsErrorBody {
   success: boolean;
   error?: string;
-  issues?: { properties: Partial<Record<'quantity' | 'total', { errors: string[] }>> };
+  issues?: {
+    properties: Partial<Record<'quantity' | 'total' | 'planKey', { errors: string[] }>>;
+  };
 }
 
 describe(`Seats Integration`, () => {
@@ -196,6 +198,30 @@ describe(`Seats Integration`, () => {
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
       expect(body.data.total).toBe(8); // 5 + 3
+    });
+
+    it('returns 422 for a plan_key with no seat tier and writes nothing (#1145)', async () => {
+      mockUser(fixture.user);
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/pools',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: 'not-a-plan', quantity: 2 }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createPool(req);
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(body.issues!.properties.planKey!.errors).toContain('VALIDATION_INVALID_INPUT');
+
+      expect((await readPools()).find((p) => p.planKey === 'not-a-plan')).toBeUndefined();
     });
   });
 
@@ -588,8 +614,13 @@ describe(`Seats Integration`, () => {
       // forbids dropping it below that (#1068), so the fixture fills the pool.
       const supabase = createSeedDb();
       const assignedSeats = dbRows(
-        (await supabase.from('org_seat_assignments').select('id').eq('organization_id', orgId))
-          .data,
+        (
+          await supabase
+            .from('org_seat_assignments')
+            .select('id')
+            .eq('organization_id', orgId)
+            .eq('pool_id', poolId)
+        ).data,
       );
       const { error: fillError } = await supabase
         .from('org_seat_pools')

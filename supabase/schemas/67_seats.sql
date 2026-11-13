@@ -1,14 +1,19 @@
 -- ==========================================
--- TABLES: org_seat_pools, org_seat_assignments, plan_seat_allocations
+-- TABLES: org_seat_pools, org_seat_assignments
 -- Per-user tier control through seat pools and assignments.
 --
 -- `org_seat_pools.total` is the purchased count and `assigned` the live number
 -- of assignment rows (maintained by the `maintain_seat_counts` trigger).
--- `org_seat_pools_total_not_below_assigned` is the invariant an `UPDATE` must
--- not break (#1068) — see
--- 20261113120000_seat_pool_total_not_below_assigned.sql.
+-- `assigned` floors `total`: `org_seat_pools_total_not_below_assigned` is the
+-- invariant an `UPDATE` must not break (#1068), added by
+-- migrations/20261113130000_seat_pool_total_not_below_assigned.sql.
 --
--- RLS/grants live in 20261024124756_rls_all_public_tables.sql.
+-- Pools are created on demand by `SeatService.addPool`. `handle_new_organization`
+-- seeds none, and the default-allocation table it used to read
+-- (`plan_seat_allocations`) was dropped together with that seeding in
+-- migrations/20260915000003_drop_plan_seat_allocations.sql.
+--
+-- RLS/grants live in migrations/20261024124756_rls_all_public_tables.sql.
 -- Depends on: 03_organizations.sql, 04_profiles.sql
 -- ==========================================
 
@@ -30,14 +35,6 @@ CREATE TABLE public.org_seat_assignments (
   user_id         uuid NOT NULL REFERENCES public.profiles(id),
   assigned_at     timestamptz DEFAULT now(),
   UNIQUE(organization_id, user_id)
-);
-
-CREATE TABLE public.plan_seat_allocations (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_plan    text NOT NULL,
-  seat_plan   text NOT NULL,
-  default_qty integer NOT NULL DEFAULT 0,
-  UNIQUE(org_plan, seat_plan)
 );
 
 -- ==========================================
@@ -99,14 +96,3 @@ $$;
 CREATE TRIGGER maintain_seat_counts
   AFTER INSERT OR DELETE ON public.org_seat_assignments
   FOR EACH ROW EXECUTE FUNCTION public.maintain_seat_counts();
-
--- Default seat counts per organization plan, seeded into org_seat_pools by
--- handle_new_organization (04_profiles.sql / 20260714000003_update_org_trigger_display_name.sql).
-INSERT INTO public.plan_seat_allocations (org_plan, seat_plan, default_qty) VALUES
-  ('launch', 'launch', 1),
-  ('team',   'team',   5),
-  ('hub',    'hub',    20),
-  ('campus', 'pro',    50),
-  ('campus', 'master', 10),
-  ('campus', 'campus', 5)
-ON CONFLICT DO NOTHING;
