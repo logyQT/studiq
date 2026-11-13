@@ -72,6 +72,15 @@ are the only reason the mock driver may run in CI; production is the default
 posture when `APP_ENV` is unset and rejects `PAYMENT_DRIVER=mock` outright.
 E2E and QA set `APP_ENV=qa` + `PAYMENT_DRIVER=mock` in the workflow env files.
 
+Integration tests read the stack from the environment
+(`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`; export them from
+`bunx supabase stack status --output-format json`). `SUPABASE_DB_URL` is
+optional and only `invite-accept.test.ts` reads it: the default-group half of
+`#1067` has to raise inside the `accept_org_invitation()` transaction, which no
+PostgREST call can do, so that one case arms a trigger over the direct
+connection. It is skipped when the var is missing and refuses a non-local host.
+
 ## Stripe secrets in CI and forks
 
 - Unit and integration tests need no Stripe secret **by default**:
