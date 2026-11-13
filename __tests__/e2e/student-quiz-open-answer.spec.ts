@@ -73,8 +73,6 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
     const answerBox = page.locator('textarea');
     await expect(answerBox).toHaveCount(1);
     await answerBox.fill(openAnswer);
-    // The take page hardcodes the English label (pre-existing i18n gap, not
-    // #320), so no Polish alternative can ever match.
     await page.getByRole('button', { name: t('AppQuizPage.submit') }).click();
 
     const response = await submitted;
