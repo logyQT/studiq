@@ -134,6 +134,35 @@ function fakeNotifier(): FakeNotifier {
   };
 }
 
+/** The row `accept_org_invitation` returns for a claimed invitation. */
+type AcceptedAcceptRow = {
+  organization_id: string;
+  organization_name: string;
+  org_role_id: string;
+};
+
+const acceptedRow: AcceptedAcceptRow = {
+  organization_id: 'org-1',
+  organization_name: 'Test Org',
+  org_role_id: 'role-member',
+};
+
+/**
+ * Answers the two RPCs the accept flow uses: the grant-authority check says yes,
+ * the atomic accept returns `rows` (empty = the claim was refused or lost).
+ */
+function acceptRpc(
+  admin: AdminClient,
+  rows: AcceptedAcceptRow[] = [acceptedRow],
+  error: DbError | null = null,
+) {
+  admin.rpc.mockImplementation((fn: string) =>
+    Promise.resolve(
+      fn === 'accept_org_invitation' ? { data: rows, error } : { data: true, error: null },
+    ),
+  );
+}
+
 /** Chain that answers the `org_members` seat count (`.neq(...)`). */
 function countQb(count: number | null, error: unknown = null) {
   const c: FakeCountBuilder = {
@@ -944,24 +973,21 @@ describe('InvitationService', () => {
       expect(admin.from).toHaveBeenCalledTimes(2);
     });
 
-    it('adds the member when the organization is below its limit', async () => {
+    it('claims the token, the membership and the default group in one RPC call (#1067)', async () => {
       const admin = adminClient();
+      acceptRpc(admin);
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
       );
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(countQb(2))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb({ id: 'inv-1' })) // claim
-        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
-        .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValue(qb(null));
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(2));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
-      expect(result.success).toBe(true);
+      expect(result).toEqual({
+        success: true,
+        data: { id: 'org-1', name: 'Test Org', orgRoleId: 'role-member' },
+      });
       expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith(
         'org-1',
         'max_students',
@@ -969,10 +995,19 @@ describe('InvitationService', () => {
         1,
         admin.client,
       );
+      // The claim, the membership and the default group all live inside the
+      // function, so a failure at any step rolls the token back (#1067). A
+      // separate UPDATE/INSERT here would reintroduce the half-applied accept.
+      expect(admin.rpc).toHaveBeenCalledWith('accept_org_invitation', {
+        p_token: 'tok',
+        p_user_id: 'joining-user',
+      });
+      expect(admin.from.mock.calls.map(([table]) => table)).toEqual(['invitations', 'org_members']);
     });
 
     it('tells the inviter that the invitation was accepted (#664)', async () => {
       const admin = adminClient();
+      acceptRpc(admin);
       const notifier = fakeNotifier();
       service = new InvitationService(
         () => Promise.resolve(mock),
@@ -980,14 +1015,7 @@ describe('InvitationService', () => {
         () => null,
         notifier,
       );
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(countQb(2))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb({ id: 'inv-1' })) // claim
-        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
-        .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValue(qb(null));
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(2));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
@@ -1023,15 +1051,9 @@ describe('InvitationService', () => {
       // Same flow as `acceptInvitation`, but addressed by user id: the callback
       // has a verified Supabase user and no withAuth() RequestContext.
       const admin = adminClient();
+      acceptRpc(admin);
       const count = countQb(1);
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(count)
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb({ id: 'inv-1' })) // single-use claim
-        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
-        .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValue(qb(null));
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(count);
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
@@ -1076,21 +1098,12 @@ describe('InvitationService', () => {
     it('re-accepting as an existing member does not consume a second seat (#182)', async () => {
       // Org is full with the caller already inside: 4 other members + the caller = 5/5.
       const admin = adminClient();
+      acceptRpc(admin);
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
       );
-      const memberQb = qb({ organization_id: 'org-1' });
-      const groupQb = qb(null);
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(countQb(4))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb({ id: 'inv-1' })) // claim
-        .mockReturnValueOnce(memberQb)
-        .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValueOnce(groupQb)
-        .mockReturnValue(qb(null));
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(4));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
@@ -1102,16 +1115,13 @@ describe('InvitationService', () => {
         1,
         admin.client,
       );
-      // The membership "upsert" needs the composite target, otherwise it degrades
-      // to an INSERT and a re-accept fails with 23505 on (organization_id, user_id).
-      expect(memberQb.upsert).toHaveBeenCalledWith(
-        { organization_id: 'org-1', user_id: 'joining-user', org_role_id: 'role-member' },
-        { onConflict: 'organization_id,user_id' },
-      );
-      expect(groupQb.upsert).toHaveBeenCalledWith(
-        { group_id: 'group-1', user_id: 'joining-user', role: 'member' },
-        { onConflict: 'group_id,user_id', ignoreDuplicates: true },
-      );
+      // The ON CONFLICT upsert that makes a re-accept idempotent lives in the
+      // function; the service must not add a second write path for it.
+      expect(admin.rpc).toHaveBeenCalledWith('accept_org_invitation', {
+        p_token: 'tok',
+        p_user_id: 'joining-user',
+      });
+      expect(admin.from.mock.calls.map(([table]) => table)).toEqual(['invitations', 'org_members']);
     });
 
     it('refuses to accept when the inviter may no longer assign the role (B1)', async () => {
@@ -1152,7 +1162,7 @@ describe('InvitationService', () => {
       expect(admin.from).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects an already-accepted token and never re-upserts membership (B6)', async () => {
+    it('rejects an already-accepted token and never reaches the accept RPC (B6)', async () => {
       const admin = adminClient();
       admin.from.mockReturnValueOnce(qb(inviteRow({ ...invitation, is_accepted: true })));
       service = new InvitationService(
@@ -1165,6 +1175,7 @@ describe('InvitationService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('GONE');
       expect(admin.from).toHaveBeenCalledTimes(1);
+      expect(admin.rpc).not.toHaveBeenCalledWith('accept_org_invitation', expect.anything());
       expect(limitsResolver.checkOrgLimit).not.toHaveBeenCalled();
     });
 
@@ -1185,47 +1196,25 @@ describe('InvitationService', () => {
       expect(admin.from).toHaveBeenCalledTimes(1);
     });
 
-    it('claims the token before writing membership and never re-updates it afterwards', async () => {
+    it('leaves the token to the function and never claims it with a separate write', async () => {
       const admin = adminClient();
+      acceptRpc(admin);
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
       );
-      const claimQb = qb({ id: 'inv-1' });
-      const memberQb = qb(null);
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(countQb(2))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(claimQb)
-        .mockReturnValueOnce(memberQb)
-        .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValue(qb(null));
+      const lookupQb = qb(invitation);
+      admin.from.mockReturnValueOnce(lookupQb).mockReturnValueOnce(countQb(2));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(true);
-      // Only an unaccepted (or legacy NULL) token can be claimed: `IS NOT TRUE`
-      // is null-safe, unlike `.eq('is_accepted', false)`.
-      expect(claimQb.update).toHaveBeenCalledWith({ is_accepted: true });
-      expect(claimQb.eq).toHaveBeenCalledWith('token', 'tok');
-      expect(claimQb.not).toHaveBeenCalledWith('is_accepted', 'is', true);
-      expect(claimQb.select).toHaveBeenCalledWith('id');
-      expect(claimQb.maybeSingle).toHaveBeenCalled();
-
-      // Claim (call 4) precedes the org_members upsert (call 5), and the claim is
-      // the single write that consumes the token — no trailing update.
-      const tables = admin.from.mock.calls.map(([table]) => table);
-      expect(tables).toEqual([
-        'invitations',
-        'org_members',
-        'organizations',
-        'invitations',
-        'org_members',
-        'groups',
-        'group_members',
-      ]);
-      expect(memberQb.update).not.toHaveBeenCalled();
+      // The single-use claim is the function's first statement (SELECT … FOR
+      // UPDATE + UPDATE inside one transaction), so the token can never be
+      // consumed without the membership write committing (#1067). No table
+      // other than the invitation lookup and the seat count is touched here.
+      expect(lookupQb.update).not.toHaveBeenCalled();
+      expect(admin.from.mock.calls.map(([table]) => table)).toEqual(['invitations', 'org_members']);
     });
 
     // #317: the pasted link must normalise identically for the lookup and the
@@ -1233,20 +1222,13 @@ describe('InvitationService', () => {
     it('normalises a pasted invite link for the lookup and the claim', async () => {
       const code = 'c8a0b04e7082116c09a28ce717f83d5f';
       const admin = adminClient();
+      acceptRpc(admin);
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
       );
       const lookupQb = qb(invitation);
-      const claimQb = qb({ id: 'inv-1' });
-      admin.from
-        .mockReturnValueOnce(lookupQb)
-        .mockReturnValueOnce(countQb(2))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(claimQb)
-        .mockReturnValueOnce(qb(null))
-        .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValue(qb(null));
+      admin.from.mockReturnValueOnce(lookupQb).mockReturnValueOnce(countQb(2));
 
       const result = await service.acceptInvitation(
         joiningCtx,
@@ -1255,7 +1237,10 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(true);
       expect(lookupQb.eq).toHaveBeenCalledWith('token', code);
-      expect(claimQb.eq).toHaveBeenCalledWith('token', code);
+      expect(admin.rpc).toHaveBeenCalledWith('accept_org_invitation', {
+        p_token: code,
+        p_user_id: 'joining-user',
+      });
     });
 
     it('returns NOT_FOUND without touching the DB for a link with no token', async () => {
@@ -1274,48 +1259,44 @@ describe('InvitationService', () => {
 
     it('rejects the accept when the token was already claimed concurrently (GONE)', async () => {
       const admin = adminClient();
+      // No row comes back: the other request claimed the token first, or it
+      // expired between the read and the function call.
+      acceptRpc(admin, []);
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
       );
-      // `.maybeSingle()` yields null when the conditional PATCH matched no row.
-      const memberQb = qb({ organization_id: 'org-1' });
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(countQb(2))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb(null)) // claim lost
-        .mockReturnValue(memberQb);
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(2));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('GONE');
-      // Nothing was written: no org_members / group_members upsert.
-      expect(admin.from).toHaveBeenCalledTimes(4);
-      expect(memberQb.upsert).not.toHaveBeenCalled();
+      // Nothing was written outside the function, so the loser of the race
+      // cannot have touched the membership or the group.
+      expect(admin.from.mock.calls.map(([table]) => table)).toEqual(['invitations', 'org_members']);
     });
 
-    it('reports a DB failure when the claim itself fails', async () => {
+    it('reports the failure and does not notify when the atomic accept fails (#1067)', async () => {
       const admin = adminClient();
+      const notifier = fakeNotifier();
+      // The membership FK rejects the write: the whole function (claim
+      // included) rolls back, so the token stays usable for a retry.
+      acceptRpc(admin, [], { message: 'boom', code: '23514' });
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
+        () => null,
+        notifier,
       );
-      const memberQb = qb({ organization_id: 'org-1' });
-      admin.from
-        .mockReturnValueOnce(qb(invitation))
-        .mockReturnValueOnce(countQb(2))
-        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }))
-        .mockReturnValue(memberQb);
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(2));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('INTERNAL_SERVER');
-      expect(admin.from).toHaveBeenCalledTimes(4);
-      expect(memberQb.upsert).not.toHaveBeenCalled();
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(notifier.invitationAccepted).not.toHaveBeenCalled();
+      expect(result).not.toHaveProperty('data');
     });
   });
 

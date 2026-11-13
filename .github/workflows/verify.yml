@@ -454,6 +454,9 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            # `invite-accept.test.ts` injects a failing trigger for the
+            # default-group half of #1067; it is skipped without this URL.
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "MAILPIT_URL=$MAILPIT_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "APP_ENV=test"
