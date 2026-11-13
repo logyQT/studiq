@@ -31,9 +31,9 @@ What remains today:
 Building a real app-level gate **now** would mean building it on the current
 authority model — `account_type` route gates, `org.manage`, plan-seeded
 `org_role_features` and a mixed `FEATURES`/`permissions` catalog — which
-[`exp/role-authority`](https://github.com/logyQT/studiq/tree/exp/role-authority)
-is replacing from the ground up. The admin app is itself updated inside that
-programme (Slice 1 catalog cutover, Slice 2 authority cutover). Any scope
+[ADR-0015](0015-role-based-authority.md) replaces from the ground up. The admin
+app is itself updated inside that programme (phase 1 catalog cutover, phase 2
+authority cutover). Any scope
 vocabulary or grant model introduced today would be a second model to migrate.
 
 ## Decision
@@ -80,8 +80,7 @@ These are the order of work, because each one defines the vocabulary or contract
 the next one builds on. Do not start a later blocker before the earlier one has
 landed on `main`.
 
-1. **Role authority rework — `exp/role-authority` (ADR-0008 role-based
-   authority).** Tracking issue:
+1. **Role authority rework (ADR-0015 role-based authority).** Tracking issue:
    [#1046](https://github.com/logyQT/studiq/issues/1046).
    This is the foundational blocker. It replaces persona-based route gates,
    `org.manage`, plan-seeded `org_role_features` and the mixed
@@ -89,9 +88,9 @@ landed on `main`.
    entitlements. It also updates the admin app to the new catalog (Slice 1/2).
    Admin auth, grant scopes and audit must be written against that model, not
    the one being deleted. See
-   [`docs/decisions/0008-role-based-authority.md`](https://github.com/logyQT/studiq/blob/exp/role-authority/docs/decisions/0008-role-based-authority.md)
+   [`docs/decisions/0015-role-based-authority.md`](0015-role-based-authority.md)
    and
-   [`docs/plans/role-authority-rollout.md`](https://github.com/logyQT/studiq/blob/exp/role-authority/docs/plans/role-authority-rollout.md).
+   [`docs/plans/role-authority-rollout.md`](../plans/role-authority-rollout.md).
 2. **Admin auth / grants / audit design, re-derived after blocker 1.** The #946
    proposals are **historical input only** (closed; branch
    `docs/admin-auth-adrs`): they assume the removed PEM/keyring and the
