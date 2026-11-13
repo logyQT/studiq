@@ -2,22 +2,30 @@ import { cpus } from 'node:os';
 import { defineConfig, type PlaywrightTestConfig } from '@playwright/test';
 
 /**
- * Per-action, per-navigation and per-assertion budget shared by both runners.
+ * Per-action and per-assertion budget shared by both runners.
  *
  * A real failure must surface in seconds: waiting 30 s to learn that a button
  * never appeared tells you nothing extra and buries the failing step under the
  * retry budget. The per-test `timeout` (Playwright's 30 s in e2e, 90 s in QA) is
  * a budget for a whole long flow, not a budget for one click or one assertion.
- *
- * Navigation has its own default (30 s) because Playwright exposes it as a
- * separate setting, not because a page needs longer: an authenticated
- * `/login` → dashboard redirect measures ~0.65 s at p50 and ~1.2 s at p99 with
- * eight browser contexts in parallel on a 16-vCPU dev box, so the same 3 s bound
- * already has ~2.5× headroom. A spec whose wait is coupled to a 5 s autosave
- * debounce, or an `expect.poll` that spans several API round trips, overrides
- * that single call with a comment explaining the budget.
+ * A spec whose wait is coupled to a 5 s autosave debounce, or an `expect.poll`
+ * that spans several API round trips, overrides that single call with a comment
+ * explaining the budget.
  */
-const WAIT_TIMEOUT_MS = 3_000;
+const ACTION_TIMEOUT_MS = 3_000;
+
+/**
+ * Navigation is one document request through the proxy's session refresh plus
+ * the redirect to the dashboard, so it gets 6 s instead of 3 s.
+ *
+ * Measured on a quiet 16-vCPU box with eight browser contexts in parallel: an
+ * authenticated `/login` → dashboard arrival is 0.65 s at p50 and 1.2 s at p99;
+ * at load average 14 the p99 is 2.2 s. CI's 4-vCPU runner still exceeded 3 s for
+ * this chain in three tests of the first full run (run 43445896876), so 6 s
+ * keeps ~3× the measured tail. It is a budget for a hung navigation, not the
+ * old 30 s default.
+ */
+const NAVIGATION_TIMEOUT_MS = 6_000;
 
 /**
  * Shared Playwright config for the two runners in this repo: the product e2e
@@ -39,11 +47,11 @@ export function defineSuiteConfig(config: PlaywrightTestConfig): PlaywrightTestC
     // can add `use`/`expect` settings — or override the default — and the shared
     // default is still applied to the keys it does not name.
     use: {
-      actionTimeout: WAIT_TIMEOUT_MS,
-      navigationTimeout: WAIT_TIMEOUT_MS,
+      actionTimeout: ACTION_TIMEOUT_MS,
+      navigationTimeout: NAVIGATION_TIMEOUT_MS,
       ...config.use,
     },
-    expect: { timeout: WAIT_TIMEOUT_MS, ...config.expect },
+    expect: { timeout: ACTION_TIMEOUT_MS, ...config.expect },
   });
 }
 
