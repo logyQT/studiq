@@ -1,5 +1,6 @@
 import type { Database } from '@studiq/server/types/database';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
+import postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import {
@@ -72,6 +73,60 @@ async function loadCorrectOptionId(questionId: string): Promise<string> {
     .overrideTypes<{ id: string }, { merge: false }>();
   if (!option) throw new Error(`question ${questionId} has no correct option`);
   return option.id;
+}
+
+/**
+ * The optional direct connection the failure injection needs, gated like the
+ * #1066 dedupe suite: without `SUPABASE_DB_URL` the cases below are skipped, not
+ * failed. The app cannot express a failing answer insert, so it is injected at
+ * the storage layer — the same class of failure as a constraint or a dropped
+ * connection midway through `submit`.
+ */
+const localDatabaseUrl = (() => {
+  const raw = process.env.SUPABASE_DB_URL;
+  if (!raw) return null;
+  const { hostname } = new URL(raw);
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ? raw : null;
+})();
+
+/** A trigger argument: the ids come from the API/DB, and DDL cannot bind them. */
+const safeUuid = (value: string) => value.replaceAll(/[^0-9a-zA-Z-]/g, '');
+
+/**
+ * Makes `student_answers` inserts fail for one attempt — every row, or only the
+ * row of `questionId` so a sheet fails midway through. Returns the cleanup that
+ * drops the trigger and closes the connection.
+ */
+async function rejectAnswerInserts(
+  attempt: string,
+  questionId?: string,
+): Promise<() => Promise<void>> {
+  const sql = postgres(localDatabaseUrl!, { max: 1, onnotice: () => {} });
+  const questionFilter = questionId ? `AND NEW.question_id = '${safeUuid(questionId)}'::uuid` : '';
+  await sql.unsafe(`
+    CREATE OR REPLACE FUNCTION public.test_reject_answer_insert()
+    RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.attempt_id = '${safeUuid(attempt)}'::uuid ${questionFilter} THEN
+        RAISE EXCEPTION 'test: forced student_answers insert failure'
+          USING ERRCODE = '23514';
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    DROP TRIGGER IF EXISTS test_reject_answer_insert ON public.student_answers;
+    CREATE TRIGGER test_reject_answer_insert
+      BEFORE INSERT ON public.student_answers
+      FOR EACH ROW EXECUTE FUNCTION public.test_reject_answer_insert();
+  `);
+
+  return async () => {
+    await sql.unsafe(`
+      DROP TRIGGER IF EXISTS test_reject_answer_insert ON public.student_answers;
+      DROP FUNCTION IF EXISTS public.test_reject_answer_insert();
+    `);
+    await sql.end();
+  };
 }
 
 /** Fields of `GET /api/v1/quiz/[attemptId]` the assertions below read. */
@@ -940,6 +995,98 @@ describe(`Quiz Attempts Integration`, () => {
       expect(upsertError).toBeNull();
     });
 
+    it.skipIf(!localDatabaseUrl)(
+      'keeps the attempt open, the draft intact and the sheet empty when the answer insert fails (#1064)',
+      async () => {
+        mockUser(student.user);
+        const { options } = await loadAttemptAnswers();
+        const answers = oneAnswerPerQuestion(options);
+
+        // The draft is what the student comes back to after the failed submit.
+        const { request: draft, params: draftParams } = draftRequest(answers);
+        expect((await attemptAnswersPut(draft, { params: draftParams })).status).toBe(200);
+        const draftBefore = await loadDraftAnswers();
+        expect(Object.keys(draftBefore).length).toBeGreaterThan(0);
+
+        const restore = await rejectAnswerInserts(attemptId);
+        try {
+          const { request, params } = submitPost(answers);
+          const response = await attemptPost(request, { params });
+
+          // The insert failed, so the submit did too...
+          expect(response.status).toBe(400);
+          // ...and it took the completion with it: the attempt is still open, the
+          // draft is still there and no answer row exists. Before #1064 the
+          // completion write had already committed here, so every retry was a
+          // re-submit refusal and the sheet was lost.
+          const attempt = await loadAttemptRow();
+          expect(attempt.completed_at).toBeNull();
+          expect(await loadDraftAnswers()).toEqual(draftBefore);
+          expect(await countStudentAnswers()).toBe(0);
+        } finally {
+          await restore();
+        }
+      },
+    );
+
+    it.skipIf(!localDatabaseUrl)(
+      'accepts the retry once the insert failure clears and stores the sheet (#1064)',
+      async () => {
+        mockUser(student.user);
+        const { options } = await loadAttemptAnswers();
+        const answers = oneAnswerPerQuestion(options);
+
+        const restore = await rejectAnswerInserts(attemptId);
+        const { request, params } = submitPost(answers);
+        // The injected failure is transient: `finally` clears it for the retry.
+        const failed = await attemptPost(request, { params }).finally(restore);
+        expect(failed.status).toBe(400);
+
+        const { request: retry, params: retryParams } = submitPost(answers);
+        const retried = await attemptPost(retry, { params: retryParams });
+        const body = await json<SubmitPayload>(retried);
+
+        expect(retried.status).toBe(200);
+        expect(body.success).toBe(true);
+
+        const attempt = await loadAttemptRow();
+        expect(attempt.completed_at).not.toBeNull();
+        expect(attempt.score).toBe(body.data.score);
+        expect(await countStudentAnswers()).toBe(answers.length);
+        // The completion is the write that retires the draft (#349).
+        expect(await loadDraftAnswers()).toEqual({});
+      },
+    );
+
+    it.skipIf(!localDatabaseUrl)(
+      'rolls back the rows the sheet already wrote when a later row fails (#1064)',
+      async () => {
+        mockUser(student.user);
+        // A second question, so the sheet is written as several rows and the
+        // failure lands on the last one: a non-transactional insert would leave
+        // the earlier rows behind on an attempt that is still open.
+        const openQuestionId = await addOpenQuestionToAttempt('seed-question-open-1064');
+        const { options } = await loadAttemptAnswers();
+        const answers = [
+          ...oneAnswerPerQuestion(options),
+          { questionId: openQuestionId, textAnswer: 'Odpowiedź otwarta.' },
+        ];
+        expect(answers.length).toBeGreaterThan(1);
+        expect(answers.at(-1)?.questionId).toBe(openQuestionId);
+
+        const restore = await rejectAnswerInserts(attemptId, openQuestionId);
+        try {
+          const { request, params } = submitPost(answers);
+          expect((await attemptPost(request, { params })).status).toBe(400);
+
+          expect(await countStudentAnswers()).toBe(0);
+          expect((await loadAttemptRow()).completed_at).toBeNull();
+        } finally {
+          await restore();
+        }
+      },
+    );
+
     it('returns 400 when submitting already completed attempt', async () => {
       mockUser(student.user);
 
@@ -1130,6 +1277,31 @@ describe(`Quiz Attempts Integration`, () => {
         body: JSON.stringify({ answers }),
       },
     );
+  }
+
+  function submitPost(answers: unknown[]) {
+    return createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attemptId}`,
+      { attemptId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      },
+    );
+  }
+
+  /** The attempt row's completion state and score, read back through the service client. */
+  async function loadAttemptRow() {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .select('completed_at, score')
+      .eq('id', attemptId)
+      .single()
+      .overrideTypes<{ completed_at: string | null; score: number }, { merge: false }>();
+    if (error) throw new Error(`Failed to read the attempt: ${error.message}`);
+    return data;
   }
 
   async function getAttempt() {

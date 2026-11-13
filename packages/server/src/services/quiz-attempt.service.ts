@@ -491,7 +491,6 @@ export class QuizAttemptService {
         score += attempt.assignment_id ? (assignmentPoints.get(ans.questionId) ?? 0) : 1;
       }
       answerRecords.push({
-        attempt_id: data.attemptId,
         question_id: ans.questionId,
         question_type: questionType,
         selected_option_id: isOpen ? null : (ans.selectedAnswerId ?? null),
@@ -500,34 +499,25 @@ export class QuizAttemptService {
       });
     }
 
-    // The gate above is a read: two submits that start together both pass it.
-    // The `completed_at IS NULL` predicate makes the completion write the
-    // arbiter — exactly one request flips the attempt, and the loser must answer
-    // like any later re-submit (#1066).
-    const { data: completed, error: updateError } = await supabase
-      .from('quiz_attempts')
-      .update({
-        score,
-        completed_at: new Date().toISOString(),
-        // The graded rows below are the record from now on.
-        draft_answers: {},
-      })
-      .eq('id', data.attemptId)
-      .eq('user_id', ctx.userId)
-      .is('completed_at', null)
-      .select('id');
+    // The sheet and the completion are one transaction (#1064): the function
+    // locks the attempt, inserts the rows, then stamps `completed_at` last. A
+    // failing insert rolls both back, so the attempt stays open with its draft
+    // and the next submit can still finish it — as two separate writes, the
+    // completion committed first and the retry was refused as a re-submit.
+    //
+    // The row lock inside the function is also the arbiter #1066 relies on: two
+    // submits that both pass the read gate serialise there, the loser re-reads
+    // `completed_at` set, writes nothing and answers no rows — the same
+    // BAD_REQUEST as any later re-submit.
+    const { data: completed, error: submitError } = await supabase.rpc('submit_quiz_attempt', {
+      p_attempt_id: data.attemptId,
+      p_user_id: ctx.userId,
+      p_score: score,
+      p_answers: answerRecords,
+    });
 
-    if (updateError) return toDbFailure(updateError);
+    if (submitError) return toDbFailure(submitError);
     if (dbRows(completed).length === 0) return failure('BAD_REQUEST');
-
-    // `UNIQUE (attempt_id, question_id)` is the storage guard for the one-row
-    // contract: a row the earlier partial write already stored is kept, so a
-    // retry finishes the sheet instead of failing on the key.
-    const { error: answersError } = await supabase
-      .from('student_answers')
-      .upsert(answerRecords, { onConflict: 'attempt_id,question_id', ignoreDuplicates: true });
-
-    if (answersError) return toDbFailure(answersError);
 
     return success({ score: showResults ? score : null, totalQuestions: data.answers.length });
   }
