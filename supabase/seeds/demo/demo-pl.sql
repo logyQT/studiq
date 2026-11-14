@@ -3,9 +3,9 @@
 --
 -- Polish twin of `demo-en.sql`: the same shape (people, org, groups, decks,
 -- banks, quizzes, assignments, seats and eight weeks of history) with Polish
--- people and Polish study content, so `apps/web/public/marketing/pl/` shows a
--- Polish UI over Polish material instead of translated chrome over English
--- content. Apply both with `bun scripts/demo-seed.ts`.
+-- people and Polish study content, so a Polish walkthrough shows a Polish UI
+-- over Polish material instead of translated chrome over English content.
+-- Apply both with `bun scripts/demo-seed.ts`.
 --
 -- What it creates: one self-contained demo tenant that looks like a real
 -- university using StudiQ — 11 accounts (1 manager, 2 educators, 8 students),

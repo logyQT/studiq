@@ -8,8 +8,8 @@
  * CI never replay them — see the header of each SQL file.
  *
  * Two tenants, not one: the UI chrome is translated by `next-intl` while the
- * study material is data, so `apps/web/public/marketing/{locale}/` can only
- * show a coherent language if each locale has its own tenant.
+ * study material is data, so a Polish walkthrough needs Polish content rather
+ * than translated chrome over English material.
  *
  *   bun scripts/demo-seed.ts              # apply both tenants (idempotent)
  *   bun scripts/demo-seed.ts --locale pl  # apply one tenant
