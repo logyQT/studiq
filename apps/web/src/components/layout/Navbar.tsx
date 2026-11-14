@@ -185,7 +185,11 @@ export function Navbar() {
       ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-input bg-background md:border-border">
+    <header className="sticky top-0 z-50 w-full border-b border-input bg-background lg:border-border">
+      {/* The bottom rule is the burger panel's top edge (`PANEL_SHEET` sits at
+          `top-16` under this header), so it stays `--input` for exactly as long
+          as the panel can attach — the burger is `lg:hidden`. Past `lg` no panel
+          can reach it and the rule is the decorative `--border`. */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* LEFT — one row, one baseline: the logo gets a control-height box so

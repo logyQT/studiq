@@ -88,12 +88,12 @@ describe('FlashcardReview', () => {
     const edges = [...html.matchAll(/border-(destructive|amber-600|orange-600|success)\/40/g)];
 
     // A glow is the one thing this block used to add inline; four distinct edges
-    // are what replaced it.
+    // are what replaced it, in scale order (again → hard → good → easy).
     expect(html).not.toContain('box-shadow');
     expect(edges.map((match) => match[1])).toEqual([
       'destructive',
-      'amber-600',
       'orange-600',
+      'amber-600',
       'success',
     ]);
   });

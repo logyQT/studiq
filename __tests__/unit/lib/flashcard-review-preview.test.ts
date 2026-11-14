@@ -71,7 +71,10 @@ describe('FlashcardReviewPreview', () => {
     const html = render('pl');
     const shortcuts = [...html.matchAll(/aria-keyshortcuts="([1-4])"/g)].map((match) => match[1]);
 
-    expect(shortcuts).toEqual(['1', '3', '2', '4']);
+    // Document order is the scale order, which is what a screen reader announces.
+    // The 2×2 is CSS placement (`col-start`/`row-start`), so the visual grid keeps
+    // each rating where it was.
+    expect(shortcuts).toEqual(['1', '2', '3', '4']);
     for (const label of [
       labels('pl').rating_again,
       labels('pl').rating_good,

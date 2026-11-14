@@ -225,6 +225,11 @@ export function FlashcardReview({
        *
        * `ghost` carries `dark:hover:bg-accent/50` on a dark+hover stack that a
        * plain `hover:bg-*` cannot outrank, so the hover tint is declared twice.
+       *
+       * The buttons are in scale order (1 → 4) because that is what a listener
+       * hears; the 2×2 keeps the hard half in the left column and the easy half
+       * in the right, so each one is placed instead of left to auto-flow (which
+       * would read 1, 3 / 2, 4 both ways).
        */}
       <div
         className={cn(
@@ -235,7 +240,7 @@ export function FlashcardReview({
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="border border-destructive/40 bg-destructive/8 text-foreground hover:bg-destructive/12 focus-visible:ring-ring disabled:opacity-100 dark:hover:bg-destructive/12"
+          className="col-start-1 row-start-1 border border-destructive/40 bg-destructive/8 text-foreground hover:bg-destructive/12 disabled:opacity-100 dark:hover:bg-destructive/12"
           onClick={() => onRate(1)}
           aria-keyshortcuts="1"
         >
@@ -244,16 +249,7 @@ export function FlashcardReview({
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="border border-amber-600/40 bg-amber-600/8 text-foreground hover:bg-amber-600/12 focus-visible:ring-ring disabled:opacity-100 dark:border-amber-400/40 dark:bg-amber-400/8 dark:hover:bg-amber-400/12"
-          onClick={() => onRate(3)}
-          aria-keyshortcuts="3"
-        >
-          <Check className="mr-1.5 size-4 text-amber-600 dark:text-amber-400" /> {ratingLabels.good}
-        </Button>
-        <Button
-          variant="ghost"
-          disabled={!isFlipped}
-          className="border border-orange-600/40 bg-orange-600/8 text-foreground hover:bg-orange-600/12 focus-visible:ring-ring disabled:opacity-100 dark:border-orange-400/40 dark:bg-orange-400/8 dark:hover:bg-orange-400/12"
+          className="col-start-1 row-start-2 border border-orange-600/40 bg-orange-600/8 text-foreground hover:bg-orange-600/12 disabled:opacity-100 dark:border-orange-400/40 dark:bg-orange-400/8 dark:hover:bg-orange-400/12"
           onClick={() => onRate(2)}
           aria-keyshortcuts="2"
         >
@@ -263,7 +259,16 @@ export function FlashcardReview({
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="border border-success/40 bg-success/8 text-foreground hover:bg-success/12 focus-visible:ring-ring disabled:opacity-100 dark:hover:bg-success/12"
+          className="col-start-2 row-start-1 border border-amber-600/40 bg-amber-600/8 text-foreground hover:bg-amber-600/12 disabled:opacity-100 dark:border-amber-400/40 dark:bg-amber-400/8 dark:hover:bg-amber-400/12"
+          onClick={() => onRate(3)}
+          aria-keyshortcuts="3"
+        >
+          <Check className="mr-1.5 size-4 text-amber-600 dark:text-amber-400" /> {ratingLabels.good}
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={!isFlipped}
+          className="col-start-2 row-start-2 border border-success/40 bg-success/8 text-foreground hover:bg-success/12 disabled:opacity-100 dark:hover:bg-success/12"
           onClick={() => onRate(4)}
           aria-keyshortcuts="4"
         >

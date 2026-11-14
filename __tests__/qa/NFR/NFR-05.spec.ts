@@ -24,7 +24,8 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  * Acceptance points confirmed on the shared app during the walk:
  * 1. `/login`: Tab reaches e-mail → password → submit → „Zarejestruj się”; Shift+Tab
- *    walks the same order backwards. Every stop draws a 3 px `ring-ring/50` ring (the
+ *    walks the same order backwards. Every stop draws a ring: a solid 2 px `--ring`
+ *    at a 2 px offset on the button, and `ring-ring/50` at 3 px on the fields (the
  *    trailing link falls back to the browser's 1 px auto outline).
  * 2. Enter in the password field submits the form — a real sign-in, not a
  *    client-only no-op — and lands on the student dashboard.
@@ -121,8 +122,9 @@ function isTransparent(color: string): boolean {
 
 /**
  * A keyboard user can see where they are: either a real outline or a box-shadow ring
- * with a spread of at least 2 px (the product draws `ring-[3px]` on form controls and
- * buttons, and `focus:ring-2` on the dialog close button).
+ * with a spread of at least 2 px (the product draws `ring-2` at a 2 px offset on
+ * buttons, `ring-[3px]` on form fields, and `focus:ring-2` on the dialog close
+ * button).
  */
 function hasVisibleFocus(style: FocusStyle): boolean {
   const outline =
@@ -139,7 +141,8 @@ function hasVisibleFocus(style: FocusStyle): boolean {
 
 /**
  * The element that currently has focus matches `:focus-visible` and shows a cue.
- * Polled for a moment because the ring fades in through a CSS transition.
+ * Polled for a moment because some controls fade the ring in through a CSS
+ * transition.
  */
 async function expectVisibleFocus(page: Page, label: string): Promise<void> {
   await expect
