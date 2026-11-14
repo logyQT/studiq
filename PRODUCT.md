@@ -157,9 +157,9 @@ seed or fix the bullet, but the current pair cannot both be true.
 ## Voice
 
 Direct, plain, specific. Polish is the default locale and the primary draft; English must
-make the same claim, not a different one. Today it does not: `pl.hero_title` is "Tylko to,
-co musisz umieć." and `en.hero_title` is "Learn Smarter, Not Harder". Fix the pair, Polish
-first.
+make the same claim, not a different one. The hero is the reference pair: `pl.hero_title` is
+"Ucz się tylko tego, co potrzebne." and `en.hero_title` is "Study only what you need." Both
+make the learner the actor and scope the claim to what the material requires.
 
 - Say the concrete thing: "turn your lecture slides into a question bank", not
   "AI-powered learning".

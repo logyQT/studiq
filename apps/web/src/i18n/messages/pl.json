@@ -1900,9 +1900,9 @@
   },
   "LandingPage": {
     "hero_badge": "Z Twoich materiałów, na ten tydzień.",
-    "hero_title": "Tylko to, co musisz umieć.",
-    "hero_title_lead": "Tylko to, co",
-    "hero_title_mark": "musisz umieć.",
+    "hero_title": "Ucz się tylko tego, co potrzebne.",
+    "hero_title_lead": "Ucz się tylko tego,",
+    "hero_title_mark": "co potrzebne.",
     "hero_subtitle": "Testy, fiszki i powtórki z Twoich materiałów, nie z gotowej talii.",
     "quiz_end_restart": "Zacznij od nowa",
     "quiz_end_cta": "Rozwiąż własny test",

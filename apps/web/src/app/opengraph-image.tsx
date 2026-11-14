@@ -27,7 +27,7 @@ export default function OpengraphImage() {
           padding: '0 80px',
         }}
       >
-        Tylko to, co musisz umieć.
+        Ucz się tylko tego, co potrzebne.
       </div>
     </div>,
     { ...size },
