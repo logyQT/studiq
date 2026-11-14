@@ -55,9 +55,38 @@ const WIDTH = 1440;
 const HEIGHT = 900;
 const SCALE = 2;
 
-/** Files whose change makes the committed imagery stale. */
+/**
+ * Element shots render the component at ≥ 700 CSS px on a wide layout and are
+ * captured at 3×, so the page can show them at 350–700 CSS px without the
+ * browser inventing pixels. Anything narrower than that is the soft-image
+ * failure this gate exists to catch.
+ */
+const ELEMENT_SCALE = 3;
+const ELEMENT_VIEWPORT = { width: 1800, height: 1200 };
+const MIN_ELEMENT_CSS_WIDTH = 700;
+const MAX_DISPLAY_WIDTH = 720;
+/** Fractions of the frame the ink must cover, and where a shot may sit. */
+const MAX_EMPTY_MARGIN = 0.08;
+const RENDITION_WIDTHS = [720, 1440] as const;
+
+type Theme = 'light' | 'dark';
+const THEMES: Theme[] = ['light', 'dark'];
+
+/**
+ * Files whose change can change the captured pixels: the app components the
+ * shots render, the demo seed, and this script.
+ *
+ * The landing-page components are deliberately absent — they consume these
+ * images, they do not produce them, and a concurrent edit to them must not turn
+ * the gate red for imagery it cannot affect.
+ */
 const WATCHED = [
-  join(ROOT, 'apps/web/src/components/marketing'),
+  join(ROOT, 'apps/web/src/components/study'),
+  join(ROOT, 'apps/web/src/components/stats'),
+  join(ROOT, 'apps/web/src/components/questions'),
+  join(ROOT, 'apps/web/src/components/assignments'),
+  join(ROOT, 'apps/web/src/components/layout'),
+  join(ROOT, 'apps/web/src/components/providers'),
   join(ROOT, 'supabase/seeds/demo/demo-en.sql'),
   join(ROOT, 'supabase/seeds/demo/demo-pl.sql'),
   join(ROOT, 'scripts/marketing-shots.ts'),
@@ -72,6 +101,8 @@ interface LocaleSpec {
   educator: string;
   manager: string;
   quizAttempt: string;
+  /** Completed practice attempt, for the results/feedback screen. */
+  reviewAttempt: string;
   bank: string;
   goodButton: string;
 }
@@ -84,6 +115,7 @@ const LOCALES: LocaleSpec[] = [
     educator: 'emily.carter@example.edu',
     manager: 'michael.brown@example.edu',
     quizAttempt: 'd0000000-0000-4000-800b-000000000001',
+    reviewAttempt: '42c9aed6-a381-41cd-8c41-d07e253c0b3b',
     bank: 'd0000000-0000-4000-8020-000000000001',
     goodButton: 'Good',
   },
@@ -94,6 +126,7 @@ const LOCALES: LocaleSpec[] = [
     educator: 'anna.kowalska@example.edu',
     manager: 'marek.wisniewski@example.edu',
     quizAttempt: 'e0000000-0000-4000-800b-000000000001',
+    reviewAttempt: 'f5d53072-7a9e-4803-868b-799c70a209b5',
     bank: 'e0000000-0000-4000-8020-000000000001',
     goodButton: 'Dobrze',
   },
@@ -268,6 +301,135 @@ const SHOTS: ShotSpec[] = [
   },
 ];
 
+/**
+ * Element shots: the PNG *is* the component, so the page composes real UI
+ * instead of a window with the product buried in it. `zoom` enlarges the
+ * component's CSS box before measuring, which is what keeps the text sharp at
+ * the sizes the landing page uses.
+ */
+interface ElementShot {
+  name: string;
+  persona: Persona;
+  path: (locale: LocaleSpec) => string;
+  /** One or more locators; more than one is unioned into a single clip. */
+  locators: (page: Page) => Locator[];
+  /** CSS zoom applied before measuring; raises a narrow component to ≥700 px. */
+  zoom?: number;
+  act?: (page: Page, locale: LocaleSpec) => Promise<void>;
+  shows: Record<'en' | 'pl', string>;
+}
+
+const ELEMENT_SHOTS: ElementShot[] = [
+  {
+    name: 'card-front',
+    persona: 'student',
+    path: () => '/app/study/session/review?studyMode=endless',
+    locators: (page) => [
+      page.locator('fieldset').first(),
+      page.locator('main p.text-center').first(),
+    ],
+    zoom: 1.05,
+    shows: {
+      en: 'The study card with a pharmacology question and the prompt to reveal the answer.',
+      pl: 'Fiszka z pytaniem z farmakologii i prośbą o odkrycie odpowiedzi.',
+    },
+  },
+  {
+    name: 'card-rating',
+    persona: 'student',
+    path: () => '/app/study/session/review?studyMode=endless',
+    locators: (page) => [page.locator('main div.grid.grid-cols-2.gap-2').last()],
+    zoom: 1.6,
+    act: async (page) => {
+      await page.locator('fieldset').first().click();
+      await page.waitForTimeout(900);
+    },
+    shows: {
+      en: 'The four recall ratings under a revealed card: again, hard, good, easy.',
+      pl: 'Cztery oceny powtórki pod odkrytą fiszką: nie pamiętam, trudne, dobrze, łatwe.',
+    },
+  },
+  {
+    name: 'quiz-question',
+    persona: 'student',
+    path: (locale) => `/app/study/session/quiz/${locale.quizAttempt}`,
+    locators: (page) => [page.locator('main div.mx-auto.flex.max-w-3xl')],
+    act: async (page) => {
+      await page.locator('[role="radio"]').first().click();
+      await page.waitForTimeout(1200);
+    },
+    shows: {
+      en: 'A quiz question with four options, one selected, and the progress indicator.',
+      pl: 'Pytanie testowe z czterema odpowiedziami, jedną zaznaczoną i wskaźnikiem postępu.',
+    },
+  },
+  {
+    name: 'quiz-feedback',
+    persona: 'student',
+    path: (locale) => `/app/study/session/quiz/${locale.reviewAttempt}/review`,
+    locators: (page) => [page.locator('main div.flex.flex-col.gap-4 > div').first()],
+    shows: {
+      en: 'An answered question in the results view: the correct option marked and the explanation below.',
+      pl: 'Odpowiedziane pytanie w wynikach: zaznaczona poprawna odpowiedź i wyjaśnienie pod spodem.',
+    },
+  },
+  {
+    name: 'stats-kpis',
+    persona: 'student',
+    path: () => '/app/stats/activity',
+    locators: (page) => {
+      const row = page.locator('main .grid').first();
+      return [0, 1, 2, 3].map((index) => row.locator('> *').nth(index));
+    },
+    shows: {
+      en: 'The weekly review counters: reviews, correct answers, cards due today, reviews and leeches.',
+      pl: 'Liczniki tygodnia: powtórki, poprawne odpowiedzi, karty na dziś, powtórki i karty oporne.',
+    },
+  },
+  {
+    name: 'stats-chart',
+    persona: 'student',
+    path: () => '/app/stats/activity',
+    locators: (page) => [page.locator('main [data-slot="card"]').first()],
+    shows: {
+      en: 'The daily activity chart: a week of reviews with correct answers beside them.',
+      pl: 'Wykres aktywności dziennej: tydzień powtórek z poprawnymi odpowiedziami obok.',
+    },
+  },
+  {
+    name: 'builder-row',
+    persona: 'educator',
+    path: (locale) => `/edu/questions/${locale.bank}`,
+    locators: (page) => [page.locator('main table tbody tr').first()],
+    zoom: 1.5,
+    shows: {
+      en: 'One question in the educator bank: the stem with its type badge, topic, answer count and actions.',
+      pl: 'Jedno pytanie w banku nauczyciela: treść z oznaczeniem typu, tematem, liczbą odpowiedzi i akcjami.',
+    },
+  },
+  {
+    name: 'assignment-list',
+    persona: 'student',
+    path: () => '/app/assignments',
+    locators: (page) => [page.locator('main section').first()],
+    zoom: 1.05,
+    shows: {
+      en: "The student's pending assignments with question counts, due dates and attempt state.",
+      pl: 'Oczekujące kartkówki studentki: liczba pytań, termin i stan podejścia.',
+    },
+  },
+  {
+    name: 'seats-table',
+    persona: 'manager',
+    path: () => '/manage/seats',
+    locators: (page) => [page.locator('main [data-slot="card"]').first()],
+    shows: {
+      en: 'Seat pools for the university: plan, purchased, assigned and available licences.',
+      pl: 'Pule miejsc uczelni: plan, wykupione, przydzielone i dostępne licencje.',
+    },
+  },
+];
+
 const HIDE_CHROME = `
   *, *::before, *::after {
     caret-color: transparent !important;
@@ -279,19 +441,27 @@ const HIDE_CHROME = `
   ::-webkit-scrollbar { display: none !important; }
 `;
 
-const USAGE = 'usage: bun run shots:capture [--locale en|pl] [--only shot,shot] [--check]';
+const USAGE =
+  'usage: bun run shots:capture [--locale en|pl] [--theme light|dark] [--only shot,shot] [--check]';
 
 /* ------------------------------------------------------------------- args */
 
 interface Options {
   locales: LocaleSpec[];
-  shots: ShotSpec[];
+  themes: Theme[];
+  /** Full-window shots (flat folders) and element shots (per theme). */
+  wide: ShotSpec[];
+  element: ElementShot[];
   check: boolean;
 }
 
+const ALL_NAMES = [...SHOTS.map((shot) => shot.name), ...ELEMENT_SHOTS.map((shot) => shot.name)];
+
 function parseArgs(argv: string[]): Options {
   let locales = LOCALES;
-  let shots = SHOTS;
+  let themes = THEMES;
+  let wide = SHOTS;
+  let element = ELEMENT_SHOTS;
   let check = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -300,7 +470,7 @@ function parseArgs(argv: string[]): Options {
       check = true;
       continue;
     }
-    if (arg === '--locale' || arg === '--only') {
+    if (arg === '--locale' || arg === '--only' || arg === '--theme') {
       const value = argv[index + 1];
       if (!value) usageError(`${arg} needs a value`);
       index += 1;
@@ -308,25 +478,29 @@ function parseArgs(argv: string[]): Options {
         const match = LOCALES.filter((l) => l.locale === value);
         if (match.length === 0) usageError(`unknown locale "${value}" (en, pl)`);
         locales = match;
+      } else if (arg === '--theme') {
+        if (value !== 'light' && value !== 'dark') {
+          usageError(`unknown theme "${value}" (light, dark)`);
+        }
+        themes = [value];
       } else {
         const names = value
           .split(',')
           .map((name) => name.trim())
           .filter(Boolean);
-        const unknown = names.filter((name) => !SHOTS.some((s) => s.name === name));
+        const unknown = names.filter((name) => !ALL_NAMES.includes(name));
         if (unknown.length > 0) {
-          usageError(
-            `unknown shot(s): ${unknown.join(', ')} (${SHOTS.map((s) => s.name).join(', ')})`,
-          );
+          usageError(`unknown shot(s): ${unknown.join(', ')} (${ALL_NAMES.join(', ')})`);
         }
-        shots = SHOTS.filter((s) => names.includes(s.name));
+        wide = SHOTS.filter((s) => names.includes(s.name));
+        element = ELEMENT_SHOTS.filter((s) => names.includes(s.name));
       }
       continue;
     }
     usageError(`unknown argument "${arg}"`);
   }
 
-  return { locales, shots, check };
+  return { locales, themes, wide, element, check };
 }
 
 function usageError(message: string): never {
@@ -399,9 +573,14 @@ interface PngStats {
   bytes: number;
   deviation: number;
   colors: number;
+  mean: number;
+  /** Share of the frame inside the bounding box of non-background pixels. */
+  coverage: number;
+  /** Empty band on each edge, as a fraction of that dimension. */
+  margins: { left: number; top: number; right: number; bottom: number };
 }
 
-/** Dimensions, size and a luminance deviation, decoded with node:zlib only. */
+/** Dimensions, size, luminance, and how much of the frame the ink covers. */
 function pngStats(file: string): PngStats {
   const buf = readFileSync(file);
   let pos = 8;
@@ -451,12 +630,37 @@ function pngStats(file: string): PngStats {
     }
   }
 
+  // The plate colour is the corner of the frame, not the most common colour:
+  // a control strip whose own surface is nearly the page colour would otherwise
+  // count as background and make a tight element look like an empty plate.
+  const corner = (px: number, py: number) => {
+    const i = py * stride + px * channels;
+    return { r: pixels[i] ?? 0, g: pixels[i + 1] ?? 0, b: pixels[i + 2] ?? 0 };
+  };
+  const corners = [
+    corner(1, 1),
+    corner(width - 2, 1),
+    corner(1, height - 2),
+    corner(width - 2, height - 2),
+  ];
+  const bg = {
+    r: corners.reduce((sum, c) => sum + c.r, 0) / corners.length,
+    g: corners.reduce((sum, c) => sum + c.g, 0) / corners.length,
+    b: corners.reduce((sum, c) => sum + c.b, 0) / corners.length,
+  };
+
+  // One pass for luminance, colour spread and the ink bounding box.
+  const STEP = 4;
   let count = 0;
   let sum = 0;
   let sumSq = 0;
   const colors = new Set<string>();
-  for (let y = 0; y < height; y += 7) {
-    for (let x = 0; x < width; x += 7) {
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += STEP) {
+    for (let x = 0; x < width; x += STEP) {
       const i = y * stride + x * channels;
       const r = pixels[i] ?? 0;
       const g = pixels[i + 1] ?? 0;
@@ -466,8 +670,25 @@ function pngStats(file: string): PngStats {
       sumSq += luma * luma;
       count += 1;
       colors.add(`${r >> 4},${g >> 4},${b >> 4}`);
+      const distance = Math.abs(r - bg.r) + Math.abs(g - bg.g) + Math.abs(b - bg.b);
+      if (distance <= 3) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
     }
   }
+  const margins =
+    maxX < 0
+      ? { left: 1, top: 1, right: 1, bottom: 1 }
+      : {
+          left: minX / width,
+          top: minY / height,
+          right: (width - maxX) / width,
+          bottom: (height - maxY) / height,
+        };
+  const coverage = maxX < 0 ? 0 : ((maxX - minX + STEP) * (maxY - minY + STEP)) / (width * height);
+
   const mean = sum / count;
   return {
     width,
@@ -475,37 +696,110 @@ function pngStats(file: string): PngStats {
     bytes: buf.length,
     deviation: Math.sqrt(Math.max(sumSq / count - mean * mean, 0)),
     colors: colors.size,
+    mean,
+    coverage,
+    margins,
   };
 }
 
-function assertImage(
-  path: string,
-  expectedWidth = WIDTH * SCALE,
-  expectedHeight = HEIGHT * SCALE,
-): void {
+interface ImageExpectation {
+  width: number;
+  height: number;
+  /** Playwright rounds an element box to device pixels; allow a few px drift. */
+  tolerance?: number;
+  /** Largest tolerated empty band on any edge, as a fraction of that dimension. */
+  maxMargin?: number;
+}
+
+function assertImage(path: string, expected: ImageExpectation): PngStats {
   const stats = pngStats(path);
   const problems: string[] = [];
-  if (stats.width !== expectedWidth || stats.height !== expectedHeight) {
-    problems.push(`${stats.width}×${stats.height}, expected ${expectedWidth}×${expectedHeight}`);
+  const drift = expected.tolerance ?? 0;
+  if (
+    Math.abs(stats.width - expected.width) > drift ||
+    Math.abs(stats.height - expected.height) > drift
+  ) {
+    problems.push(`${stats.width}×${stats.height}, expected ${expected.width}×${expected.height}`);
   }
   if (stats.bytes < MIN_BYTES)
     problems.push(`${Math.round(stats.bytes / 1024)} KB, expected > 40 KB`);
   if (stats.deviation < 8) problems.push('looks blank');
   if (stats.colors < 12) problems.push('too few colours for a populated screen');
+  const maxMargin = expected.maxMargin;
+  if (maxMargin !== undefined) {
+    const worst = Math.max(...Object.values(stats.margins));
+    if (worst > maxMargin) {
+      const edges = Object.entries(stats.margins)
+        .filter(([, value]) => value > maxMargin)
+        .map(([edge, value]) => `${edge} ${(value * 100).toFixed(0)}%`);
+      problems.push(
+        `empty margin too large (${edges.join(', ')}), expected ≤ ${(maxMargin * 100).toFixed(0)}%`,
+      );
+    }
+  }
   if (problems.length > 0) throw new Error(`${path}: ${problems.join('; ')}`);
+  return stats;
+}
+
+/* ------------------------------------------------------------- renditions */
+
+/** ImageMagick is present in this environment; a missing binary fails the run. */
+function assertConvertAvailable(): void {
+  const probe = Bun.spawnSync(['convert', '-version']);
+  if (probe.exitCode !== 0) {
+    throw new Error('shots: ImageMagick `convert` is required for the WebP renditions');
+  }
+}
+
+/** 720/1440 WebP next to the PNG. Never upscales: a narrow source skips a width. */
+function writeRenditions(pngPath: string, pngWidth: number): string[] {
+  const written: string[] = [];
+  for (const target of RENDITION_WIDTHS) {
+    if (pngWidth < target) continue;
+    const out = pngPath.replace(/\.png$/, `-${target}.webp`);
+    const result = Bun.spawnSync([
+      'convert',
+      pngPath,
+      '-resize',
+      `${target}x`,
+      '-quality',
+      '82',
+      '-strip',
+      out,
+    ]);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `shots: convert failed for ${out}: ${new TextDecoder().decode(result.stderr).trim()}`,
+      );
+    }
+    written.push(out);
+  }
+  return written;
 }
 
 /* ----------------------------------------------------------------- capture */
 
-async function newSession(browser: Browser, locale: LocaleSpec, email: string) {
+async function newSession(
+  browser: Browser,
+  locale: LocaleSpec,
+  email: string,
+  theme: Theme = 'light',
+  viewport = { width: WIDTH, height: HEIGHT },
+  scale = SCALE,
+) {
   const context = await browser.newContext({
-    viewport: { width: WIDTH, height: HEIGHT },
-    deviceScaleFactor: SCALE,
+    viewport,
+    deviceScaleFactor: scale,
     locale: locale.appLocale,
-    colorScheme: 'light',
+    colorScheme: theme,
   });
   await context.addCookies([{ name: 'NEXT_LOCALE', value: locale.locale, url: APP_URL }]);
-  await context.addInitScript(() => localStorage.setItem('theme', 'light'));
+  // next-themes reads localStorage before first paint (attribute="class"), so the
+  // app's own choice is what decides the theme — not just prefers-color-scheme.
+  await context.addInitScript((value: string) => {
+    localStorage.setItem('theme', value);
+    localStorage.setItem('next-theme', value);
+  }, theme);
   const page = await context.newPage();
   // Drive the real form: the capture exercises the same path a user does.
   await page.goto(`${APP_URL}/login`, { waitUntil: 'domcontentloaded' });
@@ -517,24 +811,37 @@ async function newSession(browser: Browser, locale: LocaleSpec, email: string) {
   return { page, close: () => context.close() };
 }
 
-async function captureLocale(
-  browser: Browser,
-  locale: LocaleSpec,
-  shots: ShotSpec[],
-): Promise<void> {
-  const byPersona = new Map<Persona, ShotSpec[]>();
-  for (const shot of shots)
-    byPersona.set(shot.persona, [...(byPersona.get(shot.persona) ?? []), shot]);
+/** The theme is the app's, so assert the class the app sets rather than a media query. */
+async function assertTheme(page: Page, theme: Theme): Promise<void> {
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  if (isDark !== (theme === 'dark')) {
+    throw new Error(`shots: ${theme} theme did not apply (html.dark=${String(isDark)})`);
+  }
+}
 
-  for (const [persona, list] of byPersona) {
+/** Shots grouped by the persona whose session captures them. */
+function byPersona<T extends { persona: Persona }>(shots: T[]): Map<Persona, T[]> {
+  const grouped = new Map<Persona, T[]>();
+  for (const shot of shots) {
+    grouped.set(shot.persona, [...(grouped.get(shot.persona) ?? []), shot]);
+  }
+  return grouped;
+}
+
+async function settleShot(page: Page, anchor?: Locator): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
+  if (anchor) await anchor.first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page.waitForTimeout(1200);
+}
+
+async function captureWide(browser: Browser, locale: LocaleSpec, shots: ShotSpec[]): Promise<void> {
+  for (const [persona, list] of byPersona(shots)) {
     const email = locale[persona];
     const { page, close } = await newSession(browser, locale, email);
     try {
       for (const shot of list) {
         await page.goto(`${APP_URL}${shot.path(locale)}`, { waitUntil: 'domcontentloaded' });
-        await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
-        await shot.anchor(page).waitFor({ state: 'visible', timeout: 15_000 });
-        await page.waitForTimeout(1200);
+        await settleShot(page, shot.anchor(page));
         await shot.act?.(page, locale);
 
         const dir = join(OUT_DIR, locale.locale);
@@ -545,11 +852,12 @@ async function captureLocale(
         await page.screenshot({ path: file, animations: 'disabled' });
 
         try {
-          assertImage(file);
+          assertImage(file, { width: WIDTH * SCALE, height: HEIGHT * SCALE });
         } catch (error) {
           rmSync(file, { force: true });
           throw error;
         }
+        writeRenditions(file, WIDTH * SCALE);
         console.log(`captured ${locale.locale}/${shot.name}`);
 
         if (shot.detail) {
@@ -566,13 +874,112 @@ async function captureLocale(
             animations: 'disabled',
           });
           try {
-            assertImage(detailFile, width * SCALE, height * SCALE);
+            assertImage(detailFile, { width: width * SCALE, height: height * SCALE });
           } catch (error) {
             rmSync(detailFile, { force: true });
             throw error;
           }
+          writeRenditions(detailFile, width * SCALE);
           console.log(`captured ${locale.locale}/${shot.name}-detail`);
         }
+      }
+    } finally {
+      await close();
+    }
+  }
+}
+
+/**
+ * Element shots, per theme: the PNG is the component itself, rendered at
+ * ≥ 700 CSS px by a wide viewport plus a CSS zoom, and captured at 3×.
+ */
+async function captureElements(
+  browser: Browser,
+  locale: LocaleSpec,
+  theme: Theme,
+  shots: ElementShot[],
+): Promise<void> {
+  for (const [persona, list] of byPersona(shots)) {
+    const email = locale[persona];
+    const { page, close } = await newSession(
+      browser,
+      locale,
+      email,
+      theme,
+      ELEMENT_VIEWPORT,
+      ELEMENT_SCALE,
+    );
+    try {
+      for (const shot of list) {
+        await page.goto(`${APP_URL}${shot.path(locale)}`, { waitUntil: 'domcontentloaded' });
+        await settleShot(page, shot.locators(page)[0]);
+        await assertTheme(page, theme);
+        if (shot.zoom && shot.zoom !== 1) {
+          await page.addStyleTag({ content: `html { zoom: ${shot.zoom} }` });
+          await page.waitForTimeout(400);
+        }
+        await shot.act?.(page, locale);
+        await assertTheme(page, theme);
+
+        const targets = shot.locators(page);
+        const boxes = [];
+        for (const target of targets) {
+          const targetBox = await target.boundingBox();
+          if (!targetBox)
+            throw new Error(`${locale.locale}/${theme}/${shot.name}: no bounding box`);
+          boxes.push(targetBox);
+        }
+        const box = {
+          x: Math.min(...boxes.map((b) => b.x)),
+          y: Math.min(...boxes.map((b) => b.y)),
+          width: Math.max(...boxes.map((b) => b.x + b.width)) - Math.min(...boxes.map((b) => b.x)),
+          height:
+            Math.max(...boxes.map((b) => b.y + b.height)) - Math.min(...boxes.map((b) => b.y)),
+        };
+        if (box.width < MIN_ELEMENT_CSS_WIDTH) {
+          throw new Error(
+            `${locale.locale}/${theme}/${shot.name}: element renders ${Math.round(box.width)} CSS px wide, ` +
+              `needs ≥ ${MIN_ELEMENT_CSS_WIDTH} (raise --zoom or the viewport)`,
+          );
+        }
+
+        const dir = join(OUT_DIR, locale.locale, theme);
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, `${shot.name}.png`);
+        if (targets.length === 1) {
+          await targets[0]!.screenshot({ path: file, animations: 'disabled' });
+        } else {
+          await page.screenshot({
+            path: file,
+            clip: { x: box.x, y: box.y, width: box.width, height: box.height },
+            animations: 'disabled',
+          });
+        }
+
+        const expected = {
+          width: Math.round(box.width * ELEMENT_SCALE),
+          height: Math.round(box.height * ELEMENT_SCALE),
+          tolerance: 4,
+          maxMargin: MAX_EMPTY_MARGIN,
+        };
+        let stats;
+        try {
+          stats = assertImage(file, expected);
+        } catch (error) {
+          rmSync(file, { force: true });
+          throw error;
+        }
+        if (stats.width < MAX_DISPLAY_WIDTH * 2) {
+          rmSync(file, { force: true });
+          throw new Error(
+            `${locale.locale}/${theme}/${shot.name}: ${stats.width} px source, ` +
+              `needs ≥ ${MAX_DISPLAY_WIDTH * 2} for a ${MAX_DISPLAY_WIDTH} px slot`,
+          );
+        }
+        writeRenditions(file, stats.width);
+        console.log(
+          `captured ${locale.locale}/${theme}/${shot.name} (${Math.round(box.width)} CSS px → ${stats.width}×${stats.height})`,
+        );
       }
     } finally {
       await close();
@@ -589,21 +996,24 @@ interface ManifestEntry {
   height: number;
   shows: string;
   variant?: 'detail';
+  theme?: Theme;
+  /** Derived WebP renditions written beside this PNG. */
+  renditions?: string[];
 }
 
-/** Every asset the manifest describes: the wide window and its detail crop. */
-function expectedAssets(
-  locales: LocaleSpec[],
-  shots: ShotSpec[],
-): {
+interface ExpectedAsset {
   locale: string;
   file: string;
   shows: string;
   variant?: 'detail';
-}[] {
-  const assets = [];
+  theme?: Theme;
+}
+
+/** Every asset the manifest describes: wide windows, their details, element sets. */
+function expectedAssets(locales: LocaleSpec[]): ExpectedAsset[] {
+  const assets: ExpectedAsset[] = [];
   for (const locale of locales) {
-    for (const shot of shots) {
+    for (const shot of SHOTS) {
       assets.push({
         locale: locale.locale,
         file: `${locale.locale}/${shot.name}.png`,
@@ -614,7 +1024,17 @@ function expectedAssets(
           locale: locale.locale,
           file: `${locale.locale}/${shot.name}-detail.png`,
           shows: shot.detail.shows[locale.locale],
-          variant: 'detail' as const,
+          variant: 'detail',
+        });
+      }
+    }
+    for (const theme of THEMES) {
+      for (const shot of ELEMENT_SHOTS) {
+        assets.push({
+          locale: locale.locale,
+          theme,
+          file: `${locale.locale}/${theme}/${shot.name}.png`,
+          shows: shot.shows[locale.locale],
         });
       }
     }
@@ -622,18 +1042,27 @@ function expectedAssets(
   return assets;
 }
 
-function writeManifest(locales: LocaleSpec[], shots: ShotSpec[]): void {
-  const entries: ManifestEntry[] = expectedAssets(locales, shots).map((asset) => {
-    const stats = pngStats(join(OUT_DIR, asset.file));
-    return {
-      locale: asset.locale,
-      file: asset.file,
-      width: stats.width,
-      height: stats.height,
-      shows: asset.shows,
-      ...(asset.variant ? { variant: asset.variant } : {}),
-    };
-  });
+function writeManifest(locales: LocaleSpec[]): void {
+  // A filtered run (`--locale`, `--only`, `--theme`) writes a manifest for what
+  // exists on disk; `--check` still expects the whole matrix and names the gaps.
+  const entries: ManifestEntry[] = expectedAssets(locales)
+    .filter((asset) => existsSync(join(OUT_DIR, asset.file)))
+    .map((asset) => {
+      const stats = pngStats(join(OUT_DIR, asset.file));
+      const renditions = RENDITION_WIDTHS.filter((width) => stats.width >= width).map((width) =>
+        asset.file.replace(/\.png$/, `-${width}.webp`),
+      );
+      return {
+        locale: asset.locale,
+        file: asset.file,
+        width: stats.width,
+        height: stats.height,
+        shows: asset.shows,
+        ...(asset.variant ? { variant: asset.variant } : {}),
+        ...(asset.theme ? { theme: asset.theme } : {}),
+        renditions,
+      };
+    });
   writeFileSync(SHOTS_FILE, `${JSON.stringify(entries, null, 2)}\n`);
   console.log(`wrote ${SHOTS_FILE} (${entries.length} entries)`);
 }
@@ -650,51 +1079,96 @@ function newestMtime(path: string): number {
 }
 
 function runCheck(): void {
-  if (!existsSync(SHOTS_FILE)) {
-    console.error(`shots --check: ${SHOTS_FILE} is missing. Run: bun run shots:capture`);
+  const manifestPath = SHOTS_FILE;
+  const problems: string[] = [];
+
+  if (!existsSync(manifestPath)) {
+    console.error(`shots --check: ${manifestPath} is missing. Run: bun run shots:capture`);
     process.exit(1);
   }
-
-  const manifest = JSON.parse(readFileSync(SHOTS_FILE, 'utf8')) as ManifestEntry[];
-  const problems: string[] = [];
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ManifestEntry[];
   const sourceMtime = Math.max(...WATCHED.map(newestMtime));
+  const expected = expectedAssets(LOCALES);
 
-  for (const asset of expectedAssets(LOCALES, SHOTS)) {
-    {
-      const relative = asset.file;
-      const file = join(OUT_DIR, relative);
-      const entry = manifest.find((item) => item.file === relative);
-      if (!existsSync(file)) {
+  for (const asset of expected) {
+    const file = join(OUT_DIR, asset.file);
+    const entry = manifest.find((item) => item.file === asset.file);
+    if (!existsSync(file)) {
+      problems.push(`${asset.file}: missing`);
+      continue;
+    }
+    if (!entry) {
+      problems.push(`${asset.file}: absent from shots.json`);
+      continue;
+    }
+    if (entry.locale !== asset.locale || !entry.shows) {
+      problems.push(`${asset.file}: shots.json entry is incomplete`);
+    }
+    if (asset.variant === 'detail' && entry.variant !== 'detail') {
+      problems.push(`${asset.file}: shots.json entry is missing variant "detail"`);
+    }
+    if (asset.theme && entry.theme !== asset.theme) {
+      problems.push(`${asset.file}: shots.json entry is missing theme "${asset.theme}"`);
+    }
+
+    const stats = pngStats(file);
+    if (entry.width !== stats.width || entry.height !== stats.height) {
+      problems.push(
+        `${asset.file}: shots.json says ${entry.width}×${entry.height}, file is ${stats.width}×${stats.height}`,
+      );
+    }
+    if (stats.bytes < MIN_BYTES) {
+      problems.push(`${asset.file}: only ${Math.round(stats.bytes / 1024)} KB`);
+    }
+    if (asset.theme) {
+      const worst = Math.max(...Object.values(stats.margins));
+      if (worst > MAX_EMPTY_MARGIN) {
+        problems.push(`${asset.file}: ${(worst * 100).toFixed(0)}% empty margin on one edge`);
+      }
+    }
+    if (statSync(file).mtimeMs < sourceMtime) {
+      problems.push(`${asset.file}: stale (older than the components, seed or this script)`);
+    }
+
+    // Renditions: derived, so they must exist and never predate their source.
+    const pngMtime = statSync(file).mtimeMs;
+    for (const width of RENDITION_WIDTHS) {
+      if (stats.width < width) continue;
+      const webp = join(OUT_DIR, asset.file.replace(/\.png$/, `-${width}.webp`));
+      const relative = asset.file.replace(/\.png$/, `-${width}.webp`);
+      if (!existsSync(webp)) {
         problems.push(`${relative}: missing`);
         continue;
       }
-      if (!entry) {
-        problems.push(`${relative}: absent from shots.json`);
-        continue;
-      }
-      if (entry.locale !== asset.locale || !entry.shows) {
-        problems.push(`${relative}: shots.json entry is incomplete`);
-      }
-      if (asset.variant === 'detail' && entry.variant !== 'detail') {
-        problems.push(`${relative}: shots.json entry is missing variant "detail"`);
-      }
-      const stats = pngStats(file);
-      if (entry.width !== stats.width || entry.height !== stats.height) {
-        problems.push(
-          `${relative}: shots.json says ${entry.width}×${entry.height}, file is ${stats.width}×${stats.height}`,
-        );
-      }
-      if (stats.bytes < MIN_BYTES)
-        problems.push(`${relative}: only ${Math.round(stats.bytes / 1024)} KB`);
-      if (statSync(file).mtimeMs < sourceMtime) {
-        problems.push(`${relative}: stale (older than the marketing components or the demo seed)`);
+      if (statSync(webp).size === 0) problems.push(`${relative}: empty`);
+      if (statSync(webp).mtimeMs < pngMtime) problems.push(`${relative}: older than its PNG`);
+    }
+  }
+
+  // The theme must actually change pixels: a byte-identical pair means the app
+  // never switched, which is the silent failure this guards against.
+  for (const locale of LOCALES) {
+    for (const shot of ELEMENT_SHOTS) {
+      const light = join(OUT_DIR, locale.locale, 'light', `${shot.name}.png`);
+      const dark = join(OUT_DIR, locale.locale, 'dark', `${shot.name}.png`);
+      if (!existsSync(light) || !existsSync(dark)) continue;
+      if (readFileSync(light).equals(readFileSync(dark))) {
+        problems.push(`${locale.locale}/dark/${shot.name}.png: identical to the light capture`);
+      } else {
+        const lightMean = pngStats(light).mean;
+        const darkMean = pngStats(dark).mean;
+        if (darkMean >= lightMean - 20) {
+          problems.push(
+            `${locale.locale}/dark/${shot.name}.png: not darker than light (${darkMean.toFixed(0)} vs ${lightMean.toFixed(0)})`,
+          );
+        }
       }
     }
   }
 
-  const expected = new Set(expectedAssets(LOCALES, SHOTS).map((asset) => asset.file));
+  const expectedFiles = new Set(expected.map((asset) => asset.file));
   for (const entry of manifest) {
-    if (!expected.has(entry.file)) problems.push(`shots.json: unexpected entry ${entry.file}`);
+    if (!expectedFiles.has(entry.file)) problems.push(`shots.json: unexpected entry ${entry.file}`);
   }
 
   if (problems.length > 0) {
@@ -703,7 +1177,7 @@ function runCheck(): void {
     console.error('Regenerate: bun run shots:capture');
     process.exit(1);
   }
-  console.log(`shots --check: ${expected.size} assets are present and current`);
+  console.log(`shots --check: ${expected.length} assets and their renditions are current`);
 }
 
 /* -------------------------------------------------------------------- main */
@@ -717,15 +1191,18 @@ if (options.check) {
 
 await assertAppUp();
 await assertTenantsSeeded();
+assertConvertAvailable();
 
 const browser = await chromium.launch();
 try {
   for (const locale of options.locales) {
-    await captureLocale(browser, locale, options.shots);
+    await captureWide(browser, locale, options.wide);
+    for (const theme of options.themes) {
+      await captureElements(browser, locale, theme, options.element);
+    }
   }
 } finally {
   await browser.close();
 }
 
-// The manifest describes every locale and shot, not just the ones captured now.
-writeManifest(LOCALES, SHOTS);
+writeManifest(LOCALES);

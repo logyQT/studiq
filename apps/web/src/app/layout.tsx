@@ -92,6 +92,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Without this, env(safe-area-inset-*) resolves to 0 and the last row of a
+  // full-height surface sits inside the device's rounded corner.
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#181818' },

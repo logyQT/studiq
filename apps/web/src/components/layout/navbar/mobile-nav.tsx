@@ -2,26 +2,23 @@
 
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from '@studiq/ui';
-import { ArrowRight, GraduationCap, Menu, User, X } from 'lucide-react';
-import Image from 'next/image';
+import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
+import { FOCUS_RING, HEADER_ICON } from '@/components/layout/navbar/chrome';
 import { LanguageSwitcher } from '@/components/shared/language-switcher/language-switcher';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
-import { useBranding } from '@/hooks/use-branding';
 import { cn } from '@/lib/utils';
+import { usePanelChrome } from '@/components/layout/navbar/use-panel-chrome';
 
 interface MobileNavItem {
-  /** Already translated: the drawer's destinations span three i18n namespaces. */
+  /** Already translated: the menu's destinations span three i18n namespaces. */
   label: string;
   href: string;
 }
@@ -30,16 +27,29 @@ interface MobileNavProps {
   items: MobileNavItem[];
   isActive: (href: string) => boolean;
   isLoggedIn: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-/** Solid 2px ring at a 2px offset — the kit's `ring-ring/50` is 2.45:1 on paper. */
-const FOCUS_RING =
-  'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none';
+/**
+ * One bar of the burger. Three of them sit in a 16px box (`flex-col
+ * justify-between`), so their centres are 7px apart and the outer two need
+ * exactly that much travel to meet in the middle of the X.
+ */
+const BAR = 'h-0.5 w-5 rounded-full bg-current transition motion-reduce:transition-none';
 
-const ICON_BUTTON = cn(
-  'inline-flex size-11 items-center justify-center rounded-control text-foreground transition-colors hover:bg-accent',
-  FOCUS_RING,
-);
+/**
+ * The two outer bars travel to the middle and cross. Tailwind v4 sets `translate`
+ * and `rotate` as their own properties, so `transform: none` would not cancel
+ * them: the reduced-motion reset names each one instead. With motion off the bars
+ * stay a burger and only the middle one, which fades rather than moves, reacts.
+ */
+const BAR_OPEN_UP =
+  'translate-y-[7px] rotate-45 motion-reduce:translate-y-0 motion-reduce:rotate-0';
+const BAR_OPEN_DOWN =
+  '-translate-y-[7px] -rotate-45 motion-reduce:translate-y-0 motion-reduce:rotate-0';
+
+const PANEL_ID = 'mobile-nav-panel';
 
 /** `signal` fill / `ink` text: the menu's one primary action (DESIGN §Dosage). */
 const CTA_PRIMARY = cn(
@@ -48,45 +58,75 @@ const CTA_PRIMARY = cn(
 );
 
 /**
- * The phone menu is a full-page takeover, not a side panel.
+ * The phone menu is a panel under the header, never a replacement for it.
  *
- * A drawer is the wrong shape here: it leaves a strip of the page visible, it has
- * to fill height it does not need, and at 390px a panel that slides in from an
- * edge reads as an overlay on top of the site rather than as the site's own
- * navigation. Instead the menu replaces the page in place — it drops from under
- * the header, the destinations are set large with generous rows, and the single
- * primary action sits near the bottom where the thumb is.
+ * The header is the constant: its logo, account mark and this burger stay where
+ * they are and stay interactive for as long as the menu is open, because they
+ * are how a visitor acts without navigating and how they leave. So the panel
+ * owns only what belongs to the menu — the destinations, the preference row and,
+ * signed out, the one primary action — and draws no chrome of its own. One
+ * control closes it: this burger, which morphs into an X in place.
  *
- * Only "Zarejestruj się" is offered as a button. Someone who already has an
- * account looks for the account mark in the top bar (the same corner it lives in
- * once they are signed in); someone arriving for the first time needs one
- * unambiguous action, not a choice between two.
+ * Signed in, the panel is the list plus the preference row: the account surface
+ * (who you are, plan, account, payments, logout) is the header account mark's
+ * own panel. Language and theme therefore have exactly one home for everyone —
+ * right here — instead of moving house with the sign-in state.
  *
- * `side="top"` is what supplies the in-place motion: the kit's slide-from-edge
- * animation, at full width and full height, is the menu expanding out of the
- * header. It keeps the kit's focus trap, Escape handling and scroll lock.
+ * That ownership is what `modal={false}` buys. Radix's modal dialog would put an
+ * overlay over the header, trap focus behind it and lock scroll, all of which
+ * would make the header look present but be dead. Non-modal keeps the header
+ * live, ships no overlay (the panel is opaque and covers the content anyway) and
+ * leaves Escape and focus restoration to the dialog's own content: on close it
+ * returns focus to this trigger. What it stops doing is locking the page, so the
+ * scroll lock below is ours.
  */
-export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
+export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: MobileNavProps) {
   const t = useTranslations('Navbar');
-  const [open, setOpen] = useState(false);
-  const { logoUrl } = useBranding();
-  const close = () => setOpen(false);
+  const { panelRef, close } = usePanelChrome(open, onOpenChange);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
       <SheetTrigger asChild>
-        <button type="button" aria-label={t('mobile_menu')} className={cn('-ml-2', ICON_BUTTON)}>
-          <Menu aria-hidden className="size-5" />
+        <button
+          type="button"
+          aria-expanded={open}
+          // The panel is unmounted when closed, and a reference to a missing node
+          // is an a11y error — so the pointer exists only while the target does.
+          aria-controls={open ? PANEL_ID : undefined}
+          aria-label={open ? t('common_close') : t('mobile_menu')}
+          className={cn('-ml-2', HEADER_ICON)}
+        >
+          <span aria-hidden className="flex h-4 w-5 flex-col justify-between">
+            <span className={cn(BAR, open && BAR_OPEN_UP)} />
+            <span className={cn(BAR, open && 'opacity-0')} />
+            <span className={cn(BAR, open && BAR_OPEN_DOWN)} />
+          </span>
         </button>
       </SheetTrigger>
+
       <SheetContent
+        id={PANEL_ID}
+        ref={panelRef}
         side="top"
+        // The panel covers the content, so there is nothing to dim and nothing to
+        // dismiss by tapping outside: closing is the burger, Escape, or a header
+        // control (which closes through the header's own handler).
+        onInteractOutside={(event) => event.preventDefault()}
+        // Focus goes to the panel itself, not to its first control: the dialog
+        // announces its name, and Tab then enters the list. Left on the burger,
+        // Tab would fall through to the page underneath, which the panel hides.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          panelRef.current?.focus();
+        }}
         className={cn(
-          // `h-dvh!` because the top variant sets `h-auto`; full width because this
-          // is the page, not a panel over it.
-          'flex h-dvh! w-full max-w-none flex-col gap-0 border-0 bg-background p-0 shadow-none',
-          // The kit ships its own 16px close button with an English label; the top
-          // bar carries a labelled 44px one instead.
+          // `top-16` is the header (`h-16`), `bottom-0` the viewport; with the top
+          // variant's `h-auto` that fills exactly the space below the header.
+          // `z-40` keeps the panel under the header's `z-50`, so the header is
+          // hit-testable and its hairline is the panel's top edge — no seam.
+          'top-16 bottom-0 z-40 flex w-full max-w-none flex-col gap-0 overflow-hidden border-0 bg-background p-0 shadow-none',
+          // The kit ships its own 16px close button with an English label; the
+          // burger is the only close control this panel gets.
           '[&>button:last-child]:hidden',
         )}
       >
@@ -95,60 +135,12 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
           <SheetDescription>{t('logo')}</SheetDescription>
         </SheetHeader>
 
-        {/* Top bar: brand, account, close — three cells divided by hairlines, the
-            account mark in the same corner it occupies when signed in. */}
-        <div className="flex h-16 shrink-0 items-stretch border-b border-border">
-          <Link
-            href="/"
-            onClick={close}
-            className={cn('flex flex-1 items-center gap-2 pl-4', FOCUS_RING)}
-          >
-            {logoUrl ? (
-              <Image
-                src={logoUrl}
-                alt=""
-                width={20}
-                height={20}
-                className="size-5 shrink-0 rounded-control object-contain"
-                unoptimized
-              />
-            ) : (
-              <GraduationCap aria-hidden className="size-5 shrink-0 text-primary" />
-            )}
-            <span className="truncate text-lg font-bold tracking-tight">{t('logo')}</span>
-          </Link>
-
-          {isLoggedIn ? null : (
-            <Link
-              href="/login"
-              onClick={close}
-              aria-label={t('login')}
-              className={cn(
-                'flex w-16 shrink-0 items-center justify-center border-l border-border',
-                FOCUS_RING,
-              )}
-            >
-              <User aria-hidden className="size-5" />
-            </Link>
-          )}
-
-          <SheetClose asChild>
-            <button
-              type="button"
-              aria-label={t('common_close')}
-              className={cn(
-                'flex w-16 shrink-0 items-center justify-center border-l border-border',
-                FOCUS_RING,
-              )}
-            >
-              <X aria-hidden className="size-5" />
-            </button>
-          </SheetClose>
-        </div>
-
         {/* Destinations, set large: one line each, a full row to itself, so the
             list reads as the page's structure rather than as links in a box. */}
-        <nav aria-label={t('mobile_menu')} className="min-h-0 flex-1 overflow-y-auto">
+        <nav
+          aria-label={t('mobile_menu')}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        >
           <ul className="divide-y divide-input border-b border-border">
             {items.map(({ label, href }) => {
               const active = isActive(href);
@@ -167,7 +159,7 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
                     <span className="flex-1">{label}</span>
                     <ArrowRight
                       aria-hidden
-                      className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none"
+                      className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:translate-x-0"
                     />
                   </Link>
                 </li>
@@ -176,23 +168,18 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
           </ul>
         </nav>
 
-        <div className="shrink-0 px-4 py-6">
-          {isLoggedIn ? (
-            // Account rows are sized for the desktop dropdown; this is a touch
-            // surface, so they take the 44px density in place.
-            <div className="space-y-1 [&>button]:min-h-11 [&>button]:rounded-control">
-              <UserMenuHeader />
-              <div className="my-2 h-px bg-border" />
-              <UserMenuItems variant="plain" onItemClick={close} />
-            </div>
-          ) : (
+        {isLoggedIn ? null : (
+          <div className="shrink-0 px-4 py-6">
             <Link href="/register" onClick={close} className={cn('w-full', CTA_PRIMARY)}>
               {t('register')}
             </Link>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-4 py-3 [&>button]:h-11">
+        {/* The preference row is the panel's, signed in or out: language and theme
+            live here for everyone rather than moving to the account panel, so
+            each control exists exactly once. */}
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&>button]:h-11">
           <LanguageSwitcher />
           <ThemeSwitch size="lg" />
         </div>

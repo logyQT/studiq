@@ -13,9 +13,7 @@ export function SectionHeader({ eyebrow, title, lede, align = 'left' }: SectionH
   return (
     <header className={centered ? 'max-w-2xl text-center mx-auto' : 'max-w-2xl'}>
       {eyebrow ? (
-        <p className="font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
-          {eyebrow}
-        </p>
+        <p className="font-mono text-xs uppercase tracking-[0.08em] text-primary">{eyebrow}</p>
       ) : null}
       <h2 className="mt-3 font-display text-h2 font-semibold text-balance">{title}</h2>
       {lede ? <p className="mt-4 text-lede text-muted-foreground text-pretty">{lede}</p> : null}

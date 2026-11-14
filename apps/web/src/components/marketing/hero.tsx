@@ -9,29 +9,24 @@ export function Hero() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section id="hero" className="border-b border-border pt-12 pb-12 md:pt-28 md:pb-20">
+    <section id="hero" className="border-b border-primary pt-12 pb-12 md:pt-28 md:pb-20">
       <div className="mx-auto grid max-w-media gap-y-4 px-content md:grid-cols-12 md:gap-x-8 md:gap-y-0">
         {/*
-         * The label rides the measure rule instead of sitting over the headline as
-         * a pill: on md+ it captions the shot, below md it is the eyebrow.
-         * `contents` lets the shot become a grid item of its own on a phone, so it
-         * can follow the CTAs while the rail keeps it beside the h1 on desktop: the
-         * claim and the actions keep the first screen, and the shot rewards the
+         * The label captions the shot: on md+ below the specimen, below md it is the
+         * eyebrow. `contents` lets the shot become a grid item of its own on a phone,
+         * so it can follow the CTAs while the rail keeps it beside the h1 on desktop:
+         * the claim and the actions keep the first screen, and the shot rewards the
          * scroll instead of pushing the form of the page down.
          */}
-        <div className="contents relative md:col-span-4 md:col-start-9 md:row-start-1 md:flex md:flex-col md:border-l md:border-border md:pt-4 md:pl-8 lg:col-span-5 lg:col-start-8">
-          <span
-            aria-hidden
-            className="absolute top-0 -left-px hidden h-6 w-0.5 bg-primary md:block"
-          />
+        <div className="contents md:col-span-4 md:col-start-9 md:row-start-1 md:flex md:flex-col md:border-l-2 md:border-primary md:pt-4 md:pl-8 lg:col-span-5 lg:col-start-8">
           <ProductShot
-            shot="quiz-taking"
+            shot="quiz-question"
             alt={t('shot_quiz_alt')}
             sizes="(min-width: 1280px) 456px, (min-width: 1024px) 36vw, (min-width: 768px) 30vw, calc(100vw - 2rem)"
             preload
             className="order-last mt-4 md:order-1 md:mt-0"
           />
-          <p className="font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase md:order-2 md:mt-3">
+          <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase md:order-2 md:mt-3">
             {t('hero_badge')}
           </p>
         </div>

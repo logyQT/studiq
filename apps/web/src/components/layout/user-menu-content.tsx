@@ -177,6 +177,11 @@ export type UserMenuItemsProps =
       variant?: 'menu';
       onItemClick?: () => void;
       /**
+       * Render the language and theme rows. Off for a surface that leaves the
+       * preferences to another panel, so one copy of each control exists in the DOM.
+       */
+      preferences?: boolean;
+      /**
        * Offer the notifications entry. It opens the bell of the dashboard header, so it is only
        * for menus inside a dashboard: the public pages have no bell and the entry would do nothing.
        */
@@ -188,24 +193,27 @@ export type UserMenuItemsProps =
       onItemClick?: () => void;
       /** Mobile drawer: open the separate language view instead of expanding inline. */
       onOpenLanguage?: () => void;
+      /** Same as the menu variant: the account panel leaves the preferences to the navigation panel. */
+      preferences?: boolean;
       /** Same as the menu variant: only where the dashboard bell exists. */
       notifications?: boolean;
     };
 
 export function UserMenuItems(props: UserMenuItemsProps) {
-  const { onItemClick, notifications = false } = props;
+  const { onItemClick, notifications = false, preferences = true } = props;
   const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
   const { user } = useAuth();
   // The language row is the only language entry; it owns the panel and the
   // locale commit (see language-menu-row.tsx) so no surface re-implements them.
-  const languageRow =
+  const languageRow = preferences ? (
     props.variant === 'plain' ? (
       <LanguageMenuRow variant="plain" onOpen={props.onOpenLanguage} />
     ) : (
       <LanguageMenuRow variant="menu" />
-    );
+    )
+  ) : null;
 
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
   const rawAccountType: unknown = user?.app_metadata.account_type;
@@ -261,18 +269,22 @@ export function UserMenuItems(props: UserMenuItemsProps) {
         </MenuEntry>
       )}
 
-      <MenuDivider variant={variant} />
+      {preferences && (
+        <>
+          <MenuDivider variant={variant} />
 
-      {languageRow}
+          {languageRow}
 
-      <MenuDivider variant={variant} />
+          <MenuDivider variant={variant} />
 
-      {/* A setting, not a menu action: choosing a theme keeps the menu open so the hint stays visible (#635). */}
-      <div className="flex items-center gap-2 px-2 py-1 text-sm">
-        <Palette aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        <span className="flex-1">{t('theme')}</span>
-        <ThemeSwitch size={variant === 'plain' ? 'lg' : 'sm'} />
-      </div>
+          {/* A setting, not a menu action: choosing a theme keeps the menu open so the hint stays visible (#635). */}
+          <div className="flex items-center gap-2 px-2 py-1 text-sm">
+            <Palette aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1">{t('theme')}</span>
+            <ThemeSwitch size={variant === 'plain' ? 'lg' : 'sm'} />
+          </div>
+        </>
+      )}
 
       <MenuDivider variant={variant} />
 
