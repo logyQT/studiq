@@ -37,7 +37,11 @@ export interface QuizQuestionViewQuestion {
 }
 
 export interface QuizQuestionViewLabels {
-  /** Already interpolated, e.g. „Pytanie 2 z 5”. */
+  /**
+   * The reserved line above the progress bar, already interpolated: the counter
+   * while answering („Pytanie 2 z 5”), the finished state once `result` replaces
+   * the body. The caller decides the wording; the line itself always renders.
+   */
   questionOf: string;
   typeLabel: string;
   previous: string;
@@ -63,7 +67,7 @@ export interface QuizQuestionViewProps {
   onSubmit?: () => void;
   /**
    * A finished attempt. When set it replaces the card's whole body — header,
-   * answers and footer — while the counter and progress above the card stay, so
+   * answers and footer — while the line above the bar and the progress stay, so
    * swapping to the result cannot move the card or anything around it.
    */
   result?: ReactNode;

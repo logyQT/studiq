@@ -126,7 +126,8 @@ describe('QuizQuestionView', () => {
     expect(html).toContain('Wynik');
     expect(html).not.toContain(question.stem);
     expect(html).not.toContain(question.options[0].label);
-    // The counter and progress stay put, so the card cannot move on the swap.
+    // The reserved line and the progress stay put — the caller supplies the
+    // line's wording — so the card cannot move on the swap.
     expect(html).toContain('Pytanie 1 z 5');
     expect(html).toContain('role="progressbar"');
   });

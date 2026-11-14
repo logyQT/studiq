@@ -318,7 +318,9 @@ describe('QuizResultPreview', () => {
     }
     // The state is not colour or shape alone: each row names it for a screen reader.
     expect(list.match(/Poprawnie/g)).toHaveLength(4);
-    expect(list).toContain('truncate');
+    // Two lines before a stem is cut; the whole stem stays in the DOM either way.
+    expect(list).toContain('line-clamp-2');
+    expect(list).not.toContain('truncate');
     // A record, not a destination: no link, no button, no hover in the list.
     expect(list).not.toContain('href=');
     expect(list).not.toContain('<button');
