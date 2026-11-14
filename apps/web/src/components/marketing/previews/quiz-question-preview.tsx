@@ -1,36 +1,112 @@
+'use client';
+
 import { createTranslator } from 'next-intl';
+import { useLocale } from 'next-intl';
+import { useMemo, useState } from 'react';
+import {
+  QUIZ_QUESTION_FIXTURES,
+  QUIZ_SUBJECTS,
+  type QuizFixtureLocale,
+  type QuizSubject,
+} from '@/components/marketing/previews/quiz-question-fixtures';
 import { QuizQuestionView } from '@/components/quiz/quiz-question-view';
-import { QUIZ_QUESTION_FIXTURES } from '@/components/marketing/previews/quiz-question-fixtures';
+import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
 /**
  * The quiz card as the marketing page shows it: the same component the student
- * gets, rendered from a fixture and never from a fetch. The card is a client
- * component, so its markup is server-rendered into the initial document and
- * hydration only attaches behaviour to markup that is already there
- * (DESIGN.md §Product imagery).
+ * answers on, driven by fixture data instead of a fetch.
  *
- * Content and chrome are both Polish on purpose — the fixture set is Polish, and
- * an English „Question 2 of 5” wrapped around it is the mixed-locale mistake the
- * same section bans.
+ * It is interactive on purpose — you can pick an answer and step forward and back
+ * through five subjects (biology, history, driving theory, English, SQL). That is
+ * the product doing its actual job rather than a picture of it doing so, and it
+ * costs state, not a rendering strategy: the card was already a client component.
+ *
+ * Both the fixtures and the card copy follow the page's locale. A Polish card on
+ * an English page is the mixed-locale mistake DESIGN.md bans, and it is what the
+ * first version shipped.
  */
-const t = createTranslator({ locale: 'pl', messages: pl, namespace: 'AppQuizTakingPage' });
+/*
+ * Only the question types the product actually ships today. `language` is an
+ * open-answer (fill-the-gap) fixture and stays out of the sequence: that type is
+ * deferred, and putting it on the landing page would advertise a screen a student
+ * cannot reach yet.
+ */
+const ORDER = QUIZ_SUBJECTS.filter((subject) => subject !== 'language') as readonly QuizSubject[];
+
+const MESSAGES = { pl, en };
 
 export function QuizQuestionPreview() {
-  const question = QUIZ_QUESTION_FIXTURES.biology;
+  const rawLocale = useLocale();
+  const locale: QuizFixtureLocale = rawLocale === 'en' ? 'en' : 'pl';
 
+  const [index, setIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+
+  const t = useMemo(
+    () =>
+      createTranslator({
+        locale,
+        messages: MESSAGES[locale],
+        namespace: 'AppQuizTakingPage',
+      }),
+    [locale],
+  );
+
+  const key = ORDER[index] ?? 'biology';
+  const fixture = QUIZ_QUESTION_FIXTURES[locale][key];
+  const position = index + 1;
+  const total = ORDER.length;
+
+  const question = {
+    ...fixture,
+    // The fixtures carry their own numbering for their own screens; here the five
+    // of them are one sequence, so the counter comes from the index.
+    position,
+    total,
+    selectedOptionId: answers[`${key}:option`] ?? null,
+    textAnswer: answers[`${key}:text`] ?? '',
+  };
+
+  const reset = () => {
+    setAnswers({});
+    setIndex(0);
+  };
+
+  /*
+   * The fixtures are different shapes — four options, two buttons, a textarea — so
+   * the card's own height swings. A column flex box reserves the measured maximum
+   * and the view grows into it: 76px of card chrome plus the tallest card, 436px
+   * at md and 476px on a phone, so 512px / 552px. That pins the footer, so stepping
+   * cannot move it or the page.
+   */
   return (
-    <QuizQuestionView
-      question={question}
-      labels={{
-        questionOf: t('question_of', { current: question.position, total: question.total }),
-        typeLabel: t('type_mcq'),
-        previous: t('previous'),
-        next: t('next'),
-        submit: t('submit'),
-        submitting: t('submitting'),
-        answerPlaceholder: t('answer_placeholder'),
-      }}
-    />
+    <div className="flex min-h-[552px] flex-col md:min-h-[512px]">
+      <QuizQuestionView
+        question={question}
+        labels={{
+          questionOf: t('question_of', { current: position, total }),
+          typeLabel:
+            fixture.type === 'true_false'
+              ? t('type_true_false')
+              : fixture.type === 'open'
+                ? t('type_open')
+                : t('type_mcq'),
+          previous: t('previous'),
+          next: t('next'),
+          submit: t('submit'),
+          submitting: t('submitting'),
+          answerPlaceholder: t('answer_placeholder'),
+        }}
+        onSelectOption={(optionId) =>
+          setAnswers((prev) => ({ ...prev, [`${key}:option`]: optionId }))
+        }
+        onTextChange={(text) => setAnswers((prev) => ({ ...prev, [`${key}:text`]: text }))}
+        onPrevious={() => setIndex((i) => Math.max(0, i - 1))}
+        onNext={() => setIndex((i) => Math.min(total - 1, i + 1))}
+        // Last card: "finish" restarts the demo rather than pretending to grade it.
+        onSubmit={reset}
+      />
+    </div>
   );
 }
