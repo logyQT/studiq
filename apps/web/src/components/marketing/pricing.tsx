@@ -80,7 +80,7 @@ export function Pricing() {
   ];
 
   return (
-    <section className="py-16 sm:py-24 bg-muted/30">
+    <section id="pricing" className="py-16 sm:py-24 bg-muted/30">
       <div className="mx-auto max-w-5xl">
         <div className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('pricing_title')}</h2>

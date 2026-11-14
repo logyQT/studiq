@@ -9,7 +9,7 @@ export function CtaBanner() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section className="py-16 sm:py-24">
+    <section id="get-started" className="py-16 sm:py-24">
       <div className="mx-auto max-w-3xl">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-primary/10 border p-10 sm:p-14 text-center">
           <div className="absolute top-0 right-0 -z-10 size-64 rounded-full bg-primary/10 blur-3xl" />

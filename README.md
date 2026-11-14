@@ -87,18 +87,20 @@ Full setup (Docker, env vars, seeding, Playwright) is in the
 
 ## Documentation
 
-| Document                                                     | Description                                      |
-| ------------------------------------------------------------ | ------------------------------------------------ |
-| [Onboarding](docs/ONBOARDING.md)                             | Local setup, Supabase, `gh` CLI, agent workflow  |
-| [Architecture](docs/architecture.md)                         | High-level design, layers, data flow             |
-| [Database](docs/database.md)                                 | Schema, migrations, seeds                        |
-| [Plans, Features & Limits](docs/limits.md)                   | Plan templates, feature/limit resolution         |
-| [Testing](docs/testing.md)                                   | Test strategy and how to run it                  |
-| [CI](docs/ci.md)                                             | Workflows, required checks, repository variables |
-| [Observability & Debugging](docs/observability-debugging.md) | Local telemetry stack and debugging workflow     |
-| [Deployment](docs/deployment.md)                             | Hosting, environment, production                 |
-| [Decisions](docs/decisions/)                                 | Architecture Decision Records                    |
-| [Contributing](CONTRIBUTING.md)                              | Conventional commits, issue reporting            |
+| Document                                                     | Description                                        |
+| ------------------------------------------------------------ | -------------------------------------------------- |
+| [Product](PRODUCT.md)                                        | Buyers, the claim allowlist, and the landing brief |
+| [Design system](DESIGN.md)                                   | Palette, type, layout, motion, anti-patterns       |
+| [Onboarding](docs/ONBOARDING.md)                             | Local setup, Supabase, `gh` CLI, agent workflow    |
+| [Architecture](docs/architecture.md)                         | High-level design, layers, data flow               |
+| [Database](docs/database.md)                                 | Schema, migrations, seeds                          |
+| [Plans, Features & Limits](docs/limits.md)                   | Plan templates, feature/limit resolution           |
+| [Testing](docs/testing.md)                                   | Test strategy and how to run it                    |
+| [CI](docs/ci.md)                                             | Workflows, required checks, repository variables   |
+| [Observability & Debugging](docs/observability-debugging.md) | Local telemetry stack and debugging workflow       |
+| [Deployment](docs/deployment.md)                             | Hosting, environment, production                   |
+| [Decisions](docs/decisions/)                                 | Architecture Decision Records                      |
+| [Contributing](CONTRIBUTING.md)                              | Conventional commits, issue reporting              |
 
 ## Scripts
 

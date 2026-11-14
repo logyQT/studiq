@@ -40,7 +40,9 @@ studiq/
 ├── supabase/      # migrations/, schemas/, seeds/, templates/, config.toml
 ├── rules/         # ast-grep tautology rules for `bun run review:static` (sgconfig.yml)
 ├── scripts/       # Dev workflow scripts (spin, pr, import + migration guards)
-└── docs/          # Project documentation
+├── docs/          # Project documentation
+├── PRODUCT.md     # Buyers, claim allowlist, landing brief — read before design work
+└── DESIGN.md      # Visual system: palette, type, layout, motion, anti-patterns
 ```
 
 - Main app code: `apps/web/src/…` — shared backend code: `packages/server/src/…`

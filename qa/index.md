@@ -5,7 +5,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 
 | ID          | Prio           | Title                                                                | Prereqs     | Module                                            |
 | ----------- | -------------- | -------------------------------------------------------------------- | ----------- | ------------------------------------------------- |
-| PUB-01      | P1 krytyczny   | Strona główna – wygląd i treść (niezalogowany)                       | —           | PUB – Strony publiczne i nawigacja ogólna         |
+| PUB-01      | P1 krytyczny   | Strona główna – struktura i nawigacja (niezalogowany)                | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-02      | P2 ważny       | Strona „Funkcje” (/features)                                         | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-03      | P1 krytyczny   | Strona „Cennik” (/pricing) – kafelki typów kont                      | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-04      | P2 ważny       | Podstrona planów (/pricing/student) – karty planów                   | —           | PUB – Strony publiczne i nawigacja ogólna         |
