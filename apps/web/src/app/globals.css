@@ -253,18 +253,111 @@
   }
 }
 
-/* The paper surface of the marketing shell: grain blended into the page colour.
-   `background-blend-mode` does not blend against `background-color` on its own, so
-   the second gradient layer is mandatory — without it the page greys out. */
+/* The paper surface of the marketing shell: a light pool top-left, a warm shade
+   bottom-right, 100px of edge curl, and the grain — all behind type. Product
+   surfaces never carry this class, so /app, /edu and /manage are untouched.
+   Radii are fixed px rather than percentages so a long page grows a flat middle
+   instead of stretching the light into a wash.
+   `background-blend-mode` does not blend against `background-color` on its own,
+   so the last gradient layer is mandatory — without it the page greys out. The
+   order of that list is load-bearing: `soft-light` must be the 4th entry (the
+   grain blends with paper) and the tone layers composite over it with `normal`. */
 @utility bg-paper-grain {
-  background-image: var(--paper-grain), linear-gradient(var(--background), var(--background));
+  background-color: var(--background);
+  background-image:
+    radial-gradient(1300px 1000px at 18% 0%, rgb(255 252 242 / 0.93), rgb(255 252 242 / 0) 68%),
+    radial-gradient(1500px 1200px at 92% 100%, rgb(106 86 46 / 0.093), rgb(106 86 46 / 0) 70%),
+    linear-gradient(
+      to right,
+      rgb(106 86 46 / 0.045),
+      rgb(106 86 46 / 0) 100px,
+      rgb(106 86 46 / 0) calc(100% - 100px),
+      rgb(106 86 46 / 0.045)
+    ),
+    var(--paper-grain), linear-gradient(var(--background), var(--background));
   background-size:
+    auto,
+    auto,
+    auto,
     180px 180px,
     auto;
-  background-repeat: repeat, no-repeat;
-  background-blend-mode: soft-light, normal;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+
+  .dark & {
+    background-image:
+      radial-gradient(1200px 900px at 20% 0%, rgb(255 250 236 / 0.043), rgb(255 250 236 / 0) 66%),
+      radial-gradient(1500px 1100px at 90% 100%, rgb(0 0 0 / 0.357), rgb(0 0 0 / 0) 70%),
+      linear-gradient(
+        to right,
+        rgb(0 0 0 / 0.238),
+        rgb(0 0 0 / 0) 100px,
+        rgb(0 0 0 / 0) calc(100% - 100px),
+        rgb(0 0 0 / 0.238)
+      ),
+      var(--paper-grain), linear-gradient(var(--background), var(--background));
+  }
+
   @media (prefers-contrast: more) {
-    background-image: none;
+    &,
+    .dark & {
+      background-image: linear-gradient(var(--background), var(--background));
+    }
+  }
+
+  /* Ink and light on paper cost toner and mean nothing on a printed sheet. */
+  @media print {
+    &,
+    .dark & {
+      background-image: none;
+      background-color: #fff;
+    }
+  }
+}
+
+/* A single hand-drawn stroke under the operative half of the hero headline. It is
+   a path rather than a handwriting font: 322 bytes inline versus 9KB and a request
+   for one string. Scales in `em`, so it tracks the display ramp. */
+.hand-mark {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+
+  & > svg {
+    position: absolute;
+    left: 0;
+    bottom: -0.13em;
+    width: 100%;
+    height: 0.15em;
+    overflow: visible;
+    pointer-events: none;
+    color: var(--primary);
+    opacity: 0.92;
+
+    & path {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 3.1;
+      stroke-linecap: round;
+      stroke-opacity: 0.92;
+    }
+  }
+
+  /* Cobalt is 6.69:1 on dark stock; full strength out-shouts the headline. */
+  .dark & > svg {
+    opacity: 0.66;
+  }
+
+  @media (prefers-contrast: more) {
+    & > svg {
+      display: none;
+    }
+  }
+
+  @media print {
+    & > svg {
+      display: none;
+    }
   }
 }
 

@@ -1898,6 +1898,8 @@
   "LandingPage": {
     "hero_badge": "Z Twoich materiałów, na ten tydzień.",
     "hero_title": "Tylko to, co musisz umieć.",
+    "hero_title_lead": "Tylko to, co",
+    "hero_title_mark": "musisz umieć.",
     "hero_subtitle": "Testy, fiszki i powtórki z Twoich materiałów, nie z gotowej talii.",
     "shot_quiz_alt": "Pytanie testowe o wiązaniu leku z białkami, cztery odpowiedzi, zaznaczona odpowiedź o małej ilości wolnego leku; pasek postępu pokazuje pytanie 1 z 8.",
     "shot_stats_alt": "Statystyki aktywności: kafelki z liczbą powtórek i odpowiedzi, słupkowy wykres aktywności dziennej i pierścieniowy podział stanów fiszek.",
