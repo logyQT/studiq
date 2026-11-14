@@ -28,26 +28,32 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useBranding } from '@/hooks/use-branding';
 import { cn } from '@/lib/utils';
 
+/*
+ * Keys and paths mirror `app-sidebar.tsx`, which is the source of truth for the
+ * dashboard. This list had drifted: `nav_my_questions` pointed at
+ * `/app/my-questions`, a route that does not exist, and the labels disagreed with
+ * the sidebar for the same destination ("Moje talie" vs "Fiszki").
+ */
 const studentLinks: NavLink[] = [
-  { labelKey: 'nav_overview', href: '/app' },
-  { labelKey: 'nav_decks', href: '/app/flashcards' },
-  { labelKey: 'nav_my_questions', href: '/app/my-questions' },
-  { labelKey: 'nav_stats', href: '/app/stats/content' },
+  { labelKey: 'app_overview', href: '/app', namespace: 'DashboardLayout' },
+  { labelKey: 'app_flashcard_decks', href: '/app/flashcards', namespace: 'DashboardLayout' },
+  { labelKey: 'question_banks', href: '/app/questions', namespace: 'DashboardLayout' },
+  { labelKey: 'stats_data', href: '/app/stats/content', namespace: 'DashboardLayout' },
 ];
 
 const teacherLinks: NavLink[] = [
-  { labelKey: 'nav_overview', href: '/edu' },
-  { labelKey: 'nav_flashcards', href: '/edu/flashcards' },
-  { labelKey: 'nav_questions', href: '/edu/questions' },
+  { labelKey: 'edu_overview', href: '/edu', namespace: 'DashboardLayout' },
+  { labelKey: 'flashcard_decks', href: '/edu/flashcards', namespace: 'DashboardLayout' },
+  { labelKey: 'question_banks', href: '/edu/questions', namespace: 'DashboardLayout' },
   // UI_HIDDEN: classroom section — stale for org-managed flow
   // { labelKey: 'nav_classroom', href: '/edu/classroom/members' },
-  { labelKey: 'nav_stats', href: '/edu/stats/data' },
+  { labelKey: 'stats_data', href: '/edu/stats/data', namespace: 'DashboardLayout' },
 ];
 
 const adminLinks: NavLink[] = [
-  { labelKey: 'nav_overview', href: '/manage' },
-  { labelKey: 'nav_members', href: '/manage/members' },
-  { labelKey: 'nav_settings', href: '/manage/settings' },
+  { labelKey: 'manage_overview', href: '/manage', namespace: 'DashboardLayout' },
+  { labelKey: 'manage_members', href: '/manage/members', namespace: 'DashboardLayout' },
+  { labelKey: 'manage_settings', href: '/manage/settings', namespace: 'DashboardLayout' },
 ];
 
 const publicLinks: NavLink[] = [
@@ -82,6 +88,7 @@ export function Navbar() {
   const t = useTranslations('Navbar');
   const tLanding = useTranslations('LandingPage');
   const tFooter = useTranslations('Footer');
+  const tDash = useTranslations('DashboardLayout');
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -124,7 +131,10 @@ export function Navbar() {
    * rather than keys.
    */
   const mobileItems = user
-    ? allLinks.map(({ labelKey, href }) => ({ label: t(labelKey), href }))
+    ? allLinks.map(({ labelKey, href, namespace }) => ({
+        label: namespace === 'DashboardLayout' ? tDash(labelKey) : t(labelKey),
+        href,
+      }))
     : [
         { label: t('features'), href: '#features' },
         { label: tLanding('how_it_works_title'), href: '#how-it-works' },
