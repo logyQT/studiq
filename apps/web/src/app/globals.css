@@ -14,16 +14,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/**
- * =============================================================================
- * CSS VARIABLES - LIGHT MODE
- * =============================================================================
- */
 :root {
-  /* Primary brand: indigo-blue (Quizlet-inspired) */
-  --primary: oklch(0.546 0.245 265);
-  --primary-foreground: oklch(0.985 0 0);
-
   /*
    * Org brand accent (issue #108). Defaults to --primary so apps render
    * identically to default StudiQ branding. BrandAccent.tsx overrides this
@@ -40,100 +31,127 @@
   --brand-accent-soft: var(--accent);
   --brand-accent-sidebar: var(--sidebar-accent);
 
-  /* Secondary: violet (for AI / premium features) */
-  --secondary: oklch(0.94 0.035 265);
-  --secondary-foreground: oklch(0.32 0.12 265);
+  /* Surfaces — warm paper, never #fff */
+  --background: oklch(0.972 0.014 85);
+  --foreground: oklch(0.175 0.022 264);
+  --card: oklch(0.985 0.006 85);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.985 0.006 85);
+  --popover-foreground: var(--foreground);
 
-  /* Surfaces — warm off-white, never pure #fff */
-  --background: oklch(0.978 0.007 247);
-  --foreground: oklch(0.13 0.015 265);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.015 265);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.015 265);
+  /* Brand — cobalt */
+  --primary: oklch(0.455 0.215 264);
+  --primary-foreground: oklch(0.972 0.014 85);
+  --ring: oklch(0.455 0.215 264);
+
+  /* Neutral fills */
+  --secondary: oklch(0.905 0.012 85);
+  --secondary-foreground: oklch(0.450 0.020 264);
+  --muted: oklch(0.945 0.016 85);
+  --muted-foreground: oklch(0.470 0.020 264);
+  --accent: oklch(0.930 0.012 85);
+  --accent-foreground: var(--foreground);
 
   /* Semantic */
-  --muted: oklch(0.944 0.008 247);
-  --muted-foreground: oklch(0.52 0.03 265);
-  --accent: oklch(0.944 0.015 265);
-  --accent-foreground: oklch(0.35 0.1 265);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.988 0 0);
-  --success: oklch(0.65 0.17 155);
-  --warning: oklch(0.75 0.15 75);
-  --info: oklch(0.546 0.245 265);
-  --border: oklch(0.908 0.012 262);
-  --input: oklch(0.908 0.012 262);
-  --ring: oklch(0.546 0.245 265);
+  --destructive: oklch(0.560 0.185 27.325);
+  --destructive-foreground: oklch(0.972 0.014 85);
+  --success: oklch(0.505 0.100 155);
+  --warning: oklch(0.530 0.100 75);
+  --info: var(--primary);
+  --signal: oklch(0.880 0.210 122);
+  --signal-foreground: oklch(0.175 0.022 264);
+  --cobalt-hover: oklch(0.560 0.200 264);
 
-  /* Sidebar — clean white surface */
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.13 0.015 265);
-  --sidebar-primary: oklch(0.546 0.245 265);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.946 0.02 265);
-  --sidebar-accent-foreground: oklch(0.35 0.1 265);
-  --sidebar-border: oklch(0.908 0.012 262);
-  --sidebar-ring: oklch(0.546 0.245 265);
+  /*
+   * --border is decorative (1.32:1 on paper), so it has no minimum;
+   * --input identifies a control by its edge and therefore stays >= 3:1.
+   * Collapsing these back into one token breaks WCAG 1.4.11 for fields.
+   */
+  --border: oklch(0.880 0.012 85);
+  --input: oklch(0.630 0.020 264);
 
+  /* Charts — categorical, equal weight on paper (>= 3:1 each) */
+  --chart-1: oklch(0.455 0.215 264);
+  --chart-2: oklch(0.410 0.070 195);
+  --chart-3: oklch(0.425 0.104 55);
+  --chart-4: oklch(0.430 0.125 330);
+  --chart-5: oklch(0.390 0.088 130);
+
+  /* Sidebar — the paper card surface */
+  --sidebar: oklch(0.985 0.006 85);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.930 0.012 85);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /*
+   * --radius sizes the kit's derived steps (sm/md/lg/xl) inside 60 components.
+   * Marketing radii are separate tokens (--radius-control/card/panel), so this
+   * scalar must stay at 0.75rem or the product surfaces shrink with it.
+   */
   --radius: 0.75rem;
 }
 
-/**
- * =============================================================================
- * CSS VARIABLES - DARK MODE
- * =============================================================================
- */
 .dark {
-  /* Primary brand — slightly lighter for dark bg readability */
-  --primary: oklch(0.638 0.22 265);
-  --primary-foreground: oklch(0.08 0.02 265);
+  /* Surfaces — cobalt-tinted, not neutral near-black */
+  --background: oklch(0.155 0.035 264);
+  --foreground: oklch(0.960 0.006 85);
+  --card: oklch(0.215 0.022 264);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.215 0.022 264);
+  --popover-foreground: var(--foreground);
 
-  /* Secondary */
-  --secondary: oklch(0.265 0.04 265);
-  --secondary-foreground: oklch(0.85 0.02 265);
+  /* Brand — lighter cobalt, ink on top (paper would be 2.76:1) */
+  --primary: oklch(0.680 0.150 264);
+  --primary-foreground: oklch(0.175 0.022 264);
+  --ring: oklch(0.680 0.150 264);
 
-  /* Surfaces — deep slate-blue, not pure black */
-  --background: oklch(0.155 0.03 265);
-  --foreground: oklch(0.96 0.007 247);
-  --card: oklch(0.21 0.028 265);
-  --card-foreground: oklch(0.96 0.007 247);
-  --popover: oklch(0.215 0.028 265);
-  --popover-foreground: oklch(0.96 0.007 247);
+  /* Neutral fills */
+  --secondary: oklch(0.265 0.025 264);
+  --secondary-foreground: oklch(0.900 0.010 85);
+  --muted: oklch(0.240 0.025 264);
+  --muted-foreground: oklch(0.720 0.020 264);
+  --accent: oklch(0.265 0.028 264);
+  --accent-foreground: var(--foreground);
 
   /* Semantic */
-  --muted: oklch(0.258 0.028 265);
-  --muted-foreground: oklch(0.65 0.025 265);
-  --accent: oklch(0.275 0.035 265);
-  --accent-foreground: oklch(0.85 0.015 265);
-  --destructive: oklch(0.45 0.18 25.723);
-  --destructive-foreground: oklch(0.85 0.1 25);
-  --success: oklch(0.72 0.17 155);
-  --warning: oklch(0.8 0.15 75);
-  --info: oklch(0.638 0.22 265);
-  --border: oklch(0.278 0.035 265);
-  --input: oklch(0.278 0.035 265);
-  --ring: oklch(0.638 0.22 265);
+  --destructive: oklch(0.620 0.180 27.325);
+  --destructive-foreground: oklch(0.175 0.022 264);
+  --success: oklch(0.720 0.130 155);
+  --warning: oklch(0.780 0.125 75);
+  --info: var(--primary);
+  --signal: oklch(0.880 0.210 122);
+  --signal-foreground: oklch(0.175 0.022 264);
+  --cobalt-hover: oklch(0.620 0.170 264);
 
-  /* Sidebar — slightly darker than main bg for visual separation */
-  --sidebar: oklch(0.185 0.032 265);
-  --sidebar-foreground: oklch(0.96 0.007 247);
-  --sidebar-primary: oklch(0.638 0.22 265);
-  --sidebar-primary-foreground: oklch(0.08 0.02 265);
-  --sidebar-accent: oklch(0.245 0.04 265);
-  --sidebar-accent-foreground: oklch(0.85 0.015 265);
-  --sidebar-border: oklch(0.245 0.035 265);
-  --sidebar-ring: oklch(0.638 0.22 265);
+  --border: oklch(0.300 0.025 264);
+  --input: oklch(0.520 0.025 264);
+
+  /* Charts — lightened so the same series stay >= 4:1 on the dark card */
+  --chart-1: oklch(0.680 0.160 264);
+  --chart-2: oklch(0.720 0.085 195);
+  --chart-3: oklch(0.760 0.115 70);
+  --chart-4: oklch(0.720 0.105 335);
+  --chart-5: oklch(0.740 0.090 135);
+
+  /* Sidebar — a step darker than the page so the inset panel reads */
+  --sidebar: oklch(0.190 0.030 264);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.265 0.028 264);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
-/**
- * =============================================================================
- * THEME CONFIGURATION
- * =============================================================================
- */
 @theme inline {
   --font-sans: "Geist", "Geist Fallback", system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", monospace;
+  --font-display: "Archivo", "Archivo Fallback", system-ui, sans-serif;
 
   /* Core colors */
   --color-background: var(--background);
@@ -155,6 +173,19 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-cobalt-hover: var(--cobalt-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* Chart colors */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
 
   /* Sidebar colors */
   --color-sidebar: var(--sidebar);
@@ -171,13 +202,39 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /*
+   * Marketing radii: fixed steps rather than a second scalar, because they
+   * must not scale with --radius (see Shape in DESIGN.md).
+   */
+  --radius-control: 0.25rem;
+  --radius-card: 0.375rem;
+  --radius-panel: 0.5rem;
+
+  /* Motion — 140ms hover/press, one curve for everything */
+  --default-transition-duration: 140ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Containers and the type ramp from DESIGN.md: declared here so no component
+     carries an arbitrary clamp(). */
+  --container-content: 70rem;
+  --container-media: 80rem;
+  --text-display: clamp(2.75rem, 6vw, 5.5rem);
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.03em;
+  --text-title: clamp(2rem, 4vw, 3.25rem);
+  --text-title--line-height: 1.05;
+  --text-title--letter-spacing: -0.02em;
+  --text-h2: clamp(1.75rem, 3vw, 2.5rem);
+  --text-h2--line-height: 1.1;
+  --text-h2--letter-spacing: -0.02em;
+  --text-h3: 1.25rem;
+  --text-h3--line-height: 1.3;
+  --text-h3--letter-spacing: -0.01em;
+  --text-lede: clamp(1.0625rem, 1.6vw, 1.25rem);
+  --text-lede--line-height: 1.55;
 }
 
-/**
- * =============================================================================
- * BASE STYLES
- * =============================================================================
- */
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -189,11 +246,6 @@
   }
 }
 
-/**
- * =============================================================================
- * CUSTOM RESPONSIVE UTILITIES
- * =============================================================================
- */
 @utility px-content {
   padding-left: 1rem;
   padding-right: 1rem;
@@ -231,9 +283,8 @@
   background: var(--popover);
   color: var(--popover-foreground);
   box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 4px 8px rgba(0, 0, 0, 0.08),
     0 1px 3px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(8px);
 }
 
 [data-sonner-toaster] [data-sonner-toast][data-type='success'] [data-icon] {
@@ -252,13 +303,8 @@
   color: var(--info);
 }
 
-/**
- * =============================================================================
- * PRINT STYLES
- * Strip the dashboard chrome and let content flow across pages (e.g. the
- * assignment print view). Screen layout is untouched.
- * =============================================================================
- */
+/* Strip the dashboard chrome for print (the assignment print view); screen
+   layout is untouched. */
 @media print {
   [data-slot='sidebar'],
   [data-slot='sidebar-gap'],

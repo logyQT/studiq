@@ -89,10 +89,13 @@ export function Navbar() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const extraLinks = publicLinks.map((l) => ({ labelKey: l.name, href: l.href, icon: l.icon }));
-  const allLinks = user ? [...extraLinks, ...navLinks] : [];
+  // A signed-in account gets the public links followed by its dashboard links;
+  // anonymous visitors get the public links alone. `navLinks` never contains a
+  // public target, so the two sets concatenate without duplicates.
+  const allLinks = user ? [...extraLinks, ...navLinks] : extraLinks;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/70 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 w-full border-b bg-background">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* LEFT */}
@@ -118,11 +121,6 @@ export function Navbar() {
               )}
               {t('logo')}
             </Link>
-
-            {/* Mobile nav */}
-            <div className="lg:hidden ml-4">
-              <MobileNav items={allLinks} isActive={isActive} isLoggedIn={!!user} />
-            </div>
 
             {/* Desktop nav */}
             <div className="hidden lg:flex items-center ml-8 flex-1 min-w-0 overflow-hidden">
@@ -178,6 +176,13 @@ export function Navbar() {
                 </Button>
               </div>
             )}
+          </div>
+
+          {/* The trigger sits on the right edge because the panel it opens uses
+              side="right": control and panel must share an edge, or the drawer
+              reads as belonging to something else. */}
+          <div className="lg:hidden ml-2 shrink-0">
+            <MobileNav items={allLinks} isActive={isActive} isLoggedIn={!!user} />
           </div>
         </div>
       </div>

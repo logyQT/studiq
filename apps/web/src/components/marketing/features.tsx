@@ -1,95 +1,96 @@
 'use client';
 
-import { Badge, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
-import { BarChart3, BookOpen, Brain, FileText, Sparkles, Target, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { SectionHeader } from '@/components/marketing/ui/section-header';
 
 const freeFeatures = [
-  { icon: FileText, titleKey: 'free_questions', descKey: 'free_questions_desc' },
-  { icon: Brain, titleKey: 'free_flashcards', descKey: 'free_flashcards_desc' },
-  { icon: BookOpen, titleKey: 'free_quizzes', descKey: 'free_quizzes_desc' },
-  { icon: BarChart3, titleKey: 'free_stats', descKey: 'free_stats_desc' },
+  { titleKey: 'free_questions', descKey: 'free_questions_desc' },
+  { titleKey: 'free_flashcards', descKey: 'free_flashcards_desc' },
+  { titleKey: 'free_quizzes', descKey: 'free_quizzes_desc' },
+  { titleKey: 'free_stats', descKey: 'free_stats_desc' },
 ] as const;
 
 const aiFeatures = [
-  { icon: Sparkles, titleKey: 'ai_generate_questions', descKey: 'ai_generate_questions_desc' },
-  { icon: Zap, titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
-  { icon: Target, titleKey: 'ai_exam_sim', descKey: 'ai_exam_sim_desc' },
+  { titleKey: 'ai_generate_questions', descKey: 'ai_generate_questions_desc' },
+  { titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
+  { titleKey: 'ai_exam_sim', descKey: 'ai_exam_sim_desc' },
 ] as const;
 
-const iconColors = [
-  'bg-blue-500/10 text-blue-500',
-  'bg-purple-500/10 text-purple-500',
-  'bg-emerald-500/10 text-emerald-500',
-  'bg-amber-500/10 text-amber-500',
-];
-
-const aiIconColors = [
-  'bg-violet-500/10 text-violet-500',
-  'bg-orange-500/10 text-orange-500',
-  'bg-rose-500/10 text-rose-500',
-];
-
+/*
+ * Two tiers, two compositions. The free tier is a hairline ledger: one term per
+ * row against its description, so the four capabilities read as a spec sheet
+ * rather than four equal cards. The paid tier is a 5/6 split with a single
+ * anchor statement, because it is one argument with three parts, not three
+ * peers. The only colour is the cobalt tier label: `signal` belongs to actions,
+ * and this section has none.
+ */
 export function Features() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section id="features" className="py-16 sm:py-24">
-      <div className="mx-auto max-w-5xl">
-        <div className="text-center mb-12">
-          <Badge variant="secondary" className="mb-4">
-            {t('free_badge')}
-          </Badge>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('free_title')}</h2>
-          <p className="mt-4 text-lg text-muted-foreground">{t('free_desc')}</p>
-        </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {freeFeatures.map(({ icon: Icon, titleKey, descKey }, i) => (
-            <Card
-              key={titleKey}
-              className="border-border/50 group hover:border-primary/30 transition-colors"
-            >
-              <CardHeader>
-                <div
-                  className={`size-10 rounded-lg ${iconColors[i]} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}
-                >
-                  <Icon className="size-5" />
-                </div>
-                <CardTitle className="text-lg">{t(titleKey)}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{t(descKey)}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+    <section id="features" className="py-16 md:py-20">
+      <div className="mx-auto max-w-content px-content">
+        <SectionHeader eyebrow={t('free_badge')} title={t('free_title')} lede={t('free_desc')} />
 
-      <div className="mt-20 mx-auto max-w-5xl">
-        <div className="text-center mb-12">
-          <Badge className="mb-4">{t('ai_badge')}</Badge>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('ai_title')}</h2>
-          <p className="mt-4 text-lg text-muted-foreground">{t('ai_desc')}</p>
-        </div>
-        <div className="grid sm:grid-cols-3 gap-6">
-          {aiFeatures.map(({ icon: Icon, titleKey, descKey }, i) => (
-            <Card
+        <dl className="mt-10 border-t border-border md:mt-16">
+          {freeFeatures.map(({ titleKey, descKey }, index) => (
+            <div
               key={titleKey}
-              className="border-border/50 group hover:border-primary/30 transition-colors"
+              className="relative grid gap-x-8 gap-y-1.5 border-b border-border py-5 pl-10 md:grid-cols-12 md:items-baseline md:gap-y-2 md:py-6 md:pl-0"
             >
-              <CardHeader>
-                <div
-                  className={`size-10 rounded-lg ${aiIconColors[i]} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}
+              {/*
+               * The numbered rail is mobile-only: four hairline rows at phone
+               * width read as one paragraph, and the ordinal gives the eye a
+               * column to land on while the term keeps its own line.
+               */}
+              <dt className="relative text-h3 font-semibold md:col-span-5">
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1 -left-10 font-mono text-xs tabular-nums text-primary md:hidden"
                 >
-                  <Icon className="size-5" />
-                </div>
-                <CardTitle className="text-lg">{t(titleKey)}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{t(descKey)}</p>
-              </CardContent>
-            </Card>
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                {t(titleKey)}
+              </dt>
+              <dd className="max-w-prose text-sm leading-snug text-muted-foreground md:col-span-6 md:col-start-7 md:leading-relaxed">
+                {t(descKey)}
+              </dd>
+            </div>
           ))}
+        </dl>
+
+        <div className="mt-12 md:mt-24 md:grid md:grid-cols-12 md:gap-x-8">
+          <div className="md:col-span-5">
+            <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase">
+              {t('ai_badge')}
+            </p>
+            <h3 className="mt-3 text-h3 font-semibold text-balance">{t('ai_title')}</h3>
+            <p className="mt-3 max-w-prose text-sm leading-snug text-muted-foreground md:leading-relaxed">
+              {t('ai_desc')}
+            </p>
+          </div>
+
+          <dl className="mt-8 md:col-span-6 md:col-start-7 md:mt-0">
+            {aiFeatures.map(({ titleKey, descKey }, index) => (
+              <div
+                key={titleKey}
+                className="relative border-t border-border py-4 pl-10 first:border-t-0 first:pt-0 md:py-5 md:pl-0"
+              >
+                <dt className="relative font-semibold">
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-0.5 -left-10 font-mono text-xs tabular-nums text-primary md:hidden"
+                  >
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  {t(titleKey)}
+                </dt>
+                <dd className="mt-1 max-w-prose text-sm leading-snug text-muted-foreground md:leading-relaxed">
+                  {t(descKey)}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
     </section>
