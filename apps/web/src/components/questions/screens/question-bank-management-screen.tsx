@@ -19,7 +19,7 @@ import { useGroupOptions } from '@/hooks/use-group-options';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { contentSortOptions } from '@/lib/content-sort-options';
 import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
 import { questionKeys } from '@/lib/query-keys';
@@ -287,8 +287,12 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     try {
       await deleteBank.mutateAsync(deleteId);
       toast.success(t('bank_deleted'));
-    } catch {
-      toast.error(t('common_error'));
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.code === 'CONFLICT'
+          ? t('bank_delete_blocked')
+          : t('common_error'),
+      );
     }
     setDeleteId(null);
   }
@@ -314,8 +318,12 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
       await batchDeleteBanks.mutateAsync({ ids });
       toast.success(t('bank_deleted'));
       handleClearSelection();
-    } catch {
-      toast.error(t('common_error'));
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.code === 'CONFLICT'
+          ? t('bank_delete_blocked')
+          : t('common_error'),
+      );
     }
   }
 

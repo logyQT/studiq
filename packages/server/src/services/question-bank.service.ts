@@ -1,7 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
-import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   accessibleFilter,
   check,
@@ -28,10 +28,10 @@ import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
+import { limitsResolver } from '@studiq/server/services/limits.resolver';
 
 /** `.in()` values travel in the request URL; ids are checked in chunks (matching the rest). */
 const ID_CHUNK = 200;
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
 
 export class QuestionBankService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -96,9 +96,7 @@ export class QuestionBankService {
     if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
     let query = applyAccessFilter(
-      supabase
-        .from('question_banks')
-        .select('*, question_count:questions(count), bank_groups(group_id)'),
+      supabase.from('question_banks').select('*, bank_groups(group_id)'),
       filter,
     );
 
@@ -122,13 +120,27 @@ export class QuestionBankService {
     const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 24 });
     query = pageQuery(query, paging);
 
-    return readPage(query, {
+    const page = await readPage(query, {
       ...paging,
       map: (item) => ({
         ...item,
-        question_count: dbCount(item.question_count),
         groupIds: dbRows(item.bank_groups).map((g) => g.group_id),
       }),
+    });
+    if (isFailure(page)) return page;
+
+    const counts = await this.questionCounts(
+      supabase,
+      page.data.items.map((item) => item.id),
+    );
+    if (isFailure(counts)) return counts;
+
+    return success({
+      ...page.data,
+      items: page.data.items.map((item) => ({
+        ...item,
+        question_count: counts.data.get(item.id) ?? 0,
+      })),
     });
   }
 
@@ -139,19 +151,41 @@ export class QuestionBankService {
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     const { data: bank, error } = await applyAccessFilter(
-      supabase
-        .from('question_banks')
-        .select('*, question_count:questions(count), bank_groups(group_id)')
-        .eq('id', id),
+      supabase.from('question_banks').select('*, bank_groups(group_id)').eq('id', id),
       filter,
     ).maybeSingle();
     if (error || !bank) return failure('NOT_FOUND');
 
+    const counts = await this.questionCounts(supabase, [id]);
+    if (isFailure(counts)) return counts;
+
     return success({
       ...bank,
-      question_count: dbCount(bank.question_count),
+      question_count: counts.data.get(id) ?? 0,
       groupIds: dbRows(bank.bank_groups).map((g) => g.group_id),
     });
+  }
+
+  /**
+   * Non-deleted item count per bank. `questions(count)` counts soft-deleted rows too, and the
+   * card renders that number beside a list that filters them out (#1171). One call for the page.
+   */
+  private async questionCounts(
+    supabase: SupabaseClient<Database>,
+    bankIds: readonly string[],
+  ): Promise<ServiceResult<Map<string, number>>> {
+    const ids = [...new Set(bankIds)];
+    const counts = new Map<string, number>();
+    if (ids.length === 0) return success(counts);
+
+    for (let i = 0; i < ids.length; i += ID_CHUNK) {
+      const { data, error } = await supabase.rpc('question_bank_counts', {
+        p_bank_ids: ids.slice(i, i + ID_CHUNK),
+      });
+      if (error) return toDbFailure(error);
+      for (const row of dbRows(data)) counts.set(row.bank_id, row.question_count);
+    }
+    return success(counts);
   }
 
   async update(

@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
+import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
 import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -99,6 +100,41 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
+    // A quiz copy is a new binding, and it is chosen as a whole: if any item is retired or
+    // deleted the whole copy is refused. Silently dropping it would create an assessment with a
+    // different item set than the quiz the teacher picked (#1171).
+    const quizQuestions: Array<{
+      question_id: string;
+      order_index: number | null;
+      points: number;
+    }> = [];
+    if (data.quizId) {
+      const { data: rows, error: quizError } = await supabase
+        .from('quiz_questions')
+        .select('question_id, order_index, points')
+        .eq('quiz_id', data.quizId)
+        .order('order_index', { ascending: true });
+
+      if (quizError) return toDbFailure(quizError);
+
+      for (const row of dbRows(rows)) {
+        if (row.question_id) {
+          quizQuestions.push({
+            question_id: row.question_id,
+            order_index: row.order_index,
+            points: row.points,
+          });
+        }
+      }
+
+      const open = await openQuestionIds(
+        supabase,
+        quizQuestions.map((question) => question.question_id),
+      );
+      if (isFailure(open)) return open;
+      if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+    }
+
     const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
       organization_id: ctx.activeOrgId,
       created_by: ctx.userId,
@@ -125,24 +161,9 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    // Copy questions from quiz if quizId provided
-    if (data.quizId) {
-      const { data: quizQuestions } = await supabase
-        .from('quiz_questions')
-        .select('question_id, order_index, points')
-        .eq('quiz_id', data.quizId)
-        .order('order_index', { ascending: true });
-
-      if (quizQuestions && quizQuestions.length > 0) {
-        const assignmentQuestions = quizQuestions.map((q) => ({
-          assignment_id: assignment.id,
-          question_id: q.question_id,
-          order_index: q.order_index,
-          points: q.points,
-        }));
-        await supabase.from('assignment_questions').insert(assignmentQuestions);
-      }
-    }
+    // Copy the validated quiz items (every one of them was open above).
+    const copied = await insertAssessmentItemLinks(supabase, assignment.id, quizQuestions);
+    if (isFailure(copied)) return copied;
 
     // Re-fetch with questions
     const { data: full, error: refetchError } = await supabase

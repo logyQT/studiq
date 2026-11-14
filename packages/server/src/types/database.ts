@@ -2637,6 +2637,13 @@ export type Database = {
         Returns: boolean;
       };
       is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
+      question_bank_counts: {
+        Args: { p_bank_ids: string[] };
+        Returns: {
+          bank_id: string;
+          question_count: number;
+        }[];
+      };
       rls_audit: {
         Args: Record<PropertyKey, never>;
         Returns: {

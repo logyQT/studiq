@@ -1,9 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
+import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   AddQuizQuestionsInput,
@@ -40,11 +41,20 @@ export class QuizTeacherService {
 
     const { data: quiz, error } = await supabase
       .from('quizzes')
-      .select('*, quiz_questions(*, question:questions(id, content, type))')
+      .select('*, quiz_questions(*, question:questions(id, content, type, status))')
       .eq('id', id)
       .maybeSingle();
 
-    return ownedQuiz(quiz, error, ctx, 'NOT_FOUND');
+    const owned = ownedQuiz(quiz, error, ctx, 'NOT_FOUND');
+    if (!owned.success) return owned;
+
+    // A deleted item leaves the builder (it is hidden from authoring); the quiz row stays.
+    return success({
+      ...owned.data,
+      quiz_questions: dbRows(owned.data.quiz_questions).filter(
+        (row) => dbNested(row.question)?.status !== 'deleted',
+      ),
+    });
   }
 
   /**
@@ -103,12 +113,26 @@ export class QuizTeacherService {
 
     const { data, error } = await supabase
       .from('quizzes')
-      .select('*, quiz_questions(count)')
+      .select('*, quiz_questions(question_id, question:questions(status))')
       .eq('organization_id', ctx.activeOrgId)
       .order('created_at', { ascending: false });
 
     if (error) return toDbFailure(error);
-    return success(dbRows(data));
+
+    // The card count must not include items the author deleted (#1171); PostgREST cannot filter
+    // an embedded aggregate, so the count is derived from the same rows the builder reads.
+    return success(
+      dbRows(data).map(({ quiz_questions, ...quiz }) => ({
+        ...quiz,
+        quiz_questions: [
+          {
+            count: dbRows(quiz_questions).filter(
+              (row) => dbNested(row.question)?.status !== 'deleted',
+            ).length,
+          },
+        ],
+      })),
+    );
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -308,7 +332,21 @@ export class QuizTeacherService {
     const owned = ownedQuiz(quiz, quizError, ctx, 'FORBIDDEN');
     if (!owned.success) return owned;
 
-    // 2. Create assignment
+    // 2. A quiz copy is a new binding and is chosen as a whole: any retired or deleted item
+    // refuses the whole copy. Dropping it silently would produce an assessment with a different
+    // item set than the quiz (#1171).
+    const quizQuestions = dbRows(owned.data.quiz_questions).flatMap(
+      (question: { question_id: string; order_index: number; points: number }) =>
+        question.question_id ? [question] : [],
+    );
+    const open = await openQuestionIds(
+      supabase,
+      quizQuestions.map((question) => question.question_id),
+    );
+    if (!open.success) return open;
+    if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+
+    // 3. Create assignment
     const { data: assignment, error: assignError } = await supabase
       .from('teacher_assignments')
       .insert({
@@ -322,33 +360,9 @@ export class QuizTeacherService {
 
     if (assignError) return toDbFailure(assignError);
 
-    // 3. Copy questions from quiz to assignment. Composing an assessment is a new binding, so
-    // retired and deleted items are not eligible (#1171).
-    const open = await openQuestionIds(
-      supabase,
-      dbRows(owned.data.quiz_questions).flatMap((q) => (q.question_id ? [q.question_id] : [])),
-    );
-    if (!open.success) return open;
-
-    const questions = dbRows(owned.data.quiz_questions).flatMap(
-      (q: { question_id: string; order_index: number; points: number }) =>
-        open.data.has(q.question_id)
-          ? [
-              {
-                assignment_id: assignment.id,
-                question_id: q.question_id,
-                order_index: q.order_index,
-                points: q.points,
-              },
-            ]
-          : [],
-    );
-
-    if (questions.length > 0) {
-      const { error: copyError } = await supabase.from('assignment_questions').insert(questions);
-
-      if (copyError) return toDbFailure(copyError);
-    }
+    // 4. Copy every validated item.
+    const copied = await insertAssessmentItemLinks(supabase, assignment.id, quizQuestions);
+    if (!copied.success) return copied;
 
     return success(assignment);
   }

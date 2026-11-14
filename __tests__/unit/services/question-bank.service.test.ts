@@ -88,6 +88,8 @@ describe('QuestionBankService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    // Bank reads count non-deleted items with one RPC (#1171); a test overrides the rows it needs.
+    mock.rpc.mockResolvedValue({ data: [], error: null });
     service = new QuestionBankService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,

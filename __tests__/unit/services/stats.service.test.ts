@@ -16,6 +16,7 @@ type QueryResult<T> = { data: T | null; count?: number; error: DbError | null };
 interface FakeQueryBuilder<T> {
   select: Mock;
   eq: Mock;
+  neq: Mock;
   in: Mock;
   is: Mock;
   not: Mock;
@@ -34,6 +35,7 @@ function qb<T>(data: T, error: DbError | null = null, count?: number): FakeQuery
   const b: FakeQueryBuilder<T> = {
     select: vi.fn(),
     eq: vi.fn(),
+    neq: vi.fn(),
     in: vi.fn(),
     is: vi.fn(),
     not: vi.fn(),
@@ -45,7 +47,7 @@ function qb<T>(data: T, error: DbError | null = null, count?: number): FakeQuery
     catch: promise.catch.bind(promise),
     finally: promise.finally.bind(promise),
   };
-  for (const method of [b.select, b.eq, b.in, b.is, b.not, b.order, b.lte, b.range]) {
+  for (const method of [b.select, b.eq, b.neq, b.in, b.is, b.not, b.order, b.lte, b.range]) {
     method.mockImplementation(() => b);
   }
   return b;
