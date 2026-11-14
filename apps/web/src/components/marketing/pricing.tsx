@@ -114,7 +114,7 @@ export function Pricing() {
     // `how-it-works`: the measured gap above it was 178px, and 160px is the rhythm.
     // The bottom is longer than that rhythm at phone so the last action keeps 128px of
     // paper before the cobalt band; the block's own `py-6` covers the rest.
-    <section id="pricing" className="pt-12 pb-26 md:pt-16 md:pb-20">
+    <section id="pricing" className="scroll-mt-header pt-12 pb-26 md:pt-16 md:pb-20">
       <div className="mx-auto max-w-content px-content">
         <div className="grid gap-6 md:grid-cols-12 md:items-end">
           <div className="md:col-span-8">
@@ -142,13 +142,22 @@ export function Pricing() {
          * Below md the ledger turns vertical — each plan is its own column, upright: the
          * same stack that reads across at md, in the same order, with no grid re-ordering.
          * Its one hairline is the md ledger's vertical rule turned horizontal.
+         *
+         * From md the columns share their rows (`subgrid`): name, description, price,
+         * rows, action. The section's premise is reading three columns across, which
+         * only survives if the row lists start on one line — and each of the first
+         * three rows is a different height per column, because a longer name wraps the
+         * recommended mark, a longer description takes a third line and a wide figure
+         * pushes its period onto the next line. Shared rows take the tallest of the
+         * three, so the alignment follows the copy in either locale instead of a
+         * reserved height that has to be re-measured when it changes.
          */}
-        <ul className="mt-10 grid border-t border-border md:mt-12 md:grid-cols-3">
+        <ul className="mt-10 grid border-t border-border md:mt-12 md:grid-cols-3 md:grid-rows-[auto_auto_auto_1fr_auto]">
           {plans.map((plan, index) => (
             <li
               key={`${plan.href}-${plan.name}`}
               className={cn(
-                'relative flex flex-col border-b border-border py-6 md:border-b-0 md:py-10',
+                'relative flex flex-col border-b border-border py-6 md:row-span-5 md:grid md:grid-rows-subgrid md:border-b-0 md:py-10',
                 index === 0 && 'md:pr-8',
                 index > 0 && 'md:border-l md:border-border',
                 index > 0 && index < lastIndex && 'md:px-8',
@@ -164,7 +173,7 @@ export function Pricing() {
                 />
               ) : null}
 
-              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:justify-between">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:row-start-1 md:justify-between">
                 <h3 className="text-h3 font-semibold">{plan.name}</h3>
                 {plan.recommended ? (
                   <span className="font-mono text-xs uppercase tracking-[0.08em] text-primary">
@@ -172,13 +181,15 @@ export function Pricing() {
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 text-sm text-muted-foreground text-pretty">{plan.desc}</p>
+              <p className="mt-2 text-sm text-muted-foreground text-pretty md:row-start-2">
+                {plan.desc}
+              </p>
 
               {plan.price !== null || pricesPending ? (
-                // The figure gets its own line and its own fixed box, so a slow response
-                // cannot move the rows below it. Left-aligned: this is a figure, not a
-                // price list's right-hand gutter.
-                <p className="mt-5 flex h-7 flex-wrap items-baseline gap-x-1.5 md:mt-6 md:h-auto">
+                // The figure gets its own line and its own fixed box at phone, so a slow
+                // response cannot move the rows below it. Left-aligned: this is a figure,
+                // not a price list's right-hand gutter.
+                <p className="mt-5 flex h-7 flex-wrap items-baseline gap-x-1.5 md:row-start-3 md:mt-6 md:h-auto">
                   {plan.price !== null ? (
                     <>
                       <span className="font-mono text-h3 font-medium tabular-nums md:text-h2">
@@ -189,15 +200,18 @@ export function Pricing() {
                       ) : null}
                     </>
                   ) : (
-                    <>
-                      <span aria-hidden="true" className="h-px w-24 self-center bg-border" />
-                      <span className="sr-only">{t('pricing_price_loading')}</span>
-                    </>
+                    // A hairline in this slot read as a divider someone forgot to
+                    // finish; the word reads as a wait. At phone the slot keeps its
+                    // reserved height, and from md it is a row shared with the other
+                    // two columns, so the rows below cannot land out of line.
+                    <span className="text-sm text-muted-foreground">
+                      {t('pricing_price_loading')}
+                    </span>
                   )}
                 </p>
               ) : null}
 
-              <ul className="mt-6 md:mt-8 md:border-t md:border-border">
+              <ul className="mt-6 md:row-start-4 md:mt-8 md:border-t md:border-border">
                 {plan.inherited ? (
                   <>
                     <li className="py-2 text-sm text-muted-foreground md:hidden">
@@ -220,7 +234,7 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <div className="mt-auto flex flex-col pt-6 md:block md:pt-8">
+              <div className="mt-auto flex flex-col pt-6 md:row-start-5 md:block md:pt-8">
                 {/*
                  * One primary action in the section: the recommended plan's fill. Free and
                  * Organizations are links in the page's link language, because three lime

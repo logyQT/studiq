@@ -33,7 +33,7 @@ export function HowItWorks() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section id="how-it-works" className="pt-8 pb-16 md:pt-10 md:pb-20">
+    <section id="how-it-works" className="scroll-mt-header pt-8 pb-16 md:pt-10 md:pb-20">
       <div className="mx-auto max-w-content px-content">
         <SectionHeader title={t('how_it_works_title')} lede={t('how_it_works_desc')} />
 

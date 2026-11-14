@@ -43,12 +43,13 @@ export const PANEL_ROW_ARROW =
 export const PANEL_LIST = 'divide-y divide-input';
 
 /**
- * The panel shell both surfaces share: it drops from the header's `h-16` edge
+ * The panel shell both surfaces share: it drops from the header's bottom edge
+ * (`--header-height`, the same token the bar sets and the anchor offset reads)
  * to the viewport bottom at full width, under the header's `z-50` so the header
  * hairline is its top edge, and flat — no border, radius or shadow.
  */
 export const PANEL_SHEET = cn(
-  'top-16 bottom-0 z-40 flex w-full max-w-none flex-col gap-0 overflow-hidden border-0 bg-background p-0 shadow-none',
+  'top-(--header-height) bottom-0 z-40 flex w-full max-w-none flex-col gap-0 overflow-hidden border-0 bg-background p-0 shadow-none',
   // The kit ships its own 16px close button with an English label; both panels
   // are closed by the header control that opened them, so neither gets one.
   '[&>button:last-child]:hidden',

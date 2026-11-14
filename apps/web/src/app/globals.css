@@ -103,6 +103,13 @@
   --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
 
   --radius: 0.75rem;
+
+  /*
+   * The sticky navbar's box, declared once. The bar takes its height from this and
+   * every in-page anchor offsets by it (see `scroll-mt-header`), so raising the bar
+   * cannot leave a `#section` link parked under it.
+   */
+  --header-height: 4rem;
 }
 
 .dark {
@@ -376,6 +383,16 @@
     padding-left: 2rem;
     padding-right: 2rem;
   }
+}
+
+/*
+ * Landing sections are anchor targets, and the navbar that scrolls to them is
+ * sticky: without an offset the browser parks the section's top edge under the
+ * bar and the heading arrives sliced. The offset is the bar plus the 1px rule
+ * that closes it — the part of the bar that is not `--header-height`.
+ */
+@utility scroll-mt-header {
+  scroll-margin-top: calc(var(--header-height) + 1px);
 }
 
 @utility p-content {

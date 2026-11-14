@@ -47,7 +47,7 @@ export function Features() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section id="features" className="py-16 md:py-20">
+    <section id="features" className="scroll-mt-header py-16 md:py-20">
       <div className="mx-auto max-w-content px-content">
         {/*
          * The specimen rides the header band so the ledger below it keeps the
