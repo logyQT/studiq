@@ -3,11 +3,18 @@ import { AppError } from '@studiq/server/lib/errors';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { QuestionBankService } from '@studiq/server/services/question-bank.service';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+}));
+
+// The bank count reads with the service role, so a student's RLS does not hide the held items
+// before the payload subtracts them (#1171, slice 2a review finding 2).
+vi.mock('@studiq/server/lib/supabase/service', () => ({
+  createServiceClient: vi.fn(),
 }));
 
 /** Held items are not openable, so the bank payload counts only what a reader can open. */
@@ -99,6 +106,7 @@ describe('QuestionBankService', () => {
     mock = mockSupabaseClient();
     // Bank reads count non-deleted items with one RPC (#1171); a test overrides the rows it needs.
     mock.rpc.mockResolvedValue({ data: [], error: null });
+    vi.mocked(createServiceClient).mockReturnValue(mock);
     service = new QuestionBankService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
