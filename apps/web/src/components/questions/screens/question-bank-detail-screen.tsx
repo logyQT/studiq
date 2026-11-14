@@ -5,9 +5,9 @@ import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import type { Topic } from '@studiq/server/models/topic.model';
 import { Button, Card, CardContent, Skeleton } from '@studiq/ui';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Eye, Plus } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Eye, Lock, Plus } from 'lucide-react';
 import Link from 'next/link';
-import type { useTranslations } from 'next-intl';
+import { useLocale, type useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create-from-question-dialog';
@@ -45,6 +45,7 @@ export function QuestionBankDetailScreen({
 }: QuestionBankDetailScreenProps) {
   const queryClient = useQueryClient();
   const permission = usePermission();
+  const locale = useLocale();
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -264,6 +265,23 @@ export function QuestionBankDetailScreen({
           </Button>
         )}
       </div>
+
+      {bank && (bank.heldCount ?? 0) > 0 && (
+        <p
+          role="note"
+          data-testid="held-notice"
+          className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {/* No date means a held item waiting for release, never a past date (R14). */}
+          {bank.heldUntil
+            ? t('held_notice_until', {
+                count: bank.heldCount ?? 0,
+                date: new Date(bank.heldUntil).toLocaleDateString(locale),
+              })
+            : t('held_notice_released', { count: bank.heldCount ?? 0 })}
+        </p>
+      )}
 
       {access.readOnly && (
         <p

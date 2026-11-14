@@ -25,6 +25,7 @@ import {
 } from '@studiq/server/lib/query-list';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { heldNotice, sealFor } from '@studiq/server/lib/question-seal';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
@@ -135,11 +136,18 @@ export class QuestionBankService {
     );
     if (isFailure(counts)) return counts;
 
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+
     return success({
       ...page.data,
       items: page.data.items.map((item) => ({
         ...item,
-        question_count: counts.data.get(item.id) ?? 0,
+        // A held item is not openable, so it is not part of the number the card promises (R14).
+        question_count: Math.max(
+          0,
+          (counts.data.get(item.id) ?? 0) - heldNotice(seal.data, item.id).heldCount,
+        ),
       })),
     });
   }
@@ -159,9 +167,15 @@ export class QuestionBankService {
     const counts = await this.questionCounts(supabase, [id]);
     if (isFailure(counts)) return counts;
 
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+    const held = heldNotice(seal.data, id);
+
     return success({
       ...bank,
-      question_count: counts.data.get(id) ?? 0,
+      question_count: Math.max(0, (counts.data.get(id) ?? 0) - held.heldCount),
+      heldCount: held.heldCount,
+      heldUntil: held.heldUntil,
       groupIds: dbRows(bank.bank_groups).map((g) => g.group_id),
     });
   }

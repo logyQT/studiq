@@ -10,6 +10,15 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
+/** Held items are not openable, so the bank payload counts only what a reader can open. */
+const sealState = vi.hoisted(() => ({
+  seal: { ids: new Set<string>(), bankId: new Map<string, string | null>(), closesAt: new Map() },
+}));
+vi.mock('@studiq/server/lib/question-seal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-seal')>()),
+  sealFor: vi.fn(() => Promise.resolve({ success: true, data: sealState.seal })),
+}));
+
 vi.mock('@studiq/server/services/group.service', () => ({
   groupService: { canShareContentToGroups: vi.fn() },
 }));

@@ -35,11 +35,25 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
+/**
+ * The seal is derived from the database (integration-covered); these tests state the set the
+ * reader path must subtract, and assert the query carries the exclusion.
+ */
+const sealState = vi.hoisted(() => ({
+  seal: { ids: new Set<string>(), bankId: new Map<string, string | null>(), closesAt: new Map() },
+}));
+vi.mock('@studiq/server/lib/question-seal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-seal')>()),
+  sealFor: vi.fn(() => Promise.resolve({ success: true, data: sealState.seal })),
+}));
+
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
   select: Mock<(columns: string) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
   neq: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
+  range: Mock<(...args: unknown[]) => QueryChain>;
   in: Mock<(...args: unknown[]) => QueryChain>;
   or: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
@@ -63,6 +77,8 @@ function chain(result: unknown, count?: number) {
     select: vi.fn(() => c),
     eq: vi.fn(() => c),
     neq: vi.fn(() => c),
+    not: vi.fn(() => c),
+    range: vi.fn(() => c),
     in: vi.fn(() => c),
     or: vi.fn(() => c),
     order: vi.fn(() => c),
@@ -97,6 +113,33 @@ describe('QuestionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    sealState.seal.ids = new Set();
+    sealState.seal.bankId = new Map();
+    sealState.seal.closesAt = new Map();
+  });
+
+  describe('sealed items', () => {
+    it('excludes the held items from the page and from its total', async () => {
+      sealState.seal.ids = new Set(['q-sealed']);
+      sealState.seal.bankId = new Map([['q-sealed', 'bank-1']]);
+      const pageChain = chain([]);
+      mock.from.mockReturnValueOnce(pageChain);
+
+      await service.list(ctx, { bankId: 'bank-1', page: 1, limit: 25 });
+
+      expect(pageChain.not).toHaveBeenCalledWith('id', 'in', '(q-sealed)');
+    });
+
+    it('answers a held item exactly like a missing one', async () => {
+      sealState.seal.ids = new Set(['q-sealed']);
+
+      const result = await service.getById('q-sealed', ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // The refusal is decided before any row is read.
+      expect(mock.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('create', () => {

@@ -5,6 +5,11 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { firstCall } from '#test/mocks/recorded';
 import { readQuestionKeys } from '@studiq/server/lib/question-keys';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
+import type { QuestionSnapshot } from '@studiq/server/lib/assignment-snapshot';
+
+type AttemptRef = { id: string; assignment_id: string | null };
 
 /**
  * The answer key is read through the service-role seam (#1170), not through the caller's
@@ -26,18 +31,54 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
   }),
 }));
 
+// Assignment link rows are staff-only at the RLS boundary (slice 2), so the points come from the
+// service-role reader; each assignment test states its own points here.
+const assignmentPoints = vi.hoisted(() => ({
+  points: new Map<string, number>(),
+  fail: false,
+}));
+
+// `readAssignmentSnapshots` also reads with the service role now; each assignment test declares
+// the frozen items it serves here.
+const assignmentSnapshots = vi.hoisted(() => ({
+  rows: [] as Array<[string, QuestionSnapshot]>,
+}));
+
 // An assignment attempt is graded against the frozen published key (#1171); the same fixture
 // answers it so a test describes the correct option ids once.
-vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@studiq/server/lib/assignment-snapshot')>()),
-  readAssignmentSnapshotKeys: vi.fn((assignmentId: string) => {
-    const keys = new Map<string, { explanation: string | null; correctOptionIds: string[] }>();
-    for (const [id, ids] of questionKeys) {
-      keys.set(id, { explanation: `explanation-${id}-${assignmentId}`, correctOptionIds: ids });
-    }
-    return Promise.resolve(keys);
-  }),
-}));
+vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studiq/server/lib/assignment-snapshot')>();
+  return {
+    ...actual,
+    // Practice attempts keep reading the live item through the injected client; an assignment
+    // attempt is served the frozen items declared by the test.
+    readAttemptQuestions: vi.fn((supabase: SupabaseClient<Database>, attempt: AttemptRef) =>
+      attempt.assignment_id
+        ? Promise.resolve({
+            success: true as const,
+            data: assignmentSnapshots.rows.map(([, snapshot]) => snapshot),
+          })
+        : actual.readAttemptQuestions(supabase, attempt),
+    ),
+    readAssignmentSnapshots: vi.fn(() =>
+      Promise.resolve({ success: true as const, data: new Map(assignmentSnapshots.rows) }),
+    ),
+    readAssignmentPoints: vi.fn(() =>
+      Promise.resolve(
+        assignmentPoints.fail
+          ? { success: false as const, error: 'INTERNAL_SERVER' as const }
+          : { success: true as const, data: new Map(assignmentPoints.points) },
+      ),
+    ),
+    readAssignmentSnapshotKeys: vi.fn((assignmentId: string) => {
+      const keys = new Map<string, { explanation: string | null; correctOptionIds: string[] }>();
+      for (const [id, ids] of questionKeys) {
+        keys.set(id, { explanation: `explanation-${id}-${assignmentId}`, correctOptionIds: ids });
+      }
+      return Promise.resolve(keys);
+    }),
+  };
+});
 
 type QueryResult = { data: unknown; error: unknown };
 type QueryChain = {
@@ -252,24 +293,23 @@ const attemptQuestionsQb = (...questions: AttemptQuestionFixture[]) =>
   );
 
 /** Frozen snapshot rows as `readAssignmentSnapshots` reads them (#1171). */
-const assignmentSnapshotQb = (...questions: AttemptQuestionFixture[]) =>
-  qb(
-    questions.map(({ id, type = 'mcq', options = [] }) => ({
-      question_id: id,
-      snapshot: {
-        id,
-        content: `content-${id}`,
-        type,
-        question_answers: options.map((optionId, index) => ({
-          id: optionId,
-          content: `option-${optionId}`,
-          order_index: index,
-          match_group: null,
-          match_side: null,
-        })),
-      },
-    })),
-  );
+const setAssignmentSnapshot = (...questions: AttemptQuestionFixture[]) => {
+  assignmentSnapshots.rows = questions.map(({ id, type = 'mcq', options = [] }) => [
+    id,
+    {
+      id,
+      content: `content-${id}`,
+      type,
+      question_answers: options.map((optionId, index) => ({
+        id: optionId,
+        content: `option-${optionId}`,
+        order_index: index,
+        match_group: null,
+        match_side: null,
+      })),
+    },
+  ]);
+};
 
 /** The two-question snapshot the draft tests share: one mcq, one open. */
 const questionsQb = () =>
@@ -293,6 +333,9 @@ describe('QuizAttemptService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     questionKeys.clear();
+    assignmentPoints.points = new Map();
+    assignmentPoints.fail = false;
+    assignmentSnapshots.rows = [];
     mock = mockSupabaseClient();
     service = new QuizAttemptService(() => Promise.resolve(mock));
   });
@@ -698,8 +741,7 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }]));
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-open' }]));
-      mock.from.mockReturnValueOnce(assignmentSnapshotQb({ id: 'q-open', type: 'open' }));
+      setAssignmentSnapshot({ id: 'q-open', type: 'open' });
       mock.from.mockReturnValueOnce(
         qb([
           {
@@ -774,10 +816,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
-      mock.from.mockReturnValueOnce(
-        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
-      );
+      setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.getById('a-1', ctx);
@@ -905,11 +944,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
-      mock.from.mockReturnValueOnce(
-        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
-      );
+      setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true })); // teacher_assignments
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      assignmentPoints.points = new Map([['q-1', 2]]);
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -934,11 +971,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
-      mock.from.mockReturnValueOnce(
-        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
-      );
+      setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: false }));
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      assignmentPoints.points = new Map([['q-1', 2]]);
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -962,11 +997,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
-      mock.from.mockReturnValueOnce(
-        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
-      );
+      setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb(null));
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      assignmentPoints.points = new Map([['q-1', 2]]);
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -989,11 +1022,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
-      mock.from.mockReturnValueOnce(
-        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
-      );
+      setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
-      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      assignmentPoints.points = new Map([['q-1', 2]]);
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -1021,11 +1052,9 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
-      mock.from.mockReturnValueOnce(
-        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
-      );
+      setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
-      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+      assignmentPoints.fail = true;
 
       const result = await service.submit(
         {

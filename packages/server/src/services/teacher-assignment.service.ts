@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import {
   ASSIGNMENT_QUESTION_COLUMNS,
+  readAssignmentLinks,
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
   readAttemptQuestions,
@@ -210,7 +211,7 @@ export class TeacherAssignmentService {
 
     let assignmentQuestions;
     if (isPublished) {
-      const snapshots = await readAssignmentSnapshots(supabase, id);
+      const snapshots = await readAssignmentSnapshots(id);
       if (isFailure(snapshots)) return snapshots;
       const keys = await readAssignmentSnapshotKeys(id);
       assignmentQuestions = rows.map((row) => {
@@ -634,7 +635,7 @@ export class TeacherAssignmentService {
     if (isFailure(maxPoints)) return maxPoints;
 
     // Grading renders the published item and its key, never the edited live row.
-    const snapshots = await readAssignmentSnapshots(supabase, id);
+    const snapshots = await readAssignmentSnapshots(id);
     if (isFailure(snapshots)) return snapshots;
     const keys = await readAssignmentSnapshotKeys(id);
 
@@ -813,6 +814,33 @@ export class TeacherAssignmentService {
   }
 
   /**
+   * The published assignment `id`, already proved to target `userId` (directly or through one of
+   * their groups). Both student reads start here, so the targeting proof cannot drift between
+   * `getForStudent` and `startAttempt`.
+   */
+  private async loadTargetedAssignment(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    userId: string,
+  ) {
+    const { data: assignment, error } = await supabase
+      .from('teacher_assignments')
+      .select('*, assignment_targets(*)')
+      .eq('id', id)
+      .eq('status', 'published')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!assignment) return failure('NOT_FOUND');
+
+    const targeted = await this.isAssignmentTarget(supabase, assignment, userId);
+    if (isFailure(targeted)) return targeted;
+    if (!targeted.data) return failure('NOT_FOUND');
+
+    return success(assignment);
+  }
+
+  /**
    * A student may see / start an assignment only if it targets them directly,
    * targets one of their groups, or they authored it (teacher preview).
    * Same rule as the list endpoint, so id-based access cannot bypass it.
@@ -950,19 +978,9 @@ export class TeacherAssignmentService {
   async getForStudent(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: assignment, error } = await supabase
-      .from('teacher_assignments')
-      .select('*, assignment_targets(*)')
-      .eq('id', id)
-      .eq('status', 'published')
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-    if (!assignment) return failure('NOT_FOUND');
-
-    const targeted = await this.isAssignmentTarget(supabase, assignment, ctx.userId);
-    if (isFailure(targeted)) return targeted;
-    if (!targeted.data) return failure('NOT_FOUND');
+    const loaded = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    if (isFailure(loaded)) return loaded;
+    const assignment = loaded.data;
 
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
@@ -981,19 +999,9 @@ export class TeacherAssignmentService {
   async startAttempt(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: assignment, error: assignmentError } = await supabase
-      .from('teacher_assignments')
-      .select(`*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}), assignment_targets(*)`)
-      .eq('id', id)
-      .eq('status', 'published')
-      .maybeSingle();
-
-    if (assignmentError) return toDbFailure(assignmentError);
-    if (!assignment) return failure('NOT_FOUND');
-
-    const targeted = await this.isAssignmentTarget(supabase, assignment, ctx.userId);
-    if (isFailure(targeted)) return targeted;
-    if (!targeted.data) return failure('NOT_FOUND');
+    const target = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    if (isFailure(target)) return target;
+    const assignment = target.data;
 
     // Check time window
     const now = new Date();
@@ -1034,12 +1042,13 @@ export class TeacherAssignmentService {
       return failure('RATE_LIMITED');
     }
 
-    const links = dbRows(assignment.assignment_questions).filter((link) => link.question_id);
-    if (links.length === 0) return failure('NOT_FOUND');
+    const links = await readAssignmentLinks(id);
+    if (isFailure(links)) return links;
+    if (links.data.length === 0) return failure('NOT_FOUND');
 
     const orderedQuestions = assignment.shuffle_questions
-      ? [...links].toSorted(() => Math.random() - 0.5)
-      : [...links];
+      ? [...links.data].toSorted(() => Math.random() - 0.5)
+      : [...links.data];
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's

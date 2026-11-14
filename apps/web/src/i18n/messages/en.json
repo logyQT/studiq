@@ -2675,7 +2675,9 @@
     "previous_page": "Previous page",
     "next_page": "Next page",
     "no_results": "No questions match the filters.",
-    "create_flashcard_title": "Create a flashcard from this question"
+    "create_flashcard_title": "Create a flashcard from this question",
+    "held_notice_until": "{count, plural, one {# question is held} other {# questions are held}} for your assessment until {date}.",
+    "held_notice_released": "{count, plural, one {# question is held} other {# questions are held}} for your assessment until it is released."
   },
   "CreateFlashcardFromQuestion": {
     "title": "Create Flashcard from Question",
