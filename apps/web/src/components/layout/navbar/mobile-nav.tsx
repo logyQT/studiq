@@ -69,10 +69,14 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
       <SheetContent
         side="right"
         className={cn(
+          // Content height, not the kit's `h-full`: two rows plus the controls are
+          // ~360px, so full height left ~480px of blank paper *inside* the menu on
+          // a 390×844 phone. `!` because the kit sets `inset-y-0` and `h-full`.
+          'flex h-auto! max-h-[100dvh] w-80 max-w-[85vw] flex-col gap-0 border-l border-b border-border bg-background shadow-none',
+          'bottom-auto!',
           // The kit panel carries shadow-lg and its own close button (16px, English
           // label); this drawer is flat paper with a hairline edge and a 44px close
           // in the header, so the kit's one is suppressed rather than restyled.
-          'flex w-80 max-w-[85vw] flex-col gap-0 border-l border-border bg-background shadow-none',
           '[&>button:last-child]:hidden',
         )}
       >
@@ -81,7 +85,9 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
           <SheetDescription>{t('logo')}</SheetDescription>
         </SheetHeader>
 
-        <div className="flex shrink-0 items-center justify-between gap-3 py-2 pr-2 pl-4">
+        {/* 64px, so the rule under this row lands exactly on the page header's
+            border-b and the open panel reads as attached to it. */}
+        <div className="flex h-16 shrink-0 items-center justify-between gap-3 pr-2 pl-4">
           <span className="flex min-w-0 items-center gap-2">
             {logoUrl ? (
               <Image
@@ -105,68 +111,75 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
         </div>
 
         {/*
-         * A hairline ledger, not an icon list: the page behind this panel sets
-         * destinations the same way (see the feature rows), and the kit's stock
-         * glyphs (Sparkles for "Funkcje") are exactly the chrome DESIGN.md retires.
+         * The one scrolling region. A signed-in menu (six rows) can be taller
+         * than the panel's `max-h` in landscape; only this part moves, so the
+         * wordmark and the close button stay put.
          */}
-        <nav aria-label={t('mobile_menu')} className="flex-1 overflow-y-auto">
-          <ul className="divide-y divide-input border-y border-border">
-            {items.map(({ labelKey, href }) => {
-              const active = isActive(href);
-              return (
-                <li key={labelKey}>
-                  <Link
-                    href={href}
-                    onClick={close}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'group flex min-h-12 items-center gap-4 px-4 text-base text-primary transition-colors hover:bg-accent',
-                      active && 'bg-accent font-semibold',
-                      FOCUS_RING,
-                    )}
-                  >
-                    <span className="flex-1">{t(labelKey)}</span>
-                    <ArrowRight
-                      aria-hidden
+        <div className="min-h-0 overflow-y-auto overscroll-contain">
+          {/*
+           * A hairline ledger, not an icon list: the page behind this panel sets
+           * destinations the same way (see the feature rows), and the kit's stock
+           * glyphs (Sparkles for "Funkcje") are exactly the chrome DESIGN.md retires.
+           */}
+          <nav aria-label={t('mobile_menu')}>
+            <ul className="divide-y divide-input border-t border-border">
+              {items.map(({ labelKey, href }) => {
+                const active = isActive(href);
+                return (
+                  <li key={labelKey}>
+                    <Link
+                      href={href}
+                      onClick={close}
+                      aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'size-4 shrink-0 text-primary/60 transition-opacity',
-                        active ? 'opacity-100' : 'opacity-60 group-hover:opacity-100',
+                        'group flex min-h-12 items-center gap-4 px-4 text-base text-primary transition-colors hover:bg-accent',
+                        active && 'bg-accent font-semibold',
+                        FOCUS_RING,
                       )}
-                    />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+                    >
+                      <span className="flex-1">{t(labelKey)}</span>
+                      <ArrowRight
+                        aria-hidden
+                        className={cn(
+                          'size-4 shrink-0 text-primary/60 transition-opacity',
+                          active ? 'opacity-100' : 'opacity-60 group-hover:opacity-100',
+                        )}
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
 
-        {/* On a phone the footer is a long scroll away, so the two preferences
-            live here as well. This block is what keeps the panel from reading as
-            a menu whose content simply ran out. */}
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-4 py-3">
-          <LanguageSwitcher />
-          <ThemeSwitch size="lg" />
-        </div>
+          {/* On a phone the footer is a long scroll away, so the two preferences
+              live here too. The kit's outline trigger is 36px; `[&>button]` gives
+              it the drawer's 44px target without changing the shared component. */}
+          <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3 [&>button]:h-11">
+            <LanguageSwitcher />
+            <ThemeSwitch size="lg" />
+          </div>
 
-        <div className="shrink-0 border-t border-border px-4 py-4">
-          {isLoggedIn ? (
-            // The shared account rows are sized for the desktop dropdown; this
-            // is a touch surface, so they take the 44px density in place.
-            <div className="space-y-1 [&>button]:min-h-11 [&>button]:rounded-control">
-              <UserMenuHeader />
-              <div className="my-2 h-px bg-border" />
-              <UserMenuItems variant="plain" onItemClick={close} />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Link href="/register" onClick={close} className={cn('w-full', CTA_PRIMARY)}>
-                {t('register')}
-              </Link>
-              <Link href="/login" onClick={close} className={cn('w-full', CTA_QUIET)}>
-                {t('login')}
-              </Link>
-            </div>
-          )}
+          <div className="border-t border-border px-4 py-4">
+            {isLoggedIn ? (
+              // The shared account rows are sized for the desktop dropdown; this
+              // is a touch surface, so they take the 44px density in place.
+              <div className="space-y-1 [&>button]:min-h-11 [&>button]:rounded-control">
+                <UserMenuHeader />
+                <div className="my-2 h-px bg-border" />
+                <UserMenuItems variant="plain" onItemClick={close} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Link href="/register" onClick={close} className={cn('w-full', CTA_PRIMARY)}>
+                  {t('register')}
+                </Link>
+                <Link href="/login" onClick={close} className={cn('w-full', CTA_QUIET)}>
+                  {t('login')}
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </SheetContent>
     </Sheet>

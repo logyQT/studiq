@@ -279,7 +279,28 @@ Marketing components are page-owned. The kit is used only where it is invisible
 `<Card>`s in a row", it is the kit's default layout wearing a headline, and it is what made
 the page look generic. Change the composition, not the copy.
 
-## Anti-patterns
+### Product imagery
+
+The page sells a product, so it has to show one. Text alone does not convert, and this
+is the section that makes the difference between a landing page and a brochure.
+
+**Only real captures.** Screenshots come from the running app with seeded demo data
+(`bun scripts/demo-seed.ts`), never from stock art, illustration, or a hand-built mock-up.
+A drawn approximation of a product that exists is a fabricated claim in the same family as
+the invented testimonials, and it is banned for the same reason. If a screen cannot be
+seeded with plausible content, it does not go on the page.
+
+| Property   | Rule                                                                                                                                                 |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source     | `/public/marketing/{shot}.png`, 2× capture, listed in `shots.json`                                                                                   |
+| Aspect     | `16 / 10` frame. Crop the meaningful region; never squash.                                                                                           |
+| Frame      | `rounded-panel`, `1px` `border-border`, **no shadow**, no browser or OS chrome                                                                       |
+| Background | The frame is always `bg-background` paper, **in both themes**. A light UI capture on a dark page looks pasted on; a paper plate reads as deliberate. |
+| Alt text   | Describe what is on screen, in the page's language. Never `alt=""` on a proof image.                                                                 |
+| Caption    | Optional, mono, one line, and factual. No invented metrics under a real screenshot.                                                                  |
+
+Placement: one dominant shot in the hero rail, one in the features split, and at most one
+full-bleed band. More than three competes with the claim instead of supporting it.
 
 Most of these exist in the current page; the ones already removed stay removed. None may
 return.
