@@ -100,6 +100,7 @@
     "ERROR_BAD_REQUEST": "The request could not be processed. Please check your input.",
     "ERROR_UNAUTHORIZED": "You do not have permission to access this resource.",
     "ERROR_FORBIDDEN": "You do not have permission to perform this action.",
+    "ERROR_EXPORT_FORBIDDEN": "Exporting a question bank is available to teaching staff only.",
     "ERROR_NOT_FOUND": "The requested resource could not be found.",
     "ERROR_GONE": "This resource is no longer available.",
     "ERROR_USAGE_LIMIT_EXCEEDED": "Your plan's usage limit has been reached.",
@@ -2605,7 +2606,7 @@
     "groups_empty": "No groups found"
   },
   "QuestionTransfer": {
-    "export_note": "Reading a bank gives you the whole bank, answer key and explanations included. Exporting saves all of it to a file.",
+    "export_note": "Exporting saves the whole bank, answer key and explanations included, and is available to teaching staff only.",
     "export_failed": "The export could not be downloaded.",
     "export_too_large": "This bank is too large to export (1000 questions at most). Split it into smaller banks.",
     "export_not_reimportable": "{count, plural, one {# question} other {# questions}} in the export would be rejected by an import until fixed (for example too many answers).",

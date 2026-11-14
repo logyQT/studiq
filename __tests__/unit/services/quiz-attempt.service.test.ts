@@ -4,6 +4,27 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { firstCall } from '#test/mocks/recorded';
+import { readQuestionKeys } from '@studiq/server/lib/question-keys';
+
+/**
+ * The answer key is read through the service-role seam (#1170), not through the caller's
+ * client. Unit tests set which option ids are correct per question; a question left out has
+ * no correct option.
+ */
+const questionKeys = vi.hoisted(() => new Map<string, string[]>());
+vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
+  readQuestionKeys: vi.fn((ids: readonly string[]) => {
+    const keys = new Map<string, { explanation: string | null; correctOptionIds: string[] }>();
+    for (const id of ids) {
+      keys.set(id, {
+        explanation: `explanation-${id}`,
+        correctOptionIds: questionKeys.get(id) ?? [],
+      });
+    }
+    return Promise.resolve(keys);
+  }),
+}));
 
 type QueryResult = { data: unknown; error: unknown };
 type QueryChain = {
@@ -238,6 +259,7 @@ describe('QuizAttemptService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    questionKeys.clear();
     mock = mockSupabaseClient();
     service = new QuizAttemptService(() => Promise.resolve(mock));
   });
@@ -392,7 +414,14 @@ describe('QuizAttemptService', () => {
   describe('getById', () => {
     it('returns attempt with questions and answers', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: '2026-10-24T10:00:00.000Z' };
-      const attemptQuestions = [{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }];
+      questionKeys.set('q-1', ['ans-1']);
+      const attemptQuestions = [
+        {
+          order_index: 0,
+          question_id: 'q-1',
+          questions: { id: 'q-1', question_answers: [{ id: 'ans-1' }] },
+        },
+      ];
       const answers = [
         {
           question_id: 'q-1',
@@ -427,7 +456,11 @@ describe('QuizAttemptService', () => {
     it('projects only take-page columns while the attempt is in progress (#331)', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const questionsBuilder = qb([
-        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } },
+        {
+          order_index: 0,
+          question_id: 'q-1',
+          questions: { id: 'q-1', question_answers: [{ id: 'ans-1' }] },
+        },
       ]);
 
       mock.from.mockReturnValueOnce(qb(attempt));
@@ -442,17 +475,29 @@ describe('QuizAttemptService', () => {
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');
       expect(projection).not.toContain('search_vector');
-      expect(projection).toContain('question_answers:question_options(id, content)');
+      expect(projection).toContain(
+        'question_answers:question_options(id, content, order_index, match_group, match_side)',
+      );
+      // The key reader is not consulted before submission.
+      expect(questionKeys.size).toBe(0);
+      expect(expectSuccess(result).questions).toEqual([
+        { id: 'q-1', question_answers: [{ id: 'ans-1' }] },
+      ]);
     });
 
-    it('includes the answer key once the attempt is completed (#331)', async () => {
+    it('adds the answer key once the attempt is completed (#331)', async () => {
       const attempt = {
         id: 'a-1',
         user_id: ctx.userId,
         completed_at: '2026-10-24T10:00:00.000Z',
       };
+      questionKeys.set('q-1', ['ans-1']);
       const questionsBuilder = qb([
-        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } },
+        {
+          order_index: 0,
+          question_id: 'q-1',
+          questions: { id: 'q-1', question_answers: [{ id: 'ans-1' }, { id: 'ans-2' }] },
+        },
       ]);
 
       mock.from.mockReturnValueOnce(qb(attempt));
@@ -462,9 +507,20 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
+      // The projection stays reader-safe; the key is added from the service-role reader, for
+      // the ids of this attempt's own questions.
       const projection = stringArg(firstCall(questionsBuilder.select)[0]);
-      expect(projection).toContain('explanation');
-      expect(projection).toContain('is_correct');
+      expect(projection).not.toContain('is_correct');
+      expect(expectSuccess(result).questions).toEqual([
+        {
+          id: 'q-1',
+          explanation: 'explanation-q-1',
+          question_answers: [
+            { id: 'ans-1', is_correct: true },
+            { id: 'ans-2', is_correct: false },
+          ],
+        },
+      ]);
     });
 
     it('omits is_correct from the answers map while the attempt is in progress (#331)', async () => {
@@ -700,11 +756,10 @@ describe('QuizAttemptService', () => {
   describe('submit', () => {
     it('submits answers and returns score', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
-      const answer = { id: 'ans-1', is_correct: true };
+      questionKeys.set('q-1', ['ans-1']);
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
-      mock.from.mockReturnValueOnce(qb(answer));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -740,11 +795,10 @@ describe('QuizAttemptService', () => {
 
     it('counts a practice-quiz question once even when it produced several answer rows', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      questionKeys.set('q-1', ['ans-1', 'ans-2']);
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -804,6 +858,7 @@ describe('QuizAttemptService', () => {
     });
 
     it('awards assignment points instead of counting correct answers (#167)', async () => {
+      questionKeys.set('q-1', ['ans-1']);
       const attempt = {
         id: 'a-1',
         user_id: ctx.userId,
@@ -815,7 +870,6 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true })); // teacher_assignments
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true })); // question_options
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -842,7 +896,6 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: false }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -868,7 +921,6 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -881,6 +933,7 @@ describe('QuizAttemptService', () => {
     });
 
     it('awards a question once even when it produced several answer rows', async () => {
+      questionKeys.set('q-1', ['ans-1', 'ans-2']);
       const attempt = {
         id: 'a-1',
         user_id: ctx.userId,
@@ -892,8 +945,6 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -1028,7 +1079,6 @@ describe('QuizAttemptService', () => {
       );
       // The exploit path, stubbed: without the value gate this option id is
       // scored as correct and the attempt completes.
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
 
       const result = await service.submit(
         {
@@ -1155,11 +1205,11 @@ describe('QuizAttemptService', () => {
     });
 
     it('does not store or score an explicitly skipped answer (#1161)', async () => {
+      questionKeys.set('q-1', ['ans-1']);
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
       mock.from.mockReturnValueOnce(
         attemptQuestionsQb({ id: 'q-1', options: ['ans-1'] }, { id: 'q-2', type: 'open' }),
       );
-      mock.from.mockReturnValueOnce(qb({ is_correct: true })); // q-1 option
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -1186,9 +1236,8 @@ describe('QuizAttemptService', () => {
       });
     });
 
-    it('scores mcq, true_false and open answers as before and scopes the key lookup (#1161)', async () => {
-      const mcqOptionQb = qb({ is_correct: true });
-      const trueFalseOptionQb = qb({ is_correct: false });
+    it('scores mcq, true_false and open answers as before and feeds the key reader question ids (#1161)', async () => {
+      questionKeys.set('q-mcq', ['ans-1']);
 
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
       mock.from.mockReturnValueOnce(
@@ -1198,8 +1247,6 @@ describe('QuizAttemptService', () => {
           { id: 'q-open', type: 'open' },
         ),
       );
-      mock.from.mockReturnValueOnce(mcqOptionQb);
-      mock.from.mockReturnValueOnce(trueFalseOptionQb);
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -1216,9 +1263,9 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).score).toBe(1);
-      // Defence in depth: the correctness lookup cannot see another question's option.
-      expect(mcqOptionQb.eq).toHaveBeenCalledWith('id', 'ans-1');
-      expect(mcqOptionQb.eq).toHaveBeenCalledWith('question_id', 'q-mcq');
+      // The key is read for the attempt's own question ids, never for an option id or any
+      // other value from the request.
+      expect(vi.mocked(readQuestionKeys)).toHaveBeenCalledWith(['q-mcq', 'q-tf', 'q-open']);
       expect(mock.rpc).toHaveBeenCalledWith('submit_quiz_attempt', {
         p_attempt_id: 'a-1',
         p_user_id: ctx.userId,
@@ -1254,8 +1301,8 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(
         attemptQuestionsQb(...questionIds.map((id, index) => ({ id, options: [`ans-${index}`] }))),
       );
-      questionIds.forEach(() => {
-        mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      questionIds.forEach((id, index) => {
+        questionKeys.set(id, [`ans-${index}`]);
       });
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
@@ -1299,12 +1346,12 @@ describe('QuizAttemptService', () => {
     });
 
     it('clears the draft in the same call that completes the attempt (#349)', async () => {
+      questionKeys.set('q-1', ['ans-1']);
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const attemptQb = qb(attempt);
 
       mock.from.mockReturnValueOnce(attemptQb);
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
 
       const result = await service.submit(
@@ -1329,7 +1376,6 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(attemptQb);
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1'] }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.rpc.mockResolvedValueOnce({
         data: null,
         error: { code: '23514', message: 'forced failure' },
@@ -1350,7 +1396,6 @@ describe('QuizAttemptService', () => {
     it('answers the losing submit of a race like a re-submit (#1066)', async () => {
       mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
       mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1'] }));
-      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       // Another request completed the attempt between the gate and this call.
       mock.rpc.mockResolvedValueOnce(rpcCompleted([]));
 

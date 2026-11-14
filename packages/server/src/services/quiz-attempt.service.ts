@@ -2,11 +2,9 @@ import type { RequestContext } from '@studiq/authz';
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
+import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
+import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { isRecord } from '@studiq/server/lib/record';
-import {
-  IN_PROGRESS_QUESTION_SELECT,
-  REVIEW_QUESTION_SELECT,
-} from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
@@ -298,11 +296,7 @@ export class QuizAttemptService {
 
     const { data: attemptQuestions, error: questionsError } = await supabase
       .from('quiz_attempt_questions')
-      .select(
-        `order_index, question_id, questions(${
-          isCompleted ? REVIEW_QUESTION_SELECT : IN_PROGRESS_QUESTION_SELECT
-        })`,
-      )
+      .select(`order_index, question_id, questions(${QUESTION_PAYLOAD_SELECT})`)
       .eq('attempt_id', attemptId)
       .order('order_index', { ascending: true });
 
@@ -315,9 +309,20 @@ export class QuizAttemptService {
 
     if (answersError) return toDbFailure(answersError);
 
-    const questions = dbRows(attemptQuestions)
+    const questionRows = dbRows(attemptQuestions)
       .toSorted((a, b) => a.order_index - b.order_index)
-      .map((aq) => aq.questions);
+      .map((aq) => dbNested(aq.questions))
+      .filter((question): question is NonNullable<typeof question> => question !== null);
+
+    // A finished attempt is a review, so it renders the key — but the key is read with the
+    // service role, from the ids of this attempt's own questions (the attempt was proven to
+    // belong to the caller above). A running attempt never gets it (#331).
+    const keys = isCompleted
+      ? await readQuestionKeys(questionRows.map((question) => question.id))
+      : null;
+    const questions = keys
+      ? questionRows.map((question) => withAnswerKey(question, keys.get(question.id)))
+      : questionRows;
 
     const answerObj: Record<
       string,
@@ -461,6 +466,14 @@ export class QuizAttemptService {
     const answerRecords = [];
     const awardedQuestions = new Set<string>();
 
+    // The key is read once, for the attempt's own answered questions — never for an id taken
+    // from the request (the value gate above already refused a question the attempt never
+    // asked). Scoring no longer touches `question_options` with the caller's client, which
+    // cannot select `is_correct` at all (#1165).
+    const keys = await readQuestionKeys(
+      data.answers.filter((answer) => !answer.skipped).map((answer) => answer.questionId),
+    );
+
     for (const ans of data.answers) {
       // A skipped question was never answered: no row to store, nothing to score.
       if (ans.skipped) continue;
@@ -473,15 +486,10 @@ export class QuizAttemptService {
 
       let isCorrect = false;
       if (!isOpen && ans.selectedAnswerId) {
-        const { data: answer } = await supabase
-          .from('question_options')
-          .select('is_correct')
-          // Scoped to the question even though the value gate already checked
-          // it, so a scoring lookup can never read another question's key.
-          .eq('id', ans.selectedAnswerId)
-          .eq('question_id', ans.questionId)
-          .single();
-        isCorrect = answer?.is_correct ?? false;
+        // Scoped to this question's own key, so a scoring lookup can never read another
+        // question's answer.
+        isCorrect =
+          keys.get(ans.questionId)?.correctOptionIds.includes(ans.selectedAnswerId) ?? false;
       }
       if (isCorrect && !awardedQuestions.has(ans.questionId)) {
         // One row per question is the write contract (#1065) and the schema

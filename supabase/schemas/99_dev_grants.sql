@@ -16,6 +16,12 @@ GRANT USAGE ON SCHEMA public TO authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
 
+-- The blanket GRANT above re-opens every column on every reset, so the reader columns are
+-- re-granted without `is_correct` (#1165, #1170).
+REVOKE SELECT ON public.question_options FROM authenticated, anon;
+GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
+  ON public.question_options TO authenticated;
+
 -- Read-only tables: written by the admin app (service role) and seeds (postgres).
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
   ON public.subscription_plans,

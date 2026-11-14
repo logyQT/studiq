@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { AccountType } from '@studiq/authz';
 import { can, check, Permission } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { error as logError } from '@studiq/server/lib/log';
@@ -38,10 +39,13 @@ export class QuestionTransferService {
   /**
    * Every question of a bank the caller may read, in the shape both file formats use.
    *
-   * Export follows read: reading a bank means having all of it, answer key included, so the bank
-   * is listed by its id rather than through the narrower `question.read` scope. A bank above
-   * `EXPORT_MAX_QUESTIONS` is refused (422) instead of being cut off. `notReimportable`
-   * counts the questions the importer would reject (the data is exported as it is).
+   * Export follows read **and** the staff key permission (R15): reading a bank means having all
+   * of it, answer key included, so the bank is listed by its id rather than through the narrower
+   * `question.read` scope. A student never exports a key, and a caller without
+   * `question_bank.update` on this bank is refused with `EXPORT_FORBIDDEN` rather than silently
+   * losing the key column. A bank above `EXPORT_MAX_QUESTIONS` is refused (422) instead of being
+   * cut off. `notReimportable` counts the questions the importer would reject (the data is
+   * exported as it is).
    */
   async exportBank(
     ctx: RequestContext,
@@ -49,10 +53,22 @@ export class QuestionTransferService {
   ): Promise<
     ServiceResult<{ bankName: string; questions: RawTransferQuestion[]; notReimportable: number }>
   > {
+    if (ctx.accountType === AccountType.STUDENT) return failure('EXPORT_FORBIDDEN');
+
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
-    // From here the whole bank is readable (decision B, #678).
     const bank = await questionBankService.getById(bankId, ctx);
     if (!bank.success) return failure(bank.error);
+
+    const bankRow = isRecord(bank.data) ? bank.data : null;
+    const staffExport =
+      bankRow !== null &&
+      (await can(ctx, Permission.QUESTION_BANK_UPDATE, {
+        id: bankId,
+        created_by: typeof bankRow.created_by === 'string' ? bankRow.created_by : null,
+        organization_id:
+          typeof bankRow.organization_id === 'string' ? bankRow.organization_id : null,
+      }));
+    if (!staffExport) return failure('EXPORT_FORBIDDEN');
 
     const listed = await questionService.listBankQuestions(bankId);
     if (!listed.success) return failure(listed.error);

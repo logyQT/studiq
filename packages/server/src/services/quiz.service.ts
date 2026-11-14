@@ -1,7 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
+import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -41,7 +41,7 @@ export class QuizService {
 
     await limitsResolver.checkLimit(ctx, 'max_quiz_attempts_per_day', attemptsToday ?? 0);
 
-    let query = supabase.from('questions').select(IN_PROGRESS_QUESTION_SELECT);
+    let query = supabase.from('questions').select(QUESTION_PAYLOAD_SELECT);
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
