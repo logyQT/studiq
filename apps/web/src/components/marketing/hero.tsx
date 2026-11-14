@@ -1,7 +1,7 @@
 'use client';
 
 import { CtaButton } from '@/components/marketing/ui/cta-button';
-import { ProductShot } from '@/components/marketing/ui/product-shot';
+import { QuizQuestionPreview } from '@/components/marketing/previews/quiz-question-preview';
 import { ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -19,13 +19,14 @@ export function Hero() {
          * scroll instead of pushing the form of the page down.
          */}
         <div className="contents md:col-span-4 md:col-start-9 md:row-start-1 md:flex md:flex-col md:border-l-2 md:border-primary md:pt-4 md:pl-8 lg:col-span-5 lg:col-start-8">
-          <ProductShot
-            shot="quiz-question"
-            alt={t('shot_quiz_alt')}
-            sizes="(min-width: 1280px) 456px, (min-width: 1024px) 36vw, (min-width: 768px) 30vw, calc(100vw - 2rem)"
-            preload
-            className="order-last mt-4 md:order-1 md:mt-0"
-          />
+          {/*
+           * The product itself, not a capture of it: the same component the
+           * student answers on, rendered from a fixture. No plate and no border —
+           * a rendered component sits on paper (DESIGN §Product imagery).
+           */}
+          <div className="order-last mt-4 md:order-1 md:mt-0">
+            <QuizQuestionPreview />
+          </div>
           <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase md:order-2 md:mt-3">
             {t('hero_badge')}
           </p>
