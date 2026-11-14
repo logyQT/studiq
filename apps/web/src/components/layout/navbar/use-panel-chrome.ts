@@ -11,5 +11,18 @@ import { useBodyScrollLock } from '@/components/layout/navbar/use-body-scroll-lo
 export function usePanelChrome(open: boolean, onOpenChange: (open: boolean) => void) {
   const panelRef = useRef<HTMLDivElement>(null);
   useBodyScrollLock(open);
-  return { panelRef, close: () => onOpenChange(false) };
+
+  return {
+    panelRef,
+    close: () => onOpenChange(false),
+    /**
+     * Focus goes to the panel itself, not to its first control: the dialog
+     * announces its name, and Tab then enters the list. Left on the trigger,
+     * Tab would fall through to the page underneath, which the panel covers.
+     */
+    onOpenAutoFocus: (event: Event) => {
+      event.preventDefault();
+      panelRef.current?.focus();
+    },
+  };
 }

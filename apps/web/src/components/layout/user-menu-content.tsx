@@ -1,11 +1,20 @@
 'use client';
 
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
-import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  BadgeCheck,
+  Bell,
+  CreditCard,
+  LogOut,
+  Palette,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { FOCUS_RING } from '@/components/layout/navbar/chrome';
+import { PANEL_ROW, PANEL_ROW_ARROW, PANEL_ROW_ICON } from '@/components/layout/navbar/panel-rows';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
@@ -13,13 +22,28 @@ import { dashboardHomeFor } from '@/lib/dashboard-home';
 import { OPEN_NOTIFICATIONS_EVENT } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
-export function UserMenuHeader() {
+export function UserMenuHeader({ variant = 'menu' }: { variant?: 'menu' | 'panel' }) {
   const { user } = useAuth();
   const t = useTranslations('DashboardLayout');
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
   const rawName: unknown = user?.user_metadata.name;
   const storedName = typeof rawName === 'string' ? rawName : '';
   const userName = storedName || user?.email?.split('@')[0] || t('default_user');
+
+  if (variant === 'panel') {
+    // The identity block adopts the row metrics — 72px band, 16px inset,
+    // 12px gap, a 40px avatar in the leading-icon column — so it reads as the
+    // list's first row rather than a header bolted onto one.
+    return (
+      <div className="flex min-h-18 items-center gap-3 px-4 py-3 text-left">
+        <UserAvatar name={userName} email={user?.email} size={20} className="size-10 rounded-lg" />
+        <div className="grid min-w-0 flex-1 text-left leading-tight">
+          <span className="truncate text-base font-semibold tracking-tight">{userName}</span>
+          <span className="truncate text-sm text-muted-foreground">{user?.email}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
@@ -34,16 +58,6 @@ export function UserMenuHeader() {
 
 const PLAIN_ITEM_CLASS =
   'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors';
-
-/**
- * A row of the header's mobile panels: full bleed like the navigation panel's
- * destinations, one line to itself, at that panel's 80px rhythm and `px-4`
- * content inset. The hairlines between rows live on the list that stacks them.
- */
-const PANEL_ITEM_CLASS = cn(
-  'flex min-h-20 w-full items-center gap-2 px-4 text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-  FOCUS_RING,
-);
 
 const DESTRUCTIVE_ITEM_CLASS = 'text-destructive hover:bg-destructive/10 hover:text-destructive';
 
@@ -61,18 +75,33 @@ interface MenuEntryProps {
   variant: UserMenuVariant;
   onSelect?: () => void;
   destructive?: boolean;
-  children: React.ReactNode;
+  /** The leading icon; the panel draws it at the shared 20px, a dropdown at the kit's 16px. */
+  icon?: LucideIcon;
+  label: string;
+  /** Panel rows that navigate carry the same arrow as the navigation panel. */
+  arrow?: boolean;
+  /** Dropdown-only icon tone, so the desktop menu keeps its established colours. */
+  iconClassName?: string;
 }
 
 /**
  * Renders a real Radix `DropdownMenuItem` inside a dropdown (keyboard reachable via
  * roving focus), or a plain button when rendered outside a menu context (e.g. a Sheet).
  */
-function MenuEntry({ variant, onSelect, destructive, children }: MenuEntryProps) {
+function MenuEntry({
+  variant,
+  onSelect,
+  destructive,
+  icon: Icon,
+  label,
+  arrow = false,
+  iconClassName,
+}: MenuEntryProps) {
   if (variant === 'menu') {
     return (
       <DropdownMenuItem variant={destructive ? 'destructive' : 'default'} onSelect={onSelect}>
-        {children}
+        {Icon ? <Icon aria-hidden className={cn('size-4', iconClassName)} /> : null}
+        <span>{label}</span>
       </DropdownMenuItem>
     );
   }
@@ -80,12 +109,22 @@ function MenuEntry({ variant, onSelect, destructive, children }: MenuEntryProps)
     <button
       type="button"
       className={cn(
-        variant === 'panel' ? PANEL_ITEM_CLASS : PLAIN_ITEM_CLASS,
+        variant === 'panel' ? PANEL_ROW : PLAIN_ITEM_CLASS,
         destructive && DESTRUCTIVE_ITEM_CLASS,
       )}
       onClick={onSelect}
     >
-      {children}
+      {Icon ? (
+        <Icon
+          aria-hidden
+          className={cn(
+            variant === 'panel' ? PANEL_ROW_ICON : cn('size-4', iconClassName),
+            destructive && 'text-current',
+          )}
+        />
+      ) : null}
+      <span className="flex-1 text-left">{label}</span>
+      {arrow ? <ArrowRight aria-hidden className={PANEL_ROW_ARROW} /> : null}
     </button>
   );
 }
@@ -121,10 +160,9 @@ export function UserMenuLogout({
         onItemClick?.();
       }}
       destructive
-    >
-      <LogOut className="size-4" />
-      <span>{t('logout')}</span>
-    </MenuEntry>
+      icon={LogOut}
+      label={t('logout')}
+    />
   );
 }
 
@@ -276,49 +314,52 @@ export function UserMenuItems(props: UserMenuItemsProps) {
     <>
       <MenuEntry
         variant={variant}
+        icon={Sparkles}
+        label={t('upgrade')}
+        arrow={variant === 'panel'}
         onSelect={() => {
           router.push(`${dashboardPrefix}/upgrade`);
           onItemClick?.();
         }}
-      >
-        <Sparkles className="size-4" />
-        <span>{t('upgrade')}</span>
-      </MenuEntry>
+      />
 
       <MenuDivider variant={variant} />
 
       <MenuEntry
         variant={variant}
+        icon={BadgeCheck}
+        iconClassName="text-muted-foreground"
+        label={t('account')}
+        arrow={variant === 'panel'}
         onSelect={() => {
           router.push(`${dashboardPrefix}/account`);
           onItemClick?.();
         }}
-      >
-        <BadgeCheck className="size-4 text-muted-foreground" />
-        <span>{t('account')}</span>
-      </MenuEntry>
+      />
       <MenuEntry
         variant={variant}
+        icon={CreditCard}
+        iconClassName="text-muted-foreground"
+        label={t('billing')}
+        arrow={variant === 'panel'}
         onSelect={() => {
           router.push(`${dashboardPrefix}/billing`);
           onItemClick?.();
         }}
-      >
-        <CreditCard className="size-4 text-muted-foreground" />
-        <span>{t('billing')}</span>
-      </MenuEntry>
+      />
       {notifications && (
         <MenuEntry
           variant={variant}
+          icon={Bell}
+          iconClassName="text-muted-foreground"
+          label={t('notifications')}
+          arrow={variant === 'panel'}
           onSelect={() => {
             // The notification centre is the bell in the header; this opens it.
             window.dispatchEvent(new Event(OPEN_NOTIFICATIONS_EVENT));
             onItemClick?.();
           }}
-        >
-          <Bell className="size-4 text-muted-foreground" />
-          <span>{t('notifications')}</span>
-        </MenuEntry>
+        />
       )}
 
       {preferences && (

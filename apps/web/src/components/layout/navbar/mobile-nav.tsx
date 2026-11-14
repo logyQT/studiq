@@ -12,6 +12,12 @@ import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { FOCUS_RING, HEADER_ICON } from '@/components/layout/navbar/chrome';
+import {
+  PANEL_LIST,
+  PANEL_ROW,
+  PANEL_ROW_ARROW,
+  PANEL_SHEET,
+} from '@/components/layout/navbar/panel-rows';
 import { LanguageSwitcher } from '@/components/shared/language-switcher/language-switcher';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
 import { cn } from '@/lib/utils';
@@ -82,7 +88,7 @@ const CTA_PRIMARY = cn(
  */
 export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: MobileNavProps) {
   const t = useTranslations('Navbar');
-  const { panelRef, close } = usePanelChrome(open, onOpenChange);
+  const { panelRef, close, onOpenAutoFocus } = usePanelChrome(open, onOpenChange);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
@@ -113,35 +119,23 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
         // control (which closes through the header's own handler).
         onInteractOutside={(event) => event.preventDefault()}
         // Focus goes to the panel itself, not to its first control: the dialog
-        // announces its name, and Tab then enters the list. Left on the burger,
-        // Tab would fall through to the page underneath, which the panel hides.
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          panelRef.current?.focus();
-        }}
-        className={cn(
-          // `top-16` is the header (`h-16`), `bottom-0` the viewport; with the top
-          // variant's `h-auto` that fills exactly the space below the header.
-          // `z-40` keeps the panel under the header's `z-50`, so the header is
-          // hit-testable and its hairline is the panel's top edge — no seam.
-          'top-16 bottom-0 z-40 flex w-full max-w-none flex-col gap-0 overflow-hidden border-0 bg-background p-0 shadow-none',
-          // The kit ships its own 16px close button with an English label; the
-          // burger is the only close control this panel gets.
-          '[&>button:last-child]:hidden',
-        )}
+        // announces its name, and Tab then enters the list.
+        onOpenAutoFocus={onOpenAutoFocus}
+        className={PANEL_SHEET}
       >
         <SheetHeader className="sr-only">
           <SheetTitle>{t('mobile_menu')}</SheetTitle>
           <SheetDescription>{t('logo')}</SheetDescription>
         </SheetHeader>
 
-        {/* Destinations, set large: one line each, a full row to itself, so the
-            list reads as the page's structure rather than as links in a box. */}
+        {/* Destinations, at the shared panel row: one line each, a full row to
+            itself, so the list reads as the page's structure rather than as
+            links in a box. The list owns the hairlines between rows. */}
         <nav
           aria-label={t('mobile_menu')}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          <ul className="divide-y divide-input border-b border-border">
+          <ul className={PANEL_LIST}>
             {items.map(({ label, href }) => {
               const active = isActive(href);
               return (
@@ -150,17 +144,10 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
                     href={href}
                     onClick={close}
                     aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'group flex min-h-20 items-center gap-4 px-4 text-2xl font-semibold tracking-tight text-foreground transition-colors hover:bg-accent',
-                      active && 'bg-accent',
-                      FOCUS_RING,
-                    )}
+                    className={cn(PANEL_ROW, active && 'bg-accent')}
                   >
                     <span className="flex-1">{label}</span>
-                    <ArrowRight
-                      aria-hidden
-                      className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:translate-x-0"
-                    />
+                    <ArrowRight aria-hidden className={PANEL_ROW_ARROW} />
                   </Link>
                 </li>
               );
@@ -169,7 +156,7 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
         </nav>
 
         {isLoggedIn ? null : (
-          <div className="shrink-0 px-4 py-6">
+          <div className="shrink-0 border-t border-input px-4 py-6">
             <Link href="/register" onClick={close} className={cn('w-full', CTA_PRIMARY)}>
               {t('register')}
             </Link>
@@ -178,8 +165,9 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
 
         {/* The preference row is the panel's, signed in or out: language and theme
             live here for everyone rather than moving to the account panel, so
-            each control exists exactly once. */}
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&>button]:h-11">
+            each control exists exactly once. It owns its top edge; the list above
+            does not also draw one, so the boundary is a single hairline. */}
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-input px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&>button]:h-11">
           <LanguageSwitcher />
           <ThemeSwitch size="lg" />
         </div>

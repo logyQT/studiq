@@ -351,6 +351,7 @@
     "title": "Powiadomienia",
     "button": "Powiadomienia",
     "button_unread": "Powiadomienia, {count, plural, one {# nieprzeczytane} few {# nieprzeczytane} other {# nieprzeczytanych}}",
+    "unread_count": "{count, plural, one {# nieprzeczytane} few {# nieprzeczytane} other {# nieprzeczytanych}}",
     "mark_all_read": "Oznacz wszystkie jako przeczytane",
     "loading": "Ładowanie…",
     "empty": "Nie masz jeszcze powiadomień.",
