@@ -154,7 +154,11 @@ describe('Assignment snapshot key boundary (#1171)', () => {
     const targeted = await assignments.setTargets(assignmentId, { studentIds: [studentId] }, ctx);
     if (!targeted.success) throw new Error(`setTargets: ${targeted.error}`);
     await service.from('teacher_assignments').update({ show_results: true }).eq('id', assignmentId);
-    const published = await assignments.publish(assignmentId, undefined, undefined, ctx);
+    const published = await assignments.publish(
+      assignmentId,
+      { deadline: new Date(Date.now() + 86_400_000).toISOString() },
+      ctx,
+    );
     if (!published.success) throw new Error(`publish: ${published.error}`);
 
     teacherSession = await signIn(`snapshot-teacher-${tag}@dev.local`);

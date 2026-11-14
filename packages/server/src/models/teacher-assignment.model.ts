@@ -113,5 +113,45 @@ export const PublishAssignmentSchema = registry.register(
   z.object({
     deadline: z.string().datetime().optional(),
     startTime: z.string().datetime().optional(),
+    /** Cross-class exposure is blocking; the teacher decides it explicitly (R3). */
+    acknowledgeExposure: z.boolean({ error: ValidationErrorCode.BOOL }).default(false),
+    /** Seal every item for the whole organisation, not only the targeted classes (R3). */
+    sealOrgWide: z.boolean({ error: ValidationErrorCode.BOOL }).default(false),
   }),
+);
+export type PublishAssignmentInput = z.infer<typeof PublishAssignmentSchema>;
+
+/**
+ * The publish preconditions, validated against the **stored** assessment plus the request's window.
+ * Issues carry the field `path`, so the client can point at the composer control that fixes it.
+ */
+export const PublishableAssignmentSchema = registry.register(
+  'PublishableAssignment',
+  z
+    .object({
+      targets: z.array(z.unknown()).min(1, { error: ValidationErrorCode.REQUIRED }),
+      items: z.array(z.unknown()).min(1, { error: ValidationErrorCode.REQUIRED }),
+      // A published run must be able to end: without a close there is no reveal and the seal never
+      // lifts (R2/R5).
+      // A stored `timestamptz` serialises with an offset, while the composer sends `toISOString()`;
+      // both are a valid window bound.
+      deadline: z
+        .string({ error: ValidationErrorCode.REQUIRED })
+        .datetime({ offset: true, error: ValidationErrorCode.REQUIRED }),
+      startTime: z.string().datetime({ offset: true }).nullish(),
+      maxAttempts: z
+        .number({ error: ValidationErrorCode.NUMBER })
+        .int({ error: ValidationErrorCode.INTEGER })
+        .min(1, { error: ValidationErrorCode.TOO_SMALL }),
+    })
+    .superRefine((config, ctx) => {
+      if (!config.startTime) return;
+      if (new Date(config.startTime).getTime() >= new Date(config.deadline).getTime()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['startTime'],
+          error: ValidationErrorCode.INVALID_INPUT,
+        });
+      }
+    }),
 );

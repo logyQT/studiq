@@ -50,12 +50,13 @@ import {
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
-import { apiPost, apiPut } from '@/lib/api';
+import { ApiError, apiPost, apiPut } from '@/lib/api';
+import { translateErrorCode } from '@/lib/error-messages';
 import { createPendingSave, publishWithPendingTargets } from '@/lib/assignment-publish';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys, groupKeys, questionKeys, topicKeys } from '@/lib/query-keys';
@@ -76,7 +77,12 @@ interface AssignmentDetail {
   passing_score: number | null;
   question_count: number;
   total_points: number;
+  /** R3: this run holds its items from every student in the organisation. */
+  seal_org_wide: boolean;
+  /** Cross-class forecast, computed for a draft only (the composer is the only reader). */
+  exposure?: { openItemCount: number; outsideStudentCount: number };
   created_at: string;
+  assignment_targets?: Array<{ group_id: string | null; student_id: string | null }>;
   assignment_questions: Array<{
     id: string;
     question_id: string;
@@ -188,6 +194,7 @@ export default function AssignmentDetailClient() {
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations('EduAssignmentDetailPage');
+  const tErrors = useTranslations('Errors');
   const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const {
@@ -230,6 +237,9 @@ export default function AssignmentDetailClient() {
   const [publishDeadline, setPublishDeadline] = useState<string>('');
   const [publishStartTime, setPublishStartTime] = useState<string>('');
   const [scheduleRelease, setScheduleRelease] = useState(false);
+  // R3: the cross-class exposure is blocking, so publishing needs this explicit decision.
+  const [acknowledgeExposure, setAcknowledgeExposure] = useState(false);
+  const [sealOrgWide, setSealOrgWide] = useState(false);
   // The results view formats dates in the browser's timezone; pass it to the
   // CSV export so the downloaded file matches what the teacher sees.
   const [timeZone, setTimeZone] = useState<string>();
@@ -271,7 +281,10 @@ export default function AssignmentDetailClient() {
       const deadline = publishDeadline ? new Date(publishDeadline).toISOString() : undefined;
       const startTime =
         scheduleRelease && publishStartTime ? new Date(publishStartTime).toISOString() : undefined;
-      const body: Record<string, string | undefined> = {};
+      const body: Record<string, string | boolean | undefined> = {
+        acknowledgeExposure,
+        sealOrgWide,
+      };
       if (deadline) body.deadline = deadline;
       if (startTime) body.startTime = startTime;
       return apiPost<unknown>(`/api/v1/teacher/assignments/${id}/publish`, body);
@@ -293,14 +306,33 @@ export default function AssignmentDetailClient() {
   const saveTargets = setTargetsMutation.mutateAsync;
   const [pendingTargetSave] = useState(() => createPendingSave());
 
+  // The composer opens with the draft's own audience selected, so the cross-class forecast (R3)
+  // and the acknowledgement are visible without re-picking a class that is already there.
+  const storedGroups = (assignment?.assignment_targets ?? []).flatMap((target) =>
+    target.group_id ? [target.group_id] : [],
+  );
+  const storedStudents = (assignment?.assignment_targets ?? []).flatMap((target) =>
+    target.student_id ? [target.student_id] : [],
+  );
+  const storedKey = `${storedGroups.toSorted().join(',')}|${storedStudents.toSorted().join(',')}`;
+  const selectedKey = `${targetGroupIds.toSorted().join(',')}|${targetStudentIds.toSorted().join(',')}`;
+  const seeded = useRef(false);
   useEffect(() => {
-    if (targetGroupIds.length === 0 && targetStudentIds.length === 0) {
+    if (seeded.current || !assignment) return;
+    seeded.current = true;
+    setTargetGroupIds(storedGroups);
+    setTargetStudentIds(storedStudents);
+  }, [assignment, storedGroups, storedStudents]);
+
+  useEffect(() => {
+    // Only a draft is composed; a selection equal to the stored one is not a change worth a write.
+    if (assignment?.status !== 'draft' || selectedKey === storedKey) {
       pendingTargetSave.cancel();
     } else {
       pendingTargetSave.schedule(() => saveTargets(undefined));
     }
     return () => pendingTargetSave.cancel();
-  }, [targetGroupIds, targetStudentIds, saveTargets, pendingTargetSave]);
+  }, [assignment?.status, selectedKey, storedKey, saveTargets, pendingTargetSave]);
 
   const handleDelete = async () => {
     try {
@@ -315,14 +347,29 @@ export default function AssignmentDetailClient() {
   };
 
   const handlePublish = async () => {
-    await publishWithPendingTargets(pendingTargetSave, () =>
-      publishMutation.mutateAsync(undefined),
-    );
+    try {
+      await publishWithPendingTargets(pendingTargetSave, () =>
+        publishMutation.mutateAsync(undefined),
+      );
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : null;
+      toast.error(
+        code === 'UNPROCESSABLE_ENTITY'
+          ? t('publish_invalid')
+          : code
+            ? translateErrorCode(tErrors, code)
+            : t('publish_failed'),
+      );
+    }
   };
 
   const handleUnpublish = async () => {
-    await unpublishMutation.mutateAsync(undefined);
-    void refetch();
+    try {
+      await unpublishMutation.mutateAsync(undefined);
+      void refetch();
+    } catch (error) {
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null));
+    }
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -458,8 +505,17 @@ export default function AssignmentDetailClient() {
 
   const isDraft = assignment.status === 'draft';
   const isPublished = assignment.status === 'published';
+  const isLiveRun =
+    isPublished && (!assignment.start_time || new Date(assignment.start_time) <= new Date());
   const hasTargets = targetGroupIds.length > 0 || targetStudentIds.length > 0;
   const questions = localQuestions ?? [];
+  const exposure = assignment.exposure;
+  const exposureOpen = (exposure?.openItemCount ?? 0) > 0 && !sealOrgWide;
+  // Publish validates all of this server-side; the composer states it up front so the button
+  // cannot silently do nothing.
+  // An audience and at least one item are what the composer can require up front; the deadline is
+  // validated server-side (422) so the button still reflects the documented "audience enables it".
+  const publishReady = hasTargets && questions.length > 0 && (!exposureOpen || acknowledgeExposure);
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -526,7 +582,9 @@ export default function AssignmentDetailClient() {
               variant="outline"
               size="sm"
               onClick={handleUnpublish}
-              disabled={unpublishMutation.isPending}
+              // Publish-once applies from live: a scheduled run can be withdrawn, a live one cannot.
+              disabled={unpublishMutation.isPending || isLiveRun}
+              title={isLiveRun ? t('withdraw_live_hint') : undefined}
             >
               {unpublishMutation.isPending ? t('unpublishing') : t('unpublish')}
             </Button>
@@ -918,10 +976,56 @@ export default function AssignmentDetailClient() {
                   value={publishDeadline}
                   onChange={(e) => setPublishDeadline(e.target.value)}
                 />
+                {publishDeadline === '' && (
+                  <p className="text-sm text-muted-foreground">{t('deadline_required')}</p>
+                )}
               </div>
               {!hasTargets && <p className="text-sm text-muted-foreground">{t('no_targets')}</p>}
+
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="sealOrgWide"
+                  checked={sealOrgWide}
+                  onChange={(e) => setSealOrgWide(e.target.checked)}
+                  className="mt-1 rounded border-gray-300"
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="sealOrgWide">{t('seal_org_wide')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('seal_org_wide_hint')}</p>
+                </div>
+              </div>
+
+              {exposureOpen && (
+                <div
+                  role="note"
+                  data-testid="exposure-warning"
+                  className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+                >
+                  <p>
+                    {t('exposure_warning', {
+                      count: exposure?.openItemCount ?? 0,
+                      students: exposure?.outsideStudentCount ?? 0,
+                    })}
+                  </p>
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="acknowledgeExposure"
+                      checked={acknowledgeExposure}
+                      onChange={(e) => setAcknowledgeExposure(e.target.checked)}
+                      className="mt-1 rounded border-gray-300"
+                    />
+                    <Label htmlFor="acknowledgeExposure">{t('exposure_ack')}</Label>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3">
-                <Button onClick={handlePublish} disabled={publishMutation.isPending || !hasTargets}>
+                <Button
+                  onClick={handlePublish}
+                  disabled={publishMutation.isPending || !publishReady}
+                >
                   {publishMutation.isPending ? t('publishing') : t('publish')}
                 </Button>
               </div>

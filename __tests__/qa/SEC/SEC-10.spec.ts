@@ -9,6 +9,9 @@ import {
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * SEC-10 — XSS w polach tekstowych.
  *
@@ -277,7 +280,7 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
     );
     const published = await expectData<{ status: string }>(
       await page.request.post(`/api/v1/teacher/assignments/${assignment.id}/publish`, {
-        data: {},
+        data: { deadline: PUBLISH_DEADLINE },
       }),
       'POST /api/v1/teacher/assignments/:id/publish',
       200,

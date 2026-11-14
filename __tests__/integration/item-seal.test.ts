@@ -237,7 +237,12 @@ describe('Sealed items are absent from student reads (#1171)', () => {
     const publish = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/assignments/${assignmentId}/publish`,
       { id: assignmentId },
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // 8B can still practise the bank, so the run is published as an acknowledged exposure.
+        body: JSON.stringify({ acknowledgeExposure: true }),
+      },
       cookie(),
     );
     const published = await publishPost(publish.request, { params: publish.params });

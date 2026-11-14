@@ -323,6 +323,22 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     ]);
   });
 
+  it('holds an org-wide run from every student, targeted or not', async () => {
+    await service
+      .from('teacher_assignments')
+      .update({ seal_org_wide: true })
+      .eq('id', managerAssignmentId);
+
+    const held = await studentB.from('questions').select('id').eq('id', questionId);
+    expect(held.error).toBeNull();
+    expect(held.data, 'a student outside the class is sealed by the org-wide run').toEqual([]);
+
+    await service
+      .from('teacher_assignments')
+      .update({ seal_org_wide: false })
+      .eq('id', managerAssignmentId);
+  });
+
   it('releases the item at close', async () => {
     await service
       .from('teacher_assignments')

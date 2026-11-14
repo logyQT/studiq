@@ -97,6 +97,9 @@ type StudentStats = {
   attemptsOverTime: Array<Record<string, unknown>>;
 };
 
+/** A published run must be able to close (publish gate, R2/R5); the fixtures publish as-is. */
+const DEADLINE = new Date(Date.now() + 2 * 86_400_000).toISOString();
+
 describe(`Assignment Attempts Integration`, () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
@@ -290,7 +293,7 @@ describe(`Assignment Attempts Integration`, () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ deadline: DEADLINE, acknowledgeExposure: true }),
       },
     );
     const publishRes = await publishPost(publishReq, { params: publishParams });
@@ -719,7 +722,7 @@ describe(`Assignment Attempts Integration`, () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ deadline: DEADLINE, acknowledgeExposure: true }),
       },
     );
     const publishRes = await publishPost(publishCall.request, { params: publishCall.params });

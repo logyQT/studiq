@@ -56,6 +56,9 @@ interface AssignmentDetailPayload {
   }>;
 }
 
+/** A published run must be able to close (publish gate, R2/R5). */
+const DEADLINE = new Date(Date.now() + 2 * 86_400_000).toISOString();
+
 describe('Item states, versioning and the frozen assignment snapshot (#1171)', () => {
   const service = createServiceClient();
 
@@ -185,7 +188,7 @@ describe('Item states, versioning and the frozen assignment snapshot (#1171)', (
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ deadline: DEADLINE }),
       },
     );
     const publishRes = await publishPost(publishReq, { params: publishParams });

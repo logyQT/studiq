@@ -9,6 +9,9 @@ import {
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * SEC-11 — Przesyłanie plików: typy i rozmiary.
  *
@@ -275,7 +278,7 @@ async function createAssignmentAttempt(teacher: Page, student: Page): Promise<As
   expect(targeted.status(), `PUT /api/v1/teacher/assignments/${id}/targets`).toBe(200);
 
   const published = await teacher.request.post(`/api/v1/teacher/assignments/${id}/publish`, {
-    data: {},
+    data: { deadline: PUBLISH_DEADLINE },
   });
   expect(published.status(), `POST /api/v1/teacher/assignments/${id}/publish`).toBe(200);
 

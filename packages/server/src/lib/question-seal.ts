@@ -72,13 +72,16 @@ export async function sealedItemsFor(
 ): Promise<ServiceResult<Seal>> {
   const supabase = createServiceClient();
 
-  // 1. The assignments that target this student: directly, or through one of their groups.
-  const [groups, direct] = await Promise.all([
+  // 1. The assignments that target this student — directly, through one of their groups, or
+  // because the teacher sealed the run for the whole organisation (R3).
+  const [groups, direct, memberships] = await Promise.all([
     supabase.from('group_members').select('group_id').eq('user_id', studentId),
     supabase.from('assignment_targets').select('assignment_id').eq('student_id', studentId),
+    supabase.from('org_members').select('organization_id').eq('user_id', studentId),
   ]);
   if (groups.error) return mapSupabaseError(groups.error);
   if (direct.error) return mapSupabaseError(direct.error);
+  if (memberships.error) return mapSupabaseError(memberships.error);
 
   const groupIds = dbRows(groups.data).map((row) => row.group_id);
   const assignmentIds = new Set(dbRows(direct.data).map((row) => row.assignment_id));
@@ -90,6 +93,18 @@ export async function sealedItemsFor(
       .in('group_id', groupIds);
     if (grouped.error) return mapSupabaseError(grouped.error);
     for (const row of dbRows(grouped.data)) assignmentIds.add(row.assignment_id);
+  }
+
+  const orgIds = dbRows(memberships.data).map((row) => row.organization_id);
+  if (orgIds.length > 0) {
+    const orgWide = await supabase
+      .from('teacher_assignments')
+      .select('id')
+      .in('organization_id', orgIds)
+      .eq('status', 'published')
+      .eq('seal_org_wide', true);
+    if (orgWide.error) return mapSupabaseError(orgWide.error);
+    for (const row of dbRows(orgWide.data)) assignmentIds.add(row.id);
   }
 
   const candidateIds = [...assignmentIds].filter((id): id is string => !!id);

@@ -2,6 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * STU-38 — a quiz („kartkówka”) addressed to another group stays closed to a
  * student outside that group.
@@ -187,7 +190,7 @@ async function publishAssignment(
   ).toBe(200);
 
   const published = await page.request.post(`/api/v1/teacher/assignments/${id}/publish`, {
-    data: {},
+    data: { deadline: PUBLISH_DEADLINE },
   });
   expect(
     published.status(),
