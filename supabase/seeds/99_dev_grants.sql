@@ -36,10 +36,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT ALL ON TABLES TO authenticated, service_role;
 
 -- The blanket GRANT above re-opens every column on every reset, so the reader columns are
--- re-granted without `is_correct` (#1165, #1170).
+-- re-granted without `is_correct` (#1165, #1170) and `assignment_questions` without
+-- `snapshot_key` (#1171).
 REVOKE SELECT ON public.question_options FROM authenticated, anon;
 GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
   ON public.question_options TO authenticated;
+
+REVOKE SELECT ON public.assignment_questions FROM authenticated, anon;
+GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version)
+  ON public.assignment_questions TO authenticated;
 
 -- ==========================================
 -- Read-only tables: written by the admin app (service role) and seeds (postgres)

@@ -21,6 +21,7 @@ CREATE TABLE public.teacher_assignments (
   passing_score     int,
   question_count    int NOT NULL DEFAULT 0,
   total_points      int NOT NULL DEFAULT 0,
+  closed_at         timestamptz,
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now()
 );
@@ -34,6 +35,11 @@ CREATE TABLE public.assignment_questions (
   question_id    uuid REFERENCES public.questions(id) ON DELETE CASCADE,
   order_index    int,
   points         int NOT NULL DEFAULT 1,
+  -- Frozen at publish: reader-safe content, key material (never granted to `authenticated`),
+  -- and the item version the assessment is serving. `snapshot_key` is read with the service role.
+  snapshot         jsonb,
+  snapshot_key     jsonb,
+  snapshot_version int,
   UNIQUE (assignment_id, question_id)
 );
 

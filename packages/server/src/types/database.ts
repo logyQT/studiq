@@ -70,6 +70,9 @@ export type Database = {
           order_index: number | null;
           points: number;
           question_id: string | null;
+          snapshot: Json | null;
+          snapshot_key: Json | null;
+          snapshot_version: number | null;
         };
         ComputedFields: never;
         Insert: {
@@ -78,6 +81,9 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          snapshot?: Json | null;
+          snapshot_key?: Json | null;
+          snapshot_version?: number | null;
         };
         Update: {
           assignment_id?: string | null;
@@ -85,6 +91,9 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          snapshot?: Json | null;
+          snapshot_key?: Json | null;
+          snapshot_version?: number | null;
         };
         Relationships: [
           {
@@ -2023,13 +2032,6 @@ export type Database = {
             referencedRelation: 'questions';
             referencedColumns: ['id'];
           },
-          {
-            foreignKeyName: 'student_answers_selected_option_id_fkey';
-            columns: ['selected_option_id'];
-            isOneToOne: false;
-            referencedRelation: 'question_options';
-            referencedColumns: ['id'];
-          },
         ];
       };
       subscription_plans: {
@@ -2114,6 +2116,7 @@ export type Database = {
       };
       teacher_assignments: {
         Row: {
+          closed_at: string | null;
           created_at: string | null;
           created_by: string | null;
           deadline: string | null;
@@ -2136,6 +2139,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          closed_at?: string | null;
           created_at?: string | null;
           created_by?: string | null;
           deadline?: string | null;
@@ -2157,6 +2161,7 @@ export type Database = {
           updated_at?: string | null;
         };
         Update: {
+          closed_at?: string | null;
           created_at?: string | null;
           created_by?: string | null;
           deadline?: string | null;
@@ -2689,7 +2694,7 @@ export type Database = {
     };
     Enums: {
       account_type: 'student' | 'educator' | 'manager';
-      assignment_status: 'draft' | 'published';
+      assignment_status: 'draft' | 'published' | 'closed';
       question_status: 'open' | 'retired' | 'deleted';
       question_type:
         'mcq' | 'true_false' | 'open' | 'multi_select' | 'matching' | 'ordering' | 'fill_in_blank';
@@ -2811,7 +2816,7 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ['student', 'educator', 'manager'],
-      assignment_status: ['draft', 'published'],
+      assignment_status: ['draft', 'published', 'closed'],
       question_status: ['open', 'retired', 'deleted'],
       question_type: [
         'mcq',
