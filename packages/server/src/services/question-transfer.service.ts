@@ -140,7 +140,8 @@ export class QuestionTransferService {
     let owned = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
     owned = organizationId
       ? owned.eq('organization_id', organizationId)
       : owned.is('organization_id', null);

@@ -1,5 +1,11 @@
 import type { RequestContext } from '@studiq/authz';
+import {
+  ASSIGNMENT_QUESTION_COLUMNS,
+  writeAssignmentSnapshots,
+} from '@studiq/server/lib/assignment-snapshot';
 import { wrapService } from '@studiq/server/lib/observability';
+import { openQuestionIds } from '@studiq/server/lib/question-status';
+import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
 import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -98,6 +104,41 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
+    // A quiz copy is a new binding, and it is chosen as a whole: if any item is retired or
+    // deleted the whole copy is refused. Silently dropping it would create an assessment with a
+    // different item set than the quiz the teacher picked (#1171).
+    const quizQuestions: Array<{
+      question_id: string;
+      order_index: number | null;
+      points: number;
+    }> = [];
+    if (data.quizId) {
+      const { data: rows, error: quizError } = await supabase
+        .from('quiz_questions')
+        .select('question_id, order_index, points')
+        .eq('quiz_id', data.quizId)
+        .order('order_index', { ascending: true });
+
+      if (quizError) return toDbFailure(quizError);
+
+      for (const row of dbRows(rows)) {
+        if (row.question_id) {
+          quizQuestions.push({
+            question_id: row.question_id,
+            order_index: row.order_index,
+            points: row.points,
+          });
+        }
+      }
+
+      const open = await openQuestionIds(
+        supabase,
+        quizQuestions.map((question) => question.question_id),
+      );
+      if (isFailure(open)) return open;
+      if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+    }
+
     const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
       organization_id: ctx.activeOrgId,
       created_by: ctx.userId,
@@ -124,29 +165,15 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    // Copy questions from quiz if quizId provided
-    if (data.quizId) {
-      const { data: quizQuestions } = await supabase
-        .from('quiz_questions')
-        .select('question_id, order_index, points')
-        .eq('quiz_id', data.quizId)
-        .order('order_index', { ascending: true });
+    // Copy the validated quiz items (every one of them was open above).
+    const copied = await insertAssessmentItemLinks(supabase, assignment.id, quizQuestions);
+    if (isFailure(copied)) return copied;
 
-      if (quizQuestions && quizQuestions.length > 0) {
-        const assignmentQuestions = quizQuestions.map((q) => ({
-          assignment_id: assignment.id,
-          question_id: q.question_id,
-          order_index: q.order_index,
-          points: q.points,
-        }));
-        await supabase.from('assignment_questions').insert(assignmentQuestions);
-      }
-    }
-
-    // Re-fetch with questions
+    // Re-fetch with questions. Explicit columns: `assignment_questions.*` would include the
+    // revoked `snapshot_key`.
     const { data: full, error: refetchError } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*)')
+      .select(`*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS})`)
       .eq('id', assignment.id)
       .single();
 
@@ -160,7 +187,7 @@ export class TeacherAssignmentService {
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
       .select(
-        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))',
+        `*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
       )
       .eq('id', id)
       .maybeSingle();
@@ -295,13 +322,23 @@ export class TeacherAssignmentService {
     if (count === 0) return failure('BAD_REQUEST');
 
     // Only a save that leaves the assignment already published is silent; publishing a draft
-    // (including one that was unpublished before) tells the students. A failed read must not
-    // turn into a notification, so it skips the fan-out instead of guessing.
+    // (including one that was unpublished before) tells the students. The status read also
+    // decides whether this call freezes the snapshot, so a failed read must abort.
     const { data: before, error: beforeError } = await supabase
       .from('teacher_assignments')
       .select('status')
       .eq('id', id)
       .single();
+
+    if (beforeError) return toDbFailure(beforeError);
+
+    // Freeze before the status flips: a publish that cannot write every snapshot must not leave
+    // a live assessment with nothing to serve. Re-publishing a withdrawn draft writes it again
+    // from the current live rows; a save on an already-published assessment never does.
+    if (before.status !== 'published') {
+      const snapshot = await writeAssignmentSnapshots(supabase, id);
+      if (isFailure(snapshot)) return snapshot;
+    }
 
     const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {
       status: 'published',
@@ -319,7 +356,7 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    if (!beforeError && before.status !== 'published') {
+    if (before.status !== 'published') {
       await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
     }
     return success(updated);
@@ -330,8 +367,9 @@ export class TeacherAssignmentService {
     data: AddQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+    const supabase = editable.data;
 
     const existingIds = await this.existingQuestionIds(supabase, id);
     if (!existingIds.success) return existingIds;
@@ -340,20 +378,13 @@ export class TeacherAssignmentService {
 
     if (newIds.length === 0) return success({ added: 0 });
 
-    const { data: maxOrder } = await supabase
-      .from('assignment_questions')
-      .select('order_index')
-      .eq('assignment_id', id)
-      .order('order_index', { ascending: false })
-      .limit(1);
+    // Composing an assessment is a new binding: a retired item may not be added, and a deleted
+    // one is not bindable at all.
+    const open = await openQuestionIds(supabase, newIds);
+    if (isFailure(open)) return open;
+    if (open.data.size !== newIds.length) return failure('UNPROCESSABLE_ENTITY');
 
-    const nextOrder = (maxOrder?.[0]?.order_index ?? -1) + 1;
-
-    const rows = newIds.map((questionId, i) => ({
-      assignment_id: id,
-      question_id: questionId,
-      order_index: nextOrder + i,
-    }));
+    const rows = await this.nextQuestionLinks(supabase, id, newIds);
 
     const { error } = await supabase.from('assignment_questions').insert(rows);
     if (error) return toDbFailure(error);
@@ -366,8 +397,9 @@ export class TeacherAssignmentService {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+    const supabase = editable.data;
 
     const { error } = await supabase
       .from('assignment_questions')
@@ -411,8 +443,9 @@ export class TeacherAssignmentService {
     data: RandomizeInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+    const supabase = editable.data;
 
     let query = supabase.from('questions').select('id');
 
@@ -443,6 +476,9 @@ export class TeacherAssignmentService {
       query = query.in('type', data.types);
     }
 
+    // Randomize is composition: only open items can be newly bound (#1171).
+    query = query.eq('status', 'open');
+
     const existingIds = await this.existingQuestionIds(supabase, id);
     if (!existingIds.success) return existingIds;
 
@@ -455,25 +491,40 @@ export class TeacherAssignmentService {
     const shuffled = [...available].toSorted(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(data.count, shuffled.length));
 
-    const { data: maxOrder } = await supabase
-      .from('assignment_questions')
-      .select('order_index')
-      .eq('assignment_id', id)
-      .order('order_index', { ascending: false })
-      .limit(1);
-
-    const nextOrder = (maxOrder?.[0]?.order_index ?? -1) + 1;
-
-    const rows = selected.map((q, i) => ({
-      assignment_id: id,
-      question_id: q.id,
-      order_index: nextOrder + i,
-    }));
+    const rows = await this.nextQuestionLinks(
+      supabase,
+      id,
+      selected.flatMap((q) => (q.id ? [q.id] : [])),
+    );
 
     const { error: insertError } = await supabase.from('assignment_questions').insert(rows);
 
     if (insertError) return toDbFailure(insertError);
     return success({ added: selected.length });
+  }
+
+  /**
+   * Link rows for newly bound items, appended after the highest current `order_index`. Both
+   * composing paths (hand-picked and randomized) share the ordering rule.
+   */
+  private async nextQuestionLinks(
+    supabase: SupabaseClient<Database>,
+    assignmentId: string,
+    questionIds: readonly string[],
+  ): Promise<Array<{ assignment_id: string; question_id: string; order_index: number }>> {
+    const { data: maxOrder } = await supabase
+      .from('assignment_questions')
+      .select('order_index')
+      .eq('assignment_id', assignmentId)
+      .order('order_index', { ascending: false })
+      .limit(1);
+
+    const nextOrder = (maxOrder?.[0]?.order_index ?? -1) + 1;
+    return questionIds.map((questionId, index) => ({
+      assignment_id: assignmentId,
+      question_id: questionId,
+      order_index: nextOrder + index,
+    }));
   }
 
   async setTargets(
@@ -914,7 +965,7 @@ export class TeacherAssignmentService {
 
     const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*), assignment_targets(*)')
+      .select(`*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}), assignment_targets(*)`)
       .eq('id', id)
       .eq('status', 'published')
       .maybeSingle();
@@ -1247,6 +1298,31 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
     return success(new Set(dbRows(data).map((q) => q.question_id)));
+  }
+
+  /**
+   * The client for an assignment the caller may edit, refusing a live one. A published
+   * assessment's item set is frozen (R13): adding an item would leave the next start without a
+   * snapshot and removing one would shorten an in-progress attempt. `409 ASSESSMENT_LIVE` until
+   * slice 2 formalises the composer rules.
+   */
+  private async draftClient(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<SupabaseClient<Database>>> {
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
+
+    const { data, error } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    if (data.status !== 'draft') return failure('ASSESSMENT_LIVE');
+    return success(supabase);
   }
 
   /** The client for an assignment the caller may write; `null` when it is missing or foreign. */

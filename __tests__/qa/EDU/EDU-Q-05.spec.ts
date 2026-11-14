@@ -34,8 +34,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *    radio checked, the explanation and the topic. Saving a new content, a new explanation
  *    and a different correct answer shows „Pytanie zaktualizowane”, re-renders the row and
  *    stores exactly one correct answer — the new one.
- * 3. „Usunąć pytanie?” carries the warning „To trwale usunie to pytanie i wszystkie jego
- *    odpowiedzi. Tej akcji nie można cofnąć.”; „Anuluj” keeps the question, „Usuń” shows
+ * 3. „Usunąć pytanie?” carries the warning „Pytanie zniknie z banku, wyszukiwania i ćwiczeń. Kartkówki, w których już je
+ *    wykorzystano, zachowają jego opublikowaną wersję.”; „Anuluj” keeps the question, „Usuń” shows
  *    „Pytanie usunięte”, removes the row, shows the empty state and makes
  *    `GET /api/v1/questions/:id` answer 404.
  *
@@ -65,7 +65,7 @@ const COPY = {
   updated: 'Pytanie zaktualizowane',
   deleteTitle: 'Usunąć pytanie?',
   deleteDescription:
-    'To trwale usunie to pytanie i wszystkie jego odpowiedzi. Tej akcji nie można cofnąć.',
+    'Pytanie zniknie z banku, wyszukiwania i ćwiczeń. Kartkówki, w których już je wykorzystano, zachowają jego opublikowaną wersję.',
   cancel: 'Anuluj',
   deleted: 'Pytanie usunięte',
   emptyState: 'Brak pytań w tym banku. Utwórz swoje pierwsze pytanie!',

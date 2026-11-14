@@ -22,6 +22,10 @@ REVOKE SELECT ON public.question_options FROM authenticated, anon;
 GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
   ON public.question_options TO authenticated;
 
+REVOKE SELECT ON public.assignment_questions FROM authenticated, anon;
+GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version)
+  ON public.assignment_questions TO authenticated;
+
 -- Read-only tables: written by the admin app (service role) and seeds (postgres).
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
   ON public.subscription_plans,
@@ -69,6 +73,7 @@ REVOKE ALL ON FUNCTION public.get_accessible_questions(uuid, uuid, text, uuid, u
 REVOKE ALL ON FUNCTION public.get_accessible_topics(uuid, uuid, uuid) FROM authenticated, anon;
 
 GRANT EXECUTE ON FUNCTION public.bulk_create_flashcards(jsonb, uuid, uuid, text, uuid[], uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.question_bank_counts(uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.count_new_cards(uuid, text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_breakdown(uuid, uuid, uuid, uuid[], uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_flashcards(uuid, text, uuid, integer, uuid[], uuid[], integer, boolean) TO authenticated;

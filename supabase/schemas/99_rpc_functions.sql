@@ -1706,3 +1706,25 @@ $$;
 
 REVOKE ALL ON FUNCTION public.submit_quiz_attempt(uuid, uuid, int, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.submit_quiz_attempt(uuid, uuid, int, jsonb) TO authenticated, service_role;
+
+-- ==========================================
+-- question_bank_counts (#1171, slice 1a)
+-- A soft-deleted item keeps its row, so `questions(count)` counts items the author can no longer
+-- see. PostgREST cannot filter an embedded aggregate; the bank list/detail reads this instead.
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.question_bank_counts(p_bank_ids uuid[])
+RETURNS TABLE (bank_id uuid, question_count bigint)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT q.bank_id, count(*) AS question_count
+  FROM public.questions q
+  WHERE q.bank_id = ANY (p_bank_ids)
+    AND q.status <> 'deleted'
+  GROUP BY q.bank_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.question_bank_counts(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.question_bank_counts(uuid[]) TO authenticated, service_role;

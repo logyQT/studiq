@@ -508,7 +508,9 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValue(chain(null));
 
@@ -523,7 +525,9 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
+        .mockReturnValueOnce(chain([{ id: 'q-2' }]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
         .mockReturnValue(chain(null));
 
@@ -538,12 +542,28 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]));
 
       const result = await service.addQuestions(assignmentId, { questionIds: ['q-1'] }, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 0 });
+    });
+
+    it('refuses to change a published assignment (#1171 R13)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'published' }));
+
+      const result = await service.addQuestions(assignmentId, { questionIds: ['q-1'] }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      // Ownership + status only: nothing is written.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -562,11 +582,26 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValue(chain(null));
 
       const result = await service.removeQuestion(assignmentId, 'q-1', ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses to remove an item from a published assignment (#1171 R13)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'published' }));
+
+      const result = await service.removeQuestion(assignmentId, 'q-1', ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -584,6 +619,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
@@ -604,6 +640,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
@@ -613,6 +650,20 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 0 });
+    });
+
+    it('refuses to randomize into a published assignment (#1171 R13)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'published' }));
+
+      const result = await service.randomize(assignmentId, { source: 'all', count: 5 }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -629,6 +680,7 @@ describe('TeacherAssignmentService', () => {
 
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(questionsChain)
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
@@ -654,6 +706,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(questionsChain)
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
