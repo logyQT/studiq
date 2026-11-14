@@ -36,7 +36,6 @@ const FEATURES: readonly { title: string; plan: Plan }[] = [
   { title: 'Podstawowe statystyki', plan: 'Darmowy' },
   { title: 'Generowanie pytań przez AI', plan: 'Premium' },
   { title: 'Generowanie Fiszek przez AI', plan: 'Premium' },
-  { title: 'Symulacja egzaminu AI', plan: 'Premium' },
   { title: 'Zaawansowana Analityka', plan: 'Premium' },
   { title: 'Zarządzanie Organizacją', plan: 'Uniwersytecki' },
   { title: 'Masowe Zaproszenia', plan: 'Uniwersytecki' },
@@ -45,7 +44,7 @@ const FEATURES: readonly { title: string; plan: Plan }[] = [
 
 const PLAN_TOTALS: Record<Plan, number> = {
   Darmowy: 4,
-  Premium: 4,
+  Premium: 3,
   Uniwersytecki: 3,
 };
 

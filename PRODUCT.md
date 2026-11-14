@@ -134,17 +134,19 @@ The page may sell the 📋 rows. It may not sell anything absent from this table
 
 ## Gaps: claimed, but not in the roadmap
 
-Three claims are live or planned and have no roadmap row. Under the rule above they get no
-promise until they do. Each is a decision, not a design task.
+Two claims are live and have no roadmap row. Under the rule above they get no promise until
+they do. Each is a decision, not a design task.
 
-1. **AI exam simulation** (`LandingPage.ai_exam_sim`). Shown as Premium value on the landing
-   page and `/features`. Subphase 4C covers learning paths, report agents and adaptive
-   difficulty, not exam simulation. Either add it to the roadmap or drop it from the page.
-2. **14-day free trial** (`PricingPage.faq_a3`). Every `/pricing/*` page states new users
+1. **14-day free trial** (`PricingPage.faq_a3`). Every `/pricing/*` page states new users
    get a 14-day trial of all Premium features. No trial exists in the code or the roadmap.
-3. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
+2. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
    `cancel_at_period_end`; the 30-day grace belongs to soft-deleted _accounts_, not
    subscriptions.
+
+**Dropped:** AI exam simulation. It was sold as Premium value on the landing page, the
+marketing premium card and `/features`, and subphase 4C covers learning paths, report agents
+and adaptive difficulty — not exam simulation. It is gone from all three surfaces and its
+keys with it; it returns only when the roadmap has a row for it.
 
 Separately, one entitlement inconsistency that is not a roadmap question: the landing org
 card prices from `team` (99 zł) and lists "Everything in Premium", but `ace` (19.99 zł) is
