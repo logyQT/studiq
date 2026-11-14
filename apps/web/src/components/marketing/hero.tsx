@@ -10,31 +10,42 @@ export function Hero() {
 
   return (
     <section id="hero" className="border-b border-primary pt-12 pb-12 md:pt-28 md:pb-20">
-      <div className="mx-auto grid max-w-media gap-y-4 px-content md:grid-cols-12 md:gap-x-8 md:gap-y-0">
+      <div className="mx-auto grid max-w-media gap-y-4 px-content lg:grid-cols-12 lg:gap-x-8 lg:gap-y-0">
         {/*
-         * The label captions the shot: on md+ below the specimen, below md it is the
+         * The label captions the shot: on lg+ below the specimen, below lg it is the
          * eyebrow. `contents` lets the shot become a grid item of its own on a phone,
          * so it can follow the CTAs while the rail keeps it beside the h1 on desktop:
          * the claim and the actions keep the first screen, and the shot rewards the
          * scroll instead of pushing the form of the page down.
+         *
+         * The split starts at `lg` and not `md`: at 768 the rail is a quarter of the
+         * grid, which leaves the card too narrow for its own footer, so the claim
+         * gets the full width until there is room for two columns.
          */}
-        <div className="contents md:col-span-4 md:col-start-9 md:row-start-1 md:flex md:flex-col md:border-l-2 md:border-primary md:pt-4 md:pl-8 lg:col-span-5 lg:col-start-8">
+        <div className="contents lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:flex lg:flex-col lg:border-l-2 lg:border-primary lg:pt-4 lg:pl-8">
           {/*
            * The product itself, not a capture of it: the same component the
            * student answers on, rendered from a fixture. No plate and no border —
            * a rendered component sits on paper (DESIGN §Product imagery).
            */}
-          <div className="order-last mt-4 md:order-1 md:mt-0">
+          <div className="order-last mt-4 sm:mt-0 lg:order-1">
             <QuizQuestionPreview />
           </div>
-          <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase md:order-2 md:mt-3">
+          <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase lg:order-2 lg:mt-3">
             {t('hero_badge')}
           </p>
         </div>
 
-        <div className="md:col-span-8 md:col-start-1 md:row-start-1 lg:col-span-7">
+        <div className="lg:col-span-7 lg:col-start-1 lg:row-start-1">
           <h1 className="font-display text-display font-semibold text-balance">
-            {t('hero_title')}
+            {t('hero_title_lead')}{' '}
+            <span className="hand-mark">
+              {t('hero_title_mark')}
+              {/* One hand-drawn stroke under the operative half; see globals.css. */}
+              <svg viewBox="0 0 600 22" preserveAspectRatio="none" aria-hidden focusable="false">
+                <path d="M5 13 C 78 7 148 16 222 10 S 362 5 438 12 S 546 16 595 11" />
+              </svg>
+            </span>
           </h1>
           <p className="mt-4 max-w-xl text-lede text-muted-foreground text-pretty md:mt-6">
             {t('hero_subtitle')}

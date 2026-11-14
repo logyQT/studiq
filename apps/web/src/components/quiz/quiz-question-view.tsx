@@ -155,7 +155,12 @@ export function QuizQuestionView({
             />
           )}
         </CardContent>
-        <CardFooter className="flex justify-between">
+        {/* The row wraps rather than clipping: the card is at its narrowest in the
+            hero rail, and two labelled buttons do not always fit one line. Below
+            360px the two of them cannot share a row in either locale, so they
+            stack — a full-width pair always fits, and it keeps the footer one
+            fixed height instead of wrapping on some questions and not others. */}
+        <CardFooter className="flex flex-wrap justify-between gap-2 max-[359px]:flex-col max-[359px]:items-stretch">
           <Button variant="outline" disabled={question.position === 1} onClick={onPrevious}>
             <ArrowLeft data-icon="inline-start" /> {labels.previous}
           </Button>

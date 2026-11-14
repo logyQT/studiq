@@ -76,12 +76,21 @@ export function QuizQuestionPreview() {
   /*
    * The fixtures are different shapes — four options, two buttons, a textarea — so
    * the card's own height swings. A column flex box reserves the measured maximum
-   * and the view grows into it: 76px of card chrome plus the tallest card, 436px
-   * at md and 476px on a phone, so 512px / 552px. That pins the footer, so stepping
-   * cannot move it or the page.
+   * and the view grows into it, which pins the footer so stepping cannot move it or
+   * the page.
+   *
+   * The reservations are measured in both locales at every breakpoint, not
+   * calculated: 646px below 360 (options wrap to three lines), 576px from 360 up
+   * once the options get room, 512px from 640 in the full-width column, 484px
+   * from 860 where the widest option stops wrapping, 576px at 1024 where the card
+   * is back in the rail but only 347px wide, and 512px from 1280. Each value is
+   * the tallest of the four fixtures at that width plus the 76px of card chrome,
+   * rounded up. The first two steps are arbitrary min-widths rather than `sm:`
+   * because the ladder has to sort upward: a named variant emitted after an
+   * arbitrary one would win at every wider width.
    */
   return (
-    <div className="flex min-h-[552px] flex-col md:min-h-[512px]">
+    <div className="flex min-h-[656px] flex-col min-[360px]:min-h-[584px] min-[640px]:min-h-[520px] min-[860px]:min-h-[492px] lg:min-h-[584px] xl:min-h-[520px]">
       <QuizQuestionView
         question={question}
         labels={{
