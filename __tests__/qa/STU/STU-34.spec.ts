@@ -3,7 +3,6 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
-const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
 
 /**
  * STU-34 — Lista kartkówek (`/app/assignments`).
@@ -309,7 +308,8 @@ async function createAssignment(page: Page, params: AssignmentParams): Promise<A
       page,
       'POST',
       `/api/v1/teacher/assignments/${created.id}/publish`,
-      { deadline: PUBLISH_DEADLINE },
+      // The publish body carries the window; keep the one the case documents.
+      { deadline: params.deadline },
     );
     expect(published.status, `${params.title} is published`).toBe('published');
   }

@@ -123,35 +123,33 @@ export type PublishAssignmentInput = z.infer<typeof PublishAssignmentSchema>;
 
 /**
  * The publish preconditions, validated against the **stored** assessment plus the request's window.
- * Issues carry the field `path`, so the client can point at the composer control that fixes it.
+ * Not registered: this is not a request contract, it is a server-side configuration check. Issues
+ * carry the field `path`, so the client can point at the composer control that fixes it.
  */
-export const PublishableAssignmentSchema = registry.register(
-  'PublishableAssignment',
-  z
-    .object({
-      targets: z.array(z.unknown()).min(1, { error: ValidationErrorCode.REQUIRED }),
-      items: z.array(z.unknown()).min(1, { error: ValidationErrorCode.REQUIRED }),
-      // A published run must be able to end: without a close there is no reveal and the seal never
-      // lifts (R2/R5).
-      // A stored `timestamptz` serialises with an offset, while the composer sends `toISOString()`;
-      // both are a valid window bound.
-      deadline: z
-        .string({ error: ValidationErrorCode.REQUIRED })
-        .datetime({ offset: true, error: ValidationErrorCode.REQUIRED }),
-      startTime: z.string().datetime({ offset: true }).nullish(),
-      maxAttempts: z
-        .number({ error: ValidationErrorCode.NUMBER })
-        .int({ error: ValidationErrorCode.INTEGER })
-        .min(1, { error: ValidationErrorCode.TOO_SMALL }),
-    })
-    .superRefine((config, ctx) => {
-      if (!config.startTime) return;
-      if (new Date(config.startTime).getTime() >= new Date(config.deadline).getTime()) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['startTime'],
-          error: ValidationErrorCode.INVALID_INPUT,
-        });
-      }
-    }),
-);
+export const PublishableAssignmentSchema = z
+  .object({
+    targets: z.array(z.unknown()).min(1, { error: ValidationErrorCode.REQUIRED }),
+    items: z.array(z.unknown()).min(1, { error: ValidationErrorCode.REQUIRED }),
+    // A published run must be able to end: without a close there is no reveal and the seal never
+    // lifts (R2/R5).
+    // A stored `timestamptz` serialises with an offset, while the composer sends `toISOString()`;
+    // both are a valid window bound.
+    deadline: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .datetime({ offset: true, error: ValidationErrorCode.REQUIRED }),
+    startTime: z.string().datetime({ offset: true }).nullish(),
+    maxAttempts: z
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(1, { error: ValidationErrorCode.TOO_SMALL }),
+  })
+  .superRefine((config, ctx) => {
+    if (!config.startTime) return;
+    if (new Date(config.startTime).getTime() >= new Date(config.deadline).getTime()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['startTime'],
+        error: ValidationErrorCode.INVALID_INPUT,
+      });
+    }
+  });
