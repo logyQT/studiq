@@ -121,10 +121,10 @@ const LOGIN_COPY: Record<
 const LANDING: Record<Locale, { hero: string; footer: string[] }> = {
   pl: {
     hero: 'Tylko to, co musisz umieć.',
-    footer: ['StudiQ', 'Funkcje', 'Cennik', 'Kontakt', 'Polityka Prywatności', 'Regulamin'],
+    footer: ['StudiQ', 'Funkcje', 'Cennik', 'Kontakt', 'Polityka prywatności', 'Regulamin'],
   },
   en: {
-    hero: 'Learn Smarter, Not Harder',
+    hero: 'Only what you have to know.',
     footer: ['StudiQ', 'Features', 'Pricing', 'Contact', 'Privacy Policy', 'Terms of Service'],
   },
 };

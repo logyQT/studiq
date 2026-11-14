@@ -88,12 +88,29 @@ export function ProductShot({
     />
   );
 
-  if (bare) return <div className={className}>{img}</div>;
+  /*
+   * Until hydration the theme is unknown, so the server's markup would name the
+   * light files and the browser would fetch them — then fetch the dark set as
+   * well once `resolvedTheme` arrives. That is a double download and a visible
+   * flash of a cream screenshot on a dark page.
+   *
+   * So the box is reserved and painted, and the image is requested once, for the
+   * right theme. The aspect ratio holds the space, so there is no layout shift.
+   */
+  const placeholder = (
+    <div
+      aria-hidden
+      className="w-full rounded-xs bg-secondary/40"
+      style={{ aspectRatio: `${width} / ${height}` }}
+    />
+  );
+
+  if (bare) return <div className={className}>{mounted ? img : placeholder}</div>;
 
   return (
     <figure className={className}>
       <div className="overflow-hidden rounded-panel border border-border bg-background p-1.5">
-        {img}
+        {mounted ? img : placeholder}
       </div>
     </figure>
   );
