@@ -2879,12 +2879,10 @@
     "exposure_ack": "I understand these questions stay available to other classes while the assessment runs.",
     "seal_org_wide": "Seal for the whole organisation",
     "seal_org_wide_hint": "The questions are held from every student in the organisation, including students who join later.",
-    "exposure_blocked": "Acknowledge the cross-class exposure or seal the questions for the whole organisation.",
     "publish_invalid": "Complete the assessment first: a deadline, at least one student or group, and at least one question.",
     "deadline_required": "A deadline is required to publish the assessment.",
     "publish_failed": "Could not publish the assessment.",
-    "withdraw_live_hint": "A live assessment cannot be withdrawn — a scheduled one can be changed before it starts.",
-    "withdraw": "Withdraw to draft"
+    "withdraw_live_hint": "A live assessment cannot be withdrawn — a scheduled one can be changed before it starts."
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",

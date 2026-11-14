@@ -606,6 +606,19 @@ export class TeacherAssignmentService {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
+    // A published run's cohort is frozen (R20): dropping a class would unseal it mid-window, and
+    // an empty list would withdraw the run through the draft branch below. A scheduled run is
+    // re-targeted by withdrawing it to draft first (R12).
+    const { data: assignment, error: statusError } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (statusError) return toDbFailure(statusError);
+    if (!assignment) return failure('NOT_FOUND');
+    if (assignment.status === 'published') return failure('ASSESSMENT_LIVE');
+
     // Every target must belong to the assignment's organisation: the ids come from the request,
     // and notifications and results are fanned out from them (#235).
     const foreign = await this.hasForeignTargets(supabase, id, data, ctx);

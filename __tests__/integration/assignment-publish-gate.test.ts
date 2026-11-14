@@ -22,6 +22,7 @@ import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
 import { POST as unpublishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/unpublish/route';
 import { GET as questionsList } from '@/app/(backend)/api/v1/questions/route';
+import { GET as questionGet } from '@/app/(backend)/api/v1/questions/[id]/route';
 
 // #1171 slice 2b: the publish gate (R3/R12/R13/R19). Validation names the field that is wrong,
 // cross-class exposure is blocking, the org-wide seal widens the reservation, and publish-once
@@ -65,8 +66,10 @@ describe('Assessment publish gate (#1171)', () => {
 
   let teacher!: BeforeResult;
   let outsider!: BeforeResult;
+  let classStudent!: BeforeResult;
   let orgId!: string;
   let groupA!: string;
+  let outsiderGroup!: string;
   let memberRoleId!: string;
   let questionId!: string;
   let bankId!: string;
@@ -138,6 +141,30 @@ describe('Assessment publish gate (#1171)', () => {
     expect(response.status).toBe(200);
   }
 
+  /** The target PUT without its status asserted: the refusal tests read it themselves. */
+  async function setTargets(assignmentId: string, groupIds: string[]) {
+    return withParams(
+      targetsPut,
+      `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
+      assignmentId,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupIds }),
+      },
+    );
+  }
+
+  async function questionStatus(id: string): Promise<number> {
+    const call = createNextRequestWithParams(
+      `http://localhost/api/v1/questions/${id}`,
+      { id },
+      {},
+      cookie(),
+    );
+    return (await questionGet(call.request, { params: call.params })).status;
+  }
+
   async function addItem(assignmentId: string, ids: string[]): Promise<void> {
     const response = await withParams(
       addQuestionsPost,
@@ -195,21 +222,32 @@ describe('Assessment publish gate (#1171)', () => {
 
     // The fixture bank is shared with a second class that is *not* in the cohort: that is exactly
     // the cross-class exposure the gate asks about.
-    const { data: outsiderGroup, error: groupError } = await service
+    const { data: outsiderGroupRow, error: groupError } = await service
       .from('groups')
       .insert({ organization_id: orgId, name: `gate-8b-${Date.now()}` })
       .select('id')
       .single();
     if (groupError) throw new Error(`group: ${groupError.message}`);
+    outsiderGroup = outsiderGroupRow.id;
     await seedGroupMembership({
-      groupId: outsiderGroup.id,
+      groupId: outsiderGroup,
       userId: outsider.user.id,
       role: 'member',
     });
     await service.from('bank_groups').insert([
       { bank_id: bankId, group_id: groupA },
-      { bank_id: bankId, group_id: outsiderGroup.id },
+      { bank_id: bankId, group_id: outsiderGroup },
     ]);
+
+    // A student in the class the run targets, so a re-targeting that drops 8A is observable as
+    // the item becoming readable again.
+    classStudent = await before({ role: 'student' });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: classStudent.user.id,
+      orgRoleId: memberRoleId,
+    });
+    await seedGroupMembership({ groupId: groupA, userId: classStudent.user.id, role: 'member' });
 
     as(teacher.user);
   });
@@ -314,6 +352,43 @@ describe('Assessment publish gate (#1171)', () => {
     const page = (await json<{ data: { items: Array<{ id: string }> } }>(response)).data;
     expect(page.items.map((item) => item.id)).not.toContain(questionId);
     as(teacher.user);
+  });
+
+  it('refuses any target change on a published run (R20)', async () => {
+    const live = await createDraft();
+    await target(live, [groupA]);
+    await addItem(live, [questionId]);
+    expect((await publish(live, { deadline: DEADLINE(), acknowledgeExposure: true })).status).toBe(
+      200,
+    );
+
+    // The run is live: the targeted class cannot reach the held item.
+    as(classStudent.user);
+    expect(await questionStatus(questionId), 'the held item is 404 for the target class').toBe(404);
+    as(teacher.user);
+
+    // Replacing the cohort would unseal the dropped class mid-window.
+    const replaced = await setTargets(live, [outsiderGroup]);
+    expect(replaced.status, 're-targeting a published run').toBe(409);
+    expect(replaced.body.error).toBe('ASSESSMENT_LIVE');
+
+    // An empty list would withdraw the run through the draft branch.
+    const emptied = await setTargets(live, []);
+    expect(emptied.status, 'emptying a published run’s cohort').toBe(409);
+    expect(emptied.body.error).toBe('ASSESSMENT_LIVE');
+
+    expect((await assignmentGetDetail(live)).status, 'the status was never touched').toBe(
+      'published',
+    );
+
+    // A refused PUT left the run exactly as it was: the class is still sealed.
+    as(classStudent.user);
+    expect(await questionStatus(questionId), 'the target class is still sealed').toBe(404);
+    as(teacher.user);
+
+    // A draft is still editable, which is how a wrong cohort is corrected before publish.
+    const draft = await createDraft();
+    await target(draft, [groupA]);
   });
 
   it('is publish-once from live, and a scheduled run withdraws to draft', async () => {

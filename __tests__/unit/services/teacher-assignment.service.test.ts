@@ -831,6 +831,7 @@ describe('TeacherAssignmentService', () => {
     it('sets group and student targets', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId })) // the assignment's organisation
         .mockReturnValueOnce(chain(null, 1)) // the group is in it
         .mockReturnValueOnce(chain(null, 1)) // and so is the student
@@ -848,6 +849,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a group of another organisation and writes nothing (#235)', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 0)) // no group of this organisation matches
         .mockReturnValue(chain(null));
@@ -862,6 +864,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a student who is not in the assignment organisation', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 1)) // only one of the two is a member
         .mockReturnValue(chain(null));
@@ -878,6 +881,7 @@ describe('TeacherAssignmentService', () => {
     it('accepts a direct student target on a personal assignment (no organisation)', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValue(chain(null));
 
@@ -891,6 +895,7 @@ describe('TeacherAssignmentService', () => {
     it("accepts a group target on a personal assignment when it is one of the caller's groups", async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValueOnce(chain([{ organization_id: orgId }])) // the caller's organisations
         .mockReturnValueOnce(chain(null, 1)) // the group is in one of them
@@ -904,6 +909,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a group of another organisation on a personal assignment', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValueOnce(chain([{ organization_id: orgId }]))
         .mockReturnValueOnce(chain(null, 0))
@@ -920,6 +926,7 @@ describe('TeacherAssignmentService', () => {
       const studentIds = Array.from({ length: 250 }, (_, i) => `s${i}`);
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 200))
         .mockReturnValueOnce(chain(null, 50))
@@ -934,6 +941,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses targets when the assignment read fails instead of treating it as personal', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(failingChain({ code: 'PGRST116', message: 'no rows' }))
         .mockReturnValue(chain(null));
 
@@ -949,11 +957,27 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(assignmentId, {}, ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses every target change once the run is published (#1171, R20)', async () => {
+      const statusChain = chain({ status: 'published' });
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(statusChain)
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { groupIds: [] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'ASSESSMENT_LIVE' });
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).not.toContain('assignment_targets');
+      expect(statusChain.update, 'the status is never touched').not.toHaveBeenCalled();
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {

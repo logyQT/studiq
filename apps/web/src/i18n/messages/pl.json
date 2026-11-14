@@ -2860,12 +2860,10 @@
     "exposure_ack": "Rozumiem, że te pytania pozostaną dostępne dla innych klas w trakcie kartkówki.",
     "seal_org_wide": "Zarezerwuj dla całej organizacji",
     "seal_org_wide_hint": "Pytania będą zablokowane dla wszystkich uczniów organizacji, także tych, którzy dołączą później.",
-    "exposure_blocked": "Potwierdź dostępność pytań dla innych klas albo zaznacz rezerwację dla całej organizacji.",
     "publish_invalid": "Uzupełnij brakujące dane kartkówki: termin, co najmniej jednego ucznia lub grupę oraz co najmniej jedno pytanie.",
     "deadline_required": "Termin jest wymagany, aby opublikować kartkówkę.",
     "publish_failed": "Nie udało się opublikować kartkówki.",
-    "withdraw_live_hint": "Uruchomionej kartkówki nie można wycofać — zmiany zaplanowanej są możliwe tylko przed jej rozpoczęciem.",
-    "withdraw": "Wycofaj do szkicu"
+    "withdraw_live_hint": "Uruchomionej kartkówki nie można wycofać — zmiany zaplanowanej są możliwe tylko przed jej rozpoczęciem."
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",
