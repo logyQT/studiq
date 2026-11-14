@@ -105,15 +105,15 @@ test('serves every privacy-policy and terms section to a visitor without a sessi
 }) => {
   // A visitor reaches the legal pages from the public footer.
   await page.goto('/');
-  await expect(page.locator('footer a[href="/privacy"]')).toHaveText('Polityka Prywatności');
+  await expect(page.locator('footer a[href="/privacy"]')).toHaveText('Polityka prywatności');
   await expect(page.locator('footer a[href="/terms"]')).toHaveText('Regulamin');
 
   await page.locator('footer a[href="/privacy"]').click();
   await expect(page).toHaveURL(/\/privacy$/);
 
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-  await expect(page).toHaveTitle(/Polityka Prywatności/);
-  await expect(page.locator('main h1')).toHaveText('Polityka Prywatności');
+  await expect(page).toHaveTitle(/Polityka prywatności/);
+  await expect(page.locator('main h1')).toHaveText('Polityka prywatności');
   await expectSections(page, PRIVACY_PL);
   await expectNoCyrillic(page, '/privacy (pl)');
 
@@ -137,7 +137,7 @@ test('language toggle serves the English legal pages after a refresh, then Polis
   page,
 }) => {
   await page.goto('/privacy');
-  await expect(page.locator('main h1')).toHaveText('Polityka Prywatności');
+  await expect(page.locator('main h1')).toHaveText('Polityka prywatności');
   await expectSections(page, PRIVACY_PL);
 
   await switchLanguage(page, 'English');

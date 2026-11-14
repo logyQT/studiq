@@ -74,7 +74,7 @@ const HEADER_LINKS = [
 
 const FOOTER_LINKS = [
   { name: 'Kontakt', href: '/contact' },
-  { name: 'Polityka Prywatności', href: '/privacy' },
+  { name: 'Polityka prywatności', href: '/privacy' },
   { name: 'Regulamin', href: '/terms' },
 ] as const;
 
