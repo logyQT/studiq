@@ -174,8 +174,9 @@ make the learner the actor and scope the claim to what the material requires.
   about a product that does something specific. The two strings that broke this,
   `LandingPage.hero_badge` and `LandingPage.ai_exam_sim`, are gone: the badge names where the
   material comes from, and the exam simulation was dropped with its keys.
-- No dashes as punctuation, in either locale. One sentence currently breaks this with a
-  spaced hyphen: `pl.LandingPage.hero_subtitle`.
+- No dashes as punctuation, in either locale. `pl.LandingPage.hero_subtitle` was the one
+  sentence that broke this with a spaced hyphen; it has been rewritten, so the landing copy
+  now obeys the rule in both catalogues.
 - Every number on the page is measured in the app or absent.
 
 ## References

@@ -3,7 +3,7 @@
 import { Button } from '@studiq/ui';
 import { Check, Minus, X, Zap } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
 import { cn } from '@/lib/utils';
 
@@ -84,9 +84,40 @@ export function FlashcardReview({
   // motion it fades where it stands instead of sliding off its rating's side.
   const reduceMotion = useReducedMotion() === true;
 
+  /*
+   * A rating disables all four buttons, because the next card arrives answer-down:
+   * the button that had focus leaves the tab order with them and the browser drops
+   * focus to <body> — once per card, for anyone rating with the keyboard or with the
+   * 1–4 shortcuts. The card is the control that is enabled and meaningful on a card
+   * the student has not revealed (Enter/Space reveals it), so a rating hands focus
+   * back to it.
+   *
+   * A card that advances is replaced only after its exit animation, and
+   * `onExitComplete` hands focus to the successor then. The effect below covers the
+   * card that stays (cram's „stay” re-asks the same one). Neither fires on mount:
+   * the session's first card had no answer to come back from and must not pull
+   * focus.
+   */
+  const cardRef = useRef<HTMLFieldSetElement>(null);
+  const previousCardKey = useRef(cardKey);
+  const previousFlipped = useRef(isFlipped);
+
+  useEffect(() => {
+    const advanced = previousCardKey.current !== cardKey;
+    const wasFlipped = previousFlipped.current;
+    previousCardKey.current = cardKey;
+    previousFlipped.current = isFlipped;
+    if (isFlipped || advanced || !wasFlipped) return;
+    cardRef.current?.focus({ preventScroll: true });
+  }, [cardKey, isFlipped]);
+
   return (
     <>
-      <AnimatePresence mode="wait" custom={exitDirection}>
+      <AnimatePresence
+        mode="wait"
+        custom={exitDirection}
+        onExitComplete={() => cardRef.current?.focus({ preventScroll: true })}
+      >
         <motion.div
           key={cardKey}
           custom={exitDirection}
@@ -124,6 +155,7 @@ export function FlashcardReview({
           }}
         >
           <FlashcardFlip
+            ref={cardRef}
             isFlipped={isFlipped}
             onClick={onFlip}
             ariaLabel={ariaLabel}

@@ -1,7 +1,14 @@
 'use client';
 
 import { motion, useReducedMotion } from 'motion/react';
-import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { cn } from '@/lib/utils';
 
 /*
@@ -35,6 +42,11 @@ interface FlashcardFlipProps {
    * render markdown, and the button role would turn any link inside them presentational.
    */
   ariaLabel?: string;
+  /**
+   * The focusable card itself. The review block takes it so it can hand focus to the
+   * next card after a rating, instead of leaving it on a button that rating disabled.
+   */
+  ref?: Ref<HTMLFieldSetElement>;
 }
 
 export function FlashcardFlip({
@@ -44,6 +56,7 @@ export function FlashcardFlip({
   className,
   onClick,
   ariaLabel,
+  ref,
 }: FlashcardFlipProps) {
   // Keyboard parity with `onClick`, for the card itself only: a focused link inside a face keeps
   // Enter for its own activation. The event is consumed so the page-level Space handlers (the
@@ -88,6 +101,7 @@ export function FlashcardFlip({
 
   return (
     <fieldset
+      ref={ref}
       aria-label={ariaLabel}
       aria-keyshortcuts="Enter Space"
       tabIndex={0}

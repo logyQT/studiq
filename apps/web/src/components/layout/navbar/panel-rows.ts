@@ -12,8 +12,12 @@ import { cn } from '@/lib/utils';
  * 72px, not the burger's old 80px: 320×568 leaves 504px below the header, and
  * at 80px the signed-in burger (six rows plus the preference band) overflowed
  * by 49px while the account panel's identity, four rows and logout left almost
- * no air. 72px is still far above the 44px touch target, fits the burger within
- * a pixel and leaves the account panel a visible gap.
+ * no air. 72px is still far above the 44px touch target and leaves the account
+ * panel a visible gap. The signed-in burger does not quite fit either: six rows
+ * and the five hairlines between them are 437px against the 435px the preference
+ * band (68px plus its top hairline) leaves, so its list scrolls 2px and the last
+ * row's bottom edge is clipped by that much. Accepting the scroll is the trade
+ * that keeps both the row's height and the band's controls.
  */
 export const PANEL_ROW = cn(
   'group flex min-h-18 w-full items-center gap-3 px-4 py-3 text-xl leading-tight font-semibold tracking-tight text-foreground transition-colors hover:bg-accent',

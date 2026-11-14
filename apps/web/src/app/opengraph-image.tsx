@@ -1,14 +1,27 @@
-import { getTranslations } from 'next-intl/server';
 import { ImageResponse } from 'next/og';
+import en from '@/i18n/messages/en.json';
+import pl from '@/i18n/messages/pl.json';
+import { DEFAULT_LOCALE } from '@/lib/locale';
 
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-export default async function OpengraphImage() {
-  // Rendered per request so the tagline follows the page's locale; `hero_title`
-  // is the claim the hero itself opens with (PRODUCT.md §Voice).
-  const t = await getTranslations('LandingPage');
-  const tagline = t('hero_title');
+const MESSAGES = { pl, en };
+
+export default function OpengraphImage() {
+  /*
+   * The tagline is the page's own `hero_title` (PRODUCT.md §Voice), read from the
+   * message catalogue at build time so no copy is repeated here.
+   *
+   * Not from the request: this image is fetched by social crawlers, which send no
+   * `NEXT_LOCALE` cookie. Resolving a locale per request would therefore always
+   * fall back to the default one — the same card, drawn again on every unfurl,
+   * with `max-age=0` and no `Vary` to sort it in any cache. Reading cookies is
+   * also what made the route dynamic; without them it is prerendered once at
+   * build and every request gets the same bytes. The default locale's catalogue
+   * is what the audience for this image actually needs.
+   */
+  const tagline = MESSAGES[DEFAULT_LOCALE].LandingPage.hero_title;
   return new ImageResponse(
     <div
       style={{

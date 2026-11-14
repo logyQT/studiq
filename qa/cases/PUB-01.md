@@ -32,7 +32,7 @@ spec signs nobody in and sends no storage state.
 
 - Strona ładuje się bez błędów (konsola przeglądarki bez czerwonych błędów).
 - Widoczne: plakietka „Platforma edukacyjna oparta na AI”, nagłówek „Tylko to, co musisz umieć.”, podtytuł, przyciski „Zacznij Naukę Za Darmo” i „Zobacz Funkcje”.
-- Widoczne sekcje: statystyki (Utworzonych pytań / Fiszek / Aktywnych uczniów / Rozwiązanych testów), „Jak to działa” (3 kroki), „Co Otrzymujesz Za Darmo”, „Wspomagaj Naukę z AI”, „Prosty, Przejrzysty Cennik”, opinie („Pokochane przez studentów i nauczycieli”), baner „Gotowy na transformację nauki?”, stopka.
+- Widoczne sekcje: „Jak to działa” (3 kroki), „Co Otrzymujesz Za Darmo”, „Wspomagaj Naukę z AI”, „Prosty, Przejrzysty Cennik”, baner „Gotowy na transformację nauki?”, stopka.
 - Brak surowych kluczy tłumaczeń (np. LandingPage.xxx) ani tekstów „undefined”/„NaN”.
 
 ## Suite checks — anchored to this criterion (English, suite-owned)
