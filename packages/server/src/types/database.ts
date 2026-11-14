@@ -70,6 +70,9 @@ export type Database = {
           order_index: number | null;
           points: number;
           question_id: string | null;
+          snapshot: Json | null;
+          snapshot_key: Json | null;
+          snapshot_version: number | null;
         };
         ComputedFields: never;
         Insert: {
@@ -78,6 +81,9 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          snapshot?: Json | null;
+          snapshot_key?: Json | null;
+          snapshot_version?: number | null;
         };
         Update: {
           assignment_id?: string | null;
@@ -85,6 +91,9 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          snapshot?: Json | null;
+          snapshot_key?: Json | null;
+          snapshot_version?: number | null;
         };
         Relationships: [
           {

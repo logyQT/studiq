@@ -1,4 +1,8 @@
 import type { RequestContext } from '@studiq/authz';
+import {
+  ASSIGNMENT_QUESTION_COLUMNS,
+  writeAssignmentSnapshots,
+} from '@studiq/server/lib/assignment-snapshot';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
@@ -165,10 +169,11 @@ export class TeacherAssignmentService {
     const copied = await insertAssessmentItemLinks(supabase, assignment.id, quizQuestions);
     if (isFailure(copied)) return copied;
 
-    // Re-fetch with questions
+    // Re-fetch with questions. Explicit columns: `assignment_questions.*` would include the
+    // revoked `snapshot_key`.
     const { data: full, error: refetchError } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*)')
+      .select(`*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS})`)
       .eq('id', assignment.id)
       .single();
 
@@ -182,7 +187,7 @@ export class TeacherAssignmentService {
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
       .select(
-        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))',
+        `*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
       )
       .eq('id', id)
       .maybeSingle();
@@ -317,13 +322,23 @@ export class TeacherAssignmentService {
     if (count === 0) return failure('BAD_REQUEST');
 
     // Only a save that leaves the assignment already published is silent; publishing a draft
-    // (including one that was unpublished before) tells the students. A failed read must not
-    // turn into a notification, so it skips the fan-out instead of guessing.
+    // (including one that was unpublished before) tells the students. The status read also
+    // decides whether this call freezes the snapshot, so a failed read must abort.
     const { data: before, error: beforeError } = await supabase
       .from('teacher_assignments')
       .select('status')
       .eq('id', id)
       .single();
+
+    if (beforeError) return toDbFailure(beforeError);
+
+    // Freeze before the status flips: a publish that cannot write every snapshot must not leave
+    // a live assessment with nothing to serve. Re-publishing a withdrawn draft writes it again
+    // from the current live rows; a save on an already-published assessment never does.
+    if (before.status !== 'published') {
+      const snapshot = await writeAssignmentSnapshots(supabase, id);
+      if (isFailure(snapshot)) return snapshot;
+    }
 
     const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {
       status: 'published',
@@ -341,7 +356,7 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    if (!beforeError && before.status !== 'published') {
+    if (before.status !== 'published') {
       await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
     }
     return success(updated);
@@ -352,8 +367,9 @@ export class TeacherAssignmentService {
     data: AddQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+    const supabase = editable.data;
 
     const existingIds = await this.existingQuestionIds(supabase, id);
     if (!existingIds.success) return existingIds;
@@ -381,8 +397,9 @@ export class TeacherAssignmentService {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+    const supabase = editable.data;
 
     const { error } = await supabase
       .from('assignment_questions')
@@ -426,8 +443,9 @@ export class TeacherAssignmentService {
     data: RandomizeInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+    const supabase = editable.data;
 
     let query = supabase.from('questions').select('id');
 
@@ -947,7 +965,7 @@ export class TeacherAssignmentService {
 
     const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*), assignment_targets(*)')
+      .select(`*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}), assignment_targets(*)`)
       .eq('id', id)
       .eq('status', 'published')
       .maybeSingle();
@@ -1280,6 +1298,31 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
     return success(new Set(dbRows(data).map((q) => q.question_id)));
+  }
+
+  /**
+   * The client for an assignment the caller may edit, refusing a live one. A published
+   * assessment's item set is frozen (R13): adding an item would leave the next start without a
+   * snapshot and removing one would shorten an in-progress attempt. `409 ASSESSMENT_LIVE` until
+   * slice 2 formalises the composer rules.
+   */
+  private async draftClient(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<SupabaseClient<Database>>> {
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
+
+    const { data, error } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    if (data.status !== 'draft') return failure('ASSESSMENT_LIVE');
+    return success(supabase);
   }
 
   /** The client for an assignment the caller may write; `null` when it is missing or foreign. */

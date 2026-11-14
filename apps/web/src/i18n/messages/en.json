@@ -105,6 +105,7 @@
     "ERROR_GONE": "This resource is no longer available.",
     "ERROR_USAGE_LIMIT_EXCEEDED": "Your plan's usage limit has been reached.",
     "ERROR_CONFLICT": "A conflict occurred. The resource may already exist.",
+    "ERROR_ASSESSMENT_LIVE": "This assessment is already published — its questions can no longer change.",
     "ERROR_PAYLOAD_TOO_LARGE": "The file is too large.",
     "ERROR_UNPROCESSABLE_ENTITY": "The request could not be processed due to validation errors.",
     "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
