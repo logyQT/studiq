@@ -75,11 +75,11 @@ const EDUCATOR_PLAN_NAMES = [
 
 /** Plan key → the Polish purchase/selection label `PlanCard` renders for it. */
 const PLAN_CTA: Record<string, string> = {
-  base: 'Zacznij za Darmo',
+  base: 'Zacznij za darmo',
   spark: 'Przejdź na Spark',
   ace: 'Wybierz Ace',
   pro: 'Wybierz Pro',
-  lite: 'Zacznij za Darmo',
+  lite: 'Zacznij za darmo',
   guide: 'Przejdź na Guide',
   creator: 'Wybierz Creator',
   master: 'Wybierz Master',

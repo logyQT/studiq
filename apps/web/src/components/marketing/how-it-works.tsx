@@ -1,25 +1,12 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { ProductShot } from '@/components/marketing/ui/product-shot';
 import { SectionHeader } from '@/components/marketing/ui/section-header';
 
 const steps = [
   { titleKey: 'step1_title', descKey: 'step1_desc' },
   { titleKey: 'step2_title', descKey: 'step2_desc' },
   { titleKey: 'step3_title', descKey: 'step3_desc' },
-] as const;
-
-/*
- * Only two of the three steps carry a capture: the section is a sequence, and a
- * sequence with a picture under every step is a gallery. Steps 2 and 3 are the
- * ones whose claim is invisible in copy — what a review actually asks of you,
- * and what progress looks like — so the evidence sits there and step 1 stays
- * text, which lets the rail stay the thing you read first.
- */
-const proofs = [
-  { step: 2, titleKey: 'step2_title', shot: 'card-rating', altKey: 'shot_rating_alt' },
-  { step: 3, titleKey: 'step3_title', shot: 'stats-kpis', altKey: 'shot_kpis_alt' },
 ] as const;
 
 /*
@@ -66,33 +53,6 @@ export function HowItWorks() {
             </li>
           ))}
         </ol>
-
-        {/*
-         * The exhibits keep the full measure because the captures are element
-         * crops at 3x: inside a 3-column step (about 310px here) a card-rating
-         * strip would be downscaled ~3.5x and its labels would land near 4px,
-         * which is texture, not evidence. Each one repeats the ordinal the rail
-         * already prints, so the band belongs to a step rather than to the page.
-         *
-         * Below md neither strip renders: at 390px it would be 358px wide, a
-         * third of the capture, and the labels would be unreadable. On a phone
-         * the section is the spine alone, which is what it was designed around.
-         */}
-        <div className="mt-10 hidden md:mt-14 md:block">
-          {proofs.map(({ step, titleKey, shot, altKey }) => (
-            <div key={shot} className="mt-10 first:mt-0">
-              <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase">
-                {t('step_label', { number: step })} · {t(titleKey)}
-              </p>
-              <ProductShot
-                shot={shot}
-                alt={t(altKey)}
-                sizes="(min-width: 1280px) 1056px, calc(100vw - 4rem)"
-                className="mt-3"
-              />
-            </div>
-          ))}
-        </div>
       </div>
     </section>
   );
