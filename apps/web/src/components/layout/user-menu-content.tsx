@@ -5,6 +5,7 @@ import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { FOCUS_RING } from '@/components/layout/navbar/chrome';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
@@ -33,6 +34,18 @@ export function UserMenuHeader() {
 
 const PLAIN_ITEM_CLASS =
   'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors';
+
+/**
+ * A row of the header's mobile panels: full bleed like the navigation panel's
+ * destinations, one line to itself, at that panel's 80px rhythm and `px-4`
+ * content inset. The hairlines between rows live on the list that stacks them.
+ */
+const PANEL_ITEM_CLASS = cn(
+  'flex min-h-20 w-full items-center gap-2 px-4 text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+  FOCUS_RING,
+);
+
+const DESTRUCTIVE_ITEM_CLASS = 'text-destructive hover:bg-destructive/10 hover:text-destructive';
 
 async function handleLogout() {
   try {
@@ -67,8 +80,8 @@ function MenuEntry({ variant, onSelect, destructive, children }: MenuEntryProps)
     <button
       type="button"
       className={cn(
-        PLAIN_ITEM_CLASS,
-        destructive && 'text-destructive hover:bg-destructive/10 hover:text-destructive',
+        variant === 'panel' ? PANEL_ITEM_CLASS : PLAIN_ITEM_CLASS,
+        destructive && DESTRUCTIVE_ITEM_CLASS,
       )}
       onClick={onSelect}
     >
@@ -78,10 +91,42 @@ function MenuEntry({ variant, onSelect, destructive, children }: MenuEntryProps)
 }
 
 function MenuDivider({ variant }: { variant: UserMenuVariant }) {
-  return variant === 'menu' ? <DropdownMenuSeparator /> : <div className="h-px bg-border my-1" />;
+  if (variant === 'menu') return <DropdownMenuSeparator />;
+  // A panel's rows are divided by the list container itself — one full-bleed
+  // rule between siblings — so its entries contribute no divider of their own.
+  if (variant === 'panel') return null;
+  return <div className="h-px bg-border my-1" />;
 }
 
-export type UserMenuVariant = 'menu' | 'plain';
+export type UserMenuVariant = 'menu' | 'plain' | 'panel';
+
+/**
+ * The destructive action, on its own so a surface can place it outside the list:
+ * the header's account panel pins it as the panel's footer.
+ */
+export function UserMenuLogout({
+  variant = 'menu',
+  onItemClick,
+}: {
+  variant?: UserMenuVariant;
+  onItemClick?: () => void;
+}) {
+  const t = useTranslations('DashboardLayout');
+
+  return (
+    <MenuEntry
+      variant={variant}
+      onSelect={() => {
+        void handleLogout();
+        onItemClick?.();
+      }}
+      destructive
+    >
+      <LogOut className="size-4" />
+      <span>{t('logout')}</span>
+    </MenuEntry>
+  );
+}
 
 /** Focus the checked radio of the inline theme switch (or the first one). */
 function focusThemeRadio(themeGroup: HTMLElement | null): void {
@@ -186,10 +231,15 @@ export type UserMenuItemsProps =
        * for menus inside a dashboard: the public pages have no bell and the entry would do nothing.
        */
       notifications?: boolean;
+      /**
+       * Render the logout entry at the end of the set. Off on a surface that pins
+       * it separately as its own footer (the header account panel).
+       */
+      logout?: boolean;
     }
   | {
-      /** 'plain' — non-menu contexts such as the mobile navbar sheet. */
-      variant: 'plain';
+      /** 'plain' — non-menu contexts; 'panel' — full-bleed rows of the header's panels. */
+      variant: 'plain' | 'panel';
       onItemClick?: () => void;
       /** Mobile drawer: open the separate language view instead of expanding inline. */
       onOpenLanguage?: () => void;
@@ -197,10 +247,12 @@ export type UserMenuItemsProps =
       preferences?: boolean;
       /** Same as the menu variant: only where the dashboard bell exists. */
       notifications?: boolean;
+      /** Same as the menu variant: off where the logout is the panel's footer. */
+      logout?: boolean;
     };
 
 export function UserMenuItems(props: UserMenuItemsProps) {
-  const { onItemClick, notifications = false, preferences = true } = props;
+  const { onItemClick, notifications = false, preferences = true, logout = true } = props;
   const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
@@ -286,19 +338,12 @@ export function UserMenuItems(props: UserMenuItemsProps) {
         </>
       )}
 
-      <MenuDivider variant={variant} />
-
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          void handleLogout();
-          onItemClick?.();
-        }}
-        destructive
-      >
-        <LogOut className="size-4" />
-        <span>{t('logout')}</span>
-      </MenuEntry>
+      {logout && (
+        <>
+          <MenuDivider variant={variant} />
+          <UserMenuLogout variant={variant} onItemClick={onItemClick} />
+        </>
+      )}
     </>
   );
 }
