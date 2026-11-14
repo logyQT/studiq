@@ -60,3 +60,16 @@ signs nobody in and sends no storage state.
 - „Zacznij Za Darmo” → `/register`; strona rejestracji pokazuje formularz („Utwórz konto”,
   przycisk „Zarejestruj się”), ale nie ma nagłówka `h1`. Wejście z nagłówka: „Funkcje” →
   `/features`.
+
+## Re-check (2026-11-14, branch `landing/13-final`)
+
+Copy zostało poprawione w `3ac0e12e`; poniższe ustalenia zastępują spacer z 2026-10-28.
+
+- Podtytuł to „Od ręcznych fiszek po analitykę dla całej uczelni”: symulacji egzaminu nie
+  ma w produkcie, więc obietnica kończy się na dwóch krańcach, które strona faktycznie
+  wymienia.
+- Dziesięć kart i dziesięć wierszy tabeli. „Symulacja Egzaminu AI” nie istnieje, więc
+  Premium ma trzy karty (Generowanie Pytań przez AI, Generowanie Fiszek przez AI,
+  Zaawansowana Analityka), a tabela dziesięć wierszy.
+- Karta „Masowe Zaproszenia” mówi „Zaproś kilku członków naraz i przypisz każdemu rolę” —
+  bez importu tekstu/CSV i bez automatycznej rejestracji.

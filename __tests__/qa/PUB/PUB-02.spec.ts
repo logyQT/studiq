@@ -12,7 +12,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * row, so the spec consumes no user, org or content id.
  *
  * Product decision on the comparison table (case says values "Tak / Nie /
- * Indywidualny"): every one of the eleven rows is binary, so the table only ever
+ * Indywidualny"): every one of the ten rows is binary, so the table only ever
  * carries Tak / Nie and `FeaturesPage.comparison_custom` stays unused — see
  * #291 / PR #639 ("the table has no row whose value is custom"). The spec asserts
  * that binary matrix as the intended behaviour.
@@ -23,7 +23,13 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  */
 
 const TITLE = 'Wszystko Czego Potrzebujesz, Aby Odnieść Sukces';
-const SUBTITLE = 'Od podstawowych fiszek po egzaminy oparte na AI';
+/**
+ * The hero's range claim, pinned because it enumerates what the product covers:
+ * manual cards at one end, whole-institution analytics at the other. Copy that
+ * promises a capability the app does not ship (an AI exam simulation) fails here
+ * rather than on a visitor's first login.
+ */
+const SUBTITLE = 'Od ręcznych fiszek po analitykę dla całej uczelni';
 const COMPARISON_TITLE = 'Porównanie Planów';
 const CTA = 'Zacznij Za Darmo';
 
