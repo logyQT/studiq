@@ -2,6 +2,9 @@ import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-ASG-07 — Wyniki kartkówki: lista uczniów (`/edu/assignments/<id>/results`).
  *
@@ -167,7 +170,7 @@ async function createPublishedAssignment(
 
   const published = await expectApi<{ status: string }>(
     await page.request.post(`/api/v1/teacher/assignments/${assignment.id}/publish`, {
-      data: {},
+      data: { deadline: PUBLISH_DEADLINE },
     }),
     'POST /api/v1/teacher/assignments/:id/publish',
   );

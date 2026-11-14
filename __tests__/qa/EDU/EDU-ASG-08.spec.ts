@@ -2,6 +2,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-ASG-08 — grading a student's submission, per attempt (`/edu/assignments/:id/results/:attemptId`).
  *
@@ -202,7 +205,7 @@ async function publishAssignment(
   const published = await postJson<AssignmentDetail>(
     page,
     `/api/v1/teacher/assignments/${id}/publish`,
-    {},
+    { deadline: PUBLISH_DEADLINE },
   );
   expect(published.status, `POST /api/v1/teacher/assignments/${id}/publish`).toBe(200);
   expect(published.body.data.status, 'the assignment is published').toBe('published');

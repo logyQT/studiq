@@ -29,6 +29,13 @@ vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => ({
   readAttemptQuestions: vi.fn(() =>
     Promise.resolve({ success: true, data: resumedQuestions.rows }),
   ),
+  writeAssignmentSnapshots: vi.fn(() => Promise.resolve({ success: true, data: 1 })),
+}));
+
+/** Cross-class exposure is derived from the database in production; these tests state the count. */
+const exposureState = vi.hoisted(() => ({ openItemCount: 0, outsideStudentCount: 0 }));
+vi.mock('@studiq/server/lib/assignment-exposure', () => ({
+  assessExposure: vi.fn(() => Promise.resolve({ success: true, data: exposureState })),
 }));
 
 type QueryResult = { data: unknown; error: unknown; count?: number };
@@ -130,7 +137,33 @@ function snapshotRows(ids: string[]) {
   return chain(ids.map((id) => ({ question_id: id, snapshot: frozen(id), snapshot_version: 1 })));
 }
 
+/** Any future close: the publish gate only needs the window to be well-formed. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 86_400_000).toISOString();
+
 const userId = 'owner-user-id';
+
+/** ownedClient → the stored row → targets → items → (the update). */
+function publishFixture(
+  mock: ReturnType<typeof mockSupabaseClient>,
+  stored: Record<string, unknown> = {},
+) {
+  const before = {
+    status: 'draft',
+    start_time: null,
+    deadline: PUBLISH_DEADLINE,
+    max_attempts: 1,
+    organization_id: orgId,
+    ...stored,
+  };
+  const update = chain({ id: assignmentId, status: 'published' });
+  mock.from
+    .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+    .mockReturnValueOnce(chain(before))
+    .mockReturnValueOnce(chain([{ group_id: 'g-1', student_id: null }]))
+    .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
+    .mockReturnValueOnce(update);
+  return update;
+}
 const orgId = '00000000-0000-4000-8000-000000000001';
 const assignmentId = 'assignment-1';
 
@@ -236,7 +269,12 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getById(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual(assignment);
+      // A draft also carries the composer's cross-class forecast (R3); it is counts only.
+      if (result.success)
+        expect(result.data).toEqual({
+          ...assignment,
+          exposure: { openItemCount: 0, outsideStudentCount: 0 },
+        });
     });
 
     it('returns assignment for org scope', async () => {
@@ -246,7 +284,11 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getById(assignmentId, withOrgScope());
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual(otherUserAssignment);
+      if (result.success)
+        expect(result.data).toEqual({
+          ...otherUserAssignment,
+          exposure: { openItemCount: 0, outsideStudentCount: 0 },
+        });
     });
 
     it('returns NOT_FOUND when no assignment', async () => {
@@ -431,62 +473,80 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('publish', () => {
-    it('publishes assignment with deadline', async () => {
-      const published = { id: assignmentId, status: 'published' };
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(chain(published));
+    beforeEach(() => {
+      exposureState.openItemCount = 0;
+      exposureState.outsideStudentCount = 0;
+    });
+
+    it('publishes a complete run and records the seal scope', async () => {
+      const update = publishFixture(mock);
 
       const result = await service.publish(
         assignmentId,
-        '2026-07-20T00:00:00.000Z',
-        undefined,
+        { acknowledgeExposure: true, sealOrgWide: false },
         ctx,
       );
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.status).toBe('published');
-    });
-
-    it('publishes assignment without deadline', async () => {
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(chain({ id: assignmentId, status: 'published' }));
-
-      const result = await service.publish(assignmentId, undefined, undefined, ctx);
-
-      expect(result.success).toBe(true);
-      if (result.success) expect(result.data.status).toBe('published');
-    });
-
-    it('publishes assignment with startTime', async () => {
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(
-          chain({ id: assignmentId, status: 'published', start_time: '2026-09-01T08:00:00.000Z' }),
-        );
-
-      const result = await service.publish(
-        assignmentId,
-        undefined,
-        '2026-09-01T08:00:00.000Z',
-        ctx,
+      expect(update.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'published', seal_org_wide: false }),
       );
+    });
+
+    it('refuses a run with no items, naming the field', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          chain({ status: 'draft', start_time: null, deadline: PUBLISH_DEADLINE, max_attempts: 1 }),
+        )
+        .mockReturnValueOnce(chain([{ group_id: 'g-1', student_id: null }]))
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.publish(assignmentId, { acknowledgeExposure: true }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(result.details?.map((issue) => issue.path.join('.'))).toContain('items');
+      }
+    });
+
+    it('refuses a second publish of an already published run', async () => {
+      publishFixture(mock, { status: 'published' });
+
+      const result = await service.publish(assignmentId, { acknowledgeExposure: true }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_ALREADY_PUBLISHED');
+    });
+
+    it('requires the acknowledgement for cross-class exposure', async () => {
+      exposureState.openItemCount = 2;
+      exposureState.outsideStudentCount = 5;
+      publishFixture(mock);
+
+      const refused = await service.publish(assignmentId, {}, ctx);
+
+      expect(refused.success).toBe(false);
+      if (!refused.success) expect(refused.error).toBe('EXPOSURE_ACK_REQUIRED');
+    });
+
+    it('publishes an exposed run once it is sealed for the whole organisation', async () => {
+      exposureState.openItemCount = 2;
+      const update = publishFixture(mock);
+
+      const result = await service.publish(assignmentId, { sealOrgWide: true }, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.start_time).toBe('2026-09-01T08:00:00.000Z');
+      expect(update.update).toHaveBeenCalledWith(expect.objectContaining({ seal_org_wide: true }));
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.publish(assignmentId, undefined, undefined, ctx);
+      const result = await service.publish(assignmentId, {}, ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
@@ -494,19 +554,34 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('unpublish', () => {
-    it('unpublishes a published assignment', async () => {
+    it('withdraws a scheduled run to draft', async () => {
       const draft = { id: assignmentId, status: 'draft' };
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
-        .mockReturnValueOnce(chain({ id: assignmentId, status: 'published' }))
+        .mockReturnValueOnce(chain({ status: 'published', start_time: '2999-01-01T00:00:00.000Z' }))
         .mockReturnValue(chain(draft));
 
       const result = await service.unpublish(assignmentId, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.status).toBe('draft');
+    });
+
+    it('refuses to withdraw a live run', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          chain({ status: 'published', start_time: '2026-01-01T00:00:00.000Z' }),
+        );
+
+      const result = await service.unpublish(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
     });
 
     it('returns BAD_REQUEST when assignment is already draft', async () => {
@@ -756,6 +831,7 @@ describe('TeacherAssignmentService', () => {
     it('sets group and student targets', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId })) // the assignment's organisation
         .mockReturnValueOnce(chain(null, 1)) // the group is in it
         .mockReturnValueOnce(chain(null, 1)) // and so is the student
@@ -773,6 +849,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a group of another organisation and writes nothing (#235)', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 0)) // no group of this organisation matches
         .mockReturnValue(chain(null));
@@ -787,6 +864,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a student who is not in the assignment organisation', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 1)) // only one of the two is a member
         .mockReturnValue(chain(null));
@@ -803,6 +881,7 @@ describe('TeacherAssignmentService', () => {
     it('accepts a direct student target on a personal assignment (no organisation)', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValue(chain(null));
 
@@ -816,6 +895,7 @@ describe('TeacherAssignmentService', () => {
     it("accepts a group target on a personal assignment when it is one of the caller's groups", async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValueOnce(chain([{ organization_id: orgId }])) // the caller's organisations
         .mockReturnValueOnce(chain(null, 1)) // the group is in one of them
@@ -829,6 +909,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a group of another organisation on a personal assignment', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValueOnce(chain([{ organization_id: orgId }]))
         .mockReturnValueOnce(chain(null, 0))
@@ -845,6 +926,7 @@ describe('TeacherAssignmentService', () => {
       const studentIds = Array.from({ length: 250 }, (_, i) => `s${i}`);
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 200))
         .mockReturnValueOnce(chain(null, 50))
@@ -859,6 +941,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses targets when the assignment read fails instead of treating it as personal', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(failingChain({ code: 'PGRST116', message: 'no rows' }))
         .mockReturnValue(chain(null));
 
@@ -874,11 +957,27 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(assignmentId, {}, ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses every target change once the run is published (#1171, R20)', async () => {
+      const statusChain = chain({ status: 'published' });
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(statusChain)
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { groupIds: [] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'ASSESSMENT_LIVE' });
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).not.toContain('assignment_targets');
+      expect(statusChain.update, 'the status is never touched').not.toHaveBeenCalled();
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {

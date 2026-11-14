@@ -86,8 +86,10 @@ export class TeacherAssignmentController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.service.publish(id, parsed.data.deadline, parsed.data.startTime, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    const result = await this.service.publish(id, parsed.data, ctx);
+    // A publish refusal carries the field paths that make it invalid (422), so the composer can
+    // point at the control instead of showing a generic failure.
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.success(result.data);
   }
 

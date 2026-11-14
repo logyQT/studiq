@@ -55,6 +55,9 @@ const ASSIGNMENTS_URL = '/api/v1/teacher/assignments';
 const STUDENT_ASSIGNMENTS_URL = '/api/v1/assignments';
 
 /** Polish copy from `AppAssignmentTakePage` / `AppAssignmentDetailPage` (pl.json). */
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 const COPY = {
   start: 'Rozpocznij kartkówkę',
   previous: 'Poprzednie',
@@ -227,7 +230,9 @@ async function prepareAssignment(
   await api(request, 'PUT', `${ASSIGNMENTS_URL}/${created.id}/targets`, {
     studentIds: [studentId],
   });
-  await api(request, 'POST', `${ASSIGNMENTS_URL}/${created.id}/publish`, {});
+  await api(request, 'POST', `${ASSIGNMENTS_URL}/${created.id}/publish`, {
+    deadline: PUBLISH_DEADLINE,
+  });
 
   const detail = await api<AssignmentSummary>(request, 'GET', `${ASSIGNMENTS_URL}/${created.id}`);
   expect(detail.status, 'the prerequisite quiz is published').toBe('published');
@@ -425,7 +430,8 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     const startedBody = await json<ApiEnvelope<{ id: string }>>(started);
 
     await expect(page, 'the start opens the take page with the new attempt id').toHaveURL(
-      new RegExp(`/app/assignments/${assignment.id}/take\\?attemptId=[0-9a-f-]{36}$`),
+      // The take route also carries the deadline it was opened for.
+      new RegExp(`/app/assignments/${assignment.id}/take\\?attemptId=[0-9a-f-]{36}(&.*)?$`),
     );
     const attemptId = new URL(page.url()).searchParams.get('attemptId') ?? '';
     expect(attemptId, 'the URL carries an attempt id').toMatch(/^[0-9a-f-]{36}$/);

@@ -2126,6 +2126,7 @@ export type Database = {
           passing_score: number | null;
           question_count: number;
           quiz_id: string | null;
+          seal_org_wide: boolean;
           show_results: boolean;
           shuffle_answers: boolean;
           shuffle_questions: boolean;
@@ -2148,6 +2149,7 @@ export type Database = {
           passing_score?: number | null;
           question_count?: number;
           quiz_id?: string | null;
+          seal_org_wide?: boolean;
           show_results?: boolean;
           shuffle_answers?: boolean;
           shuffle_questions?: boolean;
@@ -2169,6 +2171,7 @@ export type Database = {
           passing_score?: number | null;
           question_count?: number;
           quiz_id?: string | null;
+          seal_org_wide?: boolean;
           show_results?: boolean;
           shuffle_answers?: boolean;
           shuffle_questions?: boolean;

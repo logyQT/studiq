@@ -3,6 +3,9 @@ import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-ST-04 — Statystyki – testy (`/edu/stats/quizzes`).
  *
@@ -203,7 +206,9 @@ async function createPublishedQuiz(page: Page, tenant: QaTenant): Promise<string
   );
 
   const published = await expectApi<{ status: string }>(
-    await page.request.post(`/api/v1/teacher/assignments/${assignment.id}/publish`, { data: {} }),
+    await page.request.post(`/api/v1/teacher/assignments/${assignment.id}/publish`, {
+      data: { deadline: PUBLISH_DEADLINE },
+    }),
     'POST /api/v1/teacher/assignments/:id/publish',
   );
   expect(published.status, 'the assignment is published').toBe('published');

@@ -3,6 +3,9 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-ASG-09 — eksport odpowiedzi kartkówki („Eksportuj odpowiedzi”).
  *
@@ -199,7 +202,9 @@ async function preparePublishedAssignment(page: Page, studentId: string): Promis
     studentIds: [studentId],
   });
   if (assignment.status !== 'published') {
-    await api(page.request, 'POST', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/publish`, {});
+    await api(page.request, 'POST', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/publish`, {
+      deadline: PUBLISH_DEADLINE,
+    });
   }
 
   const published = await api<AssignmentDetail>(

@@ -2,6 +2,9 @@ import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * Regression spec for #168 — the results table kept the cached `Przesłane` row
  * after grading until a full reload.
@@ -88,7 +91,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
 
       const publishRes = await page.request.post(
         `/api/v1/teacher/assignments/${assignmentId}/publish`,
-        { data: {} },
+        { data: { deadline: PUBLISH_DEADLINE } },
       );
       expect(publishRes.ok()).toBeTruthy();
 
