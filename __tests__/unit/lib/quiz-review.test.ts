@@ -18,6 +18,7 @@ import {
   QuizScoreSummary,
   type QuizScoreSummaryAttempt,
 } from '@/components/quiz/quiz-score-summary';
+import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
 /**
@@ -226,9 +227,9 @@ describe('buildQuizDemoResult', () => {
       'skipped',
       'skipped',
     ]);
-    expect(mixed.questions.map(({ text }) => text)).toEqual(
-      DEMO_QUESTION_ORDER.map((subject) => QUIZ_QUESTION_FIXTURES.pl[subject].stem),
-    );
+    // The result keeps the question identity, never its localised stem: the stem
+    // is resolved where it is rendered, from the page's locale.
+    expect(mixed.questions.map(({ subject }) => subject)).toEqual(DEMO_QUESTION_ORDER);
   });
 
   it('shows the score the visitor earned in the review header', () => {
@@ -261,12 +262,12 @@ describe('QuizScoreSummary (bare)', () => {
   });
 });
 
-function ResultProbe({ value }: { value: QuizDemoResult }) {
+function ResultProbe({ value, locale }: { value: QuizDemoResult; locale: QuizFixtureLocale }) {
   const t = useTranslations('AppQuizReviewPage');
   const tLanding = useTranslations('LandingPage');
   return createElement(QuizResultPreview, {
     result: value,
-    locale: 'pl',
+    locale,
     labels: { cta: tLanding('quiz_end_cta'), restart: tLanding('quiz_end_restart') },
     scoreLabels: scoreSummaryLabels(t),
     statusLabels: {
@@ -279,7 +280,9 @@ function ResultProbe({ value }: { value: QuizDemoResult }) {
 }
 
 const renderedResult = (how: 'all' | 'none' | 'skipped' = 'all') =>
-  renderToStaticMarkup(provider(createElement(ResultProbe, { value: demo('pl', how) })));
+  renderToStaticMarkup(
+    provider(createElement(ResultProbe, { value: demo('pl', how), locale: 'pl' })),
+  );
 
 describe('QuizResultPreview', () => {
   it('announces the real score once, from the block focus lands on', () => {
@@ -325,6 +328,22 @@ describe('QuizResultPreview', () => {
     expect(list).not.toContain('href=');
     expect(list).not.toContain('<button');
     expect(list).not.toContain('hover:');
+  });
+
+  it('resolves the stems from the locale it renders in, not from the finished attempt', () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        NextIntlClientProvider,
+        { locale: 'en', messages: en },
+        createElement(ResultProbe, { value: demo('pl', 'all'), locale: 'en' }),
+      ),
+    );
+    const list = html.match(/<ul[\s\S]*?<\/ul>/)?.[0] ?? '';
+
+    for (const subject of DEMO_QUESTION_ORDER) {
+      expect(list).toContain(QUIZ_QUESTION_FIXTURES.en[subject].stem);
+      expect(list).not.toContain(QUIZ_QUESTION_FIXTURES.pl[subject].stem);
+    }
   });
 
   it('keeps all four rows when three questions were skipped, marked quieter', () => {

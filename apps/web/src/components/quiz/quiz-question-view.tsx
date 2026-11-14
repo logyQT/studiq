@@ -153,16 +153,20 @@ export function QuizQuestionView({
                 )}
                 {question.type === 'true_false' && (
                   <div className="grid grid-cols-2 gap-3">
-                    {question.options.map((option) => (
-                      <Button
-                        key={option.id}
-                        variant={question.selectedOptionId === option.id ? 'default' : 'outline'}
-                        className="h-20 text-lg"
-                        onClick={() => onSelectOption?.(option.id)}
-                      >
-                        {option.label}
-                      </Button>
-                    ))}
+                    {question.options.map((option) => {
+                      const selected = question.selectedOptionId === option.id;
+                      return (
+                        <Button
+                          key={option.id}
+                          variant={selected ? 'default' : 'outline'}
+                          aria-pressed={selected}
+                          className="h-20 text-lg"
+                          onClick={() => onSelectOption?.(option.id)}
+                        >
+                          {option.label}
+                        </Button>
+                      );
+                    })}
                   </div>
                 )}
                 {question.type === 'open' && (

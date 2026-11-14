@@ -127,8 +127,11 @@
   --accent: oklch(0.265 0.028 264);
   --accent-foreground: var(--foreground);
 
-  /* Semantic */
-  --destructive: oklch(0.620 0.180 27.325);
+  /* Semantic — `--destructive` is error text (`FormMessage` and the inline
+     field errors), so it clears 4.5:1 wherever those land: 4.70 on the card,
+     4.95 on the sidebar, 5.24 on the page. Lighter than this drops the card to
+     4.42; the hue and chroma are the light token's, only the lightness moves. */
+  --destructive: oklch(0.635 0.180 27.325);
   --destructive-foreground: oklch(0.175 0.022 264);
   --success: oklch(0.720 0.130 155);
   --warning: oklch(0.780 0.125 75);

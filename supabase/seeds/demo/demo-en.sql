@@ -14,9 +14,9 @@
 --
 -- Apply it (idempotent — re-running drops the demo tenant first):
 --
---   bun scripts/demo-seed.ts --locale en     # this tenant
---   bun scripts/demo-seed.ts                 # both locales
---   bun scripts/demo-seed.ts --reset         # remove both demo tenants
+--   bun scripts/demo-seed.ts --locale en --yes   # this tenant
+--   bun scripts/demo-seed.ts --yes               # both locales
+--   bun scripts/demo-seed.ts --reset --yes       # remove both demo tenants
 --
 -- All accounts use the password `Seed4Test!`; `scripts/demo-seed.ts` prints
 -- the exact logins on success.
@@ -420,88 +420,88 @@ CREATE TEMP TABLE demo_question_pool (
 INSERT INTO demo_question_pool (ord, genre, qtype, content, explanation, opt_a, opt_b, opt_c, opt_d, correct) VALUES
   -- Cycle 1 — pharmacokinetics
   (1,  'pharm', 'true_false', 'The bioavailability of an intravenous drug is 100%.', 'Intravenous administration bypasses absorption and first-pass metabolism entirely.', 'True', 'False', NULL, NULL, 0),
-  (2,  'pharm', 'mcq', 'Which route of administration avoids first-pass metabolism?', 'The intravenous route delivers drug directly into the systemic circulation.', 'Oral', 'Intravenous', 'Rectal', 'Subcutaneous', 2),
-  (3,  'pharm', 'mcq', 'What does a drug''s half-life describe?', 'Half-life is the time for plasma concentration to fall by half.', 'Time to reach peak concentration', 'Time for plasma concentration to halve', 'Time to excrete a full dose', 'Time to clinical onset', 2),
+  (2,  'pharm', 'mcq', 'Which route of administration avoids first-pass metabolism?', 'The intravenous route delivers drug directly into the systemic circulation.', 'Oral', 'Intravenous', 'Rectal', 'Subcutaneous', 1),
+  (3,  'pharm', 'mcq', 'What does a drug''s half-life describe?', 'Half-life is the time for plasma concentration to fall by half.', 'Time to reach peak concentration', 'Time for plasma concentration to halve', 'Time to excrete a full dose', 'Time to clinical onset', 1),
   (4,  'pharm', 'open', 'Explain why a drug with a high first-pass effect needs a larger oral dose than intravenous dose.', 'Portal circulation metabolises part of the oral dose before it reaches systemic availability.', NULL, NULL, NULL, NULL, NULL),
-  (5,  'pharm', 'mcq', 'Which parameter describes the volume into which a drug appears to distribute?', 'Vd relates the amount of drug in the body to its plasma concentration.', 'Clearance', 'Volume of distribution', 'Half-life', 'Area under the curve', 2),
-  (6,  'pharm', 'mcq', 'A drug is 95% protein-bound. What does this imply?', 'Only the free fraction is pharmacologically active.', 'Little free drug is available for effect', 'It is excreted rapidly by the kidney', 'It cannot interact with other drugs', 'It has very high hepatic clearance', 1),
+  (5,  'pharm', 'mcq', 'Which parameter describes the volume into which a drug appears to distribute?', 'Vd relates the amount of drug in the body to its plasma concentration.', 'Clearance', 'Volume of distribution', 'Half-life', 'Area under the curve', 1),
+  (6,  'pharm', 'mcq', 'A drug is 95% protein-bound. What does this imply?', 'Only the free fraction is pharmacologically active.', 'Little free drug is available for effect', 'It is excreted rapidly by the kidney', 'It cannot interact with other drugs', 'It has very high hepatic clearance', 0),
   -- Cycle 2 — pharmacodynamics and adverse reactions
   (7,  'pharm', 'true_false', 'A competitive antagonist can be overcome by raising the agonist concentration.', 'Both compete for the same binding site, so enough agonist restores the response.', 'True', 'False', NULL, NULL, 0),
-  (8,  'pharm', 'mcq', 'What is the efficacy of a drug?', 'Efficacy is the maximal response a drug can produce.', 'The dose needed for half-maximal effect', 'The maximal response it can produce', 'Its plasma half-life', 'Its receptor affinity', 2),
-  (9,  'pharm', 'mcq', 'Which receptor is a ligand-gated ion channel?', 'The nicotinic acetylcholine receptor opens an ion pore directly on binding.', 'G-protein coupled receptor', 'Nicotinic acetylcholine receptor', 'Tyrosine kinase receptor', 'Nuclear receptor', 2),
+  (8,  'pharm', 'mcq', 'What is the efficacy of a drug?', 'Efficacy is the maximal response a drug can produce.', 'The dose needed for half-maximal effect', 'The maximal response it can produce', 'Its plasma half-life', 'Its receptor affinity', 1),
+  (9,  'pharm', 'mcq', 'Which receptor is a ligand-gated ion channel?', 'The nicotinic acetylcholine receptor opens an ion pore directly on binding.', 'G-protein coupled receptor', 'Nicotinic acetylcholine receptor', 'Tyrosine kinase receptor', 'Nuclear receptor', 1),
   (10, 'pharm', 'open', 'Distinguish between potency and efficacy, with one clinical example of each.', 'Potency is the dose required for a given effect; efficacy is the ceiling of effect.', NULL, NULL, NULL, NULL, NULL),
-  (11, 'pharm', 'mcq', 'Which organ is the main site of drug metabolism?', 'Hepatic cytochrome P450 enzymes clear most drugs.', 'Kidney', 'Liver', 'Lung', 'Skin', 2),
-  (12, 'pharm', 'mcq', 'What is a type A adverse drug reaction?', 'Type A reactions are dose-dependent and predictable from the drug''s pharmacology.', 'Dose-dependent and predictable', 'Idiosyncratic and immune-mediated', 'Carcinogenic after long exposure', 'A withdrawal reaction', 1),
+  (11, 'pharm', 'mcq', 'Which organ is the main site of drug metabolism?', 'Hepatic cytochrome P450 enzymes clear most drugs.', 'Kidney', 'Liver', 'Lung', 'Skin', 1),
+  (12, 'pharm', 'mcq', 'What is a type A adverse drug reaction?', 'Type A reactions are dose-dependent and predictable from the drug''s pharmacology.', 'Dose-dependent and predictable', 'Idiosyncratic and immune-mediated', 'Carcinogenic after long exposure', 'A withdrawal reaction', 0),
   -- Cycle 3 — cardiovascular drugs
   (13, 'pharm', 'true_false', 'ACE inhibitors can cause hyperkalaemia in patients with renal impairment.', 'Reduced aldosterone secretion lowers potassium excretion.', 'True', 'False', NULL, NULL, 0),
-  (14, 'pharm', 'mcq', 'Which oral anticoagulant directly inhibits factor Xa?', 'Apixaban is a direct factor Xa inhibitor and needs no routine INR monitoring.', 'Warfarin', 'Apixaban', 'Clopidogrel', 'Heparin', 2),
-  (15, 'pharm', 'mcq', 'What is the mechanism of clopidogrel?', 'Clopidogrel blocks the platelet P2Y12 ADP receptor.', 'Cyclooxygenase inhibition', 'P2Y12 receptor antagonism', 'Glycoprotein IIb/IIIa blockade', 'Vitamin K antagonism', 2),
+  (14, 'pharm', 'mcq', 'Which oral anticoagulant directly inhibits factor Xa?', 'Apixaban is a direct factor Xa inhibitor and needs no routine INR monitoring.', 'Warfarin', 'Apixaban', 'Clopidogrel', 'Heparin', 1),
+  (15, 'pharm', 'mcq', 'What is the mechanism of clopidogrel?', 'Clopidogrel blocks the platelet P2Y12 ADP receptor.', 'Cyclooxygenase inhibition', 'P2Y12 receptor antagonism', 'Glycoprotein IIb/IIIa blockade', 'Vitamin K antagonism', 1),
   (16, 'pharm', 'open', 'Why must a beta-blocker be introduced cautiously in heart failure?', 'Negative inotropy can decompensate a failing ventricle; start low and titrate.', NULL, NULL, NULL, NULL, NULL),
-  (17, 'pharm', 'mcq', 'Which agent is used intravenously in hypertensive emergency with pulmonary oedema?', 'Nitroglycerin reduces preload and afterload rapidly and is titratable.', 'Oral ramipril', 'Intravenous nitroglycerin', 'Oral amlodipine', 'Oral bisoprolol', 2),
-  (18, 'pharm', 'mcq', 'What is the characteristic adverse effect of amlodipine?', 'Arteriolar vasodilation causes dependent ankle oedema.', 'Ankle oedema', 'Bradycardia', 'Dry cough', 'Hyperkalaemia', 1),
+  (17, 'pharm', 'mcq', 'Which agent is used intravenously in hypertensive emergency with pulmonary oedema?', 'Nitroglycerin reduces preload and afterload rapidly and is titratable.', 'Oral ramipril', 'Intravenous nitroglycerin', 'Oral amlodipine', 'Oral bisoprolol', 1),
+  (18, 'pharm', 'mcq', 'What is the characteristic adverse effect of amlodipine?', 'Arteriolar vasodilation causes dependent ankle oedema.', 'Ankle oedema', 'Bradycardia', 'Dry cough', 'Hyperkalaemia', 0),
   -- Cycle 4 — antimicrobials
   (19, 'pharm', 'true_false', 'Aminoglycosides are highly effective against anaerobic bacteria.', 'Aminoglycoside uptake is oxygen-dependent, so anaerobes are intrinsically resistant.', 'True', 'False', NULL, NULL, 1),
-  (20, 'pharm', 'mcq', 'Which antibiotic inhibits bacterial dihydrofolate reductase?', 'Trimethoprim blocks folate synthesis, often with sulfamethoxazole.', 'Trimethoprim', 'Amoxicillin', 'Azithromycin', 'Vancomycin', 1),
-  (21, 'pharm', 'mcq', 'Which antibiotic is reserved for MRSA?', 'Vancomycin binds D-Ala-D-Ala and remains the standard MRSA agent.', 'Vancomycin', 'Penicillin G', 'Doxycycline', 'Nitrofurantoin', 1),
+  (20, 'pharm', 'mcq', 'Which antibiotic inhibits bacterial dihydrofolate reductase?', 'Trimethoprim blocks folate synthesis, often with sulfamethoxazole.', 'Trimethoprim', 'Amoxicillin', 'Azithromycin', 'Vancomycin', 0),
+  (21, 'pharm', 'mcq', 'Which antibiotic is reserved for MRSA?', 'Vancomycin binds D-Ala-D-Ala and remains the standard MRSA agent.', 'Vancomycin', 'Penicillin G', 'Doxycycline', 'Nitrofurantoin', 0),
   (22, 'pharm', 'open', 'Explain antibiotic stewardship in two sentences.', 'Right drug, dose and duration; narrow the spectrum when culture allows, to limit resistance.', NULL, NULL, NULL, NULL, NULL),
-  (23, 'pharm', 'mcq', 'What is the mechanism of vancomycin?', 'It binds the D-Ala-D-Ala terminus and blocks cell-wall synthesis.', 'Binds D-Ala-D-Ala and blocks cell-wall synthesis', 'Inhibits the 30S ribosome', 'Blocks DNA gyrase', 'Disrupts the cytoplasmic membrane', 1),
-  (24, 'pharm', 'mcq', 'Which antibiotic class is associated with tendinopathy?', 'Fluoroquinolones such as ciprofloxacin carry a tendon-rupture warning.', 'Fluoroquinolones', 'Penicillins', 'Aminoglycosides', 'Nitroimidazoles', 1),
+  (23, 'pharm', 'mcq', 'What is the mechanism of vancomycin?', 'It binds the D-Ala-D-Ala terminus and blocks cell-wall synthesis.', 'Binds D-Ala-D-Ala and blocks cell-wall synthesis', 'Inhibits the 30S ribosome', 'Blocks DNA gyrase', 'Disrupts the cytoplasmic membrane', 0),
+  (24, 'pharm', 'mcq', 'Which antibiotic class is associated with tendinopathy?', 'Fluoroquinolones such as ciprofloxacin carry a tendon-rupture warning.', 'Fluoroquinolones', 'Penicillins', 'Aminoglycosides', 'Nitroimidazoles', 0),
   -- Cycle 5 — endocrine and diabetes drugs
   (25, 'pharm', 'true_false', 'Metformin should be paused during acute illness with dehydration.', 'That combination raises the risk of metformin-associated lactic acidosis.', 'True', 'False', NULL, NULL, 0),
-  (26, 'pharm', 'mcq', 'Which insulin is rapid-acting?', 'Insulin aspart is a rapid-acting analogue given with meals.', 'Insulin glargine', 'Insulin aspart', 'NPH insulin', 'Insulin detemir', 2),
-  (27, 'pharm', 'mcq', 'What is the mechanism of SGLT2 inhibitors?', 'They block renal glucose reabsorption in the proximal tubule.', 'They increase insulin secretion', 'They block renal glucose reabsorption', 'They slow gut glucose absorption', 'They increase insulin sensitivity', 2),
+  (26, 'pharm', 'mcq', 'Which insulin is rapid-acting?', 'Insulin aspart is a rapid-acting analogue given with meals.', 'Insulin glargine', 'Insulin aspart', 'NPH insulin', 'Insulin detemir', 1),
+  (27, 'pharm', 'mcq', 'What is the mechanism of SGLT2 inhibitors?', 'They block renal glucose reabsorption in the proximal tubule.', 'They increase insulin secretion', 'They block renal glucose reabsorption', 'They slow gut glucose absorption', 'They increase insulin sensitivity', 1),
   (28, 'pharm', 'open', 'Describe how you would recognise and treat hypoglycaemia in a conscious patient.', 'Check capillary glucose, give 15–20 g fast-acting carbohydrate, recheck after 15 minutes.', NULL, NULL, NULL, NULL, NULL),
-  (29, 'pharm', 'mcq', 'Which drug treats thyrotoxicosis by inhibiting thyroid peroxidase?', 'Carbimazole reduces thyroid hormone synthesis.', 'Levothyroxine', 'Carbimazole', 'Liothyronine', 'Potassium iodide alone', 2),
-  (30, 'pharm', 'mcq', 'What is the main risk when starting insulin in a frail elderly patient?', 'Tight control in frailty markedly increases hypoglycaemia risk.', 'Hypoglycaemia', 'Hypernatraemia', 'Hypercalcaemia', 'Metabolic alkalosis', 1),
+  (29, 'pharm', 'mcq', 'Which drug treats thyrotoxicosis by inhibiting thyroid peroxidase?', 'Carbimazole reduces thyroid hormone synthesis.', 'Levothyroxine', 'Carbimazole', 'Liothyronine', 'Potassium iodide alone', 1),
+  (30, 'pharm', 'mcq', 'What is the main risk when starting insulin in a frail elderly patient?', 'Tight control in frailty markedly increases hypoglycaemia risk.', 'Hypoglycaemia', 'Hypernatraemia', 'Hypercalcaemia', 'Metabolic alkalosis', 0),
   -- Cycle 6 — analgesia and emergency drugs
   (31, 'pharm', 'true_false', 'Paracetamol has anti-inflammatory effects comparable to ibuprofen.', 'Paracetamol has minimal peripheral anti-inflammatory activity.', 'True', 'False', NULL, NULL, 1),
-  (32, 'pharm', 'mcq', 'Which analgesic can precipitate bronchospasm in aspirin-sensitive asthma?', 'NSAIDs shift arachidonic acid metabolism towards leukotrienes.', 'Aspirin', 'Paracetamol', 'Tramadol', 'Codeine', 1),
-  (33, 'pharm', 'mcq', 'What is the first-line treatment for anaphylaxis?', 'Intramuscular adrenaline is given immediately into the anterolateral thigh.', 'Intravenous adrenaline', 'Intramuscular adrenaline', 'Oral antihistamine', 'Inhaled salbutamol', 2),
+  (32, 'pharm', 'mcq', 'Which analgesic can precipitate bronchospasm in aspirin-sensitive asthma?', 'NSAIDs shift arachidonic acid metabolism towards leukotrienes.', 'Aspirin', 'Paracetamol', 'Tramadol', 'Codeine', 0),
+  (33, 'pharm', 'mcq', 'What is the first-line treatment for anaphylaxis?', 'Intramuscular adrenaline is given immediately into the anterolateral thigh.', 'Intravenous adrenaline', 'Intramuscular adrenaline', 'Oral antihistamine', 'Inhaled salbutamol', 1),
   (34, 'pharm', 'open', 'Outline the WHO analgesic ladder.', 'Step 1 non-opioid, step 2 weak opioid, step 3 strong opioid, with adjuvants at each step.', NULL, NULL, NULL, NULL, NULL),
-  (35, 'pharm', 'mcq', 'Which reversal agent is used for opioid-induced respiratory depression?', 'Naloxone competitively displaces opioids at the receptor.', 'Flumazenil', 'Naloxone', 'Atropine', 'Protamine sulfate', 2),
-  (36, 'pharm', 'mcq', 'What is the maximum daily dose of paracetamol for a healthy adult?', 'Above 4 g per day the risk of hepatotoxicity rises steeply.', '2 g', '4 g', '6 g', '8 g', 2),
+  (35, 'pharm', 'mcq', 'Which reversal agent is used for opioid-induced respiratory depression?', 'Naloxone competitively displaces opioids at the receptor.', 'Flumazenil', 'Naloxone', 'Atropine', 'Protamine sulfate', 1),
+  (36, 'pharm', 'mcq', 'What is the maximum daily dose of paracetamol for a healthy adult?', 'Above 4 g per day the risk of hepatotoxicity rises steeply.', '2 g', '4 g', '6 g', '8 g', 1),
   -- Cycle 7 — renal physiology
   (37, 'phys', 'true_false', 'The kidney reabsorbs roughly 99% of the filtered sodium.', 'Almost all filtered sodium returns to the blood, mainly in the proximal tubule.', 'True', 'False', NULL, NULL, 0),
-  (38, 'phys', 'mcq', 'Which nephron segment is impermeable to water?', 'The thick ascending limb is water-impermeable and dilutes tubular fluid.', 'Proximal tubule', 'Descending limb of the loop of Henle', 'Ascending limb of the loop of Henle', 'Collecting duct', 3),
-  (39, 'phys', 'mcq', 'Where is renin produced?', 'Juxtaglomerular cells at the afferent arteriole secrete renin.', 'Juxtaglomerular cells', 'Macula densa', 'Podocytes', 'Mesangial cells', 1),
+  (38, 'phys', 'mcq', 'Which nephron segment is impermeable to water?', 'The thick ascending limb is water-impermeable and dilutes tubular fluid.', 'Proximal tubule', 'Descending limb of the loop of Henle', 'Ascending limb of the loop of Henle', 'Collecting duct', 2),
+  (39, 'phys', 'mcq', 'Where is renin produced?', 'Juxtaglomerular cells at the afferent arteriole secrete renin.', 'Juxtaglomerular cells', 'Macula densa', 'Podocytes', 'Mesangial cells', 0),
   (40, 'phys', 'open', 'Explain how the kidney concentrates urine.', 'The loop of Henle builds a medullary gradient; ADH makes the collecting duct water-permeable.', NULL, NULL, NULL, NULL, NULL),
-  (41, 'phys', 'mcq', 'What is the main driving force of glomerular filtration?', 'Glomerular capillary hydrostatic pressure exceeds the opposing oncotic pressure.', 'Plasma oncotic pressure', 'Glomerular capillary hydrostatic pressure', 'Tubular secretion', 'Lymphatic flow', 2),
-  (42, 'phys', 'mcq', 'Which hormone is released in response to raised plasma osmolarity?', 'Hypothalamic osmoreceptors trigger ADH release from the posterior pituitary.', 'Aldosterone', 'Antidiuretic hormone', 'Atrial natriuretic peptide', 'Renin', 2),
+  (41, 'phys', 'mcq', 'What is the main driving force of glomerular filtration?', 'Glomerular capillary hydrostatic pressure exceeds the opposing oncotic pressure.', 'Plasma oncotic pressure', 'Glomerular capillary hydrostatic pressure', 'Tubular secretion', 'Lymphatic flow', 1),
+  (42, 'phys', 'mcq', 'Which hormone is released in response to raised plasma osmolarity?', 'Hypothalamic osmoreceptors trigger ADH release from the posterior pituitary.', 'Aldosterone', 'Antidiuretic hormone', 'Atrial natriuretic peptide', 'Renin', 1),
   -- Cycle 8 — acid-base and fluids
   (43, 'phys', 'true_false', 'Metabolic acidosis is compensated by hyperventilation.', 'Lowering pCO2 removes acid and raises pH towards normal.', 'True', 'False', NULL, NULL, 0),
-  (44, 'phys', 'mcq', 'What is the normal plasma bicarbonate concentration?', 'Bicarbonate normally sits between 22 and 26 mmol/L.', '12–16 mmol/L', '22–26 mmol/L', '30–34 mmol/L', '36–40 mmol/L', 2),
-  (45, 'phys', 'mcq', 'Which situation causes respiratory alkalosis?', 'Hyperventilation at altitude blows off CO2.', 'Opioid overdose', 'Hyperventilation at high altitude', 'Severe COPD', 'Diabetic ketoacidosis', 2),
+  (44, 'phys', 'mcq', 'What is the normal plasma bicarbonate concentration?', 'Bicarbonate normally sits between 22 and 26 mmol/L.', '12–16 mmol/L', '22–26 mmol/L', '30–34 mmol/L', '36–40 mmol/L', 1),
+  (45, 'phys', 'mcq', 'Which situation causes respiratory alkalosis?', 'Hyperventilation at altitude blows off CO2.', 'Opioid overdose', 'Hyperventilation at high altitude', 'Severe COPD', 'Diabetic ketoacidosis', 1),
   (46, 'phys', 'open', 'Interpret this blood gas: pH 7.25, pCO2 30 mmHg, HCO3 13 mmol/L.', 'Metabolic acidosis with respiratory compensation.', NULL, NULL, NULL, NULL, NULL),
-  (47, 'phys', 'mcq', 'Which intravenous fluid is isotonic?', '0.9% sodium chloride is isotonic with plasma.', '0.9% sodium chloride', '0.45% sodium chloride', '5% glucose', 'Sterile water', 1),
-  (48, 'phys', 'mcq', 'What happens to potassium during acidosis?', 'Hydrogen ions enter cells and potassium leaves to preserve electroneutrality.', 'It shifts into cells', 'It shifts out of cells', 'It is unchanged', 'It is excreted unchanged', 2),
+  (47, 'phys', 'mcq', 'Which intravenous fluid is isotonic?', '0.9% sodium chloride is isotonic with plasma.', '0.9% sodium chloride', '0.45% sodium chloride', '5% glucose', 'Sterile water', 0),
+  (48, 'phys', 'mcq', 'What happens to potassium during acidosis?', 'Hydrogen ions enter cells and potassium leaves to preserve electroneutrality.', 'It shifts into cells', 'It shifts out of cells', 'It is unchanged', 'It is excreted unchanged', 1),
   -- Cycle 9 — cardiac physiology
   (49, 'phys', 'true_false', 'The first heart sound is caused by closure of the atrioventricular valves.', 'Mitral and tricuspid closure marks the start of systole.', 'True', 'False', NULL, NULL, 0),
-  (50, 'phys', 'mcq', 'Which vessel carries deoxygenated blood?', 'The pulmonary artery carries deoxygenated blood to the lungs.', 'Aorta', 'Pulmonary artery', 'Pulmonary vein', 'Coronary artery', 2),
-  (51, 'phys', 'mcq', 'What does the QRS complex of an ECG represent?', 'The QRS reflects ventricular depolarisation.', 'Atrial depolarisation', 'Ventricular depolarisation', 'Ventricular repolarisation', 'Atrial repolarisation', 2),
+  (50, 'phys', 'mcq', 'Which vessel carries deoxygenated blood?', 'The pulmonary artery carries deoxygenated blood to the lungs.', 'Aorta', 'Pulmonary artery', 'Pulmonary vein', 'Coronary artery', 1),
+  (51, 'phys', 'mcq', 'What does the QRS complex of an ECG represent?', 'The QRS reflects ventricular depolarisation.', 'Atrial depolarisation', 'Ventricular depolarisation', 'Ventricular repolarisation', 'Atrial repolarisation', 1),
   (52, 'phys', 'open', 'Explain the baroreceptor reflex when blood pressure falls.', 'Less stretch reduces vagal tone and raises sympathetic outflow: heart rate, contractility and vasoconstriction all rise.', NULL, NULL, NULL, NULL, NULL),
-  (53, 'phys', 'mcq', 'Which valve lies between the left atrium and the left ventricle?', 'The mitral (bicuspid) valve separates left atrium from left ventricle.', 'Tricuspid valve', 'Mitral valve', 'Pulmonary valve', 'Aortic valve', 2),
-  (54, 'phys', 'mcq', 'What is a normal left ventricular ejection fraction?', '55–70% is the usual echocardiographic range.', '20–35%', '40–50%', '55–70%', '75–90%', 3),
+  (53, 'phys', 'mcq', 'Which valve lies between the left atrium and the left ventricle?', 'The mitral (bicuspid) valve separates left atrium from left ventricle.', 'Tricuspid valve', 'Mitral valve', 'Pulmonary valve', 'Aortic valve', 1),
+  (54, 'phys', 'mcq', 'What is a normal left ventricular ejection fraction?', '55–70% is the usual echocardiographic range.', '20–35%', '40–50%', '55–70%', '75–90%', 2),
   -- Cycle 10 — respiratory physiology
   (55, 'phys', 'true_false', 'Alveolar oxygen partial pressure is higher than that of mixed venous blood.', 'Oxygen diffuses down that gradient into capillary blood.', 'True', 'False', NULL, NULL, 0),
-  (56, 'phys', 'mcq', 'Which lung volume cannot be measured by spirometry?', 'Residual volume needs gas dilution or plethysmography.', 'Tidal volume', 'Residual volume', 'Inspiratory reserve volume', 'Vital capacity', 2),
-  (57, 'phys', 'mcq', 'What is the main stimulus to the respiratory centre?', 'Central chemoreceptors respond to rising arterial CO2.', 'Arterial oxygen', 'Arterial carbon dioxide', 'Arterial pH alone', 'Blood glucose', 2),
+  (56, 'phys', 'mcq', 'Which lung volume cannot be measured by spirometry?', 'Residual volume needs gas dilution or plethysmography.', 'Tidal volume', 'Residual volume', 'Inspiratory reserve volume', 'Vital capacity', 1),
+  (57, 'phys', 'mcq', 'What is the main stimulus to the respiratory centre?', 'Central chemoreceptors respond to rising arterial CO2.', 'Arterial oxygen', 'Arterial carbon dioxide', 'Arterial pH alone', 'Blood glucose', 1),
   (58, 'phys', 'open', 'Describe oxygen transport from alveolus to tissue.', 'Diffusion into capillary blood, haemoglobin binding, delivery, and dissociation where pO2 is low.', NULL, NULL, NULL, NULL, NULL),
-  (59, 'phys', 'mcq', 'Which muscles dominate forced expiration?', 'Abdominal and internal intercostal muscles raise intra-abdominal pressure.', 'Diaphragm and external intercostals', 'Abdominal and internal intercostal muscles', 'Sternocleidomastoid', 'Scalenes', 2),
-  (60, 'phys', 'mcq', 'What is a normal resting respiratory rate for an adult?', '12–20 breaths per minute is the accepted resting range.', '4–8 per minute', '12–20 per minute', '22–28 per minute', '30–36 per minute', 2),
+  (59, 'phys', 'mcq', 'Which muscles dominate forced expiration?', 'Abdominal and internal intercostal muscles raise intra-abdominal pressure.', 'Diaphragm and external intercostals', 'Abdominal and internal intercostal muscles', 'Sternocleidomastoid', 'Scalenes', 1),
+  (60, 'phys', 'mcq', 'What is a normal resting respiratory rate for an adult?', '12–20 breaths per minute is the accepted resting range.', '4–8 per minute', '12–20 per minute', '22–28 per minute', '30–36 per minute', 1),
   -- Cycle 11 — neurophysiology
   (61, 'phys', 'true_false', 'Neuronal depolarisation is caused mainly by sodium influx.', 'Voltage-gated sodium channels open and sodium enters the axon.', 'True', 'False', NULL, NULL, 0),
-  (62, 'phys', 'mcq', 'Which lobe contains the primary motor cortex?', 'The precentral gyrus of the frontal lobe drives voluntary movement.', 'Frontal lobe', 'Parietal lobe', 'Temporal lobe', 'Occipital lobe', 1),
-  (63, 'phys', 'mcq', 'Which neurotransmitter is deficient in Parkinson''s disease?', 'Loss of substantia nigra dopaminergic neurons depletes striatal dopamine.', 'Serotonin', 'Dopamine', 'Acetylcholine', 'GABA', 2),
+  (62, 'phys', 'mcq', 'Which lobe contains the primary motor cortex?', 'The precentral gyrus of the frontal lobe drives voluntary movement.', 'Frontal lobe', 'Parietal lobe', 'Temporal lobe', 'Occipital lobe', 0),
+  (63, 'phys', 'mcq', 'Which neurotransmitter is deficient in Parkinson''s disease?', 'Loss of substantia nigra dopaminergic neurons depletes striatal dopamine.', 'Serotonin', 'Dopamine', 'Acetylcholine', 'GABA', 1),
   (64, 'phys', 'open', 'Explain saltatory conduction.', 'Action potentials jump between nodes of Ranvier, greatly increasing conduction velocity in myelinated fibres.', NULL, NULL, NULL, NULL, NULL),
-  (65, 'phys', 'mcq', 'What does the cerebellum mainly coordinate?', 'It fine-tunes movement, posture and balance.', 'Hormone release', 'Motor coordination and balance', 'Body temperature', 'Language production', 2),
-  (66, 'phys', 'mcq', 'Which cranial nerve controls most eye movements?', 'The oculomotor nerve supplies most extraocular muscles.', 'Optic nerve', 'Oculomotor nerve', 'Facial nerve', 'Vagus nerve', 2),
+  (65, 'phys', 'mcq', 'What does the cerebellum mainly coordinate?', 'It fine-tunes movement, posture and balance.', 'Hormone release', 'Motor coordination and balance', 'Body temperature', 'Language production', 1),
+  (66, 'phys', 'mcq', 'Which cranial nerve controls most eye movements?', 'The oculomotor nerve supplies most extraocular muscles.', 'Optic nerve', 'Oculomotor nerve', 'Facial nerve', 'Vagus nerve', 1),
   -- Cycle 12 — clinical practice
   (67, 'clin', 'true_false', 'A patient with suspected stroke should have blood glucose checked before thrombolysis.', 'Hypoglycaemia mimics stroke and must be excluded first.', 'True', 'False', NULL, NULL, 0),
-  (68, 'clin', 'mcq', 'Which findings suggest hypovolaemic shock?', 'Cool peripheries with compensatory tachycardia are typical.', 'Warm peripheries and bradycardia', 'Cool peripheries and tachycardia', 'Hypertension with bradycardia', 'Bounding peripheral pulses', 2),
-  (69, 'clin', 'mcq', 'What is the first step for a seizure lasting more than five minutes?', 'A benzodiazepine terminates the seizure; investigation follows.', 'Oral anticonvulsant', 'Intravenous benzodiazepine', 'CT of the head', 'Lumbar puncture', 2),
+  (68, 'clin', 'mcq', 'Which findings suggest hypovolaemic shock?', 'Cool peripheries with compensatory tachycardia are typical.', 'Warm peripheries and bradycardia', 'Cool peripheries and tachycardia', 'Hypertension with bradycardia', 'Bounding peripheral pulses', 1),
+  (69, 'clin', 'mcq', 'What is the first step for a seizure lasting more than five minutes?', 'A benzodiazepine terminates the seizure; investigation follows.', 'Oral anticonvulsant', 'Intravenous benzodiazepine', 'CT of the head', 'Lumbar puncture', 1),
   (70, 'clin', 'open', 'List three red flags in a patient presenting with acute chest pain.', 'Pain radiating to arm or jaw, diaphoresis, dyspnoea, syncope, pain at rest.', NULL, NULL, NULL, NULL, NULL),
-  (71, 'clin', 'mcq', 'Which score estimates the clinical probability of pulmonary embolism?', 'The Wells score stratifies PE probability before imaging.', 'Glasgow score', 'Wells score', 'CURB-65', 'APACHE II', 2),
-  (72, 'clin', 'mcq', 'Which electrolyte disturbance produces peaked T waves on the ECG?', 'Hyperkalaemia widens the QRS and peaks the T wave.', 'Hypokalaemia', 'Hyperkalaemia', 'Hypocalcaemia', 'Hyponatraemia', 2);
+  (71, 'clin', 'mcq', 'Which score estimates the clinical probability of pulmonary embolism?', 'The Wells score stratifies PE probability before imaging.', 'Glasgow score', 'Wells score', 'CURB-65', 'APACHE II', 1),
+  (72, 'clin', 'mcq', 'Which electrolyte disturbance produces peaked T waves on the ECG?', 'Hyperkalaemia widens the QRS and peaks the T wave.', 'Hypokalaemia', 'Hyperkalaemia', 'Hypocalcaemia', 'Hyponatraemia', 1);
 
 INSERT INTO public.question_banks (id, organization_id, created_by, name, description, visibility, created_at, updated_at)
 VALUES

@@ -18,31 +18,14 @@ export function Hero() {
        */}
       <div className="mx-auto grid max-w-content gap-y-4 px-content lg:grid-cols-12 lg:gap-x-8 lg:gap-y-0">
         {/*
-         * The label captions the shot: on lg+ below the specimen, below lg it is the
-         * eyebrow. `contents` lets the shot become a grid item of its own on a phone,
-         * so it can follow the CTAs while the rail keeps it beside the h1 on desktop:
-         * the claim and the actions keep the first screen, and the shot rewards the
-         * scroll instead of pushing the form of the page down.
-         *
-         * The split starts at `lg` and not `md`: at 768 the rail is a quarter of the
-         * grid, which leaves the card too narrow for its own footer, so the claim
-         * gets the full width until there is room for two columns.
+         * The copy comes first in the DOM so the keyboard walk follows the page
+         * below `lg` (heading, actions, then the product shot). The badge is part
+         * of the rail's markup because on desktop it captions the shot, but on a
+         * phone it is the eyebrow: the explicit `order` steps put it back above the
+         * heading there. The desktop placement is grid position, not document
+         * order, so the two columns do not depend on this sequencing.
          */}
-        <div className="contents lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:flex lg:flex-col lg:border-l-2 lg:border-primary lg:pt-4 lg:pl-8">
-          {/*
-           * The product itself, not a capture of it: the same component the
-           * student answers on, rendered from a fixture. No plate and no border —
-           * a rendered component sits on paper (DESIGN §Product imagery).
-           */}
-          <div className="order-last mt-4 sm:mt-0 lg:order-1">
-            <QuizQuestionPreview />
-          </div>
-          <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase lg:order-2 lg:mt-3">
-            {t('hero_badge')}
-          </p>
-        </div>
-
-        <div className="lg:col-span-7 lg:col-start-1 lg:row-start-1">
+        <div className="order-2 lg:order-none lg:col-span-7 lg:col-start-1 lg:row-start-1">
           <h1 className="font-display text-display font-semibold text-balance">
             {t('hero_title_lead')}{' '}
             <span className="hand-mark">
@@ -70,6 +53,32 @@ export function Hero() {
               <ArrowRight className="size-4" aria-hidden />
             </CtaButton>
           </div>
+        </div>
+
+        {/*
+         * The label captions the shot: on lg+ below the specimen, below lg it is the
+         * eyebrow, so it is ordered ahead of the copy. `contents` lets the shot
+         * become a grid item of its own on a phone, so it can follow the CTAs while
+         * the rail keeps it beside the h1 on desktop: the claim and the actions keep
+         * the first screen, and the shot rewards the scroll instead of pushing the
+         * form of the page down.
+         *
+         * The split starts at `lg` and not `md`: at 768 the rail is a quarter of the
+         * grid, which leaves the card too narrow for its own footer, so the claim
+         * gets the full width until there is room for two columns.
+         */}
+        <div className="contents lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:flex lg:flex-col lg:border-l-2 lg:border-primary lg:pt-4 lg:pl-8">
+          {/*
+           * The product itself, not a capture of it: the same component the
+           * student answers on, rendered from a fixture. No plate and no border —
+           * a rendered component sits on paper (DESIGN §Product imagery).
+           */}
+          <div className="order-3 mt-4 sm:mt-0 lg:order-1">
+            <QuizQuestionPreview />
+          </div>
+          <p className="order-1 font-mono text-xs tracking-[0.08em] text-primary uppercase lg:order-2 lg:mt-3">
+            {t('hero_badge')}
+          </p>
         </div>
       </div>
     </section>

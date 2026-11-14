@@ -1,9 +1,14 @@
+import { getTranslations } from 'next-intl/server';
 import { ImageResponse } from 'next/og';
 
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-export default function OpengraphImage() {
+export default async function OpengraphImage() {
+  // Rendered per request so the tagline follows the page's locale; `hero_title`
+  // is the claim the hero itself opens with (PRODUCT.md §Voice).
+  const t = await getTranslations('LandingPage');
+  const tagline = t('hero_title');
   return new ImageResponse(
     <div
       style={{
@@ -27,7 +32,7 @@ export default function OpengraphImage() {
           padding: '0 80px',
         }}
       >
-        Ucz się tylko tego, co potrzebne.
+        {tagline}
       </div>
     </div>,
     { ...size },

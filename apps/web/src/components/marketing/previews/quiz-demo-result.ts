@@ -11,14 +11,17 @@ export type QuizDemoStatus = 'correct' | 'wrong' | 'skipped';
 
 export interface QuizDemoQuestion {
   subject: QuizSubject;
-  /** The fixture's stem in the page's locale; full text, truncated only by CSS. */
-  text: string;
   status: QuizDemoStatus;
 }
 
 export interface QuizDemoResult {
   /** The shape the review header reads, so the extracted summary can render it. */
   attempt: QuizScoreSummaryAttempt;
+  /**
+   * Which questions ended how — never the localised stem. The stem belongs to the
+   * page's locale, so the result screen resolves it from the fixtures at render
+   * time; storing it here would freeze one locale into the finished attempt.
+   */
   questions: readonly QuizDemoQuestion[];
 }
 
@@ -57,7 +60,7 @@ export function buildQuizDemoResult({
           ? 'correct'
           : 'wrong';
 
-    return { subject, text: fixture.stem, type: fixture.type, status };
+    return { subject, type: fixture.type, status };
   });
 
   return {
@@ -69,6 +72,6 @@ export function buildQuizDemoResult({
       startedAt,
       questions: graded.map(({ type }) => ({ type })),
     },
-    questions: graded.map(({ subject, text, status }) => ({ subject, text, status })),
+    questions: graded.map(({ subject, status }) => ({ subject, status })),
   };
 }

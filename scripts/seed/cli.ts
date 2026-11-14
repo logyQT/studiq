@@ -82,7 +82,9 @@ export function envFromValuesFile(root: string, name: string): string {
 
 /**
  * `DB_URL` from `supabase status --env`. The CLI prints JSON in stack mode and
- * `KEY='value'` lines on other runtimes, so both shapes are read.
+ * `KEY='value'` lines on other runtimes, so both shapes are read. The shell-style
+ * pair may be single-quoted, double-quoted or bare — the value never keeps its
+ * quotes, because they are the line's syntax and not part of the URL.
  */
 function parseStatusEnv(output: string): string | undefined {
   try {
@@ -94,8 +96,8 @@ function parseStatusEnv(output: string): string | undefined {
   } catch {
     // Not JSON — fall through to the shell-style pair.
   }
-  const match = /^DB_URL='?([^'\n]+)'?$/m.exec(output);
-  return match?.[1];
+  const match = /^DB_URL=(?:'([^'\n]*)'|"([^"\n]*)"|(\S+))$/m.exec(output);
+  return match?.[1] ?? match?.[2] ?? match?.[3];
 }
 
 /**

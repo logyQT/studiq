@@ -30,32 +30,41 @@ spec signs nobody in and sends no storage state.
 
 ## Expected result
 
-Kryterium jest **kontrakt strony**, nie jej brzmienie. Zdania marketingowe żyją w
-`apps/web/src/i18n/messages/pl.json`; powtarzanie ich tutaj przypina tekst zamiast
-zachowania i czerwienieje przy każdej zmianie copy, choć strona działa.
-
 - Strona ładuje się bez błędów (konsola przeglądarki bez czerwonych błędów).
-- `lang="pl"` na `<html>`.
-- Widoczne sekcje o stabilnych identyfikatorach: `#hero`, `#features`, `#how-it-works`,
-  `#pricing`, `#get-started`.
-- Dokładnie jeden `<h1>`, należący do `#hero`; każda sekcja ma nagłówek; żadna sekcja nie
-  renderuje się pusta.
-- Hero oferuje dwie akcje: rejestrację (`/register`) i przegląd funkcji (`/features`).
-- Nagłówek: `/features`, `/pricing`, `/login`, `/register`. Stopka: `/features`, `/pricing`,
-  `/contact`, `/privacy`, `/terms`. Baner `#get-started` prowadzi do `/register`.
-- Każdy przycisk CTA ma dostępną nazwę (nie jest samą ikoną).
-- Brak surowych kluczy tłumaczeń (`LandingPage.*`, `PricingPage.*`, `Navbar.*`, `Footer.*`)
-  ani tekstów „undefined”/„NaN”.
-- Strona nie zawiera wymyślonych liczb ani opinii. Reguła i uzasadnienie:
+- Widoczne: plakietka „Platforma edukacyjna oparta na AI”, nagłówek „Tylko to, co musisz umieć.”, podtytuł, przyciski „Zacznij Naukę Za Darmo” i „Zobacz Funkcje”.
+- Widoczne sekcje: statystyki (Utworzonych pytań / Fiszek / Aktywnych uczniów / Rozwiązanych testów), „Jak to działa” (3 kroki), „Co Otrzymujesz Za Darmo”, „Wspomagaj Naukę z AI”, „Prosty, Przejrzysty Cennik”, opinie („Pokochane przez studentów i nauczycieli”), baner „Gotowy na transformację nauki?”, stopka.
+- Brak surowych kluczy tłumaczeń (np. LandingPage.xxx) ani tekstów „undefined”/„NaN”.
+
+## Suite checks — anchored to this criterion (English, suite-owned)
+
+The criterion above is the page's **contract**, not its wording. The marketing sentences live
+in `apps/web/src/i18n/messages/pl.json`, so the suite asserts the structure the copy sits in
+and the destinations it points at. Repeating a sentence here would pin the draft instead of
+the behaviour, and would go red on every copy edit while the page still works.
+
+- The page loads with no errors (no red browser-console entries).
+- `lang="pl"` on `<html>`.
+- Sections with stable ids are visible: `#hero`, `#features`, `#how-it-works`, `#pricing`,
+  `#get-started`.
+- Exactly one `<h1>`, belonging to `#hero`; every section carries a heading; no section
+  renders empty.
+- The hero offers two actions: register (`/register`) and see the features (`/features`).
+- Header: `/features`, `/pricing`, `/login`, `/register`. Footer: `/features`, `/pricing`,
+  `/contact`, `/privacy`, `/terms`. The `#get-started` band leads to `/register`.
+- Every CTA button has an accessible name (it is never an icon alone).
+- No raw translation keys (`LandingPage.*`, `PricingPage.*`, `Navbar.*`, `Footer.*`) and no
+  `undefined`/`NaN` strings.
+- The page carries no invented numbers or testimonials. Rule and rationale:
   [PRODUCT.md](../../PRODUCT.md) → Status.
 
-## Odstępstwo od dokumentu
+### Two intentional omissions from the source document
 
-Dokument testera wymienia jako widoczne: sekcję statystyk („Utworzonych pytań / Fiszek /
-Aktywnych uczniów / Rozwiązywanych testów”) oraz opinie („Pokochane przez studentów i
-nauczycieli”, cytaty „Maria K.” i „Dr. Tomasz N.”). Oba bloki usunięto, bo produkt nie był
-na rynku, a liczby i osoby były zmyślone. Kryterium akceptacji nie obejmuje więc ich
-obecności, a obecność fikcyjnych danych jest usterką, nie cechą.
+The tester document lists a statistics section („Utworzonych pytań / Fiszek / Aktywnych
+uczniów / Rozwiązywanych testów”) and a testimonials block („Pokochane przez studentów i
+nauczycieli”, quotes from „Maria K.” and „Dr. Tomasz N.”). Both blocks were removed because
+the product was not on the market and the numbers and the people were invented. The
+acceptance criterion therefore does not cover their presence, and fabricated data on the page
+would be a defect rather than a feature.
 
 ## Observations (walk, 2026-10-28, shared app :3010, QA worker qa-env-1)
 

@@ -8,6 +8,10 @@ import type {
   QuizDemoStatus,
 } from '@/components/marketing/previews/quiz-demo-result';
 import {
+  QUIZ_QUESTION_FIXTURES,
+  type QuizFixtureLocale,
+} from '@/components/marketing/previews/quiz-question-fixtures';
+import {
   QuizScoreSummary,
   type QuizScoreSummaryLabels,
 } from '@/components/quiz/quiz-score-summary';
@@ -20,7 +24,7 @@ export interface QuizResultPreviewLabels {
 
 export interface QuizResultPreviewProps {
   result: QuizDemoResult;
-  locale: string;
+  locale: QuizFixtureLocale;
   labels: QuizResultPreviewLabels;
   scoreLabels: QuizScoreSummaryLabels;
   /** Per-row wording; the glyph is `aria-hidden`, the state travels as text. */
@@ -100,7 +104,7 @@ export function QuizResultPreview({
                 question.status === 'skipped' ? 'text-muted-foreground' : ''
               }`}
             >
-              {question.text}
+              {QUIZ_QUESTION_FIXTURES[locale][question.subject].stem}
             </span>
             {STATUS_MARK[question.status]}
             <span className="sr-only">{statusLabels[question.status]}</span>

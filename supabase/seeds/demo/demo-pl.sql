@@ -16,9 +16,9 @@
 --
 -- Apply it (idempotent — re-running drops the demo tenant first):
 --
---   bun scripts/demo-seed.ts --locale en     # this tenant
---   bun scripts/demo-seed.ts                 # both locales
---   bun scripts/demo-seed.ts --reset         # remove both demo tenants
+--   bun scripts/demo-seed.ts --locale en --yes   # this tenant
+--   bun scripts/demo-seed.ts --yes               # both locales
+--   bun scripts/demo-seed.ts --reset --yes       # remove both demo tenants
 --
 -- All accounts use the password `Seed4Test!`; `scripts/demo-seed.ts` prints
 -- the exact logins on success.

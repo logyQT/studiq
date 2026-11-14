@@ -83,6 +83,7 @@ const PANEL_ID = 'mobile-nav-panel';
  */
 export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: MobileNavProps) {
   const t = useTranslations('Navbar');
+  const tCommon = useTranslations('Common');
   const { panelRef, close, onOpenAutoFocus } = usePanelChrome(open, onOpenChange);
 
   return (
@@ -94,7 +95,7 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
           // The panel is unmounted when closed, and a reference to a missing node
           // is an a11y error — so the pointer exists only while the target does.
           aria-controls={open ? PANEL_ID : undefined}
-          aria-label={open ? t('common_close') : t('mobile_menu')}
+          aria-label={open ? tCommon('common_close') : t('mobile_menu')}
           className={cn('-ml-2', HEADER_ICON)}
         >
           <span aria-hidden className="flex h-4 w-5 flex-col justify-between">

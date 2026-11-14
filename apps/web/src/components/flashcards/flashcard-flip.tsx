@@ -121,6 +121,11 @@ export function FlashcardFlip({
           initial={{ opacity: isFlipped ? 0 : 1 }}
           animate={{ opacity: isFlipped ? 0 : 1 }}
           transition={isFlipped ? outgoing : incoming}
+          // Opacity hides a face from the eye but not from Tab, a screen reader or a
+          // tap: `inert` takes the face that is not showing out of all three. It
+          // says nothing about layout, so the WebKit fade and the container's
+          // `rotateY` are unchanged.
+          inert={isFlipped}
         >
           {front}
         </motion.div>
@@ -132,6 +137,7 @@ export function FlashcardFlip({
           animate={{ opacity: isFlipped ? 1 : 0 }}
           transition={isFlipped ? incoming : outgoing}
           style={{ transform: 'rotateY(var(--flip-back-rotation, 180deg))' }}
+          inert={!isFlipped}
         >
           {back}
         </motion.div>

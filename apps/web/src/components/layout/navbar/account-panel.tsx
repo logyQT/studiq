@@ -74,6 +74,13 @@ interface AccountPanelProps {
   onOpenChange: (open: boolean) => void;
   /** The header's account control — where focus goes back when the panel closes. */
   returnFocusRef: RefObject<HTMLButtonElement | null>;
+  /**
+   * Whether this close returns focus to that control. The header turns it off
+   * when the header itself is the one closing the panel (it is opening the
+   * navigation panel, which takes focus; or the mark is leaving the viewport),
+   * because then the account control is not where the visitor continues.
+   */
+  returnFocus?: boolean;
 }
 
 /**
@@ -94,9 +101,15 @@ interface AccountPanelProps {
  * The header owns the close: this panel carries no close control of its own.
  * Escape, the account mark that opened it (a toggle while it is open) and any
  * navigation close it, and focus returns to that mark. Opening the navigation
- * panel closes this one, and the reverse is true in `Navbar`.
+ * panel closes this one, and the reverse is true in `Navbar`; that close is the
+ * exception, because the panel that opens next is what takes focus.
  */
-export function AccountPanel({ open, onOpenChange, returnFocusRef }: AccountPanelProps) {
+export function AccountPanel({
+  open,
+  onOpenChange,
+  returnFocusRef,
+  returnFocus = true,
+}: AccountPanelProps) {
   const t = useTranslations('Navbar');
   const { panelRef, close, onOpenAutoFocus } = usePanelChrome(open, onOpenChange);
 
@@ -113,9 +126,12 @@ export function AccountPanel({ open, onOpenChange, returnFocusRef }: AccountPane
         onOpenAutoFocus={onOpenAutoFocus}
         // Escape and an outside tap share the close path; the explicit focus
         // return covers the opener never having taken focus (a touch tap on iOS).
+        // The header clears `returnFocus` when it closes the panel itself, so focus
+        // is never sent to a control that is hidden or that the visitor is not
+        // returning to.
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          returnFocusRef.current?.focus();
+          if (returnFocus) returnFocusRef.current?.focus();
         }}
         className={PANEL_SHEET}
       >

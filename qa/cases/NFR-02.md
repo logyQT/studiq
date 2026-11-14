@@ -29,9 +29,10 @@ Zalogowany użytkownik.
    kodu…”. Wpisz `ang`, `en`, `pol` (wyniki tylko pasujące od początku słowa), potem `zzz`
    („Brak pasującego języka”) i wyczyść pole przyciskiem ✕. Wybierz „English” — widok wraca do
    menu, panel zostaje otwarty, a wiersz pokazuje „English”.
-6. Na wąskim ekranie w menu hamburger na stronach publicznych wiersz „Język” rozwija ten sam
-   panel z wyszukiwaniem **w miejscu**; po wybraniu języka panel się zwija, a fokus wraca
-   **na wiersz „Język”**.
+6. Na wąskim ekranie w menu hamburger na stronach publicznych wybierz język w stopce panelu:
+   przycisk z flagą i nazwą języka („Język: Polski”) otwiera nad sobą listę języków bez pola
+   wyszukiwania; po wybraniu języka strona przełącza się w miejscu, lista się zamyka, a fokus
+   wraca **na ten przycisk**.
 7. Przełącz język na głębokiej podstronie (np. `/app/stats/content`) i sprawdź adres oraz pozycję
    przewinięcia; następnie odśwież stronę (F5).
 

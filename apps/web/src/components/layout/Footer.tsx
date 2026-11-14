@@ -11,7 +11,9 @@ export function Footer() {
 
   return (
     <footer className="border-t">
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      {/* The rule is on the full-width `footer` above; only the gutter grows into
+          the left/right safe-area insets, like `MainLayout`'s. */}
+      <div className="mx-auto max-w-7xl py-12 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:pl-[max(2rem,env(safe-area-inset-left))] lg:pr-[max(2rem,env(safe-area-inset-right))]">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* BRAND */}
           <div className="col-span-2 md:col-span-1">

@@ -2,7 +2,7 @@
 
 import { Button } from '@studiq/ui';
 import { Check, Minus, X, Zap } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
 import { cn } from '@/lib/utils';
@@ -80,6 +80,10 @@ export function FlashcardReview({
   onRate,
   exitDirection = 'right',
 }: FlashcardReviewProps) {
+  // The outgoing card may leave only if the preference allows it: under reduced
+  // motion it fades where it stands instead of sliding off its rating's side.
+  const reduceMotion = useReducedMotion() === true;
+
   return (
     <>
       <AnimatePresence mode="wait" custom={exitDirection}>
@@ -99,13 +103,16 @@ export function FlashcardReview({
               opacity: 1,
               transformOrigin: direction === 'left' ? 'left center' : 'right center',
             }),
-            exit: (direction: string) => ({
-              rotate: direction === 'left' ? -15 : 15,
-              x: direction === 'left' ? -200 : 80,
-              opacity: 0,
-              transformOrigin: direction === 'left' ? 'left center' : 'right center',
-              transition: { duration: direction === 'left' ? 0.2 : 0.15, ease: 'easeIn' },
-            }),
+            exit: (direction: string) =>
+              reduceMotion
+                ? { opacity: 0 }
+                : {
+                    rotate: direction === 'left' ? -15 : 15,
+                    x: direction === 'left' ? -200 : 80,
+                    opacity: 0,
+                    transformOrigin: direction === 'left' ? 'left center' : 'right center',
+                    transition: { duration: direction === 'left' ? 0.2 : 0.15, ease: 'easeIn' },
+                  },
           }}
           initial="initial"
           animate="animate"

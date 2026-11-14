@@ -13,7 +13,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DesktopNav } from '@/components/layout/navbar/desktop-nav';
 import { ACCOUNT_PANEL_ID, AccountPanel } from '@/components/layout/navbar/account-panel';
 import { HEADER_ICON } from '@/components/layout/navbar/chrome';
@@ -95,9 +95,47 @@ export function Navbar() {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  /**
+   * Whether closing the account panel should send focus back to the account mark.
+   * The header clears it when the header itself closes the panel — opening the
+   * navigation panel, or widening past the breakpoint that hides the mark — so
+   * focus is not planted on (or silently dropped by) a control that is no longer
+   * the visitor's next step.
+   */
+  const [accountReturnFocus, setAccountReturnFocus] = useState(true);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const { logoUrl } = useBranding();
   const closeMobile = () => setMobileOpen(false);
+
+  const closeAccount = (returnFocus: boolean) => {
+    setAccountReturnFocus(returnFocus);
+    setAccountOpen(false);
+  };
+
+  /*
+   * The account mark is `sm:hidden` and the burger `lg:hidden`. A panel left open
+   * across the breakpoint would keep its trigger hidden and its state stuck, so
+   * each one closes as its own trigger goes away. Escape is untouched: it closes
+   * through the same dialog, still returning focus.
+   */
+  useEffect(() => {
+    const accountQuery = window.matchMedia('(min-width: 640px)');
+    const menuQuery = window.matchMedia('(min-width: 1024px)');
+    const onAccount = (event: MediaQueryListEvent) => {
+      if (!event.matches) return;
+      setAccountReturnFocus(false);
+      setAccountOpen(false);
+    };
+    const onMenu = (event: MediaQueryListEvent) => {
+      if (event.matches) setMobileOpen(false);
+    };
+    accountQuery.addEventListener('change', onAccount);
+    menuQuery.addEventListener('change', onMenu);
+    return () => {
+      accountQuery.removeEventListener('change', onAccount);
+      menuQuery.removeEventListener('change', onMenu);
+    };
+  }, []);
 
   // `user_metadata` / `app_metadata` are untyped Supabase maps; narrow before use.
   const rawAccountType: unknown = user?.app_metadata.account_type;
@@ -127,19 +165,22 @@ export function Navbar() {
    * The mobile drawer navigates differently on purpose. Desktop leaves the page
    * for /features and /pricing; on a phone the sections of this page are the
    * destination, so the drawer jumps to them instead of reloading a second page
-   * the visitor has to scroll from the top. Kontakt is a real page and stays one.
+   * the visitor has to scroll from the top. On any other route there is no such
+   * section under the visitor, so the anchor is root-qualified and lands on the
+   * landing page's section. Kontakt is a real page and stays one.
    * The labels come from three namespaces, which is why the drawer takes strings
    * rather than keys.
    */
+  const sectionHref = (id: string) => (pathname === '/' ? `#${id}` : `/#${id}`);
   const mobileItems = user
     ? allLinks.map(({ labelKey, href, namespace }) => ({
         label: namespace === 'DashboardLayout' ? tDash(labelKey) : t(labelKey),
         href,
       }))
     : [
-        { label: t('features'), href: '#features' },
-        { label: tLanding('how_it_works_title'), href: '#how-it-works' },
-        { label: t('pricing'), href: '#pricing' },
+        { label: t('features'), href: sectionHref('features') },
+        { label: tLanding('how_it_works_title'), href: sectionHref('how-it-works') },
+        { label: t('pricing'), href: sectionHref('pricing') },
         { label: tFooter('contact'), href: '/contact' },
       ];
 
@@ -231,9 +272,15 @@ export function Navbar() {
                 aria-expanded={accountOpen}
                 aria-controls={accountOpen ? ACCOUNT_PANEL_ID : undefined}
                 onClick={() => {
-                  const next = !accountOpen;
-                  if (next) closeMobile();
-                  setAccountOpen(next);
+                  if (accountOpen) {
+                    // The mark is a toggle while its panel is open, and closing it
+                    // here is a close that returns focus to this control.
+                    closeAccount(true);
+                    return;
+                  }
+                  setAccountReturnFocus(true);
+                  closeMobile();
+                  setAccountOpen(true);
                 }}
                 // The burger's chrome, with no persisted fill: a filled square
                 // reads as a pressed button. `aria-expanded` still carries the state.
@@ -265,8 +312,10 @@ export function Navbar() {
               open={mobileOpen}
               onOpenChange={(next) => {
                 setMobileOpen(next);
-                // One panel at a time: the two never stack in the DOM.
-                if (next) setAccountOpen(false);
+                // One panel at a time: the two never stack in the DOM. Opening the
+                // menu takes focus, so the account panel must not return it to the
+                // mark on its way out.
+                if (next) closeAccount(false);
               }}
             />
           </div>
@@ -276,7 +325,13 @@ export function Navbar() {
       {user && (
         <AccountPanel
           open={accountOpen}
-          onOpenChange={setAccountOpen}
+          onOpenChange={(next) => {
+            // Escape and a tap-close arrive here: both are closes that should put
+            // focus back on the mark that opened the panel.
+            if (!next) setAccountReturnFocus(true);
+            setAccountOpen(next);
+          }}
+          returnFocus={accountReturnFocus}
           returnFocusRef={accountTriggerRef}
         />
       )}
