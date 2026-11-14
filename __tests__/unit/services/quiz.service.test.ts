@@ -19,6 +19,15 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
+/** Practice never draws a held item; these tests state the set to subtract. */
+const sealState = vi.hoisted(() => ({
+  seal: { ids: new Set<string>(), bankId: new Map<string, string | null>(), closesAt: new Map() },
+}));
+vi.mock('@studiq/server/lib/question-seal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-seal')>()),
+  sealFor: vi.fn(() => Promise.resolve({ success: true, data: sealState.seal })),
+}));
+
 type ChainMock = ReturnType<typeof vi.fn>;
 
 /** A thenable PostgREST builder stand-in: every chain method returns itself. */

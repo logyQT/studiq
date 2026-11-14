@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import {
+  readAssignmentPoints,
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
   readAttemptQuestions,
@@ -132,7 +133,7 @@ export class QuizAttemptService {
 
       if (rowsError) return toDbFailure(rowsError);
 
-      const snapshots = await readAssignmentSnapshots(supabase, attempt.assignment_id);
+      const snapshots = await readAssignmentSnapshots(attempt.assignment_id);
       if (isFailure(snapshots)) return snapshots;
 
       for (const row of dbRows(rows)) {
@@ -468,21 +469,13 @@ export class QuizAttemptService {
     }
 
     // Assignment attempts are scored in points, practice quizzes in correct
-    // answers. Load the per-question points once when this is an assignment.
-    const assignmentPoints = new Map<string, number>();
+    // answers. The link rows are staff-only at the RLS boundary, so the attempt's own assignment
+    // is read with the service role (the attempt above proved it is the caller's).
+    let assignmentPoints = new Map<string, number>();
     if (attempt.assignment_id) {
-      const { data: rows, error: pointsError } = await supabase
-        .from('assignment_questions')
-        .select('question_id, points')
-        .eq('assignment_id', attempt.assignment_id);
-
-      if (pointsError) return toDbFailure(pointsError);
-      for (const row of dbRows(rows)) {
-        // `question_id` is nullable (`ON DELETE SET NULL`); a row without a
-        // question cannot award points to any answer.
-        if (!row.question_id) continue;
-        assignmentPoints.set(row.question_id, row.points);
-      }
+      const points = await readAssignmentPoints(attempt.assignment_id);
+      if (isFailure(points)) return points;
+      assignmentPoints = points.data;
     }
 
     let score = 0;

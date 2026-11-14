@@ -90,6 +90,9 @@ GRANT EXECUTE ON FUNCTION public.rls_caller_org_user_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_has_org_feature(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_is_org_manager(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_can_assign_org_role(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_can_read_assignment_items(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_can_read_assignment_targets(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_is_sealed_item(uuid) TO authenticated;
 
 -- Public pricing page (unauthenticated, SELECT only).
 GRANT SELECT ON public.subscription_plans TO anon;

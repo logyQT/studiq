@@ -2656,7 +2656,9 @@
     "previous_page": "Poprzednia strona",
     "next_page": "Następna strona",
     "no_results": "Brak pytań pasujących do filtrów.",
-    "create_flashcard_title": "Utwórz fiszkę z tego pytania"
+    "create_flashcard_title": "Utwórz fiszkę z tego pytania",
+    "held_notice_until": "{count, plural, one {# pytanie jest zarezerwowane} few {# pytania są zarezerwowane} other {# pytań jest zarezerwowanych}} na Twoją kartkówkę do {date}.",
+    "held_notice_released": "{count, plural, one {# pytanie jest zarezerwowane} few {# pytania są zarezerwowane} other {# pytań jest zarezerwowanych}} na Twoją kartkówkę do momentu jej udostępnienia."
   },
   "CreateFlashcardFromQuestion": {
     "title": "Utwórz fiszkę z pytania",

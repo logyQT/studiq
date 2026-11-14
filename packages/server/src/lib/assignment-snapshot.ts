@@ -79,11 +79,16 @@ export function snapshotFromJson(value: unknown): QuestionSnapshot | null {
   };
 }
 
-/** Reader-safe snapshots of one assignment, keyed by question id (RLS-scoped). */
+/**
+ * Reader-safe snapshots of one assignment, keyed by question id. Read with the service role: a
+ * student can no longer select `assignment_questions` rows (R14 — the refactor that keeps the
+ * published item set off the client-readable surface), so the caller must already have proved the
+ * attempt's ownership or the assignment's authorship before it calls this.
+ */
 export async function readAssignmentSnapshots(
-  supabase: SupabaseClient<Database>,
   assignmentId: string,
 ): Promise<ServiceResult<Map<string, QuestionSnapshot>>> {
+  const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('assignment_questions')
     .select('question_id, snapshot, snapshot_version')
@@ -101,8 +106,48 @@ export async function readAssignmentSnapshots(
   return success(snapshots);
 }
 
-/** The published keys of one assignment (service role; the caller already proved ownership). */
-export async function readAssignmentSnapshotKeys(
+/** One published link, as the take flow needs it: order, points and the frozen item. */
+export interface AssignmentLink {
+  question_id: string | null;
+  order_index: number | null;
+  points: number;
+  snapshot: QuestionSnapshot | null;
+  snapshot_version: number | null;
+}
+
+/**
+ * The links of one assignment, read with the service role. `assignment_questions` is staff-only
+ * at the RLS boundary (slice 2), so every student-side read of it goes through here — and only
+ * after the caller proved the student is targeted by that assignment.
+ */
+export async function readAssignmentLinks(
+  assignmentId: string,
+): Promise<ServiceResult<AssignmentLink[]>> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id, order_index, points, snapshot, snapshot_version')
+    .eq('assignment_id', assignmentId)
+    .order('order_index', { ascending: true });
+
+  if (error) return toDbFailure(error);
+  return success(dbRows(data).map((row) => ({ ...row, snapshot: snapshotFromJson(row.snapshot) })));
+}
+
+/** question_id → awardable points of one assignment (service role; the attempt is the caller's). */
+export async function readAssignmentPoints(
+  assignmentId: string,
+): Promise<ServiceResult<Map<string, number>>> {
+  const links = await readAssignmentLinks(assignmentId);
+  if (!links.success) return links;
+  return success(
+    new Map(
+      links.data.flatMap((link) => (link.question_id ? [[link.question_id, link.points]] : [])),
+    ),
+  );
+}
+
+/** The published keys of one assignment (service role; the caller already proved ownership). */ export async function readAssignmentSnapshotKeys(
   assignmentId: string,
 ): Promise<Map<string, QuestionSnapshotKey>> {
   const keys = new Map<string, QuestionSnapshotKey>();
@@ -205,7 +250,7 @@ export async function readAttemptQuestions(
 
     if (error) return toDbFailure(error);
 
-    const snapshots = await readAssignmentSnapshots(supabase, attempt.assignment_id);
+    const snapshots = await readAssignmentSnapshots(attempt.assignment_id);
     if (!snapshots.success) return snapshots;
 
     return success(

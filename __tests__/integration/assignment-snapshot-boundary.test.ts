@@ -182,15 +182,25 @@ describe('Assignment snapshot key boundary (#1171)', () => {
     expect(key.error?.code).toBe('42501');
   });
 
-  it('serves the reader-safe snapshot without any key field', async () => {
+  it('serves the reader-safe snapshot through the server, not as a client-readable row', async () => {
+    // Slice 1 froze the reader-safe snapshot and revoked only the key. Slice 2 closed the rest of
+    // the column: the snapshot carries the stem and options, so a student's own live item set is no
+    // longer client-readable either (R14). `assignment_questions` is staff-only; the attempt reads
+    // it with the service role after proving ownership.
     const reader = await studentSession
       .from('assignment_questions')
       .select('question_id, order_index, snapshot, snapshot_version')
       .eq('assignment_id', assignmentId);
-    expect(reader.error).toBeNull();
-    expect(reader.data).toHaveLength(1);
+    expect(reader.error, 'filtered by the policy, not refused').toBeNull();
+    expect(reader.data).toEqual([]);
 
-    const row = reader.data![0];
+    const staff = await teacherSession
+      .from('assignment_questions')
+      .select('snapshot, snapshot_version')
+      .eq('assignment_id', assignmentId);
+    expect(staff.error).toBeNull();
+    expect(staff.data).toHaveLength(1);
+    const row = staff.data![0]!;
     expect(row.snapshot).toMatchObject({
       question_answers: [{ content: 'correct' }, { content: 'wrong' }],
     });
