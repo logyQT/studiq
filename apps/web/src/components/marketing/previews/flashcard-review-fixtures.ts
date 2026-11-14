@@ -1,14 +1,21 @@
 /**
  * Preview data only — never a seed, never a fetch.
  *
- * The three cards are drawn from the demo tenants' own course material
- * (`supabase/seeds/demo/demo-{pl,en}.sql`): pharmacology and physiology, the
- * kind of deck a student brings to StudiQ. Both locales are authored rather
- * than translated at render time, so a Polish page cannot wrap English cards.
+ * Three cards a visitor can answer without knowing anything about StudiQ:
+ * general knowledge in the register of a mixed study deck — a language, a
+ * science fact. Short on purpose. The landing page has seconds to
+ * show what the product does, and a medical answer running to seven lines spent
+ * those seconds on terminology instead of on the card.
  *
- * The lengths differ on purpose — a one-line answer, a two-line answer and a
- * three-line question — because the preview must prove the card box does not
- * move when the fixture does.
+ * The first card is the one exception: the product's own name as a one-word
+ * answer, so the flip lands and the visitor meets StudiQ inside the card rather
+ * than in a badge. Cards two and three stay real study content — the demo shows
+ * the product working, not talking about itself.
+ *
+ * The two sets are authored separately rather than translated, so each reads
+ * like a card that locale's student would actually write. Lengths differ on
+ * purpose — a one-word answer, a longer question, a numeric answer — because
+ * the preview must prove the card box does not move when the fixture does.
  */
 export type FlashcardFixtureLocale = 'pl' | 'en';
 
@@ -24,36 +31,36 @@ export const FLASHCARD_REVIEW_FIXTURES: Record<
 > = {
   pl: [
     {
-      id: 'pharm-statin',
-      front: 'Co hamuje statyna?',
-      back: 'Reduktazę HMG-CoA, enzym limitujący syntezę cholesterolu.',
+      id: 'geo-capital',
+      front: 'Z kim się dziś uczysz?',
+      back: 'Ze StudiQ',
     },
     {
-      id: 'phys-adh',
-      front: 'Który hormon zwiększa wchłanianie wody w kanaliku zbiorczym?',
-      back: 'Wazopresyna (ADH), działająca przez kanały akwaporyny-2.',
+      id: 'lang-brazil',
+      front: 'W jakim języku mówi się w Brazylii?',
+      back: 'Portugalsku',
     },
     {
-      id: 'phys-ph',
-      front: 'Jaki jest prawidłowy zakres pH krwi tętniczej?',
-      back: '7,35–7,45.',
+      id: 'astro-planets',
+      front: 'Ile planet ma Układ Słoneczny?',
+      back: 'Osiem',
     },
   ],
   en: [
     {
-      id: 'pharm-statin',
-      front: 'What does a statin inhibit?',
-      back: 'HMG-CoA reductase, the rate-limiting enzyme of cholesterol synthesis.',
+      id: 'geo-capital',
+      front: "Who's your study buddy?",
+      back: 'StudiQ',
     },
     {
-      id: 'phys-adh',
-      front: 'Which hormone increases water reabsorption in the collecting duct?',
-      back: 'Antidiuretic hormone (vasopressin), via aquaporin-2 channels.',
+      id: 'lang-brazil',
+      front: 'What language is spoken in Brazil?',
+      back: 'Portuguese',
     },
     {
-      id: 'phys-ph',
-      front: 'What is the normal pH range of arterial blood?',
-      back: '7.35–7.45.',
+      id: 'bio-bones',
+      front: 'How many bones are in the human body?',
+      back: '206',
     },
   ],
 };

@@ -49,7 +49,16 @@ export function FlashcardReviewPreview() {
   const card = cards[index] ?? cards[0];
 
   return (
-    <div className="flex flex-col gap-6">
+    /*
+     * The card's box, owned by the marketing band rather than by the component.
+     * The study session's card is a fixed 22rem so its queue never moves; that
+     * box was sized for a queue of real course answers. These fixtures are a
+     * line or two, so the band sets the height its content actually needs — one
+     * selector on the flip card's own `fieldset` root, no change to the product
+     * component. The height steps with the column width so the card stays
+     * landscape: tallest at md, where the stacked preview takes the whole page.
+     */
+    <div className="flex flex-col gap-6 [&_fieldset]:h-48 sm:[&_fieldset]:h-64 md:[&_fieldset]:h-72 lg:[&_fieldset]:h-56">
       <FlashcardReview
         cardKey="flashcard-preview"
         front={card.front}

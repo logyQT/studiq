@@ -26,8 +26,8 @@ describe('FlashcardReviewPreview', () => {
   it('renders the Polish fixture inside the product’s review card', () => {
     const html = render('pl');
 
-    expect(html).toContain('Co hamuje statyna?');
-    expect(html).toContain('Reduktazę HMG-CoA, enzym limitujący syntezę cholesterolu.');
+    expect(html).toContain('Z kim się dziś uczysz?');
+    expect(html).toContain('Ze StudiQ');
     // `FlashcardFlip`'s own contract: a focusable fieldset that Enter/Space flips.
     expect(html).toContain('aria-keyshortcuts="Enter Space"');
     expect(html).toContain('aria-label="Fiszka. Naciśnij Enter lub spację, aby ją odwrócić."');
@@ -52,9 +52,10 @@ describe('FlashcardReviewPreview', () => {
   it('never mixes locales: the English page gets English cards and labels', () => {
     const html = render('en');
 
-    expect(html).toContain('What does a statin inhibit?');
+    expect(html).toContain('study buddy?');
+    expect(html).toContain('StudiQ');
     expect(html).toContain('Again');
-    expect(html).not.toContain('Co hamuje statyna?');
+    expect(html).not.toContain('Z kim się dziś uczysz?');
     expect(html).not.toContain('Nie pamiętam');
   });
 });
