@@ -24,7 +24,6 @@
     "env:doctor": "bun scripts/env/cli.ts doctor",
     "env:ports": "bun scripts/env/cli.ts ports",
     "demo:seed": "bun scripts/demo-seed.ts",
-    "shots:capture": "bun scripts/marketing-shots.ts",
     "env:ensure": "bash scripts/env/varlock-run.sh ensure",
     "env:down": "bash scripts/env/varlock-run.sh down",
     "env:build": "bash scripts/env/varlock-run.sh build",
