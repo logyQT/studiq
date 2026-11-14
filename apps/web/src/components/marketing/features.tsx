@@ -18,6 +18,23 @@ const aiFeatures = [
   { titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
 ] as const;
 
+/**
+ * The mobile ordinal: a two-digit mono index in the 40px rail left of a term,
+ * phone only. Each ledger positions it against its own term, because `text-h3`
+ * sets a taller line box than body copy and the two would otherwise sit on
+ * different baselines — so the offset is the caller's, the mark is not.
+ */
+function Ordinal({ index, offset }: { index: number; offset: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`absolute -left-10 font-mono text-xs tabular-nums text-primary md:hidden ${offset}`}
+    >
+      {String(index + 1).padStart(2, '0')}
+    </span>
+  );
+}
+
 /*
  * Two tiers, two compositions. The free tier is a hairline ledger: one term per
  * row against its description, so the four capabilities read as a spec sheet
@@ -68,17 +85,12 @@ export function Features() {
               className="relative grid gap-x-8 gap-y-1.5 border-b border-border py-5 pl-10 md:grid-cols-12 md:items-baseline md:gap-y-2 md:py-6 md:pl-0"
             >
               {/*
-               * The numbered rail is mobile-only: four hairline rows at phone
-               * width read as one paragraph, and the ordinal gives the eye a
-               * column to land on while the term keeps its own line.
+               * Four hairline rows at phone width read as one paragraph, and the
+               * ordinal gives the eye a column to land on while the term keeps
+               * its own line.
                */}
               <dt className="relative text-h3 font-semibold md:col-span-5">
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1 -left-10 font-mono text-xs tabular-nums text-primary md:hidden"
-                >
-                  {String(index + 1).padStart(2, '0')}
-                </span>
+                <Ordinal index={index} offset="top-1" />
                 {t(titleKey)}
               </dt>
               <dd className="max-w-prose text-sm leading-snug text-muted-foreground md:col-span-6 md:col-start-7 md:leading-relaxed">
@@ -106,12 +118,7 @@ export function Features() {
                 className="relative border-t border-border py-4 pl-10 first:border-t-0 first:pt-0 md:py-5 md:pl-0"
               >
                 <dt className="relative font-semibold">
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-0.5 -left-10 font-mono text-xs tabular-nums text-primary md:hidden"
-                  >
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
+                  <Ordinal index={index} offset="top-0.5" />
                   {t(titleKey)}
                 </dt>
                 <dd className="mt-1 max-w-prose text-sm leading-snug text-muted-foreground md:leading-relaxed">

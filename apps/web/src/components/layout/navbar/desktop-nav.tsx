@@ -10,7 +10,7 @@ import { MoreHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { FOCUS_RING } from '@/components/layout/navbar/chrome';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import type { NavLink } from '@/components/layout/navbar/types';
 import { cn } from '@/lib/utils';
 

@@ -16,7 +16,8 @@ import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { DesktopNav } from '@/components/layout/navbar/desktop-nav';
 import { ACCOUNT_PANEL_ID, AccountPanel } from '@/components/layout/navbar/account-panel';
-import { FOCUS_RING, HEADER_ICON } from '@/components/layout/navbar/chrome';
+import { HEADER_ICON } from '@/components/layout/navbar/chrome';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { MobileNav } from '@/components/layout/navbar/mobile-nav';
 import type { NavLink } from '@/components/layout/navbar/types';
 import {

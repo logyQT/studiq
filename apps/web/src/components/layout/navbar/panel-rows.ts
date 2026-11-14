@@ -1,4 +1,4 @@
-import { FOCUS_RING } from '@/components/layout/navbar/chrome';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { cn } from '@/lib/utils';
 
 /**

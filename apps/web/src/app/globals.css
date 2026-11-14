@@ -70,7 +70,12 @@
   --border: oklch(0.880 0.012 85);
   --input: oklch(0.630 0.020 264);
 
-  /* Charts — categorical, equal weight on paper (>= 3:1 each) */
+  /*
+   * Charts — categorical, equal weight on paper (>= 3:1 each). Nothing reads
+   * them yet: the stats charts still carry their colours as literals (DESIGN
+   * §Known residue moves them here). Five steps, because the flashcard-state
+   * breakdown has five states and a shorter ramp cannot colour it.
+   */
   --chart-1: oklch(0.455 0.215 264);
   --chart-2: oklch(0.410 0.070 195);
   --chart-3: oklch(0.425 0.104 55);
@@ -215,7 +220,6 @@
    * must not scale with --radius (see Shape in DESIGN.md).
    */
   --radius-control: 0.25rem;
-  --radius-card: 0.375rem;
   --radius-panel: 0.5rem;
 
   /* Motion — 140ms hover/press, one curve for everything */
@@ -229,9 +233,6 @@
   --text-display: clamp(2.75rem, 6vw, 5.5rem);
   --text-display--line-height: 1.05;
   --text-display--letter-spacing: -0.03em;
-  --text-title: clamp(2rem, 4vw, 3.25rem);
-  --text-title--line-height: 1.05;
-  --text-title--letter-spacing: -0.02em;
   --text-h2: clamp(1.75rem, 3vw, 2.5rem);
   --text-h2--line-height: 1.1;
   --text-h2--letter-spacing: -0.02em;

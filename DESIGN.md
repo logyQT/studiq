@@ -209,7 +209,6 @@ Geist text — visible on the default locale of every page.
 | Step    | Size                               | Leading | Tracking  | Use                                   |
 | ------- | ---------------------------------- | ------- | --------- | ------------------------------------- |
 | Display | `clamp(2.75rem, 6vw, 5.5rem)`      | `1.05`  | `-0.03em` | The page's single top-level statement |
-| Title   | `clamp(2rem, 4vw, 3.25rem)`        | `1.05`  | `-0.02em` | `/pricing`, `/features` h1            |
 | H2      | `clamp(1.75rem, 3vw, 2.5rem)`      | `1.1`   | `-0.02em` | Section titles                        |
 | H3      | `1.25rem`                          | `1.3`   | `-0.01em` | Card and step titles                  |
 | Lede    | `clamp(1.0625rem, 1.6vw, 1.25rem)` | `1.55`  | `0`       | Hero paragraph                        |
@@ -217,9 +216,9 @@ Geist text — visible on the default locale of every page.
 | Small   | `0.875rem`                         | `1.5`   | `0`       | Captions, helper text                 |
 | Label   | `0.75rem`                          | `1.4`   | `0.08em`  | Mono, uppercase                       |
 
-The `Title` step exists because `/pricing` and `/features` render an h1 at
-`text-4xl sm:text-5xl` (up to 3rem), which the old ramp had nowhere to put: above the H2
-ceiling and below the Display floor.
+`/pricing` and `/features` render their h1 at `text-4xl sm:text-5xl` (up to 3rem), which
+sits above the H2 ceiling and below the Display floor. They get a ramp step when those
+pages are redesigned; declaring a token now would ship a step with no consumer.
 
 Rules: body measure ≤ `66ch`; display never below `1.5rem`; mono never used for a
 paragraph; tabular numerals for compared figures; two weights per screen, three at most.
@@ -236,7 +235,10 @@ paragraph; tabular numerals for compared figures; two weights per screen, three 
   paper and was the first thing visible in the built page. The hero's top padding is the
   exception, since nothing sits above it.
 - **Containers:** prose and cards `70rem` (1120px, no Tailwind step — declare it), media
-  `80rem`, and full-bleed is `100vw` + `px-content`, not 1280px.
+  `80rem` for a band that is one picture edge to edge (no band on the landing page is one
+  yet, so nothing reads `max-w-media`), and full-bleed is `100vw` + `px-content`, not
+  1280px. The hero is prose and a card, so it takes `70rem` like the sections under it;
+  giving it `80rem` set its h1 80px left of every following heading at 1440.
 - **Asymmetry is the default on marketing**: 7/5 or 8/4 splits, off-center hero. One
   centered band per page, at most.
 - **Grid:** 12 columns from `md`, 4 on mobile. Cards do not all take the same span.
@@ -256,11 +258,10 @@ paragraph; tabular numerals for compared figures; two weights per screen, three 
 
   Add marketing-scoped tokens instead:
 
-  | Token              | Value            | Utility           | Use                       |
-  | ------------------ | ---------------- | ----------------- | ------------------------- |
-  | `--radius-control` | `0.25rem` (4px)  | `rounded-control` | Marketing buttons, inputs |
-  | `--radius-card`    | `0.375rem` (6px) | `rounded-card`    | Marketing cards           |
-  | `--radius-panel`   | `0.5rem` (8px)   | `rounded-panel`   | Marketing panels          |
+  | Token              | Value           | Utility           | Use                       |
+  | ------------------ | --------------- | ----------------- | ------------------------- |
+  | `--radius-control` | `0.25rem` (4px) | `rounded-control` | Marketing buttons, inputs |
+  | `--radius-panel`   | `0.5rem` (8px)  | `rounded-panel`   | Marketing panels          |
 
 - **Borders:** `1px`. Decorative rules use `hairline`; anything a user must perceive as a
   control uses `border-control` (≥3:1). §Boundaries explains the split.
@@ -434,7 +435,7 @@ Additions to `@theme inline` (none of these exist today, so `bg-signal` silently
 nothing until they are declared):
 
 - `--color-signal`, `--color-success`, `--color-warning`, `--color-info`
-- `--radius-control`, `--radius-card`, `--radius-panel`
+- `--radius-control`, `--radius-panel`
 - `--font-display`
 - `--default-transition-duration`, `--default-transition-timing-function`
 - `--chart-1` … `--chart-5`

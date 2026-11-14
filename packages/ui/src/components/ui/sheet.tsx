@@ -56,7 +56,11 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-[cubic-bezier(0.2,0,0,1)] data-[state=closed]:duration-180 data-[state=open]:duration-220',
+          // Bracketed durations: `duration-180` is not a Tailwind utility, it emits
+          // nothing and the state silently falls back to the 140ms default. The curve
+          // is not restated either — `transition` already reads
+          // `--default-transition-timing-function`, the one curve, from @theme.
+          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition data-[state=closed]:duration-[180ms] data-[state=open]:duration-[220ms]',
           side === 'right' &&
             'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm',
           side === 'left' &&

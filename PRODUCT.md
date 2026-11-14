@@ -134,7 +134,7 @@ The page may sell the 📋 rows. It may not sell anything absent from this table
 
 ## Gaps: claimed, but not in the roadmap
 
-Two claims are live and have no roadmap row. Under the rule above they get no promise until
+Three claims are live and have no roadmap row. Under the rule above they get no promise until
 they do. Each is a decision, not a design task.
 
 1. **14-day free trial** (`PricingPage.faq_a3`). Every `/pricing/*` page states new users
@@ -142,6 +142,10 @@ they do. Each is a decision, not a design task.
 2. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
    `cancel_at_period_end`; the 30-day grace belongs to soft-deleted _accounts_, not
    subscriptions.
+3. **"Free Forever" / "Zawsze za darmo"** (`LandingPage.free_badge`). The free tier exists
+   as the `launch` plan, but "forever" is a promise about the future that no roadmap row
+   makes — no document bounds how long that tier stays. Keep the copy only if the product
+   owner is prepared to honour it; otherwise it is the badge that changes, not the tier.
 
 **Dropped:** AI exam simulation. It was sold as Premium value on the landing page, the
 marketing premium card and `/features`, and subphase 4C covers learning paths, report agents

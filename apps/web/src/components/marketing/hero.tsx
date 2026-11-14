@@ -10,7 +10,13 @@ export function Hero() {
 
   return (
     <section id="hero" className="border-b border-primary pt-12 pb-12 md:pt-28 md:pb-20">
-      <div className="mx-auto grid max-w-media gap-y-4 px-content lg:grid-cols-12 lg:gap-x-8 lg:gap-y-0">
+      {/*
+       * `max-w-content`, like every band below: the hero's left column is prose
+       * (h1, lede, actions) and its right column is a card, and DESIGN.md gives
+       * both the 70rem container. `max-w-media` here set the h1 80px to the left
+       * of every following section's heading at 1440.
+       */}
+      <div className="mx-auto grid max-w-content gap-y-4 px-content lg:grid-cols-12 lg:gap-x-8 lg:gap-y-0">
         {/*
          * The label captions the shot: on lg+ below the specimen, below lg it is the
          * eyebrow. `contents` lets the shot become a grid item of its own on a phone,

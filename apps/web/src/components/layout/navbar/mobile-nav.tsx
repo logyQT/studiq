@@ -11,13 +11,14 @@ import {
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { FOCUS_RING, HEADER_ICON } from '@/components/layout/navbar/chrome';
+import { HEADER_ICON } from '@/components/layout/navbar/chrome';
 import {
   PANEL_LIST,
   PANEL_ROW,
   PANEL_ROW_ARROW,
   PANEL_SHEET,
 } from '@/components/layout/navbar/panel-rows';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { LanguageSwitcher } from '@/components/shared/language-switcher/language-switcher';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
 import { cn } from '@/lib/utils';
@@ -56,12 +57,6 @@ const BAR_OPEN_DOWN =
   '-translate-y-[7px] -rotate-45 motion-reduce:translate-y-0 motion-reduce:rotate-0';
 
 const PANEL_ID = 'mobile-nav-panel';
-
-/** `signal` fill / `ink` text: the menu's one primary action (DESIGN §Dosage). */
-const CTA_PRIMARY = cn(
-  'inline-flex h-12 items-center justify-center rounded-control bg-signal px-6 text-base font-semibold text-signal-foreground transition-colors hover:bg-signal/90',
-  FOCUS_RING,
-);
 
 /**
  * The phone menu is a panel under the header, never a replacement for it.
@@ -157,9 +152,9 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
 
         {isLoggedIn ? null : (
           <div className="shrink-0 border-t border-input px-4 py-6">
-            <Link href="/register" onClick={close} className={cn('w-full', CTA_PRIMARY)}>
+            <CtaButton href="/register" size="lg" fullWidth onClick={close}>
               {t('register')}
-            </Link>
+            </CtaButton>
           </div>
         )}
 
@@ -168,7 +163,7 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
             each control exists exactly once. It owns its top edge; the list above
             does not also draw one, so the boundary is a single hairline. */}
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-input px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&>button]:h-11">
-          <LanguageSwitcher />
+          <LanguageSwitcher touch />
           <ThemeSwitch size="lg" />
         </div>
       </SheetContent>

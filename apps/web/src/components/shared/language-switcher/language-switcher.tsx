@@ -11,6 +11,15 @@ import { PREFERENCE_GEOMETRY, TRIGGER_CHROME } from '@/components/shared/prefere
 import { useLocaleSwitcher } from '@/hooks/use-locale-switcher';
 import { cn } from '@/lib/utils';
 
+interface LanguageSwitcherProps {
+  /**
+   * The control is mounted on a touch surface wider than `useIsMobile`'s 768:
+   * the header's drawer lives below `lg`, so between 768 and 1023 width alone
+   * would give it the 32px desktop select inside a 44px preference row.
+   */
+  touch?: boolean;
+}
+
 /**
  * Footer surface of the language switcher (#634): a labelled outline button
  * (flag + endonym + chevron) that opens the shared panel upwards. The visible
@@ -20,7 +29,7 @@ import { cn } from '@/lib/utils';
  * control (outline frame, paper fill, no shadow), and its chrome is shared with
  * the desktop select through `TRIGGER_CHROME`.
  */
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ touch = false }: LanguageSwitcherProps) {
   const t = useTranslations('LanguageSwitcher');
   const { locale, option } = useLocaleSwitcher();
   const [open, setOpen] = useState(false);
@@ -28,7 +37,7 @@ export function LanguageSwitcher() {
 
   // Desktop: a plain select (no search). Phones: the same list, opened as a
   // popover of 48px rows — no search field, so nothing summons the keyboard.
-  if (!isMobile) return <LanguageSelect variant="outline" />;
+  if (!isMobile && !touch) return <LanguageSelect variant="outline" />;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

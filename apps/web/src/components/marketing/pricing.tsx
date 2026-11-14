@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { SectionHeader } from '@/components/marketing/ui/section-header';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useApiQuery } from '@/hooks/use-api';
 import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
 import { cn } from '@/lib/utils';
@@ -122,7 +123,10 @@ export function Pricing() {
           <div className="md:col-span-4 md:justify-self-end md:pb-1">
             <Link
               href="/pricing"
-              className="group -my-3 inline-flex min-h-11 items-center gap-2 rounded-control py-3 text-sm font-semibold text-primary transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none md:my-0 md:min-h-0 md:py-0"
+              className={cn(
+                'group -my-3 inline-flex min-h-11 items-center gap-2 rounded-control py-3 text-sm font-semibold text-primary transition-colors hover:underline md:my-0 md:min-h-0 md:py-0',
+                FOCUS_RING,
+              )}
             >
               {t('pricing_cta')}
               <ArrowRight
@@ -231,7 +235,10 @@ export function Pricing() {
                   ) : (
                     <Link
                       href={plan.href}
-                      className="group inline-flex min-h-11 items-center gap-2 rounded-control text-sm font-semibold text-primary transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+                      className={cn(
+                        'group inline-flex min-h-11 items-center gap-2 rounded-control text-sm font-semibold text-primary transition-colors hover:underline',
+                        FOCUS_RING,
+                      )}
                     >
                       {plan.cta}
                       <ArrowRight
@@ -257,7 +264,10 @@ export function Pricing() {
           <p className="mt-6 text-sm">
             <Link
               href="/pricing"
-              className="inline-flex items-center gap-1.5 rounded-control font-semibold text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-control font-semibold text-primary underline-offset-4 hover:underline',
+                FOCUS_RING,
+              )}
             >
               {t('pricing_unavailable')}
               <ArrowRight aria-hidden="true" className="size-4" />

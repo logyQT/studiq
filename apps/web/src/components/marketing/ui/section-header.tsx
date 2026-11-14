@@ -9,21 +9,11 @@ interface SectionHeaderProps {
    * claim its own fact, where a run-on lede buries two of them.
    */
   points?: readonly string[];
-  /** Marketing defaults to left; one centered band per page is the ceiling. */
-  align?: 'left' | 'center';
 }
 
-export function SectionHeader({
-  eyebrow,
-  title,
-  lede,
-  points,
-  align = 'left',
-}: SectionHeaderProps) {
-  const centered = align === 'center';
-
+export function SectionHeader({ eyebrow, title, lede, points }: SectionHeaderProps) {
   return (
-    <header className={centered ? 'max-w-2xl text-center mx-auto' : 'max-w-2xl'}>
+    <header className="max-w-2xl">
       {eyebrow ? (
         <p className="font-mono text-xs uppercase tracking-[0.08em] text-primary">{eyebrow}</p>
       ) : null}
