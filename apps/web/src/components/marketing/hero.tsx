@@ -9,7 +9,7 @@ export function Hero() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section className="relative overflow-hidden py-24 sm:py-36">
+    <section id="hero" className="relative overflow-hidden py-24 sm:py-36">
       <div className="absolute inset-0 -z-10 bg-gradient-to-br from-violet-500/10 via-primary/5 to-cyan-500/10 dark:from-violet-500/5 dark:via-primary/3 dark:to-cyan-500/5" />
       <div className="absolute top-1/3 left-1/4 -z-10 size-80 rounded-full bg-violet-500/20 blur-3xl animate-pulse" />
       <div className="absolute bottom-1/4 right-1/4 -z-10 size-96 rounded-full bg-cyan-500/15 blur-3xl animate-pulse [animation-delay:1s]" />
