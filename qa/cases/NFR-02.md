@@ -97,7 +97,7 @@ The suite version uses the case's own tenant and never the legacy accounts.
   „Upgrade, Account, Billing, Theme, Logout”).
 - Public landing page: the footer „Language” button switches the hero
   („Tylko to, co musisz umieć.” ↔ „Learn Smarter, Not Harder”) and footer links
-  („Funkcje / Cennik / Kontakt / Polityka Prywatności / Regulamin” ↔
+  („Funkcje / Cennik / Kontakt / Polityka prywatności / Regulamin” ↔
   „Features / Pricing / Contact / Privacy Policy / Terms of Service”). This toggle uses
   `router.refresh()`, so the URL stays `/` and the document is not reloaded; the active
   language is marked in bold instead of ✓ (the ✓ is the user-menu indicator).

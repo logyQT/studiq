@@ -61,7 +61,7 @@ context (empty cookie jar).
     which still satisfies the case (it requires the fields, not their values).
 - Public shell is present and in Polish: header Funkcje `/features`, Cennik
   `/pricing`, Logowanie `/login`, Rejestracja `/register`; footer columns
-  Produkt / Firma / Prawne with Kontakt `/contact`, Polityka Prywatności
+  Produkt / Firma / Prawne with Kontakt `/contact`, Polityka prywatności
   `/privacy`, Regulamin `/terms`.
 - No console errors, uncaught exceptions or HTTP responses ≥ 400; no raw
   translation keys, `undefined` or `NaN` in the rendered text.
