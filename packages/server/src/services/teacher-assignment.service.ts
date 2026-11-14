@@ -1,13 +1,16 @@
 import type { RequestContext } from '@studiq/authz';
 import {
   ASSIGNMENT_QUESTION_COLUMNS,
+  readAssignmentSnapshotKeys,
+  readAssignmentSnapshots,
+  readAttemptQuestions,
+  snapshotFromJson,
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
-import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
@@ -201,20 +204,36 @@ export class TeacherAssignmentService {
       if (assignment.organization_id !== ctx.activeOrgId) return failure('FORBIDDEN');
     }
 
-    // The assignment owner (or an org manager) renders the key on the edit, preview and print
-    // pages, so the key is read with the service role for exactly the questions of this
-    // assignment — the ids come from the row just proven visible, never from the request.
-    const questions = dbRows(assignment.assignment_questions)
-      .map((row) => dbNested(row.question))
-      .filter((question): question is NonNullable<typeof question> => question !== null);
-    const keys = await readQuestionKeys(questions.map((question) => question.id));
-    const assignmentQuestions = dbRows(assignment.assignment_questions).map((row) => {
-      const question = dbNested(row.question);
-      return {
-        ...row,
-        question: question ? withAnswerKey(question, keys.get(question.id)) : question,
-      };
-    });
+    const rows = dbRows(assignment.assignment_questions);
+    // A published assessment serves its frozen snapshot (R11); draft is the live composer.
+    const isPublished = assignment.status !== 'draft';
+
+    let assignmentQuestions;
+    if (isPublished) {
+      const snapshots = await readAssignmentSnapshots(supabase, id);
+      if (isFailure(snapshots)) return snapshots;
+      const keys = await readAssignmentSnapshotKeys(id);
+      assignmentQuestions = rows.map((row) => {
+        const frozen = row.question_id ? snapshots.data.get(row.question_id) : undefined;
+        return {
+          ...row,
+          question: frozen ? withAnswerKey(frozen, keys.get(frozen.id)) : null,
+        };
+      });
+    } else {
+      const live = rows.flatMap((row) => {
+        const question = dbNested(row.question);
+        return question ? [question] : [];
+      });
+      const keys = await readQuestionKeys(live.map((question) => question.id));
+      assignmentQuestions = rows.map((row) => {
+        const question = dbNested(row.question);
+        return {
+          ...row,
+          question: question ? withAnswerKey(question, keys.get(question.id)) : null,
+        };
+      });
+    }
 
     return success({ ...assignment, assignment_questions: assignmentQuestions });
   }
@@ -602,7 +621,7 @@ export class TeacherAssignmentService {
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
       .select(
-        '*, quiz_attempt_questions(*, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side))), quiz_answers:student_answers(*), assignment_answer_images(*)',
+        '*, quiz_attempt_questions(*), quiz_answers:student_answers(*), assignment_answer_images(*)',
       )
       .eq('id', attemptId)
       .eq('assignment_id', id)
@@ -614,21 +633,20 @@ export class TeacherAssignmentService {
     const maxPoints = await this.loadAssignmentPoints(supabase, id);
     if (isFailure(maxPoints)) return maxPoints;
 
-    // Grading and the per-student results page render the key, so it is added from the
-    // service role for this attempt's own questions (the assignment ownership, checked above,
-    // is the authorization for the read).
-    const questions = dbRows(attempt.quiz_attempt_questions)
-      .map((row) => dbNested(row.question))
-      .filter((question): question is NonNullable<typeof question> => question !== null);
-    const keys = await readQuestionKeys(questions.map((question) => question.id));
+    // Grading renders the published item and its key, never the edited live row.
+    const snapshots = await readAssignmentSnapshots(supabase, id);
+    if (isFailure(snapshots)) return snapshots;
+    const keys = await readAssignmentSnapshotKeys(id);
 
     return success({
       ...attempt,
       quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map((q) => {
-        const question = dbNested(q.question);
+        const frozen = q.question_id ? snapshots.data.get(q.question_id) : undefined;
         return {
           ...q,
-          question: question ? withAnswerKey(question, keys.get(question.id)) : question,
+          question: frozen
+            ? withAnswerKey(frozen, q.question_id ? keys.get(q.question_id) : undefined)
+            : null,
           max_points: maxPoints.data.get(q.question_id) ?? null,
         };
       }),
@@ -1016,33 +1034,28 @@ export class TeacherAssignmentService {
       return failure('RATE_LIMITED');
     }
 
-    const questions = dbRows(assignment.assignment_questions);
-    if (questions.length === 0) return failure('NOT_FOUND');
+    const links = dbRows(assignment.assignment_questions).filter((link) => link.question_id);
+    if (links.length === 0) return failure('NOT_FOUND');
 
-    let orderedQuestions = [...questions];
-    if (assignment.shuffle_questions) {
-      orderedQuestions = orderedQuestions.toSorted(() => Math.random() - 0.5);
-    }
+    const orderedQuestions = assignment.shuffle_questions
+      ? [...links].toSorted(() => Math.random() - 0.5)
+      : [...links];
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
     // questions change later (same reasoning as total_questions).
     const totalPoints = orderedQuestions.reduce((sum, q) => sum + q.points, 0);
 
-    // `assignment_questions.question_id` is nullable (`ON DELETE SET NULL`); a row
-    // whose question is gone has nothing to load, so it is left out of the read.
-    const questionIds = orderedQuestions.flatMap((q) => (q.question_id ? [q.question_id] : []));
-
-    const { data: fullQuestions, error: questionsError } = await supabase
-      .from('questions')
-      .select(QUESTION_PAYLOAD_SELECT)
-      .in('id', questionIds);
-
-    if (questionsError) return toDbFailure(questionsError);
+    // The published item, never the live row (R11); a missing snapshot is a corrupt state.
+    const payloads = orderedQuestions.flatMap((link) => {
+      const snapshot = snapshotFromJson(link.snapshot);
+      return snapshot ? [{ ...snapshot, snapshot_version: link.snapshot_version }] : [];
+    });
+    if (payloads.length !== orderedQuestions.length) return failure('INTERNAL_SERVER');
 
     if (assignment.shuffle_answers) {
-      for (const q of dbRows(fullQuestions)) {
-        q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
+      for (const question of payloads) {
+        question.question_answers = question.question_answers.toSorted(() => Math.random() - 0.5);
       }
     }
 
@@ -1091,7 +1104,7 @@ export class TeacherAssignmentService {
 
     return success({
       ...toAttemptPayload(attempt),
-      questions: dbRows(fullQuestions),
+      questions: payloads,
     });
   }
 
@@ -1107,19 +1120,11 @@ export class TeacherAssignmentService {
     supabase: SupabaseClient<Database>,
     attempt: QuizAttemptRow,
   ): Promise<ServiceResult<unknown>> {
-    const { data: rows, error } = await supabase
-      .from('quiz_attempt_questions')
-      .select(`order_index, question_id, questions(${QUESTION_PAYLOAD_SELECT})`)
-      .eq('attempt_id', attempt.id)
-      .order('order_index', { ascending: true });
+    // The published snapshot for an assignment attempt, the live item for practice.
+    const questions = await readAttemptQuestions(supabase, attempt);
+    if (isFailure(questions)) return questions;
 
-    if (error) return toDbFailure(error);
-
-    const questions = dbRows(rows)
-      .map((row) => row.questions)
-      .filter(Boolean);
-
-    return success({ ...toAttemptPayload(attempt), questions });
+    return success({ ...toAttemptPayload(attempt), questions: questions.data });
   }
 
   /**

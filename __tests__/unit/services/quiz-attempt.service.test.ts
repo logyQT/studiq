@@ -26,6 +26,19 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
   }),
 }));
 
+// An assignment attempt is graded against the frozen published key (#1171); the same fixture
+// answers it so a test describes the correct option ids once.
+vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/assignment-snapshot')>()),
+  readAssignmentSnapshotKeys: vi.fn((assignmentId: string) => {
+    const keys = new Map<string, { explanation: string | null; correctOptionIds: string[] }>();
+    for (const [id, ids] of questionKeys) {
+      keys.set(id, { explanation: `explanation-${id}-${assignmentId}`, correctOptionIds: ids });
+    }
+    return Promise.resolve(keys);
+  }),
+}));
+
 type QueryResult = { data: unknown; error: unknown };
 type QueryChain = {
   select: Mock<(...args: unknown[]) => QueryChain>;
@@ -234,6 +247,26 @@ const attemptQuestionsQb = (...questions: AttemptQuestionFixture[]) =>
       questions: {
         type,
         question_options: options.map((optionId) => ({ id: optionId })),
+      },
+    })),
+  );
+
+/** Frozen snapshot rows as `readAssignmentSnapshots` reads them (#1171). */
+const assignmentSnapshotQb = (...questions: AttemptQuestionFixture[]) =>
+  qb(
+    questions.map(({ id, type = 'mcq', options = [] }) => ({
+      question_id: id,
+      snapshot: {
+        id,
+        content: `content-${id}`,
+        type,
+        question_answers: options.map((optionId, index) => ({
+          id: optionId,
+          content: `option-${optionId}`,
+          order_index: index,
+          match_group: null,
+          match_side: null,
+        })),
       },
     })),
   );
@@ -665,7 +698,8 @@ describe('QuizAttemptService', () => {
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }]));
-      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-open' }]));
+      mock.from.mockReturnValueOnce(assignmentSnapshotQb({ id: 'q-open', type: 'open' }));
       mock.from.mockReturnValueOnce(
         qb([
           {
@@ -740,7 +774,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(
+        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
+      );
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.getById('a-1', ctx);
@@ -867,7 +904,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(
+        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true })); // teacher_assignments
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
@@ -893,7 +933,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(
+        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: false }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
@@ -918,7 +961,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(
+        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
+      );
       mock.from.mockReturnValueOnce(qb(null));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
@@ -942,7 +988,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(
+        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.rpc.mockResolvedValueOnce(rpcCompleted());
@@ -971,7 +1020,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(attemptQuestionsQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(
+        assignmentSnapshotQb({ id: 'q-1', options: ['ans-1', 'ans-2'] }),
+      );
       mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 

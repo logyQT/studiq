@@ -15,7 +15,11 @@ CREATE TABLE public.student_answers (
   attempt_id           uuid REFERENCES public.quiz_attempts(id) ON DELETE CASCADE,
   question_id          uuid REFERENCES public.questions(id) ON DELETE SET NULL,
   question_type        question_type,
-  selected_option_id   uuid REFERENCES public.question_options(id) ON DELETE SET NULL,
+  -- Deliberately not a foreign key (#1171): a published assessment's option ids come from its
+  -- frozen snapshot, and an author replacing the live options must not null or block an answer
+  -- taken against the published version. The submit gate validates the option against the
+  -- attempt's own snapshot.
+  selected_option_id   uuid,
   is_correct           boolean NOT NULL DEFAULT false,
   points_earned        numeric,
   ai_graded            boolean NOT NULL DEFAULT false,
