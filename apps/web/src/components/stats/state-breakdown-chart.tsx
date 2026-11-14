@@ -10,15 +10,16 @@ interface StateBreakdownChartProps {
 }
 
 /*
- * The never-practised slice is the least salient series, so it takes the one
- * ramp step the other four states do not already carry.
+ * Each state owns one ramp step. Leeched takes `--chart-6`, the ramp's only red:
+ * the state that needs attention must read as a problem, and `--destructive` is a
+ * UI semantic (errors, danger actions) rather than a data-series colour.
  */
 const COLORS = {
   neverPracticed: 'var(--chart-2)',
   learning: 'var(--chart-1)',
   review: 'var(--chart-5)',
   relearning: 'var(--chart-3)',
-  leeched: 'var(--chart-4)',
+  leeched: 'var(--chart-6)',
 };
 
 /** Recharts legend label renderer — hoisted so the reference stays stable across renders. */

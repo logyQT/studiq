@@ -71,16 +71,19 @@
   --input: oklch(0.630 0.020 264);
 
   /*
-   * Charts — categorical, equal weight on paper (>= 3:1 each). Nothing reads
-   * them yet: the stats charts still carry their colours as literals (DESIGN
-   * §Known residue moves them here). Five steps, because the flashcard-state
-   * breakdown has five states and a shorter ramp cannot colour it.
+   * Charts — categorical, equal weight on paper (>= 3:1 each). Six steps: five
+   * states plus `--chart-6`, the red that lets the leeched state read as a
+   * problem without borrowing `--destructive` (a UI semantic, not a series
+   * colour). The sixth is `--destructive`'s hue at this ramp's lightness, so it
+   * stays a chart step rather than a second status colour. `--chart-4` (magenta)
+   * stays declared though no series reads it — it is part of the palette.
    */
   --chart-1: oklch(0.455 0.215 264);
   --chart-2: oklch(0.410 0.070 195);
   --chart-3: oklch(0.425 0.104 55);
   --chart-4: oklch(0.430 0.125 330);
   --chart-5: oklch(0.390 0.088 130);
+  --chart-6: oklch(0.470 0.190 27.325);
 
   /* Sidebar — the paper card surface */
   --sidebar: oklch(0.985 0.006 85);
@@ -150,12 +153,16 @@
   --border: oklch(0.300 0.025 264);
   --input: oklch(0.520 0.025 264);
 
-  /* Charts — lightened so the same series stay >= 4:1 on the dark card */
+  /* Charts — lightened so the same series stay >= 4:1 on the dark card.
+     `--chart-6` is `--destructive`'s hue here too: 6.6:1 on the card, and
+     8.5 OKLab from the dark destructive token, so it reads as a ramp step
+     rather than as a second danger colour. */
   --chart-1: oklch(0.680 0.160 264);
   --chart-2: oklch(0.720 0.085 195);
   --chart-3: oklch(0.760 0.115 70);
   --chart-4: oklch(0.720 0.105 335);
   --chart-5: oklch(0.740 0.090 135);
+  --chart-6: oklch(0.720 0.170 27.325);
 
   /* Sidebar — a step darker than the page so the inset panel reads */
   --sidebar: oklch(0.190 0.030 264);
@@ -208,6 +215,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
 
   /* Sidebar colors */
   --color-sidebar: var(--sidebar);

@@ -439,7 +439,8 @@ nothing until they are declared):
 - `--radius-control`, `--radius-panel`
 - `--font-display`
 - `--default-transition-duration`, `--default-transition-timing-function`
-- `--chart-1` … `--chart-5`
+- `--chart-1` … `--chart-6` — six categorical steps; the sixth is the leeched red, because
+  `--destructive` is a UI semantic and cannot double as a data-series colour.
 
 **Do not map `--signal` onto `--accent`.** `--accent` and its foreground appear in 15 of the
 60 kit components and in 42 files app-wide; pointing it at the accent paints every menu row
