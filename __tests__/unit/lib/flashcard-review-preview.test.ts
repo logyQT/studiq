@@ -2,6 +2,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { FLASHCARD_REVIEW_FIXTURES } from '@/components/marketing/previews/flashcard-review-fixtures';
 import { FlashcardReviewPreview } from '@/components/marketing/previews/flashcard-review-preview';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
@@ -57,5 +58,17 @@ describe('FlashcardReviewPreview', () => {
     expect(html).toContain('Again');
     expect(html).not.toContain('Z kim się dziś uczysz?');
     expect(html).not.toContain('Nie pamiętam');
+  });
+
+  it('gives every fixture its own card identity', () => {
+    // Rating advances the card key, and that remount is what keeps the incoming
+    // answer hidden: the freshly mounted card starts its answer face at zero
+    // opacity. Two fixtures sharing an id would swap their faces in place
+    // instead, fading the incoming answer in on a face that is still visible.
+    for (const locale of ['pl', 'en'] as const) {
+      const ids = FLASHCARD_REVIEW_FIXTURES[locale].map((fixture) => fixture.id);
+
+      expect(new Set(ids).size, `${locale} fixture ids`).toBe(ids.length);
+    }
   });
 });

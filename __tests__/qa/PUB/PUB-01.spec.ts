@@ -136,4 +136,35 @@ test.describe('PUB-01 — landing page for an anonymous visitor', () => {
 
     errors.expectClean();
   });
+
+  /**
+   * The preview is the product's own review card, so rating it advances it: the
+   * rated card leaves the DOM and the next fixture mounts on its question side.
+   * Swapping the fixture text in place instead would animate the incoming card's
+   * answer face from the outgoing card's opacity, showing an answer before its
+   * question. Nothing here reads copy, so a translation cannot break the test.
+   */
+  test('rating replaces the preview card instead of swapping its text', async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const card = page.locator('#features fieldset');
+    await expect(card).toHaveCount(1);
+    const rated = await card.elementHandle();
+
+    await card.click();
+    // 3 is „Dobrze” in every locale — the shortcut attribute is the stable handle.
+    await page.locator('#features [aria-keyshortcuts="3"]').click();
+
+    // `AnimatePresence mode="wait"` finishes the outgoing card's exit before the
+    // next one mounts; either way the rated element must not survive as the card.
+    await expect
+      .poll(() => rated.evaluate((element) => element.isConnected), { timeout: 3000 })
+      .toBe(false);
+    await expect(card).toHaveCount(1);
+    // The next card starts on its question side, so its ratings are inert again.
+    await expect(page.locator('#features [aria-keyshortcuts="3"]')).toBeDisabled();
+
+    errors.expectClean();
+  });
 });
