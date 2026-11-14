@@ -509,6 +509,7 @@ describe('TeacherAssignmentService', () => {
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
         .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValue(chain(null));
 
@@ -524,6 +525,7 @@ describe('TeacherAssignmentService', () => {
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
+        .mockReturnValueOnce(chain([{ id: 'q-2' }]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
         .mockReturnValue(chain(null));
 

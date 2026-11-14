@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -321,14 +322,26 @@ export class QuizTeacherService {
 
     if (assignError) return toDbFailure(assignError);
 
-    // 3. Copy questions from quiz to assignment
-    const questions = dbRows(owned.data.quiz_questions).map(
-      (q: { question_id: string; order_index: number; points: number }) => ({
-        assignment_id: assignment.id,
-        question_id: q.question_id,
-        order_index: q.order_index,
-        points: q.points,
-      }),
+    // 3. Copy questions from quiz to assignment. Composing an assessment is a new binding, so
+    // retired and deleted items are not eligible (#1171).
+    const open = await openQuestionIds(
+      supabase,
+      dbRows(owned.data.quiz_questions).flatMap((q) => (q.question_id ? [q.question_id] : [])),
+    );
+    if (!open.success) return open;
+
+    const questions = dbRows(owned.data.quiz_questions).flatMap(
+      (q: { question_id: string; order_index: number; points: number }) =>
+        open.data.has(q.question_id)
+          ? [
+              {
+                assignment_id: assignment.id,
+                question_id: q.question_id,
+                order_index: q.order_index,
+                points: q.points,
+              },
+            ]
+          : [],
     );
 
     if (questions.length > 0) {

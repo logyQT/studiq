@@ -28,6 +28,9 @@ import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
+
+/** `.in()` values travel in the request URL; ids are checked in chunks (matching the rest). */
+const ID_CHUNK = 200;
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 
 export class QuestionBankService {
@@ -240,6 +243,10 @@ export class QuestionBankService {
     const loaded = await this.loadForWrite(supabase, id, ctx, Permission.QUESTION_BANK_DELETE);
     if (isFailure(loaded)) return loaded;
 
+    const bound = await this.hasBoundAssessmentItems(supabase, [id]);
+    if (isFailure(bound)) return bound;
+    if (bound.data) return failure('CONFLICT');
+
     const { error } = await supabase.from('question_banks').delete().eq('id', id);
     if (error) return toDbFailure(error);
 
@@ -291,10 +298,62 @@ export class QuestionBankService {
       await check(ctx, Permission.QUESTION_BANK_DELETE, bank);
     }
 
+    const bound = await this.hasBoundAssessmentItems(
+      supabase,
+      ownedBanks.map((bank) => bank.id),
+    );
+    if (isFailure(bound)) return bound;
+    if (bound.data) return failure('CONFLICT');
+
     const { error } = await supabase.from('question_banks').delete().in('id', data.ids);
     if (error) return toDbFailure(error);
 
     return success({ deleted: data.ids.length });
+  }
+
+  /**
+   * Whether any item in these banks is bound to a non-draft assessment. Deleting the bank
+   * cascades to `questions` and then to `assignment_questions`, which would destroy the frozen
+   * snapshot a published assessment serves (#1171) — so the delete is refused instead.
+   */
+  private async hasBoundAssessmentItems(
+    supabase: SupabaseClient<Database>,
+    bankIds: readonly string[],
+  ): Promise<ServiceResult<boolean>> {
+    if (bankIds.length === 0) return success(false);
+
+    const { data: questions, error } = await supabase
+      .from('questions')
+      .select('id')
+      .in('bank_id', bankIds);
+    if (error) return toDbFailure(error);
+
+    const questionIds = dbRows(questions).map((question) => question.id);
+    const assignmentIds = new Set<string>();
+    for (let i = 0; i < questionIds.length; i += ID_CHUNK) {
+      const { data: links, error: linkError } = await supabase
+        .from('assignment_questions')
+        .select('assignment_id')
+        .in('question_id', questionIds.slice(i, i + ID_CHUNK));
+      if (linkError) return toDbFailure(linkError);
+      for (const link of dbRows(links)) {
+        if (link.assignment_id) assignmentIds.add(link.assignment_id);
+      }
+    }
+    if (assignmentIds.size === 0) return success(false);
+
+    const ids = [...assignmentIds];
+    for (let i = 0; i < ids.length; i += ID_CHUNK) {
+      const { data: live, error: liveError } = await supabase
+        .from('teacher_assignments')
+        .select('id')
+        .in('id', ids.slice(i, i + ID_CHUNK))
+        .neq('status', 'draft')
+        .limit(1);
+      if (liveError) return toDbFailure(liveError);
+      if (dbRows(live).length > 0) return success(true);
+    }
+    return success(false);
   }
 
   /**

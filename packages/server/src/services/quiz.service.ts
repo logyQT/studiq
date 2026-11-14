@@ -41,7 +41,7 @@ export class QuizService {
 
     await limitsResolver.checkLimit(ctx, 'max_quiz_attempts_per_day', attemptsToday ?? 0);
 
-    let query = supabase.from('questions').select(QUESTION_PAYLOAD_SELECT);
+    let query = supabase.from('questions').select(QUESTION_PAYLOAD_SELECT).neq('status', 'deleted');
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);

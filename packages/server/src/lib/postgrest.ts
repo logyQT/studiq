@@ -8,6 +8,7 @@
 export interface FilterableBuilder<T> {
   or(filters: string): T;
   eq(column: string, value: string): T;
+  neq(column: string, value: string): T;
   not(column: string, operator: string, value: string): T;
   in(column: string, values: readonly string[]): T;
 }
