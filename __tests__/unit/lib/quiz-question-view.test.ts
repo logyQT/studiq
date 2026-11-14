@@ -1,5 +1,5 @@
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
@@ -25,7 +25,7 @@ function typeLabelFor(type: string) {
   return t('type_mcq');
 }
 
-function renderFixture(subject: QuizSubject) {
+function renderFixture(subject: QuizSubject, result?: ReactNode) {
   const question = QUIZ_QUESTION_FIXTURES.pl[subject];
 
   return renderToStaticMarkup(
@@ -40,6 +40,7 @@ function renderFixture(subject: QuizSubject) {
         submitting: t('submitting'),
         answerPlaceholder: t('answer_placeholder'),
       },
+      result,
     }),
   );
 }
@@ -116,6 +117,18 @@ describe('QuizQuestionView', () => {
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('aria-valuenow="20"');
     expect(html).toContain('aria-valuemax="100"');
+  });
+
+  it('replaces the whole card body with the result and keeps the frame around it', () => {
+    const question = QUIZ_QUESTION_FIXTURES.pl.biology;
+    const html = renderFixture('biology', createElement('p', null, 'Wynik'));
+
+    expect(html).toContain('Wynik');
+    expect(html).not.toContain(question.stem);
+    expect(html).not.toContain(question.options[0].label);
+    // The counter and progress stay put, so the card cannot move on the swap.
+    expect(html).toContain('Pytanie 1 z 5');
+    expect(html).toContain('role="progressbar"');
   });
 });
 
