@@ -10,19 +10,19 @@ const steps = [
 ] as const;
 
 /*
- * A sequence, not three columns of equal weight. The steps sit on one continuous
- * hairline rail: the border-top of three adjoining cells with no gutter between
- * them, each marked by a cobalt tick, so the eye reads 1 -> 2 -> 3 left to right
- * instead of scanning a row of cards. The cells keep the full content width while
- * the heading stays in the narrow left column, which is the asymmetry.
+ * A sequence, not three columns of equal weight.
  *
- * Below md the same rail becomes a horizontal snap row: the three steps are one
- * gesture long instead of three more paragraphs stacked down the page, and the
- * next cell's edge stays in view so the sequence is obviously scrollable. The
- * list itself is the scroll region, so it takes focus and arrow keys work; no
- * cell is a tab stop and nothing inside it traps focus.
+ * From md up the steps sit on one continuous hairline rail — the border-top of
+ * three adjoining cells with no gutter, each marked by a cobalt tick — so the eye
+ * reads 1 -> 2 -> 3 across. The cells keep the full content width while the
+ * heading stays in the narrow left column, which is the asymmetry.
+ *
+ * Below md the sequence turns vertical instead of horizontal: the same rail
+ * becomes a left spine and the three steps hang off it in order. A horizontal
+ * snap row was tried first and rejected — at 390px the next cell is cut mid-word,
+ * which reads as a broken layout rather than an affordance, and a step you cannot
+ * see is not a step.
  */
-/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- the rail is a scroll region, not a control: focus is what makes arrow-key scrolling reach it, and a button/region role would replace the list announcement the sequence depends on. */
 export function HowItWorks() {
   const t = useTranslations('LandingPage');
 
@@ -31,16 +31,16 @@ export function HowItWorks() {
       <div className="mx-auto max-w-content px-content">
         <SectionHeader title={t('how_it_works_title')} lede={t('how_it_works_desc')} />
 
-        <ol
-          tabIndex={0}
-          className="-mx-4 mt-10 flex snap-x snap-mandatory gap-4 scroll-px-4 overflow-x-auto px-4 pb-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none sm:-mx-6 sm:scroll-px-6 sm:px-6 md:mx-0 md:mt-16 md:grid md:grid-cols-3 md:gap-0 md:overflow-visible md:px-0 md:pb-0"
-        >
+        <ol className="mt-10 md:mt-16 md:grid md:grid-cols-3 md:gap-0">
           {steps.map(({ titleKey, descKey }, index) => (
             <li
               key={titleKey}
-              className="relative w-4/5 shrink-0 snap-start border-t border-border pt-6 pb-4 md:w-auto md:pr-10 md:pb-0"
+              className="relative border-l border-border pt-1 pb-8 pl-6 last:pb-0 md:border-t md:border-l-0 md:pt-6 md:pr-10 md:pb-0 md:pl-0"
             >
-              <span aria-hidden="true" className="absolute top-0 left-0 h-3 w-px bg-primary" />
+              <span
+                aria-hidden="true"
+                className="absolute top-1 -left-px h-3 w-0.5 bg-primary md:top-0 md:left-0 md:w-px"
+              />
               <p className="font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase">
                 {t('step_label', { number: index + 1 })}
               </p>
