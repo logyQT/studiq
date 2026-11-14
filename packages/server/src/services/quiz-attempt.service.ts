@@ -4,6 +4,7 @@ import {
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
   readAttemptQuestions,
+  readReviewItems,
 } from '@studiq/server/lib/assignment-snapshot';
 import { ensureClosed, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
 import {
@@ -11,6 +12,7 @@ import {
   resultsHidden,
   reviewState,
 } from '@studiq/server/lib/assignment-visibility';
+import { recordExposure, recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
@@ -359,14 +361,37 @@ export class QuizAttemptService {
 
     // A finished attempt renders the key (service role): the published key for an assignment,
     // the live items for practice. A running attempt never gets it (#331).
-    const keys = isCompleted
-      ? attempt.assignment_id
-        ? await readAssignmentSnapshotKeys(attempt.assignment_id)
-        : await readQuestionKeys(questionRows.map((question) => question.id))
-      : null;
-    const questions = keys
-      ? questionRows.map((question) => withAnswerKey(question, keys.get(question.id)))
-      : questionRows;
+    // A finished attempt renders the key. An assignment renders the published key of the items the
+    // review is allowed to show — a held-back item is absent here too (R10) — and practice the live
+    // items. A running attempt never gets it (#331). Every render writes the exposure event (R8).
+    let questions = questionRows;
+    if (isCompleted) {
+      if (attempt.assignment_id) {
+        const reviewItems = await readReviewItems(attempt.assignment_id);
+        if (isFailure(reviewItems)) return reviewItems;
+        const byItem = new Map(reviewItems.data.map((item) => [item.questionId, item]));
+        questions = questionRows.flatMap((row) => {
+          const item = byItem.get(row.id);
+          return item ? [withAnswerKey(item.snapshot, item.key)] : [];
+        });
+
+        const exposed = await recordReviewExposure({
+          studentId: ctx.userId,
+          assignmentId: attempt.assignment_id,
+          questionIds: questions.map((question) => question.id),
+        });
+        if (isFailure(exposed)) return exposed;
+      } else {
+        const keys = await readQuestionKeys(questionRows.map((question) => question.id));
+        questions = questionRows.map((question) => withAnswerKey(question, keys.get(question.id)));
+
+        const exposed = await recordExposure({
+          studentId: ctx.userId,
+          questionIds: questions.map((question) => question.id),
+        });
+        if (isFailure(exposed)) return exposed;
+      }
+    }
 
     const answerObj: Record<
       string,

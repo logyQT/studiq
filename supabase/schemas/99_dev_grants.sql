@@ -45,6 +45,12 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
 -- Service-role-only billing tables: no PostgREST surface at all. Without this,
 -- `GRANT ALL ON ALL TABLES` above would leave SELECT granted and RLS would
 -- silently return zero rows instead of failing closed.
+-- The exposure ledger is written by the server only; a client insert could burn another
+-- student's items. RLS has no INSERT policy, and the privilege is revoked here after the
+-- blanket GRANT above.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON public.exposure_events FROM authenticated, anon;
+
 REVOKE ALL ON public.billing_customers,
               public.stripe_prices,
               public.stripe_webhook_events
