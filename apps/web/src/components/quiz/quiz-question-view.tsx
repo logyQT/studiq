@@ -8,7 +8,6 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-  Label,
   Progress,
   RadioGroup,
   RadioGroupItem,
@@ -82,7 +81,17 @@ export function QuizQuestionView({
   const progress = question.total > 0 ? (question.position / question.total) * 100 : 0;
 
   return (
-    <>
+    /*
+     * Self-contained spacing: the view used to return a fragment and rely on the
+     * caller's `flex flex-col gap-6`, so any caller without it — the marketing
+     * preview — had the progress bar sitting on the card.
+     *
+     * `flex-1` takes the height the caller reserves, so the footer lands at the
+     * bottom of that box instead of wherever this question's options end. `h-full`
+     * cannot: a percentage height does not resolve against a parent that only sets
+     * `min-height`, which is how the preview reserves its box.
+     */
+    <div className="flex flex-1 flex-col gap-6">
       <div className="flex justify-end">
         <span className="text-sm text-muted-foreground">{labels.questionOf}</span>
       </div>
@@ -91,29 +100,35 @@ export function QuizQuestionView({
         <Progress value={progress} />
       </div>
 
-      <Card>
+      <Card className="flex-1">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Badge variant="outline">{labels.typeLabel}</Badge>
           </div>
           <CardTitle className="mt-3 text-xl">{question.stem}</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1">
           {question.type === 'mcq' && (
             <RadioGroup
               value={question.selectedOptionId ?? ''}
               onValueChange={(optionId) => onSelectOption?.(optionId)}
             >
               {question.options.map((option) => (
-                <div
+                /*
+                 * The row is the label and contains the radio, rather than a
+                 * `<label for>` beside it: the item renders a `button[role=radio]`,
+                 * and a label referencing a button names it without activating it,
+                 * which left the padding and the border dead. Containment uses the
+                 * browser's own activation, so the click target and the accessible
+                 * name are the row itself.
+                 */
+                <label
                   key={option.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 hover:bg-accent/50"
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 select-none hover:bg-accent/50 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50"
                 >
                   <RadioGroupItem value={option.id} id={option.id} />
-                  <Label htmlFor={option.id} className="flex-1 cursor-pointer">
-                    {option.label}
-                  </Label>
-                </div>
+                  <span className="flex-1 text-sm leading-none font-medium">{option.label}</span>
+                </label>
               ))}
             </RadioGroup>
           )}
@@ -155,6 +170,6 @@ export function QuizQuestionView({
           )}
         </CardFooter>
       </Card>
-    </>
+    </div>
   );
 }
