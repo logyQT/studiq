@@ -333,24 +333,35 @@ describe(`Assignment Attempts Integration`, () => {
 
   it('refuses a target outside the assignment organisation and keeps the existing ones (#235)', async () => {
     mockUser(teacher.user);
-    const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
-      { id: assignmentId },
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: [student.user.id, other.id] }),
-      },
-    );
-    const response = await targetsPut(request, { params });
+    // A published run refuses every target change before validation (R20, covered by the publish
+    // gate suite), so the foreign-target rule is exercised on a draft.
+    const service = createServiceClient();
+    await service.from('teacher_assignments').update({ status: 'draft' }).eq('id', assignmentId);
+    try {
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
+        { id: assignmentId },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentIds: [student.user.id, other.id] }),
+        },
+      );
+      const response = await targetsPut(request, { params });
 
-    expect(response.status).toBe(400);
-    const { data: targets } = await createServiceClient()
-      .from('assignment_targets')
-      .select('student_id')
-      .eq('assignment_id', assignmentId)
-      .overrideTypes<{ student_id: string }[], { merge: false }>();
-    expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
+      expect(response.status).toBe(400);
+      const { data: targets } = await service
+        .from('assignment_targets')
+        .select('student_id')
+        .eq('assignment_id', assignmentId)
+        .overrideTypes<{ student_id: string }[], { merge: false }>();
+      expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
+    } finally {
+      await service
+        .from('teacher_assignments')
+        .update({ status: 'published' })
+        .eq('id', assignmentId);
+    }
   });
 
   it('two rapid starts resume one unfinished attempt (#369)', async () => {
