@@ -308,17 +308,16 @@ extraction is product work with a mechanical shape, and it is the price of the r
 shows the product because it _is_ the product, and nothing on it is a frozen copy that can
 drift.
 
-**Rendered at build time, never in the browser.** A preview is a server component: it emits
-static markup during the build and adds no client boundary, no hydration and no runtime
-rendering. Whatever the page's JS budget is today, imagery must not increase it — if a
-component cannot render without a hook, its presentational half is extracted rather than
-shipping JavaScript to draw a picture.
+**Rendered at build time.** A preview is produced by the same render Next already does for
+this route: the markup is in the initial document, so the content paints before any
+JavaScript runs. Hydration attaches behaviour to markup that is already there; it is not
+client-side rendering, and it is not a cost to design around.
 
-Preview mode is therefore **non-interactive by construction**: no Radix controls, no focus
-management, no state. A preview shows one chosen state (an option selected, a card scored) as
-static markup with the correct roles, because a picture of the product does not need to work.
-Needing client primitives to look right is a reason to split the component, not a reason to
-hydrate the page.
+What is worth guarding is the bundle, not the hydration pass: a preview must not add a client
+boundary the marketing page does not already have, and any JavaScript it does pull in is
+measured and reported rather than assumed harmless. Interactivity is allowed when it comes
+from reusing the product's own component — that is the point of re-using it — but the page
+does not grow controls a visitor has no use for.
 
 Frames: **no border, no plate, no shadow.** A rendered component sits directly on paper and is
 separated by space, like the rest of the type system. The plate existed to stop a light

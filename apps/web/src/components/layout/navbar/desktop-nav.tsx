@@ -53,6 +53,8 @@ function countVisibleItems(list: HTMLElement, nav: HTMLElement, total: number): 
 
 export function DesktopNav({ links, isActive }: DesktopNavProps) {
   const t = useTranslations('Navbar');
+  const tDash = useTranslations('DashboardLayout');
+  const label = (key: string, ns?: string) => (ns === 'DashboardLayout' ? tDash(key) : t(key));
   const listRef = useRef<HTMLUListElement>(null);
   const [visibleCount, setVisibleCount] = useState(links.length);
 
@@ -85,7 +87,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
   return (
     <nav className="flex h-16 w-full min-w-0 items-center">
       <ul ref={listRef} className="flex h-full min-w-0 items-center gap-1">
-        {visible.map(({ labelKey, href }) => {
+        {visible.map(({ labelKey, href, namespace }) => {
           const active = isActive(href);
           return (
             <li key={labelKey} className="relative flex h-full items-center">
@@ -99,7 +101,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
                   FOCUS_RING,
                 )}
               >
-                {t(labelKey)}
+                {label(labelKey, namespace)}
               </Link>
               {/* Hangs off the full-height cell, not the link: `-bottom-px` covers
                   the header's hairline instead of stacking a second line under it. */}
@@ -130,7 +132,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-40">
-            {overflow.map(({ labelKey, href }) => {
+            {overflow.map(({ labelKey, href, namespace }) => {
               const active = isActive(href);
               return (
                 <DropdownMenuItem key={labelKey} asChild>
@@ -139,7 +141,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
                     aria-current={active ? 'page' : undefined}
                     className={cn('flex items-center gap-2', active && 'font-semibold')}
                   >
-                    {t(labelKey)}
+                    {label(labelKey, namespace)}
                   </Link>
                 </DropdownMenuItem>
               );
