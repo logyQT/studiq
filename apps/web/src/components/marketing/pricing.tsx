@@ -85,8 +85,8 @@ export function Pricing() {
         t('pricing_university_feature_analytics'),
         t('pricing_university_feature_support'),
       ],
-      cta: t('pricing_contact_cta'),
-      href: '/contact',
+      cta: t('pricing_org_cta'),
+      href: '/pricing/org',
     },
   ];
 
