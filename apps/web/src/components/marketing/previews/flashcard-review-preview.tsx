@@ -21,9 +21,12 @@ const MESSAGES = { pl, en };
  * mechanic rather than a picture of it. Picking a rating only advances the
  * fixture index: nothing is persisted and nothing is scheduled.
  *
- * The card key is constant, so rating a card swaps its content in place instead
- * of playing the session's exit animation; an animated exit is the one way the
- * band's height could move between fixtures.
+ * Rating changes the card key, as the session's row id does: the rated card exits
+ * before the next fixture mounts, so the incoming card starts on its question
+ * side. A constant key would instead animate the faces down from the outgoing
+ * card's opacity while their content already held the next fixture, showing an
+ * answer before its question. The band cannot move either way — the card box is a
+ * fixed height per breakpoint (the wrapper below).
  *
  * Copy is the study session's own, from the page's locale; the fixtures are
  * localised to match, never mixed.
@@ -60,7 +63,7 @@ export function FlashcardReviewPreview() {
      */
     <div className="flex flex-col gap-6 [&_fieldset]:h-48 sm:[&_fieldset]:h-64 md:[&_fieldset]:h-72 lg:[&_fieldset]:h-56">
       <FlashcardReview
-        cardKey="flashcard-preview"
+        cardKey={card.id}
         front={card.front}
         back={card.back}
         isFlipped={isFlipped}

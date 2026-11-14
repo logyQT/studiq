@@ -17,8 +17,9 @@ export interface FlashcardReviewRatingLabels {
 export interface FlashcardReviewProps {
   /**
    * Card identity. A new value animates the outgoing card away and the next one
-   * in. The session passes the card row id; the marketing preview keeps it
-   * constant so rating a fixture cannot move the band.
+   * in. The session passes the card row id; the marketing preview passes the
+   * fixture id, so a rated fixture leaves and the next mounts instead of swapping
+   * content under the faces mid-fade.
    */
   cardKey: string;
   /**
