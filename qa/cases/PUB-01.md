@@ -19,9 +19,9 @@ spec signs nobody in and sends no storage state.
 - tenant key: `tenantKey("qa/cases/PUB-01.md", "PUB-01", "qa-shared")`
 - seed: `bun scripts/qa-tenant.ts PUB-01` → org `qa-pub-01-shared`, manager/teacher/student
   (`Seed4Test!`), group `G1` (`bun scripts/qa-tenant.ts PUB-01 --reset` before a repeat run)
-- the tenant users are deliberately unused; nothing in the case reads or mutates tenant,
-  plan, feature-flag or singleton data (the pricing teaser is DB-driven, so it is asserted
-  by section and "Zobacz Pełny Cennik" link only — never by plan names or prices)
+- the tenant users are deliberately unused; the case asserts and mutates no tenant, plan,
+  feature-flag or singleton data (the pricing teaser reads the plan catalogue, but the
+  case checks it by section and "Zobacz Pełny Cennik" link only — never by name or price)
 
 ## Steps
 
@@ -30,9 +30,9 @@ spec signs nobody in and sends no storage state.
 
 ## Expected result
 
-Kryterium jest **kontrakt strony**, nie jej brzmienie: zdania marketingowe żyją w
-`apps/web/src/i18n/messages/pl.json`, a powtarzanie ich w teście przypina tekst zamiast
-zachowania (czerwony test przy każdej zmianie copy, przy sprawnej stronie).
+Kryterium jest **kontrakt strony**, nie jej brzmienie. Zdania marketingowe żyją w
+`apps/web/src/i18n/messages/pl.json`; powtarzanie ich tutaj przypina tekst zamiast
+zachowania i czerwienieje przy każdej zmianie copy, choć strona działa.
 
 - Strona ładuje się bez błędów (konsola przeglądarki bez czerwonych błędów).
 - `lang="pl"` na `<html>`.
@@ -44,31 +44,29 @@ zachowania (czerwony test przy każdej zmianie copy, przy sprawnej stronie).
 - Nagłówek: `/features`, `/pricing`, `/login`, `/register`. Stopka: `/features`, `/pricing`,
   `/contact`, `/privacy`, `/terms`. Baner `#get-started` prowadzi do `/register`.
 - Każdy przycisk CTA ma dostępną nazwę (nie jest samą ikoną).
-- Brak surowych kluczy tłumaczeń (np. LandingPage.xxx) ani tekstów „undefined”/„NaN”.
+- Brak surowych kluczy tłumaczeń (`LandingPage.*`, `PricingPage.*`, `Navbar.*`, `Footer.*`)
+  ani tekstów „undefined”/„NaN”.
+- Strona nie zawiera wymyślonych liczb ani opinii. Reguła i uzasadnienie:
+  [PRODUCT.md](../../PRODUCT.md) → Status.
 
-## Zakaz fikcyjnego dowodu
+## Odstępstwo od dokumentu
 
-Strona nie może zawierać wymyślonych liczb ani opinii. Do 2026-11-14 sekcja statystyk
-podawała `10,000+` pytań, `50,000+` fiszek, `5,000+` uczniów i `100,000+` testów jako
-wartości zaszyte w komponencie, a sekcja opinii cytowała „Maria K.” i „Dr. Tomasz N.”.
-Produkt nie był wtedy na rynku, więc oba bloki zostały usunięte wraz z kluczami i18n.
-Dowód społeczny wraca dopiero z prawdziwymi danymi (liczba kont, opinia za zgodą autora);
-do tego czasu strona mówi tylko to, co można sprawdzić.
+Dokument testera wymienia jako widoczne: sekcję statystyk („Utworzonych pytań / Fiszek /
+Aktywnych uczniów / Rozwiązywanych testów”) oraz opinie („Pokochane przez studentów i
+nauczycieli”, cytaty „Maria K.” i „Dr. Tomasz N.”). Oba bloki usunięto, bo produkt nie był
+na rynku, a liczby i osoby były zmyślone. Kryterium akceptacji nie obejmuje więc ich
+obecności, a obecność fikcyjnych danych jest usterką, nie cechą.
 
 ## Observations (walk, 2026-10-28, shared app :3010, QA worker qa-env-1)
 
-Ustalenia z tego przejścia, które pozostają aktualne po usunięciu fikcyjnego dowodu:
+Poniżej wyłącznie to, czego wymagania nie mówią: kolejność, źródło danych i zachowania
+brzegowe.
 
-- Brak błędów konsoli, surowych kluczy, „undefined”/„NaN”.
 - Kolejność sekcji: hero → „Co Otrzymujesz Za Darmo” + „Wspomagaj Naukę z AI” →
-  „Jak to działa” → „Prosty, Przejrzysty Cennik” → baner → stopka. Przypadek testera
-  wymienia „Jak to działa” przed blokiem darmowym — różni się tylko kolejność listy
-  w dokumencie, nie treść, więc test sprawdza obecność sekcji, nie ich kolejność.
-- Nagłówek: Funkcje `/features`, Cennik `/pricing`, Logowanie `/login`, Rejestracja
-  `/register`; hero: `/register` i `/features`; baner: `/register`; stopka: Funkcje/Cennik/
-  Kontakt/Prywatność/Regulamin → `/features`, `/pricing`, `/contact`, `/privacy`, `/terms`.
-- Kafelki cennika pochodzą z globalnego katalogu planów (dlatego test nie sprawdza nazw
-  ani cen planów).
-- Przejście z 2026-10-28 zapisało statystyki jako „statyczne wartości (10,000+ …), nie dane
-  z bazy” i potraktowało to jako stan neutralny. To był fikcyjny dowód, nie cecha —
-  patrz sekcja wyżej.
+  „Jak to działa” → „Prosty, Przejrzysty Cennik” → baner → stopka. Dokument testera
+  wymienia „Jak to działa” przed blokiem darmowym; to różnica w kolejności listy, nie w
+  treści, więc przypadek sprawdza obecność sekcji, nie kolejność.
+- Kafelki cennika pochodzą z globalnego katalogu planów (`/api/v1/subscription-plans`),
+  dlatego test nie sprawdza nazw ani cen planów: zmieniają się w danych, nie w kodzie.
+- Kafelki mają dwa poziomy: plan darmowy, plan płatny i kafelek instytucjonalny, którego
+  cena jest ceną „od” najtańszego planu menedżerskiego (`pickLandingPlans`).
