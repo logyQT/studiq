@@ -90,7 +90,12 @@ export function QuizQuestionPreview() {
       <QuizQuestionView
         question={question}
         labels={{
-          questionOf: t('question_of', { current: position, total }),
+          // The reserved line above the bar reports the step while answering and
+          // the finished attempt once the result replaces the card: the visitor is
+          // no longer on question four, and the line stays so nothing moves.
+          questionOf: result
+            ? tLanding('quiz_end_finished')
+            : t('question_of', { current: position, total }),
           typeLabel:
             fixture.type === 'true_false'
               ? t('type_true_false')

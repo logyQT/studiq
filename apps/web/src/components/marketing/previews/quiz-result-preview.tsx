@@ -47,8 +47,10 @@ const STATUS_MARK = {
  * §Dosage).
  *
  * The rows are a record, not a link: there is no review page behind the demo, so
- * they carry no pointer, no hover and no focus. Truncation is visual only — the
- * whole stem is in the DOM, so a screen reader never gets the cut-off version.
+ * they carry no pointer, no hover and no focus. Each stem gets two lines before
+ * it is cut — at the hero rail's width one line clipped all four mid-word, and
+ * the rows are what a real review looks like. The cut is visual only: the whole
+ * stem stays in the DOM, so a screen reader never gets the ellipsised version.
  */
 export function QuizResultPreview({
   result,
@@ -91,10 +93,10 @@ export function QuizResultPreview({
         {result.questions.map((question) => (
           <li
             key={question.subject}
-            className="grid h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+            className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-0.5"
           >
             <span
-              className={`min-w-0 truncate text-sm ${
+              className={`line-clamp-2 min-w-0 text-sm ${
                 question.status === 'skipped' ? 'text-muted-foreground' : ''
               }`}
             >
