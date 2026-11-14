@@ -11,6 +11,8 @@ const freeFeatures = [
   { titleKey: 'free_stats', descKey: 'free_stats_desc' },
 ] as const;
 
+const freePoints = ['free_point_card', 'free_point_commitment', 'free_point_start'] as const;
+
 const aiFeatures = [
   { titleKey: 'ai_generate_questions', descKey: 'ai_generate_questions_desc' },
   { titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
@@ -33,20 +35,28 @@ export function Features() {
         {/*
          * The specimen rides the header band so the ledger below it keeps the
          * full width: the four rows are a spec sheet, and a card wedged between
-         * the terms would break their single-line rhythm. The header takes seven
-         * columns — its own max-w-2xl cap keeps it at the type measure — and the
-         * preview the remaining five. No plate, border or shadow around it: the
-         * product's card carries its own surface (DESIGN §Product imagery).
+         * the terms would break their single-line rhythm. No plate, border or
+         * shadow around it: the product's card carries its own surface
+         * (DESIGN §Product imagery).
+         *
+         * The split starts at `lg`, like the hero's: at 768 a two-column grid
+         * leaves the card a quarter of the page, which turns a landscape card
+         * into a portrait one. Below `lg` the card takes the full width instead.
+         *
+         * The columns are an even 6/6 because the card needs the width and the
+         * header does not: the title's longest line is ~449px at 1440, so a
+         * five-column header would wrap it while a six-column one leaves it one
+         * line, and every column given to the header is one the card loses.
          */}
-        <div className="md:grid md:grid-cols-12 md:gap-x-8">
-          <div className="md:col-span-7">
+        <div className="lg:grid lg:grid-cols-12 lg:gap-x-8">
+          <div className="lg:col-span-6">
             <SectionHeader
               eyebrow={t('free_badge')}
               title={t('free_title')}
-              lede={t('free_desc')}
+              points={freePoints.map((key) => t(key))}
             />
           </div>
-          <div className="mt-10 md:col-span-5 md:col-start-8 md:row-start-1 md:mt-0">
+          <div className="mt-10 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:mt-0">
             <FlashcardReviewPreview />
           </div>
         </div>
