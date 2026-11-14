@@ -83,10 +83,14 @@ survive the objections below, the claim is wrong, not the objection.
 | "Is this in Polish?"                     | Polish is the default locale. English second.                                                                          |
 | "Will it cover my syllabus?"             | It is built from your material, topic by topic, not from a generic deck.                                               |
 
-**Proof available today.** Screens that exist and can be photographed: SM-2 practice
-session, stats overview, quiz builder, assignments, seats, roles, the AI chat with PDF
-input. No marketing screenshot exists in `apps/web/public` yet, so producing them is part
-of the work. What may **not** appear: any number about usage, any quote from a person.
+**Proof available today is the product itself.** The strongest thing on the page is that the
+UI shown is the UI you get: imagery is rendered by the product's own components with fixture
+data, so signing up delivers exactly what the page previewed. That beats any screenshot,
+because a capture freezes a claim that drifts as the product moves.
+
+What may **not** appear: any number about usage, any quote from a person, or a hand-built
+lookalike of the interface. Re-using the real component is proof; re-drawing it is a
+fabrication.
 
 **Section order.** `#hero` → `#features` → `#how-it-works` → `#pricing` → `#get-started`.
 That order is not a suggestion: `__tests__/qa/PUB/PUB-01.spec.ts` pins those five ids, one

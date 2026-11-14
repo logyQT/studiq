@@ -119,8 +119,11 @@ The accent is a scalpel, not a wash. Per viewport:
 - **`signal` is never text on `paper`** — 1.27:1. It takes `ink` when used as a fill
   (13.76:1), and it _is_ usable as text on `cobalt` (5.62:1) and in dark mode (14.19:1).
   The dosage rule inverts with the mode; do not carry the light-mode ban into dark.
-- **`cobalt` carries identity**: nav, links, focus, rules, and exactly one full-bleed band
-  per page (the closing CTA).
+- **`cobalt` carries identity**: nav, links, focus, section labels, indices, structural
+  rules, and exactly one full-bleed band per page. Measured on the built page it covers about
+  **0.7% of the first viewport** — the logo and a header button alone read as "paper plus
+  lime", which is why the hero carries a 4px cobalt cut, the specimen column a 2px edge, and
+  the process a 2px spine. Cobalt owns three rules on the page and nothing else.
 - **`paper` carries space.** The two saturated fills (cobalt, `signal`) never touch: paper
   separates them.
 
@@ -267,13 +270,13 @@ are different tokens and the accessibility floor says which applies where:
 Marketing components are page-owned. The kit is used only where it is invisible
 (Button semantics, Badge markup).
 
-| Component       | Spec                                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `CtaButton`     | `signal` fill, `ink` text (13.76:1), `rounded-control`, height `2.75rem` (44px), hover = `signal` at 90% opacity. One per screen. |
-| `Eyebrow`       | Geist Mono, `0.75rem`, uppercase, `0.08em`, `ink-muted`.                                                                          |
-| `SectionHeader` | Eyebrow + H2 + lede. Left-aligned by default.                                                                                     |
-| `ProofStrip`    | Only renders when passed real data. No fallback numbers.                                                                          |
-| `FeatureSplit`  | 7/5 asymmetric text/media. Replaces the equal-card row.                                                                           |
+| Component       | Spec                                                                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `CtaButton`     | `signal` fill, `ink` text (13.76:1), `rounded-control`, height `2.75rem` (44px), hover = `signal` at 90% opacity. One per screen.  |
+| `Eyebrow`       | Geist Mono, `0.75rem`, uppercase, `0.08em`, `text-primary`. Section labels are identity, so they carry the brand rather than grey. |
+| `SectionHeader` | Eyebrow + H2 + lede. Left-aligned by default.                                                                                      |
+| `ProofStrip`    | Only renders when passed real data. No fallback numbers.                                                                           |
+| `FeatureSplit`  | 7/5 asymmetric text/media. Replaces the equal-card row.                                                                            |
 
 **A marketing section is not a card grid.** If a section can be expressed as "N equal
 `<Card>`s in a row", it is the kit's default layout wearing a headline, and it is what made
@@ -284,24 +287,44 @@ the page look generic. Change the composition, not the copy.
 The page sells a product, so it has to show one. Text alone does not convert, and this
 is the section that makes the difference between a landing page and a brochure.
 
-**Only real captures.** Screenshots come from the running app with seeded demo data
-(`bun scripts/demo-seed.ts`), never from stock art, illustration, or a hand-built mock-up.
-A drawn approximation of a product that exists is a fabricated claim in the same family as
-the invented testimonials, and it is banned for the same reason. If a screen cannot be
-seeded with plausible content, it does not go on the page.
+**Real UI, rendered rather than photographed.** Imagery is produced by the product's own
+components with fixture data wherever a component can be reused: it is the same code the
+signed-in user gets, so it shows what is actually behind the sign-up button.
 
-| Property   | Rule                                                                                                                                                                                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source     | `/public/marketing/{locale}/{shot}.png`, 2× capture, listed in `shots.json`                                                                                                                                                                                                     |
-| Locale     | **One set per locale, never mixed.** The chrome is translated by `next-intl`, so a Polish interface wrapped around English demo content ("Northfield University", an aspirin card in English) reads as somebody else's demo. The page picks the set matching the active locale. |
-| Aspect     | `16 / 10` frame. Crop the meaningful region; never squash.                                                                                                                                                                                                                      |
-| Frame      | `rounded-panel`, `1px` `border-border`, **no shadow**, no browser or OS chrome                                                                                                                                                                                                  |
-| Background | The frame is always `bg-background` paper, **in both themes**. A light UI capture on a dark page looks pasted on; a paper plate reads as deliberate.                                                                                                                            |
-| Alt text   | Describe what is on screen, in the page's language. Never `alt=""` on a proof image.                                                                                                                                                                                            |
-| Caption    | Optional, mono, one line, and factual. No invented metrics under a real screenshot.                                                                                                                                                                                             |
+That is a stronger claim than a screenshot, not a weaker one. A capture is a frozen
+statement — "the product looked like this on 14 November" — and it becomes quietly false the
+next time the UI moves. A rendered component cannot drift: it either compiles and renders
+now, or it does not appear. It is also sharp at every size, and correct for the visitor's
+locale and theme without a second asset set.
 
-Placement: one dominant shot in the hero rail, one in the features split, and at most one
-full-bleed band. More than three competes with the claim instead of supporting it.
+What stays banned is the **hand-built approximation**: a drawn or re-implemented lookalike of
+a product that exists. That is a fabricated claim in the same family as the invented
+testimonials. The line is re-use versus re-implementation, not rendered versus captured.
+
+There is **no capture path**. Every marketing visual is a product component rendered with
+fixture data. If a component is currently welded to a hook — a live query, an auth context —
+the answer is to extract its presentational half behind props, not to photograph it. That
+extraction is product work with a mechanical shape, and it is the price of the rule: the page
+shows the product because it _is_ the product, and nothing on it is a frozen copy that can
+drift.
+
+Stock art, illustration and hand-built lookalikes remain banned outright.
+
+| Property   | Rule                                                                                                                                                                                                                                                                                                                 |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source     | `/public/marketing/{locale}/{theme}/{shot}.png` plus `-720.webp` and `-1440.webp`, listed in `shots.json`                                                                                                                                                                                                            |
+| Locale     | **One set per locale, never mixed.** The chrome is translated by `next-intl`, so a Polish interface wrapped around English demo content ("Northfield University", an aspirin card in English) reads as somebody else's demo.                                                                                         |
+| Theme      | **One set per theme, never mixed.** The same argument one layer down: an app in dark mode surrounded by light-mode captures is the same mismatch as a Polish page with English cards. The component picks by `resolvedTheme`; it renders light until mounted, because the server does not know the visitor's choice. |
+| Framing    | **Capture the element, not a region.** A UI window squeezed into a 440px column downscales 3× and its text ends up ~4px tall — unreadable at any resolution. Shoot the component itself, at ≥700 CSS px, at `deviceScaleFactor: 3`, with its own aspect ratio. No forced 16/10.                                      |
+| Density    | A capture with more than ~8% empty margin, or content covering under ~85% of the image area, is framed wrong.                                                                                                                                                                                                        |
+| Frame      | `rounded-panel`, `1px` `border-border`, **no shadow**, no browser or OS chrome                                                                                                                                                                                                                                       |
+| Background | The plate stays `bg-background` in both themes, but it no longer excuses a theme mismatch: the image inside it now matches.                                                                                                                                                                                          |
+| Alt text   | Describe what is on screen, in the page's language. Never `alt=""` on a proof image.                                                                                                                                                                                                                                 |
+| Caption    | Optional, mono, one line, and factual. No invented metrics under a real screenshot.                                                                                                                                                                                                                                  |
+
+Placement: one dominant shot in the hero, and a set of tightly cropped views that each carry a
+different claim — a hero plus two is not "showing the product", it is a decoration. Every image
+must be cropping something a visitor can read, and must say something the copy does not.
 
 Most of these exist in the current page; the ones already removed stay removed. None may
 return.

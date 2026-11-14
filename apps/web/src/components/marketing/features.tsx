@@ -22,8 +22,8 @@ const aiFeatures = [
  * row against its description, so the four capabilities read as a spec sheet
  * rather than four equal cards. The paid tier is a 5/6 split with a single
  * anchor statement, because it is one argument with three parts, not three
- * peers. The only colour is the cobalt tier label: `signal` belongs to actions,
- * and this section has none.
+ * peers. Colour is limited to the two cobalt tier labels: `signal` belongs to
+ * actions, and this section has none.
  */
 export function Features() {
   const t = useTranslations('LandingPage');
@@ -45,7 +45,7 @@ export function Features() {
             />
           </div>
           <ProductShot
-            shot="student-stats"
+            shot="stats-chart"
             alt={t('shot_stats_alt')}
             sizes="(min-width: 1280px) 407px, (min-width: 768px) 36vw, calc(100vw - 2rem)"
             className="mt-8 md:col-span-5 md:col-start-8 md:row-start-1 md:mt-0"

@@ -5,6 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
+import { ProductShot } from '@/components/marketing/ui/product-shot';
 import { SectionHeader } from '@/components/marketing/ui/section-header';
 import { useApiQuery } from '@/hooks/use-api';
 import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
@@ -94,7 +95,9 @@ export function Pricing() {
   const lastIndex = plans.length - 1;
 
   return (
-    <section id="pricing" className="py-16 md:py-20">
+    // Top padding is short of the section default for the same reason as
+    // `how-it-works`: the measured gap above it was 178px, and 160px is the rhythm.
+    <section id="pricing" className="pt-12 pb-16 md:pt-16 md:pb-20">
       <div className="mx-auto max-w-content px-content">
         <div className="grid gap-6 md:grid-cols-12 md:items-end">
           <div className="md:col-span-8">
@@ -144,7 +147,7 @@ export function Pricing() {
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:justify-between">
                 <h3 className="font-display text-h3 font-semibold">{plan.name}</h3>
                 {plan.recommended ? (
-                  <span className="font-mono text-xs uppercase tracking-[0.08em] text-foreground">
+                  <span className="font-mono text-xs uppercase tracking-[0.08em] text-primary">
                     {t('pricing_recommended')}
                   </span>
                 ) : null}
@@ -178,6 +181,23 @@ export function Pricing() {
             </li>
           ))}
         </ul>
+
+        {/*
+         * The institutional tier in one strip: seat pools, what is assigned and
+         * what is left. It sits under the whole ledger rather than inside the
+         * third column (310px) because the table's own labels are small type at
+         * 3x, and a column would downscale them to noise. The ledger stays the
+         * comparison; this is the thing an organisation actually buys.
+         *
+         * Not below md: at 390px the strip renders 358px wide, a quarter of the
+         * capture, and the column headings become unreadable.
+         */}
+        <ProductShot
+          shot="seats-table"
+          alt={t('shot_seats_alt')}
+          sizes="(min-width: 1280px) 1056px, calc(100vw - 4rem)"
+          className="mt-10 hidden md:mt-12 md:block"
+        />
       </div>
     </section>
   );

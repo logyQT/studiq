@@ -12,7 +12,7 @@ interface MarketingShellProps {
  */
 export function MarketingShell({ children }: MarketingShellProps) {
   return (
-    <div className="relative flex min-h-screen flex-col">
+    <div className="relative flex min-h-screen flex-col bg-paper-grain">
       <Navbar />
       <main className="flex-1">{children}</main>
       <Footer />
