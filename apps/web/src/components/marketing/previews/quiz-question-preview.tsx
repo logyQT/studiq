@@ -75,18 +75,22 @@ export function QuizQuestionPreview() {
    * page. The result renders inside the same frame, so finishing does not move
    * the card either.
    *
-   * The reservations are measured in both locales at every breakpoint, not
-   * calculated: 646px below 360 (options wrap to three lines), 576px from 360 up
-   * once the options get room, 512px from 640 in the full-width column, 484px
-   * from 860 where the widest option stops wrapping, 576px at 1024 where the card
-   * is back in the rail but only 347px wide, and 512px from 1280. Each value is
-   * the tallest of the four fixtures at that width plus the 76px of card chrome,
-   * rounded up. The first two steps are arbitrary min-widths rather than `sm:`
-   * because the ladder has to sort upward: a named variant emitted after an
-   * arbitrary one would win at every wider width.
+   * The reservations are measured, not calculated, and they are a step function
+   * of the card's width: each is the tallest of the four fixtures in the longer
+   * locale at the narrowest card its band allows, plus the 76px of chrome above
+   * the card (the counter line, the progress bar and their gaps), plus a few px
+   * of headroom — 656 from 320 (646 + 10, the footer's buttons stack below 360),
+   * 584 from 360 (576 + 8, the options still wrap in the full-width column), 520
+   * from 640 (512 + 8), 492 from 860 (484 + 8, the widest option stops wrapping),
+   * 584 from 1024 (576 + 8, the copy and the card split and the rail leaves the
+   * card 347px) and 560 from 1280 (552 + 8, the 70rem container caps the card at
+   * 387px for every wider viewport). The 1024 step is taller than the 860 one
+   * because the two-column split narrows the card again. The first two steps are
+   * arbitrary min-widths rather than `sm:` because the ladder has to sort upward:
+   * a named variant emitted after an arbitrary one would win at every wider width.
    */
   return (
-    <div className="flex min-h-[656px] flex-col min-[360px]:min-h-[584px] min-[640px]:min-h-[520px] min-[860px]:min-h-[492px] lg:min-h-[584px] xl:min-h-[520px]">
+    <div className="flex min-h-[656px] flex-col min-[360px]:min-h-[584px] min-[640px]:min-h-[520px] min-[860px]:min-h-[492px] lg:min-h-[584px] xl:min-h-[560px]">
       {/*
        * Previous/Next swaps the card's contents without moving focus (the pressed
        * control stays under the pointer), so the new question is announced here.
