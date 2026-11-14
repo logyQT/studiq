@@ -195,7 +195,11 @@ paragraph; tabular numerals for compared figures; two weights per screen, three 
   padding, gutters and grid gaps. **Component internals stay on the kit's 4px grid**
   (`px-2 py-1.5`, `gap-1.5`, `py-0.5`) — the 8pt set cannot express those and the claim
   "no arbitrary values" is false if it pretends otherwise.
-- **Section rhythm:** `96px` block padding on mobile, `128px` from `md`.
+- **Section rhythm:** the space **between** adjacent sections is `128px` on mobile and
+  `160px` from `md`. Because every section carries its own vertical padding, that means
+  `py-16 md:py-20` per section — not `py-24 md:py-32`, which stacks into 192/256px of dead
+  paper and was the first thing visible in the built page. The hero's top padding is the
+  exception, since nothing sits above it.
 - **Containers:** prose and cards `70rem` (1120px, no Tailwind step — declare it), media
   `80rem`, and full-bleed is `100vw` + `px-content`, not 1280px.
 - **Asymmetry is the default on marketing**: 7/5 or 8/4 splits, off-center hero. One
@@ -237,9 +241,10 @@ paragraph; tabular numerals for compared figures; two weights per screen, three 
 are different tokens and the accessibility floor says which applies where:
 
 - **Decorative** (`--border`, rules, separators): no minimum. It is not information.
-- **Load-bearing** (`--input`, outline buttons, any control identified only by its edge):
-  ≥ 3:1 against its surface. `border-control` measures 3.23:1 on paper and 3.35:1 on card.
-  On `paper-sunk` it is 2.98:1, so **bare controls never sit on `paper-sunk`**.
+- **Load-bearing** (`--input`, outline buttons, any control identified only by its edge, and
+  **separators between interactive list rows**): ≥ 3:1 against its surface.
+  `border-control` measures 3.23:1 on paper and 3.35:1 on card. On `paper-sunk` it is 2.98:1,
+  so **bare controls never sit on `paper-sunk`**.
 - **`--secondary` chips** are non-interactive fills carrying text at 6.30:1, so they are
   exempt from the 3:1 boundary rule. If a chip ever becomes interactive it needs a
   `border-control` edge.
@@ -326,6 +331,8 @@ Everything lands in `apps/web/src/app/globals.css` (`:root`, `.dark`, `@theme in
 | `--sidebar-border`             | `var(--border)`             | `var(--border)`             |
 | `--sidebar-ring`               | `var(--ring)`               | `var(--ring)`               |
 | `--signal`                     | `0.880 0.210 122`           | `0.880 0.210 122`           |
+| `--signal-foreground`          | `0.175 0.022 264`           | `0.175 0.022 264`           |
+| `--cobalt-hover`               | `0.560 0.200 264`           | `0.620 0.170 264`           |
 
 `--radius` is **not** in this table on purpose (§Shape). `--brand-accent` keeps pointing at
 `--primary` and follows cobalt automatically; `--brand-accent-soft` mixes into `--accent`,

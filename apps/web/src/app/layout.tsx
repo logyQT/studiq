@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Archivo, Geist, Geist_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import { Toaster } from 'sonner';
@@ -21,12 +21,23 @@ import { getSiteUrl } from '@studiq/server/lib/site-url';
  */
 const geistSans = Geist({
   variable: '--font-geist-sans',
-  subsets: ['latin'],
+  subsets: ['latin', 'latin-ext'],
 });
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
-  subsets: ['latin'],
+  subsets: ['latin', 'latin-ext'],
+});
+
+/*
+ * Marketing headings set width rather than fake it with tracking, and
+ * next/font ships only the axes a call asks for.
+ */
+const archivo = Archivo({
+  variable: '--font-archivo-display',
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
+  axes: ['wdth'],
 });
 
 /**
@@ -104,7 +115,7 @@ export default async function RootLayout({
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 
   return (
-    <html lang={locale} className="bg-background" suppressHydrationWarning>
+    <html lang={locale} className={`bg-background ${archivo.variable}`} suppressHydrationWarning>
       <head>
         {supabaseUrl && <link rel="preconnect" href={supabaseUrl} crossOrigin="anonymous" />}
       </head>

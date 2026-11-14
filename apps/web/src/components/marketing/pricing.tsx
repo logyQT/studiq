@@ -1,15 +1,30 @@
 'use client';
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
-import { ArrowRight, TrendingUp } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
+import { SectionHeader } from '@/components/marketing/ui/section-header';
 import { useApiQuery } from '@/hooks/use-api';
 import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
+import { cn } from '@/lib/utils';
 
 /** Placeholder while the real plan prices load (or when they cannot be loaded). */
 const NO_PRICE = '—';
+
+type PlanColumn = {
+  name: string;
+  /** Already formatted in the visitor locale, or NO_PRICE. */
+  price: string;
+  /** "/miesiąc" only where the plan is actually billed monthly. */
+  period: string;
+  desc: string;
+  features: string[];
+  cta: string;
+  href: string;
+  recommended?: boolean;
+};
 
 export function Pricing() {
   const t = useTranslations('LandingPage');
@@ -28,7 +43,7 @@ export function Pricing() {
 
   const price = (plan: PlanInfo | null) => (plan ? formatPlanPrice(plan, locale) : NO_PRICE);
 
-  const plans = [
+  const plans: PlanColumn[] = [
     {
       name: t('pricing_free_name'),
       price: price(free),
@@ -37,7 +52,6 @@ export function Pricing() {
       features: [t('free_questions'), t('free_flashcards'), t('free_quizzes'), t('free_stats')],
       cta: t('cta_start'),
       href: '/register',
-      variant: 'outline' as const,
     },
     {
       name: t('pricing_premium_name'),
@@ -55,8 +69,7 @@ export function Pricing() {
       ],
       cta: t('pricing_premium_cta'),
       href: '/register',
-      variant: 'default' as const,
-      popular: true,
+      recommended: true,
     },
     {
       name: t('pricing_university_name'),
@@ -75,59 +88,96 @@ export function Pricing() {
       ],
       cta: t('pricing_contact_cta'),
       href: '/contact',
-      variant: 'outline' as const,
     },
   ];
 
+  const lastIndex = plans.length - 1;
+
   return (
-    <section id="pricing" className="py-16 sm:py-24 bg-muted/30">
-      <div className="mx-auto max-w-5xl">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('pricing_title')}</h2>
-          <p className="mt-4 text-lg text-muted-foreground">{t('pricing_desc')}</p>
-        </div>
-        <div className="grid sm:grid-cols-3 gap-6">
-          {plans.map((plan) => (
-            <Card
-              key={plan.href + plan.name}
-              className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}
+    <section id="pricing" className="py-16 md:py-20">
+      <div className="mx-auto max-w-content px-content">
+        <div className="grid gap-6 md:grid-cols-12 md:items-end">
+          <div className="md:col-span-8">
+            <SectionHeader title={t('pricing_title')} lede={t('pricing_desc')} />
+          </div>
+          <div className="md:col-span-4 md:justify-self-end md:pb-1">
+            <Link
+              href="/pricing"
+              className="group -my-3 inline-flex min-h-11 items-center gap-2 rounded-control py-3 text-sm font-semibold text-primary transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none md:my-0 md:min-h-0 md:py-0"
             >
-              {plan.popular && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  {pt('most_popular')}
-                </Badge>
-              )}
-              <CardHeader>
-                <CardTitle className="text-xl">{plan.name}</CardTitle>
-                <p className="text-sm text-muted-foreground">{plan.desc}</p>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground">{plan.period}</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm">
-                      <TrendingUp className="size-4 text-primary shrink-0" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Button className="w-full" variant={plan.variant} asChild>
-                  <Link href={plan.href}>{plan.cta}</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <div className="text-center mt-8">
-          <Button variant="link" asChild>
-            <Link href="/pricing">
-              {t('pricing_cta')} <ArrowRight className="ml-1 size-4" />
+              {t('pricing_cta')}
+              <ArrowRight
+                aria-hidden="true"
+                className="size-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5"
+              />
             </Link>
-          </Button>
+          </div>
         </div>
+
+        {/* A three-column ledger: rules carry the separation, so no column is a card. */}
+        <ul className="mt-10 grid border-t border-border md:mt-12 md:grid-cols-3">
+          {plans.map((plan, index) => (
+            <li
+              key={`${plan.href}-${plan.name}`}
+              className={cn(
+                /*
+                 * Below md the plan is a compact block: name and price share one
+                 * baseline row, everything after it spans the full width. The li
+                 * returns to a flex column from md, where the three plans sit
+                 * side by side and the CTA is pushed to the shared bottom edge.
+                 */
+                'relative grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 border-b border-border py-6 md:flex md:flex-col md:items-stretch md:border-b-0 md:py-10',
+                index === 0 && 'md:pr-8',
+                index > 0 && 'md:border-l md:border-border',
+                index > 0 && index < lastIndex && 'md:px-8',
+                index === lastIndex && 'md:pl-8',
+              )}
+            >
+              {plan.recommended ? (
+                // The accent marks the recommended column; it never fills it.
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 -top-px block h-0.5 bg-signal"
+                />
+              ) : null}
+
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:justify-between">
+                <h3 className="font-display text-h3 font-semibold">{plan.name}</h3>
+                {plan.recommended ? (
+                  <span className="font-mono text-xs uppercase tracking-[0.08em] text-foreground">
+                    {t('pricing_recommended')}
+                  </span>
+                ) : null}
+              </div>
+              <p className="col-span-2 mt-2 text-sm text-muted-foreground text-pretty">
+                {plan.desc}
+              </p>
+
+              <p className="col-start-2 row-start-1 flex flex-wrap items-baseline gap-x-1.5 md:mt-6">
+                <span className="font-mono text-h3 font-medium tabular-nums md:text-h2">
+                  {plan.price}
+                </span>
+                {plan.period ? (
+                  <span className="text-sm text-muted-foreground">{plan.period}</span>
+                ) : null}
+              </p>
+
+              <ul className="col-span-2 mt-6 border-t border-border md:mt-8">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="border-b border-border py-2 text-sm md:py-2.5">
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="col-span-2 mt-auto flex flex-col pt-6 md:block md:pt-8">
+                <CtaButton href={plan.href} tone="quiet">
+                  {plan.cta}
+                </CtaButton>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

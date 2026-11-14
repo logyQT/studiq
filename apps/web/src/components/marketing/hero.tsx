@@ -1,38 +1,50 @@
 'use client';
 
-import { Badge, Button } from '@studiq/ui';
-import { ArrowRight, Sparkles } from 'lucide-react';
-import Link from 'next/link';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
+import { ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 export function Hero() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section id="hero" className="relative overflow-hidden py-24 sm:py-36">
-      <div className="absolute inset-0 -z-10 bg-gradient-to-br from-violet-500/10 via-primary/5 to-cyan-500/10 dark:from-violet-500/5 dark:via-primary/3 dark:to-cyan-500/5" />
-      <div className="absolute top-1/3 left-1/4 -z-10 size-80 rounded-full bg-violet-500/20 blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 -z-10 size-96 rounded-full bg-cyan-500/15 blur-3xl animate-pulse [animation-delay:1s]" />
-      <div className="mx-auto max-w-5xl text-center">
-        <Badge variant="secondary" className="mb-6 px-4 py-1.5 text-sm gap-1.5">
-          <Sparkles className="size-3.5" />
-          {t('hero_badge')}
-        </Badge>
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-tight">
-          {t('hero_title')}
-        </h1>
-        <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-          {t('hero_subtitle')}
-        </p>
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Button size="lg" className="text-base px-8" asChild>
-            <Link href="/register">{t('cta_start')}</Link>
-          </Button>
-          <Button size="lg" variant="outline" className="text-base px-8" asChild>
-            <Link href="/features">
-              {t('cta_features')} <ArrowRight className="ml-2 size-4" />
-            </Link>
-          </Button>
+    <section id="hero" className="border-b border-border pt-12 pb-12 md:pt-28 md:pb-20">
+      <div className="mx-auto grid max-w-media gap-y-4 px-content md:grid-cols-12 md:gap-x-8 md:gap-y-0">
+        {/*
+         * The label rides the measure rule instead of sitting over the headline as
+         * a pill: on md+ it annotates the empty rail, below md it is the eyebrow.
+         */}
+        <div className="relative md:col-span-4 md:col-start-9 md:row-start-1 md:border-l md:border-border md:pt-4 md:pl-8">
+          <span
+            aria-hidden
+            className="absolute top-0 -left-px hidden h-6 w-0.5 bg-primary md:block"
+          />
+          <p className="font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+            {t('hero_badge')}
+          </p>
+        </div>
+
+        <div className="md:col-span-8 md:col-start-1 md:row-start-1">
+          <h1 className="font-display text-display font-semibold text-balance">
+            {t('hero_title')}
+          </h1>
+          <p className="mt-4 max-w-xl text-lede text-muted-foreground text-pretty md:mt-6">
+            {t('hero_subtitle')}
+          </p>
+          {/*
+           * Below md the two actions stack and fill the column: side by side at
+           * 390px they wrap into two ragged widths, which reads as a layout
+           * accident rather than as one primary and one secondary action.
+           */}
+          <div className="mt-8 flex flex-col gap-3 md:mt-10 md:flex-row md:flex-wrap md:items-center">
+            <CtaButton href="/register" tone="signal">
+              {t('cta_start')}
+            </CtaButton>
+            <CtaButton href="/features" tone="quiet">
+              {t('cta_features')}
+              <ArrowRight className="size-4" aria-hidden />
+            </CtaButton>
+          </div>
         </div>
       </div>
     </section>
