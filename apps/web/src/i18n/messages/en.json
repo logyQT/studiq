@@ -371,6 +371,7 @@
     "title": "Notifications",
     "button": "Notifications",
     "button_unread": "Notifications, {count} unread",
+    "unread_count": "{count} unread",
     "mark_all_read": "Mark all as read",
     "loading": "Loading…",
     "empty": "You have no notifications yet.",
