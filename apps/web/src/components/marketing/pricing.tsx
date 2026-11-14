@@ -5,7 +5,6 @@ import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
-import { ProductShot } from '@/components/marketing/ui/product-shot';
 import { SectionHeader } from '@/components/marketing/ui/section-header';
 import { useApiQuery } from '@/hooks/use-api';
 import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
@@ -181,25 +180,6 @@ export function Pricing() {
             </li>
           ))}
         </ul>
-
-        {/*
-         * The institutional tier in one strip: seat pools, what is assigned and
-         * what is left. It sits under the whole ledger rather than inside the
-         * third column (310px) because the table's own labels are small type at
-         * 3x, and a column would downscale them to noise. The ledger stays the
-         * comparison; this is the thing an organisation actually buys.
-         *
-         * It waits for lg rather than md: the table's headings are 12px at the
-         * capture's own scale, so 690px at md would render them at ~6px, while
-         * 946px at lg keeps them readable. At 390px the strip would be 358px, a
-         * quarter of the capture, so it does not render there at all.
-         */}
-        <ProductShot
-          shot="seats-table"
-          alt={t('shot_seats_alt')}
-          sizes="(min-width: 1280px) 1056px, calc(100vw - 4rem)"
-          className="mt-10 hidden lg:mt-12 lg:block"
-        />
       </div>
     </section>
   );
