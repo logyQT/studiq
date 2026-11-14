@@ -234,9 +234,9 @@ export function Navbar() {
                   if (next) closeMobile();
                   setAccountOpen(next);
                 }}
-                // The trigger keeps its own state visible: an open account panel
-                // fills the square, the way the burger becomes the X.
-                className={cn(HEADER_ICON, 'aria-expanded:bg-accent aria-expanded:text-foreground')}
+                // The burger's chrome, with no persisted fill: a filled square
+                // reads as a pressed button. `aria-expanded` still carries the state.
+                className={HEADER_ICON}
               >
                 <User aria-hidden className="size-5" />
               </button>

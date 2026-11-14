@@ -3,7 +3,11 @@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import type { RefObject } from 'react';
-import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
+import {
+  UserMenuHeader,
+  UserMenuItems,
+  UserMenuLogout,
+} from '@/components/layout/user-menu-content';
 import { cn } from '@/lib/utils';
 import { usePanelChrome } from '@/components/layout/navbar/use-panel-chrome';
 
@@ -75,17 +79,26 @@ export function AccountPanel({ open, onOpenChange, returnFocusRef }: AccountPane
           <SheetDescription>{t('logo')}</SheetDescription>
         </SheetHeader>
 
-        {/* The avatar block, ruled off from the rows below it like any other
-            section of this panel. */}
+        {/* Header — who the panel is for, ruled off from the list below. */}
         <div className="shrink-0 border-b border-border px-4 py-4">
           <UserMenuHeader />
         </div>
 
-        {/* Account actions and logout, from the same set the desktop dropdown
-            renders, with the preference rows off: those are the navigation
-            panel's. Touch density, hairline rules between rows. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 pb-[max(1rem,env(safe-area-inset-bottom))] [&>button]:min-h-11 [&>button]:rounded-control [&>button]:px-3 [&>button+button]:border-t [&>button+button]:border-input">
-          <UserMenuItems variant="plain" preferences={false} onItemClick={close} />
+        {/* The list — the same rows the desktop dropdown renders, at the
+            navigation panel's rhythm: one full-bleed hairline between rows, no
+            inset and no divider of their own. The preferences stay in the
+            navigation panel, so this list is actions only. It takes the space it
+            needs and leaves the rest of the panel to the deliberate gap above
+            the footer. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="divide-y divide-input">
+            <UserMenuItems variant="panel" preferences={false} logout={false} onItemClick={close} />
+          </div>
+        </div>
+
+        {/* Footer — logout anchored to the bottom edge, clear of the safe area. */}
+        <div className="shrink-0 border-t border-border pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <UserMenuLogout variant="panel" onItemClick={close} />
         </div>
       </SheetContent>
     </Sheet>
