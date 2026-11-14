@@ -1005,8 +1005,45 @@ interface ExpectedAsset {
   locale: string;
   file: string;
   shows: string;
+  /** Shot name, used to pick the sources an asset depends on. */
+  name: string;
   variant?: 'detail';
   theme?: Theme;
+}
+
+/**
+ * The component a shot renders. Staleness is per shot: an edit to the question
+ * bank must not invalidate the study card, and a concurrent landing-page edit
+ * must not invalidate anything.
+ */
+const SHOT_SOURCES: Record<string, string> = {
+  'card-front': 'components/study',
+  'card-rating': 'components/study',
+  'quiz-question': 'components/study',
+  'quiz-feedback': 'components/study',
+  'stats-kpis': 'components/stats',
+  'stats-chart': 'components/stats',
+  'builder-row': 'components/questions',
+  'assignment-list': 'components/assignments',
+  'seats-table': 'app/(frontend)/manage',
+};
+
+const SHARED_SOURCES = [
+  join(ROOT, 'supabase/seeds/demo/demo-en.sql'),
+  join(ROOT, 'supabase/seeds/demo/demo-pl.sql'),
+  join(ROOT, 'scripts/marketing-shots.ts'),
+];
+
+/** Wide windows and their detail crops render the whole shell, so they watch all. */
+function wideSourceMtime(): number {
+  return Math.max(...WATCHED.map(newestMtime), ...SHARED_SOURCES.map(newestMtime));
+}
+
+/** Newest mtime among the sources a shot actually renders. */
+function shotSourceMtime(name: string): number {
+  const dir = SHOT_SOURCES[name];
+  const own = dir ? [join(ROOT, 'apps/web/src', dir)] : WATCHED;
+  return Math.max(...[...own, ...SHARED_SOURCES].map(newestMtime));
 }
 
 /** Every asset the manifest describes: wide windows, their details, element sets. */
@@ -1016,12 +1053,14 @@ function expectedAssets(locales: LocaleSpec[]): ExpectedAsset[] {
     for (const shot of SHOTS) {
       assets.push({
         locale: locale.locale,
+        name: shot.name,
         file: `${locale.locale}/${shot.name}.png`,
         shows: shot.shows[locale.locale],
       });
       if (shot.detail) {
         assets.push({
           locale: locale.locale,
+          name: `${shot.name}-detail`,
           file: `${locale.locale}/${shot.name}-detail.png`,
           shows: shot.detail.shows[locale.locale],
           variant: 'detail',
@@ -1033,6 +1072,7 @@ function expectedAssets(locales: LocaleSpec[]): ExpectedAsset[] {
         assets.push({
           locale: locale.locale,
           theme,
+          name: shot.name,
           file: `${locale.locale}/${theme}/${shot.name}.png`,
           shows: shot.shows[locale.locale],
         });
@@ -1087,7 +1127,6 @@ function runCheck(): void {
     process.exit(1);
   }
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ManifestEntry[];
-  const sourceMtime = Math.max(...WATCHED.map(newestMtime));
   const expected = expectedAssets(LOCALES);
 
   for (const asset of expected) {
@@ -1126,7 +1165,9 @@ function runCheck(): void {
         problems.push(`${asset.file}: ${(worst * 100).toFixed(0)}% empty margin on one edge`);
       }
     }
-    if (statSync(file).mtimeMs < sourceMtime) {
+    const limit =
+      asset.theme && SHOT_SOURCES[asset.name] ? shotSourceMtime(asset.name) : wideSourceMtime();
+    if (statSync(file).mtimeMs < limit) {
       problems.push(`${asset.file}: stale (older than the components, seed or this script)`);
     }
 

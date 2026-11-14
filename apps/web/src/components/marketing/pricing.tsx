@@ -189,14 +189,16 @@ export function Pricing() {
          * 3x, and a column would downscale them to noise. The ledger stays the
          * comparison; this is the thing an organisation actually buys.
          *
-         * Not below md: at 390px the strip renders 358px wide, a quarter of the
-         * capture, and the column headings become unreadable.
+         * It waits for lg rather than md: the table's headings are 12px at the
+         * capture's own scale, so 690px at md would render them at ~6px, while
+         * 946px at lg keeps them readable. At 390px the strip would be 358px, a
+         * quarter of the capture, so it does not render there at all.
          */}
         <ProductShot
           shot="seats-table"
           alt={t('shot_seats_alt')}
           sizes="(min-width: 1280px) 1056px, calc(100vw - 4rem)"
-          className="mt-10 hidden md:mt-12 md:block"
+          className="mt-10 hidden lg:mt-12 lg:block"
         />
       </div>
     </section>
