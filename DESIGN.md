@@ -290,14 +290,15 @@ A drawn approximation of a product that exists is a fabricated claim in the same
 the invented testimonials, and it is banned for the same reason. If a screen cannot be
 seeded with plausible content, it does not go on the page.
 
-| Property   | Rule                                                                                                                                                 |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source     | `/public/marketing/{shot}.png`, 2× capture, listed in `shots.json`                                                                                   |
-| Aspect     | `16 / 10` frame. Crop the meaningful region; never squash.                                                                                           |
-| Frame      | `rounded-panel`, `1px` `border-border`, **no shadow**, no browser or OS chrome                                                                       |
-| Background | The frame is always `bg-background` paper, **in both themes**. A light UI capture on a dark page looks pasted on; a paper plate reads as deliberate. |
-| Alt text   | Describe what is on screen, in the page's language. Never `alt=""` on a proof image.                                                                 |
-| Caption    | Optional, mono, one line, and factual. No invented metrics under a real screenshot.                                                                  |
+| Property   | Rule                                                                                                                                                                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source     | `/public/marketing/{locale}/{shot}.png`, 2× capture, listed in `shots.json`                                                                                                                                                                                                     |
+| Locale     | **One set per locale, never mixed.** The chrome is translated by `next-intl`, so a Polish interface wrapped around English demo content ("Northfield University", an aspirin card in English) reads as somebody else's demo. The page picks the set matching the active locale. |
+| Aspect     | `16 / 10` frame. Crop the meaningful region; never squash.                                                                                                                                                                                                                      |
+| Frame      | `rounded-panel`, `1px` `border-border`, **no shadow**, no browser or OS chrome                                                                                                                                                                                                  |
+| Background | The frame is always `bg-background` paper, **in both themes**. A light UI capture on a dark page looks pasted on; a paper plate reads as deliberate.                                                                                                                            |
+| Alt text   | Describe what is on screen, in the page's language. Never `alt=""` on a proof image.                                                                                                                                                                                            |
+| Caption    | Optional, mono, one line, and factual. No invented metrics under a real screenshot.                                                                                                                                                                                             |
 
 Placement: one dominant shot in the hero rail, one in the features split, and at most one
 full-bleed band. More than three competes with the claim instead of supporting it.

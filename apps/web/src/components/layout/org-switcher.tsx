@@ -101,7 +101,10 @@ export function OrgSwitcher() {
   }
 
   const displayName = activeOrg.name || 'StudiQ';
-  const roleLabel = displayRole(activeOrg.orgRoleName, t('role_student'));
+  const roleLabel = displayRole(
+    activeOrg.orgRoleDisplayName ?? activeOrg.orgRoleName,
+    t('role_student'),
+  );
 
   return (
     <SidebarMenu>
@@ -170,7 +173,7 @@ export function OrgSwitcher() {
                   <div className="flex flex-col flex-1 min-w-0">
                     <span className="truncate text-sm font-medium">{org.name}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {displayRole(org.orgRoleName, t('role_student'))}
+                      {displayRole(org.orgRoleDisplayName ?? org.orgRoleName, t('role_student'))}
                     </span>
                   </div>
                   {org.isActive && <Check className="ml-auto size-4 text-primary" />}

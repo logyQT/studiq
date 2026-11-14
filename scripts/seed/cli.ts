@@ -80,6 +80,56 @@ export function envFromValuesFile(root: string, name: string): string {
   throw new Error(`missing env ${name}`);
 }
 
+/**
+ * `DB_URL` from `supabase status --env`. The CLI prints JSON in stack mode and
+ * `KEY='value'` lines on other runtimes, so both shapes are read.
+ */
+function parseStatusEnv(output: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(output);
+    if (parsed && typeof parsed === 'object') {
+      const value = (parsed as Record<string, unknown>).DB_URL;
+      if (typeof value === 'string' && value) return value;
+    }
+  } catch {
+    // Not JSON — fall through to the shell-style pair.
+  }
+  const match = /^DB_URL='?([^'\n]+)'?$/m.exec(output);
+  return match?.[1];
+}
+
+/**
+ * The Postgres URL this checkout's stack exposes, or `undefined` when none is
+ * discoverable: process environment first, then `supabase status --env`, then
+ * root `.env.local`.
+ *
+ * Returns rather than exits so each caller keeps its own failure contract — the
+ * seeders exit 2 through `fail()`, the capture tool prints its own remedy and
+ * exits 1.
+ */
+export async function resolveDbUrl(root: string): Promise<string | undefined> {
+  const fromEnv = process.env.SUPABASE_DB_URL;
+  if (fromEnv) return fromEnv;
+
+  const proc = Bun.spawn(['bunx', 'supabase', 'status', '--env'], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const out = await new Response(proc.stdout).text();
+  const code = await proc.exited;
+  if (code === 0) {
+    const url = parseStatusEnv(out);
+    if (url) return url;
+  }
+
+  try {
+    return envFromValuesFile(root, 'SUPABASE_DB_URL');
+  } catch {
+    return undefined;
+  }
+}
+
 /** `host:port` of a URL, or null when it cannot be parsed. */
 function urlEndpoint(raw: string | undefined): { host: string; port: string } | null {
   if (!raw) return null;

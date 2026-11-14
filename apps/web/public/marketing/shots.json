@@ -1,0 +1,182 @@
+[
+  {
+    "locale": "en",
+    "file": "en/practice-session.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "A spaced-repetition review session: Alice Jones rates a pharmacology card she has just recalled."
+  },
+  {
+    "locale": "en",
+    "file": "en/practice-session-detail.png",
+    "width": 1600,
+    "height": 1200,
+    "shows": "The card face with the reveal prompt and the four recall ratings.",
+    "variant": "detail"
+  },
+  {
+    "locale": "en",
+    "file": "en/quiz-taking.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "A practice quiz in progress: one multiple-choice question answered, seven still ahead."
+  },
+  {
+    "locale": "en",
+    "file": "en/quiz-taking-detail.png",
+    "width": 1640,
+    "height": 1040,
+    "shows": "One quiz question with its four answer options and the next control.",
+    "variant": "detail"
+  },
+  {
+    "locale": "en",
+    "file": "en/student-stats.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "The student's activity dashboard: a week of reviews, a retention breakdown and the weakest decks."
+  },
+  {
+    "locale": "en",
+    "file": "en/student-stats-detail.png",
+    "width": 1600,
+    "height": 1200,
+    "shows": "Review counts for the week, the correct share and the daily activity chart.",
+    "variant": "detail"
+  },
+  {
+    "locale": "en",
+    "file": "en/quiz-builder.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "The educator question bank: exam items with type, topic and answer counts, ready to be assembled into a quiz."
+  },
+  {
+    "locale": "en",
+    "file": "en/quiz-builder-detail.png",
+    "width": 1560,
+    "height": 1040,
+    "shows": "Question rows with their type badges and topic labels.",
+    "variant": "detail"
+  },
+  {
+    "locale": "en",
+    "file": "en/manage-seats.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Seat pools for the university: how many licences each plan holds, who holds them and what is left."
+  },
+  {
+    "locale": "en",
+    "file": "en/manage-seats-detail.png",
+    "width": 1760,
+    "height": 1120,
+    "shows": "Seat usage per plan, with the assigned licences and the first holders.",
+    "variant": "detail"
+  },
+  {
+    "locale": "en",
+    "file": "en/manage-members.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "The member roster: eleven people with their roles, groups and join dates."
+  },
+  {
+    "locale": "en",
+    "file": "en/manage-members-detail.png",
+    "width": 1600,
+    "height": 1200,
+    "shows": "Member rows with names, roles, groups and join dates.",
+    "variant": "detail"
+  },
+  {
+    "locale": "pl",
+    "file": "pl/practice-session.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Sesja powtórek: Zofia Nowak ocenia fiszkę z farmakologii, którą właśnie przypomniała sobie."
+  },
+  {
+    "locale": "pl",
+    "file": "pl/practice-session-detail.png",
+    "width": 1600,
+    "height": 1200,
+    "shows": "Fiszka z prośbą o odkrycie odpowiedzi i czterema ocenami powtórki.",
+    "variant": "detail"
+  },
+  {
+    "locale": "pl",
+    "file": "pl/quiz-taking.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Kartkówka w trakcie rozwiązywania: jedno pytanie zamknięte odpowiedziane, siedem przed studentką."
+  },
+  {
+    "locale": "pl",
+    "file": "pl/quiz-taking-detail.png",
+    "width": 1640,
+    "height": 1040,
+    "shows": "Jedno pytanie testowe z czterema odpowiedziami i przyciskiem przejścia dalej.",
+    "variant": "detail"
+  },
+  {
+    "locale": "pl",
+    "file": "pl/student-stats.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Panel aktywności studentki: tydzień powtórek, rozkład stanów kart i najsłabsze talie."
+  },
+  {
+    "locale": "pl",
+    "file": "pl/student-stats-detail.png",
+    "width": 1600,
+    "height": 1200,
+    "shows": "Liczba powtórek w tygodniu, odsetek poprawnych i wykres aktywności dziennej.",
+    "variant": "detail"
+  },
+  {
+    "locale": "pl",
+    "file": "pl/quiz-builder.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Bank pytań nauczyciela: pozycje egzaminacyjne z typem, tematem i liczbą odpowiedzi, gotowe do złożenia w test."
+  },
+  {
+    "locale": "pl",
+    "file": "pl/quiz-builder-detail.png",
+    "width": 1560,
+    "height": 1040,
+    "shows": "Pozycje pytań z oznaczeniami typu i tematami.",
+    "variant": "detail"
+  },
+  {
+    "locale": "pl",
+    "file": "pl/manage-seats.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Pule miejsc uczelni: ile licencji obejmuje każdy plan, kto je zajmuje i ile zostało."
+  },
+  {
+    "locale": "pl",
+    "file": "pl/manage-seats-detail.png",
+    "width": 1760,
+    "height": 1120,
+    "shows": "Wykorzystanie miejsc w podziale na plany, z przydziałami i pierwszymi osobami.",
+    "variant": "detail"
+  },
+  {
+    "locale": "pl",
+    "file": "pl/manage-members.png",
+    "width": 2880,
+    "height": 1800,
+    "shows": "Lista członków: jedenaście osób z rolami, grupami i datami dołączenia."
+  },
+  {
+    "locale": "pl",
+    "file": "pl/manage-members-detail.png",
+    "width": 1600,
+    "height": 1200,
+    "shows": "Wiersze członków z imieniem, rolą, grupami i datą dołączenia.",
+    "variant": "detail"
+  }
+]
