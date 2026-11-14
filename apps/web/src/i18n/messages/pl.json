@@ -106,6 +106,8 @@
     "ERROR_USAGE_LIMIT_EXCEEDED": "Osiągnięto limit Twojego planu.",
     "ERROR_CONFLICT": "Wystąpił konflikt. Zasób może już istnieć.",
     "ERROR_ASSESSMENT_LIVE": "Ta kartkówka jest już opublikowana — nie można zmieniać jej pytań.",
+    "ERROR_ASSESSMENT_ALREADY_PUBLISHED": "Ta kartkówka jest już opublikowana. Aby ją zmienić, wycofaj zaplanowaną kartkówkę do szkicu — uruchomionej nie można już wycofać.",
+    "ERROR_EXPOSURE_ACK_REQUIRED": "Niektóre pytania są nadal dostępne dla innych klas. Potwierdź tę sytuację albo zaznacz „Zarezerwuj dla całej organizacji”.",
     "ERROR_PAYLOAD_TOO_LARGE": "Plik jest za duży.",
     "ERROR_UNPROCESSABLE_ENTITY": "Żądanie nie mogło zostać przetworzone z powodu błędów walidacji.",
     "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
@@ -2652,7 +2654,9 @@
     "previous_page": "Poprzednia strona",
     "next_page": "Następna strona",
     "no_results": "Brak pytań pasujących do filtrów.",
-    "create_flashcard_title": "Utwórz fiszkę z tego pytania"
+    "create_flashcard_title": "Utwórz fiszkę z tego pytania",
+    "held_notice_until": "{count, plural, one {# pytanie jest zarezerwowane} few {# pytania są zarezerwowane} other {# pytań jest zarezerwowanych}} na Twoją kartkówkę do {date}.",
+    "held_notice_released": "{count, plural, one {# pytanie jest zarezerwowane} few {# pytania są zarezerwowane} other {# pytań jest zarezerwowanych}} na Twoją kartkówkę do momentu jej udostępnienia."
   },
   "CreateFlashcardFromQuestion": {
     "title": "Utwórz fiszkę z pytania",
@@ -2847,7 +2851,15 @@
     "export_answers": "Eksportuj odpowiedzi",
     "view_source_quiz": "Zobacz quiz źródłowy",
     "schedule_release": "Zaplanuj publikację",
-    "start_time": "Godzina rozpoczęcia"
+    "start_time": "Godzina rozpoczęcia",
+    "exposure_warning": "{count, plural, one {# pytanie jest nadal dostępne} few {# pytania są nadal dostępne} other {# pytań jest nadal dostępnych}} dla {students, plural, one {# ucznia} few {# uczniów} other {# uczniów}} spoza wybranych klas. Opublikowanie zarezerwuje je tylko dla wybranych klas.",
+    "exposure_ack": "Rozumiem, że te pytania pozostaną dostępne dla innych klas w trakcie kartkówki.",
+    "seal_org_wide": "Zarezerwuj dla całej organizacji",
+    "seal_org_wide_hint": "Pytania będą zablokowane dla wszystkich uczniów organizacji, także tych, którzy dołączą później.",
+    "publish_invalid": "Uzupełnij brakujące dane kartkówki: termin, co najmniej jednego ucznia lub grupę oraz co najmniej jedno pytanie.",
+    "deadline_required": "Termin jest wymagany, aby opublikować kartkówkę.",
+    "publish_failed": "Nie udało się opublikować kartkówki.",
+    "withdraw_live_hint": "Uruchomionej kartkówki nie można wycofać — zmiany zaplanowanej są możliwe tylko przed jej rozpoczęciem."
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",

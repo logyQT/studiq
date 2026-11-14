@@ -9,6 +9,9 @@ import {
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * SEC-09 — a student and a teacher from another organization cannot read the
  * classroom's quiz, another student's attempt or the teacher's results.
@@ -431,7 +434,9 @@ async function ensurePublishedQuiz(
   expect(targets.status, `PUT ${ASSIGNMENTS_URL}/<id>/targets → ${targets.body}`).toBe(200);
 
   if (assignment.status !== 'published') {
-    const published = await call(page, 'POST', `${ASSIGNMENTS_URL}/${assignment.id}/publish`, {});
+    const published = await call(page, 'POST', `${ASSIGNMENTS_URL}/${assignment.id}/publish`, {
+      deadline: PUBLISH_DEADLINE,
+    });
     expect(published.status, `POST ${ASSIGNMENTS_URL}/<id>/publish → ${published.body}`).toBe(200);
   }
 

@@ -2032,13 +2032,6 @@ export type Database = {
             referencedRelation: 'questions';
             referencedColumns: ['id'];
           },
-          {
-            foreignKeyName: 'student_answers_selected_option_id_fkey';
-            columns: ['selected_option_id'];
-            isOneToOne: false;
-            referencedRelation: 'question_options';
-            referencedColumns: ['id'];
-          },
         ];
       };
       subscription_plans: {
@@ -2133,6 +2126,7 @@ export type Database = {
           passing_score: number | null;
           question_count: number;
           quiz_id: string | null;
+          seal_org_wide: boolean;
           show_results: boolean;
           shuffle_answers: boolean;
           shuffle_questions: boolean;
@@ -2155,6 +2149,7 @@ export type Database = {
           passing_score?: number | null;
           question_count?: number;
           quiz_id?: string | null;
+          seal_org_wide?: boolean;
           show_results?: boolean;
           shuffle_answers?: boolean;
           shuffle_questions?: boolean;
@@ -2176,6 +2171,7 @@ export type Database = {
           passing_score?: number | null;
           question_count?: number;
           quiz_id?: string | null;
+          seal_org_wide?: boolean;
           show_results?: boolean;
           shuffle_answers?: boolean;
           shuffle_questions?: boolean;

@@ -2,6 +2,9 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-Q-04 — pytanie otwarte („Otwarta odpowiedź”) w banku „Fizyka”.
  *
@@ -184,7 +187,9 @@ async function createPublishedAssignment(page: Page, questionId: string, student
   await api(page.request, 'PUT', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/targets`, {
     studentIds: [studentId],
   });
-  await api(page.request, 'POST', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/publish`, {});
+  await api(page.request, 'POST', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/publish`, {
+    deadline: PUBLISH_DEADLINE,
+  });
 
   const detail = await api<AssignmentDetail>(
     page.request,

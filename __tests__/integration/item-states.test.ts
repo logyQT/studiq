@@ -47,6 +47,9 @@ import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[i
 // counter. The behaviour seam is the real service stack against local Supabase; the frozen
 // assessment snapshot lands in the stacked slice.
 
+/** A published run must be able to close (publish gate, R2/R5). */
+const DEADLINE = new Date(Date.now() + 2 * 86_400_000).toISOString();
+
 describe('Item states and versioning (#1171)', () => {
   const service = createServiceClient();
 
@@ -211,7 +214,7 @@ describe('Item states and versioning (#1171)', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ deadline: DEADLINE }),
       },
     );
     const publishRes = await publishPost(publishReq, { params: publishParams });

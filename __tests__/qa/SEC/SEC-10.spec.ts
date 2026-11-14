@@ -9,6 +9,9 @@ import {
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * SEC-10 — XSS w polach tekstowych.
  *
@@ -221,6 +224,15 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
       'POST /api/v1/questions',
       201,
     );
+    // The live assignment seals its own question for the targeted student (R14), so the report
+    // targets a second, unbound question — reporting a held item answers 404, like a missing one.
+    const reportable = await expectData<{ id: string }>(
+      await page.request.post('/api/v1/questions', {
+        data: { bankId: bank.id, type: 'open', content: `${QUESTION_CONTENT} (do zgłoszenia)` },
+      }),
+      'POST /api/v1/questions',
+      201,
+    );
 
     // Step 1 (list): the deck name is text, not markup.
     await page.goto('/edu/flashcards');
@@ -268,7 +280,7 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
     );
     const published = await expectData<{ status: string }>(
       await page.request.post(`/api/v1/teacher/assignments/${assignment.id}/publish`, {
-        data: {},
+        data: { deadline: PUBLISH_DEADLINE },
       }),
       'POST /api/v1/teacher/assignments/:id/publish',
       200,
@@ -326,7 +338,7 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
 
     // Step 3d: the student's report message carries the img payload.
     const report = await expectData<{ id: string }>(
-      await page.request.post(`/api/v1/questions/${question.id}/reports`, {
+      await page.request.post(`/api/v1/questions/${reportable.id}/reports`, {
         data: { message: REPORT_MESSAGE },
       }),
       'POST /api/v1/questions/:id/reports',

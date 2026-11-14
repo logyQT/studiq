@@ -10,8 +10,9 @@ import {
   withAnswerKey,
 } from '@studiq/server/lib/question-keys';
 import { OPTION_READER_COLUMNS } from '@studiq/server/lib/question-view';
+import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -181,10 +182,17 @@ export class QuestionService {
     const hasTopicFilter = topicIds.length > 0;
     const columns = hasTopicFilter ? QUESTION_SELECT_BY_TOPIC : QUESTION_SELECT;
 
+    // Items an open assessment holds are absent, not locked (R14): the row filter and the pager
+    // total are narrowed together, so a student can never page into a held item.
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+    const sealedIn = sealedIdFilter(seal.data);
+
     // One place applies the filter chain, so the rows of a page and the total that drives the
     // pager can never be scoped differently.
     const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
       let query = applyAccessFilter(q, filter).neq('status', 'deleted');
+      if (sealedIn) query = query.not('id', 'in', sealedIn);
 
       if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
       // The topic embed must be `!inner` for the filter to narrow the parent rows —
@@ -280,6 +288,12 @@ export class QuestionService {
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
+
+    // A sealed item answers `404` — identical to an item that does not exist, so the refusal is
+    // not an oracle for "this item is on your assessment" (R14/R19).
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+    if (seal.data.ids.has(id)) return failure('NOT_FOUND');
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');

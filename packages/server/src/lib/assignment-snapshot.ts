@@ -1,19 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { type QuestionKey, readQuestionKeys } from '@studiq/server/lib/question-keys';
+import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
+import type { QuestionKey } from '@studiq/server/lib/question-keys';
+import { readQuestionKeys } from '@studiq/server/lib/question-keys';
+import { isRecord } from '@studiq/server/lib/record';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
-import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
+import { mapSupabaseError, toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import type { Database } from '@studiq/server/types/database';
 
 /**
- * The frozen assessment snapshot (#1171 slice 1b).
- *
- * `assignment_questions` carries two columns: `snapshot` (reader-safe content, selectable by
- * students) and `snapshot_key` (`explanation` + correct option ids). The key is never granted to
- * `authenticated`; only the server reads it, with the service role.
- *
- * Snapshot shape mirrors the reader question projection, so a payload does not change shape when
- * it comes from a snapshot instead of the live question.
+ * The frozen assessment snapshot (#1171). `snapshot` is reader-safe; `snapshot_key` is never
+ * granted to `authenticated` and only this module reads it, with the service role.
  */
 
 /** One option inside a frozen snapshot: content only, never `is_correct`. */
@@ -25,12 +23,13 @@ export interface SnapshotOption {
   match_side: string | null;
 }
 
-/** The reader-safe half of a frozen item. */
+/** The reader-safe half of a frozen item; a snapshot read also carries its published version. */
 export interface QuestionSnapshot {
   id: string;
   content: string;
   type: string;
   question_answers: SnapshotOption[];
+  snapshot_version?: number | null;
 }
 
 /** The published key: one explanation and the option ids that were correct at publish. */
@@ -45,12 +44,137 @@ const OPTION_SELECT = 'id, content, order_index, match_group, match_side';
 const LIVE_SNAPSHOT_SELECT =
   `id, content, type, version, question_answers:question_options(${OPTION_SELECT})` as const;
 
+function readOption(value: unknown): SnapshotOption | null {
+  if (!isRecord(value)) return null;
+  const { id, content, order_index, match_group, match_side } = value;
+  if (typeof id !== 'string' || typeof content !== 'string' || typeof order_index !== 'number') {
+    return null;
+  }
+  return {
+    id,
+    content,
+    order_index,
+    match_group: typeof match_group === 'string' ? match_group : null,
+    match_side: typeof match_side === 'string' ? match_side : null,
+  };
+}
+
+/** Narrows a `jsonb` snapshot column; malformed is `null`, and the caller decides. */
+export function snapshotFromJson(value: unknown): QuestionSnapshot | null {
+  if (!isRecord(value)) return null;
+  const { id, content, type, question_answers } = value;
+  if (typeof id !== 'string' || typeof content !== 'string' || typeof type !== 'string') {
+    return null;
+  }
+  return {
+    id,
+    content,
+    type,
+    question_answers: (Array.isArray(question_answers) ? question_answers : []).flatMap(
+      (option) => {
+        const parsed = readOption(option);
+        return parsed ? [parsed] : [];
+      },
+    ),
+  };
+}
+
 /**
- * Freezes every item of `assignmentId` from its live row, writing `snapshot`, `snapshot_key` and
- * `snapshot_version`. Called on the draft → published transition (and again on a later
- * republish), never while the assignment is already live — a re-write then would lift an edited
- * item into a running assessment. Idempotent: the same live row writes the same snapshot.
+ * Reader-safe snapshots of one assignment, keyed by question id. Read with the service role: a
+ * student can no longer select `assignment_questions` rows (R14 — the refactor that keeps the
+ * published item set off the client-readable surface), so the caller must already have proved the
+ * attempt's ownership or the assignment's authorship before it calls this.
  */
+export async function readAssignmentSnapshots(
+  assignmentId: string,
+): Promise<ServiceResult<Map<string, QuestionSnapshot>>> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id, snapshot, snapshot_version')
+    .eq('assignment_id', assignmentId);
+
+  if (error) return toDbFailure(error);
+
+  const snapshots = new Map<string, QuestionSnapshot>();
+  for (const row of dbRows(data)) {
+    const snapshot = snapshotFromJson(row.snapshot);
+    if (snapshot && row.question_id) {
+      snapshots.set(row.question_id, { ...snapshot, snapshot_version: row.snapshot_version });
+    }
+  }
+  return success(snapshots);
+}
+
+/** One published link, as the take flow needs it: order, points and the frozen item. */
+export interface AssignmentLink {
+  question_id: string | null;
+  order_index: number | null;
+  points: number;
+  snapshot: QuestionSnapshot | null;
+  snapshot_version: number | null;
+}
+
+/**
+ * The links of one assignment, read with the service role. `assignment_questions` is staff-only
+ * at the RLS boundary (slice 2), so every student-side read of it goes through here — and only
+ * after the caller proved the student is targeted by that assignment.
+ */
+export async function readAssignmentLinks(
+  assignmentId: string,
+): Promise<ServiceResult<AssignmentLink[]>> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id, order_index, points, snapshot, snapshot_version')
+    .eq('assignment_id', assignmentId)
+    .order('order_index', { ascending: true });
+
+  if (error) return toDbFailure(error);
+  return success(dbRows(data).map((row) => ({ ...row, snapshot: snapshotFromJson(row.snapshot) })));
+}
+
+/** question_id → awardable points of one assignment (service role; the attempt is the caller's). */
+export async function readAssignmentPoints(
+  assignmentId: string,
+): Promise<ServiceResult<Map<string, number>>> {
+  const links = await readAssignmentLinks(assignmentId);
+  if (!links.success) return links;
+  return success(
+    new Map(
+      links.data.flatMap((link) => (link.question_id ? [[link.question_id, link.points]] : [])),
+    ),
+  );
+}
+
+/** The published keys of one assignment (service role; the caller already proved ownership). */ export async function readAssignmentSnapshotKeys(
+  assignmentId: string,
+): Promise<Map<string, QuestionSnapshotKey>> {
+  const keys = new Map<string, QuestionSnapshotKey>();
+  const supabase = createServiceClient();
+
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id, snapshot_key')
+    .eq('assignment_id', assignmentId);
+
+  if (error) return mapSupabaseError(error);
+
+  for (const row of dbRows(data)) {
+    const key = row.snapshot_key;
+    if (!row.question_id || !isRecord(key)) continue;
+    const correctOptionIds = Array.isArray(key.correctOptionIds)
+      ? key.correctOptionIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    keys.set(row.question_id, {
+      explanation: typeof key.explanation === 'string' ? key.explanation : null,
+      correctOptionIds,
+    });
+  }
+  return keys;
+}
+
+/** Freezes every item at the draft → published transition; never while already live. */
 export async function writeAssignmentSnapshots(
   supabase: SupabaseClient<Database>,
   assignmentId: string,
@@ -107,4 +231,48 @@ export async function writeAssignmentSnapshots(
   }
 
   return success(written);
+}
+
+/**
+ * The question payload of one attempt, in its own order: an assignment reads its frozen snapshots,
+ * practice the live item. A published link without a snapshot is a corrupt state and is skipped.
+ */
+export async function readAttemptQuestions(
+  supabase: SupabaseClient<Database>,
+  attempt: { id: string; assignment_id: string | null },
+): Promise<ServiceResult<QuestionSnapshot[]>> {
+  if (attempt.assignment_id) {
+    const { data, error } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .eq('attempt_id', attempt.id)
+      .order('order_index', { ascending: true });
+
+    if (error) return toDbFailure(error);
+
+    const snapshots = await readAssignmentSnapshots(attempt.assignment_id);
+    if (!snapshots.success) return snapshots;
+
+    return success(
+      dbRows(data).flatMap((row) => {
+        const frozen = row.question_id ? snapshots.data.get(row.question_id) : undefined;
+        return frozen ? [frozen] : [];
+      }),
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('quiz_attempt_questions')
+    .select(`order_index, question_id, questions(${QUESTION_PAYLOAD_SELECT})`)
+    .eq('attempt_id', attempt.id)
+    .order('order_index', { ascending: true });
+
+  if (error) return toDbFailure(error);
+
+  return success(
+    dbRows(data).flatMap((row) => {
+      const question = dbNested(row.questions);
+      return question ? [question] : [];
+    }),
+  );
 }

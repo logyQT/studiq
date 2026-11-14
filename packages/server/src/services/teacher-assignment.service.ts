@@ -1,25 +1,32 @@
 import type { RequestContext } from '@studiq/authz';
 import {
   ASSIGNMENT_QUESTION_COLUMNS,
+  readAssignmentLinks,
+  readAssignmentSnapshotKeys,
+  readAssignmentSnapshots,
+  readAttemptQuestions,
+  snapshotFromJson,
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
+import { assessExposure } from '@studiq/server/lib/assignment-exposure';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
-import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  AddQuestionsInput,
-  CreateTeacherAssignmentInput,
-  GradeAnswerInput,
-  RandomizeInput,
-  ReorderQuestionsInput,
-  SetTargetsInput,
-  UpdateTeacherAssignmentInput,
+import {
+  type AddQuestionsInput,
+  type CreateTeacherAssignmentInput,
+  type GradeAnswerInput,
+  type PublishAssignmentInput,
+  PublishableAssignmentSchema,
+  type RandomizeInput,
+  type ReorderQuestionsInput,
+  type SetTargetsInput,
+  type UpdateTeacherAssignmentInput,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -89,6 +96,15 @@ export interface AnswersExportRow {
 function joinOne<T>(value: T | T[] | null | undefined): T | null {
   const related = Array.isArray(value) ? value[0] : value;
   return related ?? null;
+}
+
+/**
+ * Whether a published run has opened. Living inside the window is derived from the clock — there is
+ * no extra enum value — so a run with no `start_time` is live from the moment it is published.
+ */
+function isLiveRun(run: { status?: string; start_time?: string | null }, now: Date): boolean {
+  if (run.status !== 'published') return false;
+  return !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
 }
 
 export class TeacherAssignmentService {
@@ -187,7 +203,7 @@ export class TeacherAssignmentService {
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
       .select(
-        `*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
+        `*, assignment_targets(group_id, student_id), assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
       )
       .eq('id', id)
       .maybeSingle();
@@ -201,22 +217,49 @@ export class TeacherAssignmentService {
       if (assignment.organization_id !== ctx.activeOrgId) return failure('FORBIDDEN');
     }
 
-    // The assignment owner (or an org manager) renders the key on the edit, preview and print
-    // pages, so the key is read with the service role for exactly the questions of this
-    // assignment — the ids come from the row just proven visible, never from the request.
-    const questions = dbRows(assignment.assignment_questions)
-      .map((row) => dbNested(row.question))
-      .filter((question): question is NonNullable<typeof question> => question !== null);
-    const keys = await readQuestionKeys(questions.map((question) => question.id));
-    const assignmentQuestions = dbRows(assignment.assignment_questions).map((row) => {
-      const question = dbNested(row.question);
-      return {
-        ...row,
-        question: question ? withAnswerKey(question, keys.get(question.id)) : question,
-      };
-    });
+    const rows = dbRows(assignment.assignment_questions);
+    // A published assessment serves its frozen snapshot (R11); draft is the live composer.
+    const isPublished = assignment.status !== 'draft';
 
-    return success({ ...assignment, assignment_questions: assignmentQuestions });
+    let assignmentQuestions;
+    if (isPublished) {
+      const snapshots = await readAssignmentSnapshots(id);
+      if (isFailure(snapshots)) return snapshots;
+      const keys = await readAssignmentSnapshotKeys(id);
+      assignmentQuestions = rows.map((row) => {
+        const frozen = row.question_id ? snapshots.data.get(row.question_id) : undefined;
+        return {
+          ...row,
+          question: frozen ? withAnswerKey(frozen, keys.get(frozen.id)) : null,
+        };
+      });
+    } else {
+      const live = rows.flatMap((row) => {
+        const question = dbNested(row.question);
+        return question ? [question] : [];
+      });
+      const keys = await readQuestionKeys(live.map((question) => question.id));
+      assignmentQuestions = rows.map((row) => {
+        const question = dbNested(row.question);
+        return {
+          ...row,
+          question: question ? withAnswerKey(question, keys.get(question.id)) : null,
+        };
+      });
+    }
+
+    // The composer needs the cross-class forecast to render the blocking acknowledgement (R3). A
+    // published run cannot be re-published, so only the draft pays for it.
+    const exposure = isPublished
+      ? null
+      : await assessExposure(id, dbRows(assignment.assignment_targets));
+    if (exposure && isFailure(exposure)) return exposure;
+
+    return success({
+      ...assignment,
+      assignment_questions: assignmentQuestions,
+      ...(exposure?.success ? { exposure: exposure.data } : {}),
+    });
   }
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -280,19 +323,25 @@ export class TeacherAssignmentService {
     return success(null);
   }
 
+  /**
+   * Withdraws a **scheduled** run back to draft (R12): nothing is live yet, so no exposure exists
+   * and the window or item set can be corrected. Once the window has opened the run is live and
+   * withdraw is refused — publish-once applies from live.
+   */
   async unpublish(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
     const { data: assignment, error: fetchError } = await supabase
       .from('teacher_assignments')
-      .select('status')
+      .select('status, start_time')
       .eq('id', id)
       .maybeSingle();
 
     if (fetchError) return toDbFailure(fetchError);
     if (!assignment) return failure('NOT_FOUND');
     if (assignment.status !== 'published') return failure('BAD_REQUEST');
+    if (isLiveRun(assignment, new Date())) return failure('ASSESSMENT_LIVE');
 
     const { data: updated, error } = await supabase
       .from('teacher_assignments')
@@ -305,60 +354,82 @@ export class TeacherAssignmentService {
     return success(updated);
   }
 
+  /**
+   * Publishes a draft (R3/R12): the configuration is validated first (`422` with a field path per
+   * problem), then cross-class exposure is either acknowledged or sealed away, and only then does
+   * the status flip. Publishing an already-published run is refused — a scheduled run is corrected
+   * by withdrawing it to draft, a live one cannot be corrected at all.
+   */
   async publish(
     id: string,
-    deadline: string | undefined,
-    startTime: string | undefined,
+    input: PublishAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
-    const { count } = await supabase
-      .from('assignment_targets')
-      .select('*', { count: 'exact', head: true })
-      .eq('assignment_id', id);
-
-    if (count === 0) return failure('BAD_REQUEST');
-
-    // Only a save that leaves the assignment already published is silent; publishing a draft
-    // (including one that was unpublished before) tells the students. The status read also
-    // decides whether this call freezes the snapshot, so a failed read must abort.
     const { data: before, error: beforeError } = await supabase
       .from('teacher_assignments')
-      .select('status')
+      .select('status, start_time, deadline, max_attempts, organization_id')
       .eq('id', id)
       .single();
 
     if (beforeError) return toDbFailure(beforeError);
 
-    // Freeze before the status flips: a publish that cannot write every snapshot must not leave
-    // a live assessment with nothing to serve. Re-publishing a withdrawn draft writes it again
-    // from the current live rows; a save on an already-published assessment never does.
-    if (before.status !== 'published') {
-      const snapshot = await writeAssignmentSnapshots(supabase, id);
-      if (isFailure(snapshot)) return snapshot;
+    const [targets, items] = await Promise.all([
+      supabase.from('assignment_targets').select('group_id, student_id').eq('assignment_id', id),
+      supabase.from('assignment_questions').select('question_id').eq('assignment_id', id),
+    ]);
+    if (targets.error) return toDbFailure(targets.error);
+    if (items.error) return toDbFailure(items.error);
+
+    const deadline = input.deadline ?? before.deadline ?? undefined;
+    const startTime = input.startTime ?? before.start_time ?? undefined;
+
+    const config = PublishableAssignmentSchema.safeParse({
+      targets: dbRows(targets.data),
+      items: dbRows(items.data),
+      deadline,
+      startTime,
+      maxAttempts: before.max_attempts,
+    });
+    if (!config.success) return failure('UNPROCESSABLE_ENTITY', config.error.issues);
+
+    // Publish-once applies from live: a scheduled run has no exposure yet, but it is still
+    // published — withdraw it to draft to change it.
+    if (before.status === 'published') return failure('ASSESSMENT_ALREADY_PUBLISHED');
+
+    // Sealing for the whole organisation leaves nothing exposed, so the forecast is only needed for
+    // the per-class default.
+    if (!input.sealOrgWide) {
+      const exposure = await assessExposure(id, dbRows(targets.data));
+      if (isFailure(exposure)) return exposure;
+      if (exposure.data.openItemCount > 0 && !input.acknowledgeExposure) {
+        return failure('EXPOSURE_ACK_REQUIRED');
+      }
     }
 
-    const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {
-      status: 'published',
-      updated_at: new Date().toISOString(),
-    };
-    if (deadline !== undefined) updateData.deadline = deadline;
-    if (startTime !== undefined) updateData.start_time = startTime;
+    // Freeze before the status flips: a publish that cannot write every snapshot must not leave
+    // a live assessment with nothing to serve.
+    const snapshot = await writeAssignmentSnapshots(supabase, id);
+    if (isFailure(snapshot)) return snapshot;
 
     const { data: updated, error } = await supabase
       .from('teacher_assignments')
-      .update(updateData)
+      .update({
+        status: 'published',
+        deadline,
+        start_time: startTime ?? null,
+        seal_org_wide: input.sealOrgWide,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .select()
       .single();
 
     if (error) return toDbFailure(error);
 
-    if (before.status !== 'published') {
-      await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
-    }
+    await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
     return success(updated);
   }
 
@@ -535,6 +606,19 @@ export class TeacherAssignmentService {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
+    // A published run's cohort is frozen (R20): dropping a class would unseal it mid-window, and
+    // an empty list would withdraw the run through the draft branch below. A scheduled run is
+    // re-targeted by withdrawing it to draft first (R12).
+    const { data: assignment, error: statusError } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (statusError) return toDbFailure(statusError);
+    if (!assignment) return failure('NOT_FOUND');
+    if (assignment.status === 'published') return failure('ASSESSMENT_LIVE');
+
     // Every target must belong to the assignment's organisation: the ids come from the request,
     // and notifications and results are fanned out from them (#235).
     const foreign = await this.hasForeignTargets(supabase, id, data, ctx);
@@ -602,7 +686,7 @@ export class TeacherAssignmentService {
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
       .select(
-        '*, quiz_attempt_questions(*, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side))), quiz_answers:student_answers(*), assignment_answer_images(*)',
+        '*, quiz_attempt_questions(*), quiz_answers:student_answers(*), assignment_answer_images(*)',
       )
       .eq('id', attemptId)
       .eq('assignment_id', id)
@@ -614,21 +698,20 @@ export class TeacherAssignmentService {
     const maxPoints = await this.loadAssignmentPoints(supabase, id);
     if (isFailure(maxPoints)) return maxPoints;
 
-    // Grading and the per-student results page render the key, so it is added from the
-    // service role for this attempt's own questions (the assignment ownership, checked above,
-    // is the authorization for the read).
-    const questions = dbRows(attempt.quiz_attempt_questions)
-      .map((row) => dbNested(row.question))
-      .filter((question): question is NonNullable<typeof question> => question !== null);
-    const keys = await readQuestionKeys(questions.map((question) => question.id));
+    // Grading renders the published item and its key, never the edited live row.
+    const snapshots = await readAssignmentSnapshots(id);
+    if (isFailure(snapshots)) return snapshots;
+    const keys = await readAssignmentSnapshotKeys(id);
 
     return success({
       ...attempt,
       quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map((q) => {
-        const question = dbNested(q.question);
+        const frozen = q.question_id ? snapshots.data.get(q.question_id) : undefined;
         return {
           ...q,
-          question: question ? withAnswerKey(question, keys.get(question.id)) : question,
+          question: frozen
+            ? withAnswerKey(frozen, q.question_id ? keys.get(q.question_id) : undefined)
+            : null,
           max_points: maxPoints.data.get(q.question_id) ?? null,
         };
       }),
@@ -795,6 +878,33 @@ export class TeacherAssignmentService {
   }
 
   /**
+   * The published assignment `id`, already proved to target `userId` (directly or through one of
+   * their groups). Both student reads start here, so the targeting proof cannot drift between
+   * `getForStudent` and `startAttempt`.
+   */
+  private async loadTargetedAssignment(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    userId: string,
+  ) {
+    const { data: assignment, error } = await supabase
+      .from('teacher_assignments')
+      .select('*, assignment_targets(*)')
+      .eq('id', id)
+      .eq('status', 'published')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!assignment) return failure('NOT_FOUND');
+
+    const targeted = await this.isAssignmentTarget(supabase, assignment, userId);
+    if (isFailure(targeted)) return targeted;
+    if (!targeted.data) return failure('NOT_FOUND');
+
+    return success(assignment);
+  }
+
+  /**
    * A student may see / start an assignment only if it targets them directly,
    * targets one of their groups, or they authored it (teacher preview).
    * Same rule as the list endpoint, so id-based access cannot bypass it.
@@ -932,19 +1042,9 @@ export class TeacherAssignmentService {
   async getForStudent(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: assignment, error } = await supabase
-      .from('teacher_assignments')
-      .select('*, assignment_targets(*)')
-      .eq('id', id)
-      .eq('status', 'published')
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-    if (!assignment) return failure('NOT_FOUND');
-
-    const targeted = await this.isAssignmentTarget(supabase, assignment, ctx.userId);
-    if (isFailure(targeted)) return targeted;
-    if (!targeted.data) return failure('NOT_FOUND');
+    const loaded = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    if (isFailure(loaded)) return loaded;
+    const assignment = loaded.data;
 
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
@@ -963,19 +1063,9 @@ export class TeacherAssignmentService {
   async startAttempt(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: assignment, error: assignmentError } = await supabase
-      .from('teacher_assignments')
-      .select(`*, assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}), assignment_targets(*)`)
-      .eq('id', id)
-      .eq('status', 'published')
-      .maybeSingle();
-
-    if (assignmentError) return toDbFailure(assignmentError);
-    if (!assignment) return failure('NOT_FOUND');
-
-    const targeted = await this.isAssignmentTarget(supabase, assignment, ctx.userId);
-    if (isFailure(targeted)) return targeted;
-    if (!targeted.data) return failure('NOT_FOUND');
+    const target = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    if (isFailure(target)) return target;
+    const assignment = target.data;
 
     // Check time window
     const now = new Date();
@@ -1016,33 +1106,29 @@ export class TeacherAssignmentService {
       return failure('RATE_LIMITED');
     }
 
-    const questions = dbRows(assignment.assignment_questions);
-    if (questions.length === 0) return failure('NOT_FOUND');
+    const links = await readAssignmentLinks(id);
+    if (isFailure(links)) return links;
+    if (links.data.length === 0) return failure('NOT_FOUND');
 
-    let orderedQuestions = [...questions];
-    if (assignment.shuffle_questions) {
-      orderedQuestions = orderedQuestions.toSorted(() => Math.random() - 0.5);
-    }
+    const orderedQuestions = assignment.shuffle_questions
+      ? [...links.data].toSorted(() => Math.random() - 0.5)
+      : [...links.data];
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
     // questions change later (same reasoning as total_questions).
     const totalPoints = orderedQuestions.reduce((sum, q) => sum + q.points, 0);
 
-    // `assignment_questions.question_id` is nullable (`ON DELETE SET NULL`); a row
-    // whose question is gone has nothing to load, so it is left out of the read.
-    const questionIds = orderedQuestions.flatMap((q) => (q.question_id ? [q.question_id] : []));
-
-    const { data: fullQuestions, error: questionsError } = await supabase
-      .from('questions')
-      .select(QUESTION_PAYLOAD_SELECT)
-      .in('id', questionIds);
-
-    if (questionsError) return toDbFailure(questionsError);
+    // The published item, never the live row (R11); a missing snapshot is a corrupt state.
+    const payloads = orderedQuestions.flatMap((link) => {
+      const snapshot = snapshotFromJson(link.snapshot);
+      return snapshot ? [{ ...snapshot, snapshot_version: link.snapshot_version }] : [];
+    });
+    if (payloads.length !== orderedQuestions.length) return failure('INTERNAL_SERVER');
 
     if (assignment.shuffle_answers) {
-      for (const q of dbRows(fullQuestions)) {
-        q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
+      for (const question of payloads) {
+        question.question_answers = question.question_answers.toSorted(() => Math.random() - 0.5);
       }
     }
 
@@ -1091,7 +1177,7 @@ export class TeacherAssignmentService {
 
     return success({
       ...toAttemptPayload(attempt),
-      questions: dbRows(fullQuestions),
+      questions: payloads,
     });
   }
 
@@ -1107,19 +1193,11 @@ export class TeacherAssignmentService {
     supabase: SupabaseClient<Database>,
     attempt: QuizAttemptRow,
   ): Promise<ServiceResult<unknown>> {
-    const { data: rows, error } = await supabase
-      .from('quiz_attempt_questions')
-      .select(`order_index, question_id, questions(${QUESTION_PAYLOAD_SELECT})`)
-      .eq('attempt_id', attempt.id)
-      .order('order_index', { ascending: true });
+    // The published snapshot for an assignment attempt, the live item for practice.
+    const questions = await readAttemptQuestions(supabase, attempt);
+    if (isFailure(questions)) return questions;
 
-    if (error) return toDbFailure(error);
-
-    const questions = dbRows(rows)
-      .map((row) => row.questions)
-      .filter(Boolean);
-
-    return success({ ...toAttemptPayload(attempt), questions });
+    return success({ ...toAttemptPayload(attempt), questions: questions.data });
   }
 
   /**

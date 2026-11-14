@@ -18,6 +18,8 @@ CREATE TABLE public.teacher_assignments (
   shuffle_answers   boolean NOT NULL DEFAULT true,
   show_results      boolean NOT NULL DEFAULT false,
   max_attempts      int NOT NULL DEFAULT 1,
+  -- Seal every item for the whole organisation, not only the targeted classes (R3).
+  seal_org_wide     boolean NOT NULL DEFAULT false,
   passing_score     int,
   question_count    int NOT NULL DEFAULT 0,
   total_points      int NOT NULL DEFAULT 0,

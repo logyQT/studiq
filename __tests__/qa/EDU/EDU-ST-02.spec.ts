@@ -2,6 +2,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-ST-02 — teacher statistics, „Wyniki” (`/edu/stats/results`).
  *
@@ -262,7 +265,9 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
   await api<unknown>(page, 'PUT', `/api/v1/teacher/assignments/${assignment.id}/targets`, {
     studentIds: [student.id],
   });
-  await api<unknown>(page, 'POST', `/api/v1/teacher/assignments/${assignment.id}/publish`, {});
+  await api<unknown>(page, 'POST', `/api/v1/teacher/assignments/${assignment.id}/publish`, {
+    deadline: PUBLISH_DEADLINE,
+  });
 
   return { deckName, cardIds, quizName, assignmentId: assignment.id, questions };
 }

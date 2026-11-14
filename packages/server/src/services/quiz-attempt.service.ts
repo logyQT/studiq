@@ -1,9 +1,14 @@
 import type { RequestContext } from '@studiq/authz';
+import {
+  readAssignmentPoints,
+  readAssignmentSnapshotKeys,
+  readAssignmentSnapshots,
+  readAttemptQuestions,
+} from '@studiq/server/lib/assignment-snapshot';
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
-import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { isRecord } from '@studiq/server/lib/record';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -116,25 +121,51 @@ export class QuizAttemptService {
     if (error || !attempt) return failure('NOT_FOUND');
     if (attempt.completed_at) return failure('BAD_REQUEST');
 
-    const { data: attemptQuestions, error: questionsError } = await supabase
-      .from('quiz_attempt_questions')
-      .select('question_id, questions(type, question_options(id))')
-      .eq('attempt_id', attemptId);
-
-    if (questionsError) return toDbFailure(questionsError);
-
     const allowedIds = new Set<string>();
     const questions = new Map<string, AnswerableQuestion>();
-    for (const row of dbRows(attemptQuestions)) {
-      allowedIds.add(row.question_id);
-      // PostgREST types a to-one embed as always present, but an RLS-hidden
-      // question arrives as null; an answer to it cannot be gated.
-      const embed = dbNested(row.questions);
-      if (!embed?.type) continue;
-      questions.set(row.question_id, {
-        type: embed.type,
-        optionIds: new Set(dbRows(embed.question_options).map((option) => option.id)),
-      });
+
+    // An assignment is gated and graded against its frozen snapshot; practice keeps the live item.
+    if (attempt.assignment_id) {
+      const { data: rows, error: rowsError } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id')
+        .eq('attempt_id', attemptId);
+
+      if (rowsError) return toDbFailure(rowsError);
+
+      const snapshots = await readAssignmentSnapshots(attempt.assignment_id);
+      if (isFailure(snapshots)) return snapshots;
+
+      for (const row of dbRows(rows)) {
+        if (!row.question_id) continue;
+        allowedIds.add(row.question_id);
+        const frozen = snapshots.data.get(row.question_id);
+        if (!frozen) continue;
+        questions.set(row.question_id, {
+          type: frozen.type,
+          optionIds: new Set(frozen.question_answers.map((option) => option.id)),
+        });
+      }
+    } else {
+      const { data: attemptQuestions, error: questionsError } = await supabase
+        .from('quiz_attempt_questions')
+        .select('question_id, questions(type, question_options(id))')
+        .eq('attempt_id', attemptId);
+
+      if (questionsError) return toDbFailure(questionsError);
+
+      for (const row of dbRows(attemptQuestions)) {
+        if (!row.question_id) continue;
+        allowedIds.add(row.question_id);
+        // PostgREST types a to-one embed as always present, but an RLS-hidden
+        // question arrives as null; an answer to it cannot be gated.
+        const embed = dbNested(row.questions);
+        if (!embed?.type) continue;
+        questions.set(row.question_id, {
+          type: embed.type,
+          optionIds: new Set(dbRows(embed.question_options).map((option) => option.id)),
+        });
+      }
     }
 
     // Distinct ids, so a draft that re-sends one question (last entry wins)
@@ -294,13 +325,10 @@ export class QuizAttemptService {
     // Drafts are served as `answers` below; the raw column is never serialised.
     const { draft_answers: draftAnswers, ...attemptFields } = attempt;
 
-    const { data: attemptQuestions, error: questionsError } = await supabase
-      .from('quiz_attempt_questions')
-      .select(`order_index, question_id, questions(${QUESTION_PAYLOAD_SELECT})`)
-      .eq('attempt_id', attemptId)
-      .order('order_index', { ascending: true });
-
-    if (questionsError) return toDbFailure(questionsError);
+    // The attempt's own questions: frozen snapshot for an assignment, the live item for practice.
+    const questionRowsResult = await readAttemptQuestions(supabase, attempt);
+    if (isFailure(questionRowsResult)) return questionRowsResult;
+    const questionRows = questionRowsResult.data;
 
     const { data: answers, error: answersError } = await supabase
       .from('student_answers')
@@ -309,16 +337,12 @@ export class QuizAttemptService {
 
     if (answersError) return toDbFailure(answersError);
 
-    const questionRows = dbRows(attemptQuestions)
-      .toSorted((a, b) => a.order_index - b.order_index)
-      .map((aq) => dbNested(aq.questions))
-      .filter((question): question is NonNullable<typeof question> => question !== null);
-
-    // A finished attempt is a review, so it renders the key — but the key is read with the
-    // service role, from the ids of this attempt's own questions (the attempt was proven to
-    // belong to the caller above). A running attempt never gets it (#331).
+    // A finished attempt renders the key (service role): the published key for an assignment,
+    // the live items for practice. A running attempt never gets it (#331).
     const keys = isCompleted
-      ? await readQuestionKeys(questionRows.map((question) => question.id))
+      ? attempt.assignment_id
+        ? await readAssignmentSnapshotKeys(attempt.assignment_id)
+        : await readQuestionKeys(questionRows.map((question) => question.id))
       : null;
     const questions = keys
       ? questionRows.map((question) => withAnswerKey(question, keys.get(question.id)))
@@ -445,34 +469,27 @@ export class QuizAttemptService {
     }
 
     // Assignment attempts are scored in points, practice quizzes in correct
-    // answers. Load the per-question points once when this is an assignment.
-    const assignmentPoints = new Map<string, number>();
+    // answers. The link rows are staff-only at the RLS boundary, so the attempt's own assignment
+    // is read with the service role (the attempt above proved it is the caller's).
+    let assignmentPoints = new Map<string, number>();
     if (attempt.assignment_id) {
-      const { data: rows, error: pointsError } = await supabase
-        .from('assignment_questions')
-        .select('question_id, points')
-        .eq('assignment_id', attempt.assignment_id);
-
-      if (pointsError) return toDbFailure(pointsError);
-      for (const row of dbRows(rows)) {
-        // `question_id` is nullable (`ON DELETE SET NULL`); a row without a
-        // question cannot award points to any answer.
-        if (!row.question_id) continue;
-        assignmentPoints.set(row.question_id, row.points);
-      }
+      const points = await readAssignmentPoints(attempt.assignment_id);
+      if (isFailure(points)) return points;
+      assignmentPoints = points.data;
     }
 
     let score = 0;
     const answerRecords = [];
     const awardedQuestions = new Set<string>();
 
-    // The key is read once, for the attempt's own answered questions — never for an id taken
-    // from the request (the value gate above already refused a question the attempt never
-    // asked). Scoring no longer touches `question_options` with the caller's client, which
-    // cannot select `is_correct` at all (#1165).
-    const keys = await readQuestionKeys(
-      data.answers.filter((answer) => !answer.skipped).map((answer) => answer.questionId),
-    );
+    // The key is read once, for the attempt's own answered questions (never an id from the
+    // request). An assignment is graded against its published key, practice against the live one.
+    const answeredIds = data.answers
+      .filter((answer) => !answer.skipped)
+      .map((answer) => answer.questionId);
+    const keys = attempt.assignment_id
+      ? await readAssignmentSnapshotKeys(attempt.assignment_id)
+      : await readQuestionKeys(answeredIds);
 
     for (const ans of data.answers) {
       // A skipped question was never answered: no row to store, nothing to score.

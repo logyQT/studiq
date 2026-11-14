@@ -1,9 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
+import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -42,6 +43,13 @@ export class QuizService {
     await limitsResolver.checkLimit(ctx, 'max_quiz_attempts_per_day', attemptsToday ?? 0);
 
     let query = supabase.from('questions').select(QUESTION_PAYLOAD_SELECT).neq('status', 'deleted');
+
+    // Practice never draws a held item: while an assessment window is open the item is absent
+    // from the student's pool, not shown with its answer hidden (R1/R2/R14).
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+    const sealedIn = sealedIdFilter(seal.data);
+    if (sealedIn) query = query.not('id', 'in', sealedIn);
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);

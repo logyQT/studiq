@@ -106,6 +106,8 @@
     "ERROR_USAGE_LIMIT_EXCEEDED": "Your plan's usage limit has been reached.",
     "ERROR_CONFLICT": "A conflict occurred. The resource may already exist.",
     "ERROR_ASSESSMENT_LIVE": "This assessment is already published — its questions can no longer change.",
+    "ERROR_ASSESSMENT_ALREADY_PUBLISHED": "This assessment is already published. Withdraw a scheduled run to draft to change it — a live one can no longer be withdrawn.",
+    "ERROR_EXPOSURE_ACK_REQUIRED": "Some questions are still open to other classes. Acknowledge that, or choose “Seal for the whole organisation”.",
     "ERROR_PAYLOAD_TOO_LARGE": "The file is too large.",
     "ERROR_UNPROCESSABLE_ENTITY": "The request could not be processed due to validation errors.",
     "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
@@ -2671,7 +2673,9 @@
     "previous_page": "Previous page",
     "next_page": "Next page",
     "no_results": "No questions match the filters.",
-    "create_flashcard_title": "Create a flashcard from this question"
+    "create_flashcard_title": "Create a flashcard from this question",
+    "held_notice_until": "{count, plural, one {# question is held} other {# questions are held}} for your assessment until {date}.",
+    "held_notice_released": "{count, plural, one {# question is held} other {# questions are held}} for your assessment until it is released."
   },
   "CreateFlashcardFromQuestion": {
     "title": "Create Flashcard from Question",
@@ -2866,7 +2870,15 @@
     "export_answers": "Export Answers",
     "view_source_quiz": "View source quiz",
     "schedule_release": "Schedule release",
-    "start_time": "Start time"
+    "start_time": "Start time",
+    "exposure_warning": "{count, plural, one {# question is still open} other {# questions are still open}} to {students, plural, one {# student} other {# students}} outside the selected classes. Publishing reserves them for the selected classes only.",
+    "exposure_ack": "I understand these questions stay available to other classes while the assessment runs.",
+    "seal_org_wide": "Seal for the whole organisation",
+    "seal_org_wide_hint": "The questions are held from every student in the organisation, including students who join later.",
+    "publish_invalid": "Complete the assessment first: a deadline, at least one student or group, and at least one question.",
+    "deadline_required": "A deadline is required to publish the assessment.",
+    "publish_failed": "Could not publish the assessment.",
+    "withdraw_live_hint": "A live assessment cannot be withdrawn — a scheduled one can be changed before it starts."
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
