@@ -1,99 +1,33 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * PUB-01 — Strona główna (/): wygląd i treść dla gościa bez sesji.
+ * PUB-01 — Strona główna (/): dla gościa bez sesji.
  *
  * Prerequisite: no session, Polish locale. The landing page is public and its
  * acceptance criteria are the anonymous visitor's, so the case's isolated tenant
  * (`qa/cases/PUB-01.md::PUB-01::qa-shared`, seeded with
  * `bun scripts/qa-tenant.ts PUB-01`) is never signed in: no storage state, no
- * cookie, no fixture user. The spec therefore touches no tenant, plan or
- * singleton row. The pricing teaser is DB-driven global product config, so it is
- * asserted by heading and link only — never by plan names or prices.
+ * cookie, no fixture user. The spec asserts no tenant, plan or singleton row —
+ * the pricing teaser is DB-driven, so it is checked by section and link only.
+ *
+ * Copy is deliberately not asserted. A Polish sentence lives in
+ * `apps/web/src/i18n/messages/pl.json`; repeating it here would pin the string
+ * rather than the page, and would go red the moment someone edits the wording
+ * while every visitor-visible behaviour still works. What is pinned instead is
+ * the contract a marketing page can actually break: section identity, the
+ * heading outline, link targets, the locale, and a clean console.
  */
 
-const HERO = {
-  badge: 'Platforma edukacyjna oparta na AI',
-  title: 'Tylko to, co musisz umieć.',
-  subtitle: 'Testy, fiszki i przygotowanie do egzaminów oparte na AI - dla studentów i uczelni',
-  primaryCta: 'Zacznij Naukę Za Darmo',
-  secondaryCta: 'Zobacz Funkcje',
-} as const;
+const SECTIONS = ['#hero', '#features', '#how-it-works', '#pricing', '#get-started'] as const;
 
-const STATS = [
-  { label: 'Utworzonych pytań' },
-  { label: 'Fiszek' },
-  { label: 'Aktywnych uczniów' },
-  { label: 'Rozwiązanych testów' },
-] as const;
-
-const FREE = {
-  badge: 'Zawsze za darmo',
-  title: 'Co Otrzymujesz Za Darmo',
-  description: 'Bez karty kredytowej. Zacznij naukę jeszcze dziś.',
-  items: ['Twórz Własne Pytania', 'Ćwicz z Fiszkami', 'Rozwiązuj Testy', 'Podstawowe Statystyki'],
-} as const;
-
-const AI = {
-  badge: 'Premium i Uczelnie',
-  title: 'Wspomagaj Naukę z AI',
-  description: 'Odblokuj funkcje oparte na AI z planem Premium lub Uniwersyteckim',
-  items: ['Generowanie Pytań przez AI', 'Inteligentne Generowanie Fiszek', 'Symulacja Egzaminu AI'],
-} as const;
-
-const HOW = {
-  title: 'Jak to działa',
-  description: 'Trzy proste kroki do efektywnej nauki',
-  steps: ['Twórz Treści', 'Ćwicz Regularnie', 'Śledź Postępy'],
-} as const;
-
-const TESTIMONIALS = {
-  title: 'Pokochane przez studentów i nauczycieli',
-  items: [
-    {
-      quote:
-        'Fiszki generowane przez AI ze StudiQ zaoszczędziły mi godzin ręcznej pracy. Moje wyniki egzaminów znacznie się poprawiły.',
-      author: 'Maria K.',
-      role: 'Studentka Medycyny',
-    },
-    {
-      quote:
-        'Jako nauczyciel mogę łatwo tworzyć banki pytań i śledzić postępy całej klasy. To przełom.',
-      author: 'Dr. Tomasz N.',
-      role: 'Profesor Uniwersytecki',
-    },
-  ],
-} as const;
-
-const PRICING = {
-  title: 'Prosty, Przejrzysty Cennik',
-  description: 'Wybierz plan, który Ci odpowiada',
-  fullPricingCta: 'Zobacz Pełny Cennik',
-} as const;
-
-const BANNER = {
-  title: 'Gotowy na transformację nauki?',
-  description: 'Dołącz do tysięcy studentów i nauczycieli już korzystających ze StudiQ',
-  cta: 'Zacznij za Darmo',
-} as const;
-
-const FOOTER = {
-  tagline: 'Twoja platforma do efektywnej nauki',
-  columns: ['Produkt', 'Firma', 'Prawne'],
-  links: [
-    { name: 'Funkcje', href: '/features' },
-    { name: 'Cennik', href: '/pricing' },
-    { name: 'Kontakt', href: '/contact' },
-    { name: 'Polityka Prywatności', href: '/privacy' },
-    { name: 'Regulamin', href: '/terms' },
-  ],
-  copyright: /^© \d{4} StudiQ\. Wszelkie prawa zastrzeżone\.$/,
-} as const;
+/** Public destinations the visitor must be able to reach from the landing page. */
+const HEADER_TARGETS = ['/features', '/pricing', '/login', '/register'] as const;
+const FOOTER_TARGETS = ['/features', '/pricing', '/contact', '/privacy', '/terms'] as const;
 
 /**
  * Collect browser-side failures so "the page loads without errors" is asserted,
- * not assumed. Only document responses are checked: the shared app is a dev
- * server, and asset/HMR noise is not part of this case.
+ * not assumed. Only document responses are checked: QA runs a production build,
+ * so asset noise is not part of this case.
  */
 function watchForErrors(page: Page) {
   const consoleErrors: string[] = [];
@@ -119,13 +53,8 @@ function watchForErrors(page: Page) {
   };
 }
 
-/** The `<section>` that owns a given heading — the landing page has no test ids. */
-function sectionWithHeading(page: Page, name: string) {
-  return page.locator('section').filter({ has: page.getByRole('heading', { name, exact: true }) });
-}
-
 test.describe('PUB-01 — landing page for an anonymous visitor', () => {
-  test('renders every Polish section without browser errors', async ({ page }) => {
+  test('renders every section in Polish without browser errors', async ({ page }) => {
     const errors = watchForErrors(page);
 
     const response = await page.goto('/');
@@ -134,150 +63,107 @@ test.describe('PUB-01 — landing page for an anonymous visitor', () => {
     // No session, default locale: the page must be Polish.
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-    // --- Hero -------------------------------------------------------------
-    const hero = sectionWithHeading(page, HERO.title);
-    await expect(page.getByText(HERO.badge, { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole('heading', { level: 1, name: HERO.title, exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText(HERO.subtitle, { exact: true })).toBeVisible();
-    await expect(hero.getByRole('link', { name: HERO.primaryCta, exact: true })).toBeVisible();
-    await expect(hero.getByRole('link', { name: HERO.secondaryCta, exact: true })).toBeVisible();
-
-    // --- Header -----------------------------------------------------------
-    const header = page.locator('header');
-    await expect(header.getByRole('link', { name: 'StudiQ', exact: true })).toBeVisible();
-    for (const name of ['Funkcje', 'Cennik', 'Logowanie', 'Rejestracja']) {
-      await expect(header.getByRole('link', { name, exact: true })).toBeVisible();
+    // Section identity — each marketing block is present and deep-linkable.
+    for (const selector of SECTIONS) {
+      await expect(page.locator(selector), selector).toBeVisible();
     }
 
-    // --- Stats ------------------------------------------------------------
-    for (const { label } of STATS) {
-      const labelText = page.getByText(label, { exact: true });
-      await expect(labelText).toBeVisible();
-      // Each stat is a value/label pair; the value must be a real number, never blank.
-      await expect(labelText.locator('..')).toHaveText(/\d[\d,.]*\+?/);
+    // One h1, owned by the hero. A second top-level heading flattens the outline
+    // for screen readers and for search engines.
+    await expect(page.locator('h1')).toHaveCount(1);
+    await expect(page.locator('#hero h1')).toBeVisible();
+
+    // Every section carries a heading, so the page has a navigable outline.
+    for (const selector of SECTIONS) {
+      await expect(page.locator(`${selector} :is(h1,h2,h3)`).first(), selector).toBeVisible();
     }
 
-    // --- Free tier + AI block --------------------------------------------
-    const freeSection = sectionWithHeading(page, FREE.title);
-    await expect(page.getByText(FREE.badge, { exact: true })).toBeVisible();
-    await expect(freeSection.getByRole('heading', { level: 2, name: FREE.title })).toBeVisible();
-    await expect(page.getByText(FREE.description, { exact: true })).toBeVisible();
-    for (const item of FREE.items) {
-      await expect(freeSection.getByText(item, { exact: true })).toBeVisible();
+    // A section with no visible text means an empty message or a broken
+    // conditional; a heading assertion passes on either, because the heading
+    // still renders. The count is pinned first so a wrapper that moves sections
+    // out of <main> fails loudly instead of shrinking this loop to nothing.
+    const sections = page.locator('main section');
+    await expect(sections, 'marketing sections').toHaveCount(SECTIONS.length);
+    for (const [index, text] of (await sections.allInnerTexts()).entries()) {
+      expect(text.trim(), `${SECTIONS[index]} renders text`).not.toBe('');
     }
-
-    await expect(page.getByText(AI.badge, { exact: true })).toBeVisible();
-    await expect(freeSection.getByRole('heading', { level: 2, name: AI.title })).toBeVisible();
-    await expect(page.getByText(AI.description, { exact: true })).toBeVisible();
-    for (const item of AI.items) {
-      await expect(freeSection.getByText(item, { exact: true })).toBeVisible();
-    }
-
-    // --- How it works -----------------------------------------------------
-    const howSection = sectionWithHeading(page, HOW.title);
-    await expect(howSection.getByRole('heading', { level: 2, name: HOW.title })).toBeVisible();
-    await expect(page.getByText(HOW.description, { exact: true })).toBeVisible();
-    for (const [index, step] of HOW.steps.entries()) {
-      await expect(howSection.getByText(`Krok ${index + 1}`, { exact: true })).toBeVisible();
-      await expect(howSection.getByText(step, { exact: true })).toBeVisible();
-    }
-
-    // --- Testimonials -----------------------------------------------------
-    const testimonialsSection = sectionWithHeading(page, TESTIMONIALS.title);
-    await expect(
-      testimonialsSection.getByRole('heading', { level: 2, name: TESTIMONIALS.title }),
-    ).toBeVisible();
-    for (const { quote, author, role } of TESTIMONIALS.items) {
-      await expect(testimonialsSection.getByText(quote, { exact: false })).toBeVisible();
-      await expect(testimonialsSection.getByText(author, { exact: true })).toBeVisible();
-      await expect(testimonialsSection.getByText(role, { exact: true })).toBeVisible();
-    }
-
-    // --- Pricing teaser (DB-driven: heading and link only) ----------------
-    const pricingSection = sectionWithHeading(page, PRICING.title);
-    await expect(
-      pricingSection.getByRole('heading', { level: 2, name: PRICING.title }),
-    ).toBeVisible();
-    await expect(page.getByText(PRICING.description, { exact: true })).toBeVisible();
-    await expect(
-      pricingSection.getByRole('link', { name: PRICING.fullPricingCta, exact: true }),
-    ).toBeVisible();
-
-    // --- CTA banner -------------------------------------------------------
-    const bannerSection = sectionWithHeading(page, BANNER.title);
-    await expect(
-      bannerSection.getByRole('heading', { level: 2, name: BANNER.title }),
-    ).toBeVisible();
-    await expect(page.getByText(BANNER.description, { exact: true })).toBeVisible();
-    await expect(bannerSection.getByRole('link', { name: BANNER.cta, exact: true })).toBeVisible();
-
-    // --- Footer (case step 2: scroll top → footer) ------------------------
-    const footer = page.locator('footer');
-    await footer.scrollIntoViewIfNeeded();
-    await expect(footer).toBeInViewport();
-    await expect(footer.getByText(FOOTER.tagline, { exact: true })).toBeVisible();
-    for (const column of FOOTER.columns) {
-      await expect(footer.getByRole('heading', { name: column, exact: true })).toBeVisible();
-    }
-    for (const { name } of FOOTER.links) {
-      await expect(footer.getByRole('link', { name, exact: true })).toBeVisible();
-    }
-    await expect(footer.getByText(FOOTER.copyright)).toBeVisible();
 
     // --- No raw translation keys, no "undefined"/"NaN" placeholders -------
+    // PricingPage is included because the pricing teaser renders its own
+    // namespace inside this page.
     const body = await page.locator('body').innerText();
-    expect(body, 'raw translation keys').not.toMatch(/\b(?:LandingPage|Navbar|Footer)\.[A-Za-z_]+/);
+    expect(body, 'raw translation keys').not.toMatch(
+      /\b(?:LandingPage|PricingPage|Navbar|Footer)\.[A-Za-z_]+/,
+    );
     expect(body, 'literal undefined').not.toMatch(/\bundefined\b/);
     expect(body, 'literal NaN').not.toMatch(/\bNaN\b/);
 
     errors.expectClean();
   });
 
-  test('CTA, header and footer link to the public destinations', async ({ page }) => {
+  test('every CTA and navigation link points at a public destination', async ({ page }) => {
     const errors = watchForErrors(page);
     await page.goto('/');
 
-    const header = page.locator('header');
-    await expect(header.getByRole('link', { name: 'StudiQ', exact: true })).toHaveAttribute(
-      'href',
-      '/',
-    );
-    const navTargets = [
-      { name: 'Funkcje', href: '/features' },
-      { name: 'Cennik', href: '/pricing' },
-      { name: 'Logowanie', href: '/login' },
-      { name: 'Rejestracja', href: '/register' },
-    ] as const;
-    for (const { name, href } of navTargets) {
-      await expect(header.getByRole('link', { name, exact: true })).toHaveAttribute('href', href);
+    // The two sales CTAs must expose an accessible name: an icon-only link with
+    // no label is unusable with a screen reader, and this is the one link the
+    // visitor is meant to find.
+    for (const selector of ['#hero a', '#get-started a']) {
+      await expect(page.locator(selector).first(), `${selector} exists`).toBeVisible();
+      for (const link of await page.locator(selector).all()) {
+        await expect(link, `${selector} link name`).toHaveAccessibleName(/.+/);
+      }
     }
 
-    const hero = sectionWithHeading(page, HERO.title);
-    await expect(hero.getByRole('link', { name: HERO.primaryCta, exact: true })).toHaveAttribute(
-      'href',
-      '/register',
-    );
-    await expect(hero.getByRole('link', { name: HERO.secondaryCta, exact: true })).toHaveAttribute(
-      'href',
-      '/features',
-    );
+    const header = page.locator('header');
+    for (const href of HEADER_TARGETS) {
+      await expect(header.locator(`a[href="${href}"]`).first(), href).toBeVisible();
+    }
 
-    const pricingSection = sectionWithHeading(page, PRICING.title);
-    await expect(
-      pricingSection.getByRole('link', { name: PRICING.fullPricingCta, exact: true }),
-    ).toHaveAttribute('href', '/pricing');
+    // Primary action first: a screen reader reaches "sign up" before the tour.
+    const heroLinks = page.locator('#hero a');
+    await expect(heroLinks).toHaveCount(2);
+    await expect(heroLinks.nth(0)).toHaveAttribute('href', '/register');
+    await expect(heroLinks.nth(1)).toHaveAttribute('href', '/features');
 
-    const bannerSection = sectionWithHeading(page, BANNER.title);
-    await expect(
-      bannerSection.getByRole('link', { name: BANNER.cta, exact: true }),
-    ).toHaveAttribute('href', '/register');
+    await expect(page.locator('#get-started a').first()).toHaveAttribute('href', '/register');
+    await expect(page.locator('#pricing a[href="/pricing"]').first()).toBeVisible();
 
     const footer = page.locator('footer');
-    for (const { name, href } of FOOTER.links) {
-      await expect(footer.getByRole('link', { name, exact: true })).toHaveAttribute('href', href);
+    for (const href of FOOTER_TARGETS) {
+      await expect(footer.locator(`a[href="${href}"]`).first(), href).toBeVisible();
     }
+
+    errors.expectClean();
+  });
+
+  /**
+   * The preview is the product's own review card, so rating it advances it: the
+   * rated card leaves the DOM and the next fixture mounts on its question side.
+   * Swapping the fixture text in place instead would animate the incoming card's
+   * answer face from the outgoing card's opacity, showing an answer before its
+   * question. Nothing here reads copy, so a translation cannot break the test.
+   */
+  test('rating replaces the preview card instead of swapping its text', async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const card = page.locator('#features fieldset');
+    await expect(card).toHaveCount(1);
+    const rated = await card.elementHandle();
+
+    await card.click();
+    // 3 is „Dobrze” in every locale — the shortcut attribute is the stable handle.
+    await page.locator('#features [aria-keyshortcuts="3"]').click();
+
+    // `AnimatePresence mode="wait"` finishes the outgoing card's exit before the
+    // next one mounts; either way the rated element must not survive as the card.
+    await expect
+      .poll(() => rated.evaluate((element) => element.isConnected), { timeout: 3000 })
+      .toBe(false);
+    await expect(card).toHaveCount(1);
+    // The next card starts on its question side, so its ratings are inert again.
+    await expect(page.locator('#features [aria-keyshortcuts="3"]')).toBeDisabled();
 
     errors.expectClean();
   });

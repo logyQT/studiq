@@ -66,7 +66,8 @@ export function GroupPerformanceCard({
           <>
             {withScores.length > 0 ? (
               <ChartContainer
-                // The theme defines no `--chart-N` tokens; the other charts use literal colours too.
+                // Hardcoded literal, not `var(--chart-1)`: the stats charts move onto
+                // the chart ramp in the migration DESIGN.md §Known residue describes.
                 config={{ avgScore: { label: t('col_avg'), color: 'oklch(0.546 0.245 265)' } }}
                 className="aspect-auto h-[220px] w-full"
               >

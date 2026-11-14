@@ -75,7 +75,9 @@ export function SessionSummaryDialog({
         <div className="flex flex-col items-center gap-4 py-4">
           <p
             className="text-5xl font-bold"
-            style={{ color: percentage >= 70 ? 'hsl(var(--chart-2))' : 'hsl(var(--destructive))' }}
+            // The tokens are OKLCH, so an `hsl()` wrapper is invalid CSS. A percentage
+            // is a verdict rather than a chart series, so it takes the semantic pair.
+            style={{ color: percentage >= 70 ? 'var(--success)' : 'var(--destructive)' }}
           >
             {percentage}%
           </p>

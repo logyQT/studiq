@@ -10,7 +10,7 @@ export function Footer() {
   const t = useTranslations('Footer');
 
   return (
-    <footer className="border-t bg-background">
+    <footer className="border-t">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* BRAND */}

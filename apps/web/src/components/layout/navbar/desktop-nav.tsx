@@ -6,10 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@studiq/ui';
-import { ChevronDown, MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import type { NavLink } from '@/components/layout/navbar/types';
 import { cn } from '@/lib/utils';
 
@@ -18,20 +19,24 @@ interface DesktopNavProps {
   isActive: (href: string) => boolean;
 }
 
+/** The `gap-1` between link cells, mirrored when counting what fits. */
+const LINK_GAP = 4;
+/** The overflow trigger: a 44px square plus its `ml-1`. */
+const MORE_WIDTH = 48;
+
 /**
  * Number of items that fit before the overflow menu. Measured from the rendered
  * items so the value tracks the actual labels and font, never a hard-coded guess.
  */
-function countVisibleItems(nav: HTMLElement, parent: HTMLElement, total: number): number {
-  const children = Array.from(nav.children).filter(
-    (el): el is HTMLElement => el instanceof HTMLElement && !el.dataset.more,
+function countVisibleItems(list: HTMLElement, nav: HTMLElement, total: number): number {
+  const items = Array.from(list.children).filter(
+    (el): el is HTMLElement => el instanceof HTMLElement,
   );
 
-  if (children.length === 0) return total;
+  if (items.length === 0) return total;
 
-  const widths = children.map((el) => el.offsetWidth + 4);
-  const moreWidth = 72;
-  const available = parent.clientWidth - moreWidth;
+  const widths = items.map((el) => el.offsetWidth + LINK_GAP);
+  const available = nav.clientWidth - MORE_WIDTH;
   let used = 0;
   let count = total;
 
@@ -48,28 +53,30 @@ function countVisibleItems(nav: HTMLElement, parent: HTMLElement, total: number)
 
 export function DesktopNav({ links, isActive }: DesktopNavProps) {
   const t = useTranslations('Navbar');
-  const navRef = useRef<HTMLDivElement>(null);
+  const tDash = useTranslations('DashboardLayout');
+  const label = (key: string, ns?: string) => (ns === 'DashboardLayout' ? tDash(key) : t(key));
+  const listRef = useRef<HTMLUListElement>(null);
   const [visibleCount, setVisibleCount] = useState(links.length);
 
   useLayoutEffect(() => {
-    const nav = navRef.current;
-    const parent = nav?.parentElement;
-    if (!nav || !parent) return;
+    const list = listRef.current;
+    const nav = list?.parentElement;
+    if (!list || !nav) return;
 
-    setVisibleCount(countVisibleItems(nav, parent, links.length));
+    setVisibleCount(countVisibleItems(list, nav, links.length));
   }, [links]);
 
   useEffect(() => {
-    const nav = navRef.current;
-    const parent = nav?.parentElement;
-    if (!nav || !parent) return undefined;
+    const list = listRef.current;
+    const nav = list?.parentElement;
+    if (!list || !nav) return undefined;
 
     const update = () => {
-      setVisibleCount(countVisibleItems(nav, parent, links.length));
+      setVisibleCount(countVisibleItems(list, nav, links.length));
     };
 
     const ro = new ResizeObserver(update);
-    ro.observe(parent);
+    ro.observe(nav);
     return () => ro.disconnect();
   }, [links]);
 
@@ -78,22 +85,36 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
   const overflow = hasOverflow ? links.slice(visibleCount) : [];
 
   return (
-    <nav ref={navRef} className="flex items-center gap-1">
-      {visible.map(({ labelKey, href, icon: Icon }) => (
-        <Link
-          key={labelKey}
-          href={href}
-          className={cn(
-            'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition shrink-0',
-            isActive(href)
-              ? 'bg-[var(--brand-accent-soft)] text-foreground'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-          )}
-        >
-          <Icon className="h-4 w-4" />
-          {t(labelKey)}
-        </Link>
-      ))}
+    <nav className="flex h-16 w-full min-w-0 items-center">
+      <ul ref={listRef} className="flex h-full min-w-0 items-center gap-1">
+        {visible.map(({ labelKey, href, namespace }) => {
+          const active = isActive(href);
+          return (
+            <li key={labelKey} className="relative flex h-full items-center">
+              <Link
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  // 44px of hit area around 20px of text, centred in the band.
+                  'flex h-11 items-center px-3 text-sm font-medium transition-colors',
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  FOCUS_RING,
+                )}
+              >
+                {label(labelKey, namespace)}
+              </Link>
+              {/* Hangs off the full-height cell, not the link: `-bottom-px` covers
+                  the header's hairline instead of stacking a second line under it. */}
+              {active && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-3 -bottom-px h-0.5 bg-primary"
+                />
+              )}
+            </li>
+          );
+        })}
+      </ul>
 
       {hasOverflow && (
         <DropdownMenu>
@@ -101,24 +122,30 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
             <button
               type="button"
               data-more="true"
-              className="flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition shrink-0"
+              aria-label={t('mobile_menu')}
+              className={cn(
+                'ml-1 inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:text-foreground',
+                FOCUS_RING,
+              )}
             >
-              <MoreHorizontal className="h-4 w-4" />
-              <ChevronDown className="h-3 w-3" />
+              <MoreHorizontal aria-hidden className="size-5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-40">
-            {overflow.map(({ labelKey, href, icon: Icon }) => (
-              <DropdownMenuItem key={labelKey} asChild>
-                <Link
-                  href={href}
-                  className={cn('flex items-center gap-2', isActive(href) && 'font-medium')}
-                >
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  {t(labelKey)}
-                </Link>
-              </DropdownMenuItem>
-            ))}
+            {overflow.map(({ labelKey, href, namespace }) => {
+              const active = isActive(href);
+              return (
+                <DropdownMenuItem key={labelKey} asChild>
+                  <Link
+                    href={href}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn('flex items-center gap-2', active && 'font-semibold')}
+                  >
+                    {label(labelKey, namespace)}
+                  </Link>
+                </DropdownMenuItem>
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

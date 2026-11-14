@@ -376,7 +376,7 @@ describe('where the guards are wired (#665 QA)', () => {
     // The card keeps focus behind the panel, so its own click handler must honor the layer too.
     const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
     const cardLabel = session.indexOf("ariaLabel={t('flashcard_aria')}");
-    const flip = session.lastIndexOf('onClick={() => {', cardLabel);
+    const flip = session.lastIndexOf('onFlip={() => {', cardLabel);
     expect(flip).toBeGreaterThan(-1);
     const layerGuard = session.indexOf('if (overlayOpen()) return;', flip);
     expect(layerGuard).toBeGreaterThan(flip);

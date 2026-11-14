@@ -1,95 +1,132 @@
 'use client';
 
-import { Badge, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
-import { BarChart3, BookOpen, Brain, FileText, Sparkles, Target, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { FlashcardReviewPreview } from '@/components/marketing/previews/flashcard-review-preview';
+import { SectionHeader } from '@/components/marketing/ui/section-header';
 
 const freeFeatures = [
-  { icon: FileText, titleKey: 'free_questions', descKey: 'free_questions_desc' },
-  { icon: Brain, titleKey: 'free_flashcards', descKey: 'free_flashcards_desc' },
-  { icon: BookOpen, titleKey: 'free_quizzes', descKey: 'free_quizzes_desc' },
-  { icon: BarChart3, titleKey: 'free_stats', descKey: 'free_stats_desc' },
+  { titleKey: 'free_questions', descKey: 'free_questions_desc' },
+  { titleKey: 'free_flashcards', descKey: 'free_flashcards_desc' },
+  { titleKey: 'free_quizzes', descKey: 'free_quizzes_desc' },
+  { titleKey: 'free_stats', descKey: 'free_stats_desc' },
 ] as const;
+
+const freePoints = ['free_point_card', 'free_point_commitment', 'free_point_start'] as const;
 
 const aiFeatures = [
-  { icon: Sparkles, titleKey: 'ai_generate_questions', descKey: 'ai_generate_questions_desc' },
-  { icon: Zap, titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
-  { icon: Target, titleKey: 'ai_exam_sim', descKey: 'ai_exam_sim_desc' },
+  { titleKey: 'ai_generate_questions', descKey: 'ai_generate_questions_desc' },
+  { titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
 ] as const;
 
-const iconColors = [
-  'bg-blue-500/10 text-blue-500',
-  'bg-purple-500/10 text-purple-500',
-  'bg-emerald-500/10 text-emerald-500',
-  'bg-amber-500/10 text-amber-500',
-];
+/**
+ * The mobile ordinal: a two-digit mono index in the 40px rail left of a term,
+ * phone only. Each ledger positions it against its own term, because `text-h3`
+ * sets a taller line box than body copy and the two would otherwise sit on
+ * different baselines — so the offset is the caller's, the mark is not.
+ */
+function Ordinal({ index, offset }: { index: number; offset: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`absolute -left-10 font-mono text-xs tabular-nums text-primary md:hidden ${offset}`}
+    >
+      {String(index + 1).padStart(2, '0')}
+    </span>
+  );
+}
 
-const aiIconColors = [
-  'bg-violet-500/10 text-violet-500',
-  'bg-orange-500/10 text-orange-500',
-  'bg-rose-500/10 text-rose-500',
-];
-
+/*
+ * Two tiers, two compositions. The free tier is a hairline ledger: one term per
+ * row against its description, so the four capabilities read as a spec sheet
+ * rather than four equal cards. The paid tier is a 5/6 split with a single
+ * anchor statement, because it is one argument with three parts, not three
+ * peers. Colour is limited to the two cobalt tier labels: `signal` belongs to
+ * actions, and this section has none.
+ */
 export function Features() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section className="py-16 sm:py-24">
-      <div className="mx-auto max-w-5xl">
-        <div className="text-center mb-12">
-          <Badge variant="secondary" className="mb-4">
-            {t('free_badge')}
-          </Badge>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('free_title')}</h2>
-          <p className="mt-4 text-lg text-muted-foreground">{t('free_desc')}</p>
+    <section id="features" className="py-16 md:py-20">
+      <div className="mx-auto max-w-content px-content">
+        {/*
+         * The specimen rides the header band so the ledger below it keeps the
+         * full width: the four rows are a spec sheet, and a card wedged between
+         * the terms would break their single-line rhythm. No plate, border or
+         * shadow around it: the product's card carries its own surface
+         * (DESIGN §Product imagery).
+         *
+         * The split starts at `lg`, like the hero's: at 768 a two-column grid
+         * leaves the card a quarter of the page, which turns a landscape card
+         * into a portrait one. Below `lg` the card takes the full width instead.
+         *
+         * The columns are an even 6/6 because the card needs the width and the
+         * header does not: the title's longest line is ~449px at 1440, so a
+         * five-column header would wrap it while a six-column one leaves it one
+         * line, and every column given to the header is one the card loses.
+         */}
+        <div className="lg:grid lg:grid-cols-12 lg:gap-x-8">
+          <div className="lg:col-span-6">
+            <SectionHeader
+              eyebrow={t('free_badge')}
+              title={t('free_title')}
+              points={freePoints.map((key) => t(key))}
+            />
+          </div>
+          <div className="mt-10 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:mt-0">
+            <FlashcardReviewPreview />
+          </div>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {freeFeatures.map(({ icon: Icon, titleKey, descKey }, i) => (
-            <Card
-              key={titleKey}
-              className="border-border/50 group hover:border-primary/30 transition-colors"
-            >
-              <CardHeader>
-                <div
-                  className={`size-10 rounded-lg ${iconColors[i]} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}
-                >
-                  <Icon className="size-5" />
-                </div>
-                <CardTitle className="text-lg">{t(titleKey)}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{t(descKey)}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
 
-      <div className="mt-20 mx-auto max-w-5xl">
-        <div className="text-center mb-12">
-          <Badge className="mb-4">{t('ai_badge')}</Badge>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('ai_title')}</h2>
-          <p className="mt-4 text-lg text-muted-foreground">{t('ai_desc')}</p>
-        </div>
-        <div className="grid sm:grid-cols-3 gap-6">
-          {aiFeatures.map(({ icon: Icon, titleKey, descKey }, i) => (
-            <Card
+        <dl className="mt-10 border-t border-border md:mt-16">
+          {freeFeatures.map(({ titleKey, descKey }, index) => (
+            <div
               key={titleKey}
-              className="border-border/50 group hover:border-primary/30 transition-colors"
+              className="relative grid gap-x-8 gap-y-1.5 border-b border-border py-5 pl-10 md:grid-cols-12 md:items-baseline md:gap-y-2 md:py-6 md:pl-0"
             >
-              <CardHeader>
-                <div
-                  className={`size-10 rounded-lg ${aiIconColors[i]} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}
-                >
-                  <Icon className="size-5" />
-                </div>
-                <CardTitle className="text-lg">{t(titleKey)}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{t(descKey)}</p>
-              </CardContent>
-            </Card>
+              {/*
+               * Four hairline rows at phone width read as one paragraph, and the
+               * ordinal gives the eye a column to land on while the term keeps
+               * its own line.
+               */}
+              <dt className="relative text-h3 font-semibold md:col-span-5">
+                <Ordinal index={index} offset="top-1" />
+                {t(titleKey)}
+              </dt>
+              <dd className="max-w-prose text-sm leading-snug text-muted-foreground md:col-span-6 md:col-start-7 md:leading-relaxed">
+                {t(descKey)}
+              </dd>
+            </div>
           ))}
+        </dl>
+
+        <div className="mt-12 md:mt-24 md:grid md:grid-cols-12 md:gap-x-8">
+          <div className="md:col-span-5">
+            <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase">
+              {t('ai_badge')}
+            </p>
+            <h3 className="mt-3 text-h3 font-semibold text-balance">{t('ai_title')}</h3>
+            <p className="mt-3 max-w-prose text-sm leading-snug text-muted-foreground md:leading-relaxed">
+              {t('ai_desc')}
+            </p>
+          </div>
+
+          <dl className="mt-8 md:col-span-6 md:col-start-7 md:mt-0">
+            {aiFeatures.map(({ titleKey, descKey }, index) => (
+              <div
+                key={titleKey}
+                className="relative border-t border-border py-4 pl-10 first:border-t-0 first:pt-0 md:py-5 md:pl-0"
+              >
+                <dt className="relative font-semibold">
+                  <Ordinal index={index} offset="top-0.5" />
+                  {t(titleKey)}
+                </dt>
+                <dd className="mt-1 max-w-prose text-sm leading-snug text-muted-foreground md:leading-relaxed">
+                  {t(descKey)}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
     </section>

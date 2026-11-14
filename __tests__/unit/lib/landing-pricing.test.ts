@@ -79,7 +79,7 @@ describe('landing pricing messages', () => {
     'pricing_premium_cta',
     'pricing_university_name',
     'pricing_from',
-    'pricing_contact_cta',
+    'pricing_org_cta',
     'pricing_university_feature_premium',
     'pricing_university_feature_management',
     'pricing_university_feature_roles',

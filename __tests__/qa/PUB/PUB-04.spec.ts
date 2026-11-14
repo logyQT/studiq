@@ -35,7 +35,7 @@ const STUDENT_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
 /** CTA copy per plan key — product copy from the Polish messages, not DB config. */
 const PLAN_CTA: Record<string, string> = {
-  base: 'Zacznij za Darmo',
+  base: 'Zacznij za darmo',
   spark: 'Przejdź na Spark',
   ace: 'Wybierz Ace',
   pro: 'Wybierz Pro',
