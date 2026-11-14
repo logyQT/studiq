@@ -173,6 +173,19 @@ export function FlashcardReview({
 
       {progress}
 
+      {/*
+       * Each rating carries its hue in the edge, the fill and the icon; the words
+       * stay foreground so the scale reads as one control group instead of four
+       * coloured labels. Again and easy take the semantic tokens, which flip with
+       * the theme. The two middle steps take the palette, because the token set
+       * has a single warning hue and at its chroma amber and orange collapse into
+       * the same ochre; one fixed shade cannot hold its edge on both surfaces, so
+       * those two step with the theme as well (600 on paper, 400 on the dark
+       * card). The fill stays translucent, so the surface shows through it.
+       *
+       * `ghost` carries `dark:hover:bg-accent/50` on a dark+hover stack that a
+       * plain `hover:bg-*` cannot outrank, so the hover tint is declared twice.
+       */}
       <div
         className={cn(
           'grid grid-cols-2 gap-2 transition-opacity duration-150',
@@ -182,42 +195,39 @@ export function FlashcardReview({
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="disabled:opacity-100"
+          className="border border-destructive/40 bg-destructive/8 text-foreground hover:bg-destructive/12 focus-visible:ring-ring disabled:opacity-100 dark:hover:bg-destructive/12"
           onClick={() => onRate(1)}
           aria-keyshortcuts="1"
-          style={{ boxShadow: '0 0 8px rgba(239,68,68,0.12)' }}
         >
-          <X className="mr-1.5 size-4 text-red-500" /> {ratingLabels.again}
+          <X className="mr-1.5 size-4 text-destructive" /> {ratingLabels.again}
         </Button>
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="disabled:opacity-100"
+          className="border border-amber-600/40 bg-amber-600/8 text-foreground hover:bg-amber-600/12 focus-visible:ring-ring disabled:opacity-100 dark:border-amber-400/40 dark:bg-amber-400/8 dark:hover:bg-amber-400/12"
           onClick={() => onRate(3)}
           aria-keyshortcuts="3"
-          style={{ boxShadow: '0 0 8px rgba(217,119,6,0.12)' }}
         >
-          <Check className="mr-1.5 size-4 text-amber-500" /> {ratingLabels.good}
+          <Check className="mr-1.5 size-4 text-amber-600 dark:text-amber-400" /> {ratingLabels.good}
         </Button>
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="disabled:opacity-100"
+          className="border border-orange-600/40 bg-orange-600/8 text-foreground hover:bg-orange-600/12 focus-visible:ring-ring disabled:opacity-100 dark:border-orange-400/40 dark:bg-orange-400/8 dark:hover:bg-orange-400/12"
           onClick={() => onRate(2)}
           aria-keyshortcuts="2"
-          style={{ boxShadow: '0 0 8px rgba(249,115,22,0.12)' }}
         >
-          <Minus className="mr-1.5 size-4 text-orange-500" /> {ratingLabels.hard}
+          <Minus className="mr-1.5 size-4 text-orange-600 dark:text-orange-400" />{' '}
+          {ratingLabels.hard}
         </Button>
         <Button
           variant="ghost"
           disabled={!isFlipped}
-          className="disabled:opacity-100"
+          className="border border-success/40 bg-success/8 text-foreground hover:bg-success/12 focus-visible:ring-ring disabled:opacity-100 dark:hover:bg-success/12"
           onClick={() => onRate(4)}
           aria-keyshortcuts="4"
-          style={{ boxShadow: '0 0 8px rgba(34,197,94,0.12)' }}
         >
-          <Zap className="mr-1.5 size-4 text-green-500" /> {ratingLabels.easy}
+          <Zap className="mr-1.5 size-4 text-success" /> {ratingLabels.easy}
         </Button>
       </div>
     </>

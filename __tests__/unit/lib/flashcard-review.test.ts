@@ -62,4 +62,19 @@ describe('FlashcardReview', () => {
     // and fade the ratings further than they already are.
     expect(unflipped).toContain('disabled:opacity-100');
   });
+
+  it('marks each rating with its own hue on the edge, not an inline glow', () => {
+    const html = render({ isFlipped: true });
+    const edges = [...html.matchAll(/border-(destructive|amber-600|orange-600|success)\/40/g)];
+
+    // A glow is the one thing this block used to add inline; four distinct edges
+    // are what replaced it.
+    expect(html).not.toContain('box-shadow');
+    expect(edges.map((match) => match[1])).toEqual([
+      'destructive',
+      'amber-600',
+      'orange-600',
+      'success',
+    ]);
+  });
 });
