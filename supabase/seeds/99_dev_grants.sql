@@ -35,6 +35,12 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT ALL ON TABLES TO authenticated, service_role;
 
+-- The blanket GRANT above re-opens every column on every reset, so the reader columns are
+-- re-granted without `is_correct` (#1165, #1170).
+REVOKE SELECT ON public.question_options FROM authenticated, anon;
+GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
+  ON public.question_options TO authenticated;
+
 -- ==========================================
 -- Read-only tables: written by the admin app (service role) and seeds (postgres)
 -- only. Keep SELECT for authenticated.

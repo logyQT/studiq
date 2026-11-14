@@ -10,6 +10,13 @@ vi.mock('@studiq/server/lib/authz', () => ({
   Permission: { QUESTION_READ: 'question.read' as const },
 }));
 
+// The key seam (#1170) runs with the service role; pagination has nothing to add to it.
+vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
+  canReadQuestionKey: vi.fn(() => false),
+  readQuestionKeys: vi.fn(() => Promise.resolve(new Map())),
+}));
+
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));

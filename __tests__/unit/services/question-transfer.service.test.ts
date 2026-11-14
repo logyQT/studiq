@@ -259,6 +259,26 @@ describe('QuestionTransferService.exportBank', () => {
     expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
     expect(questionService.listBankQuestions).not.toHaveBeenCalled();
   });
+
+  it('refuses a student export before reading the bank (R15)', async () => {
+    const result = await service.exportBank({ ...ctx, accountType: AccountType.STUDENT }, 'bank-1');
+
+    expect(result).toMatchObject({ success: false, error: 'EXPORT_FORBIDDEN' });
+    expect(questionBankService.getById).not.toHaveBeenCalled();
+    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
+  });
+
+  it('refuses a caller without the staff key permission on the bank (R15)', async () => {
+    vi.mocked(questionBankService.getById).mockResolvedValue(
+      success({ name: 'B', created_by: 'someone-else', organization_id: 'org-1' }),
+    );
+    vi.mocked(can).mockResolvedValueOnce(false);
+
+    const result = await service.exportBank(ctx, 'bank-1');
+
+    expect(result).toMatchObject({ success: false, error: 'EXPORT_FORBIDDEN' });
+    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
+  });
 });
 
 describe('QuestionTransferService.importQuestions', () => {

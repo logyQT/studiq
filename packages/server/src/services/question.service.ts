@@ -3,6 +3,13 @@ import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { applyAccessFilter } from '@studiq/server/lib/query-list';
 import type { FilterableBuilderWithExtra } from '@studiq/server/lib/postgrest';
+import {
+  canReadQuestionKey,
+  readQuestionKeys,
+  type QuestionKeyResource,
+  withAnswerKey,
+} from '@studiq/server/lib/question-keys';
+import { OPTION_READER_COLUMNS } from '@studiq/server/lib/question-view';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -23,9 +30,14 @@ type QuestionTopicLink = {
   topics: { id: string; name: string } | null;
 };
 
-/** A question with its answers and flattened readable topics — the list/export shape. */
-export type QuestionWithAnswers = Database['public']['Tables']['questions']['Row'] & {
-  question_answers: Database['public']['Tables']['question_options']['Row'][];
+/** A question with its answers and flattened readable topics — the staff export shape. */
+export type QuestionWithAnswers = Omit<
+  Database['public']['Tables']['questions']['Row'],
+  'search_vector'
+> & {
+  question_answers: Array<
+    Omit<Database['public']['Tables']['question_options']['Row'], 'question_id'>
+  >;
   topics: Array<{ id: string; name: string }>;
 };
 
@@ -46,14 +58,37 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
 }
 
 /**
- * Question read projection. `!inner` is required when filtering by topic, so
- * the embed narrows parent rows instead of only filtering the nested array.
- * Both are literal constants: PostgREST only infers the row type from a literal.
+ * The question columns every reader may see. `explanation` and `search_vector` are left out:
+ * the explanation is part of the key the staff reader adds back, and the search vector indexes
+ * it, so a reader payload cannot carry either.
+ */
+const QUESTION_COLUMNS =
+  'id, type, content, visibility, created_by, organization_id, bank_id, created_at, updated_at';
+
+/**
+ * Reader-safe read projection. `!inner` is required when filtering by topic, so the embed
+ * narrows parent rows instead of only filtering the nested array. Staff rows gain
+ * `explanation` and `is_correct` afterwards, from the service-role key reader.
  */
 const QUESTION_SELECT =
-  `*, question_answers:question_options(*), question_topic_assignments(topic_id, topics(id, name))` as const;
+  `${QUESTION_COLUMNS}, question_answers:question_options(${OPTION_READER_COLUMNS}), question_topic_assignments(topic_id, topics(id, name))` as const;
 const QUESTION_SELECT_BY_TOPIC =
-  `*, question_answers:question_options(*), question_topic_assignments!inner(topic_id, topics(id, name))` as const;
+  `${QUESTION_COLUMNS}, question_answers:question_options(${OPTION_READER_COLUMNS}), question_topic_assignments!inner(topic_id, topics(id, name))` as const;
+
+/**
+ * Adds the answer key and the explanation to the rows the caller may read them for. Every
+ * other row is returned untouched, so a reader payload carries no `is_correct` and no
+ * `explanation` at all (absent, not null) — R4.
+ */
+async function withKeys<
+  T extends { id: string; question_answers: readonly { id: string }[] } & QuestionKeyResource,
+>(rows: T[], ctx: RequestContext): Promise<T[]> {
+  const keyedIds = new Set(rows.filter((row) => canReadQuestionKey(ctx, row)).map((row) => row.id));
+  if (keyedIds.size === 0) return rows;
+
+  const keys = await readQuestionKeys([...keyedIds]);
+  return rows.map((row) => (keyedIds.has(row.id) ? withAnswerKey(row, keys.get(row.id)) : row));
+}
 
 /**
  * `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. PostgREST
@@ -193,7 +228,10 @@ export class QuestionService {
     }
     if (error) return toDbFailure(error);
     const rows = dbRows(data);
-    const items = rows.map((row) => withTopics(row));
+    const items = await withKeys(
+      rows.map((row) => withTopics(row)),
+      ctx,
+    );
     return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
 
@@ -201,11 +239,12 @@ export class QuestionService {
    * Every question of one bank, in the full shape an export needs, **without** the
    * `question.read` scope filter, plus the exact number of rows the query matched.
    *
-   * The caller must already have checked `question_bank.read` on this bank: reading a bank means
-   * reading the whole bank, answer key included (decision B, #678). Reading the questions through
-   * `list` instead would apply a second, narrower scope — a role that may read the bank at
-   * `organization` scope but questions only at `own` would get a partial file. RLS still bounds
-   * the rows to the caller's own or same-organisation questions.
+   * The caller must already have checked `question_bank.read` **and** the staff key
+   * permission on this bank: reading a bank means reading the whole bank, answer key included
+   * (decision B, #678), so the rows are returned with their key through the service-role
+   * reader. Reading the questions through `list` instead would apply a second, narrower scope —
+   * a role that may read the bank at `organization` scope but questions only at `own` would get
+   * a partial file. RLS still bounds the rows to the caller's own or same-organisation questions.
    *
    * `total` is the `count` of the same query, so it stays right when PostgREST clamps the rows at
    * its `max_rows`: `rows.length < total` means the result was cut, not that the bank is smaller.
@@ -222,7 +261,20 @@ export class QuestionService {
     if (error) return toDbFailure(error);
 
     const rows = dbRows(data);
-    return success({ questions: rows.map((row) => withTopics(row)), total: count ?? rows.length });
+    const keys = await readQuestionKeys(rows.map((row) => row.id));
+    const questions: QuestionWithAnswers[] = rows.map((row) => {
+      const key = keys.get(row.id);
+      const question = withTopics(row);
+      return {
+        ...question,
+        explanation: key?.explanation ?? null,
+        question_answers: question.question_answers.map((option) => ({
+          ...option,
+          is_correct: key?.correctOptionIds.includes(option.id) ?? false,
+        })),
+      };
+    });
+    return success({ questions, total: count ?? rows.length });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -236,7 +288,9 @@ export class QuestionService {
       filter,
     ).maybeSingle();
     if (error || !question) return failure('NOT_FOUND');
-    return success(withTopics(question));
+
+    const [item] = await withKeys([withTopics(question)], ctx);
+    return success(item);
   }
 
   async update(

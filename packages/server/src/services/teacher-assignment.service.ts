@@ -1,9 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
+import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
+import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   AddQuestionsInput,
@@ -159,7 +160,7 @@ export class TeacherAssignmentService {
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
       .select(
-        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(*)))',
+        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))',
       )
       .eq('id', id)
       .maybeSingle();
@@ -173,7 +174,22 @@ export class TeacherAssignmentService {
       if (assignment.organization_id !== ctx.activeOrgId) return failure('FORBIDDEN');
     }
 
-    return success(assignment);
+    // The assignment owner (or an org manager) renders the key on the edit, preview and print
+    // pages, so the key is read with the service role for exactly the questions of this
+    // assignment — the ids come from the row just proven visible, never from the request.
+    const questions = dbRows(assignment.assignment_questions)
+      .map((row) => dbNested(row.question))
+      .filter((question): question is NonNullable<typeof question> => question !== null);
+    const keys = await readQuestionKeys(questions.map((question) => question.id));
+    const assignmentQuestions = dbRows(assignment.assignment_questions).map((row) => {
+      const question = dbNested(row.question);
+      return {
+        ...row,
+        question: question ? withAnswerKey(question, keys.get(question.id)) : question,
+      };
+    });
+
+    return success({ ...assignment, assignment_questions: assignmentQuestions });
   }
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -535,7 +551,7 @@ export class TeacherAssignmentService {
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
       .select(
-        '*, quiz_attempt_questions(*, question:question_id(*, question_answers:question_options(*))), quiz_answers:student_answers(*), assignment_answer_images(*)',
+        '*, quiz_attempt_questions(*, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side))), quiz_answers:student_answers(*), assignment_answer_images(*)',
       )
       .eq('id', attemptId)
       .eq('assignment_id', id)
@@ -547,14 +563,24 @@ export class TeacherAssignmentService {
     const maxPoints = await this.loadAssignmentPoints(supabase, id);
     if (isFailure(maxPoints)) return maxPoints;
 
+    // Grading and the per-student results page render the key, so it is added from the
+    // service role for this attempt's own questions (the assignment ownership, checked above,
+    // is the authorization for the read).
+    const questions = dbRows(attempt.quiz_attempt_questions)
+      .map((row) => dbNested(row.question))
+      .filter((question): question is NonNullable<typeof question> => question !== null);
+    const keys = await readQuestionKeys(questions.map((question) => question.id));
+
     return success({
       ...attempt,
-      quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map(
-        (q: { question_id: string }) => ({
+      quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map((q) => {
+        const question = dbNested(q.question);
+        return {
           ...q,
+          question: question ? withAnswerKey(question, keys.get(question.id)) : question,
           max_points: maxPoints.data.get(q.question_id) ?? null,
-        }),
-      ),
+        };
+      }),
     });
   }
 
@@ -958,7 +984,7 @@ export class TeacherAssignmentService {
 
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
-      .select(IN_PROGRESS_QUESTION_SELECT)
+      .select(QUESTION_PAYLOAD_SELECT)
       .in('id', questionIds);
 
     if (questionsError) return toDbFailure(questionsError);
@@ -1032,7 +1058,7 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const { data: rows, error } = await supabase
       .from('quiz_attempt_questions')
-      .select(`order_index, question_id, questions(${IN_PROGRESS_QUESTION_SELECT})`)
+      .select(`order_index, question_id, questions(${QUESTION_PAYLOAD_SELECT})`)
       .eq('attempt_id', attempt.id)
       .order('order_index', { ascending: true });
 

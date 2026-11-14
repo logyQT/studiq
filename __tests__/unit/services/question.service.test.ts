@@ -3,6 +3,7 @@ import { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { firstCall } from '#test/mocks/recorded';
+import { readQuestionKeys } from '@studiq/server/lib/question-keys';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
@@ -10,6 +11,24 @@ vi.mock('@studiq/server/lib/authz', () => ({
     QUESTION_READ: 'question.read' as const,
     QUESTION_UPDATE: 'question.update' as const,
   },
+}));
+
+/**
+ * The key seam (#1170): whether a row may carry the key is decided here, and the key itself is
+ * read with the service role. Unit tests switch the decision per test and never touch a
+ * database.
+ */
+const keyAccess = vi.hoisted(() => ({ canReadQuestionKey: vi.fn(() => false) }));
+vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
+  canReadQuestionKey: keyAccess.canReadQuestionKey,
+  readQuestionKeys: vi.fn((ids: readonly string[]) => {
+    const keys = new Map<string, { explanation: string | null; correctOptionIds: string[] }>();
+    for (const id of ids) {
+      keys.set(id, { explanation: `explanation-${id}`, correctOptionIds: ['ans-2'] });
+    }
+    return Promise.resolve(keys);
+  }),
 }));
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
@@ -216,7 +235,7 @@ describe('QuestionService', () => {
 
   describe('listBankQuestions', () => {
     it('scopes by the bank only, never by the caller or their active organisation', async () => {
-      const questions = [{ id: 'q-1', content: 'Q1' }];
+      const questions = [{ id: 'q-1', content: 'Q1', question_answers: [] }];
       const query = chain(questions, 7);
       mock.from.mockReturnValue(query);
 
@@ -225,7 +244,15 @@ describe('QuestionService', () => {
       expect(result.success).toBe(true);
       // `total` comes from the query's own count, so a clamped result is still detectable.
       expect(result.data).toEqual({
-        questions: [{ id: 'q-1', content: 'Q1', topics: [] }],
+        questions: [
+          {
+            id: 'q-1',
+            content: 'Q1',
+            question_answers: [],
+            explanation: 'explanation-q-1',
+            topics: [],
+          },
+        ],
         total: 7,
       });
       // The caller already checked `question_bank.read`; adding `question.read` here is what
@@ -300,7 +327,7 @@ describe('QuestionService', () => {
       await service.list(ctx);
 
       expect(listChain.select).toHaveBeenCalledWith(
-        '*, question_answers:question_options(*), question_topic_assignments(topic_id, topics(id, name))',
+        'id, type, content, visibility, created_by, organization_id, bank_id, created_at, updated_at, question_answers:question_options(id, content, order_index, match_group, match_side), question_topic_assignments(topic_id, topics(id, name))',
       );
     });
 
@@ -489,6 +516,57 @@ describe('QuestionService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('answer key projection (#1170)', () => {
+    const questionRow = {
+      id: 'q-1',
+      content: 'Q1',
+      question_answers: [
+        { id: 'ans-1', content: 'A', order_index: 0 },
+        { id: 'ans-2', content: 'B', order_index: 1 },
+      ],
+    };
+
+    it('serves a reader neither is_correct nor explanation', async () => {
+      keyAccess.canReadQuestionKey.mockReturnValue(false);
+      mock.from.mockReturnValue(chain(questionRow));
+
+      const result = await service.getById('q-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toStrictEqual({
+        id: 'q-1',
+        content: 'Q1',
+        question_answers: [
+          { id: 'ans-1', content: 'A', order_index: 0 },
+          { id: 'ans-2', content: 'B', order_index: 1 },
+        ],
+        topics: [],
+      });
+      expect(readQuestionKeys).not.toHaveBeenCalled();
+    });
+
+    it('adds the key and the explanation for a staff caller, from that question id', async () => {
+      keyAccess.canReadQuestionKey.mockReturnValue(true);
+      mock.from.mockReturnValue(chain(questionRow));
+
+      const result = await service.getById('q-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toStrictEqual({
+        id: 'q-1',
+        content: 'Q1',
+        explanation: 'explanation-q-1',
+        question_answers: [
+          { id: 'ans-1', content: 'A', order_index: 0, is_correct: false },
+          { id: 'ans-2', content: 'B', order_index: 1, is_correct: true },
+        ],
+        topics: [],
+      });
+      // The ids come from the row the caller was authorized to read, never from the request.
+      expect(readQuestionKeys).toHaveBeenCalledWith(['q-1']);
     });
   });
 });

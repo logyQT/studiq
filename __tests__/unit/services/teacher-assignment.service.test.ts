@@ -5,6 +5,13 @@ import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { firstCall, firstRecorded } from '#test/mocks/recorded';
 
+// The assignment pages render the key through the service-role reader (#1170); these tests
+// cover the ownership/shape logic, so the reader answers an empty map.
+vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
+  readQuestionKeys: vi.fn(() => Promise.resolve(new Map())),
+}));
+
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
   select: Mock<(columns: string) => QueryChain>;

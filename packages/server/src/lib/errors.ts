@@ -3,6 +3,7 @@ export const APP_ERRORS = {
   UNAUTHORIZED: { code: 'ERROR_UNAUTHORIZED', status: 401 },
   INVALID_CURRENT_PASSWORD: { code: 'ERROR_INVALID_CURRENT_PASSWORD', status: 400 },
   FORBIDDEN: { code: 'ERROR_FORBIDDEN', status: 403 },
+  EXPORT_FORBIDDEN: { code: 'ERROR_EXPORT_FORBIDDEN', status: 403 },
   NOT_FOUND: { code: 'ERROR_NOT_FOUND', status: 404 },
   GONE: { code: 'ERROR_GONE', status: 410 },
   CONFLICT: { code: 'ERROR_CONFLICT', status: 409 },
