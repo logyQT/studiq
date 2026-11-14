@@ -30,6 +30,7 @@ type QueryResult = { data: unknown; count?: number | null; error: unknown };
 type QueryBuilder = {
   select: Mock;
   eq: Mock;
+  neq: Mock;
   in: Mock;
   or: Mock;
   order: Mock;
@@ -45,6 +46,7 @@ function chain(rows: unknown[], count?: number): QueryBuilder {
   const c: QueryBuilder = {
     select: vi.fn(() => c),
     eq: vi.fn(() => c),
+    neq: vi.fn(() => c),
     in: vi.fn(() => c),
     or: vi.fn(() => c),
     order: vi.fn(() => c),

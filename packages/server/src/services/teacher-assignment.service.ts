@@ -1,5 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { openQuestionIds } from '@studiq/server/lib/question-status';
+import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
 import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -98,6 +100,41 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
+    // A quiz copy is a new binding, and it is chosen as a whole: if any item is retired or
+    // deleted the whole copy is refused. Silently dropping it would create an assessment with a
+    // different item set than the quiz the teacher picked (#1171).
+    const quizQuestions: Array<{
+      question_id: string;
+      order_index: number | null;
+      points: number;
+    }> = [];
+    if (data.quizId) {
+      const { data: rows, error: quizError } = await supabase
+        .from('quiz_questions')
+        .select('question_id, order_index, points')
+        .eq('quiz_id', data.quizId)
+        .order('order_index', { ascending: true });
+
+      if (quizError) return toDbFailure(quizError);
+
+      for (const row of dbRows(rows)) {
+        if (row.question_id) {
+          quizQuestions.push({
+            question_id: row.question_id,
+            order_index: row.order_index,
+            points: row.points,
+          });
+        }
+      }
+
+      const open = await openQuestionIds(
+        supabase,
+        quizQuestions.map((question) => question.question_id),
+      );
+      if (isFailure(open)) return open;
+      if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+    }
+
     const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
       organization_id: ctx.activeOrgId,
       created_by: ctx.userId,
@@ -124,24 +161,9 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    // Copy questions from quiz if quizId provided
-    if (data.quizId) {
-      const { data: quizQuestions } = await supabase
-        .from('quiz_questions')
-        .select('question_id, order_index, points')
-        .eq('quiz_id', data.quizId)
-        .order('order_index', { ascending: true });
-
-      if (quizQuestions && quizQuestions.length > 0) {
-        const assignmentQuestions = quizQuestions.map((q) => ({
-          assignment_id: assignment.id,
-          question_id: q.question_id,
-          order_index: q.order_index,
-          points: q.points,
-        }));
-        await supabase.from('assignment_questions').insert(assignmentQuestions);
-      }
-    }
+    // Copy the validated quiz items (every one of them was open above).
+    const copied = await insertAssessmentItemLinks(supabase, assignment.id, quizQuestions);
+    if (isFailure(copied)) return copied;
 
     // Re-fetch with questions
     const { data: full, error: refetchError } = await supabase
@@ -340,20 +362,13 @@ export class TeacherAssignmentService {
 
     if (newIds.length === 0) return success({ added: 0 });
 
-    const { data: maxOrder } = await supabase
-      .from('assignment_questions')
-      .select('order_index')
-      .eq('assignment_id', id)
-      .order('order_index', { ascending: false })
-      .limit(1);
+    // Composing an assessment is a new binding: a retired item may not be added, and a deleted
+    // one is not bindable at all.
+    const open = await openQuestionIds(supabase, newIds);
+    if (isFailure(open)) return open;
+    if (open.data.size !== newIds.length) return failure('UNPROCESSABLE_ENTITY');
 
-    const nextOrder = (maxOrder?.[0]?.order_index ?? -1) + 1;
-
-    const rows = newIds.map((questionId, i) => ({
-      assignment_id: id,
-      question_id: questionId,
-      order_index: nextOrder + i,
-    }));
+    const rows = await this.nextQuestionLinks(supabase, id, newIds);
 
     const { error } = await supabase.from('assignment_questions').insert(rows);
     if (error) return toDbFailure(error);
@@ -443,6 +458,9 @@ export class TeacherAssignmentService {
       query = query.in('type', data.types);
     }
 
+    // Randomize is composition: only open items can be newly bound (#1171).
+    query = query.eq('status', 'open');
+
     const existingIds = await this.existingQuestionIds(supabase, id);
     if (!existingIds.success) return existingIds;
 
@@ -455,25 +473,40 @@ export class TeacherAssignmentService {
     const shuffled = [...available].toSorted(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(data.count, shuffled.length));
 
-    const { data: maxOrder } = await supabase
-      .from('assignment_questions')
-      .select('order_index')
-      .eq('assignment_id', id)
-      .order('order_index', { ascending: false })
-      .limit(1);
-
-    const nextOrder = (maxOrder?.[0]?.order_index ?? -1) + 1;
-
-    const rows = selected.map((q, i) => ({
-      assignment_id: id,
-      question_id: q.id,
-      order_index: nextOrder + i,
-    }));
+    const rows = await this.nextQuestionLinks(
+      supabase,
+      id,
+      selected.flatMap((q) => (q.id ? [q.id] : [])),
+    );
 
     const { error: insertError } = await supabase.from('assignment_questions').insert(rows);
 
     if (insertError) return toDbFailure(insertError);
     return success({ added: selected.length });
+  }
+
+  /**
+   * Link rows for newly bound items, appended after the highest current `order_index`. Both
+   * composing paths (hand-picked and randomized) share the ordering rule.
+   */
+  private async nextQuestionLinks(
+    supabase: SupabaseClient<Database>,
+    assignmentId: string,
+    questionIds: readonly string[],
+  ): Promise<Array<{ assignment_id: string; question_id: string; order_index: number }>> {
+    const { data: maxOrder } = await supabase
+      .from('assignment_questions')
+      .select('order_index')
+      .eq('assignment_id', assignmentId)
+      .order('order_index', { ascending: false })
+      .limit(1);
+
+    const nextOrder = (maxOrder?.[0]?.order_index ?? -1) + 1;
+    return questionIds.map((questionId, index) => ({
+      assignment_id: assignmentId,
+      question_id: questionId,
+      order_index: nextOrder + index,
+    }));
   }
 
   async setTargets(

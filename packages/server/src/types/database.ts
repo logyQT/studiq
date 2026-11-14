@@ -1596,8 +1596,10 @@ export type Database = {
           id: string;
           organization_id: string | null;
           search_vector: unknown;
+          status: Database['public']['Enums']['question_status'];
           type: Database['public']['Enums']['question_type'];
           updated_at: string | null;
+          version: number;
           visibility: Database['public']['Enums']['visibility_type'];
         };
         ComputedFields: never;
@@ -1610,8 +1612,10 @@ export type Database = {
           id?: string;
           organization_id?: string | null;
           search_vector?: never;
+          status?: Database['public']['Enums']['question_status'];
           type?: Database['public']['Enums']['question_type'];
           updated_at?: string | null;
+          version?: number;
           visibility?: Database['public']['Enums']['visibility_type'];
         };
         Update: {
@@ -1623,8 +1627,10 @@ export type Database = {
           id?: string;
           organization_id?: string | null;
           search_vector?: never;
+          status?: Database['public']['Enums']['question_status'];
           type?: Database['public']['Enums']['question_type'];
           updated_at?: string | null;
+          version?: number;
           visibility?: Database['public']['Enums']['visibility_type'];
         };
         Relationships: [
@@ -2631,6 +2637,13 @@ export type Database = {
         Returns: boolean;
       };
       is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
+      question_bank_counts: {
+        Args: { p_bank_ids: string[] };
+        Returns: {
+          bank_id: string;
+          question_count: number;
+        }[];
+      };
       rls_audit: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -2684,6 +2697,7 @@ export type Database = {
     Enums: {
       account_type: 'student' | 'educator' | 'manager';
       assignment_status: 'draft' | 'published';
+      question_status: 'open' | 'retired' | 'deleted';
       question_type:
         'mcq' | 'true_false' | 'open' | 'multi_select' | 'matching' | 'ordering' | 'fill_in_blank';
       report_status: 'open' | 'resolved';
@@ -2805,6 +2819,7 @@ export const Constants = {
     Enums: {
       account_type: ['student', 'educator', 'manager'],
       assignment_status: ['draft', 'published'],
+      question_status: ['open', 'retired', 'deleted'],
       question_type: [
         'mcq',
         'true_false',

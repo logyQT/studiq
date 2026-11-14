@@ -31,8 +31,8 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *    saving answers the toast „Pytanie zaktualizowane”; the table row and the API
  *    show the new content and answers, and the old content is gone.
  * 2. Deleting the question opens the „Usunąć pytanie?” dialog with the description
- *    „To trwale usunie to pytanie i wszystkie jego odpowiedzi. Tej akcji nie można
- *    cofnąć.”; confirming answers „Pytanie usunięte”, removes the row and the API
+ *    „Pytanie zniknie z banku, wyszukiwania i ćwiczeń. Kartkówki, w których już je
+ *    wykorzystano, zachowają jego opublikowaną wersję.”; confirming answers „Pytanie usunięte”, removes the row and the API
  *    returns 404 for that question.
  * 3. The bank card's „…” menu edits the bank in the „Edytuj bank” dialog and answers
  *    „Bank pytań zaktualizowany”; deleting the bank opens „Usunąć bank pytań?” with
@@ -66,7 +66,7 @@ const COPY = {
   questionDeleted: 'Pytanie usunięte',
   deleteQuestionTitle: 'Usunąć pytanie?',
   deleteQuestionDesc:
-    'To trwale usunie to pytanie i wszystkie jego odpowiedzi. Tej akcji nie można cofnąć.',
+    'Pytanie zniknie z banku, wyszukiwania i ćwiczeń. Kartkówki, w których już je wykorzystano, zachowają jego opublikowaną wersję.',
   editBankTitle: 'Edytuj bank',
   bankUpdated: 'Bank pytań zaktualizowany',
   bankDeleted: 'Bank pytań usunięty',

@@ -157,7 +157,8 @@ describe('QuizTeacherService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toEqual(quizzes);
+        // The card count is derived from the quiz's non-deleted items (#1171).
+        expect(result.data).toEqual([{ ...quizzes[0], quiz_questions: [{ count: 0 }] }]);
       }
       expect(mock.from).toHaveBeenCalledWith('quizzes');
     });
@@ -456,12 +457,33 @@ describe('QuizTeacherService', () => {
       const createdAssignment = { id: 'assign-1', title: 'My Quiz', quiz_id: quizId };
       mock.from
         .mockReturnValueOnce(chain(quiz))
+        .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }])) // every item is open
         .mockReturnValueOnce(chain(createdAssignment))
         .mockReturnValue(chain(null));
 
       const result = await service.createAssignment(quizId, ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses a quiz copy when an item is no longer open (#1171)', async () => {
+      const quiz = {
+        id: quizId,
+        name: 'My Quiz',
+        organization_id: orgId,
+        quiz_questions: [{ question_id: 'q-1', order_index: 0, points: 1 }],
+      };
+      mock.from
+        .mockReturnValueOnce(chain(quiz))
+        .mockReturnValueOnce(chain([])) // the retired item is not open
+        .mockReturnValue(chain(null));
+
+      const result = await service.createAssignment(quizId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      // Refused before anything was created.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns FORBIDDEN when org does not match', async () => {

@@ -75,6 +75,26 @@ function configTitle(config: unknown): string | null {
   return typeof config.title === 'string' && config.title !== '' ? config.title : null;
 }
 
+/**
+ * The caller's own, non-deleted questions in the active org. Both the teacher totals and the
+ * student content count read the same set, so a soft-deleted item is never counted (#1171).
+ */
+async function scopedQuestionRows(
+  supabase: SupabaseClient<Database>,
+  ctx: RequestContext,
+): Promise<ServiceResult<Array<{ id: string; type: string; bank_id: string }>>> {
+  let query = supabase
+    .from('questions')
+    .select('id, type, bank_id')
+    .eq('created_by', ctx.userId)
+    .neq('status', 'deleted');
+  if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+  const { data, error } = await query;
+  if (error) return toDbFailure(error);
+  return success(dbRows(data));
+}
+
 export class StatsService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
@@ -90,14 +110,8 @@ export class StatsService {
   ): Promise<ServiceResult<TeacherStatsResponse>> {
     const supabase = await this.clientFactory();
 
-    let questionsQuery = supabase
-      .from('questions')
-      .select('id, type, bank_id')
-      .eq('created_by', ctx.userId);
-    if (ctx.activeOrgId) questionsQuery = questionsQuery.eq('organization_id', ctx.activeOrgId);
-    const { data: questions, error: questionsError } = await questionsQuery;
-
-    if (questionsError) return toDbFailure(questionsError);
+    const questions = await scopedQuestionRows(supabase, ctx);
+    if (isFailure(questions)) return questions;
 
     let flashcardsQuery = supabase.from('flashcards').select('id').eq('created_by', ctx.userId);
     if (ctx.activeOrgId) flashcardsQuery = flashcardsQuery.eq('organization_id', ctx.activeOrgId);
@@ -105,7 +119,7 @@ export class StatsService {
 
     if (flashcardsError) return toDbFailure(flashcardsError);
 
-    const rows: Array<{ type: string; bank_id: string }> = dbRows(questions);
+    const rows = questions.data;
 
     // “Subject” counts are a group-by over the same own-questions row set, so
     // `subjectId` can only ever narrow the type split — it never widens the
@@ -244,11 +258,8 @@ export class StatsService {
 
     if (practiceError) return toDbFailure(practiceError);
 
-    let questionsQuery = supabase.from('questions').select('id').eq('created_by', ctx.userId);
-    if (ctx.activeOrgId) questionsQuery = questionsQuery.eq('organization_id', ctx.activeOrgId);
-    const { data: questions, error: questionsError } = await questionsQuery;
-
-    if (questionsError) return toDbFailure(questionsError);
+    const questions = await scopedQuestionRows(supabase, ctx);
+    if (isFailure(questions)) return questions;
 
     let decksQuery = supabase
       .from('flashcard_decks')
@@ -306,7 +317,7 @@ export class StatsService {
       totalQuizzes,
       avgScore,
       bestScore,
-      totalQuestionsCreated: dbRows(questions).length,
+      totalQuestionsCreated: questions.data.length,
       flashcardsPracticed: flashcardTotal,
       flashcardAccuracy:
         flashcardTotal > 0 ? Math.round((flashcardCorrect / flashcardTotal) * 100) : 0,

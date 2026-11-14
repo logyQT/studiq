@@ -6,5 +6,6 @@
 CREATE TYPE account_type AS ENUM ('student', 'educator', 'manager');
 CREATE TYPE question_type AS ENUM ('mcq', 'true_false', 'open', 'multi_select', 'matching', 'ordering', 'fill_in_blank');
 CREATE TYPE visibility_type AS ENUM ('personal', 'group');
+CREATE TYPE question_status AS ENUM ('open', 'retired', 'deleted');
 CREATE TYPE assignment_status AS ENUM ('draft', 'published');
 CREATE TYPE report_status AS ENUM ('open', 'resolved');

@@ -39,6 +39,7 @@ type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
   select: Mock<(columns: string) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
+  neq: Mock<(...args: unknown[]) => QueryChain>;
   in: Mock<(...args: unknown[]) => QueryChain>;
   or: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
@@ -61,6 +62,7 @@ function chain(result: unknown, count?: number) {
   const c: QueryChain = {
     select: vi.fn(() => c),
     eq: vi.fn(() => c),
+    neq: vi.fn(() => c),
     in: vi.fn(() => c),
     or: vi.fn(() => c),
     order: vi.fn(() => c),
@@ -327,7 +329,7 @@ describe('QuestionService', () => {
       await service.list(ctx);
 
       expect(listChain.select).toHaveBeenCalledWith(
-        'id, type, content, visibility, created_by, organization_id, bank_id, created_at, updated_at, question_answers:question_options(id, content, order_index, match_group, match_side), question_topic_assignments(topic_id, topics(id, name))',
+        'id, type, content, visibility, status, version, created_by, organization_id, bank_id, created_at, updated_at, question_answers:question_options(id, content, order_index, match_group, match_side), question_topic_assignments(topic_id, topics(id, name))',
       );
     });
 
@@ -501,12 +503,15 @@ describe('QuestionService', () => {
   });
 
   describe('delete', () => {
-    it('deletes question successfully', async () => {
-      mock.from.mockReturnValue(chain({ id: 'q-1' }));
+    it('soft-deletes the item: the row survives with status deleted (#1171)', async () => {
+      const c = chain({ id: 'q-1' });
+      mock.from.mockReturnValue(c);
 
       const result = await service.delete('q-1', ctx);
 
       expect(result.success).toBe(true);
+      expect(c.update).toHaveBeenCalledWith({ status: 'deleted' });
+      expect(c.delete).not.toHaveBeenCalled();
     });
 
     it('returns FORBIDDEN when question not owned by user', async () => {

@@ -63,7 +63,7 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
  * it, so a reader payload cannot carry either.
  */
 const QUESTION_COLUMNS =
-  'id, type, content, visibility, created_by, organization_id, bank_id, created_at, updated_at';
+  'id, type, content, visibility, status, version, created_by, organization_id, bank_id, created_at, updated_at';
 
 /**
  * Reader-safe read projection. `!inner` is required when filtering by topic, so the embed
@@ -184,7 +184,7 @@ export class QuestionService {
     // One place applies the filter chain, so the rows of a page and the total that drives the
     // pager can never be scoped differently.
     const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
-      let query = applyAccessFilter(q, filter);
+      let query = applyAccessFilter(q, filter).neq('status', 'deleted');
 
       if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
       // The topic embed must be `!inner` for the filter to narrow the parent rows —
@@ -257,7 +257,8 @@ export class QuestionService {
     const { data, error, count } = await supabase
       .from('questions')
       .select(QUESTION_SELECT, { count: 'exact' })
-      .eq('bank_id', bankId);
+      .eq('bank_id', bankId)
+      .neq('status', 'deleted');
     if (error) return toDbFailure(error);
 
     const rows = dbRows(data);
@@ -284,7 +285,7 @@ export class QuestionService {
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     const { data: question, error } = await applyAccessFilter(
-      supabase.from('questions').select(QUESTION_SELECT).eq('id', id),
+      supabase.from('questions').select(QUESTION_SELECT).eq('id', id).neq('status', 'deleted'),
       filter,
     ).maybeSingle();
     if (error || !question) return failure('NOT_FOUND');
@@ -310,7 +311,8 @@ export class QuestionService {
       .from('questions')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', ctx.userId);
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
 
     // questions.organization_id is nullable (personal questions). Mirror `accessibleFilter`'s
     // `own` scope: apply the tenant filter only while an org is active. A bare
@@ -322,7 +324,6 @@ export class QuestionService {
     if (qError && qError.code !== 'PGRST116') return toDbFailure(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
       return failure('FORBIDDEN');
-
     if (data.answers) {
       await supabase.from('question_options').delete().eq('question_id', id);
       if (data.answers.length > 0) {
@@ -359,15 +360,21 @@ export class QuestionService {
     return this.getById(id, ctx);
   }
 
+  /**
+   * Soft delete (#1171): an item bound to an assessment is never destroyed. The row keeps its
+   * version and options, so a published snapshot stays coherent; every read path filters
+   * `status = 'deleted'`, which is what hides it from authoring and practice.
+   */
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
     const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('questions')
-      .delete()
+      .update({ status: 'deleted' })
       .eq('id', id)
       .eq('created_by', ctx.userId)
-      .select()
+      .neq('status', 'deleted')
+      .select('id')
       .single();
 
     if (error && error.code !== 'PGRST116') return toDbFailure(error);
@@ -388,7 +395,8 @@ export class QuestionService {
     let query = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
 
     if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
 
