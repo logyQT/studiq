@@ -64,6 +64,8 @@ const publicLinks = [
 
 export function Navbar() {
   const t = useTranslations('Navbar');
+  const tLanding = useTranslations('LandingPage');
+  const tFooter = useTranslations('Footer');
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -93,6 +95,23 @@ export function Navbar() {
   // anonymous visitors get the public links alone. `navLinks` never contains a
   // public target, so the two sets concatenate without duplicates.
   const allLinks = user ? [...extraLinks, ...navLinks] : extraLinks;
+
+  /*
+   * The mobile drawer navigates differently on purpose. Desktop leaves the page
+   * for /features and /pricing; on a phone the sections of this page are the
+   * destination, so the drawer jumps to them instead of reloading a second page
+   * the visitor has to scroll from the top. Kontakt is a real page and stays one.
+   * The labels come from three namespaces, which is why the drawer takes strings
+   * rather than keys.
+   */
+  const mobileItems = user
+    ? allLinks.map(({ labelKey, href }) => ({ label: t(labelKey), href }))
+    : [
+        { label: t('features'), href: '#features' },
+        { label: tLanding('how_it_works_title'), href: '#how-it-works' },
+        { label: t('pricing'), href: '#pricing' },
+        { label: tFooter('contact'), href: '/contact' },
+      ];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background">
@@ -182,7 +201,7 @@ export function Navbar() {
               side="right": control and panel must share an edge, or the drawer
               reads as belonging to something else. */}
           <div className="lg:hidden ml-2 shrink-0">
-            <MobileNav items={allLinks} isActive={isActive} isLoggedIn={!!user} />
+            <MobileNav items={mobileItems} isActive={isActive} isLoggedIn={!!user} />
           </div>
         </div>
       </div>

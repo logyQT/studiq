@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { ProductShot } from '@/components/marketing/ui/product-shot';
 import { SectionHeader } from '@/components/marketing/ui/section-header';
 
 const freeFeatures = [
@@ -30,7 +31,26 @@ export function Features() {
   return (
     <section id="features" className="py-16 md:py-20">
       <div className="mx-auto max-w-content px-content">
-        <SectionHeader eyebrow={t('free_badge')} title={t('free_title')} lede={t('free_desc')} />
+        {/*
+         * The specimen rides the header band so the ledger keeps the full width
+         * below it: the four rows are a spec sheet, and a shot wedged between the
+         * terms would break the single-line rhythm they are built on.
+         */}
+        <div className="md:grid md:grid-cols-12 md:gap-x-8">
+          <div className="md:col-span-6">
+            <SectionHeader
+              eyebrow={t('free_badge')}
+              title={t('free_title')}
+              lede={t('free_desc')}
+            />
+          </div>
+          <ProductShot
+            shot="student-stats"
+            alt={t('shot_stats_alt')}
+            sizes="(min-width: 1280px) 407px, (min-width: 768px) 36vw, calc(100vw - 2rem)"
+            className="mt-8 md:col-span-5 md:col-start-8 md:row-start-1 md:mt-0"
+          />
+        </div>
 
         <dl className="mt-10 border-t border-border md:mt-16">
           {freeFeatures.map(({ titleKey, descKey }, index) => (

@@ -94,7 +94,17 @@ That order is not a suggestion: `__tests__/qa/PUB/PUB-01.spec.ts` pins those fiv
 and footer link targets. Renaming or removing a section means updating the spec and
 `qa/cases/PUB-01.md` in the same change.
 
-## What we may claim
+### A surface visited once
+
+The homepage is not a place people return to. They arrive once, or they never arrive at all because they come back straight to `/login` or a deep link. GitHub is the same shape: a near-static front page that still has to work for someone who has never seen the product and will judge it in one scroll.
+
+Three consequences, and they decide arguments that otherwise run in circles:
+
+- **The menu is orientation, not a navigation system.** It needs a few large, unambiguous destinations and one action, not every route in the app. Depth lives in the product, behind a sign-in, where people actually navigate.
+- **One primary action, aimed at the first-time visitor.** Sign up. Someone returning already knows the account mark exists in the top-right, because it is in the same corner after sign-in as before it.
+- **Nothing may assume a second visit.** No "welcome back", no personalisation, no tour that only makes sense after onboarding. Everything needed to decide has to be on this one page, in the first screens.
+
+That is why the phone menu is a full-page takeover with four oversized rows and a single button, rather than a drawer full of links: a drawer exists to keep the page visible while you navigate around it, and there is nowhere here to navigate around.
 
 Roadmap-backed, so all of it is sellable. Status column is the roadmap's, not the code's.
 

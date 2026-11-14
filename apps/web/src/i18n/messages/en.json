@@ -1920,6 +1920,8 @@
     "hero_badge": "From your material, for this week.",
     "hero_title": "Only what you have to know.",
     "hero_subtitle": "Quizzes, flashcards and revision built from your material, not a generic deck.",
+    "shot_quiz_alt": "A quiz question about how strongly a drug binds to protein, four answers, the answer about little free drug selected; the progress bar shows question 1 of 8.",
+    "shot_stats_alt": "Activity statistics: tiles counting reviews and correct answers, a daily activity bar chart and a donut chart of flashcard states.",
     "cta_start": "Start learning free",
     "cta_features": "View Features",
     "cta_banner_title": "Ready to Transform Your Learning?",
