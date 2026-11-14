@@ -1917,9 +1917,9 @@
   },
   "LandingPage": {
     "hero_badge": "From your material, for this week.",
-    "hero_title": "Only what you have to know.",
-    "hero_title_lead": "Only what you",
-    "hero_title_mark": "have to know.",
+    "hero_title": "Study only what you need.",
+    "hero_title_lead": "Study only",
+    "hero_title_mark": "what you need.",
     "hero_subtitle": "Quizzes, flashcards and revision built from your material, not a generic deck.",
     "quiz_end_restart": "Start over",
     "quiz_end_cta": "Take a real quiz",

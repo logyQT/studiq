@@ -120,11 +120,11 @@ const LOGIN_COPY: Record<
 /** Public landing page: hero heading and the footer link row. */
 const LANDING: Record<Locale, { hero: string; footer: string[] }> = {
   pl: {
-    hero: 'Tylko to, co musisz umieć.',
+    hero: 'Ucz się tylko tego, co potrzebne.',
     footer: ['StudiQ', 'Funkcje', 'Cennik', 'Kontakt', 'Polityka prywatności', 'Regulamin'],
   },
   en: {
-    hero: 'Only what you have to know.',
+    hero: 'Study only what you need.',
     footer: ['StudiQ', 'Features', 'Pricing', 'Contact', 'Privacy Policy', 'Terms of Service'],
   },
 };
