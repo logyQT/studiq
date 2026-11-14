@@ -89,38 +89,39 @@ input. No marketing screenshot exists in `apps/web/public` yet, so producing the
 of the work. What may **not** appear: any number about usage, any quote from a person.
 
 **Section order.** `#hero` → `#features` → `#how-it-works` → `#pricing` → `#get-started`.
-That order is not a suggestion: `__tests__/qa/PUB/PUB-01.spec.ts` pins those five ids, one
-`<h1>` inside `#hero`, a heading per section, no empty section, `lang="pl"`, and the header
-and footer link targets. Renaming or removing a section means updating the spec and
-`qa/cases/PUB-01.md` in the same change.
+That order is not a suggestion: `__tests__/qa/PUB/PUB-01.spec.ts` pins the presence of those
+five ids, one `<h1>` inside `#hero`, a heading per section, no empty section, `lang="pl"`,
+and the header and footer link targets. Renaming or removing a section means updating the
+spec and `qa/cases/PUB-01.md` in the same change.
 
 ## What we may claim
 
 Roadmap-backed, so all of it is sellable. Status column is the roadmap's, not the code's.
 
-| Claim                                                                           | Roadmap   | Status                 |
-| ------------------------------------------------------------------------------- | --------- | ---------------------- |
-| Flashcards, decks, topics, cram mode, CSV import/export, media upload           | 0         | ✅                     |
-| `SM-2` spaced repetition and study sessions                                     | 0, 5A     | ✅                     |
-| Questions (multiple choice, true/false, open), banks, quizzes, attempts, review | 0, 3A     | ✅                     |
-| Groups, org hierarchy, roles, per-group visibility                              | 1, 2      | ✅                     |
-| Seats, plans, features and limits, Stripe checkout                              | 6         | ✅                     |
-| AI flashcard generation from text or PDF, with a daily token budget             | 4A        | ✅                     |
-| AI question and quiz generation                                                 | 4B (#658) | 📋 ships before launch |
-| Notes agent and tutor mode                                                      | 4B (#659) | 📋 ships before launch |
-| `/summary`, `/quiz`, `/explain` commands                                        | 4B (#660) | 📋 ships before launch |
-| YouTube, image and audio input                                                  | 4B (#661) | 📋 ships before launch |
-| Document support                                                                | 3C (#653) | 📋 ships before launch |
-| Question bank polish, teacher dashboard                                         | 3 (#654)  | 📋 ships before launch |
-| Advanced statistics: study time, mastery, retention                             | 5C (#657) | 📋 ships before launch |
-| Global admin statistics                                                         | 7 (#663)  | 📋 ships before launch |
-| Polish and English                                                              | 0         | ✅                     |
+| Claim                                                                           | Roadmap         | Status                                         |
+| ------------------------------------------------------------------------------- | --------------- | ---------------------------------------------- |
+| Flashcards, decks, topics, cram mode, CSV import/export, media upload           | 0               | ✅                                             |
+| `SM-2` spaced repetition and study sessions                                     | 0, 5B           | ✅                                             |
+| Questions (multiple choice, true/false, open), banks, quizzes, attempts, review | 0, 3A           | ✅                                             |
+| Groups, org hierarchy, roles, per-group visibility                              | 1, 2            | ✅                                             |
+| Seats, plans, features and limits, Stripe checkout                              | 6               | 🏗️ integration complete, go-live pending #1019 |
+| AI flashcard generation from text or PDF, with a daily token budget             | 4A              | ✅                                             |
+| AI question and quiz generation                                                 | 4B (#658)       | 📋 ships before launch                         |
+| Notes agent and tutor mode                                                      | 4B (#659)       | 📋 ships before launch                         |
+| `/summary`, `/quiz`, `/explain` commands                                        | 4B (#660)       | 📋 ships before launch                         |
+| YouTube, image and audio input                                                  | 4B (#661)       | 📋 ships before launch                         |
+| Document support                                                                | 3C (#653)       | 📋 ships before launch                         |
+| Question bank polish                                                            | 3B (#651, #652) | 📋 ships before launch                         |
+| Teacher dashboard                                                               | 3D (#654)       | 📋 ships before launch                         |
+| Advanced statistics: study time, mastery, retention                             | 5C (#657)       | 📋 ships before launch                         |
+| Global admin statistics                                                         | 7 (#663)        | 📋 ships before launch                         |
+| Polish and English                                                              | 0               | ✅                                             |
 
 The page may sell the 📋 rows. It may not sell anything absent from this table.
 
 ## Gaps: claimed, but not in the roadmap
 
-Three claims are live or planned and have no roadmap row. Under the rule above they get no
+Four claims are live or planned and have no roadmap row. Under the rule above they get no
 promise until they do. Each is a decision, not a design task.
 
 1. **AI exam simulation** (`LandingPage.ai_exam_sim`). Shown as Premium value on the landing
@@ -131,6 +132,10 @@ promise until they do. Each is a decision, not a design task.
 3. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
    `cancel_at_period_end`; the 30-day grace belongs to soft-deleted _accounts_, not
    subscriptions.
+4. **"Free Forever"** (`LandingPage.free_badge`). The free-tier band is badged "Free Forever"
+   / "Zawsze za darmo". The free plan is 0 zł today, but "forever" is a pricing promise, and
+   the roadmap makes none: nothing in it or in `subscription_plans` fixes that price. Either
+   back it with a policy decision or drop the badge from the band.
 
 Separately, one entitlement inconsistency that is not a roadmap question: the landing org
 card prices from `team` (99 zł) and lists "Everything in Premium", but `ace` (19.99 zł) is
@@ -150,7 +155,9 @@ first.
 - No superlatives without a measurement: "the best", "#1", "world-class".
 - No hedged verbs: "helps you", "empowers", "supercharge". Name the action.
 - No "AI-powered" as an adjective or a badge. It is the least informative phrase available
-  about a product that does something specific.
+  about a product that does something specific. Two live strings break this:
+  `LandingPage.hero_badge` ("AI-Powered Learning Platform" / "Platforma edukacyjna oparta na
+  AI") and `LandingPage.ai_exam_sim` ("AI-Powered Exam Simulation").
 - No dashes as punctuation, in either locale. One sentence currently breaks this with a
   spaced hyphen: `pl.LandingPage.hero_subtitle`.
 - Every number on the page is measured in the app or absent.

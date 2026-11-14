@@ -34,7 +34,7 @@ Honesty about the delta matters more than the label. Against the current
 
 So: the blue stays blue and gets deeper, and it is **not** true that we are leaving a
 competitor's hue, because the old value was already at cobalt's hue. The identity change
-comes from the paper flip, the geometry (2–6px corners instead of 12px), the hairline
+comes from the paper flip, the geometry (4–8px corners instead of 12px), the hairline
 rules, the type, and the accent. One genuinely new colour exists, and it is `signal`.
 
 That is a deliberate trade: a hue move this late would look like a different brand rather
@@ -104,7 +104,7 @@ the light value into dark produces unreadable buttons:
 | ------------------------ | ----------------- | ---------- | -------------------- |
 | light `cobalt` `#1244CB` | `paper` `#FAF5EB` | **7.15:1** | correct              |
 | light `cobalt`           | `ink` `#0C101A`   | 2.45:1     | fails                |
-| dark `cobalt` `#6895F4`  | `paper`           | 2.76:1     | **fails — the trap** |
+| dark `cobalt` `#6895F4`  | `paper`           | 2.70:1     | **fails — the trap** |
 | dark `cobalt`            | `ink` `#0C101A`   | **6.48:1** | correct              |
 
 So `--primary-foreground` is `paper` in light and `ink` in dark. Any new component that
@@ -240,7 +240,7 @@ are different tokens and the accessibility floor says which applies where:
 - **Load-bearing** (`--input`, outline buttons, any control identified only by its edge):
   ≥ 3:1 against its surface. `border-control` measures 3.23:1 on paper and 3.35:1 on card.
   On `paper-sunk` it is 2.98:1, so **bare controls never sit on `paper-sunk`**.
-- **`--secondary` chips** are non-interactive fills carrying text at 6.30:1, so they are
+- **`--secondary` chips** are non-interactive fills carrying text at 5.61:1, so they are
   exempt from the 3:1 boundary rule. If a chip ever becomes interactive it needs a
   `border-control` edge.
 
@@ -260,7 +260,8 @@ are different tokens and the accessibility floor says which applies where:
 ## Components
 
 Marketing components are page-owned. The kit is used only where it is invisible
-(Button semantics, Badge markup).
+(Button semantics, Badge markup). **None of them exist yet**: the table is the build spec
+for the token migration, not a description of current code.
 
 | Component       | Spec                                                                                                                              |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -281,7 +282,7 @@ return.
 
 1. Blurred gradient blobs behind the hero.
 2. A sparkles-icon badge above the h1.
-3. Three or four equal cards as the only presentation of a feature set (the Two modes rule).
+3. Three or four equal cards as the only presentation of a feature set.
 4. Rainbow icon tints. One accent per page, not one per icon.
 5. Gradient text, glassmorphism, side-stripe borders.
 6. Counters the product cannot measure.
@@ -340,8 +341,8 @@ nothing until they are declared):
 - `--default-transition-duration`, `--default-transition-timing-function`
 - `--chart-1` … `--chart-5`
 
-**Do not map `--signal` onto `--accent`.** `--accent` is the hover surface in 15 of the 60
-kit components and in 39 files app-wide; pointing it at the accent paints every menu row
+**Do not map `--signal` onto `--accent`.** `--accent` and its foreground appear in 15 of the
+60 kit components and in 42 files app-wide; pointing it at the accent paints every menu row
 acid lime. `--signal` is a new token consumed by exactly three utilities: `bg-signal`,
 `ring-signal`, and a `border-b-signal` underline. `text-signal` on `paper` is forbidden.
 
@@ -350,11 +351,11 @@ acid lime. `--signal` is a new token consumed by exactly three utilities: `bg-si
 Removing the old identity from the code is not finished by changing tokens, and these are
 deliberately not in this PR:
 
-- `oklch(0.546 0.245 265)` is hardcoded in five chart files
+- `oklch(0.546 0.245 265)` is hardcoded in four chart files, five occurrences
   (`stats/daily-activity-chart.tsx:59,87`, `stats/state-breakdown-chart.tsx:14`,
   `stats/study-time-card.tsx:104`, `edu/dashboard/group-performance-card.tsx:70`). They
   should read `var(--chart-1)`.
-- 61 hardcoded `violet-/indigo-/cyan-/purple-` utilities across 11 files, including
+- 65 hardcoded `violet-/indigo-/cyan-/purple-` utilities across 12 files, including
   `packages/ui/src/components/ui/stat-card.tsx`.
 - 27 arbitrary font sizes (`text-[11px]`×10, `text-[10px]`×10, `text-[15px]`×4, …).
 - `session-summary-dialog.tsx:78` calls `hsl(var(--chart-2))` on a token that does not

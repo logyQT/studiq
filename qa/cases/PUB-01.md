@@ -68,5 +68,5 @@ brzegowe.
   treści, więc przypadek sprawdza obecność sekcji, nie kolejność.
 - Kafelki cennika pochodzą z globalnego katalogu planów (`/api/v1/subscription-plans`),
   dlatego test nie sprawdza nazw ani cen planów: zmieniają się w danych, nie w kodzie.
-- Kafelki mają dwa poziomy: plan darmowy, plan płatny i kafelek instytucjonalny, którego
+- Kafelki mają trzy poziomy: plan darmowy, plan płatny i kafelek instytucjonalny, którego
   cena jest ceną „od” najtańszego planu menedżerskiego (`pickLandingPlans`).
