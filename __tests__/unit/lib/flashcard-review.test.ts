@@ -46,6 +46,26 @@ describe('FlashcardReview', () => {
     expect(html).toMatch(/<p class="[^"]*invisible[^"]*">/);
   });
 
+  it('mounts a fresh card with the answer face already hidden, without backface-visibility', () => {
+    const faceStyles = [
+      ...render().matchAll(/class="absolute inset-0[^"]*"[^>]*style="([^"]*)"/g),
+    ].map(([, style]) => style);
+    const flipped = [
+      ...render({ isFlipped: true }).matchAll(/class="absolute inset-0[^"]*"[^>]*style="([^"]*)"/g),
+    ].map(([, style]) => style);
+
+    // The next deck card mounts on the question side: the answer face must carry no opacity of its
+    // own for a mount animation to fade down from, or the incoming answer shows before its question.
+    expect(faceStyles).toHaveLength(2);
+    expect(faceStyles[0]).toContain('opacity:1');
+    expect(faceStyles[1]).toContain('opacity:0');
+    expect(flipped[0]).toContain('opacity:0');
+    expect(flipped[1]).toContain('opacity:1');
+    // WebKit paints a face's z-indexed children even when the face points away; the swap must not
+    // depend on that property.
+    expect(render()).not.toContain('backface-visibility');
+  });
+
   it('drops the hint from the layout as the session always has', () => {
     const html = render({ isFlipped: true });
 
