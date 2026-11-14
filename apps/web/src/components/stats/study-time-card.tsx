@@ -101,7 +101,7 @@ export function StudyTimeCard() {
             <div className="space-y-2">
               <p className="text-sm font-medium">{t('by_weekday')}</p>
               <ChartContainer
-                config={{ minutes: { label: t('minutes'), color: 'oklch(0.546 0.245 265)' } }}
+                config={{ minutes: { label: t('minutes'), color: 'var(--chart-1)' } }}
                 className="aspect-auto h-[200px] w-full"
               >
                 <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>

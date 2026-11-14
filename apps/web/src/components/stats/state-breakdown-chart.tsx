@@ -9,12 +9,16 @@ interface StateBreakdownChartProps {
   states: StateBreakdown;
 }
 
+/*
+ * The never-practised slice is the least salient series, so it takes the one
+ * ramp step the other four states do not already carry.
+ */
 const COLORS = {
-  neverPracticed: 'oklch(0.52 0.03 265)',
-  learning: 'oklch(0.546 0.245 265)',
-  review: 'oklch(0.65 0.17 155)',
-  relearning: 'oklch(0.75 0.15 75)',
-  leeched: 'oklch(0.577 0.245 27.325)',
+  neverPracticed: 'var(--chart-2)',
+  learning: 'var(--chart-1)',
+  review: 'var(--chart-5)',
+  relearning: 'var(--chart-3)',
+  leeched: 'var(--chart-4)',
 };
 
 /** Recharts legend label renderer — hoisted so the reference stays stable across renders. */

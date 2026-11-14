@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Archivo, Geist, Geist_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
-import { Toaster } from 'sonner';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { BrandAccent } from '@/components/providers/BrandAccent';
 import { QueryProvider } from '@/components/providers/QueryProvider';
@@ -11,7 +10,7 @@ import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/l
 
 // eslint-disable-next-line import/no-unassigned-import -- side-effect import: global stylesheet.
 import '@/app/globals.css';
-import { ToastProvider } from '@studiq/ui';
+import { Sonner, ToastProvider } from '@studiq/ui';
 import { getSiteUrl } from '@studiq/server/lib/site-url';
 
 /**
@@ -135,7 +134,7 @@ export default async function RootLayout({
                 <AuthProvider>
                   <BrandAccent />
                   <ToastProvider>{children}</ToastProvider>
-                  <Toaster
+                  <Sonner
                     position="top-center"
                     richColors
                     duration={4000}

@@ -108,7 +108,7 @@ export function RetentionCurveCard() {
         ) : (
           <>
             <ChartContainer
-              config={{ accuracy: { label: t('accuracy'), color: 'oklch(0.65 0.17 155)' } }}
+              config={{ accuracy: { label: t('accuracy'), color: 'var(--chart-5)' } }}
               className="aspect-auto h-[220px] w-full"
             >
               <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>

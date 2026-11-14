@@ -66,9 +66,7 @@ export function GroupPerformanceCard({
           <>
             {withScores.length > 0 ? (
               <ChartContainer
-                // Hardcoded literal, not `var(--chart-1)`: the stats charts move onto
-                // the chart ramp in the migration DESIGN.md §Known residue describes.
-                config={{ avgScore: { label: t('col_avg'), color: 'oklch(0.546 0.245 265)' } }}
+                config={{ avgScore: { label: t('col_avg'), color: 'var(--chart-1)' } }}
                 className="aspect-auto h-[220px] w-full"
               >
                 <BarChart data={withScores} margin={{ left: 0, right: 8, top: 8 }}>

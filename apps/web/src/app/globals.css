@@ -414,6 +414,12 @@
   color: var(--destructive);
 }
 
+/* richColors' own red is 4.35:1 on the light error surface; the token is the
+   audited error text (see --destructive above) and clears 4.5:1 in both themes. */
+[data-sonner-toaster] [data-sonner-toast][data-type='error'] {
+  --error-text: var(--destructive);
+}
+
 [data-sonner-toaster] [data-sonner-toast][data-type='warning'] [data-icon] {
   color: var(--warning);
 }
