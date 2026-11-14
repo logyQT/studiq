@@ -1,4 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
+import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import { asJson, json } from '#test/helpers/json';
 import {
@@ -56,6 +59,27 @@ interface PracticePayload {
 /** The next request runs as this user. */
 function as(user: BeforeResult['user']): void {
   mockUser(user);
+}
+
+const SEEDED_PASSWORD = 'Seed4Test!';
+
+/**
+ * The next request runs as a **real** session: the client below carries the user's JWT, so
+ * PostgREST applies RLS exactly as it does for a signed-in browser. `as()` swaps in the
+ * service-role client, which hides an RLS-dependent regression (slice 2a review, finding 2).
+ */
+async function asRealSession(user: BeforeResult['user']): Promise<void> {
+  const session = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const { error } = await session.auth.signInWithPassword({
+    email: user.email,
+    password: SEEDED_PASSWORD,
+  });
+  if (error) throw new Error(`sign-in failed for ${user.email}: ${error.message}`);
+  vi.mocked(supabaseModule.createClient).mockResolvedValue(session);
 }
 
 function FUTURE(): string {
@@ -294,7 +318,9 @@ describe('Sealed items are absent from student reads (#1171)', () => {
   });
 
   it('reports the held count and the latest close instead of the items (R14)', async () => {
-    as(studentA.user);
+    // A real session: the count and the list must agree under RLS. A service-role mock would count
+    // the held rows and let a double subtraction pass (slice 2a review, findings 1–2).
+    await asRealSession(studentA.user);
     const bank = await bankDetail();
     expect(bank.heldCount).toBe(1);
     expect(new Date(bank.heldUntil ?? '').toISOString()).toBe(deadline);

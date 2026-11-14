@@ -27,6 +27,7 @@ import { failure, isFailure, type ServiceResult, success } from '@studiq/server/
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { heldNotice, sealFor } from '@studiq/server/lib/question-seal';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
@@ -130,10 +131,7 @@ export class QuestionBankService {
     });
     if (isFailure(page)) return page;
 
-    const counts = await this.questionCounts(
-      supabase,
-      page.data.items.map((item) => item.id),
-    );
+    const counts = await this.questionCounts(page.data.items.map((item) => item.id));
     if (isFailure(counts)) return counts;
 
     const seal = await sealFor(ctx);
@@ -164,7 +162,7 @@ export class QuestionBankService {
     ).maybeSingle();
     if (error || !bank) return failure('NOT_FOUND');
 
-    const counts = await this.questionCounts(supabase, [id]);
+    const counts = await this.questionCounts([id]);
     if (isFailure(counts)) return counts;
 
     const seal = await sealFor(ctx);
@@ -183,15 +181,20 @@ export class QuestionBankService {
   /**
    * Non-deleted item count per bank. `questions(count)` counts soft-deleted rows too, and the
    * card renders that number beside a list that filters them out (#1171). One call for the page.
+   *
+   * The count reads with the service role on purpose: `question_bank_counts` is SECURITY INVOKER,
+   * so a student's RLS already hides the sealed rows. Counting through the caller would leave the
+   * held items out twice — once by RLS, once by the subtraction below — and the card would promise
+   * fewer openable items than the list it sits above (R14).
    */
   private async questionCounts(
-    supabase: SupabaseClient<Database>,
     bankIds: readonly string[],
   ): Promise<ServiceResult<Map<string, number>>> {
     const ids = [...new Set(bankIds)];
     const counts = new Map<string, number>();
     if (ids.length === 0) return success(counts);
 
+    const supabase = createServiceClient();
     for (let i = 0; i < ids.length; i += ID_CHUNK) {
       const { data, error } = await supabase.rpc('question_bank_counts', {
         p_bank_ids: ids.slice(i, i + ID_CHUNK),
