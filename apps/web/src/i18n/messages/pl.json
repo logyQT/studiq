@@ -105,6 +105,7 @@
     "ERROR_GONE": "Ten zasób nie jest już dostępny.",
     "ERROR_USAGE_LIMIT_EXCEEDED": "Osiągnięto limit Twojego planu.",
     "ERROR_CONFLICT": "Wystąpił konflikt. Zasób może już istnieć.",
+    "ERROR_ASSESSMENT_LIVE": "Ta kartkówka jest już opublikowana — nie można zmieniać jej pytań.",
     "ERROR_PAYLOAD_TOO_LARGE": "Plik jest za duży.",
     "ERROR_UNPROCESSABLE_ENTITY": "Żądanie nie mogło zostać przetworzone z powodu błędów walidacji.",
     "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
