@@ -65,7 +65,6 @@ export function Pricing() {
         t('free_stats'),
         t('ai_generate_questions'),
         t('ai_generate_flashcards'),
-        t('ai_exam_sim'),
       ],
       cta: t('pricing_premium_cta'),
       href: '/register',

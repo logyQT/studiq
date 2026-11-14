@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { FlashcardReviewPreview } from '@/components/marketing/previews/flashcard-review-preview';
 import { SectionHeader } from '@/components/marketing/ui/section-header';
 
 const freeFeatures = [
@@ -13,7 +14,6 @@ const freeFeatures = [
 const aiFeatures = [
   { titleKey: 'ai_generate_questions', descKey: 'ai_generate_questions_desc' },
   { titleKey: 'ai_generate_flashcards', descKey: 'ai_generate_flashcards_desc' },
-  { titleKey: 'ai_exam_sim', descKey: 'ai_exam_sim_desc' },
 ] as const;
 
 /*
@@ -30,7 +30,26 @@ export function Features() {
   return (
     <section id="features" className="py-16 md:py-20">
       <div className="mx-auto max-w-content px-content">
-        <SectionHeader eyebrow={t('free_badge')} title={t('free_title')} lede={t('free_desc')} />
+        {/*
+         * The specimen rides the header band so the ledger below it keeps the
+         * full width: the four rows are a spec sheet, and a card wedged between
+         * the terms would break their single-line rhythm. The header takes seven
+         * columns — its own max-w-2xl cap keeps it at the type measure — and the
+         * preview the remaining five. No plate, border or shadow around it: the
+         * product's card carries its own surface (DESIGN §Product imagery).
+         */}
+        <div className="md:grid md:grid-cols-12 md:gap-x-8">
+          <div className="md:col-span-7">
+            <SectionHeader
+              eyebrow={t('free_badge')}
+              title={t('free_title')}
+              lede={t('free_desc')}
+            />
+          </div>
+          <div className="mt-10 md:col-span-5 md:col-start-8 md:row-start-1 md:mt-0">
+            <FlashcardReviewPreview />
+          </div>
+        </div>
 
         <dl className="mt-10 border-t border-border md:mt-16">
           {freeFeatures.map(({ titleKey, descKey }, index) => (
