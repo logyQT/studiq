@@ -1,14 +1,15 @@
 'use client';
 
 import { createTranslator } from 'next-intl';
-import { useLocale } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { type KeyboardEvent, useMemo, useState } from 'react';
 import {
   QUIZ_QUESTION_FIXTURES,
   QUIZ_SUBJECTS,
   type QuizFixtureLocale,
   type QuizSubject,
 } from '@/components/marketing/previews/quiz-question-fixtures';
+import { QuizPreviewEndPanel } from '@/components/marketing/previews/quiz-preview-end-panel';
 import { QuizQuestionView } from '@/components/quiz/quiz-question-view';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
@@ -39,9 +40,11 @@ const MESSAGES = { pl, en };
 export function QuizQuestionPreview() {
   const rawLocale = useLocale();
   const locale: QuizFixtureLocale = rawLocale === 'en' ? 'en' : 'pl';
+  const tLanding = useTranslations('LandingPage');
 
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [endOpen, setEndOpen] = useState(false);
 
   const t = useMemo(
     () =>
@@ -68,9 +71,18 @@ export function QuizQuestionPreview() {
     textAnswer: answers[`${key}:text`] ?? '',
   };
 
-  const reset = () => {
-    setAnswers({});
-    setIndex(0);
+  const endLabels = {
+    title: tLanding('quiz_end_title'),
+    body: tLanding('quiz_end_body'),
+    cta: tLanding('quiz_end_cta'),
+    dismiss: tLanding('quiz_end_dismiss'),
+  };
+
+  // Escape is handled here, on the frame that contains both the disclosure and
+  // the panel, rather than on the document: the page keeps no global listener
+  // for a control that only exists in this one card.
+  const onFrameKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' && endOpen) setEndOpen(false);
   };
 
   /*
@@ -90,7 +102,25 @@ export function QuizQuestionPreview() {
    * arbitrary one would win at every wider width.
    */
   return (
-    <div className="flex min-h-[656px] flex-col min-[360px]:min-h-[584px] min-[640px]:min-h-[520px] min-[860px]:min-h-[492px] lg:min-h-[584px] xl:min-h-[520px]">
+    // The handler is scoped to this frame on purpose: Escape belongs to the demo,
+    // not to the page, and there is no dialog here to listen for it. jsx-a11y
+    // reads a key listener on a container as an interactive element; a frame
+    // that only forwards a key to its own controls is the case it cannot tell
+    // apart, so the finding is suppressed rather than answered with a role the
+    // element does not have.
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      className="flex min-h-[656px] flex-col min-[360px]:min-h-[584px] min-[640px]:min-h-[520px] min-[860px]:min-h-[492px] lg:min-h-[584px] xl:min-h-[520px]"
+      onKeyDown={onFrameKeyDown}
+    >
+      {/*
+       * Mounted for the whole life of the page so it can announce the panel's
+       * title when it opens, and only then: the text is empty while the sample
+       * is still asking questions. `sr-only` keeps it out of the layout.
+       */}
+      <output aria-live="polite" className="sr-only">
+        {endOpen ? endLabels.title : ''}
+      </output>
       <QuizQuestionView
         question={question}
         labels={{
@@ -111,10 +141,18 @@ export function QuizQuestionPreview() {
           setAnswers((prev) => ({ ...prev, [`${key}:option`]: optionId }))
         }
         onTextChange={(text) => setAnswers((prev) => ({ ...prev, [`${key}:text`]: text }))}
-        onPrevious={() => setIndex((i) => Math.max(0, i - 1))}
+        onPrevious={() => {
+          // Leaving the last question also retires its panel; otherwise question
+          // 3 would open with its answers hidden behind a finished demo.
+          setEndOpen(false);
+          setIndex((i) => Math.max(0, i - 1));
+        }}
         onNext={() => setIndex((i) => Math.min(total - 1, i + 1))}
-        // Last card: "finish" restarts the demo rather than pretending to grade it.
-        onSubmit={reset}
+        // The last card's action is the disclosure, not a submit: the sample has
+        // nothing to grade, and a second press closes the panel again.
+        onSubmit={() => setEndOpen((open) => !open)}
+        endPanel={<QuizPreviewEndPanel labels={endLabels} onDismiss={() => setEndOpen(false)} />}
+        endPanelOpen={endOpen}
       />
     </div>
   );

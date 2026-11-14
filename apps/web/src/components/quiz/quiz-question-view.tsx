@@ -14,6 +14,7 @@ import {
   Textarea,
 } from '@studiq/ui';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
+import { type ReactNode, useEffect, useId, useRef } from 'react';
 
 /** One selectable answer; `id` is the value the attempt persists as the answer. */
 export interface QuizQuestionOption {
@@ -60,6 +61,13 @@ export interface QuizQuestionViewProps {
   onPrevious?: () => void;
   onNext?: () => void;
   onSubmit?: () => void;
+  /**
+   * Content shown in the answer region once the last question is finished. The
+   * footer's submit button becomes its disclosure control.
+   */
+  endPanel?: ReactNode;
+  /** Whether `endPanel` currently replaces the answer controls. */
+  endPanelOpen?: boolean;
 }
 
 /**
@@ -77,8 +85,48 @@ export function QuizQuestionView({
   onPrevious,
   onNext,
   onSubmit,
+  endPanel,
+  endPanelOpen = false,
 }: QuizQuestionViewProps) {
   const progress = question.total > 0 ? (question.position / question.total) * 100 : 0;
+
+  const endPanelId = useId();
+  const endPanelRef = useRef<HTMLDivElement>(null);
+  const finishRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(endPanelOpen);
+
+  // The disclosure moves focus, and only the disclosure: nothing else on the
+  // page is touched, and the return leg puts the cursor back on the control the
+  // visitor pressed so the panel cannot strand them.
+  useEffect(() => {
+    if (wasOpen.current === endPanelOpen) return;
+    wasOpen.current = endPanelOpen;
+
+    if (endPanelOpen) {
+      endPanelRef.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus();
+    } else {
+      finishRef.current?.focus();
+    }
+  }, [endPanelOpen]);
+
+  /*
+   * Both regions live in one grid cell and are cross-faded, so the card's height
+   * is the taller of the two at every moment and opening the panel cannot move
+   * the footer. `inert` is what actually retires the hidden one: opacity alone
+   * would leave its controls in the tab order.
+   */
+  const fade = 'transition-opacity duration-[140ms] motion-reduce:transition-none';
+  const hasEndPanel = Boolean(endPanel);
+  const answersClass = ['col-start-1 row-start-1', hasEndPanel && fade, endPanelOpen && 'opacity-0']
+    .filter(Boolean)
+    .join(' ');
+  const panelClass = [
+    'col-start-1 row-start-1 flex flex-col justify-end',
+    hasEndPanel && fade,
+    endPanelOpen ? 'opacity-100' : 'opacity-0',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     /*
@@ -107,53 +155,74 @@ export function QuizQuestionView({
           </div>
           <CardTitle className="mt-3 text-xl">{question.stem}</CardTitle>
         </CardHeader>
-        <CardContent className="flex-1">
-          {question.type === 'mcq' && (
-            <RadioGroup
-              value={question.selectedOptionId ?? ''}
-              onValueChange={(optionId) => onSelectOption?.(optionId)}
+        <CardContent className="flex flex-1 flex-col">
+          <div className="grid flex-1">
+            <div
+              className={answersClass}
+              aria-hidden={hasEndPanel ? endPanelOpen : undefined}
+              inert={hasEndPanel && endPanelOpen}
             >
-              {question.options.map((option) => (
-                /*
-                 * The row is the label and contains the radio, rather than a
-                 * `<label for>` beside it: the item renders a `button[role=radio]`,
-                 * and a label referencing a button names it without activating it,
-                 * which left the padding and the border dead. Containment uses the
-                 * browser's own activation, so the click target and the accessible
-                 * name are the row itself.
-                 */
-                <label
-                  key={option.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 select-none hover:bg-accent/50 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50"
+              {question.type === 'mcq' && (
+                <RadioGroup
+                  value={question.selectedOptionId ?? ''}
+                  onValueChange={(optionId) => onSelectOption?.(optionId)}
                 >
-                  <RadioGroupItem value={option.id} id={option.id} />
-                  <span className="flex-1 text-sm leading-none font-medium">{option.label}</span>
-                </label>
-              ))}
-            </RadioGroup>
-          )}
-          {question.type === 'true_false' && (
-            <div className="grid grid-cols-2 gap-3">
-              {question.options.map((option) => (
-                <Button
-                  key={option.id}
-                  variant={question.selectedOptionId === option.id ? 'default' : 'outline'}
-                  className="h-20 text-lg"
-                  onClick={() => onSelectOption?.(option.id)}
-                >
-                  {option.label}
-                </Button>
-              ))}
+                  {question.options.map((option) => (
+                    /*
+                     * The row is the label and contains the radio, rather than a
+                     * `<label for>` beside it: the item renders a `button[role=radio]`,
+                     * and a label referencing a button names it without activating it,
+                     * which left the padding and the border dead. Containment uses the
+                     * browser's own activation, so the click target and the accessible
+                     * name are the row itself.
+                     */
+                    <label
+                      key={option.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 select-none hover:bg-accent/50 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50"
+                    >
+                      <RadioGroupItem value={option.id} id={option.id} />
+                      <span className="flex-1 text-sm leading-none font-medium">
+                        {option.label}
+                      </span>
+                    </label>
+                  ))}
+                </RadioGroup>
+              )}
+              {question.type === 'true_false' && (
+                <div className="grid grid-cols-2 gap-3">
+                  {question.options.map((option) => (
+                    <Button
+                      key={option.id}
+                      variant={question.selectedOptionId === option.id ? 'default' : 'outline'}
+                      className="h-20 text-lg"
+                      onClick={() => onSelectOption?.(option.id)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {question.type === 'open' && (
+                <Textarea
+                  value={question.textAnswer}
+                  onChange={(event) => onTextChange?.(event.target.value)}
+                  placeholder={labels.answerPlaceholder}
+                  rows={4}
+                />
+              )}
             </div>
-          )}
-          {question.type === 'open' && (
-            <Textarea
-              value={question.textAnswer}
-              onChange={(event) => onTextChange?.(event.target.value)}
-              placeholder={labels.answerPlaceholder}
-              rows={4}
-            />
-          )}
+            {endPanel && (
+              <div
+                id={endPanelId}
+                ref={endPanelRef}
+                className={panelClass}
+                aria-hidden={!endPanelOpen}
+                inert={!endPanelOpen}
+              >
+                {endPanel}
+              </div>
+            )}
+          </div>
         </CardContent>
         {/* The row wraps rather than clipping: the card is at its narrowest in the
             hero rail, and two labelled buttons do not always fit one line. Below
@@ -169,7 +238,13 @@ export function QuizQuestionView({
               {labels.next} <ArrowRight data-icon="inline-end" />
             </Button>
           ) : (
-            <Button onClick={onSubmit} disabled={submitting}>
+            <Button
+              ref={finishRef}
+              onClick={onSubmit}
+              disabled={submitting}
+              aria-expanded={endPanel ? endPanelOpen : undefined}
+              aria-controls={hasEndPanel ? endPanelId : undefined}
+            >
               {submitting ? labels.submitting : labels.submit} <Send data-icon="inline-end" />
             </Button>
           )}

@@ -145,6 +145,38 @@ default `Button` stays cobalt, which is correct for the product surfaces. Cobalt
   very file this document edits.
 - **Rainbow icon tints** — six hues with no meaning (`features.tsx`, `how-it-works.tsx`).
 
+### The paper surface
+
+The marketing shell is paper: `--background` with two light pools, a 100px edge curl and the
+grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout` only. Product surfaces
+never carry the class, so `/app`, `/edu` and `/manage` stay flat.
+
+Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
+per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
+pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
+lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
+1.33x the 4.5:1 floor, not a regression.
+
+**Creases were studied and rejected.** A fold reads because a sheet is seen at an angle and two
+planes catch directional light differently; a frontal, evenly lit page has no specular event, so
+every construction (blurred strokes, tonal steps, paired ridges, a three-ridge fan,
+`feDiffuseLighting`) rendered as a full-width band of light rather than a crease. The lighting
+filter also reads as crumpled foil and is inert over a near-white backdrop.
+
+Rejected with it, so none of them return:
+
+- **ink on display type** — blur at a small radius, photocopier artefact at a large one;
+- **ink in the cobalt band** — reads as dust and costs ~6% of the band's text contrast;
+- **a handwriting webfont** — 8.9KB and a request for one string a 322-byte path draws better;
+- **raster mottle tiles** — 19–41KB per theme, and a crease does not tile.
+
+One hand-drawn stroke is allowed: under the operative half of the hero headline only, cobalt,
+scaled in `em`, hidden under `prefers-contrast: more` and in print. It sits under `hero_title_mark`
+so the i18n pair carries it, and its box matches the phrase exactly at every width and locale.
+
+At 1:1 the grain is barely visible; it reads as tooth at 2x. That is fine — the emptiness the
+surface was blamed for was compositional, not material.
+
 ## Typography
 
 Three roles. Body and UI stay **Geist**; the display face is new and is scoped to
