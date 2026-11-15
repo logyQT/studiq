@@ -152,9 +152,16 @@ export function ScopeGroupFilter({
     : options;
 
   useEffect(() => {
-    if (!panelOpen || !focusFirstGroup.current) return;
+    if (!panelOpen || !focusFirstGroup.current) return undefined;
     focusFirstGroup.current = false;
-    panelRef.current?.querySelector<HTMLButtonElement>('[data-group-option]')?.focus();
+    // The panel is portalled and placed by Radix after the commit, so the focus
+    // move waits one frame — the effect itself can still see an empty portal.
+    const frame = requestAnimationFrame(() => {
+      panelRef.current?.querySelector<HTMLButtonElement>('[data-group-option]')?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
   }, [panelOpen]);
 
   /** Closes the panel and hands the keyboard back to the command list. */
