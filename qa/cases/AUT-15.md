@@ -49,9 +49,10 @@ case, but never signs in as it:
   **before** any document renders (`NextResponse.redirect` in `apps/web/src/proxy.ts`):
   `/login?next=%2Fapp`, `%2Fedu`, `%2Fmanage`, `%2Fsetup`, `%2Fsetup%2Forg`,
   `%2Fapp%2Fflashcards`, `%2Fedu%2Fassignments`, `%2Fmanage%2Fmembers`.
-- The browser lands on the login card: „Witaj ponownie”, „Zaloguj się, aby kontynuować
-  naukę”, fields „Adres e-mail” / „Hasło” and the „Zaloguj się” button; `?next=` keeps the
-  requested path (percent-encoded) and no protected content flashes.
+- The browser lands on the login page: the „StudiQ” wordmark, „Witaj ponownie”, „Zaloguj
+  się, aby kontynuować naukę”, fields „Adres e-mail” / „Hasło” and the „Zaloguj się”
+  button; `?next=` keeps the requested path (percent-encoded) and no protected content
+  flashes.
 - `/setup` (educator) and `/setup/org` (manager) redirect exactly like the three
   dashboards — the role rule is evaluated only after the authentication rule, so an
   anonymous visitor never reaches the role check.

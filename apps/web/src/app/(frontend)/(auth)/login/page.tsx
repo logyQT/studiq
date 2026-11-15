@@ -109,10 +109,11 @@ export default function LoginPage() {
              * callback redirected here with the code, and a screen reader has no other
              * cue that something failed.
              *
-             * The words are ink and the state is carried by the icon and the edge:
-             * `--destructive` as text measures 3.59–3.88:1 on the grain's darkest
-             * pixel (and 4.19:1 over the band the form occupies), under the 4.5:1
-             * floor, while ink holds 14.2:1.
+             * The message words carry the state — ink at 16.1:1 behind this box, plus
+             * `role="alert"` — because `--destructive` as text measures 4.3:1 on the
+             * grain (4.71 on flat paper, 4.95 on the card), under the 4.5:1 floor. The
+             * icon (`aria-hidden`) and the edge are decoration: the words are the
+             * message, and nothing depends on them.
              */
             <div
               role="alert"

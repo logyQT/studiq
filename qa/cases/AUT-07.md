@@ -48,9 +48,10 @@ bun scripts/qa-tenant.ts AUT-07 --profile content --fresh
 
 ## Observed during the suite walk (qa-env-1, shared app 3010 / DB 54421)
 
-- `/login` renderuje kartę „Witaj ponownie” z podtytułem „Zaloguj się, aby
-  kontynuować naukę”, polami „Adres e-mail” i „Hasło”, przyciskiem „Zaloguj się”
-  oraz linkami „Nie pamiętasz hasła?” i „Nie masz konta? Zarejestruj się”.
+- `/login` renderuje znak „StudiQ” i nagłówek „Witaj ponownie” z podtytułem
+  „Zaloguj się, aby kontynuować naukę”, polami „Adres e-mail” i „Hasło”, przyciskiem
+  „Zaloguj się” oraz linkami „Nie pamiętasz hasła?” i „Nie masz konta?
+  Zarejestruj się”.
 - Manager → **`/manage`**, nagłówek „Zarządzanie Uczelnią”, pasek boczny:
   „Główne” (Przegląd) i „Administracja” (Członkowie, Zaproszenia, Grupy,
   Zgłoszenia, Role, Licencje, Ustawienia). Brak wpisów ucznia/nauczyciela.

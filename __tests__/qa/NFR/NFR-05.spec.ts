@@ -175,6 +175,7 @@ test.describe('NFR-05 — keyboard operability', () => {
     const password = page.locator('input#password');
     const submit = page.locator('form button[type="submit"]');
     const wordmark = page.getByRole('link', { name: 'StudiQ', exact: true });
+    const registerLink = page.getByRole('link', { name: 'Zarejestruj się', exact: true });
 
     await expect(email).toBeVisible();
 
@@ -209,6 +210,13 @@ test.describe('NFR-05 — keyboard operability', () => {
     expect(await tabTo(page, submit, { label: 'submit button' })).toBeLessThanOrEqual(2);
     await expect(submit).toBeFocused();
     await expectVisibleFocus(page, 'submit button');
+
+    // The page's exit is the last stop: one Tab from the submit reaches it, and it
+    // draws the solid ring the acceptance note records.
+    expect(await tabTo(page, registerLink, { label: 'register link' })).toBeLessThanOrEqual(2);
+    await expect(registerLink).toBeFocused();
+    await expectVisibleFocus(page, 'register link');
+
     await tabTo(page, password, { backwards: true, label: 'password field before submitting' });
 
     const [login] = await Promise.all([

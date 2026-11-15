@@ -61,9 +61,20 @@ export function AuthField<TValues extends FieldValues, TName extends FieldPath<T
       name={name}
       render={({ field, fieldState }) => (
         <FormItem>
-          {/* One row either way: the action, when there is one, sits at the trailing edge. */}
+          {/*
+           * Error words stay ink: `--destructive` as text measures 4.27–4.31:1 on the
+           * grain (4.71 on flat paper, 4.95 on the card this page used to sit on),
+           * under the 4.5:1 floor. The state keeps its colour on the parts that are
+           * not text — the field's `border-destructive` and its focus ring — and the
+           * message is the field's `aria-describedby`, so nothing depends on the hue
+           * alone.
+           *
+           * One row either way: the action, when there is one, sits at the trailing edge.
+           */}
           <div className="flex items-center justify-between gap-2">
-            <FormLabel htmlFor={field.name}>{label}</FormLabel>
+            <FormLabel htmlFor={field.name} className="data-[error=true]:text-foreground">
+              {label}
+            </FormLabel>
             {labelAction}
           </div>
           <div className="relative">
@@ -88,7 +99,7 @@ export function AuthField<TValues extends FieldValues, TName extends FieldPath<T
             </FormControl>
           </div>
           {description ? <FormDescription>{description}</FormDescription> : null}
-          <FormMessage />
+          <FormMessage className="text-foreground" />
         </FormItem>
       )}
     />
