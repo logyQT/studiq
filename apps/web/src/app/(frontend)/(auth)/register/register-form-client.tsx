@@ -26,6 +26,7 @@ import {
 import {
   ArrowRight,
   Building2,
+  ChevronRight,
   GraduationCap,
   Loader2,
   Lock,
@@ -296,13 +297,13 @@ export function RegisterForm() {
               disabled={isLoading}
             />
             <CtaButton submit fullWidth disabled={isLoading}>
+              {t('register_button')}
               {/* Both glyphs are decorative: the button's name stays the label alone. */}
               {isLoading ? (
                 <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
               ) : (
-                <ArrowRight aria-hidden className="size-4" />
+                <ChevronRight aria-hidden className="size-4" />
               )}
-              {t('register_button')}
             </CtaButton>
           </form>
         </Form>

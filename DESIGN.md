@@ -148,14 +148,17 @@ default `Button` stays cobalt, which is correct for the product surfaces. Cobalt
 ### The paper surface
 
 The marketing shell is paper: `--background` with two light pools, a 100px edge curl and the
-grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout` only. Product surfaces
-never carry the class, so `/app`, `/edu` and `/manage` stay flat.
+grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout`. `/register`'s form
+column carries it in **dark only** (`dark:bg-paper-grain`): the utility has its own `.dark &`
+block, so the bare class would also lay the light pools and grain on paper, where that column
+stays flat. Product surfaces never carry the class, so `/app`, `/edu` and `/manage` stay flat.
 
 Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
 per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
 pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
 lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
-1.33x the 4.5:1 floor, not a regression.
+1.33x the 4.5:1 floor, not a regression. On `/register`'s grained column the same sampling gives
+15.84 (ink), 7.30 (muted) and 5.52 (placeholder on `dark:bg-input/30`) at 1440×900.
 
 **Creases were studied and rejected.** A fold reads because a sheet is seen at an angle and two
 planes catch directional light differently; a frontal, evenly lit page has no specular event, so
