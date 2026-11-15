@@ -1,10 +1,12 @@
 /**
  * Column projections for question payloads served by the app.
  *
- * The answer key (`question_options.is_correct`) and `questions.explanation` never leave the
- * server for a reader: the database grants neither to `authenticated`
- * (`20261114120000_question_option_key_boundary.sql`). Staff paths add them back through
- * `readQuestionKeys` (service role, ids from the query they just ran).
+ * The answer key (`question_options.is_correct`) and the teaching artefacts
+ * (`questions.explanation`, `questions.model_answer`) never leave the server for a reader: the
+ * database grants none of them to `authenticated` (`20261114120000_question_option_key_boundary.sql`,
+ * `20261115120000_question_model_answer.sql`, `20261115130000_question_explanation_boundary.sql`).
+ * Staff paths add them back through `readQuestionKeys` (service role, ids from the query they just
+ * ran).
  *
  * Always project explicit columns here; never `*`.
  */

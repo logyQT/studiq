@@ -15,7 +15,11 @@ import {
 import { recordExposure, recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
-import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
+import {
+  carriesAnswerKey,
+  readQuestionKeys,
+  withAnswerKey,
+} from '@studiq/server/lib/question-keys';
 import { isRecord } from '@studiq/server/lib/record';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -359,26 +363,28 @@ export class QuizAttemptService {
 
     if (answersError) return toDbFailure(answersError);
 
-    // A finished attempt renders the key (service role): the published key for an assignment,
-    // the live items for practice. A running attempt never gets it (#331).
-    // A finished attempt renders the key. An assignment renders the published key of the items the
-    // review is allowed to show — a held-back item is absent here too (R10) — and practice the live
-    // items. A running attempt never gets it (#331). Every render writes the exposure event (R8).
+    // A finished attempt renders the key (service role): the published key of the items the review
+    // may show — a held-back item is absent here too (R10) — for an assignment, the live item for
+    // practice. A running attempt never gets it (#331). Every render writes the exposure event
+    // (R8), and an item whose review carries no key artefact burns nothing.
     let questions = questionRows;
     if (isCompleted) {
       if (attempt.assignment_id) {
         const reviewItems = await readReviewItems(attempt.assignment_id);
         if (isFailure(reviewItems)) return reviewItems;
         const byItem = new Map(reviewItems.data.map((item) => [item.questionId, item]));
+        const rendered = new Set<string>();
         questions = questionRows.flatMap((row) => {
           const item = byItem.get(row.id);
-          return item ? [withAnswerKey(item.snapshot, item.key)] : [];
+          if (!item) return [];
+          if (carriesAnswerKey(item.key)) rendered.add(row.id);
+          return [withAnswerKey(item.snapshot, item.key)];
         });
 
         const exposed = await recordReviewExposure({
           studentId: ctx.userId,
           assignmentId: attempt.assignment_id,
-          questionIds: questions.map((question) => question.id),
+          questionIds: [...rendered],
         });
         if (isFailure(exposed)) return exposed;
       } else {
@@ -387,7 +393,9 @@ export class QuizAttemptService {
 
         const exposed = await recordExposure({
           studentId: ctx.userId,
-          questionIds: questions.map((question) => question.id),
+          questionIds: questionRows
+            .filter((question) => carriesAnswerKey(keys.get(question.id)))
+            .map((question) => question.id),
         });
         if (isFailure(exposed)) return exposed;
       }

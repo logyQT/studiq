@@ -332,15 +332,14 @@ export class QuestionService {
     const issues = questionTextIssues({
       type,
       explanation: data.explanation !== undefined ? data.explanation : current.data.explanation,
-      // A stored model answer is not readable through the caller's client (it is revoked from
-      // `authenticated`), so a patch that omits it is judged against the key reader's copy —
+      // A stored model answer is judged against the key reader's copy when the patch omits it,
       // otherwise renaming an open item would demand its answer back. `loadTextState` proved the
-      // caller authors this item, which is what makes the service-role read safe here.
+      // caller authors this item, which is what makes that service-role read safe.
       modelAnswer:
         data.modelAnswer !== undefined
           ? data.modelAnswer
           : type === 'open'
-            ? (await readQuestionKeys([id])).get(id)?.modelAnswer
+            ? current.data.modelAnswer
             : undefined,
       options: data.answers ? data.answers.map((answer) => answer.content) : current.data.options,
     });
@@ -433,6 +432,10 @@ export class QuestionService {
    * The author's stored item, in the shape the authoring rules judge: type, explanation and option
    * texts. Scoped to the caller exactly like the write, so a foreign item is `FORBIDDEN` here and
    * not only at the update.
+   *
+   * `explanation` and `model_answer` are not readable through the caller's own client (#1180,
+   * #1173), so they come from the key reader — the row just proved the caller authors this item,
+   * which is what makes a service-role read of it safe.
    */
   private async loadTextState(
     supabase: SupabaseClient<Database>,
@@ -442,12 +445,13 @@ export class QuestionService {
     ServiceResult<{
       type: Database['public']['Enums']['question_type'];
       explanation: string | null;
+      modelAnswer: string | null;
       options: string[];
     }>
   > {
     let query = supabase
       .from('questions')
-      .select(`type, explanation, question_answers:question_options(${OPTION_READER_COLUMNS})`)
+      .select(`type, question_answers:question_options(${OPTION_READER_COLUMNS})`)
       .eq('id', id)
       .eq('created_by', ctx.userId)
       .neq('status', 'deleted');
@@ -457,9 +461,11 @@ export class QuestionService {
     if (error) return toDbFailure(error);
     if (!data) return failure('FORBIDDEN');
 
+    const key = (await readQuestionKeys([id])).get(id);
     return success({
       type: data.type,
-      explanation: data.explanation,
+      explanation: key?.explanation ?? null,
+      modelAnswer: key?.modelAnswer ?? null,
       options: dbRows(data.question_answers).map((option) => option.content),
     });
   }
