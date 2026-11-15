@@ -334,6 +334,59 @@ export type Database = {
           },
         ];
       };
+      exposure_events: {
+        Row: {
+          created_at: string;
+          group_ids: string[];
+          id: string;
+          organization_id: string | null;
+          question_id: string;
+          seen_correct: boolean;
+          student_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          group_ids?: string[];
+          id?: string;
+          organization_id?: string | null;
+          question_id: string;
+          seen_correct?: boolean;
+          student_id: string;
+        };
+        Update: {
+          created_at?: string;
+          group_ids?: string[];
+          id?: string;
+          organization_id?: string | null;
+          question_id?: string;
+          seen_correct?: boolean;
+          student_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'exposure_events_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'exposure_events_question_id_fkey';
+            columns: ['question_id'];
+            isOneToOne: false;
+            referencedRelation: 'questions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'exposure_events_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       feature_flags: {
         Row: {
           created_at: string | null;

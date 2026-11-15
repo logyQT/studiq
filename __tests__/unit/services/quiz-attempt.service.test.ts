@@ -77,8 +77,29 @@ vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => {
       }
       return Promise.resolve(keys);
     }),
+    // The review reads the same frozen items with their published key (#1171).
+    readReviewItems: vi.fn((assignmentId: string) =>
+      Promise.resolve({
+        success: true as const,
+        data: assignmentSnapshots.rows.map(([id, snapshot]) => ({
+          questionId: id,
+          snapshot,
+          key: {
+            explanation: `explanation-${id}-${assignmentId}`,
+            correctOptionIds: questionKeys.get(id) ?? [],
+          },
+        })),
+      }),
+    ),
   };
 });
+
+// The exposure ledger writes with the service role (#1171, R8); a unit test only needs it to be a
+// no-op that succeeds — the rows are asserted against a real database in the integration suite.
+vi.mock('@studiq/server/lib/exposure-ledger', () => ({
+  recordExposure: vi.fn(() => Promise.resolve({ success: true as const, data: 0 })),
+  recordReviewExposure: vi.fn(() => Promise.resolve({ success: true as const, data: 0 })),
+}));
 
 type QueryResult = { data: unknown; error: unknown };
 type QueryChain = {

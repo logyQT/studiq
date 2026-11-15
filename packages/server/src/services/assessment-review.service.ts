@@ -1,7 +1,8 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import { readReviewItems } from '@studiq/server/lib/assignment-snapshot';
 import { reviewState } from '@studiq/server/lib/assignment-visibility';
+import { recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -136,6 +137,21 @@ export class AssessmentReviewService {
     });
 
     const chosen = attempt.data;
+
+    // R8: this render is the exposure. A repeat read conflicts on the unique (student, item) row and
+    // adds nothing; a failed write is a server fault, not a reason to withhold the review.
+    // Only a student's render is an exposure: a teacher previewing the cohort review is not a
+    // learner who has now seen the key, and a staff row in the ledger would be a false event for
+    // phase 3's eligibility (#1172).
+    if (ctx.accountType === AccountType.STUDENT) {
+      const exposed = await recordReviewExposure({
+        studentId: ctx.userId,
+        assignmentId,
+        questionIds: items.map((item) => item.itemId),
+      });
+      if (isFailure(exposed)) return exposed;
+    }
+
     return success({
       assignmentId,
       attemptId: chosen?.id ?? null,
