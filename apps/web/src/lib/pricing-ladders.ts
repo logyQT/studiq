@@ -6,7 +6,7 @@ import { getVisibleLimitKeys } from '@/lib/pricing-limits';
  * other row stays quiet, so a ladder has one destination rather than four
  * (DESIGN §Dosage: one primary action per screen).
  */
-export const RECOMMENDED_PLAN_KEYS: readonly string[] = ['ace', 'creator', 'hub'];
+const RECOMMENDED_PLAN_KEYS: readonly string[] = ['ace', 'creator', 'hub'];
 
 export function isRecommendedPlan(key: string): boolean {
   return RECOMMENDED_PLAN_KEYS.includes(key);
@@ -80,8 +80,24 @@ const ABSENT = '—';
  * What a comparison cell prints for one limit. `-1` is the catalogue's
  * "unlimited", a cap of `0` is "not offered" — printing `0 / dzień` reads as a
  * rendering bug (N-14) — and a missing key means the same thing as `0`.
+ *
+ * Numbers are grouped in the reader's locale (`200 000` / `200,000`). Measured
+ * at 320px on `/pricing?audience=organization`: the five columns fill the 288px
+ * gutter exactly, the label column at its 94px minimum and the widest numeric
+ * column (`200 000` under Hub) at 50px, with no cell clipping and no horizontal
+ * scroll — so the exact figure fits and nothing is abbreviated away.
  */
-export function formatLimitValue(value: number | undefined): string {
+export function formatLimitValue(value: number | undefined, locale: string): string {
+  if (value === undefined || value === 0) return ABSENT;
+  if (value < 0) return UNLIMITED;
+  return new Intl.NumberFormat(locale).format(value);
+}
+
+/**
+ * A cap's identity, without the locale's digit grouping: two plans that print
+ * the same token are one row, and two that both print `—` are none.
+ */
+function capacityToken(value: number | undefined): string {
   if (value === undefined || value === 0) return ABSENT;
   return value < 0 ? UNLIMITED : String(value);
 }
@@ -96,7 +112,7 @@ export function splitLimitRows(plans: readonly PlanInfo[]): string[] {
   // `for_account_type` is one value per ladder, so the first plan names it.
   const accountType = plans[0]?.forAccountType ?? '';
   return getVisibleLimitKeys(plans, accountType).filter((key) => {
-    const printed = new Set(plans.map((plan) => formatLimitValue(plan.limits[key])));
-    return printed.size > 1;
+    const tokens = new Set(plans.map((plan) => capacityToken(plan.limits[key])));
+    return tokens.size > 1;
   });
 }

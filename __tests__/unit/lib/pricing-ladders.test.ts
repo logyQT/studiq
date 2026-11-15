@@ -4,7 +4,6 @@ import {
   formatLimitValue,
   getPlanLadders,
   isRecommendedPlan,
-  RECOMMENDED_PLAN_KEYS,
   shortPlanName,
   splitFeatureRows,
   splitLimitRows,
@@ -89,10 +88,19 @@ describe('getPlanLadders', () => {
 });
 
 describe('isRecommendedPlan', () => {
-  it('names one recommended plan per ladder', () => {
-    expect(RECOMMENDED_PLAN_KEYS).toEqual(['ace', 'creator', 'hub']);
-    expect(['ace', 'creator', 'hub'].every(isRecommendedPlan)).toBe(true);
-    expect(['base', 'spark', 'pro', 'campus'].some(isRecommendedPlan)).toBe(false);
+  it('gives every ladder exactly one plan the signal action can belong to', () => {
+    const { individual, organization } = getPlanLadders(catalogue);
+    const ladders = [
+      { plans: individual.student, recommended: 'ace' },
+      { plans: individual.educator, recommended: 'creator' },
+      { plans: organization, recommended: 'hub' },
+    ];
+
+    for (const { plans, recommended } of ladders) {
+      expect(plans.filter((row) => isRecommendedPlan(row.key)).map((row) => row.key)).toEqual([
+        recommended,
+      ]);
+    }
   });
 });
 
@@ -156,16 +164,20 @@ describe('splitLimitRows', () => {
 
 describe('formatLimitValue', () => {
   it('prints the catalogue unlimited marker as one glyph', () => {
-    expect(formatLimitValue(-1)).toBe('∞');
+    expect(formatLimitValue(-1, 'pl')).toBe('∞');
   });
 
   it('prints a cap the plan does not offer — and a missing one — as absent', () => {
-    expect(formatLimitValue(0)).toBe('—');
-    expect(formatLimitValue(undefined)).toBe('—');
+    expect(formatLimitValue(0, 'pl')).toBe('—');
+    expect(formatLimitValue(undefined, 'pl')).toBe('—');
   });
 
-  it('prints a real cap as a bare number, because the row label carries the unit', () => {
-    expect(formatLimitValue(200000)).toBe('200000');
-    expect(formatLimitValue(10)).toBe('10');
+  it('prints a day limit without the unit, because the row label carries it', () => {
+    expect(formatLimitValue(10, 'pl')).toBe('10');
+  });
+
+  it('groups the digits the way the reader’s locale does', () => {
+    expect(formatLimitValue(200000, 'pl')).toMatch(/^200[\s\u00a0]000$/);
+    expect(formatLimitValue(200000, 'en')).toBe('200,000');
   });
 });
