@@ -227,7 +227,9 @@ export function PricingContent({ accountType }: { accountType: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-3 px-4 font-medium w-48">Feature</th>
+                  <th className="text-left py-3 px-4 font-medium w-48">
+                    {t('comparison_feature')}
+                  </th>
                   {plans.map((p) => (
                     <th key={p.key} className="text-center py-3 px-4 font-medium">
                       {p.name}

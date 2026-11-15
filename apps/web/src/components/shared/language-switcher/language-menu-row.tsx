@@ -22,7 +22,7 @@ export type LanguageMenuRowProps =
     };
 
 const PLAIN_ROW_CLASS =
-  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring';
+  'flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
 /**
  * The single language entry of the user menu (#634) — it replaced the two
@@ -104,7 +104,7 @@ export function LanguageMenuRow(props: LanguageMenuRowProps) {
       {open && (
         <div
           id={panelId}
-          className="mt-1 overflow-hidden rounded-md border bg-popover text-popover-foreground"
+          className="mt-1 overflow-hidden rounded-panel border border-border bg-background text-foreground"
         >
           <LanguageSwitcherPanel autoFocus={false} onDismiss={dismissPanel} />
         </div>

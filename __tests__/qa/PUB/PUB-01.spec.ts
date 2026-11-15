@@ -136,4 +136,115 @@ test.describe('PUB-01 — landing page for an anonymous visitor', () => {
 
     errors.expectClean();
   });
+
+  /**
+   * The preview is the product's own review card, so rating it advances it: the
+   * rated card leaves the DOM and the next fixture mounts on its question side.
+   * Swapping the fixture text in place instead would animate the incoming card's
+   * answer face from the outgoing card's opacity, showing an answer before its
+   * question. Nothing here reads copy, so a translation cannot break the test.
+   */
+  test('rating replaces the preview card instead of swapping its text', async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const card = page.locator('#features fieldset');
+    await expect(card).toHaveCount(1);
+    const rated = await card.elementHandle();
+
+    await card.click();
+    // 3 is „Dobrze” in every locale — the shortcut attribute is the stable handle.
+    await page.locator('#features [aria-keyshortcuts="3"]').click();
+
+    // `AnimatePresence mode="wait"` finishes the outgoing card's exit before the
+    // next one mounts; either way the rated element must not survive as the card.
+    await expect
+      .poll(() => rated.evaluate((element) => element.isConnected), { timeout: 3000 })
+      .toBe(false);
+    await expect(card).toHaveCount(1);
+    // The next card starts on its question side, so its ratings are inert again.
+    await expect(page.locator('#features [aria-keyshortcuts="3"]')).toBeDisabled();
+
+    errors.expectClean();
+  });
+
+  /**
+   * The rating buttons advertise the session's 1–4 shortcuts, so this surface has to
+   * answer them: the listener that makes them work lives in the study session, which
+   * the landing does not mount. It is scoped to the preview, so the digits rate a
+   * revealed card while the visitor is in the band — and leave the rest of the page
+   * alone — instead of a window listener taking keys from the whole landing.
+   */
+  test('the advertised 1–4 keys rate a revealed preview card', async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const card = page.locator('#features fieldset');
+    await expect(card).toHaveCount(1);
+    const rated = await card.elementHandle();
+
+    // Enter is the card's own reveal key; 3 is „Dobrze” in every locale, and the
+    // shortcut attribute is the stable handle for the button it stands for.
+    await card.press('Enter');
+    await page.keyboard.press('3');
+
+    await expect
+      .poll(() => rated.evaluate((element) => element.isConnected), { timeout: 3000 })
+      .toBe(false);
+    await expect(card).toHaveCount(1);
+    await expect(page.locator('#features [aria-keyshortcuts="3"]')).toBeDisabled();
+
+    errors.expectClean();
+  });
+
+  /**
+   * The row is the answer's hit target, not the 16px radio: the label contains the
+   * control and the browser forwards a click on the row — padding included — to it.
+   * Put the radio beside the row instead and the border and the padding go dead
+   * while the component still renders, which no type or unit test here can see.
+   *
+   * The point is therefore off-centre, inside the row's own `p-3` padding and clear
+   * of both the radio and the option's text, so a pass cannot come from hitting the
+   * control. The answer is read back from the radio's own state, not from the row
+   * that was clicked, and the footer and the rating card stay untouched: this is the
+   * answer row on its own, not the rating flow.
+   */
+  test("clicking an option row's padding selects that answer", async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const group = page.locator('#hero [data-slot="radio-group"]');
+    await expect(group, 'the hero preview asks one multiple-choice question').toHaveCount(1);
+
+    const row = group.locator('label').nth(1);
+    const radio = group.getByRole('radio').nth(1);
+    await expect(radio, 'the option starts unselected').not.toBeChecked();
+
+    await row.scrollIntoViewIfNeeded();
+    const rowBox = await row.boundingBox();
+    const radioBox = await radio.boundingBox();
+    const textBox = await row.locator('span').first().boundingBox();
+    expect(rowBox, 'the option row has a box').not.toBeNull();
+    expect(radioBox, 'the radio has a box').not.toBeNull();
+    expect(textBox, 'the option text has a box').not.toBeNull();
+
+    // 5px in from the row's border is still inside its 12px padding.
+    const point = { x: rowBox!.x + rowBox!.width - 5, y: rowBox!.y + rowBox!.height - 5 };
+    expect(point.x, 'the click lands right of the radio').toBeGreaterThan(
+      radioBox!.x + radioBox!.width,
+    );
+    expect(point.y, "the click lands below the option's text").toBeGreaterThan(
+      textBox!.y + textBox!.height,
+    );
+
+    await page.mouse.click(point.x, point.y);
+
+    await expect(radio, "the row's padding selected its radio").toBeChecked();
+    await expect(
+      group.getByRole('radio', { checked: true }),
+      'exactly one option in the group is selected',
+    ).toHaveCount(1);
+
+    errors.expectClean();
+  });
 });

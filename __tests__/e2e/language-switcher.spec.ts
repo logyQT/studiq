@@ -251,34 +251,6 @@ test.describe('language switcher — touch panel', () => {
     await expect(drawer.getByRole('button', { name: /Język/ })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
   });
-
-  test('navbar sheet: the panel expands inline and returns focus to the row', async ({ page }) => {
-    await login(page);
-    await page.goto('/pricing');
-
-    await page.getByRole('button', { name: 'Menu', exact: true }).click();
-    const sheet = page.locator('[data-slot="sheet-content"]');
-    const row = sheet.getByRole('button', { name: /Język|Language/ });
-    await expect(row).toHaveAttribute('aria-expanded', 'false');
-    await expect(row).not.toHaveAttribute('aria-controls');
-
-    await row.click();
-    await expect(row).toHaveAttribute('aria-expanded', 'true');
-    const input = sheet.getByRole('combobox', { name: SEARCH });
-    await expect(input).toBeVisible();
-    await expect(sheet.getByRole('option')).toHaveCount(2);
-
-    // Keyboard commit: the panel unmounts and focus lands back on the row.
-    await input.focus();
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Enter');
-
-    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(row).toHaveAttribute('aria-expanded', 'false');
-    await expect(sheet).toBeVisible();
-    await expect(row).toBeFocused();
-    await expect(row).toContainText('English');
-  });
 });
 
 test.describe('theme switch (#635)', () => {

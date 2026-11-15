@@ -46,13 +46,13 @@ jar).
 
 - `/privacy` renders 8 sections in Polish by default: Administrator Danych,
   Jakie Dane Zbieramy, Cel Przetwarzania, Podstawa Prawna, Twoje Prawa,
-  Przechowywanie Danych, Pliki Cookies, Kontakt. Title: „Polityka Prywatności |
+  Przechowywanie Danych, Pliki Cookies, Kontakt. Title: „Polityka prywatności |
   StudiQ”, `<html lang="pl">`.
 - `/terms` renders 9 sections: Postanowienia Ogólne, Konta Użytkowników, Usługi,
   Treści Użytkowników, Płatności i Subskrypcje, Ograniczenie Odpowiedzialności,
   Pliki Cookies, Zmiany Regulaminu, Kontakt. Title: „Regulamin | StudiQ”.
 - Both pages are reachable without a session from the public footer links
-  („Polityka Prywatności”, „Regulamin”) and carry readable body copy (the
+  („Polityka prywatności”, „Regulamin”) and carry readable body copy (the
   `TermsPage` cookies section also renders its three list items).
 - The language toggle lives in the footer (button `title="Language"`, menu items
   „🇵🇱 Polski” / „🇬🇧 English”). Choosing English switches `/terms` in place to

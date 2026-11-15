@@ -13,6 +13,8 @@ export type OrgMembership = {
   name: string;
   slug: string;
   orgRoleName: string;
+  /** Localised role label from `org_roles.display_name`, when the API sends it. */
+  orgRoleDisplayName?: string;
   orgRoleId: string;
   isActive: boolean;
   /** Org branding (issue #108) — only honored when the `branding` feature is on. */

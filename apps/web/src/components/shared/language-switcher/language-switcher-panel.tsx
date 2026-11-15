@@ -6,6 +6,7 @@ import { Check, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LanguageOptionLabel } from '@/components/shared/language-switcher/language-option-label';
+import { CONTROL_RADIUS } from '@/components/shared/preference-controls';
 import { useLocaleSwitcher } from '@/hooks/use-locale-switcher';
 import { languageFilter } from '@/lib/language-filter';
 import { LANGUAGE_OPTIONS, type Locale, languageOption } from '@/lib/locale';
@@ -121,15 +122,15 @@ export function LanguageSwitcherPanel({
       filter={languageFilter}
       className={cn('bg-transparent', fill && 'h-full')}
     >
-      {/* Filled, rounded search field (system search-bar style); focus is a soft ring on the whole field. */}
+      {/* Hairline search field: the same 1px `border-input` edge and 4px corner as
+          the trigger it belongs to, with the solid focus ring on the whole field. */}
       <div
         className={cn(
           'relative p-1.5',
           fill && 'px-0 pt-0 pb-2',
-          '[&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:gap-2 [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-transparent [&_[data-slot=command-input-wrapper]]:bg-muted [&_[data-slot=command-input-wrapper]]:px-3 [&_[data-slot=command-input-wrapper]]:transition-[border-color,box-shadow]',
-          '[&_[data-slot=command-input-wrapper]:focus-within]:border-ring/60 [&_[data-slot=command-input-wrapper]:focus-within]:ring-[3px] [&_[data-slot=command-input-wrapper]:focus-within]:ring-ring/20',
-          fill &&
-            '[&_[data-slot=command-input-wrapper]]:h-11 [&_[data-slot=command-input-wrapper]]:rounded-xl',
+          '[&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:gap-2 [&_[data-slot=command-input-wrapper]]:rounded-control [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-input [&_[data-slot=command-input-wrapper]]:bg-background [&_[data-slot=command-input-wrapper]]:px-3 [&_[data-slot=command-input-wrapper]]:transition-[border-color,box-shadow]',
+          '[&_[data-slot=command-input-wrapper]:focus-within]:border-input [&_[data-slot=command-input-wrapper]:focus-within]:ring-2 [&_[data-slot=command-input-wrapper]:focus-within]:ring-ring [&_[data-slot=command-input-wrapper]:focus-within]:ring-offset-2 [&_[data-slot=command-input-wrapper]:focus-within]:ring-offset-background',
+          fill && '[&_[data-slot=command-input-wrapper]]:h-11',
         )}
       >
         <CommandInput
@@ -151,7 +152,8 @@ export function LanguageSwitcherPanel({
               inputRef.current?.focus();
             }}
             className={cn(
-              'absolute top-1/2 right-3.5 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-background/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+              'absolute top-1/2 right-3.5 grid size-6 -translate-y-1/2 place-items-center rounded-control text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground',
+              'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               fill && 'right-2 -mt-1 size-8',
             )}
           >
@@ -183,11 +185,12 @@ export function LanguageSwitcherPanel({
               }}
               data-current={isCurrent || undefined}
               className={cn(
-                'gap-3 rounded-md px-2.5 py-2',
+                'gap-3 px-2.5 py-2',
+                CONTROL_RADIUS,
                 // Touch: the check marks the current language; the keyboard highlight
                 // would double it, so show a press state instead.
                 fill &&
-                  'rounded-lg px-3 py-3 text-base data-[selected=true]:bg-transparent data-[selected=true]:text-foreground active:bg-accent',
+                  'px-3 py-3 text-base data-[selected=true]:bg-transparent data-[selected=true]:text-foreground active:bg-accent',
               )}
             >
               <LanguageOptionLabel option={option} uiLocale={locale} withLocalizedName />

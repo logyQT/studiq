@@ -80,6 +80,74 @@ export function envFromValuesFile(root: string, name: string): string {
   throw new Error(`missing env ${name}`);
 }
 
+/**
+ * `DB_URL` from `supabase status --env`. The CLI prints JSON in stack mode and
+ * `KEY='value'` lines on other runtimes, so both shapes are read. The shell-style
+ * pair may be single-quoted, double-quoted or bare — the value never keeps its
+ * quotes, because they are the line's syntax and not part of the URL.
+ */
+function parseStatusEnv(output: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(output);
+    if (parsed && typeof parsed === 'object') {
+      const value = (parsed as Record<string, unknown>).DB_URL;
+      if (typeof value === 'string' && value) return value;
+    }
+  } catch {
+    // Not JSON — fall through to the shell-style pair.
+  }
+  const match = /^DB_URL=(?:'([^'\n]*)'|"([^"\n]*)"|(\S+))$/m.exec(output);
+  return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+/**
+ * The Postgres URL this checkout's stack exposes, or `undefined` when none is
+ * discoverable: process environment first, then `supabase status --env`, then
+ * root `.env.local`.
+ *
+ * Returns rather than exits so each caller keeps its own failure contract — the
+ * seeders exit 2 through `fail()`, the capture tool prints its own remedy and
+ * exits 1.
+ */
+export async function resolveDbUrl(root: string): Promise<string | undefined> {
+  const fromEnv = process.env.SUPABASE_DB_URL;
+  if (fromEnv) return fromEnv;
+
+  const discovered = await statusDbUrl(root);
+  if (discovered) return discovered;
+
+  try {
+    return envFromValuesFile(root, 'SUPABASE_DB_URL');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `DB_URL` from `bunx supabase status --env`, or `undefined` when the stack is
+ * down, the CLI reports nothing usable, or the launch itself fails.
+ *
+ * A launch failure is a real case, not a theoretical one: `Bun.spawn` throws
+ * synchronously when the executable is not on `PATH` (a script run without the
+ * repo's toolchain), and letting that reject would skip the caller's fallback
+ * entirely — `undefined` is the documented "discover nothing" answer.
+ */
+async function statusDbUrl(root: string): Promise<string | undefined> {
+  try {
+    const proc = Bun.spawn(['bunx', 'supabase', 'status', '--env'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const out = await new Response(proc.stdout).text();
+    const code = await proc.exited;
+    return code === 0 ? parseStatusEnv(out) : undefined;
+  } catch {
+    // Spawn failed (missing `bunx`, unreadable cwd) — fall through to the file.
+    return undefined;
+  }
+}
+
 /** `host:port` of a URL, or null when it cannot be parsed. */
 function urlEndpoint(raw: string | undefined): { host: string; port: string } | null {
   if (!raw) return null;

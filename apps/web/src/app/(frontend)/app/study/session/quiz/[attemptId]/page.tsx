@@ -1,25 +1,11 @@
 'use client';
 
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  Label,
-  Progress,
-  RadioGroup,
-  RadioGroupItem,
-  Textarea,
-} from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { QuizQuestionView } from '@/components/quiz/quiz-question-view';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { quizAttemptKeys } from '@/lib/query-keys';
@@ -183,96 +169,45 @@ export default function QuizTakingPage() {
   if (!currentQuestion) {
     return <EntityNotFound titleKey="quiz_not_found" descriptionKey="quiz_not_found_desc" />;
   }
-  const progress = questions.length > 0 ? ((currentQ + 1) / questions.length) * 100 : 0;
 
-  function selectAnswer(questionId: string, answerId: string) {
-    setAnswers({ ...answers, [questionId]: answerId });
+  function selectAnswer(questionId: string, value: string) {
+    setAnswers((previous) => ({ ...previous, [questionId]: value }));
   }
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div className="flex justify-end">
-        <span className="text-sm text-muted-foreground">
-          {t('question_of', { current: currentQ + 1, total: questions.length })}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Progress value={progress} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">
-              {isQuestionTypeKey(currentQuestion.type)
-                ? t(QUESTION_TYPE_KEYS[currentQuestion.type])
-                : currentQuestion.type.replace('_', ' ')}
-            </Badge>
-          </div>
-          <CardTitle className="mt-3 text-xl">{currentQuestion.content}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {currentQuestion.type === 'mcq' && (
-            <RadioGroup
-              value={answers[currentQuestion.id] || ''}
-              onValueChange={(v) => selectAnswer(currentQuestion.id, v)}
-            >
-              {currentQuestion.question_answers.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 hover:bg-accent/50"
-                >
-                  <RadioGroupItem value={a.id} id={a.id} />
-                  <Label htmlFor={a.id} className="flex-1 cursor-pointer">
-                    {a.content}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          )}
-          {currentQuestion.type === 'true_false' && (
-            <div className="grid grid-cols-2 gap-3">
-              {currentQuestion.question_answers.map((a) => (
-                <Button
-                  key={a.id}
-                  variant={answers[currentQuestion.id] === a.id ? 'default' : 'outline'}
-                  className="h-20 text-lg"
-                  onClick={() => selectAnswer(currentQuestion.id, a.id)}
-                >
-                  {a.content}
-                </Button>
-              ))}
-            </div>
-          )}
-          {currentQuestion.type === 'open' && (
-            <Textarea
-              value={answers[currentQuestion.id] || ''}
-              onChange={(e) => selectAnswer(currentQuestion.id, e.target.value)}
-              placeholder={t('answer_placeholder')}
-              rows={4}
-            />
-          )}
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <Button
-            variant="outline"
-            disabled={currentQ === 0}
-            onClick={() => setCurrentQ(currentQ - 1)}
-          >
-            <ArrowLeft data-icon="inline-start" /> {t('previous')}
-          </Button>
-          {currentQ < questions.length - 1 ? (
-            <Button onClick={() => setCurrentQ(currentQ + 1)}>
-              {t('next')} <ArrowRight data-icon="inline-end" />
-            </Button>
-          ) : (
-            <Button onClick={submitQuiz} disabled={submitting}>
-              {submitting ? t('submitting') : t('submit')} <Send data-icon="inline-end" />
-            </Button>
-          )}
-        </CardFooter>
-      </Card>
+      <QuizQuestionView
+        question={{
+          stem: currentQuestion.content,
+          options: currentQuestion.question_answers.map((answer) => ({
+            id: answer.id,
+            label: answer.content,
+          })),
+          selectedOptionId:
+            currentQuestion.type === 'open' ? null : (answers[currentQuestion.id] ?? null),
+          textAnswer: currentQuestion.type === 'open' ? (answers[currentQuestion.id] ?? '') : '',
+          position: currentQ + 1,
+          total: questions.length,
+          type: currentQuestion.type,
+        }}
+        labels={{
+          questionOf: t('question_of', { current: currentQ + 1, total: questions.length }),
+          typeLabel: isQuestionTypeKey(currentQuestion.type)
+            ? t(QUESTION_TYPE_KEYS[currentQuestion.type])
+            : currentQuestion.type.replace('_', ' '),
+          previous: t('previous'),
+          next: t('next'),
+          submit: t('submit'),
+          submitting: t('submitting'),
+          answerPlaceholder: t('answer_placeholder'),
+        }}
+        submitting={submitting}
+        onSelectOption={(optionId) => selectAnswer(currentQuestion.id, optionId)}
+        onTextChange={(text) => selectAnswer(currentQuestion.id, text)}
+        onPrevious={() => setCurrentQ((index) => Math.max(0, index - 1))}
+        onNext={() => setCurrentQ((index) => Math.min(questions.length - 1, index + 1))}
+        onSubmit={() => void submitQuiz()}
+      />
     </div>
   );
 }

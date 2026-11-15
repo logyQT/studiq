@@ -1,5 +1,7 @@
 import { json } from '#test/helpers/json';
+import pl from '@/i18n/messages/pl.json';
 import { expect, test, type Page } from '@playwright/test';
+import { createTranslator } from 'next-intl';
 
 /**
  * PUB-04 — Podstrona planów (/pricing/student) – karty planów.
@@ -14,9 +16,10 @@ import { expect, test, type Page } from '@playwright/test';
  * limits), so the spec reads it through the public
  * `GET /api/v1/subscription-plans?for=student` endpoint and asserts that the
  * page renders *that* configuration: plan names and order, grosze → PLN price
- * formatting, the configured feature lists, and the `-1` → "Bez ograniczeń"
- * limit formatting. Only code-owned copy is pinned: the plan ladder, the CTA
- * labels, and the "Najpopularniejszy" badge.
+ * formatting, the configured feature lists, and the `-1` → unlimited limit
+ * formatting. Page copy comes from the catalogue the page renders from (below);
+ * what stays literal is the plan ladder and the price line's `zł` / `/miesiąc`
+ * pattern, which pins the number format rather than a label.
  */
 
 interface PlanInfo {
@@ -30,40 +33,50 @@ interface PlanInfo {
 
 const CASE = 'PUB-04';
 
+/**
+ * The page copy, read from the catalogue the page renders from: headings, the
+ * popular badge, the CTA and the feature/limit labels. The spec pins which plans
+ * and limits the page shows, not the wording that names them. Everything read
+ * from the plan catalogue over the API — names, prices, feature keys — stays
+ * data, and so does the `—` the table uses for an absent value.
+ */
+const copy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
+
 /** The student ladder the public pricing page documents (`base` … `pro`). */
 const STUDENT_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
-/** CTA copy per plan key — product copy from the Polish messages, not DB config. */
+/** CTA copy per plan key — product copy from the message catalogue, not DB config. */
 const PLAN_CTA: Record<string, string> = {
-  base: 'Zacznij za Darmo',
-  spark: 'Przejdź na Spark',
-  ace: 'Wybierz Ace',
-  pro: 'Wybierz Pro',
+  base: copy('cta_free'),
+  spark: copy('cta_spark'),
+  ace: copy('cta_ace'),
+  pro: copy('cta_pro'),
 };
 
 /** The student plan highlighted as the popular one. */
 const POPULAR_PLAN = 'ace';
 
-const PAGE_TITLE = 'Wybierz Swój Plan';
-const PAGE_SUBTITLE = 'Zacznij za darmo, ulepsz gdy potrzebujesz więcej';
-const COMPARISON_TITLE = 'Porównaj Plany';
-const UNLIMITED = 'Bez ograniczeń';
+const PAGE_TITLE = copy('title');
+const PAGE_SUBTITLE = copy('subtitle');
+const COMPARISON_TITLE = copy('comparison_title');
+const POPULAR_BADGE = copy('most_popular');
+const UNLIMITED = copy('limit_unlimited');
 const NO_VALUE = '—';
 
-/** Polish labels for plan feature keys (mirrors the `PricingPage` messages). */
+/** Feature labels, read from the `feature_*` messages the card renders. */
 const FEATURE_LABELS: Record<string, string> = {
-  flashcards: 'Fiszki',
-  quiz: 'Testy',
-  ai: 'Asystent AI',
-  'ai.chat': 'Asystent AI',
-  'advanced.stats': 'Zaawansowane Statystyki',
-  documents: 'Obsługa Dokumentów',
-  quiz_builder: 'Kreator Testów',
-  org_manage: 'Zarządzanie Organizacją',
-  group_manage: 'Zarządzanie Grupami',
-  member_manage: 'Zarządzanie Członkami',
-  role_builder: 'Kreator Ról',
-  branding: 'Własny branding',
+  flashcards: copy('feature_flashcards'),
+  quiz: copy('feature_quiz'),
+  ai: copy('feature_ai'),
+  'ai.chat': copy('feature_ai_chat'),
+  'advanced.stats': copy('feature_advanced_stats'),
+  documents: copy('feature_documents'),
+  quiz_builder: copy('feature_quiz_builder'),
+  org_manage: copy('feature_org_manage'),
+  group_manage: copy('feature_group_manage'),
+  member_manage: copy('feature_member_manage'),
+  role_builder: copy('feature_role_builder'),
+  branding: copy('feature_branding'),
 };
 
 /** Unknown keys fall back to the humanized form the page itself renders. */
@@ -97,14 +110,14 @@ const SORTED_LIMIT_KEYS = [
 const ORG_ONLY_LIMIT_KEYS: readonly string[] = ['max_students', 'max_groups'];
 
 const LIMIT_LABELS: Record<string, string> = {
-  max_flashcards: 'Maks. fiszki',
-  max_decks: 'Maks. talie',
-  max_questions: 'Maks. pytania',
-  max_question_banks: 'Maks. banki pytań',
-  max_quiz_attempts_per_day: 'Próby dziennie',
-  max_ai_tokens_per_day: 'Tokeny AI / dzień',
-  max_students: 'Maks. studentów',
-  max_groups: 'Maks. grup',
+  max_flashcards: copy('limit_max_flashcards'),
+  max_decks: copy('limit_max_decks'),
+  max_questions: copy('limit_max_questions'),
+  max_question_banks: copy('limit_max_question_banks'),
+  max_quiz_attempts_per_day: copy('limit_max_quiz_attempts_per_day'),
+  max_ai_tokens_per_day: copy('limit_max_ai_tokens_per_day'),
+  max_students: copy('limit_max_students'),
+  max_groups: copy('limit_max_groups'),
 };
 
 /** Limit keys the student comparison must render, in order. */
@@ -120,11 +133,12 @@ function moneyValue(amount: string): number {
 }
 
 /**
- * A comparison-table limit cell: a number (k = thousands), "Bez ograniczeń" for
- * `-1`, or "—" when the plan does not carry the limit at all. Number grouping is
- * accepted in either locale form; the numeric value must match the configuration.
+ * A comparison-table limit cell: a number (k = thousands), the unlimited marker
+ * for `-1`, or the empty marker when the plan does not carry the limit at all.
+ * Number grouping is accepted in either locale form; the numeric value must match
+ * the configuration.
  */
-function readLimitCell(raw: string, key: string): number | typeof UNLIMITED | typeof NO_VALUE {
+function readLimitCell(raw: string, key: string): number | string {
   const text = raw
     .replace(/\u00a0/g, ' ')
     .replace(/\s+/g, ' ')
@@ -196,7 +210,8 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     const response = await page.goto('/pricing/student');
     expect(response?.status(), 'document status').toBe(200);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-    await expect(page).toHaveTitle(/^Student \| StudiQ$/);
+    // The slug's own title (the plan-page tile label), then the site name.
+    await expect(page).toHaveTitle(`${copy('tile_student_title')} | StudiQ`);
 
     // Prerequisite "Brak sesji": no user, so no "Obecny Plan" and no checkout CTA.
     const me = await page.request.get('/api/v1/auth/me');
@@ -281,10 +296,10 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     // CTA labels really differ per plan.
     expect(new Set(Object.values(PLAN_CTA)).size).toBe(plans.length);
 
-    // "Najpopularniejszy" marks exactly the documented popular plan, once.
+    // The popular badge marks exactly the documented popular plan, once.
     const badges = page.locator('main [data-slot="badge"]');
     await expect(badges).toHaveCount(1);
-    await expect(badges).toHaveText('Najpopularniejszy');
+    await expect(badges).toHaveText(POPULAR_BADGE);
     const popularPlan = plans.find((plan) => plan.key === POPULAR_PLAN)!;
     await expect(badges.locator('..').locator('[data-slot="card-title"]')).toHaveText(
       popularPlan.name,

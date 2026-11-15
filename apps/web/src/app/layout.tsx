@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Archivo, Geist, Geist_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
-import { Toaster } from 'sonner';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { BrandAccent } from '@/components/providers/BrandAccent';
 import { QueryProvider } from '@/components/providers/QueryProvider';
@@ -11,7 +10,7 @@ import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/l
 
 // eslint-disable-next-line import/no-unassigned-import -- side-effect import: global stylesheet.
 import '@/app/globals.css';
-import { ToastProvider } from '@studiq/ui';
+import { Sonner, ToastProvider } from '@studiq/ui';
 import { getSiteUrl } from '@studiq/server/lib/site-url';
 
 /**
@@ -21,12 +20,23 @@ import { getSiteUrl } from '@studiq/server/lib/site-url';
  */
 const geistSans = Geist({
   variable: '--font-geist-sans',
-  subsets: ['latin'],
+  subsets: ['latin', 'latin-ext'],
 });
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
-  subsets: ['latin'],
+  subsets: ['latin', 'latin-ext'],
+});
+
+/*
+ * Marketing headings set width rather than fake it with tracking, and
+ * next/font ships only the axes a call asks for.
+ */
+const archivo = Archivo({
+  variable: '--font-archivo-display',
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
+  axes: ['wdth'],
 });
 
 /**
@@ -81,6 +91,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Without this, env(safe-area-inset-*) resolves to 0 and the last row of a
+  // full-height surface sits inside the device's rounded corner.
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#181818' },
@@ -104,7 +117,7 @@ export default async function RootLayout({
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 
   return (
-    <html lang={locale} className="bg-background" suppressHydrationWarning>
+    <html lang={locale} className={`bg-background ${archivo.variable}`} suppressHydrationWarning>
       <head>
         {supabaseUrl && <link rel="preconnect" href={supabaseUrl} crossOrigin="anonymous" />}
       </head>
@@ -121,7 +134,7 @@ export default async function RootLayout({
                 <AuthProvider>
                   <BrandAccent />
                   <ToastProvider>{children}</ToastProvider>
-                  <Toaster
+                  <Sonner
                     position="top-center"
                     richColors
                     duration={4000}

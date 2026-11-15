@@ -1,29 +1,31 @@
 'use client';
 
-import { Button } from '@studiq/ui';
 import { ArrowRight } from 'lucide-react';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
 
+/**
+ * The page's one full-bleed cobalt area. `text-primary-foreground` keeps the contrast correct
+ * in both modes (paper on cobalt in light, ink on cobalt in dark).
+ */
 export function CtaBanner() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section id="get-started" className="py-16 sm:py-24">
-      <div className="mx-auto max-w-3xl">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-primary/10 border p-10 sm:p-14 text-center">
-          <div className="absolute top-0 right-0 -z-10 size-64 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute bottom-0 left-0 -z-10 size-48 rounded-full bg-primary/5 blur-3xl" />
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('cta_banner_title')}</h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-lg mx-auto">
-            {t('cta_banner_desc')}
-          </p>
-          <div className="mt-8">
-            <Button size="lg" className="text-base px-8" asChild>
-              <Link href="/register">
-                {t('cta_banner_button')} <ArrowRight className="ml-2 size-4" />
-              </Link>
-            </Button>
+    <section id="get-started" className="bg-primary text-primary-foreground">
+      <div className="mx-auto max-w-content px-content py-16 md:py-20">
+        <div className="grid gap-6 md:grid-cols-12 md:items-end md:gap-8">
+          <div className="md:col-span-7">
+            <h2 className="font-display text-h2 font-semibold text-balance">
+              {t('cta_banner_title')}
+            </h2>
+            <p className="mt-4 max-w-xl text-lede">{t('cta_banner_desc')}</p>
+          </div>
+          <div className="flex flex-col md:col-span-5 md:block md:justify-self-end">
+            <CtaButton href="/register" tone="signal">
+              {t('cta_banner_button')}
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </CtaButton>
           </div>
         </div>
       </div>

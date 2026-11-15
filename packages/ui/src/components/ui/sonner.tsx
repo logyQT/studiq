@@ -11,11 +11,11 @@ function isToasterTheme(value: unknown): value is ToasterTheme {
 }
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   return (
     <Sonner
-      theme={isToasterTheme(theme) ? theme : 'system'}
+      theme={isToasterTheme(resolvedTheme) ? resolvedTheme : 'system'}
       className="toaster group"
       style={cssVars({
         '--normal-bg': 'var(--popover)',
