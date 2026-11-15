@@ -105,6 +105,20 @@
      (0.70 vs 0.25) rather than the same number reused. */
   --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
 
+  /*
+   * Paper dither: turbulence at 64px and one octave — fine enough to read as
+   * noise rather than tooth — pushed through a `table` transfer that linearises
+   * the filter's bell-shaped distribution, so within the band the tile is uniform
+   * instead of piled up around 0.5. Composited with `overlay` on top of the tone
+   * layers, that jitters each ramp pixel by at most half an 8-bit step, which is
+   * what turns a quantised tread into a continuous falloff. Per-channel bands,
+   * because `overlay` answers to the headroom each channel has to its own
+   * extreme: R sits nearest white in the light paper and moves least, B furthest.
+   * The logit-shaped values are the normal CDF (σ≈0.106, measured off the tile)
+   * scaled into ±band/2.
+   */
+  --paper-dither: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'64'%20height%3D'64'%3E%3Cfilter%20id%3D'd'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'1'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'table'%20tableValues%3D'0.485%200.485001%200.485006%200.485048%200.485275%200.486154%200.488575%200.493332%200.5%200.506668%200.511425%200.513846%200.514725%200.514952%200.514994%200.514999%200.515'%2F%3E%3CfeFuncG%20type%3D'table'%20tableValues%3D'0.465%200.465001%200.465014%200.465112%200.465642%200.467692%200.473341%200.484441%200.5%200.515559%200.526659%200.532308%200.534358%200.534888%200.534986%200.534999%200.535'%2F%3E%3CfeFuncB%20type%3D'table'%20tableValues%3D'0.4725%200.472501%200.472511%200.472588%200.473005%200.474615%200.479053%200.487775%200.5%200.512225%200.520947%200.525385%200.526995%200.527412%200.527489%200.527499%200.5275'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'64'%20height%3D'64'%20filter%3D'url(%23d)'%2F%3E%3C%2Fsvg%3E");
+
   --radius: 0.75rem;
 
   /*
@@ -183,6 +197,12 @@
     --sidebar-ring: var(--ring);
     /* Same filter, different amplitude: soft-light lifts much harder on near-black. */
     --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
+    /*
+     * Same dither, its own bands: `overlay` answers to `2b` below mid-grey, so a
+     * near-black backdrop needs a narrower band for the same half-step output,
+     * and a band wider than that would read as static on the dark paper.
+     */
+    --paper-dither: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'64'%20height%3D'64'%3E%3Cfilter%20id%3D'd'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'1'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'table'%20tableValues%3D'0.46%200.460001%200.460016%200.460128%200.460734%200.463077%200.469532%200.482218%200.5%200.517782%200.530468%200.536923%200.539266%200.539872%200.539984%200.539999%200.54'%2F%3E%3CfeFuncG%20type%3D'table'%20tableValues%3D'0.4725%200.472501%200.472511%200.472588%200.473005%200.474615%200.479053%200.487775%200.5%200.512225%200.520947%200.525385%200.526995%200.527412%200.527489%200.527499%200.5275'%2F%3E%3CfeFuncB%20type%3D'table'%20tableValues%3D'0.485%200.485001%200.485006%200.485048%200.485275%200.486154%200.488575%200.493332%200.5%200.506668%200.511425%200.513846%200.514725%200.514952%200.514994%200.514999%200.515'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'64'%20height%3D'64'%20filter%3D'url(%23d)'%2F%3E%3C%2Fsvg%3E");
   }
 }
 
@@ -287,12 +307,17 @@
    Radii are fixed px rather than percentages so a long page grows a flat middle
    instead of stretching the light into a wash.
    `background-blend-mode` does not blend against `background-color` on its own,
-   so the last gradient layer is mandatory — without it the page greys out. The
-   order of that list is load-bearing: `soft-light` must be the 4th entry (the
-   grain blends with paper) and the tone layers composite over it with `normal`. */
+   so the last gradient layer is mandatory — without it the page greys out.
+   The order of that list is load-bearing. The dither is the first (topmost)
+   entry so its `overlay` meets the tone stack the compositor is about to round,
+   and breaks the 8-bit tread the ramp would otherwise show as a stripe: the
+   tone layers underneath are `normal`, so a noise layer below them is covered by
+   their alpha instead of dithering them. `soft-light` is the grain, which is
+   meant to sit under the light and be seen where it thins. */
 @utility bg-paper-grain {
   background-color: var(--background);
   background-image:
+    var(--paper-dither),
     radial-gradient(1300px 1000px at 18% 0%, rgb(255 252 242 / 0.93), rgb(255 252 242 / 0) 68%),
     radial-gradient(1500px 1200px at 92% 100%, rgb(106 86 46 / 0.093), rgb(106 86 46 / 0) 70%),
     linear-gradient(
@@ -304,16 +329,18 @@
     ),
     var(--paper-grain), linear-gradient(var(--background), var(--background));
   background-size:
+    64px 64px,
     auto,
     auto,
     auto,
     180px 180px,
     auto;
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat;
-  background-blend-mode: normal, normal, normal, soft-light, normal;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+  background-blend-mode: overlay, normal, normal, normal, soft-light, normal;
 
   .dark & {
     background-image:
+      var(--paper-dither),
       radial-gradient(1200px 900px at 20% 0%, rgb(255 250 236 / 0.043), rgb(255 250 236 / 0) 66%),
       radial-gradient(1500px 1100px at 90% 100%, rgb(0 0 0 / 0.357), rgb(0 0 0 / 0) 70%),
       linear-gradient(
@@ -330,6 +357,10 @@
     &,
     .dark & {
       background-image: linear-gradient(var(--background), var(--background));
+      /* One layer, so the first entry of each list would otherwise apply to it. */
+      background-size: auto;
+      background-repeat: no-repeat;
+      background-blend-mode: normal;
     }
   }
 

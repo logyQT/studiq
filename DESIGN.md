@@ -165,11 +165,20 @@ fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
 
 ### The paper surface
 
-The shell is paper: `--background` with two light pools, a 100px edge curl and the grain,
-painted by `bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell
+The shell is paper: `--background` with two light pools, a 100px edge curl, the grain and a
+dither, painted by `bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell
 (`DashboardLayout`, which `/app`, `/edu` and `/manage` render inside). `/register`'s form column
 carries the same class in both themes: the utility has its own `.dark &` block, so one class
 paints the correct stack for each.
+
+The order of that stack is the technique. The dither is the topmost layer and composites with
+`overlay`, so it meets the tone layers the compositor is about to round to 8 bits and spreads
+each tread into sub-step jitter instead of a stripe; the grain sits _under_ the tones with
+`soft-light`, where the pool's alpha thins it and the tooth shows. A dither belongs on top and
+the grain does not: the grain is five times the amplitude a dither needs, so putting it there
+would paint static rather than hide a step. The dither is its own 64px, one-octave tile pushed
+through a `table` transfer that linearises the filter's bell-shaped distribution, because a
+Gaussian tile only flips pixels at its tails and dithers nothing in the middle.
 
 Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
 per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
@@ -178,6 +187,13 @@ lightens and darkens paper cannot leave the worst pixel at the flat token value,
 1.33x the 4.5:1 floor, not a regression. `/register`'s grained column measures 17.02 (ink),
 6.03 (muted) and 5.96 (placeholder) in light, 15.84, 7.36 and 5.52 in dark; the product shell
 measures 16.74 (ink) and 5.60 (muted) in light, 16.41 and 7.41 in dark.
+
+The dither is sized to that surface, not to a texture: on the tone alone (grain held out, which
+is what the eye integrates) it cuts the longest flat tread from 36px to 6px on `/login`'s light
+pool and from 24px to 6px on the dark one, and takes the distinct values along the same transect
+from 23 to 52 and 25 to 50. It moves the surface's mean by under 0.1 of a level, adds at most
+three levels to any pixel and stays under ΔL* 1 in light; the dark bands are narrower because
+`overlay` answers to `2b` on a near-black backdrop, so the same half-step costs a wider tile.
 
 **Creases were studied and rejected.** A fold reads because a sheet is seen at an angle and two
 planes catch directional light differently; a frontal, evenly lit page has no specular event, so
