@@ -77,7 +77,7 @@ export class TopicService {
     const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(filter)) return success(EMPTY_PAGE);
 
     // Explicit group filter (#595): an extra AND after RBAC, so an unknown/foreign group id
     // can only narrow the result — never widen it.
