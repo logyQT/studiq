@@ -30,6 +30,14 @@ interface ReviewedItem {
   teacherFeedback: string | null;
 }
 
+/** One submitted attempt as the review index shows it (R5/R19). */
+interface ReviewedAttempt {
+  attemptId: string;
+  completedAt: string | null;
+  score: { earned: number; possible: number } | null;
+  ungradedCount: number;
+}
+
 interface AssignmentReview {
   assignmentId: string;
   attemptId: string | null;
@@ -37,6 +45,7 @@ interface AssignmentReview {
   score: { earned: number; possible: number } | null;
   ungradedCount: number;
   items: ReviewedItem[];
+  attempts: ReviewedAttempt[];
 }
 
 export default function ReviewAssignmentPage() {
@@ -127,6 +136,34 @@ export default function ReviewAssignmentPage() {
         <p className="text-sm text-muted-foreground">
           {review.attemptId ? t('ungraded_only', { count: review.ungradedCount }) : t('no_attempt')}
         </p>
+      )}
+
+      {/* A retake is its own attempt with its own score (R5/R19), so the review can be read per
+          attempt instead of only ever showing the latest one. */}
+      {review.attempts.length > 1 && (
+        <nav className="flex flex-wrap gap-2 text-sm" aria-label={t('attempts')}>
+          {review.attempts.map((attempt, index) => {
+            const isCurrent = attempt.attemptId === review.attemptId;
+            return (
+              <Link
+                key={attempt.attemptId}
+                href={`/app/assignments/${id}/review?attemptId=${attempt.attemptId}`}
+                aria-current={isCurrent ? 'page' : undefined}
+                className={`rounded-full border px-3 py-1 ${
+                  isCurrent ? 'border-foreground font-medium' : 'text-muted-foreground'
+                }`}
+              >
+                {t('attempt_n', { n: review.attempts.length - index })} ·{' '}
+                {attempt.score
+                  ? t('attempt_score', {
+                      earned: attempt.score.earned,
+                      possible: attempt.score.possible,
+                    })
+                  : t('attempt_ungraded', { count: attempt.ungradedCount })}
+              </Link>
+            );
+          })}
+        </nav>
       )}
 
       <div className="space-y-4">

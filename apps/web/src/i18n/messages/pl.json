@@ -3177,7 +3177,13 @@
     "no_attempt": "Nie wysłałeś żadnej próby. Odpowiedzi są widoczne, bo kartkówka jest zakończona.",
     "model_answer": "Odpowiedź wzorcowa",
     "model_answer_not_captured": "Odpowiedź wzorcowa nie została zapisana w opublikowanej wersji tego pytania.",
-    "ungraded_only": "{count, plural, one {Oddano jedno pytanie otwarte — nie jest jeszcze ocenione, więc nie ma wyniku punktowego.} few {Oddano # pytania otwarte — nie są jeszcze ocenione, więc nie ma wyniku punktowego.} many {Oddano # pytań otwartych — nie są jeszcze ocenione, więc nie ma wyniku punktowego.} other {Oddano # pytania otwarte — nie są jeszcze ocenione, więc nie ma wyniku punktowego.}}"
+    "ungraded_only": "{count, plural, one {Oddano jedno pytanie otwarte — nie jest jeszcze ocenione, więc nie ma wyniku punktowego.} few {Oddano # pytania otwarte — nie są jeszcze ocenione, więc nie ma wyniku punktowego.} many {Oddano # pytań otwartych — nie są jeszcze ocenione, więc nie ma wyniku punktowego.} other {Oddano # pytania otwarte — nie są jeszcze ocenione, więc nie ma wyniku punktowego.}}",
+    "attempts": "Podejścia",
+    "attempt_number": "Podejście {number}",
+    "ungraded_badge": "{count} bez oceny",
+    "attempt_n": "Podejście {n}",
+    "attempt_score": "{earned}/{possible}",
+    "attempt_ungraded": "{count, plural, one {# bez oceny} few {# bez oceny} many {# bez oceny} other {# bez oceny}}"
   },
   "AppQuizTakingPage": {
     "loading": "Ładowanie…",

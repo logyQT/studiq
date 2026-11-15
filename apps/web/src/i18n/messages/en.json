@@ -3196,7 +3196,13 @@
     "no_attempt": "You did not submit an attempt. The answers are shown because the assessment is closed.",
     "model_answer": "Model answer",
     "model_answer_not_captured": "The model answer was not captured in the published version of this question.",
-    "ungraded_only": "{count, plural, one {You submitted one open question — it is not graded yet, so there is no score.} other {You submitted # open questions — they are not graded yet, so there is no score.}}"
+    "ungraded_only": "{count, plural, one {You submitted one open question — it is not graded yet, so there is no score.} other {You submitted # open questions — they are not graded yet, so there is no score.}}",
+    "attempts": "Attempts",
+    "attempt_number": "Attempt {number}",
+    "ungraded_badge": "{count} ungraded",
+    "attempt_n": "Attempt {n}",
+    "attempt_score": "{earned}/{possible}",
+    "attempt_ungraded": "{count, plural, one {# ungraded} other {# ungraded}}"
   },
   "AppQuizTakingPage": {
     "loading": "Loading…",
