@@ -1,5 +1,5 @@
 -- ==========================================
--- Migration: 20261115130000
+-- Migration: 20261115150000
 -- Description: topics gained no `updated_at`, so the three collection lists
 -- could not offer the same sort orders: decks and question banks have
 -- "recently updated", topics only "newest/oldest". Add the column, backfill
