@@ -25,6 +25,8 @@ interface AssignmentDetail {
   shuffle_answers: boolean;
   show_results: boolean;
   max_attempts: number;
+  attempt_item_count: number | null;
+  allow_same_item_retake: boolean;
   passing_score: number | null;
 }
 
@@ -73,6 +75,8 @@ export default function EditAssignmentClient() {
     shuffleAnswers: assignment.shuffle_answers,
     showResults: assignment.show_results,
     maxAttempts: assignment.max_attempts.toString(),
+    attemptItemCount: assignment.attempt_item_count?.toString() ?? '',
+    allowSameItemRetake: assignment.allow_same_item_retake,
     passingScore: assignment.passing_score?.toString() ?? '',
   };
 

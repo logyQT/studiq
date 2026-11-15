@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import {
+  type AssignmentLink,
   ASSIGNMENT_QUESTION_COLUMNS,
   readAssignmentLinks,
   readAssignmentSnapshotKeys,
@@ -9,6 +10,12 @@ import {
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
+import {
+  attemptHistory,
+  drawSample,
+  sampleServed,
+  sampleUnseen,
+} from '@studiq/server/lib/attempt-sample';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
 import {
   ensureClosed,
@@ -186,6 +193,8 @@ export class TeacherAssignmentService {
       shuffle_answers: data.shuffleAnswers,
       show_results: data.showResults,
       max_attempts: data.maxAttempts,
+      allow_same_item_retake: data.allowSameItemRetake,
+      attempt_item_count: data.attemptItemCount,
       passing_score: data.passingScore,
     };
 
@@ -323,6 +332,12 @@ export class TeacherAssignmentService {
     if (data.shuffleAnswers !== undefined) updateData.shuffle_answers = data.shuffleAnswers;
     if (data.showResults !== undefined) updateData.show_results = data.showResults;
     if (data.maxAttempts !== undefined) updateData.max_attempts = data.maxAttempts;
+    if (data.allowSameItemRetake !== undefined) {
+      updateData.allow_same_item_retake = data.allowSameItemRetake;
+    }
+    if (data.attemptItemCount !== undefined) {
+      updateData.attempt_item_count = data.attemptItemCount;
+    }
     if (data.passingScore !== undefined) updateData.passing_score = data.passingScore;
     updateData.updated_at = new Date().toISOString();
 
@@ -1288,17 +1303,26 @@ export class TeacherAssignmentService {
 
     const completedCount = attempts.filter((a) => a.completed_at || a.expired_at).length;
 
+    // The budget is a product state, not a throttle: the student (and the UI) must be able to tell
+    // "you are out of attempts" from "slow down" (R19).
     if (completedCount >= assignment.max_attempts) {
-      return failure('RATE_LIMITED');
+      return failure('NO_ATTEMPTS_LEFT');
     }
 
     const links = await readAssignmentLinks(id);
     if (isFailure(links)) return links;
     if (links.data.length === 0) return failure('NOT_FOUND');
 
+    const sample = await this.drawAttemptSample(id, ctx.userId, links.data, {
+      isRetake: attempts.length > 0,
+      allowSameItemRetake: assignment.allow_same_item_retake,
+      itemCount: assignment.attempt_item_count ?? null,
+    });
+    if (isFailure(sample)) return sample;
+
     const orderedQuestions = assignment.shuffle_questions
-      ? [...links.data].toSorted(() => Math.random() - 0.5)
-      : [...links.data];
+      ? [...sample.data].toSorted(() => Math.random() - 0.5)
+      : [...sample.data];
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
@@ -1371,6 +1395,43 @@ export class TeacherAssignmentService {
       ...toAttemptPayload(attempt),
       questions: payloads,
     });
+  }
+
+  /**
+   * The items one attempt serves (R6/R7). The pool is everything the assessment binds; the draw is
+   * `attempt_item_count` of it (all of it when the teacher set no count).
+   *
+   * - First attempt: a draw from the pool.
+   * - Retake, default: a draw from the items this student has **not** seen — served, answered or
+   *   key-rendered. An exhausted inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse.
+   * - Retake, `allow_same_item_retake`: the items the earlier attempt was served, which is what
+   *   "same item" means. A prior attempt with no served rows is a corrupt state, and serving the
+   *   pool is the honest repair rather than a refusal.
+   *
+   * Both retake forms happen inside the window: this method already refused everything outside it.
+   */
+  private async drawAttemptSample(
+    id: string,
+    studentId: string,
+    links: AssignmentLink[],
+    options: { isRetake: boolean; allowSameItemRetake: boolean; itemCount: number | null },
+  ): Promise<ServiceResult<AssignmentLink[]>> {
+    if (!options.isRetake) return success(drawSample(links, options.itemCount));
+
+    const candidates = [
+      ...new Set(links.flatMap((link) => (link.question_id ? [link.question_id] : []))),
+    ];
+    const history = await attemptHistory(studentId, id, candidates);
+    if (isFailure(history)) return history;
+
+    if (options.allowSameItemRetake) {
+      const same = sampleServed(links, history.data.served);
+      return success(drawSample(same.length > 0 ? same : links, options.itemCount));
+    }
+
+    const fresh = sampleUnseen(links, history.data.seen);
+    if (fresh.length === 0) return failure('NO_UNSEEN_ITEMS');
+    return success(drawSample(fresh, options.itemCount));
   }
 
   /**

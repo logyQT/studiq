@@ -242,6 +242,9 @@ describe('Assessment lifecycle: cancel, extend, override (#1174)', () => {
             deadline: FUTURE(),
             showResults: true,
             maxAttempts: 2,
+            // The second attempt here only needs to be *running* for the cancel to expire it; the
+            // retake sample has its own suite, so this fixture serves the same item twice.
+            allowSameItemRetake: true,
           }),
         },
         cookie(),

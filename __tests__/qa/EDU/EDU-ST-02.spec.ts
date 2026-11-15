@@ -259,6 +259,9 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
     quizId: quiz.id,
     showResults: true,
     maxAttempts: ATTEMPTS,
+    // The stats need three *completed* attempts over the same three items; a fresh-sample retake
+    // would have nothing left to draw (#1174, R6), so this is the flagged same-item drill.
+    allowSameItemRetake: true,
     shuffleQuestions: false,
     shuffleAnswers: false,
   });
