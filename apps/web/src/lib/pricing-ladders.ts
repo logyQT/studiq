@@ -12,6 +12,16 @@ export function isRecommendedPlan(key: string): boolean {
   return RECOMMENDED_PLAN_KEYS.includes(key);
 }
 
+/**
+ * The message key of a plan's own action. A zero price is the free action every
+ * free tier shares; a paid plan names itself, so the label cannot borrow another
+ * tier's verb. Both the price list and the dashboard card ask this, so a new plan
+ * needs a `cta_<key>` message and nothing else.
+ */
+export function ctaMessageKey(plan: Pick<PlanInfo, 'key' | 'priceMonthly'>): string {
+  return plan.priceMonthly === 0 ? 'cta_free' : `cta_${plan.key}`;
+}
+
 export type PlanLadders = {
   individual: {
     student: PlanInfo[];

@@ -6,51 +6,20 @@ import { Check, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale } from 'next-intl';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
+import { ctaMessageKey, isRecommendedPlan } from '@/lib/pricing-ladders';
 import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
-
-const PLAN_ID_MAP: Record<string, string | null> = {
-  base: null,
-  lite: null,
-  launch: null,
-  spark: 'spark',
-  ace: 'ace',
-  pro: 'pro',
-  guide: 'guide',
-  creator: 'creator',
-  master: 'master',
-  team: 'team',
-  hub: 'hub',
-  campus: 'campus',
-};
-
-const CTA_KEY_MAP: Record<string, string> = {
-  base: 'cta_free',
-  spark: 'cta_spark',
-  ace: 'cta_ace',
-  pro: 'cta_pro',
-  lite: 'cta_free',
-  guide: 'cta_guide',
-  creator: 'cta_creator',
-  master: 'cta_master',
-  launch: 'cta_free',
-  team: 'cta_team',
-  hub: 'cta_hub',
-  campus: 'cta_campus',
-};
 
 export function PlanCard({
   plan,
   isCurrentPlan,
   user,
   t,
-  accountType,
   orgId,
 }: {
   plan: PlanInfo;
   isCurrentPlan: boolean;
   user: unknown;
   t: PricingTranslator;
-  accountType: string;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
 }) {
@@ -59,20 +28,16 @@ export function PlanCard({
   const noteKey = `plan_${plan.key}_note`;
   const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
   const note = t.has(noteKey) ? t(noteKey) : null;
-  const ctaKey = CTA_KEY_MAP[plan.key];
-  const ctaLabel = ctaKey && t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
-  const popular =
-    accountType === 'student'
-      ? plan.key === 'ace'
-      : accountType === 'educator'
-        ? plan.key === 'creator'
-        : plan.key === 'hub';
+  const ctaKey = ctaMessageKey(plan);
+  const ctaLabel = t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
+  const recommended = isRecommendedPlan(plan.key);
+  const paid = plan.priceMonthly > 0;
 
   return (
     <Card
-      className={`flex flex-col relative ${popular ? 'border-primary shadow-lg' : 'border-border/50'}`}
+      className={`flex flex-col relative ${recommended ? 'border-primary shadow-lg' : 'border-border/50'}`}
     >
-      {popular && (
+      {recommended && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
           <Sparkles className="size-3 mr-1" />
           {t('recommended_badge')}
@@ -119,16 +84,16 @@ export function PlanCard({
           <Button className="w-full" variant="outline" asChild>
             <Link href="/contact">{ctaLabel}</Link>
           </Button>
-        ) : user && PLAN_ID_MAP[plan.key] ? (
+        ) : user && paid ? (
           <CheckoutButton
-            planKey={PLAN_ID_MAP[plan.key]!}
+            planKey={plan.key}
             orgId={plan.forAccountType === 'manager' ? orgId : undefined}
             className="w-full"
           >
             {ctaLabel}
           </CheckoutButton>
         ) : (
-          <Button className="w-full" variant={popular ? 'default' : 'outline'} asChild>
+          <Button className="w-full" variant={recommended ? 'default' : 'outline'} asChild>
             <Link href={user ? '/app' : '/register'}>{ctaLabel}</Link>
           </Button>
         )}

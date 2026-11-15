@@ -47,7 +47,6 @@ export function UpgradePlans({ audience, currentPlanKey, orgId }: UpgradePlansPr
               isCurrentPlan={plan.key === currentPlanKey}
               user={user}
               t={pt}
-              accountType={audience}
               orgId={orgId}
             />
           ))}

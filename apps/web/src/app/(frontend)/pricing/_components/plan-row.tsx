@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { formatPlanPrice } from '@/lib/landing-pricing';
-import { isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
 import { cn } from '@/lib/utils';
 
 interface PlanRowProps {
@@ -31,7 +31,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const contactOnly = plan.key === 'campus';
   const descKey = `plan_${plan.key}_desc`;
   const noteKey = `plan_${plan.key}_note`;
-  const ctaKey = `cta_${plan.key}`;
+  const ctaKey = ctaMessageKey(plan);
   const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
   const note = t.has(noteKey) ? t(noteKey) : null;
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
