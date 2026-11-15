@@ -132,6 +132,24 @@ built as a marketing-local component (§Components), not a new `Button` variant.
 default `Button` stays cobalt, which is correct for the product surfaces. Cobalt and
 `signal` never both act as "the" button on the same screen.
 
+**`/register` gives the action to cobalt and puts the accent on the panel.** That page's only
+action sits beside a full-height cobalt panel, where a `signal` button would put two saturated
+fills at button scale next to each other — the "which one do I press" problem the palette
+exists to avoid. The CTA is therefore `--primary` (`CtaButton tone="primary"`: paper on cobalt
+7.15:1 in light, ink on cobalt 6.48:1 in dark), and the accent's one appearance on that page is
+the sanctioned 2px underline under the word the claim turns on (`ćwiczeniami` / `practice`).
+Measured at 1440: a 264×2px rule, **0.08% of the panel's painted area** and 0.04% of the
+viewport, so the 5% cap is nowhere near it. Against the light panel the rule is **5.62:1**
+(`signal` on `cobalt`); in dark the panel's fill is the _light_ cobalt, where the same rule
+measures **2.12:1**. It ships because it is decoration asserting emphasis rather than
+information — the word itself is `--primary-foreground` at 6.48:1 — and because it is that
+mode's only carrier of the accent, so gating it away would leave one theme with no accent at
+all. `prefers-contrast: more` turns it into `currentColor`, which is the strong underline a
+low-vision visitor needs and the one thing the hue cannot give them. A second accent on the
+panel was rejected: every candidate form (a lime label, lime figures, lime check glyphs) is
+`signal` as text, or a fill whose edge lands at 2.12:1, on light cobalt in dark — and a lime
+fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
+
 ### Retired, with reasons
 
 - **`--secondary` as a violet tint** (`0.94 0.035 265`) — a second brand hue doing no
@@ -148,14 +166,17 @@ default `Button` stays cobalt, which is correct for the product surfaces. Cobalt
 ### The paper surface
 
 The marketing shell is paper: `--background` with two light pools, a 100px edge curl and the
-grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout` only. Product surfaces
-never carry the class, so `/app`, `/edu` and `/manage` stay flat.
+grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout`. `/register`'s form
+column carries it in **dark only** (`dark:bg-paper-grain`): the utility has its own `.dark &`
+block, so the bare class would also lay the light pools and grain on paper, where that column
+stays flat. Product surfaces never carry the class, so `/app`, `/edu` and `/manage` stay flat.
 
 Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
 per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
 pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
 lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
-1.33x the 4.5:1 floor, not a regression.
+1.33x the 4.5:1 floor, not a regression. On `/register`'s grained column the same sampling gives
+15.84 (ink), 7.30 (muted) and 5.52 (placeholder on `dark:bg-input/30`) at 1440×900.
 
 **Creases were studied and rejected.** A fold reads because a sheet is seen at an angle and two
 planes catch directional light differently; a frontal, evenly lit page has no specular event, so
@@ -304,13 +325,13 @@ Marketing components are page-owned. The kit is used only where it is invisible
 (Button semantics, Badge markup). **None of them exist yet**: the table is the build spec
 for the token migration, not a description of current code.
 
-| Component       | Spec                                                                                                                               |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `CtaButton`     | `signal` fill, `ink` text (13.76:1), `rounded-control`, height `2.75rem` (44px), hover = `signal` at 90% opacity. One per screen.  |
-| `Eyebrow`       | Geist Mono, `0.75rem`, uppercase, `0.08em`, `text-primary`. Section labels are identity, so they carry the brand rather than grey. |
-| `SectionHeader` | Eyebrow + H2 + lede. Left-aligned by default.                                                                                      |
-| `ProofStrip`    | Only renders when passed real data. No fallback numbers.                                                                           |
-| `FeatureSplit`  | 7/5 asymmetric text/media. Replaces the equal-card row.                                                                            |
+| Component       | Spec                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CtaButton`     | `signal` fill, `ink` text (13.76:1), `rounded-control`, height `2.75rem` (44px), hover = the fill at 90%. One per screen. `tone="primary"` swaps the fill for cobalt (§Dosage). |
+| `Eyebrow`       | Geist Mono, `0.75rem`, uppercase, `0.08em`, `text-primary`. Section labels are identity, so they carry the brand rather than grey.                                              |
+| `SectionHeader` | Eyebrow + H2 + lede. Left-aligned by default.                                                                                                                                   |
+| `ProofStrip`    | Only renders when passed real data. No fallback numbers.                                                                                                                        |
+| `FeatureSplit`  | 7/5 asymmetric text/media. Replaces the equal-card row.                                                                                                                         |
 
 **A marketing section is not a card grid.** If a section can be expressed as "N equal
 `<Card>`s in a row", it is the kit's default layout wearing a headline, and it is what made

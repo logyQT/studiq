@@ -71,7 +71,9 @@ function tenantTag(): string {
 /** Step 1/2: fill `/register` as an anonymous visitor and select the account type. */
 async function registerAccount(page: Page, registration: Registration): Promise<void> {
   await page.goto('/register');
-  await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.createAccount);
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.createAccount, exact: true }),
+  ).toBeVisible();
 
   await page.getByLabel(COPY.name).fill(registration.name);
   await page.getByLabel(COPY.email).fill(registration.email);
