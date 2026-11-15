@@ -79,6 +79,8 @@ interface AssignmentDetail {
   total_points: number;
   /** R3: this run holds its items from every student in the organisation. */
   seal_org_wide: boolean;
+  /** Written by the durable close (R7/R12); a later clock change does not reopen it. */
+  closed_at: string | null;
   /** Cross-class forecast, computed for a draft only (the composer is the only reader). */
   exposure?: { openItemCount: number; outsideStudentCount: number };
   created_at: string;
@@ -259,6 +261,7 @@ export default function AssignmentDetailClient() {
   }, [assignment?.deadline, assignment?.start_time]);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
 
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
@@ -273,6 +276,11 @@ export default function AssignmentDetailClient() {
       const res = await fetch(`/api/v1/teacher/assignments/${id}/unpublish`, { method: 'POST' });
       if (!res.ok) throw new Error('Unpublish failed');
     },
+    invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
+  });
+
+  const closeMutation = useApiMutation<unknown, void>({
+    mutationFn: () => apiPost<unknown>(`/api/v1/teacher/assignments/${id}/close`, undefined),
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
 
@@ -370,6 +378,18 @@ export default function AssignmentDetailClient() {
     } catch (error) {
       toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null));
     }
+  };
+
+  const handleClose = async () => {
+    try {
+      await closeMutation.mutateAsync(undefined);
+      void refetch();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? translateErrorCode(tErrors, error.code) : t('close_failed'),
+      );
+    }
+    setCloseOpen(false);
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -507,6 +527,10 @@ export default function AssignmentDetailClient() {
   const isPublished = assignment.status === 'published';
   const isLiveRun =
     isPublished && (!assignment.start_time || new Date(assignment.start_time) <= new Date());
+  const isClosed =
+    isPublished &&
+    (!!assignment.closed_at ||
+      (!!assignment.deadline && new Date(assignment.deadline) <= new Date()));
   const hasTargets = targetGroupIds.length > 0 || targetStudentIds.length > 0;
   const questions = localQuestions ?? [];
   const exposure = assignment.exposure;
@@ -532,12 +556,14 @@ export default function AssignmentDetailClient() {
             <h1 className="text-2xl font-bold tracking-tight">{assignment.title}</h1>
             <span
               className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                isPublished
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                isClosed
+                  ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                  : isPublished
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
               }`}
             >
-              {isPublished ? t('published') : t('draft')}
+              {isClosed ? t('closed') : isPublished ? t('published') : t('draft')}
             </span>
             {assignment.quiz_id && (
               <Link
@@ -587,6 +613,11 @@ export default function AssignmentDetailClient() {
               title={isLiveRun ? t('withdraw_live_hint') : undefined}
             >
               {unpublishMutation.isPending ? t('unpublishing') : t('unpublish')}
+            </Button>
+          )}
+          {isPublished && isLiveRun && !isClosed && (
+            <Button variant="outline" size="sm" onClick={() => setCloseOpen(true)}>
+              {t('close')}
             </Button>
           )}
         </div>
@@ -1064,6 +1095,30 @@ export default function AssignmentDetailClient() {
           </CardContent>
         </Card>
       )}
+      <AlertDialog open={closeOpen} onOpenChange={setCloseOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('close_confirm_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('close_confirm_desc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closeMutation.isPending}>
+              {t('common_cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={closeMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleClose();
+              }}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {closeMutation.isPending ? t('closing') : t('close')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

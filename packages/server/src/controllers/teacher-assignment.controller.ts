@@ -76,6 +76,12 @@ export class TeacherAssignmentController {
     return controllerResponse.success(result.data);
   }
 
+  async close(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.service.close(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
   async publish(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = PublishAssignmentSchema.safeParse(body);
     if (!parsed.success) {

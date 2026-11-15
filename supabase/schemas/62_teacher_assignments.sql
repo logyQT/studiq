@@ -23,12 +23,33 @@ CREATE TABLE public.teacher_assignments (
   passing_score     int,
   question_count    int NOT NULL DEFAULT 0,
   total_points      int NOT NULL DEFAULT 0,
+  -- Written by the natural expiry at `deadline` or by an explicit close; never cleared (R7/R12).
+  closed_at         timestamptz,
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now()
 );
 
 CREATE INDEX idx_teacher_assignments_org ON public.teacher_assignments(organization_id, created_by);
 CREATE INDEX idx_teacher_assignments_status ON public.teacher_assignments(status);
+
+-- The close is once: once `closed_at` is written, no later update can clear or move it.
+CREATE OR REPLACE FUNCTION public.teacher_assignments_close_once()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF OLD.closed_at IS NOT NULL AND NEW.closed_at IS DISTINCT FROM OLD.closed_at THEN
+    RAISE EXCEPTION 'teacher_assignments.closed_at is durable: a closed assessment cannot be reopened'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_teacher_assignments_close_once
+  BEFORE UPDATE ON public.teacher_assignments
+  FOR EACH ROW EXECUTE FUNCTION public.teacher_assignments_close_once();
 
 CREATE TABLE public.assignment_questions (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),

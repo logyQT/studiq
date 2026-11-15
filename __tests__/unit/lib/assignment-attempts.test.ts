@@ -17,6 +17,7 @@ function attempt(overrides: Partial<AttemptSummary> = {}): AttemptSummary {
     total_questions: 2,
     total_points: 2,
     completed_at: '2026-07-13T01:00:00Z',
+    expired_at: null,
     started_at: '2026-07-13T00:00:00Z',
     ...overrides,
   };

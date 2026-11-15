@@ -42,6 +42,12 @@ function readImageUrl(body: unknown): string | undefined {
   return typeof data.imageUrl === 'string' ? data.imageUrl : undefined;
 }
 
+/**
+ * The close ends the attempt at the deadline (R7), so the timer submits a few seconds earlier: a
+ * request that lands after the boundary is refused by the server, not scored.
+ */
+const SUBMIT_LEAD_MS = 5_000;
+
 export default function TakeAssignmentPage() {
   const t = useTranslations('AppAssignmentTakePage');
   const { id } = useParams<{ id: string }>();
@@ -84,9 +90,12 @@ export default function TakeAssignmentPage() {
   });
 
   useEffect(() => {
-    // 403 = results withheld, 404 = attempt gone. Both are terminal here; the
-    // detail page already renders „Podsumowanie niedostępne”.
-    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
+    // 403 = results withheld, 404 = attempt gone, 409 = the attempt expired at close. All three are
+    // terminal here; the detail page already renders the state.
+    if (
+      error instanceof ApiError &&
+      (error.status === 403 || error.status === 404 || error.status === 409)
+    ) {
       router.replace(`/app/assignments/${id}`);
     }
   }, [error, id, router]);
@@ -177,14 +186,30 @@ export default function TakeAssignmentPage() {
   const handleSubmit = useCallback(async () => {
     try {
       await performSubmit();
-    } catch {
+    } catch (cause) {
+      // The close wins: an attempt that expired is not submitted, and saying so beats a generic
+      // failure toast that invites the student to keep trying.
+      if (
+        cause instanceof ApiError &&
+        (cause.code === 'ATTEMPT_EXPIRED' || cause.code === 'ATTEMPTS_CLOSED')
+      ) {
+        toast.error(t('attempt_closed'));
+        router.replace(`/app/assignments/${id}`);
+        return;
+      }
       toast.error(t('submit_failed'));
     }
-  }, [performSubmit, t]);
+  }, [performSubmit, t, id, router]);
 
   useEffect(() => {
-    if (remainingMs === 0 && attempt && !submitting && !autoSubmitted.current) {
-      // Auto-submit on timeout only once: a failed attempt must not loop.
+    if (
+      remainingMs !== null &&
+      remainingMs <= SUBMIT_LEAD_MS &&
+      attempt &&
+      !submitting &&
+      !autoSubmitted.current
+    ) {
+      // Auto-submit before the timeout only once: a failed attempt must not loop.
       autoSubmitted.current = true;
       void handleSubmit();
     }
