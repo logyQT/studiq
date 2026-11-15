@@ -29,7 +29,8 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *    trailing link falls back to the browser's 1 px auto outline).
  * 2. Enter in the password field submits the form — a real sign-in, not a
  *    client-only no-op — and lands on the student dashboard.
- * 3. `/register`: Tab reaches name → e-mail → account type → password → submit.
+ * 3. `/register`: the panel's wordmark and the „Zaloguj się” exit are the first two
+ *    stops, then Tab reaches name → e-mail → account type → password → submit.
  *    Space opens the account-type listbox, Esc closes it without a selection and
  *    returns focus to the trigger, Space again + ArrowDown + Enter selects an option.
  * 4. Enter in the register form submits it: with empty required fields the browser
@@ -224,10 +225,18 @@ test.describe('NFR-05 — keyboard operability', () => {
     const password = page.locator('input#password');
     const accountType = page.locator('button[data-slot="select-trigger"]');
     const options = page.getByRole('option');
+    const wordmark = page.getByRole('link', { name: 'StudiQ', exact: true });
+    const signIn = page.getByRole('link', { name: 'Zaloguj się', exact: true });
 
     await expect(name).toBeVisible();
 
+    // The panel's wordmark and the „Zaloguj się” exit come before the form, so the
+    // walk starts outside it; the form is still reached by keyboard from there.
     await page.keyboard.press('Tab');
+    await expect(wordmark).toBeFocused();
+    expect(await tabTo(page, signIn, { label: 'sign-in link' })).toBeLessThanOrEqual(2);
+    await expect(signIn).toBeFocused();
+    expect(await tabTo(page, name, { label: 'name field' })).toBeLessThanOrEqual(2);
     await expect(name).toBeFocused();
     await expectVisibleFocus(page, 'name field');
 
