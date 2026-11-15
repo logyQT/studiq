@@ -196,4 +196,55 @@ test.describe('PUB-01 — landing page for an anonymous visitor', () => {
 
     errors.expectClean();
   });
+
+  /**
+   * The row is the answer's hit target, not the 16px radio: the label contains the
+   * control and the browser forwards a click on the row — padding included — to it.
+   * Put the radio beside the row instead and the border and the padding go dead
+   * while the component still renders, which no type or unit test here can see.
+   *
+   * The point is therefore off-centre, inside the row's own `p-3` padding and clear
+   * of both the radio and the option's text, so a pass cannot come from hitting the
+   * control. The answer is read back from the radio's own state, not from the row
+   * that was clicked, and the footer and the rating card stay untouched: this is the
+   * answer row on its own, not the rating flow.
+   */
+  test("clicking an option row's padding selects that answer", async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const group = page.locator('#hero [data-slot="radio-group"]');
+    await expect(group, 'the hero preview asks one multiple-choice question').toHaveCount(1);
+
+    const row = group.locator('label').nth(1);
+    const radio = group.getByRole('radio').nth(1);
+    await expect(radio, 'the option starts unselected').not.toBeChecked();
+
+    await row.scrollIntoViewIfNeeded();
+    const rowBox = await row.boundingBox();
+    const radioBox = await radio.boundingBox();
+    const textBox = await row.locator('span').first().boundingBox();
+    expect(rowBox, 'the option row has a box').not.toBeNull();
+    expect(radioBox, 'the radio has a box').not.toBeNull();
+    expect(textBox, 'the option text has a box').not.toBeNull();
+
+    // 5px in from the row's border is still inside its 12px padding.
+    const point = { x: rowBox!.x + rowBox!.width - 5, y: rowBox!.y + rowBox!.height - 5 };
+    expect(point.x, 'the click lands right of the radio').toBeGreaterThan(
+      radioBox!.x + radioBox!.width,
+    );
+    expect(point.y, "the click lands below the option's text").toBeGreaterThan(
+      textBox!.y + textBox!.height,
+    );
+
+    await page.mouse.click(point.x, point.y);
+
+    await expect(radio, "the row's padding selected its radio").toBeChecked();
+    await expect(
+      group.getByRole('radio', { checked: true }),
+      'exactly one option in the group is selected',
+    ).toHaveCount(1);
+
+    errors.expectClean();
+  });
 });
