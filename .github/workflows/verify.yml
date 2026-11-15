@@ -165,14 +165,24 @@ jobs:
           # inference server, which no shard has. Two lists: the files that belong to
           # it alone (they must not read as "an area the shard list does not know",
           # which starts every shard), and the files that can change what it proves.
+          # The two case documents are own files too: an edit to one is an edit to
+          # what the suite asserts, and the STU shard has neither case.
           AI_OWN = (
               "__tests__/qa/AI/", "scripts/fake-llm/",
               "__tests__/qa/profiles/STU-47.json", "__tests__/qa/profiles/STU-48.json",
+              "qa/cases/STU-47.md", "qa/cases/STU-48.md",
           )
+          # The surface includes the two pages the specs drive, the error/reset
+          # helpers the chat is made of and the usage controller behind the counter
+          # STU-47 and STU-48 assert — without them a regression there runs four
+          # shards that hold no AI case and skips `ai-suite`.
           AI_SURFACE = AI_OWN + (
+              "apps/web/src/app/(frontend)/app/ai/", "apps/web/src/app/(frontend)/edu/ai/",
               "apps/web/src/components/ai/", "apps/web/src/hooks/use-ai-chat.ts",
-              "apps/web/src/app/(backend)/api/v1/ai/", "apps/web/src/i18n/",
+              "apps/web/src/lib/ai-chat-", "apps/web/src/app/(backend)/api/v1/ai/",
+              "apps/web/src/i18n/",
               "packages/server/src/agents/", "packages/server/src/ai/",
+              "packages/server/src/controllers/ai-",
               "packages/server/src/lib/conversation-context.ts",
               "packages/server/src/services/ai-", "packages/server/src/services/limits",
               "__tests__/qa/fixtures/", "__tests__/qa/playwright.qa.config.ts",
