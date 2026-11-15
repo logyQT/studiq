@@ -6,13 +6,13 @@ import { withPublicTracing } from '@studiq/server/lib/with-public-tracing';
 import type { NextRequest } from 'next/server';
 
 /**
- * Stripe webhook (#662 §3.4). Excluded from the proxy's catch-all auth rule
- * because Stripe cannot send a Supabase session.
+ * Stripe webhook (#662 §3.4). Declared public in `PUBLIC_API`: Stripe cannot
+ * send a Supabase session, and the signature is the credential.
  *
  * The two drivers have deliberately different contracts:
  *
  * - `mock`: called by our own checkout page, so it authenticates the caller and
- *   only acts on that caller's own account.
+ *   only acts on that caller's own account — do not drop this `withAuth`.
  * - `stripe`: public, proved by the `stripe-signature` header over the **raw**
  *   body. `req.json()` must never run before verification.
  */

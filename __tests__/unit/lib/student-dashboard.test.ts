@@ -40,6 +40,7 @@ const attempt = (completedAt: string | null) => ({
   total_points: 5,
   started_at: '2026-10-26T10:00:00Z',
   completed_at: completedAt,
+  expired_at: null,
 });
 
 function assignment(

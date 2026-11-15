@@ -34,6 +34,7 @@ import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { GET as studentStatsGet } from '@/app/(backend)/api/v1/stats/student/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
 import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
+import { POST as closePost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/close/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 
@@ -55,6 +56,7 @@ type SubmitBody = { data: { score: number | null } };
 type DetailBody = {
   data: {
     show_results: boolean;
+    review_unlocked: boolean;
     max_attempts: number;
     attempts_used: number;
     attempt: AttemptSummary;
@@ -74,7 +76,10 @@ type AssignmentRow = {
 type AttemptListRow = { id: string; completed_at: string | null; score: number | null };
 
 /** `GET /api/v1/quiz/:attemptId` — the review payload. */
-type ReviewBody = { data: { assignment_id: string; completed_at: string | null } };
+type ReviewBody = {
+  data?: { assignment_id: string; completed_at: string | null };
+  error?: string;
+};
 
 /** The same review payload once submitted (questions + answers are revealed). */
 type SubmittedReviewBody = {
@@ -175,6 +180,19 @@ describe(`Assignment Attempts Integration`, () => {
     const submitRes = await attemptPost(request, { params });
     expect(submitRes.status).toBe(200);
     return json<SubmitBody>(submitRes);
+  }
+
+  /** Closes the shared run through the staff route: the review unlocks at that instant (R5). */
+  async function closeAssignment(): Promise<void> {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${assignmentId}/close`,
+      { id: assignmentId },
+      { method: 'POST' },
+      { active_org_id: teacher.orgId ?? '' },
+    );
+    const response = await closePost(request, { params });
+    expect(response.status, await response.clone().text()).toBe(200);
   }
 
   async function detail(): Promise<{ status: number; body: DetailBody }> {
@@ -488,43 +506,6 @@ describe(`Assignment Attempts Integration`, () => {
     expect(row.last_completed_attempt.id).toBe(attempt1);
   });
 
-  it('the detail last completed attempt resolves to the review payload (#175)', async () => {
-    await setMaxAttempts(2);
-    // The review payload is only served when the teacher shares results.
-    await setShowResults(true);
-    mockUser(student.user);
-
-    const started = await startAs(student.user);
-    expect(started.status).toBe(200);
-    const submittedAttemptId = started.body.data.id;
-    await submitAttempt(started.body);
-
-    // The review page without ?attemptId falls back to this row.
-    const detailResult = await detail();
-    expect(detailResult.status).toBe(200);
-    expect(detailResult.body.data.last_completed_attempt.id).toBe(submittedAttemptId);
-
-    mockUser(student.user);
-    const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/quiz/${submittedAttemptId}`,
-      { attemptId: submittedAttemptId },
-    );
-    const response = await attemptGet(request, { params });
-    const body = await json<SubmittedReviewBody>(response);
-
-    expect(response.status).toBe(200);
-    expect(body.data.assignment_id).toBe(assignmentId);
-    expect(body.data.completed_at).not.toBeNull();
-    expect(body.data.questions).toHaveLength(2);
-    expect(Object.keys(body.data.answers).length).toBeGreaterThan(0);
-    for (const question of body.data.questions) {
-      expect(question.question_answers.length).toBeGreaterThan(0);
-      for (const option of question.question_answers) {
-        expect(typeof option.is_correct).toBe('boolean');
-      }
-    }
-  });
-
   it('starts the second attempt once the first is submitted (#372)', async () => {
     await setMaxAttempts(2);
     mockUser(student.user);
@@ -611,36 +592,6 @@ describe(`Assignment Attempts Integration`, () => {
     expect(stats.avgScore).toBeNull();
     expect(stats.bestScore).toBeNull();
     expect(stats.attemptsOverTime).toEqual([]);
-  });
-
-  it('reveals the score and review once show_results is on (#374)', async () => {
-    await setShowResults(false);
-    mockUser(student.user);
-
-    const started = await startAs(student.user);
-    const attemptId = started.body.data.id;
-    await submitAttempt(started.body);
-
-    await setShowResults(true);
-
-    const detailResult = await detail();
-    expect(detailResult.status).toBe(200);
-    expect(detailResult.body.data.show_results).toBe(true);
-    expect(typeof detailResult.body.data.last_completed_attempt.score).toBe('number');
-
-    // The same history row now carries the real score.
-    const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
-    expect(historyRow).toBeDefined();
-    expect(typeof historyRow?.score).toBe('number');
-
-    const visibleReview = await review(attemptId);
-    expect(visibleReview.status).toBe(200);
-    expect(visibleReview.body.data.assignment_id).toBe(assignmentId);
-    expect(visibleReview.body.data.completed_at).not.toBeNull();
-
-    const stats = await studentStats();
-    expect(stats.totalQuizzes).toBe(1);
-    expect(stats.attemptsOverTime).toHaveLength(1);
   });
 
   /**
@@ -812,5 +763,51 @@ describe(`Assignment Attempts Integration`, () => {
       .select('id')
       .eq('attempt_id', attemptId);
     expect(stored).toHaveLength(101);
+  });
+  it('locks the review while the window is open and reveals it at the close (#175/#374)', async () => {
+    await setMaxAttempts(2);
+    // The teacher opted in to results; R5 decides *when* they become readable, not whether.
+    await setShowResults(true);
+    mockUser(student.user);
+
+    const started = await startAs(student.user);
+    expect(started.status).toBe(200);
+    const submittedAttemptId = started.body.data.id;
+    await submitAttempt(started.body);
+
+    const detailResult = await detail();
+    expect(detailResult.status).toBe(200);
+    expect(detailResult.body.data.last_completed_attempt.id).toBe(submittedAttemptId);
+    expect(detailResult.body.data.review_unlocked, 'locked while the window is open').toBe(false);
+    // The score is already visible; only the key is held back (R5).
+    expect(typeof detailResult.body.data.last_completed_attempt.score).toBe('number');
+
+    const lockedReview = await review(submittedAttemptId);
+    expect(lockedReview.status, 'show_results on is not enough before the close').toBe(403);
+    expect(lockedReview.body.error).toBe('REVIEW_LOCKED');
+
+    // The close is what unlocks it, for the whole cohort (R5).
+    await closeAssignment();
+    expect((await detail()).body.data.review_unlocked).toBe(true);
+
+    mockUser(student.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${submittedAttemptId}`,
+      { attemptId: submittedAttemptId },
+    );
+    const response = await attemptGet(request, { params });
+    const body = await json<SubmittedReviewBody>(response);
+
+    expect(response.status).toBe(200);
+    expect(body.data.assignment_id).toBe(assignmentId);
+    expect(body.data.completed_at).not.toBeNull();
+    expect(body.data.questions).toHaveLength(2);
+    expect(Object.keys(body.data.answers).length).toBeGreaterThan(0);
+    for (const question of body.data.questions) {
+      expect(question.question_answers.length).toBeGreaterThan(0);
+      for (const option of question.question_answers) {
+        expect(typeof option.is_correct).toBe('boolean');
+      }
+    }
   });
 });

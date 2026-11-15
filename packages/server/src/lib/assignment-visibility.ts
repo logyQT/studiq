@@ -1,3 +1,4 @@
+import { isAssessmentClosed } from '@studiq/server/lib/assessment-close';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -44,4 +45,22 @@ export async function hiddenResultAssignmentIds(
       .map((assignment) => assignment.id),
   );
   return success(new Set(ids.filter((id) => !visible.has(id))));
+}
+
+/**
+ * Whether a review exists at all and whether it may be read now (#1171, R5).
+ *
+ * `hidden` — the teacher never enabled results, so there is no review at any time (not a lock).
+ * `locked` — results are on, but the assessment has not closed yet: the key is not out.
+ * `open`   — the assessment closed; the whole cohort may read the review.
+ */
+export function reviewState(
+  assignment:
+    | { show_results?: boolean | null; closed_at?: string | null; deadline?: string | null }
+    | null
+    | undefined,
+  now: Date = new Date(),
+): 'hidden' | 'locked' | 'open' {
+  if (!assignment || resultsHidden(assignment)) return 'hidden';
+  return isAssessmentClosed(assignment, now) ? 'open' : 'locked';
 }

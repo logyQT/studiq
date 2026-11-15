@@ -11,6 +11,8 @@ export interface AttemptSummary {
   total_questions: number;
   total_points: number | null;
   completed_at: string | null;
+  /** Set when the assessment closed while this attempt was still running (R7). */
+  expired_at: string | null;
   started_at: string;
 }
 
@@ -21,9 +23,9 @@ export interface StudentAssignmentAttemptState {
   last_completed_attempt: AttemptSummary | null;
 }
 
-/** The running attempt, if any — a completed attempt is not resumable. */
+/** The running attempt, if any — a completed or expired attempt is not resumable. */
 export function openAttempt(a: StudentAssignmentAttemptState): AttemptSummary | null {
-  return a.attempt?.completed_at === null ? a.attempt : null;
+  return a.attempt?.completed_at === null && a.attempt.expired_at === null ? a.attempt : null;
 }
 
 /** Remaining attempts, clamped: a teacher may lower max_attempts below the used count. */
@@ -87,16 +89,4 @@ export function groupStudentAssignments<
   }
 
   return buckets;
-}
-
-/**
- * Review page: an explicit `?attemptId=` always wins (older attempts stay
- * linkable); otherwise use the latest submitted attempt — the same row the
- * detail page's „Zobacz podsumowanie” link points at.
- */
-export function reviewAttemptId(
-  requestedAttemptId: string | null | undefined,
-  assignment: StudentAssignmentAttemptState | null | undefined,
-): string | null {
-  return requestedAttemptId || assignment?.last_completed_attempt?.id || null;
 }
