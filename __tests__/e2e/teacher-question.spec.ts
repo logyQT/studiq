@@ -29,6 +29,12 @@ test.describe('Teacher Question Flow', () => {
     await page.getByRole('option', { name: t('QuestionForm.multiple_choice') }).click();
 
     await dialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill('What is 2 + 2?');
+    // #1173: a choice item needs a teaching-length explanation before it can be saved.
+    await dialog
+      .getByPlaceholder(t('QuestionForm.explanation_placeholder'))
+      .fill(
+        'Dodanie dwóch jedynek daje dwa, a dodanie dwóch dwójek daje cztery — to pierwszy krok do zrozumienia dodawania.',
+      );
 
     await dialog.getByPlaceholder(/Answer 1|Odpowiedź 1/).fill('3');
     await dialog.getByRole('button', { name: t('QuestionForm.add_answer') }).click();
@@ -82,6 +88,12 @@ test.describe('Teacher Question Flow', () => {
     await formDialog.locator('[data-slot="select-trigger"]').click();
     await page.getByRole('option', { name: t('QuestionForm.open_answer') }).click();
     await formDialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill(questionContent);
+    // #1173: an open item has no key, so it is saved with a model answer.
+    await formDialog
+      .getByPlaceholder(t('QuestionForm.model_answer_placeholder'))
+      .fill(
+        'Dobra odpowiedź podaje wzór i wyjaśnia zależność między siłą, masą i przyspieszeniem, odwołując się do przykładu z lekcji.',
+      );
     await formDialog.getByRole('button', { name: t('QuestionForm.create') }).click();
     await expect(page.getByText(t('QuestionForm.created'))).toBeVisible();
     await expect(page.locator('tbody').getByText(questionContent).first()).toBeVisible();

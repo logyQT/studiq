@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * LIM-02 — the plan limits are enforced at the plan's real cap.
@@ -57,6 +58,8 @@ const UI = {
   bankNamePlaceholder: 'np. Biologia Egzamin',
   newQuestion: 'Utwórz pytanie',
   questionPlaceholder: 'Wpisz swoje pytanie...',
+  explanationPlaceholder:
+    'Wyjaśnij tok rozumowania: dlaczego ta odpowiedź jest poprawna i jaki dystraktor studenci mylą najczęściej...',
   answer1Placeholder: 'Odpowiedź 1',
   answer2Placeholder: 'Odpowiedź 2',
   addAnswer: 'Dodaj odpowiedź',
@@ -227,7 +230,12 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
   let questions = await listQuestions(page, questionBank.id);
   for (let total = questions.length; total < LIMIT.questions; total++) {
     const res = await page.request.post('/api/v1/questions', {
-      data: { bankId: questionBank.id, type: 'open', content: `QA LIM-02 question ${total + 1}` },
+      data: {
+        bankId: questionBank.id,
+        type: 'open',
+        content: `QA LIM-02 question ${total + 1}`,
+        modelAnswer: FIXTURE_MODEL_ANSWER,
+      },
     });
     expect(res.status(), `question ${total + 1} of ${LIMIT.questions} is created`).toBe(201);
   }
@@ -298,7 +306,12 @@ test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Base cap', () 
     await expectRefused(
       page,
       '/api/v1/questions',
-      { bankId, type: 'open', content: 'QA LIM-02 over-limit question' },
+      {
+        bankId,
+        type: 'open',
+        content: 'QA LIM-02 over-limit question',
+        modelAnswer: FIXTURE_MODEL_ANSWER,
+      },
       'question',
     );
 
@@ -372,6 +385,13 @@ test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Base cap', () 
     dialog = page.getByRole('dialog');
     await expect(dialog, 'the create-question dialog opens').toBeVisible();
     await dialog.getByPlaceholder(UI.questionPlaceholder).fill('QA LIM-02 over-limit question');
+    // The form has to be valid to reach the server: the refusal under test is the plan limit,
+    // not the authoring rule (#1173).
+    await dialog
+      .getByPlaceholder(UI.explanationPlaceholder)
+      .fill(
+        'Ta odpowiedź jest poprawna, bo wynika z treści pytania; pozostałe propozycje opisują inne zjawisko i dlatego nie pasują do polecenia.',
+      );
     await dialog.getByPlaceholder(UI.answer1Placeholder).fill('QA LIM-02 answer A');
     await dialog.getByRole('button', { name: UI.addAnswer, exact: true }).click();
     await dialog.getByPlaceholder(UI.answer2Placeholder).fill('QA LIM-02 answer B');

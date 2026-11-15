@@ -2,6 +2,7 @@ import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
 const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -164,6 +165,7 @@ async function createPublishedQuiz(page: Page, tenant: QaTenant): Promise<string
         data: {
           bankId: bank.id,
           type: 'true_false',
+          explanation: FIXTURE_EXPLANATION,
           content,
           answers: [
             { content: CORRECT_OPTION, isCorrect: true, orderIndex: 0 },

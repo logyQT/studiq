@@ -8,6 +8,7 @@ import {
 } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-ASG-04 — publishing a quiz to an audience (`/edu/assignments/:id`).
@@ -142,6 +143,7 @@ async function createQuestion(page: Page, bankId: string, content: string): Prom
   const created = await postJson<{ id: string }>(page, '/api/v1/questions', {
     bankId,
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content,
     answers: [
       { content: 'Odpowiedź A', isCorrect: true, orderIndex: 0 },

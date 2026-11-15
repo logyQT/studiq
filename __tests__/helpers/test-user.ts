@@ -9,6 +9,7 @@ import {
   seedTenantGraph,
   tenantId,
 } from '#test/helpers/tenant-seed';
+import { fixtureExplanation } from '#test/helpers/question-text';
 import { json } from '#test/helpers/json';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { POST as createFlashcardPost } from '@/app/(backend)/api/v1/flashcards/route';
@@ -296,6 +297,7 @@ export async function seedViaApi(
             bankId: bank.id,
             type: 'mcq',
             content: `seed-question-${tags}-${i}`,
+            explanation: fixtureExplanation(`${tags}-${i}`),
             answers: [
               { content: `answer-a-${i}`, isCorrect: true, orderIndex: 0 },
               { content: `answer-b-${i}`, isCorrect: false, orderIndex: 1 },

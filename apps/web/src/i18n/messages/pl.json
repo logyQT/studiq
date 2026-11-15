@@ -250,10 +250,6 @@
   "RegisterPage": {
     "header": "Utwórz konto",
     "sub_header": "Dołącz do StudiQ i rozpocznij naukę",
-    "aside_eyebrow": "Plan darmowy",
-    "aside_title_lead": "Twoje materiały stają się",
-    "aside_title_mark": "ćwiczeniami",
-    "aside_lede": "Ucz się z tego, co dostajesz na zajęciach, a nie z gotowej talii dla wszystkich. Zacznij od planu darmowego.",
     "success_header": "Konto zostało utworzone",
     "success_description": "Prawie gotowe! Brakuje jeszcze tylko jednego kroku.",
     "name_label": "Imię i Nazwisko",
@@ -261,7 +257,6 @@
     "email_label": "Adres e-mail",
     "email_placeholder": "twoj@email.com",
     "password_label": "Hasło",
-    "password_hint": "Co najmniej 8 znaków, jedna wielka litera i jedna cyfra.",
     "register_button": "Zarejestruj się",
     "have_account": "Masz już konto?",
     "login_link": "Zaloguj się",
@@ -1945,7 +1940,7 @@
     "free_flashcards_desc": "Używaj powtórek rozłożonych w czasie, aby efektywnie zapamiętywać",
     "free_quizzes": "Rozwiązuj testy",
     "free_quizzes_desc": "Sprawdzaj swoją wiedzę i śledź postępy w czasie",
-    "free_stats": "Analizuj postępy w nauce",
+    "free_stats": "Podstawowe statystyki",
     "free_stats_desc": "Przeglądaj wyniki testów i dokładność fiszek",
     "pricing_free_name": "Darmowy",
     "pricing_free_desc": "Podstawowe narzędzia do nauki",
@@ -3035,7 +3030,8 @@
     "feedback": "Informacja zwrotna",
     "feedback_placeholder": "Opcjonalna informacja zwrotna",
     "saving": "Zapisywanie...",
-    "save": "Zapisz ocenę"
+    "save": "Zapisz ocenę",
+    "model_answer": "Odpowiedź wzorcowa: {text}"
   },
   "EduPerQuestionGradingPage": {
     "grade_failed": "Błąd oceniania",
@@ -3110,7 +3106,8 @@
     "results_hidden": "Podsumowanie niedostępne",
     "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
     "review_locked": "Podsumowanie otwiera się po zakończeniu kartkówki.",
-    "review_available": "Kartkówka jest zakończona — możesz przejrzeć odpowiedzi."
+    "review_available": "Kartkówka jest zakończona — możesz przejrzeć odpowiedzi.",
+    "ungraded": "Oczekuje na ocenę — pytania otwarte nie wchodzą jeszcze do wyniku."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",
@@ -3141,7 +3138,10 @@
     "incorrect": "Niepoprawnie",
     "locked": "Podsumowanie zablokowane",
     "locked_hint": "Odpowiedzi są ujawniane po zakończeniu kartkówki.",
-    "no_attempt": "Nie wysłałeś żadnej próby. Odpowiedzi są widoczne, bo kartkówka jest zakończona."
+    "no_attempt": "Nie wysłałeś żadnej próby. Odpowiedzi są widoczne, bo kartkówka jest zakończona.",
+    "model_answer": "Odpowiedź wzorcowa",
+    "model_answer_not_captured": "Odpowiedź wzorcowa nie została zapisana w opublikowanej wersji tego pytania.",
+    "ungraded_only": "Oddano {count} pytań otwartych — nie są jeszcze ocenione, więc nie ma wyniku punktowego."
   },
   "AppQuizTakingPage": {
     "loading": "Ładowanie…",
@@ -3180,7 +3180,9 @@
     "type_open": "Otwarta odpowiedź",
     "your_answer": "Twoja odpowiedź",
     "no_answer": "Brak odpowiedzi",
-    "explanation": "Wyjaśnienie"
+    "explanation": "Wyjaśnienie",
+    "model_answer": "Odpowiedź wzorcowa",
+    "model_answer_not_captured": "Brak zapisanej odpowiedzi wzorcowej dla tego pytania."
   },
   "AnswerImageUpload": {
     "uploading": "Przesyłanie...",

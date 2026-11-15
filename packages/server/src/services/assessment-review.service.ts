@@ -34,7 +34,14 @@ export interface ReviewedItem {
   type: string;
   content: string;
   options: ReviewedOption[];
+  /** The choice item's teaching artefact (R16); `null` for an open item. */
   explanation: string | null;
+  /**
+   * The open item's teaching artefact. `null` on a snapshot published before #1173 — the review
+   * says the model answer was not captured instead of rendering an empty box (R11: a frozen
+   * snapshot is never re-derived from the live item).
+   */
+  modelAnswer: string | null;
   /** `false` for open-text items: they have no automatic key and stay ungraded (R16). */
   graded: boolean;
   /** `null` when the item is ungraded or this student has no attempt. */
@@ -50,7 +57,7 @@ export interface AssignmentReview {
   /** The reviewed attempt; `null` for a cohort member who has no submitted attempt. */
   attemptId: string | null;
   completedAt: string | null;
-  /** `null` when there is no attempt (the cohort still sees the key, not a score). */
+  /** `null` when there is no attempt, or when the attempt holds only ungraded items (R16). */
   score: { earned: number; possible: number } | null;
   ungradedCount: number;
   items: ReviewedItem[];
@@ -125,6 +132,7 @@ export class AssessmentReviewService {
           isCorrect: correctOptionIds.has(option.id),
         })),
         explanation: item.key.explanation,
+        modelAnswer: item.key.modelAnswer,
         graded,
         // No attempt at all is not "wrong": the cohort reveal serves the key, not a verdict on a
         // student who never sat it (R5). A skipped item inside a real attempt is `false`.
@@ -152,13 +160,16 @@ export class AssessmentReviewService {
       if (isFailure(exposed)) return exposed;
     }
 
+    // R16: an open item is ungraded and outside the denominator, so a sheet of open items has no
+    // score at all — `null`, never `0` out of `0`. The denominator is the one frozen on the
+    // attempt (graded items only), so it cannot drift with a later edit.
+    const possible = chosen ? (chosen.total_points ?? chosen.total_questions) : 0;
+
     return success({
       assignmentId,
       attemptId: chosen?.id ?? null,
       completedAt: chosen?.completed_at ?? null,
-      score: chosen
-        ? { earned: chosen.score, possible: chosen.total_points ?? chosen.total_questions }
-        : null,
+      score: chosen && possible > 0 ? { earned: chosen.score, possible } : null,
       ungradedCount: items.filter((item) => !item.graded).length,
       items,
     });

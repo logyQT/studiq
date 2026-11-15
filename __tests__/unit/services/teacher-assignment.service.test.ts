@@ -1201,6 +1201,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(attemptUpdate.update).toHaveBeenCalledWith({
         score: 2,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
       expect(attemptUpdate.eq).toHaveBeenCalledWith('id', 'attempt-2');
@@ -1286,6 +1287,7 @@ describe('TeacherAssignmentService', () => {
       // 1 auto-graded point + 2 manual points.
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 3,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
     });
@@ -1335,8 +1337,47 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 2,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
+    });
+
+    it('puts a graded open item into the denominator (#1173)', async () => {
+      const updateChain = chain(null);
+
+      baseSetup();
+      mock.from
+        // the attempt carries the frozen denominator: the closed items only
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1', total_points: 2 }))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 1 }]))
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(chain(null)) // student_answers update
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 1 }]))
+        .mockReturnValueOnce(
+          chain([
+            { question_id: 'q-open', question_type: 'open', is_correct: false, teacher_points: 1 },
+            {
+              question_id: 'q-closed',
+              question_type: 'mcq',
+              is_correct: true,
+              teacher_points: null,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(updateChain);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-1',
+        { questionId: 'q-open', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      // Two closed points frozen at start + the open item the teacher just graded.
+      expect(updateChain.update).toHaveBeenCalledWith(
+        expect.objectContaining({ score: 1, total_points: 3 }),
+      );
     });
 
     it('rejects a question that is not part of the assignment (#169)', async () => {
@@ -1397,6 +1438,7 @@ describe('TeacherAssignmentService', () => {
       // 5 → clamped to 2, plus the new 1 point on q-other.
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 3,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
     });
@@ -1424,6 +1466,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 0,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
     });
@@ -1456,6 +1499,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 1,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
     });
@@ -1483,6 +1527,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 5,
+        total_points: 0,
         graded_at: anyTimestamp,
       });
     });
@@ -2671,7 +2716,7 @@ describe('TeacherAssignmentService', () => {
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('falls back to total_questions when total_points is 0 or null', async () => {
+    it('keeps a 0 denominator and falls back to total_questions only when total_points is null', async () => {
       const attempts = [
         {
           id: 'attempt-1',
@@ -2697,8 +2742,10 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.exportAnswers(assignmentId, undefined, ctx);
 
+      // `0` is the real denominator of a sheet of open items (R16: ungraded items are excluded),
+      // so only a missing value may fall back to the question count.
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.map((row) => row.score)).toEqual(['5/8', '3/8']);
+      if (result.success) expect(result.data.map((row) => row.score)).toEqual(['5/0', '3/8']);
     });
 
     it('returns an empty list when there are no attempts', async () => {

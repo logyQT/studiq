@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * STU-43 — Statystyki studenta, „Wyniki” (quizy) na `/app/stats/results`.
@@ -190,6 +191,7 @@ async function ensureQuestion(
   return api<QuestionRow>(request, 'POST', QUESTIONS_URL, {
     bankId,
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content: spec.content,
     answers: [
       { content: spec.correct, isCorrect: true, orderIndex: 0 },

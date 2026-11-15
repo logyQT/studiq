@@ -209,10 +209,6 @@
   "RegisterPage": {
     "header": "Create an account",
     "sub_header": "Join StudiQ and start learning",
-    "aside_eyebrow": "Free plan",
-    "aside_title_lead": "Your material becomes",
-    "aside_title_mark": "practice",
-    "aside_lede": "Study from what you are given in class, not from a ready-made deck built for everyone. Start on the free plan.",
     "success_header": "Account created",
     "success_description": "Almost there! Just one more step.",
     "name_label": "Full Name",
@@ -220,7 +216,6 @@
     "email_label": "Email address",
     "email_placeholder": "your@email.com",
     "password_label": "Password",
-    "password_hint": "At least 8 characters, one uppercase letter and one digit.",
     "register_button": "Sign up",
     "have_account": "Already have an account?",
     "login_link": "Log in",
@@ -1964,7 +1959,7 @@
     "free_flashcards_desc": "Use spaced repetition to memorize key concepts efficiently",
     "free_quizzes": "Take Quizzes",
     "free_quizzes_desc": "Test your knowledge and track your progress over time",
-    "free_stats": "Analyze Your Progress",
+    "free_stats": "Basic Statistics",
     "free_stats_desc": "View your quiz scores and flashcard accuracy",
     "pricing_free_name": "Free",
     "pricing_free_desc": "Essential learning tools to get started",
@@ -3054,7 +3049,8 @@
     "feedback": "Feedback",
     "feedback_placeholder": "Optional feedback",
     "saving": "Saving...",
-    "save": "Save Grade"
+    "save": "Save Grade",
+    "model_answer": "Model answer: {text}"
   },
   "EduPerQuestionGradingPage": {
     "grade_failed": "Grade failed",
@@ -3129,7 +3125,8 @@
     "results_hidden": "Results not available",
     "attempt_expired": "Your attempt ended when the assessment closed and was not submitted.",
     "review_locked": "The review opens when the assessment closes.",
-    "review_available": "The assessment is closed — you can review its answers."
+    "review_available": "The assessment is closed — you can review its answers.",
+    "ungraded": "Awaiting grading — open questions are not part of the score yet."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Upload failed",
@@ -3160,7 +3157,10 @@
     "incorrect": "Incorrect",
     "locked": "Review locked",
     "locked_hint": "Answers are revealed when the assessment closes.",
-    "no_attempt": "You did not submit an attempt. The answers are shown because the assessment is closed."
+    "no_attempt": "You did not submit an attempt. The answers are shown because the assessment is closed.",
+    "model_answer": "Model answer",
+    "model_answer_not_captured": "The model answer was not captured in the published version of this question.",
+    "ungraded_only": "You submitted {count} open questions — they are not graded yet, so there is no score."
   },
   "AppQuizTakingPage": {
     "loading": "Loading…",
@@ -3199,7 +3199,9 @@
     "type_open": "Open answer",
     "your_answer": "Your answer",
     "no_answer": "No answer",
-    "explanation": "Explanation"
+    "explanation": "Explanation",
+    "model_answer": "Model answer",
+    "model_answer_not_captured": "No model answer was captured for this question."
   },
   "AnswerImageUpload": {
     "uploading": "Uploading...",
