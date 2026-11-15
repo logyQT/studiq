@@ -41,7 +41,7 @@ import { AuthField } from '@/components/shared/auth-field';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 // `CONTROL_RADIUS` spells the token's value out because `cn` cannot collapse the
 // marketing name against the kit's `rounded-md`, which would then win the cascade.
-import { CONTROL_RADIUS, CONTROL_SURFACE } from '@/components/shared/preference-controls';
+import { CONTROL_RADIUS } from '@/components/shared/preference-controls';
 import { ApiError, apiPost } from '@/lib/api';
 import { translateErrorCode } from '@/lib/error-messages';
 import { cn } from '@/lib/utils';
@@ -150,14 +150,6 @@ export function RegisterForm() {
                       <SelectTrigger
                         className={cn(
                           'w-full',
-                          CONTROL_SURFACE,
-                          /*
-                           * The kit raises the fill to `dark:hover:bg-input/50`, where the
-                           * border falls to 1.85:1 against the field's own surface — a
-                           * control identified only by its edge has to hold 3:1 in every
-                           * state, so the hover keeps the card fill.
-                           */
-                          'dark:hover:bg-card',
                           CONTROL_RADIUS,
                           fieldState.error && 'border-destructive focus-visible:ring-destructive',
                         )}

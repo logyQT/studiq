@@ -14,7 +14,7 @@ import type { ReactNode } from 'react';
 import type { Control, FieldPath, FieldValues } from 'react-hook-form';
 // `CONTROL_RADIUS` spells the token's value out because `cn` cannot collapse the
 // marketing name against the kit's `rounded-md`, which would then win the cascade.
-import { CONTROL_RADIUS, CONTROL_SURFACE } from '@/components/shared/preference-controls';
+import { CONTROL_RADIUS } from '@/components/shared/preference-controls';
 import { cn } from '@/lib/utils';
 
 interface AuthFieldProps<TValues extends FieldValues, TName extends FieldPath<TValues>> {
@@ -79,7 +79,6 @@ export function AuthField<TValues extends FieldValues, TName extends FieldPath<T
                 placeholder={placeholder}
                 className={cn(
                   'pl-9',
-                  CONTROL_SURFACE,
                   CONTROL_RADIUS,
                   fieldState.error && 'border-destructive focus-visible:ring-destructive',
                 )}
