@@ -206,7 +206,9 @@ export class TeacherAssignmentService {
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
       .select(
-        `*, assignment_targets(group_id, student_id), assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(*, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
+        // Explicit question columns: `question_id(*)` would ask for the revoked `model_answer`
+        // and fail closed (42501) instead of serving the composer (#1173).
+        `*, assignment_targets(group_id, student_id), assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(id, bank_id, organization_id, created_by, type, content, status, version, visibility, explanation, created_at, updated_at, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
       )
       .eq('id', id)
       .maybeSingle();
@@ -829,7 +831,7 @@ export class TeacherAssignmentService {
           question: frozen
             ? withAnswerKey(frozen, q.question_id ? keys.get(q.question_id) : undefined)
             : null,
-          max_points: maxPoints.data.get(q.question_id) ?? null,
+          max_points: maxPoints.data.get(q.question_id)?.points ?? null,
         };
       }),
     });
@@ -861,7 +863,7 @@ export class TeacherAssignmentService {
     const maxPoints = await this.loadAssignmentPoints(supabase, id);
     if (isFailure(maxPoints)) return maxPoints;
 
-    const questionMax = maxPoints.data.get(data.questionId);
+    const questionMax = maxPoints.data.get(data.questionId)?.points;
     // Also closes the forged-question-id hole: an answer for a question that is
     // not part of this assignment can no longer inflate `quiz_attempts.score`.
     if (questionMax === undefined) return failure('NOT_FOUND');
@@ -901,10 +903,13 @@ export class TeacherAssignmentService {
     const scoreResult = await this.computeAttemptScore(supabase, attempt.id, id);
     if (isFailure(scoreResult)) return scoreResult;
 
+    // Grading an open item puts it into the denominator: R16 keeps ungraded items out of
+    // `earned`/`possible`, and a manual grade is what makes one gradable.
     const { error: gradeError } = await supabase
       .from('quiz_attempts')
       .update({
-        score: scoreResult.data,
+        score: scoreResult.data.score,
+        total_points: scoreResult.data.possible,
         graded_at: new Date().toISOString(),
       })
       .eq('id', attempt.id);
@@ -920,51 +925,67 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * question_id → max awardable points, from the assignment's current question
-   * set. A missing key means the question is no longer part of the assignment.
+   * question_id → max awardable points and whether the item is in the denominator, from the
+   * assignment's published set. A missing key means the question is no longer part of it.
+   *
+   * The type comes from the snapshot, not the live row: R16 makes an open item ungraded until a
+   * teacher grades it, and the published item is what the attempt is scored against (R11).
    */
   private async loadAssignmentPoints(
     supabase: SupabaseClient<Database>,
     assignmentId: string,
-  ): Promise<ServiceResult<Map<string | null, number>>> {
+  ): Promise<ServiceResult<Map<string | null, { points: number; graded: boolean }>>> {
     const { data, error } = await supabase
       .from('assignment_questions')
-      .select('question_id, points')
+      .select('question_id, points, snapshot')
       .eq('assignment_id', assignmentId);
 
     if (error) return toDbFailure(error);
-    return success(new Map(dbRows(data).map((q) => [q.question_id, q.points])));
+    return success(
+      new Map(
+        dbRows(data).map((q) => [
+          q.question_id,
+          { points: q.points, graded: snapshotFromJson(q.snapshot)?.type !== 'open' },
+        ]),
+      ),
+    );
   }
 
   /**
-   * Awarded points for an assignment attempt: manual teacher points win,
-   * otherwise a correct auto-graded answer earns the question's points.
-   * Answers are keyed per question because rows written before the one-row
-   * contract (#1065) could repeat one — a question must never score twice.
+   * Awarded points and the denominator for an assignment attempt: manual teacher points win,
+   * otherwise a correct auto-graded answer earns the question's points. Answers are keyed per
+   * question because rows written before the one-row contract (#1065) could repeat one — a
+   * question must never score twice.
+   *
+   * `possible` counts the gradable items only (R16): every closed item, plus an open item once a
+   * teacher has graded it. It is derived from the published items rather than read back from
+   * `quiz_attempts.total_points`, which each manual grade overwrites with a widened denominator —
+   * reading that back would count an already-graded open item a second time.
    */
   private async computeAttemptScore(
     supabase: SupabaseClient<Database>,
     attemptId: string,
     assignmentId: string,
-  ): Promise<ServiceResult<number>> {
+  ): Promise<ServiceResult<{ score: number; possible: number }>> {
     const pointsByQuestion = await this.loadAssignmentPoints(supabase, assignmentId);
     if (isFailure(pointsByQuestion)) return pointsByQuestion;
 
     const { data: answers, error: answersError } = await supabase
       .from('student_answers')
-      .select('question_id, is_correct, teacher_points')
+      .select('question_id, question_type, is_correct, teacher_points')
       .eq('attempt_id', attemptId);
 
     if (answersError) return toDbFailure(answersError);
 
     const perQuestion = new Map<
       string | null,
-      { teacherPoints: number | null; isCorrect: boolean }
+      { teacherPoints: number | null; isCorrect: boolean; open: boolean }
     >();
     for (const answer of dbRows(answers)) {
       const entry = perQuestion.get(answer.question_id) ?? {
         teacherPoints: null,
         isCorrect: false,
+        open: answer.question_type === 'open',
       };
       if (answer.teacher_points !== null) {
         entry.teacherPoints =
@@ -978,7 +999,7 @@ export class TeacherAssignmentService {
 
     let score = 0;
     for (const [questionId, entry] of perQuestion) {
-      const questionMax = pointsByQuestion.data.get(questionId);
+      const questionMax = pointsByQuestion.data.get(questionId)?.points;
       if (entry.teacherPoints !== null) {
         // Legacy rows written before the upper bound existed (a 2-point
         // question graded 5) must not keep inflating the score (#169).
@@ -991,7 +1012,19 @@ export class TeacherAssignmentService {
       }
     }
 
-    return success(score);
+    // A closed item is always in the denominator; an open item joins it once a teacher has
+    // graded it (R16: ungraded items stay outside `earned`/`possible`).
+    let possible = 0;
+    for (const item of pointsByQuestion.data.values()) {
+      if (item.graded) possible += item.points;
+    }
+    for (const [questionId, entry] of perQuestion) {
+      if (!entry.open || entry.teacherPoints === null) continue;
+      const item = pointsByQuestion.data.get(questionId);
+      if (item && !item.graded) possible += item.points;
+    }
+
+    return success({ score, possible });
   }
 
   /**
@@ -1160,7 +1193,13 @@ export class TeacherAssignmentService {
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
     // questions change later (same reasoning as total_questions).
-    const totalPoints = orderedQuestions.reduce((sum, q) => sum + q.points, 0);
+    //
+    // Open items are ungraded (R16), so they are not part of the denominator: an assignment of
+    // open items only has `total_points: 0`, which the review reports as no score rather than 0.
+    const totalPoints = orderedQuestions.reduce((sum, link) => {
+      const graded = snapshotFromJson(link.snapshot)?.type !== 'open';
+      return graded ? sum + link.points : sum;
+    }, 0);
 
     // The published item, never the live row (R11); a missing snapshot is a corrupt state.
     const payloads = orderedQuestions.flatMap((link) => {
@@ -1279,7 +1318,9 @@ export class TeacherAssignmentService {
         studentName: user?.full_name ?? null,
         email: user?.email ?? null,
         score: attempt.completed_at
-          ? `${attempt.score}/${attempt.total_points || attempt.total_questions || 0}`
+          ? // `0` is a real denominator here (open items are ungraded, R16): only a missing
+            // value falls back to the question count.
+            `${attempt.score}/${attempt.total_points ?? attempt.total_questions}`
           : '-',
         status: attempt.graded_at
           ? ('graded' as const)

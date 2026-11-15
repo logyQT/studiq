@@ -1,3 +1,8 @@
+import {
+  EXPLANATION_MAX_LENGTH,
+  MODEL_ANSWER_MAX_LENGTH,
+  questionTextIssues,
+} from '@studiq/server/lib/question-explanation';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 import { QuestionTypeEnum } from '@studiq/server/models/question.model';
@@ -34,7 +39,16 @@ export const TransferQuestionSchema = z
       .trim()
       .min(1, { error: ValidationErrorCode.INVALID_INPUT })
       .max(255, { error: ValidationErrorCode.TOO_LONG }),
-    explanation: z.string().trim().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+    explanation: z
+      .string()
+      .trim()
+      .max(EXPLANATION_MAX_LENGTH, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
+    modelAnswer: z
+      .string()
+      .trim()
+      .max(MODEL_ANSWER_MAX_LENGTH, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
     topics: z
       .array(z.string().trim().min(1).max(100, { error: ValidationErrorCode.TOO_LONG }))
       .max(TRANSFER_MAX_TOPICS, { error: ValidationErrorCode.TOO_MANY })
@@ -58,6 +72,17 @@ export const TransferQuestionSchema = z
     if (question.type === 'mcq' && (question.answers.length < 2 || correct < 1)) fail();
     if (question.type === 'true_false' && (question.answers.length !== 2 || correct !== 1)) fail();
     if (question.type === 'open' && question.answers.length > 0) fail();
+
+    // R16/R17 through the same validator the authoring form and the question API use: an import
+    // is a create, so it cannot land an item the form would refuse.
+    for (const issue of questionTextIssues({
+      type: question.type,
+      explanation: question.explanation,
+      modelAnswer: question.modelAnswer,
+      options: question.answers.map((answer) => answer.content),
+    })) {
+      ctx.addIssue({ code: 'custom', message: issue.message, path: issue.path });
+    }
   });
 
 export const ImportQuestionsSchema = registry.register(

@@ -10,6 +10,10 @@ CREATE TABLE public.questions (
   type            question_type NOT NULL DEFAULT 'mcq',
   content         text NOT NULL,
   explanation     text,
+  -- The open item's teaching artefact (#1173, R16). Revoked from `authenticated` in
+  -- 20261115120000_question_model_answer.sql: it is an answer, read only by the server-side
+  -- key reader.
+  model_answer    text,
   status          question_status NOT NULL DEFAULT 'open',
   version         int NOT NULL DEFAULT 1,
   visibility      visibility_type NOT NULL DEFAULT 'personal',

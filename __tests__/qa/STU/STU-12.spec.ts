@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * STU-12 — Historia quizów (student, `/app`).
@@ -205,6 +206,7 @@ test.describe('@case:STU-12 @area:STU @prio:P2 student quiz history', () => {
     await callApi<Question>(page, 'post', '/api/v1/questions', {
       bankId: bank.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: QUESTION_CONTENT,
       answers: QUESTION_ANSWERS.map((content, index) => ({
         content,

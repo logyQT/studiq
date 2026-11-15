@@ -7,9 +7,10 @@ import {
 /**
  * Question bank CSV layout (#652). One question per row:
  *
- * `type,content,explanation,topics,answer_1 … answer_10,correct`
+ * `type,content,explanation,model_answer,topics,answer_1 … answer_10,correct`
  *
  * - `type`: `mcq`, `true_false` or `open`.
+ * - `explanation`: the choice item's teaching artefact; `model_answer`: the open item's (#1173).
  * - `topics`: names separated by `;`. A name that itself contains `;` or `\` escapes it with
  *   `\` (`Geo\;grafia`), so a topic always round-trips as the same single topic.
  * - `answer_N`: the options in order; empty cells are skipped.
@@ -23,6 +24,7 @@ export const TRANSFER_CSV_COLUMNS = [
   'type',
   'content',
   'explanation',
+  'model_answer',
   'topics',
   ...Array.from({ length: TRANSFER_MAX_ANSWERS }, (_, i) => `answer_${i + 1}`),
   'correct',
@@ -95,6 +97,7 @@ export function questionsToCsv(questions: RawTransferQuestion[]): string {
       question.type,
       textCell(question.content),
       textCell(question.explanation ?? ''),
+      textCell(question.modelAnswer ?? ''),
       textCell(joinTopics(question.topics)),
       ...answerCells,
       correct,
@@ -152,10 +155,12 @@ export function csvRecordsToQuestions(records: Array<Record<string, string | und
     if (invalidCorrect) issues.push({ row: index + 1, code: 'INVALID_CORRECT' });
 
     const explanation = cell('explanation');
+    const modelAnswer = cell('model_answer');
     questions.push({
       type: cell('type').toLowerCase(),
       content: cell('content'),
       ...(explanation ? { explanation } : {}),
+      ...(modelAnswer ? { modelAnswer } : {}),
       topics: splitTopics(cell('topics')),
       answers: answerColumns
         .map((content, i) => ({ content, isCorrect: correctColumns.has(i + 1) }))

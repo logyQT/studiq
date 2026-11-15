@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { fixtureExplanation } from '#test/helpers/question-text';
 import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
@@ -110,6 +111,7 @@ describe(`Quiz Group Scoping`, () => {
           bankId,
           type: 'mcq',
           content: `quiz-scope-question-${suiteId}`,
+          explanation: fixtureExplanation('quiz-scope'),
           answers: [
             { content: 'a', isCorrect: true, orderIndex: 0 },
             { content: 'b', isCorrect: false, orderIndex: 1 },

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-Q-06 — creating a flashcard from a question („Utwórz fiszkę z pytania”).
@@ -262,7 +263,8 @@ async function ensureQuestion(page: Page, bankId: string): Promise<QuestionItem>
     bankId,
     type: 'mcq',
     content: QUESTION_CONTENT,
-    explanation: CORRECT_ANSWER,
+    // R17: an explanation may not quote an option, so the fixture teaches the reasoning instead.
+    explanation: FIXTURE_EXPLANATION,
     answers: [
       { content: CORRECT_ANSWER, isCorrect: true, orderIndex: 0 },
       { content: WRONG_ANSWER, isCorrect: false, orderIndex: 1 },

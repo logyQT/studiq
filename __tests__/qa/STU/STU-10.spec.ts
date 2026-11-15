@@ -2,6 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * STU-10 — Quiz „Sprawdź się”: wznowienie niedokończonego quizu.
@@ -172,6 +173,7 @@ async function seedQuestionBank(page: Page): Promise<void> {
       data: {
         bankId,
         type: 'mcq',
+        explanation: FIXTURE_EXPLANATION,
         content: question.content,
         answers: question.answers.map((content, index) => ({
           content,

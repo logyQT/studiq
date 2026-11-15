@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@studiq/server/types/database';
+import { fixtureExplanation } from '#test/helpers/question-text';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import { asJson, json } from '#test/helpers/json';
 import {
@@ -159,6 +160,7 @@ describe('Exposure ledger (#1171)', () => {
           bankId,
           type: 'mcq',
           content: `ledger-practice-${Date.now()}`,
+          explanation: fixtureExplanation('ledger-practice'),
           answers: [
             { content: 'right', isCorrect: true, orderIndex: 0 },
             { content: 'wrong', isCorrect: false, orderIndex: 1 },

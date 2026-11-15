@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-QZ-03 — reordering questions and editing their points in the quiz editor
@@ -101,6 +102,7 @@ async function createQuiz(
     const question = await postJson<{ id: string }>(page, '/api/v1/questions', {
       bankId: bank.body.data.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content,
       answers: [
         { content: 'tak', isCorrect: true, orderIndex: 0 },

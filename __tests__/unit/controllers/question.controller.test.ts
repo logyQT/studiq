@@ -92,6 +92,8 @@ describe('QuestionController', () => {
         bankId: VALID_BANK_ID,
         type: 'mcq',
         content: 'What is 2+2?',
+        explanation:
+          'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do zrozumienia dodawania.',
         answers: [{ content: '4', isCorrect: true }],
       };
       const created = { id: 'q-1', ...body };
@@ -119,6 +121,8 @@ describe('QuestionController', () => {
           bankId: VALID_BANK_ID,
           type: 'mcq',
           content: 'Q',
+          explanation:
+            'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do zrozumienia dodawania.',
           answers: [{ content: 'A', isCorrect: true }],
         },
         mockCtx,
@@ -133,6 +137,8 @@ describe('QuestionController', () => {
         type: 'mcq',
         content: 'Q',
         bankId,
+        explanation:
+          'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do zrozumienia dodawania.',
         answers: [{ content: 'A', isCorrect: true }],
       };
       const created = { id: 'q-1', content: 'Q', bank_id: bankId };

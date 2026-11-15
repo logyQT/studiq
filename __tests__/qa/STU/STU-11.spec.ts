@@ -7,8 +7,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Case: from „Ostatnie quizy” open „Przejrzyj” on a completed quiz and read every
  * question. Expected: the review page lists the questions, the selected answers,
- * the correct answers and the explanations; correct/incorrect are clearly marked;
- * a missing explanation is not an error.
+ * the correct answers and the explanations; correct/incorrect are clearly marked.
  *
  * Tenant (deterministic, `content` profile, fresh run suffix per independent run):
  *
@@ -19,7 +18,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * group `G1`, its manager/teacher and the `student` account this case signs in
  * as. The completed quiz is built inside that tenant through the product API by
  * the same student: a personal bank with three questions — two with an
- * explanation and one without — a practice attempt generated from that bank
+ * explanation each — a practice attempt generated from that bank
  * only, then submitted with one correct and two wrong answers. Nothing global
  * (plan catalogue, feature flags, admin settings, platform stats) is read or
  * written, and no other worker's tenant is touched.
@@ -74,10 +73,11 @@ interface GeneratedAttempt {
   questions: Question[];
 }
 
-/** The three questions the review must render; two carry an explanation, one does not. */
+/** The three questions the review must render; every choice item carries an explanation (R16). */
 const MCQ_WITH_EXPLANATION = {
   content: 'Kiedy przyjęto chrzest Polski?',
-  explanation: 'Chrzest Polski przyjmuje się na rok 966.',
+  explanation:
+    'Chrzest Polski przyjmuje się na rok 966, gdy Mieszko I przyjął chrzest w obrządku łacińskim, co włączyło państwo Piastów w krąg chrześcijański.',
   answers: [
     { content: '966', isCorrect: true },
     { content: '1000', isCorrect: false },
@@ -87,15 +87,18 @@ const MCQ_WITH_EXPLANATION = {
 
 const TRUE_FALSE_WITH_EXPLANATION = {
   content: 'Bitwa pod Grunwaldem odbyła się w 1410 roku.',
-  explanation: 'Bitwa pod Grunwaldem rozegrała się 15 lipca 1410 roku.',
+  explanation:
+    'Bitwa pod Grunwaldem rozegrała się 15 lipca 1410 roku i zakończyła zwycięstwem wojsk polsko-litewskich nad zakonem krzyżackim.',
   answers: [
     { content: 'Prawda', isCorrect: true },
     { content: 'Fałsz', isCorrect: false },
   ],
 } as const;
 
-const MCQ_WITHOUT_EXPLANATION = {
+const MCQ_THIRD = {
   content: 'Kto był pierwszym historycznym władcą Polski?',
+  explanation:
+    'Mieszko I panował od około 960 roku i przyjął chrzest w 966 roku, więc jest pierwszym historycznym władcą Polski, a nie tylko legendarnym.',
   answers: [
     { content: 'Mieszko I', isCorrect: true },
     { content: 'Bolesław Chrobry', isCorrect: false },
@@ -179,13 +182,16 @@ test.describe('@case:STU-11 @area:STU @prio:P1 quiz review', () => {
     const q3 = await postData<Question>(page, QUESTIONS_URL, {
       bankId: bank.id,
       type: 'mcq',
-      content: MCQ_WITHOUT_EXPLANATION.content,
-      answers: MCQ_WITHOUT_EXPLANATION.answers.map((answer, orderIndex) => ({
+      content: MCQ_THIRD.content,
+      explanation: MCQ_THIRD.explanation,
+      answers: MCQ_THIRD.answers.map((answer, orderIndex) => ({
         ...answer,
         orderIndex,
       })),
     });
-    expect(q3.explanation ?? null, 'the third question has no explanation').toBeNull();
+    expect(q3.explanation, 'the third question carries its explanation').toBe(
+      MCQ_THIRD.explanation,
+    );
 
     const attempt = await postData<GeneratedAttempt>(page, NEW_QUIZ_URL, {
       bankId: bank.id,
@@ -297,9 +303,8 @@ test.describe('@case:STU-11 @area:STU @prio:P1 quiz review', () => {
     await expect(q2Card).toContainText(`Wyjaśnienie: ${TRUE_FALSE_WITH_EXPLANATION.explanation}`);
 
     // 2c. Correct question: marked „Poprawnie”, correct option green + check, and
-    //     no selected-wrong highlight. It has no explanation — that must not be
-    //     an error and must not break the page.
-    const q3Card = questionCard(page, MCQ_WITHOUT_EXPLANATION.content);
+    //     no selected-wrong highlight. Its explanation renders like the others (#1173).
+    const q3Card = questionCard(page, MCQ_THIRD.content);
     await expect(q3Card).toBeVisible();
     await expect(
       q3Card.locator('[data-slot="badge"]').filter({ hasText: 'Poprawnie' }),
@@ -309,9 +314,7 @@ test.describe('@case:STU-11 @area:STU @prio:P1 quiz review', () => {
     await expect(q3Card.locator('[data-selected="true"]'), 'nothing is selected wrong').toHaveCount(
       0,
     );
-    await expect(q3Card, 'no explanation block for the question without one').not.toContainText(
-      'Wyjaśnienie',
-    );
+    await expect(q3Card).toContainText(`Wyjaśnienie: ${MCQ_THIRD.explanation}`);
 
     // The review is a real page, not the not-found state, and every attempt read
     // succeeded.

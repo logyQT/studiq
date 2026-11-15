@@ -60,7 +60,8 @@ const COPY = {
   questionPlaceholder: 'Wpisz swoje pytanie...',
   answersLabel: 'Odpowiedzi',
   answerPlaceholder: (index: number) => `Odpowiedź ${index}`,
-  explanationPlaceholder: 'Wyjaśnij, dlaczego odpowiedź jest poprawna...',
+  explanationPlaceholder:
+    'Wyjaśnij tok rozumowania: dlaczego ta odpowiedź jest poprawna i jaki dystraktor studenci mylą najczęściej...',
   update: 'Aktualizuj',
   updated: 'Pytanie zaktualizowane',
   deleteTitle: 'Usunąć pytanie?',
@@ -82,14 +83,17 @@ const TOPIC = 'Kinematyka';
  */
 const INITIAL = {
   content: 'Jaka jest jednostka prędkości w układzie SI?',
-  explanation: 'Prędkość mierzymy w metrach na sekundę.',
+  // R16/R17: a teaching-length explanation that does not quote an option.
+  explanation:
+    'Prędkość opisuje drogę przebytą w jednostce czasu, więc jej jednostką jest iloraz metra i sekundy, a nie sama odległość czy masa.',
   answers: ['metr na sekundę', 'metr', 'kilogram', 'sekunda'],
   correctIndex: 0,
 } as const;
 
 const EDITED = {
   content: 'Jaka jest jednostka masy w układzie SI?',
-  explanation: 'Masę mierzymy w kilogramach.',
+  explanation:
+    'Miarą ilości materii jest masa, a jej jednostką w układzie SI pozostaje wzorzec przechowywany w Międzynarodowym Biurze Miar; gram to tylko jego tysięczna część.',
   correctIndex: 2,
 } as const;
 

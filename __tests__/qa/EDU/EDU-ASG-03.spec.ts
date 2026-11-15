@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * EDU-ASG-03 — Dodawanie pytań – losowanie (`/edu/assignments/:id`).
@@ -188,6 +189,10 @@ async function prepareFixture(
         bankId: bank.id,
         type: question.type,
         content: question.content,
+        // R16/R17: a choice item needs a teaching explanation, an open item a model answer.
+        ...(question.type === 'open'
+          ? { modelAnswer: FIXTURE_MODEL_ANSWER }
+          : { explanation: FIXTURE_EXPLANATION }),
         answers: ANSWERS[question.type],
       }),
     );

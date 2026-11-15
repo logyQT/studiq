@@ -589,7 +589,13 @@ export class QuizAttemptService {
     if (submitError) return toDbFailure(submitError);
     if (dbRows(completed).length === 0) return failure('BAD_REQUEST');
 
-    return success({ score: showResults ? score : null, totalQuestions: data.answers.length });
+    // R16: a sheet of open items has no gradable point, so it has no score — `null`, not `0`.
+    const gradable = [...attempt.questions.values()].some((question) => question.type !== 'open');
+
+    return success({
+      score: showResults && gradable ? score : null,
+      totalQuestions: data.answers.length,
+    });
   }
 }
 export const quizAttemptService = wrapService(

@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * EDU-ST-01 — the educator's „Treści” statistics (`/edu/stats/data`).
@@ -113,6 +114,7 @@ interface QuestionSpec {
   bank: BankKey;
   type: 'mcq' | 'true_false' | 'open';
   content: string;
+  explanation?: string;
   answers: Array<{ content: string; isCorrect: boolean }>;
 }
 
@@ -131,6 +133,7 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'historia',
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content: 'Kto był pierwszym królem Polski?',
     answers: [
       { content: 'Bolesław Chrobry', isCorrect: true },
@@ -141,6 +144,7 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'historia',
     type: 'true_false',
+    explanation: FIXTURE_EXPLANATION,
     content: 'Mieszko I przyjął chrzest w 966 roku.',
     answers: [
       { content: 'Prawda', isCorrect: true },
@@ -150,12 +154,14 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'historia',
     type: 'open',
+    modelAnswer: FIXTURE_MODEL_ANSWER,
     content: 'Opisz skutki upadku Konstantynopola.',
     answers: [],
   },
   {
     bank: 'geografia',
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content: 'Kto odkrył Amerykę?',
     answers: [
       { content: 'Krzysztof Kolumb', isCorrect: true },
@@ -166,6 +172,7 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'geografia',
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content: 'Który podróżnik opłynął Ziemię?',
     answers: [
       { content: 'Ferdynand Magellan', isCorrect: true },
@@ -176,6 +183,7 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'geografia',
     type: 'true_false',
+    explanation: FIXTURE_EXPLANATION,
     content: 'Magellan opłynął Ziemię.',
     answers: [
       { content: 'Prawda', isCorrect: true },
@@ -185,6 +193,7 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'geografia',
     type: 'true_false',
+    explanation: FIXTURE_EXPLANATION,
     content: 'Kolumb dotarł do Indii.',
     answers: [
       { content: 'Prawda', isCorrect: false },
@@ -194,12 +203,14 @@ const QUESTIONS: QuestionSpec[] = [
   {
     bank: 'geografia',
     type: 'open',
+    modelAnswer: FIXTURE_MODEL_ANSWER,
     content: 'Wyjaśnij znaczenie odkryć geograficznych.',
     answers: [],
   },
   {
     bank: 'geografia',
     type: 'open',
+    modelAnswer: FIXTURE_MODEL_ANSWER,
     content: 'Wymień dwa skutki wielkich odkryć.',
     answers: [],
   },
@@ -432,6 +443,10 @@ async function prepareContent(page: Page, tenant: QaTenant): Promise<PreparedCon
         bankId: banks[bankKey],
         type: spec.type,
         content: spec.content,
+        // R16/R17: the artefact the item's type requires.
+        ...(spec.type === 'open'
+          ? { modelAnswer: FIXTURE_MODEL_ANSWER }
+          : { explanation: spec.explanation ?? FIXTURE_EXPLANATION }),
         answers: spec.answers.map((answer, index) => ({
           ...answer,
           orderIndex: index,
