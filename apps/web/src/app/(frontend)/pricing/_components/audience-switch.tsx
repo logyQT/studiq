@@ -1,9 +1,8 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import type { PricingAudience } from '@/app/(frontend)/pricing/_components/pricing-audience';
 import { cn } from '@/lib/utils';
-
-export type PricingAudience = 'individual' | 'organization';
 
 const OPTIONS = ['individual', 'organization'] as const;
 
