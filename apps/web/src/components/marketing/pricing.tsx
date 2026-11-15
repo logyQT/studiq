@@ -9,6 +9,7 @@ import { SectionHeader } from '@/components/marketing/ui/section-header';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useApiQuery } from '@/hooks/use-api';
 import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
+import { ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 import { cn } from '@/lib/utils';
 
 type PlanColumn = {
@@ -103,7 +104,7 @@ export function Pricing() {
         t('pricing_university_feature_support'),
       ],
       cta: t('pricing_org_cta'),
-      href: '/pricing/org',
+      href: ORGANIZATION_PRICING_URL,
     },
   ];
 
