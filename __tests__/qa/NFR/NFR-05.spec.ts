@@ -23,10 +23,10 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * stat or singleton row.
  *
  * Acceptance points confirmed on the shared app during the walk:
- * 1. `/login`: Tab reaches e-mail → password → submit → „Zarejestruj się”; Shift+Tab
- *    walks the same order backwards. Every stop draws a ring: a solid 2 px `--ring`
- *    at a 2 px offset on the button, and `ring-ring/50` at 3 px on the fields (the
- *    trailing link falls back to the browser's 1 px auto outline).
+ * 1. `/login`: the „StudiQ” wordmark is the first stop, then Tab reaches e-mail →
+ *    password → submit → „Zarejestruj się”; Shift+Tab walks the same order backwards.
+ *    Every stop draws a ring: a solid 2 px `--ring` at a 2 px offset on the wordmark,
+ *    the button and the trailing link, and `ring-ring/50` at 3 px on the fields.
  * 2. Enter in the password field submits the form — a real sign-in, not a
  *    client-only no-op — and lands on the student dashboard.
  * 3. `/register`: the panel's wordmark and the „Zaloguj się” exit are the first two
@@ -174,11 +174,16 @@ test.describe('NFR-05 — keyboard operability', () => {
     const email = page.locator('input#email');
     const password = page.locator('input#password');
     const submit = page.locator('form button[type="submit"]');
+    const wordmark = page.getByRole('link', { name: 'StudiQ', exact: true });
+    const registerLink = page.getByRole('link', { name: 'Zarejestruj się', exact: true });
 
     await expect(email).toBeVisible();
 
-    // First Tab from the document reaches the first field — nothing precedes it.
+    // The wordmark that leads home sits above the form, so the walk starts on it;
+    // the form is still reached by keyboard from there.
     await page.keyboard.press('Tab');
+    await expect(wordmark).toBeFocused();
+    expect(await tabTo(page, email, { label: 'e-mail field' })).toBeLessThanOrEqual(2);
     await expect(email).toBeFocused();
     await expectVisibleFocus(page, 'e-mail field');
 
@@ -205,6 +210,13 @@ test.describe('NFR-05 — keyboard operability', () => {
     expect(await tabTo(page, submit, { label: 'submit button' })).toBeLessThanOrEqual(2);
     await expect(submit).toBeFocused();
     await expectVisibleFocus(page, 'submit button');
+
+    // The page's exit is the last stop: one Tab from the submit reaches it, and it
+    // draws the solid ring the acceptance note records.
+    expect(await tabTo(page, registerLink, { label: 'register link' })).toBeLessThanOrEqual(2);
+    await expect(registerLink).toBeFocused();
+    await expectVisibleFocus(page, 'register link');
+
     await tabTo(page, password, { backwards: true, label: 'password field before submitting' });
 
     const [login] = await Promise.all([
