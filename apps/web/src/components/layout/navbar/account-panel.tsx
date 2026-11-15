@@ -94,10 +94,6 @@ interface AccountPanelProps {
  * `panel-rows.ts`, so the two panels cannot drift; rows that navigate carry the
  * burger's arrow, while logout — an action, not a destination — does not.
  *
- * The preference row is not duplicated here: language and theme live in the
- * navigation panel for signed-in and signed-out visitors alike, so each control
- * exists exactly once.
- *
  * The header owns the close: this panel carries no close control of its own.
  * Escape, the account mark that opened it (a toggle while it is open) and any
  * navigation close it, and focus returns to that mark. Opening the navigation

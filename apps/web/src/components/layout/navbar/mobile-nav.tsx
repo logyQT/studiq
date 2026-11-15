@@ -70,8 +70,7 @@ const PANEL_ID = 'mobile-nav-panel';
  *
  * Signed in, the panel is the list plus the preference row: the account surface
  * (who you are, plan, account, payments, logout) is the header account mark's
- * own panel. Language and theme therefore have exactly one home for everyone —
- * right here — instead of moving house with the sign-in state.
+ * own panel.
  *
  * That ownership is what `modal={false}` buys. Radix's modal dialog would put an
  * overlay over the header, trap focus behind it and lock scroll, all of which
@@ -165,9 +164,9 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
         )}
 
         {/* The preference row is the panel's, signed in or out: language and theme
-            live here for everyone rather than moving to the account panel, so
-            each control exists exactly once. It owns its top edge; the list above
-            does not also draw one, so the boundary is a single hairline. */}
+            live here for everyone rather than moving to the account panel. It owns
+            its top edge; the list above does not also draw one, so the boundary is
+            a single hairline. */}
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-input px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&>button]:h-11">
           <LanguageSwitcher touch />
           <ThemeSwitch size="lg" />
