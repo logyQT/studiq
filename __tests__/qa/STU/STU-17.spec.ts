@@ -6,7 +6,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * STU-17 — Zawieszanie talii (`/app/flashcards`).
  *
  * Case steps: suspend a deck from „Zawieś talię”, check the list with
- * „Pokaż zawieszone”, start a „Ucz się” session, then restore the deck with
+ * „Zawieszone”, start a „Ucz się” session, then restore the deck with
  * „Przywróć talię”.
  *
  * Tenant (deterministic, `content` profile, a fresh run suffix per independent run):
@@ -26,7 +26,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * Acceptance points (confirmed in the walk on the shared app :3010, Polish UI):
  * 1. „Zawieś talię” raises the toast „Talia zawieszona” and the deck leaves the
  *    default list.
- * 2. „Pokaż zawieszone” (the eye-off toolbar toggle, icon-only while off) brings
+ * 2. „Zawieszone” (a row in the list filters) brings
  *    it back with the „Zawieszona” badge and its card counter.
  * 3. The deck view carries „Ta talia jest zawieszona. Fiszki z tej talii nie będą
  *    wyświetlane w sesjach nauki ani statystykach.”.
@@ -50,7 +50,7 @@ const COPY = {
   deckSuspendedToast: 'Talia zawieszona',
   deckUnsuspendedToast: 'Talia przywrócona',
   suspendedBadge: 'Zawieszona',
-  showSuspended: 'Pokaż zawieszone',
+  showSuspended: 'Zawieszone',
   suspendedNotice:
     'Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.',
   allCaughtUp: 'Wszystko powtórzone!',
@@ -118,7 +118,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
 /**
  * `GET /api/v1/flashcards/decks` — the list the deck screen renders. Without
  * `includeSuspended` it mirrors the default view (suspended decks excluded);
- * with it, it mirrors the „Pokaż zawieszone” view and reports each deck's flag.
+ * with it, it mirrors the „Zawieszone” view and reports each deck's flag.
  */
 async function listDecks(
   page: Page,
@@ -197,11 +197,13 @@ function deckMenuTrigger(page: Page, name: string): Locator {
 }
 
 /**
- * The „Pokaż zawieszone” toolbar toggle. It is icon-only while off (copy appears
- * only once it is on), so the eye-off icon is the stable handle.
+ * The student's suspend filter. It is a row inside the list filters (teachers
+ * keep the toolbar toggle), so flipping it means opening the filter control.
  */
-function showSuspendedToggle(page: Page): Locator {
-  return page.locator('button:has(svg.lucide-eye-off)').filter({ visible: true });
+async function toggleShowSuspended(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Filtry', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: COPY.showSuspended, exact: true }).click();
+  await page.keyboard.press('Escape');
 }
 
 /** The tooltip-less action that flips a deck's suspended state from the list. */
@@ -280,14 +282,20 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
     const hiddenFromList = await listDecks(page);
     expect(hiddenFromList.total, 'the default deck list hides the suspended deck').toBe(0);
 
-    // ── Step 2: „Pokaż zawieszone” ─────────────────────────────────────────
-    const toggle = showSuspendedToggle(page);
-    await expect(toggle, 'the „Pokaż zawieszone” toggle is offered').toHaveCount(1);
-    await toggle.click();
-    await expect(
-      showSuspendedToggle(page),
-      'the toggle reveals its „Pokaż zawieszone” label once on',
-    ).toHaveText(COPY.showSuspended);
+    // ── Step 2: „Zawieszone” ───────────────────────────────────────────────
+    const filters = page.getByRole('button', { name: 'Filtry', exact: true });
+    await filters.click();
+    const suspendedRow = page.getByRole('menuitemcheckbox', {
+      name: COPY.showSuspended,
+      exact: true,
+    });
+    await expect(suspendedRow, 'the „Zawieszone” filter is offered').toBeVisible();
+    await expect(suspendedRow).toHaveAttribute('aria-checked', 'false');
+    await suspendedRow.click();
+    await page.keyboard.press('Escape');
+    await expect(filters, 'the filter control shows „Zawieszone” once it is on').toContainText(
+      COPY.showSuspended,
+    );
 
     const suspendedCard = deckCard(page, DECK_NAME);
     await expect(suspendedCard, 'the suspended deck is listed once shown').toBeVisible();
@@ -341,7 +349,7 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
     // Back on the deck screen (where the case's suspend/restore actions live and
     // where the product confirms them with a toast).
     await page.goto('/app/flashcards');
-    await showSuspendedToggle(page).click();
+    await toggleShowSuspended(page);
     await expect(
       deckCard(page, DECK_NAME),
       'the suspended deck is listed again for the restore step',

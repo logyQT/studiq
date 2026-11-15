@@ -161,6 +161,8 @@ export function ScopeGroupFilter({
         <Button
           variant="outline"
           size="sm"
+          // The chips are the control's value, not its name.
+          aria-label={t('filter_label')}
           title={chips.length === 0 ? undefined : chips.join(' · ')}
           className="w-44 justify-between gap-1.5"
         >

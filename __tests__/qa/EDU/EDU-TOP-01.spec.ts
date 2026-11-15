@@ -82,10 +82,9 @@ const COPY = {
   deleted: 'Temat usunięty',
   deleteTitle: 'Usunąć temat?',
   deleteDesc: 'To trwale usunie temat. Tej akcji nie można cofnąć.',
-  ownerAll: 'Wszystkie',
+  filters: 'Filtry',
   ownerMine: 'Moje',
-  groupAny: 'Dowolna grupa',
-  groupMine: 'Moje grupy',
+  groups: 'Grupy',
   viewFlashcards: 'Przeglądaj fiszki',
 } as const;
 
@@ -401,28 +400,29 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     await expect(topicCard(page, OWN_TOPIC), 'the educator’s own topic').toBeVisible();
     await expect(topicCard(page, SHARED_TOPIC), 'the G1-shared topic').toBeVisible();
 
-    // Radix `Select` triggers expose their value as the control's text, not its
-    // accessible name, so the scope select is the one quoting „Wszystkie”.
-    const scopeSelect = page
-      .locator('[data-slot="select-trigger"]')
-      .filter({ hasText: COPY.ownerAll });
-    await expect(scopeSelect).toBeVisible();
-    await scopeSelect.click();
+    // One filter control holds every dimension; its accessible name stays
+    // „Filtry” while the chips carry the active filters.
+    const filters = page.getByRole('button', { name: COPY.filters, exact: true });
+    const filterRow = (name: string) => page.getByRole('menuitemcheckbox', { name, exact: true });
+    const groupRow = (name: string) =>
+      page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
-    const scopeOptions = page.getByRole('option');
-    await expect(scopeOptions, 'the scope select has exactly two options').toHaveCount(2);
-    await expect(scopeOptions.nth(0)).toHaveText(COPY.ownerAll);
-    await expect(scopeOptions.nth(1)).toHaveText(COPY.ownerMine);
-    // The retired toggles must not come back as extra scope options.
-    await expect(page.getByRole('option', { name: 'Udostępnione', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('option', { name: 'Grupy', exact: true })).toHaveCount(0);
+    await expect(filters).toBeVisible();
+    await expect(filters).toContainText(COPY.filters);
+    await filters.click();
+
+    await expect(filterRow(COPY.ownerMine)).toBeVisible();
+    await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
+    // The retired scope values must not come back as filter rows.
+    await expect(page.getByRole('menuitemcheckbox', { name: 'Udostępnione' })).toHaveCount(0);
 
     const mineRequest = page.waitForRequest((request) => {
       if (!request.url().includes(`${TOPICS_URL}?`)) return false;
       return new URL(request.url()).searchParams.get('owner') === 'mine';
     });
-    await page.getByRole('option', { name: COPY.ownerMine, exact: true }).click();
+    await filterRow(COPY.ownerMine).click();
     await mineRequest;
+    await page.keyboard.press('Escape');
 
     await expect(topicCard(page, OWN_TOPIC)).toBeVisible();
     await expect(topicCard(page, SHARED_TOPIC), 'not the educator’s topic').toHaveCount(0);
@@ -430,37 +430,41 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
       (await listTopics(page, '&owner=mine')).map((topic) => topic.name),
       '„Moje” narrows the API list to the educator’s own topics',
     ).toEqual([OWN_TOPIC]);
+    await expect(filters).toContainText(COPY.ownerMine);
 
-    // Back to „Wszystkie”: the shared topic is readable again.
-    await page.locator('[data-slot="select-trigger"]').filter({ hasText: COPY.ownerMine }).click();
-    await page.getByRole('option', { name: COPY.ownerAll, exact: true }).click();
+    // Turning „Moje” off is the way back to the unfiltered list.
+    await filters.click();
+    await filterRow(COPY.ownerMine).click();
+    await page.keyboard.press('Escape');
     await expect(topicCard(page, SHARED_TOPIC)).toBeVisible();
     await expect(topicCard(page, OWN_TOPIC)).toBeVisible();
+    await expect(filters).toContainText(COPY.filters);
 
     // ── Step 4b: the group filter ───────────────────────────────────────────
-    // The group filter is the only combobox that is not a Radix `Select` trigger.
-    const groupSelect = page.locator('button[role="combobox"]:not([data-slot="select-trigger"])');
-    await expect(groupSelect, 'the group multi-select starts on „Dowolna grupa”').toContainText(
-      COPY.groupAny,
+    await filters.click();
+    const groupsRow = filterRow(COPY.groups);
+    await expect(groupsRow, 'the group dimension starts off').toHaveAttribute(
+      'aria-checked',
+      'false',
     );
-    const mineGroups = page.getByRole('button', { name: COPY.groupMine, exact: true });
-    await expect(mineGroups, 'the educator belongs to the tenant group').toBeVisible();
-    await expect(mineGroups).toBeEnabled();
 
-    await mineGroups.click();
-    await expect(groupSelect).toContainText(group.name);
-    await expect(
-      mineGroups,
-      'the quick action is spent once its groups are selected',
-    ).toBeDisabled();
+    // The individual groups live in the flyout beside the list, not in it.
+    await groupsRow.hover();
+    await expect(groupRow(group.name)).toBeVisible();
+
+    // Clicking „Grupy” applies every group the educator is in.
+    await groupsRow.click();
+    await page.keyboard.press('Escape');
+    await expect(filters).toContainText(COPY.groups);
     await expect(topicCard(page, SHARED_TOPIC), 'the G1 topic stays').toBeVisible();
     await expect(topicCard(page, OWN_TOPIC), 'personal topics are outside G1').toHaveCount(0);
 
-    // Clearing the group selection restores the placeholder and the full list.
-    await groupSelect.click();
-    await page.getByRole('option', { name: group.name, exact: true }).click();
-    await expect(groupSelect).toContainText(COPY.groupAny);
-    await expect(mineGroups).toBeEnabled();
+    // Clearing the group selection restores the unfiltered list.
+    await filters.click();
+    await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
+    await groupsRow.click();
+    await page.keyboard.press('Escape');
+    await expect(filters).toContainText(COPY.filters);
     await expect(topicCard(page, OWN_TOPIC)).toBeVisible();
     await expect(topicCard(page, SHARED_TOPIC)).toBeVisible();
 

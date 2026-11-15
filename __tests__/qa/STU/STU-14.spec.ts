@@ -65,13 +65,12 @@ const PERSONAL_DECK = 'O1S1';
 
 /** Polish copy the case quotes, as rendered by the current product. */
 const COPY = {
-  ownerAll: 'Wszystkie',
+  filters: 'Filtry',
   ownerMine: 'Moje',
-  groupAny: 'Dowolna grupa',
-  groupMine: 'Moje grupy',
+  groups: 'Grupy',
   twoDecks: '2 talie',
   oneDeck: '1 talia',
-  retiredGroupScope: 'Grupy',
+  retiredGroupScope: 'Udostępnione',
   retiredSharedScope: 'Udostępnione',
 } as const;
 
@@ -164,14 +163,21 @@ function deckCard(page: Page, name: string) {
     .filter({ has: page.getByRole('heading', { name, exact: true }) });
 }
 
-/** The scope select (`Wszystkie | Moje`) — first combobox in the toolbar. */
-function ownerSelect(page: Page) {
-  return page.getByRole('combobox').first();
+/** The filter control — its accessible name stays „Filtry”, the chips are its value. */
+function filtersButton(page: Page) {
+  return page.getByRole('button', { name: COPY.filters, exact: true });
 }
 
-/** The group multi-select trigger — the only popover-style combobox. */
-function groupFilter(page: Page) {
-  return page.locator('main button[role="combobox"][aria-haspopup="dialog"]');
+/** A filter dimension row inside the open filter control. */
+function filterRow(page: Page, name: string) {
+  return page.getByRole('menuitemcheckbox', { name, exact: true });
+}
+
+/** A group inside the flyout beside the list. */
+function groupRow(page: Page, name: string) {
+  return page
+    .locator('[data-slot="hover-card-content"]')
+    .getByRole('button', { name, exact: true });
 }
 
 async function createDeckAs(
@@ -258,41 +264,49 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
       'no group badge on the personal deck',
     ).toHaveCount(0);
 
-    // ── Step 2: „Wszystkie” → „Moje” ─────────────────────────────────────────
-    await expect(ownerSelect(page)).toContainText(COPY.ownerAll);
-    await ownerSelect(page).click();
-    // The retired group-scope options are gone: only the two ownership scopes.
-    await expect(page.getByRole('option')).toHaveText([COPY.ownerAll, COPY.ownerMine]);
-    await expect(page.getByRole('option', { name: COPY.retiredGroupScope })).toHaveCount(0);
-    await expect(page.getByRole('option', { name: COPY.retiredSharedScope })).toHaveCount(0);
+    // ── Step 2: „Moje” on, then off ─────────────────────────────────────────
+    await expect(filtersButton(page)).toContainText(COPY.filters);
+    await filtersButton(page).click();
+    await expect(filterRow(page, COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
+    // The retired group-scope values are gone; „Grupy” is the group dimension.
+    await expect(page.getByRole('menuitemcheckbox', { name: COPY.retiredGroupScope })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole('menuitemcheckbox', { name: COPY.retiredSharedScope })).toHaveCount(
+      0,
+    );
 
-    await page.getByRole('option', { name: COPY.ownerMine, exact: true }).click();
+    await filterRow(page, COPY.ownerMine).click();
+    await page.keyboard.press('Escape');
 
-    await expect(ownerSelect(page)).toContainText(COPY.ownerMine);
+    await expect(filtersButton(page)).toContainText(COPY.ownerMine);
     await expect(page.getByText(COPY.oneDeck, { exact: true })).toBeVisible();
     await expect(deckCard(page, PERSONAL_DECK), '„Moje” keeps the personal deck').toHaveCount(1);
     await expect(deckCard(page, GROUP_DECK), '„Moje” drops the teacher’s group deck').toHaveCount(
       0,
     );
 
-    // ── Step 3: „Moje grupy”, then clear back to „Dowolna grupa” ─────────────
-    await ownerSelect(page).click();
-    await page.getByRole('option', { name: COPY.ownerAll, exact: true }).click();
+    // ── Step 3: „Grupy”, then clear back to the unfiltered list ──────────────
+    await filtersButton(page).click();
+    await filterRow(page, COPY.ownerMine).click();
+    await page.keyboard.press('Escape');
     await expect(page.getByText(COPY.twoDecks, { exact: true })).toBeVisible();
 
-    const groupSelect = groupFilter(page);
-    await expect(groupSelect).toHaveCount(1);
-    await expect(groupSelect).toContainText(COPY.groupAny);
-    // A student is offered only the groups they belong to.
-    await groupSelect.click();
-    await expect(page.getByRole('option')).toHaveText([GROUP_G1]);
+    await filtersButton(page).click();
+    const groupsRow = filterRow(page, COPY.groups);
+    await expect(groupsRow).toHaveAttribute('aria-checked', 'false');
+    // A student is offered only the groups they belong to, in the flyout.
+    await groupsRow.hover();
+    await expect(groupRow(page, GROUP_G1)).toBeVisible();
+    await expect(
+      page.locator('[data-slot="hover-card-content"]').getByRole('button'),
+      'only the caller’s own group',
+    ).toHaveCount(1);
+
+    await groupsRow.click();
     await page.keyboard.press('Escape');
 
-    const mineGroups = page.getByRole('button', { name: COPY.groupMine, exact: true });
-    await expect(mineGroups).toBeEnabled();
-    await mineGroups.click();
-
-    await expect(groupSelect).toContainText(GROUP_G1);
+    await expect(filtersButton(page)).toContainText(COPY.groups);
     await expect(page.getByText(COPY.oneDeck, { exact: true })).toBeVisible();
     await expect(deckCard(page, GROUP_DECK), 'the group filter keeps the shared deck').toHaveCount(
       1,
@@ -301,15 +315,16 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
       deckCard(page, PERSONAL_DECK),
       'the group filter drops the personal deck',
     ).toHaveCount(0);
-    await expect(mineGroups, '„Moje grupy” is a no-op once applied').toBeDisabled();
 
-    // Clearing the selection restores „Dowolna grupa” and the unfiltered list.
-    await groupSelect.locator('span[role="button"]').click();
-    await expect(groupSelect).toContainText(COPY.groupAny);
+    // Clearing the selection restores the unfiltered list.
+    await filtersButton(page).click();
+    await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
+    await groupsRow.click();
+    await page.keyboard.press('Escape');
+    await expect(filtersButton(page)).toContainText(COPY.filters);
     await expect(page.getByText(COPY.twoDecks, { exact: true })).toBeVisible();
     await expect(deckCard(page, GROUP_DECK)).toHaveCount(1);
     await expect(deckCard(page, PERSONAL_DECK)).toHaveCount(1);
-    await expect(mineGroups).toBeEnabled();
 
     // ── API contract behind the two filters ──────────────────────────────────
     const mine = await page.request.get('/api/v1/flashcards/decks?owner=mine');
