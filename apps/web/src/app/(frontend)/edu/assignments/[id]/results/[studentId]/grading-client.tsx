@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { useApiQuery } from '@/hooks/use-api';
+import { useAssignmentBreadcrumb } from '@/hooks/use-assignment-breadcrumb';
+import { useGradeAnswerMutation } from '@/hooks/use-grade-mutation';
 import {
   type GradeDraft,
   exceedsGradeMax,
@@ -67,34 +68,9 @@ export default function StudentGradingClient() {
     url: `/api/v1/teacher/assignments/${id}/results/${studentId}`,
   });
 
-  // Same query key as the detail page, so in-app navigation is a cache hit.
-  const { data: assignment } = useApiQuery<{ title: string }>({
-    queryKey: assignmentKeys.detail(id),
-    url: `/api/v1/teacher/assignments/${id}`,
-  });
+  useAssignmentBreadcrumb(id);
 
-  // The assignment title is the breadcrumb label; the raw UUID must never render.
-  useBreadcrumbLabel(id, assignment?.title);
-
-  const gradeMutation = useApiMutation({
-    mutationFn: async ({
-      questionId,
-      points,
-      feedback,
-    }: {
-      questionId: string;
-      points: number;
-      feedback: string;
-    }) => {
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${studentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId, points, feedback }),
-      });
-      if (!res.ok) throw new Error(t('grade_failed'));
-    },
-    invalidateKeys: assignmentKeys.gradingInvalidations(id),
-  });
+  const gradeMutation = useGradeAnswerMutation(id, t('grade_failed'));
 
   const getGrade = (questionId: string) =>
     resolveGradeDraft(
@@ -113,7 +89,16 @@ export default function StudentGradingClient() {
     const g = getGrade(questionId);
     const points = parseGradePoints(g.points);
     if (points === null || exceedsGradeMax(points, maxPoints)) return;
-    await gradeMutation.mutateAsync({ questionId, points, feedback: g.feedback });
+    try {
+      await gradeMutation.mutateAsync({
+        attemptId: studentId,
+        questionId,
+        points,
+        feedback: g.feedback,
+      });
+    } catch {
+      // Handled via gradeMutation.onError
+    }
   };
 
   const getImages = (questionId: string) => {

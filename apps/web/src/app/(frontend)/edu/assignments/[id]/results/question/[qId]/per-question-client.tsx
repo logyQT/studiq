@@ -5,11 +5,9 @@ import { ArrowLeft, Check, ImageIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import * as React from 'react';
+import { usePerQuestionGrading } from '@/hooks/use-grading-actions';
 import { type GradeDraft, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
-import { assignmentKeys } from '@/lib/query-keys';
 
 interface ResultsData {
   id: string;
@@ -36,41 +34,12 @@ interface ResultsData {
 export default function PerQuestionGradingClient() {
   const { id, qId } = useParams<{ id: string; qId: string }>();
   const t = useTranslations('EduPerQuestionGradingPage');
-  const [grades, setGrades] = useState<Record<string, Partial<GradeDraft>>>({});
+  const [grades, setGrades] = React.useState<Record<string, Partial<GradeDraft>>>({});
 
-  const { data: results, isLoading } = useApiQuery<ResultsData[]>({
-    queryKey: assignmentKeys.results(id),
-    url: `/api/v1/teacher/assignments/${id}/results`,
-  });
-
-  // Same query key as the detail page, so in-app navigation is a cache hit.
-  const { data: assignment } = useApiQuery<{ title: string }>({
-    queryKey: assignmentKeys.detail(id),
-    url: `/api/v1/teacher/assignments/${id}`,
-  });
-
-  // The assignment title is the breadcrumb label; the raw UUID must never render.
-  useBreadcrumbLabel(id, assignment?.title);
-
-  const gradeMutation = useApiMutation({
-    mutationFn: async ({
-      attemptId,
-      points,
-      feedback,
-    }: {
-      attemptId: string;
-      points: number;
-      feedback: string;
-    }) => {
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${attemptId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId: qId, points, feedback }),
-      });
-      if (!res.ok) throw new Error(t('grade_failed'));
-    },
-    invalidateKeys: assignmentKeys.gradingInvalidations(id),
-  });
+  const {
+    resultsQuery: { data: results, isLoading },
+    gradeMutation,
+  } = usePerQuestionGrading<ResultsData[]>(id, t('grade_failed'));
 
   const getSavedGrade = (studentId: string) =>
     results?.find((r) => r.user_id === studentId)?.quiz_answers.find((a) => a.question_id === qId);
@@ -84,7 +53,16 @@ export default function PerQuestionGradingClient() {
     // The grading route addresses an attempt; this view has no attempt dimension.
     const attemptId = results?.find((r) => r.user_id === studentId)?.id;
     if (points === null || !attemptId) return;
-    await gradeMutation.mutateAsync({ attemptId, points, feedback: g.feedback });
+    try {
+      await gradeMutation.mutateAsync({
+        attemptId,
+        questionId: qId,
+        points,
+        feedback: g.feedback,
+      });
+    } catch {
+      // Handled via gradeMutation.onError
+    }
   };
 
   const getStudentAnswer = (studentId: string) => {
@@ -113,9 +91,12 @@ export default function PerQuestionGradingClient() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href={`/edu/assignments/${id}/results`} className="hover:text-foreground">
-          <ArrowLeft className="w-4 h-4 inline mr-1" />
+      <div>
+        <Link
+          href={`/edu/assignments/${id}/results`}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="w-4 h-4" />
           {t('back')}
         </Link>
       </div>
