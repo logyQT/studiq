@@ -113,7 +113,13 @@ export function PlanCard({
           ))}
         </ul>
 
-        {user && PLAN_ID_MAP[plan.key] ? (
+        {plan.key === 'campus' ? (
+          // Campus is a 699 zł conversation, not a self-serve checkout: the label
+          // says contact sales, so the action under it must too.
+          <Button className="w-full" variant="outline" asChild>
+            <Link href="/contact">{ctaLabel}</Link>
+          </Button>
+        ) : user && PLAN_ID_MAP[plan.key] ? (
           <CheckoutButton
             planKey={PLAN_ID_MAP[plan.key]!}
             orgId={plan.forAccountType === 'manager' ? orgId : undefined}
