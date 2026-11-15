@@ -97,7 +97,7 @@ export class QuestionBankService {
     const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
-    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(filter)) return success(EMPTY_PAGE);
 
     // Explicit group filter (#595): an extra AND after RBAC, so an unknown/foreign group id
     // can only narrow the result — never widen it.

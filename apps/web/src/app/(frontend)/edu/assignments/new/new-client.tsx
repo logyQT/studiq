@@ -1,5 +1,6 @@
 'use client';
 
+import { Card, CardContent, CardHeader, Skeleton } from '@studiq/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
@@ -8,6 +9,32 @@ import { AssignmentPage } from '@/components/edu/assignment-page';
 import { useApiMutation } from '@/hooks/use-api';
 import { apiGet, apiPost } from '@/lib/api';
 import { assignmentKeys } from '@/lib/query-keys';
+
+/**
+ * Holds the form's place while a `?quizId=` lookup resolves. Without it the page
+ * showed the heading and then a blank area, which on a slow link reads as broken.
+ */
+function AssignmentFormSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden>
+      {[2, 3].map((fields) => (
+        <Card key={fields}>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Array.from({ length: fields }, (_, index) => (
+              <div key={index} className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className={index === 0 ? 'h-9 w-full' : 'h-20 w-full'} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 export default function NewAssignmentClient() {
   const router = useRouter();
@@ -46,7 +73,7 @@ export default function NewAssignmentClient() {
 
   return (
     <AssignmentPage title={t('title')} subtitle={t('subtitle')}>
-      {quizLoaded && (
+      {quizLoaded ? (
         <AssignmentForm
           mode="create"
           initial={quizName ? { title: quizName } : undefined}
@@ -57,6 +84,8 @@ export default function NewAssignmentClient() {
           }}
           onCancel={() => router.back()}
         />
+      ) : (
+        <AssignmentFormSkeleton />
       )}
     </AssignmentPage>
   );

@@ -21,6 +21,11 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
+import {
+  DEFAULT_COLLECTION_FILTERS,
+  normaliseCollectionFilters,
+  type PersistedCollectionFilters,
+} from '@/lib/collection-filters';
 import { contentSortOptions, type SortOption } from '@/lib/content-sort-options';
 import { type ListEmptyView, resolveListEmptyView } from '@/lib/list-empty-view';
 
@@ -38,19 +43,7 @@ export type CollectionFilters = Record<string, string | undefined> & {
   sortOrder: string;
 };
 
-interface PersistedFilters {
-  owner: string;
-  groupIds: string[];
-  sortBy: string;
-  sortOrder: string;
-}
-
-const DEFAULT_FILTERS: PersistedFilters = {
-  owner: 'all',
-  groupIds: [],
-  sortBy: 'created_at',
-  sortOrder: 'desc',
-};
+const DEFAULT_FILTERS = DEFAULT_COLLECTION_FILTERS;
 
 /** One-shot migration from the retired `all|mine` group toggle (#595). */
 interface LegacyMine {
@@ -71,6 +64,8 @@ interface CollectionScreenOptions {
   persistKey: string;
   /** Extra request params that are not part of the shared filter set. */
   extraFilters?: Record<string, string | undefined>;
+  /** How many list-specific filters `filterExtra` shows as active, for the empty view. */
+  extraActiveFilters?: number;
   limit?: number;
   legacyMine?: LegacyMine;
 }
@@ -132,6 +127,7 @@ export function useCollectionScreen<T extends { id: string }>({
   invalidateKeys,
   persistKey,
   extraFilters,
+  extraActiveFilters = 0,
   limit = 24,
   legacyMine,
 }: CollectionScreenOptions): CollectionScreenState<T> {
@@ -151,9 +147,10 @@ export function useCollectionScreen<T extends { id: string }>({
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const [persisted, setPersisted] = usePersistedState<PersistedFilters>(
+  const [persisted, setPersisted] = usePersistedState<PersistedCollectionFilters>(
     persistKey,
     DEFAULT_FILTERS,
+    normaliseCollectionFilters,
   );
   // A legacy persisted `mine` is the only owner value the API still understands.
   const owner = persisted.owner === 'mine' ? 'mine' : 'all';
@@ -308,7 +305,7 @@ export function useCollectionScreen<T extends { id: string }>({
     emptyView: resolveListEmptyView({
       visibleCount: pagination.items.length,
       query: debouncedSearch,
-      activeFilters: (owner !== 'all' ? 1 : 0) + effectiveGroupIds.length,
+      activeFilters: (owner !== 'all' ? 1 : 0) + effectiveGroupIds.length + extraActiveFilters,
     }),
     selection,
     dialogOpen,
@@ -385,7 +382,7 @@ interface CollectionScreenProps<T extends { id: string }> {
   /** List-specific toolbar control after the sort select. */
   toolbarExtra?: ReactNode;
   /** List-specific row inside the filter list, e.g. the deck "show suspended" toggle. */
-  filterExtra?: { label: string; checked: boolean; onToggle: () => void };
+  filterExtra?: { label: string; checked: boolean; onToggle: () => void; onClear: () => void };
   /** Placeholder copy for the search input; defaults to `search_placeholder`. */
   searchPlaceholder?: string;
   /** Sort orders the collection supports; defaults to the shared content set. */
@@ -519,7 +516,12 @@ export function CollectionScreen<T extends { id: string }>({
         isError={screen.isError}
         onRetry={() => screen.refetch()}
         emptyView={screen.emptyView}
-        onClearFilters={screen.clearFilters}
+        onClearFilters={() => {
+          screen.clearFilters();
+          // The list's own row lives outside the hook's state, so the reset has to
+          // reach it through the prop that renders it.
+          filterExtra?.onClear();
+        }}
         noResultsSubject={noResultsSubject}
         emptyIcon={emptyIcon}
         emptyTitle={emptyTitle}

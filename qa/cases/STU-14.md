@@ -25,21 +25,22 @@ Zalogowany student1.
 - Content (built through the flashcard API, never a shared row): `O1G1T1` — group
   deck shared with `O1G1`; `O1G2T2` — group deck shared with `O1G2`; `O1S1` — the
   student's personal deck.
-- UI note: the ownership select offers „Wszystkie” / „Moje” only, and the retired
-  group-scope options „Grupy” / „Udostępnione” are gone (#595) — the API rejects
-  the old `groupFilter` parameter with 422 instead of ignoring it. The group
-  filter is a multi-select whose empty state is „Dowolna grupa”, with the
-  „Moje grupy” quick action; the student is offered only their own groups.
+- UI note: all filters live behind one button named „Filtry”; its rows are the filter
+  dimensions — „Moje” (ownership) and „Grupy” (assignment) — and the retired group-scope
+  options „Grupy” / „Udostępnione” are gone (#595): the API rejects the old `groupFilter`
+  parameter with 422 instead of ignoring it. Ticking „Grupy” selects every group the
+  student belongs to; a single group is ticked in the panel that opens beside the list,
+  and the student is offered only their own groups.
 
 ## Steps
 
 1. Otwórz /app/flashcards.
-2. Przełącz filtr zakresu: Wszystkie / Moje.
-3. Wybierz w filtrze grup „Moje grupy”, a następnie wyczyść wybór („Dowolna grupa”).
+2. W przycisku „Filtry” zaznacz wiersz „Moje”, a następnie go odznacz.
+3. W tym samym przycisku otwórz wiersz „Grupy”, zaznacz pojedynczą grupę w panelu obok listy, a następnie wyczyść wybór.
 
 ## Expected result
 
 - Widoczne talie: „O1G1T1” (grupowa, od T1) oraz „O1S1” (osobista).
 - Talia „O1G2T2” NIE jest widoczna (inna grupa).
-- „Moje” = tylko O1S1; wybór grupy „O1G1” zawęża listę do talii udostępnionych tej grupie; brak opcji „Grupy” / „Udostępnione”. Plakietka grupy „O1G1” widoczna na talii grupowej.
+- „Moje” = tylko O1S1; zaznaczenie wiersza „Grupy” obejmuje wszystkie grupy studenta i zawęża listę do talii im udostępnionych, a pojedyncza grupa „O1G1” w panelu zawęża listę do talii udostępnionych tej grupie; brak opcji „Udostępnione”. Plakietka grupy „O1G1” widoczna na talii grupowej.
 - Licznik talii zgodny z odmianą („2 talie”).

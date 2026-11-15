@@ -22,7 +22,9 @@ export function batchActionRoute(handlers: Record<string, BatchActionHandler>) {
   ) {
     return withAuth(req, async (ctx) => {
       const { action } = await params;
-      const handler = handlers[action];
+      // Own properties only: `handlers['constructor']` would otherwise resolve
+      // `Object.prototype` and dispatch it as if it were a batch action.
+      const handler = Object.hasOwn(handlers, action) ? handlers[action] : undefined;
       if (!handler) {
         return toNextResponse({
           success: false as const,

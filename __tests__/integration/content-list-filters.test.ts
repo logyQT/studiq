@@ -177,5 +177,18 @@ describe(`Content list filters (#595)`, () => {
         expect((await list(endpoint, query)).status).toBe(422);
       },
     );
+
+    /**
+     * #1237 — the search used to be spliced into an `or(...)` logic tree, so a
+     * term containing PostgREST's own delimiters answered 500 PGRST100.
+     */
+    it.each(['Algebra, chapter 5', '(x)', 'a"b', '100%'])(
+      'accepts the search term %j',
+      async (term) => {
+        const { status } = await list(endpoint, `q=${encodeURIComponent(term)}`);
+
+        expect(status).toBe(200);
+      },
+    );
   });
 });

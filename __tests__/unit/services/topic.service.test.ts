@@ -21,6 +21,7 @@ interface QueryBuilder {
   order: ChainMock;
   limit: ChainMock;
   or: ChainMock;
+  ilike: ChainMock;
   single: ChainMock;
   maybeSingle: ChainMock;
   then: ChainMock;
@@ -38,6 +39,7 @@ const CHAIN_METHODS = [
   'order',
   'limit',
   'or',
+  'ilike',
 ] as const;
 
 function qb(data: unknown, error: unknown = null, count: number | null = null): QueryBuilder {
@@ -53,6 +55,7 @@ function qb(data: unknown, error: unknown = null, count: number | null = null): 
     order: vi.fn(),
     limit: vi.fn(),
     or: vi.fn(),
+    ilike: vi.fn(),
     single: vi.fn(),
     maybeSingle: vi.fn(),
     then: vi.fn(),
@@ -324,6 +327,23 @@ describe('TopicService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false, total: 0 });
       expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * An impossible RBAC scope is a filter that cannot match, so it must answer
+     * the same empty page as every other non-match — `total` included, or the
+     * count line disappears on exactly the path that has nothing to count.
+     */
+    it('keeps the page shape when the RBAC scope can match nothing', async () => {
+      const result = await service.list({
+        ...ctx,
+        activeOrgId: null,
+        permissionScopes: { 'topic.read': 'group' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false, total: 0 });
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('composes owner=mine with the RBAC filter and skips the group lookup', async () => {

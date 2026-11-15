@@ -58,6 +58,16 @@ export interface ListFilterOptions {
   searchColumns?: readonly string[];
 }
 
+/**
+ * One `ilike` term for a PostgREST logic tree. The pattern is double-quoted, so
+ * `,` and `(`/`)` stay inside the value instead of ending the term; inside the
+ * quotes only `"` and `\` have to be escaped.
+ */
+function ilikeTerm(column: string, pattern: string): string {
+  const quoted = pattern.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+  return `${column}.ilike."${quoted}"`;
+}
+
 export function applyListFilters<T extends FilterableBuilder<T>>(
   query: T,
   filter: AccessFilter,
@@ -66,10 +76,17 @@ export function applyListFilters<T extends FilterableBuilder<T>>(
   let filtered = applyAccessFilter(query, filter);
   if (options.params?.owner === 'mine') filtered = filtered.eq('created_by', options.userId);
   if (options.groupIds) filtered = filtered.in('id', options.groupIds);
+
   const search = options.params?.q;
-  if (search && options.searchColumns && options.searchColumns.length > 0) {
+  const pattern = search ? `%${search}%` : '';
+  const [firstColumn, ...otherColumns] = options.searchColumns ?? [];
+  if (search && firstColumn && otherColumns.length === 0) {
+    // A single column needs no logic tree, and `ilike` encodes the value itself —
+    // a comma or a quote in the search box must never reach the filter parser.
+    filtered = filtered.ilike(firstColumn, pattern);
+  } else if (search && firstColumn) {
     filtered = filtered.or(
-      options.searchColumns.map((column) => `${column}.ilike.%${search}%`).join(','),
+      [firstColumn, ...otherColumns].map((column) => ilikeTerm(column, pattern)).join(','),
     );
   }
   return filtered;
@@ -271,24 +288,6 @@ export const groupsParamSchema = z
       .max(50, { error: ValidationErrorCode.TOO_MANY }),
   )
   .transform((ids) => [...new Set(ids)]);
-
-/**
- * Forwards the named query params to a controller, dropping the ones the request
- * did not set — an empty string would otherwise reach the schema as a value.
- * Every list route builds the same object; `limit` arrives as a string and the
- * list schema coerces it, so an absent `?limit=` still falls back to its default.
- */
-export function listQuery(
-  searchParams: URLSearchParams,
-  keys: readonly string[],
-): Record<string, string> {
-  const query: Record<string, string> = {};
-  for (const key of keys) {
-    const value = searchParams.get(key);
-    if (value) query[key] = value;
-  }
-  return query;
-}
 
 export function createListQuerySchema<const TSort extends readonly [string, ...string[]]>(opts: {
   /** Sortable columns; `sortBy` is validated against exactly this list. */

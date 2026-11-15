@@ -45,12 +45,12 @@ they are another author's banks — the student owns neither.
 ## Steps
 
 1. Otwórz /app/questions.
-2. Użyj filtra zakresu Wszystkie / Moje, filtra grup („Dowolna grupa” / „Moje grupy”), wyszukiwarki „Szukaj banków…” i sortowania.
+2. Użyj przycisku „Filtry” (wymiary „Moje” i „Grupy”), wyszukiwarki „Szukaj banków…” i sortowania.
 
 ## Expected result
 
 - Widoczne banki „Historia” i „Geografia i Nauka” (grupowe) z licznikiem „N pytań” (4 i 6).
-- Filtr grup zawęża listę do banków udostępnionych wybranej grupie; brak opcji „Grupy” jako zakresu.
+- Wiersz „Grupy” w przycisku „Filtry” zaznacza wszystkie grupy studenta, a pojedyncza grupa wybrana w panelu obok listy zawęża ją do banków udostępnionych tej grupie; brak osobnego selecta zakresu.
 - Etykieta „Podgląd banku” dla banków nauczyciela.
 
 ## Observations from the walk (shared app, Polish UI, 2026-10-29)
@@ -60,16 +60,17 @@ they are another author's banks — the student owns neither.
   in the legacy seed).
 - The student does not own those banks, so the card's primary action is „Podgląd banku”
   (read-only). A bank the student owns shows „Zarządzaj” instead.
-- The scope select offers exactly „Wszystkie” and „Moje”; there is no „Grupy” scope, and
-  the API rejects the retired `groupFilter` parameter with a 422 (UNPROCESSABLE_ENTITY).
+- The filters live behind one button, „Filtry”; its rows are the dimensions „Moje”
+  (ownership) and „Grupy” (assignment). There is no scope select, and the API rejects
+  the retired `groupFilter` parameter with a 422 (UNPROCESSABLE_ENTITY).
 - „Moje” filters to banks authored by the student; with none it shows the filtered empty
   state „Nie znaleziono banków dla wybranych filtrów”.
 - The search field's shipped placeholder is „Szukaj banków...”. A miss shows
   „Nie znaleziono banków dla „<query>”” plus a „Wyczyść filtry” action, which resets the
-  search, the scope and the group selection (sorting is kept).
-- The group filter is the MultiSelect labelled „Dowolna grupa”, with a „Moje grupy”
-  quick action that selects the student's groups and disables itself while selected.
-  Selecting a group narrows the list to the banks shared with it.
+  search and the „Moje” / „Grupy” dimensions (sorting is kept).
+- The „Grupy” row selects every group the student belongs to — the trigger then shows a
+  „Grupy” chip — while the groups themselves open in a panel beside the list, where a
+  single group can be ticked to narrow the list to the banks shared with it.
 - Sorting: „Najnowsze” (default), „Ostatnio zmienione”, „Najstarsze”, „Nazwa A-Z”,
   „Nazwa Z-A”. Name ordering is case-insensitive enough for the assertions here
   (Geografia → Historia → Moje notatki STU-31 ascending).

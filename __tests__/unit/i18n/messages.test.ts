@@ -94,9 +94,27 @@ const DECK_GROUP_REQUIRED_NAMESPACES = [
 
 /**
  * #360 (STU-31) — the bank grid names its own empty state; the no-results copy and
- * the reset action come from `EmptyStates`, which `SHARED_LIST_MESSAGE_KEYS` covers.
+ * the reset action come from `EmptyStates`, which is merged into every namespace
+ * through `Common` (see `i18n/request.ts`).
  */
 const QUESTION_BANK_EMPTY_STATE_KEYS = ['no_banks'] as const;
+
+/**
+ * The five collection screens render the shared frame, and the frame looks its copy
+ * up in the screen's own namespace: `SelectAllRow` needs the select-all triple and
+ * the no-results view needs the collection's noun. #1243 shipped
+ * `EduFlashcardDecksPage.deselect_all` because nothing asserted this per namespace.
+ */
+const COLLECTION_SCREEN_NAMESPACES = [
+  ['EduFlashcardDecksPage', 'decks_count'],
+  ['AppFlashcardDecksPage', 'decks_count'],
+  ['EduFlashcardTopicsPage', 'topics_count'],
+  ['AppFlashcardTopicsPage', 'topics_count'],
+  ['QuestionBankManagement', 'banks_count'],
+] as const;
+
+/** The two deck *view* namespaces render `SelectAllRow` on their flashcard grid. */
+const SELECT_ALL_KEYS = ['select_all', 'deselect_all', 'n_selected'] as const;
 
 /**
  * #284 — the public /status page renders every `StatusPage` key directly, so a
@@ -258,6 +276,38 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
 
       expect(message, `QuestionBankManagement.${key}`).toBeTypeOf('string');
       expect(message).not.toHaveLength(0);
+    }
+  });
+
+  /**
+   * #1243 — the shared frame resolves its copy in the screen's namespace, so every
+   * collection screen that renders it must carry the same keys in both locales.
+   * Dropping one fails here instead of printing a raw key in selection mode.
+   */
+  it('translates the shared frame copy in every collection namespace', () => {
+    for (const [namespace, countKey] of COLLECTION_SCREEN_NAMESPACES) {
+      const copy = messages[namespace] as Record<string, string>;
+
+      for (const key of [...SELECT_ALL_KEYS, 'no_results_subject', countKey]) {
+        expect(copy[key], `${namespace}.${key}`).toBeTypeOf('string');
+        expect(copy[key], `${namespace}.${key}`).not.toHaveLength(0);
+      }
+      // `n_selected` is interpolated and the count lines are ICU plurals, so both
+      // must carry the `count` argument — an ICU plural would render `#` as text.
+      expect(copy.n_selected, `${namespace}.n_selected`).toContain('{count}');
+      expect(copy[countKey], `${namespace}.${countKey}`).toContain('{count');
+    }
+  });
+
+  it('translates the select-all row in every deck view namespace', () => {
+    for (const namespace of DECK_VIEW_NAMESPACES) {
+      const copy = messages[namespace] as Record<string, string>;
+
+      for (const key of SELECT_ALL_KEYS) {
+        expect(copy[key], `${namespace}.${key}`).toBeTypeOf('string');
+        expect(copy[key], `${namespace}.${key}`).not.toHaveLength(0);
+      }
+      expect(copy.n_selected, `${namespace}.n_selected`).toContain('{count}');
     }
   });
 
