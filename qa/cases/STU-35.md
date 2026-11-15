@@ -87,3 +87,10 @@ case's own tenant and never the legacy accounts.
 - The case's copy is matched: „Rozpocznij kartkówkę”, „Wpisz swoją odpowiedź...”,
   „Prześlij zdjęcie”, „Przesyłanie...”, „Poprzednie”, „Następne”, „Wyślij”,
   „Ukończono”.
+
+## Slice 3 update (#1171 — review at close)
+
+- The score is still shown right after „Wyślij”, but the review no longer is: the detail page
+  shows „Podsumowanie otwiera się po zakończeniu kartkówki.” and no „Zobacz podsumowanie” link
+  until the teacher closes the run (R5). The spec closes it through the teacher API and then
+  asserts the link, the review page and the saved answers.

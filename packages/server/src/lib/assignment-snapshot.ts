@@ -147,7 +147,8 @@ export async function readAssignmentPoints(
   );
 }
 
-/** The published keys of one assignment (service role; the caller already proved ownership). */ export async function readAssignmentSnapshotKeys(
+/** The published keys of one assignment (service role; the caller already proved ownership). */
+export async function readAssignmentSnapshotKeys(
   assignmentId: string,
 ): Promise<Map<string, QuestionSnapshotKey>> {
   const keys = new Map<string, QuestionSnapshotKey>();
@@ -161,17 +162,55 @@ export async function readAssignmentPoints(
   if (error) return mapSupabaseError(error);
 
   for (const row of dbRows(data)) {
-    const key = row.snapshot_key;
-    if (!row.question_id || !isRecord(key)) continue;
-    const correctOptionIds = Array.isArray(key.correctOptionIds)
-      ? key.correctOptionIds.filter((id): id is string => typeof id === 'string')
-      : [];
-    keys.set(row.question_id, {
-      explanation: typeof key.explanation === 'string' ? key.explanation : null,
-      correctOptionIds,
-    });
+    const key = snapshotKeyFromJson(row.snapshot_key);
+    if (row.question_id && key) keys.set(row.question_id, key);
   }
   return keys;
+}
+
+/** Narrows the `snapshot_key` jsonb column; malformed is `null`, and the caller decides. */
+export function snapshotKeyFromJson(value: unknown): QuestionSnapshotKey | null {
+  if (!isRecord(value)) return null;
+  const correctOptionIds = Array.isArray(value.correctOptionIds)
+    ? value.correctOptionIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  return {
+    explanation: typeof value.explanation === 'string' ? value.explanation : null,
+    correctOptionIds,
+  };
+}
+
+/** One item the post-close review may render: its frozen item and its published key (R5). */
+export interface ReviewItem {
+  questionId: string;
+  snapshot: QuestionSnapshot;
+  key: QuestionSnapshotKey;
+}
+
+/**
+ * The items a review may render: the frozen snapshot and its key, minus every item the teacher is
+ * holding back (R10). Read with the service role — `snapshot_key` is never granted to
+ * `authenticated` — and only after the caller proved the assignment targets this student.
+ */
+export async function readReviewItems(assignmentId: string): Promise<ServiceResult<ReviewItem[]>> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id, snapshot, snapshot_key')
+    .eq('assignment_id', assignmentId)
+    .order('order_index', { ascending: true });
+
+  if (error) return toDbFailure(error);
+
+  const items: ReviewItem[] = [];
+  for (const row of dbRows(data)) {
+    if (!row.question_id) continue;
+    const snapshot = snapshotFromJson(row.snapshot);
+    const key = snapshotKeyFromJson(row.snapshot_key);
+    if (!snapshot || !key) continue;
+    items.push({ questionId: row.question_id, snapshot, key });
+  }
+  return success(items);
 }
 
 /** Freezes every item at the draft → published transition; never while already live. */

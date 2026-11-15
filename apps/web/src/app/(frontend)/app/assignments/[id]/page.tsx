@@ -26,6 +26,8 @@ interface AssignmentDetail extends StudentAssignmentAttemptState {
   start_time: string | null;
   /** Written by the durable close (R7/R12); a later clock change does not reopen it. */
   closed_at: string | null;
+  /** Server truth for “the review is readable now” (R5) — it unlocks at the close for the cohort. */
+  review_unlocked: boolean;
   time_limit_min: number | null;
   question_count: number;
   total_points: number;
@@ -230,13 +232,29 @@ export default function StudentAssignmentDetailPage() {
                     total: lastCompleted.total_points || lastCompleted.total_questions,
                   })}
                 </p>
-                <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
-                  <Button variant="outline">{t('view_review')}</Button>
-                </Link>
+                {assignment.review_unlocked ? (
+                  <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
+                    <Button variant="outline">{t('view_review')}</Button>
+                  </Link>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t('review_locked')}</p>
+                )}
               </>
             ) : (
               <p className="text-sm text-muted-foreground">{t('results_hidden')}</p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* The reveal is cohort-wide (R5), so a student who used no attempt can still learn from it. */}
+      {!lastCompleted && assignment.show_results && assignment.review_unlocked && (
+        <Card>
+          <CardContent className="pt-6 space-y-3">
+            <p className="text-sm text-muted-foreground">{t('review_available')}</p>
+            <Link href={`/app/assignments/${id}/review`}>
+              <Button variant="outline">{t('view_review')}</Button>
+            </Link>
           </CardContent>
         </Card>
       )}

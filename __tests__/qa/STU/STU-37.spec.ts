@@ -293,6 +293,11 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
         { questionId: open.id, points: 1, feedback },
       );
 
+      // ── The teacher closes the visible quiz ────────────────────────────────
+      // Results were opted in at creation; R5 decides when they become readable, and the review
+      // unlocks cohort-wide at the close.
+      await api<unknown>(page, 'POST', `/api/v1/teacher/assignments/${visible.id}/close`, {});
+
       // ── Step 1: the completed list and the visible quiz's summary ──────────
       await studentPage.goto('/app/assignments');
       await expect(

@@ -54,3 +54,9 @@ Kartkówka z maks. prób = 1.
 - Przy `max_attempts = 1` strona szczegółów nie renderuje linii „Pozostało prób” /
   „Wykorzystano wszystkie próby” (jest ona warunkowana `max_attempts > 1`); ukrycie
   przycisku startu spełnia oczekiwany rezultat, więc to nie jest usterka.
+
+## Slice 3 update (#1171 — review at close)
+
+- The completed card still shows “Ukończono” and the score, but the review link is replaced by
+  „Podsumowanie otwiera się po zakończeniu kartkówki.” while the window is open (R5). The case is
+  about the attempt budget, so it asserts that note and does not open the review.

@@ -24,6 +24,7 @@ import {
 import { GET as assignmentDetail } from '@/app/(backend)/api/v1/teacher/assignments/[id]/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
 import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
+import { POST as closePost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/close/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
 
 // #1171 slice 1: item states, the version counter and the frozen assessment snapshot. The
@@ -264,6 +265,17 @@ describe('Item states, versioning and the frozen assignment snapshot (#1171)', (
     expect(submitted.status, await submitted.clone().text()).toBe(200);
     expect((await json<{ data: { score: number } }>(submitted)).data.score).toBe(1);
 
+    // The review unlocks at the close (R5), so the run is closed before reading its key.
+    mockUser(teacher.user);
+    const closeCall = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${assignmentId}/close`,
+      { id: assignmentId },
+      { method: 'POST' },
+    );
+    const closed = await closePost(closeCall.request, { params: closeCall.params });
+    expect(closed.status, await closed.clone().text()).toBe(200);
+
+    mockUser(student.user);
     const { request: reviewReq, params: reviewParams } = createNextRequestWithParams(
       `http://localhost/api/v1/quiz/${started.id}`,
       { attemptId: started.id },

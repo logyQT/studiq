@@ -6,7 +6,11 @@ import {
   readAttemptQuestions,
 } from '@studiq/server/lib/assignment-snapshot';
 import { ensureClosed, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
-import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
+import {
+  hiddenResultAssignmentIds,
+  resultsHidden,
+  reviewState,
+} from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
@@ -318,13 +322,24 @@ export class QuizAttemptService {
     if (attempt.expired_at) return failure('ATTEMPT_EXPIRED');
     const isCompleted = attempt.completed_at !== null;
 
-    // The review payload is a result: withhold it while the assignment's
-    // „Pokaż wyniki” is off. A running attempt still resumes, so „Kontynuuj”
+    // The review payload is a result: it is absent while the teacher's „Pokaż wyniki” is off, and
+    // locked until the assessment closes (R5). A running attempt still resumes, so „Kontynuuj”
     // keeps working; practice attempts have no assignment flag (#374).
     if (isCompleted && attempt.assignment_id) {
-      const hidden = await hiddenResultAssignmentIds(supabase, [attempt.assignment_id]);
-      if (isFailure(hidden)) return hidden;
-      if (hidden.data.size > 0) return failure('FORBIDDEN');
+      const { data: assignment } = await supabase
+        .from('teacher_assignments')
+        .select('id, status, start_time, deadline, closed_at, show_results')
+        .eq('id', attempt.assignment_id)
+        .maybeSingle();
+
+      // The read can be the one that records a natural close, so the lock is decided on the settled
+      // row; a missing row fails closed (there is no review without its assignment).
+      const settled = assignment ? await ensureClosed(assignment) : null;
+      if (settled && !settled.success) return settled;
+
+      const state = reviewState(settled?.success ? settled.data : assignment);
+      if (state === 'hidden') return failure('FORBIDDEN');
+      if (state === 'locked') return failure('REVIEW_LOCKED');
     }
 
     // Drafts are served as `answers` below; the raw column is never serialised.

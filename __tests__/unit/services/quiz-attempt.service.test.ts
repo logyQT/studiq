@@ -740,7 +740,10 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }]));
+      // The review exists only after the close (R5): the fixture is a closed run.
+      mock.from.mockReturnValueOnce(
+        qb({ id: 'assignment-1', show_results: true, deadline: '2020-01-01T00:00:00.000Z' }),
+      );
       setAssignmentSnapshot({ id: 'q-open', type: 'open' });
       mock.from.mockReturnValueOnce(
         qb([
@@ -804,6 +807,30 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('refuses the review of a completed attempt until the assessment closes (R5)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        assignment_id: 'assignment-1',
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(
+        qb({
+          id: 'assignment-1',
+          status: 'published',
+          show_results: true,
+          deadline: new Date(Date.now() + 86_400_000).toISOString(),
+        }),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('REVIEW_LOCKED');
     });
 
     it('keeps resuming a running assignment attempt without reading show_results (#374)', async () => {
