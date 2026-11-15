@@ -302,10 +302,10 @@
 }
 
 /* The paper surface of the shells: a light pool top-left, a warm shade
-   bottom-right, 100px of edge curl, and the grain — all behind type. The
-   marketing shells and the product shell (`DashboardLayout`) both carry it.
-   Radii are fixed px rather than percentages so a long page grows a flat middle
-   instead of stretching the light into a wash.
+   bottom-right, and the grain — all behind type. The marketing shells and the
+   product shell (`DashboardLayout`) both carry it. Radii are fixed px rather
+   than percentages so a long page grows a flat middle instead of stretching the
+   light into a wash.
    `background-blend-mode` does not blend against `background-color` on its own,
    so the last gradient layer is mandatory — without it the page greys out.
    The order of that list is load-bearing. The dither is the first (topmost)
@@ -313,43 +313,32 @@
    and breaks the 8-bit tread the ramp would otherwise show as a stripe: the
    tone layers underneath are `normal`, so a noise layer below them is covered by
    their alpha instead of dithering them. `soft-light` is the grain, which is
-   meant to sit under the light and be seen where it thins. */
+   meant to sit under the light and be seen where it thins.
+   There is deliberately no edge layer. Any shaped cue that has to reach the
+   viewport edge lands somewhere, and both a 100px ramp and a 240px eased one
+   were read as a vertical band down each side rather than as light: a band that
+   reads as a seam is not a lighting cue, so the two pools carry the sheet. */
 @utility bg-paper-grain {
   background-color: var(--background);
   background-image:
     var(--paper-dither),
     radial-gradient(1300px 1000px at 18% 0%, rgb(255 252 242 / 0.93), rgb(255 252 242 / 0) 68%),
     radial-gradient(1500px 1200px at 92% 100%, rgb(106 86 46 / 0.093), rgb(106 86 46 / 0) 70%),
-    linear-gradient(
-      to right,
-      rgb(106 86 46 / 0.045),
-      rgb(106 86 46 / 0) 100px,
-      rgb(106 86 46 / 0) calc(100% - 100px),
-      rgb(106 86 46 / 0.045)
-    ),
     var(--paper-grain), linear-gradient(var(--background), var(--background));
   background-size:
     64px 64px,
     auto,
     auto,
-    auto,
     180px 180px,
     auto;
-  background-repeat: repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
-  background-blend-mode: overlay, normal, normal, normal, soft-light, normal;
+  background-repeat: repeat, no-repeat, no-repeat, repeat, no-repeat;
+  background-blend-mode: overlay, normal, normal, soft-light, normal;
 
   .dark & {
     background-image:
       var(--paper-dither),
       radial-gradient(1200px 900px at 20% 0%, rgb(255 250 236 / 0.043), rgb(255 250 236 / 0) 66%),
       radial-gradient(1500px 1100px at 90% 100%, rgb(0 0 0 / 0.357), rgb(0 0 0 / 0) 70%),
-      linear-gradient(
-        to right,
-        rgb(0 0 0 / 0.238),
-        rgb(0 0 0 / 0) 100px,
-        rgb(0 0 0 / 0) calc(100% - 100px),
-        rgb(0 0 0 / 0.238)
-      ),
       var(--paper-grain), linear-gradient(var(--background), var(--background));
   }
 

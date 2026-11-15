@@ -165,11 +165,13 @@ fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
 
 ### The paper surface
 
-The shell is paper: `--background` with two light pools, a 100px edge curl, the grain and a
-dither, painted by `bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell
-(`DashboardLayout`, which `/app`, `/edu` and `/manage` render inside). `/register`'s form column
-carries the same class in both themes: the utility has its own `.dark &` block, so one class
-paints the correct stack for each.
+The shell is paper: `--background` with two light pools that run into the edges, the grain and
+a dither, painted by `bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell
+(`DashboardLayout`, which `/app`, `/edu` and `/manage` render inside). There is no edge layer:
+a shaped cue that reaches the viewport edge was read as a vertical band down both sides, and a
+band that reads as a seam is not a lighting cue, so the pools carry the sheet alone.
+`/register`'s form column carries the same class in both themes: the utility has its own
+`.dark &` block, so one class paints the correct stack for each.
 
 The order of that stack is the technique. The dither is the topmost layer and composites with
 `overlay`, so it meets the tone layers the compositor is about to round to 8 bits and spreads
@@ -180,7 +182,7 @@ would paint static rather than hide a step. The dither is its own 64px, one-octa
 through a `table` transfer that linearises the filter's bell-shaped distribution, because a
 Gaussian tile only flips pixels at its tails and dithers nothing in the middle.
 
-Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
+Measured at 1440 the tone spans 9 levels with a flat middle and no step larger than ~1 level
 per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
 pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
 lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
