@@ -1,7 +1,7 @@
 'use client';
 
 import { createTranslator, useLocale, useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildQuizDemoResult,
   type QuizDemoResult,
@@ -42,6 +42,22 @@ export function QuizQuestionPreview() {
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<QuizDemoResult | null>(null);
+
+  /*
+   * Restart replaces the result with the first question, and the control the
+   * visitor pressed leaves with it: focus would drop to <body> and the next Tab
+   * would start at the top of the page. The stem takes it instead, so the visitor
+   * lands on the question they are being asked again. Only the restart handoff
+   * focuses — the first render has the hero's own reading order to respect.
+   */
+  const headingRef = useRef<HTMLDivElement>(null);
+  const focusHeadingOnRestart = useRef(false);
+
+  useEffect(() => {
+    if (result !== null || !focusHeadingOnRestart.current) return;
+    focusHeadingOnRestart.current = false;
+    headingRef.current?.focus({ preventScroll: true });
+  }, [result]);
 
   const t = useMemo(
     () =>
@@ -104,6 +120,7 @@ export function QuizQuestionPreview() {
       )}
       <QuizQuestionView
         question={question}
+        headingRef={headingRef}
         labels={{
           // The reserved line above the bar reports the step while answering and
           // the finished attempt once the result replaces the card: the visitor is
@@ -147,6 +164,7 @@ export function QuizQuestionPreview() {
                 skipped: tReview('no_answer'),
               }}
               onRestart={() => {
+                focusHeadingOnRestart.current = true;
                 setAnswers({});
                 setIndex(0);
                 setResult(null);

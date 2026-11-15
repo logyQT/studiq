@@ -14,7 +14,7 @@ import {
   Textarea,
 } from '@studiq/ui';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 
 /** One selectable answer; `id` is the value the attempt persists as the answer. */
 export interface QuizQuestionOption {
@@ -71,6 +71,13 @@ export interface QuizQuestionViewProps {
    * swapping to the result cannot move the card or anything around it.
    */
   result?: ReactNode;
+  /**
+   * The stem, as a focus target for a caller that replaces the card's body and
+   * back: the question is what the visitor returns to. Passing it also makes the
+   * heading programmatically focusable (`tabIndex={-1}`), which keeps it out of
+   * the tab order.
+   */
+  headingRef?: Ref<HTMLDivElement>;
 }
 
 /**
@@ -89,6 +96,7 @@ export function QuizQuestionView({
   onNext,
   onSubmit,
   result,
+  headingRef,
 }: QuizQuestionViewProps) {
   const progress = question.total > 0 ? (question.position / question.total) * 100 : 0;
 
@@ -121,7 +129,13 @@ export function QuizQuestionView({
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{labels.typeLabel}</Badge>
               </div>
-              <CardTitle className="mt-3 text-xl">{question.stem}</CardTitle>
+              <CardTitle
+                ref={headingRef}
+                tabIndex={headingRef ? -1 : undefined}
+                className="mt-3 rounded-lg text-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none"
+              >
+                {question.stem}
+              </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
               <div className="grid flex-1">

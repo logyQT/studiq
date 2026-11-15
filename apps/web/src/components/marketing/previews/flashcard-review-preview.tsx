@@ -12,6 +12,9 @@ import pl from '@/i18n/messages/pl.json';
 
 const MESSAGES = { pl, en };
 
+/** The rating buttons' own shortcut keys: 1–4, in scale order. */
+const RATING_SHORTCUTS = new Set(['1', '2', '3', '4']);
+
 /**
  * The flashcard review loop as the marketing page shows it: the component the
  * student rates cards on, driven by three fixtures instead of a queue.
@@ -51,6 +54,25 @@ export function FlashcardReviewPreview() {
 
   const card = cards[index] ?? cards[0];
 
+  function rate() {
+    setIndex((current) => (current + 1) % cards.length);
+    setIsFlipped(false);
+  }
+
+  /*
+   * The rating buttons advertise the session's 1–4 shortcuts, and the listener that
+   * makes them work lives in `SessionClient`, which the preview does not mount: the
+   * keys have to be honoured here or the buttons promise something this surface does
+   * not do. It is scoped to the band's own keydown rather than a window listener —
+   * on a scrolling page the keys belong to the card the visitor has focused, not to
+   * every section around it. As in the session, a rating needs the answer up.
+   */
+  function handleRatingKey(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!RATING_SHORTCUTS.has(event.key) || !isFlipped) return;
+    event.preventDefault();
+    rate();
+  }
+
   return (
     /*
      * The card's box, owned by the marketing band rather than by the component.
@@ -61,7 +83,11 @@ export function FlashcardReviewPreview() {
      * component. The height steps with the column width so the card stays
      * landscape: tallest at md, where the stacked preview takes the whole page.
      */
-    <div className="flex flex-col gap-6 [&_fieldset]:h-48 sm:[&_fieldset]:h-64 md:[&_fieldset]:h-72 lg:[&_fieldset]:h-56">
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the band is not a control; it forwards the digits its own buttons advertise.
+    <div
+      className="flex flex-col gap-6 [&_fieldset]:h-48 sm:[&_fieldset]:h-64 md:[&_fieldset]:h-72 lg:[&_fieldset]:h-56"
+      onKeyDown={handleRatingKey}
+    >
       <FlashcardReview
         cardKey={card.id}
         front={card.front}
@@ -77,10 +103,7 @@ export function FlashcardReviewPreview() {
           good: t('rating_good'),
           easy: t('rating_easy'),
         }}
-        onRate={() => {
-          setIndex((current) => (current + 1) % cards.length);
-          setIsFlipped(false);
-        }}
+        onRate={rate}
       />
     </div>
   );

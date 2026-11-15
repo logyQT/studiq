@@ -41,9 +41,10 @@ Zalogowany użytkownik.
 - Język jest **jednym, opisanym kontrolnym elementem** („Język” + aktualna nazwa), a nie dwoma
   osobnymi pozycjami menu. Flaga jest dekoracyjna, nazwa języka jest zawsze widoczna i nie jest
   tłumaczona przez tłumacza przeglądarki.
-- Na komputerze wybór to zwykłe pole wyboru bez wyszukiwania; na ekranach dotykowych panel ma
-  pole wyszukiwania (po nazwie własnej, nazwie w języku interfejsu i kodzie, bez znaczenia
-  wielkości liter i polskich znaków); przy braku dopasowania widać „Brak pasującego języka”.
+- Na komputerze wybór to zwykłe pole wyboru bez wyszukiwania; w panelu konta w aplikacji (ekrany
+  dotykowe) język ma pole wyszukiwania (po nazwie własnej, nazwie w języku interfejsu i kodzie,
+  bez znaczenia wielkości liter i polskich znaków); przy braku dopasowania widać „Brak pasującego
+  języka”. Lista w menu publicznym nie ma pola wyszukiwania.
 - Po wybraniu języka treść zmienia się **bez przeładowania strony** (w tym karty talii i banków
   pytań): adres i pozycja przewinięcia pozostają. Ciasteczko `NEXT_LOCALE` jest ważne rok.
 - Zmiana języka jest komunikowana czytnikowi ekranu **raz**, w języku, w którym użytkownik czytał

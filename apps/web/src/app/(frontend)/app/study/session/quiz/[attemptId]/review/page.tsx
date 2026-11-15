@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card } from '@studiq/ui';
+import { Button } from '@studiq/ui';
 import { Eye } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -81,20 +81,18 @@ export default function QuizReviewPage() {
         </Link>
       </div>
 
-      <Card className="px-6">
-        <QuizScoreSummary
-          attempt={{
-            score: attempt.score,
-            totalQuestions: attempt.total_questions,
-            totalPoints: attempt.total_points,
-            isAssignment,
-            startedAt: attempt.started_at,
-            questions: attempt.questions,
-          }}
-          locale={locale}
-          labels={scoreSummaryLabels(t)}
-        />
-      </Card>
+      <QuizScoreSummary
+        attempt={{
+          score: attempt.score,
+          totalQuestions: attempt.total_questions,
+          totalPoints: attempt.total_points,
+          isAssignment,
+          startedAt: attempt.started_at,
+          questions: attempt.questions,
+        }}
+        locale={locale}
+        labels={scoreSummaryLabels(t)}
+      />
 
       <div className="flex flex-col gap-4">
         {attempt.questions.map((question, index) => (

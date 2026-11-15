@@ -115,66 +115,75 @@
   --header-height: 4rem;
 }
 
-.dark {
-  /* Surfaces — cobalt-tinted, not neutral near-black */
-  --background: oklch(0.155 0.035 264);
-  --foreground: oklch(0.960 0.006 85);
-  --card: oklch(0.215 0.022 264);
-  --card-foreground: var(--foreground);
-  --popover: oklch(0.215 0.022 264);
-  --popover-foreground: var(--foreground);
+/*
+ * A printed sheet is white paper, so it has no dark theme: printing from dark mode
+ * would otherwise lay near-white ink and near-black cards on the white surface
+ * `.bg-paper-grain` sets for print, and the text would disappear. Excluding the dark
+ * palette from print leaves `:root`'s light one in force there — the palette the
+ * sheet is designed against, with no second copy of it to drift.
+ */
+@media not print {
+  .dark {
+    /* Surfaces — cobalt-tinted, not neutral near-black */
+    --background: oklch(0.155 0.035 264);
+    --foreground: oklch(0.960 0.006 85);
+    --card: oklch(0.215 0.022 264);
+    --card-foreground: var(--foreground);
+    --popover: oklch(0.215 0.022 264);
+    --popover-foreground: var(--foreground);
 
-  /* Brand — lighter cobalt, ink on top (paper would be 2.76:1) */
-  --primary: oklch(0.680 0.150 264);
-  --primary-foreground: oklch(0.175 0.022 264);
-  --ring: oklch(0.680 0.150 264);
+    /* Brand — lighter cobalt, ink on top (paper would be 2.76:1) */
+    --primary: oklch(0.680 0.150 264);
+    --primary-foreground: oklch(0.175 0.022 264);
+    --ring: oklch(0.680 0.150 264);
 
-  /* Neutral fills */
-  --secondary: oklch(0.265 0.025 264);
-  --secondary-foreground: oklch(0.900 0.010 85);
-  --muted: oklch(0.240 0.025 264);
-  --muted-foreground: oklch(0.720 0.020 264);
-  --accent: oklch(0.265 0.028 264);
-  --accent-foreground: var(--foreground);
+    /* Neutral fills */
+    --secondary: oklch(0.265 0.025 264);
+    --secondary-foreground: oklch(0.900 0.010 85);
+    --muted: oklch(0.240 0.025 264);
+    --muted-foreground: oklch(0.720 0.020 264);
+    --accent: oklch(0.265 0.028 264);
+    --accent-foreground: var(--foreground);
 
-  /* Semantic — `--destructive` is error text (`FormMessage` and the inline
-     field errors), so it clears 4.5:1 wherever those land: 4.70 on the card,
-     4.95 on the sidebar, 5.24 on the page. Lighter than this drops the card to
-     4.42; the hue and chroma are the light token's, only the lightness moves. */
-  --destructive: oklch(0.635 0.180 27.325);
-  --destructive-foreground: oklch(0.175 0.022 264);
-  --success: oklch(0.720 0.130 155);
-  --warning: oklch(0.780 0.125 75);
-  --info: var(--primary);
-  --signal: oklch(0.880 0.210 122);
-  --signal-foreground: oklch(0.175 0.022 264);
-  --cobalt-hover: oklch(0.620 0.170 264);
+    /* Semantic — `--destructive` is error text (`FormMessage` and the inline
+       field errors), so it clears 4.5:1 wherever those land: 4.70 on the card,
+       4.95 on the sidebar, 5.24 on the page. Lighter than this drops the card to
+       4.42; the hue and chroma are the light token's, only the lightness moves. */
+    --destructive: oklch(0.635 0.180 27.325);
+    --destructive-foreground: oklch(0.175 0.022 264);
+    --success: oklch(0.720 0.130 155);
+    --warning: oklch(0.780 0.125 75);
+    --info: var(--primary);
+    --signal: oklch(0.880 0.210 122);
+    --signal-foreground: oklch(0.175 0.022 264);
+    --cobalt-hover: oklch(0.620 0.170 264);
 
-  --border: oklch(0.300 0.025 264);
-  --input: oklch(0.520 0.025 264);
+    --border: oklch(0.300 0.025 264);
+    --input: oklch(0.520 0.025 264);
 
-  /* Charts — lightened so the same series stay >= 4:1 on the dark card.
-     `--chart-6` is `--destructive`'s hue here too: 6.6:1 on the card, and
-     8.5 OKLab from the dark destructive token, so it reads as a ramp step
-     rather than as a second danger colour. */
-  --chart-1: oklch(0.680 0.160 264);
-  --chart-2: oklch(0.720 0.085 195);
-  --chart-3: oklch(0.760 0.115 70);
-  --chart-4: oklch(0.720 0.105 335);
-  --chart-5: oklch(0.740 0.090 135);
-  --chart-6: oklch(0.720 0.170 27.325);
+    /* Charts — lightened so the same series stay >= 4:1 on the dark card.
+       `--chart-6` is `--destructive`'s hue here too: 6.6:1 on the card, and
+       8.5 OKLab from the dark destructive token, so it reads as a ramp step
+       rather than as a second danger colour. */
+    --chart-1: oklch(0.680 0.160 264);
+    --chart-2: oklch(0.720 0.085 195);
+    --chart-3: oklch(0.760 0.115 70);
+    --chart-4: oklch(0.720 0.105 335);
+    --chart-5: oklch(0.740 0.090 135);
+    --chart-6: oklch(0.720 0.170 27.325);
 
-  /* Sidebar — a step darker than the page so the inset panel reads */
-  --sidebar: oklch(0.190 0.030 264);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.265 0.028 264);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
-  /* Same filter, different amplitude: soft-light lifts much harder on near-black. */
-  --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
+    /* Sidebar — a step darker than the page so the inset panel reads */
+    --sidebar: oklch(0.190 0.030 264);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: oklch(0.265 0.028 264);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+    /* Same filter, different amplitude: soft-light lifts much harder on near-black. */
+    --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
+  }
 }
 
 @theme inline {
@@ -380,16 +389,22 @@
   }
 }
 
+/*
+ * The marketing sections' side gutter. `viewportFit: 'cover'` lets the page reach
+ * the notch, so each step is the wider of the design value and the device inset:
+ * the band background still runs full-bleed, only its content clears the corner.
+ * Same expression as MainLayout's column, so the landing and the app agree.
+ */
 @utility px-content {
-  padding-left: 1rem;
-  padding-right: 1rem;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
   @media (width >= 640px) {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
   }
   @media (width >= 768px) {
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: max(2rem, env(safe-area-inset-left));
+    padding-right: max(2rem, env(safe-area-inset-right));
   }
 }
 

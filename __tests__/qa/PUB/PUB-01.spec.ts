@@ -167,4 +167,33 @@ test.describe('PUB-01 — landing page for an anonymous visitor', () => {
 
     errors.expectClean();
   });
+
+  /**
+   * The rating buttons advertise the session's 1–4 shortcuts, so this surface has to
+   * answer them: the listener that makes them work lives in the study session, which
+   * the landing does not mount. It is scoped to the preview, so the digits rate a
+   * revealed card while the visitor is in the band — and leave the rest of the page
+   * alone — instead of a window listener taking keys from the whole landing.
+   */
+  test('the advertised 1–4 keys rate a revealed preview card', async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto('/');
+
+    const card = page.locator('#features fieldset');
+    await expect(card).toHaveCount(1);
+    const rated = await card.elementHandle();
+
+    // Enter is the card's own reveal key; 3 is „Dobrze” in every locale, and the
+    // shortcut attribute is the stable handle for the button it stands for.
+    await card.press('Enter');
+    await page.keyboard.press('3');
+
+    await expect
+      .poll(() => rated.evaluate((element) => element.isConnected), { timeout: 3000 })
+      .toBe(false);
+    await expect(card).toHaveCount(1);
+    await expect(page.locator('#features [aria-keyshortcuts="3"]')).toBeDisabled();
+
+    errors.expectClean();
+  });
 });
