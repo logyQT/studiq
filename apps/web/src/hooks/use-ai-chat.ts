@@ -8,6 +8,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { parseAiChatErrorCode } from '@/lib/ai-chat-error';
 import { resetChat } from '@/lib/ai-chat-reset';
+import { notesFromToolOutput } from '@/lib/ai-notes';
 import { aiKeys } from '@/lib/query-keys';
 import { countOf, isRecord, recordsOf, stringsOf } from '@/lib/unknown-value';
 
@@ -108,11 +109,24 @@ export interface PlanStep {
   dependsOn?: string[];
 }
 
+/**
+ * What an assistant message can carry besides text, and the one thing the renderer switches on:
+ * `flashcards` (`data` is the cards) or `notes` (`data` is the parsed notes). A new kind of
+ * result is a new member here, so the renderer cannot miss it.
+ */
+export type ChatResultType = 'flashcards' | 'notes';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'thought' | 'tool_call' | 'plan';
   content: string;
-  result?: { type: string; data: unknown; deckName?: string; count?: number; readOnly?: boolean };
+  result?: {
+    type: ChatResultType;
+    data: unknown;
+    deckName?: string;
+    count?: number;
+    readOnly?: boolean;
+  };
   status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
@@ -166,6 +180,7 @@ function toolLabel(toolName: string): string {
     extract_concepts: '🔍 Extracting key concepts...',
     evaluate_quality: '✅ Evaluating quality...',
     generate_flashcards: '📇 Generating flashcards...',
+    generate_notes: '📝 Writing notes...',
     finish: '🏁 Finishing up...',
   };
   return labels[toolName] || `🛠️ Using ${toolName}...`;
@@ -186,6 +201,8 @@ function toolResultLabel(toolName: string, output: unknown): string {
       return o?.passed ? '✅ Quality check passed' : '❌ Quality check failed';
     case 'generate_flashcards':
       return `📇 Generated ${countOf(o?.flashcards)} flashcards`;
+    case 'generate_notes':
+      return `📝 Wrote notes with ${countOf(o?.sections)} sections`;
     default:
       return `🏁 ${toolName} completed`;
   }
@@ -345,6 +362,20 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 typeof outputMap?.deckName === 'string'
                   ? outputMap.deckName
                   : 'Generated Flashcards';
+            }
+          }
+
+          if (state === 'output-available' && toolName === 'generate_notes') {
+            const notes = notesFromToolOutput(part.output);
+            if (notes) {
+              mapped.push({
+                id: `${m.id}-notes-${i}`,
+                role: 'assistant',
+                content: '',
+                status: 'complete',
+                thinkingTraces: [],
+                result: { type: 'notes', data: notes },
+              });
             }
           }
 

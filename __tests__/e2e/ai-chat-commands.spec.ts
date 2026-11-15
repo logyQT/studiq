@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { signIn } from '#test/e2e/fixtures/tenant';
-import { mockAiChatEntitled, t } from '#test/e2e/utils';
+import { mockAiChatEntitled, stubAiChat, t } from '#test/e2e/utils';
 
 /**
  * Slash commands of the AI chat (#1150): the menu the composer opens on `/`, and what a sent
@@ -13,9 +13,8 @@ import { mockAiChatEntitled, t } from '#test/e2e/utils';
 const COMMAND = '/explain photosynthesis';
 
 /** Answers the chat endpoint with a one-line reply and records the request bodies it saw. */
-async function stubChat(page: Page): Promise<unknown[]> {
-  const bodies: unknown[] = [];
-  const frames = [
+const stubChat = (page: Page) =>
+  stubAiChat(page, [
     { type: 'start' },
     { type: 'start-step' },
     { type: 'text-start', id: 'txt-0' },
@@ -23,24 +22,7 @@ async function stubChat(page: Page): Promise<unknown[]> {
     { type: 'text-end', id: 'txt-0' },
     { type: 'finish-step' },
     { type: 'finish', finishReason: 'stop' },
-  ];
-  await page.route('**/api/v1/ai/chat', async (route) => {
-    bodies.push(route.request().postDataJSON());
-    await route.fulfill({
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream',
-        'x-vercel-ai-ui-message-stream': 'v1',
-        'cache-control': 'no-cache',
-      },
-      body: [
-        ...frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`),
-        'data: [DONE]\n\n',
-      ].join(''),
-    });
-  });
-  return bodies;
-}
+  ]);
 
 async function openChat(page: Page) {
   await mockAiChatEntitled(page);

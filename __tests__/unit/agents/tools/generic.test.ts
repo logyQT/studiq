@@ -29,7 +29,9 @@ import { evaluateQualityTool } from '@studiq/server/agents/tools/generic/evaluat
 import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract-concepts.tool';
 import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
 import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
+import { generateNotesTool } from '@studiq/server/agents/tools/generic/generate-notes.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
+import { notesFromToolOutput } from '@/lib/ai-notes';
 import { generateText, type ToolExecutionOptions } from 'ai';
 import type { Mock } from 'vitest';
 
@@ -299,5 +301,99 @@ describe('finishTool', () => {
     const result = await finishTool.execute({}, ctx);
     expect(result.type).toBe('chat');
     expect(result.content).toBe('');
+  });
+});
+
+describe('generateNotesTool', () => {
+  const input = {
+    task: 'notes on photosynthesis',
+    title: 'Photosynthesis',
+    sections: [
+      { heading: 'Light reactions', content: 'Chlorophyll absorbs light.' },
+      { heading: 'Calvin cycle', content: 'CO2 is fixed into sugar.' },
+    ],
+    keyTerms: [{ term: 'Chlorophyll', definition: 'The pigment that absorbs light.' }],
+    summary: 'Plants turn light, water and CO2 into sugar.',
+  };
+
+  it('returns the notes the model wrote, in reading order', async () => {
+    const result = await generateNotesTool.execute(input, mockCtx());
+    expect(result).toEqual({
+      type: 'notes',
+      title: 'Photosynthesis',
+      sections: input.sections,
+      keyTerms: input.keyTerms,
+      summary: input.summary,
+    });
+  });
+
+  it('accepts notes without key terms and without a summary', async () => {
+    const result = await generateNotesTool.execute(
+      { task: 't', title: 'Short', sections: [{ heading: 'One', content: 'Body' }] },
+      mockCtx(),
+    );
+    expect(result).toEqual({
+      type: 'notes',
+      title: 'Short',
+      sections: [{ heading: 'One', content: 'Body' }],
+      keyTerms: [],
+      summary: '',
+    });
+  });
+
+  it('trims the texts and drops empty sections and nameless terms', async () => {
+    const result = await generateNotesTool.execute(
+      {
+        task: 't',
+        title: '  Cells  ',
+        sections: [
+          { heading: '  Membrane ', content: ' Lipid bilayer. ' },
+          { heading: '  ', content: '' },
+          { heading: '', content: 'A body without a heading.' },
+        ],
+        keyTerms: [
+          { term: ' Nucleus ', definition: ' Holds the DNA. ' },
+          { term: ' ', definition: 'orphan definition' },
+        ],
+      },
+      mockCtx(),
+    );
+    expect(result).toEqual({
+      type: 'notes',
+      title: 'Cells',
+      sections: [
+        { heading: 'Membrane', content: 'Lipid bilayer.' },
+        { heading: '', content: 'A body without a heading.' },
+      ],
+      keyTerms: [{ term: 'Nucleus', definition: 'Holds the DNA.' }],
+      summary: '',
+    });
+  });
+
+  it('answers with an error the model can act on when nothing is left of the notes', async () => {
+    const result = await generateNotesTool.execute(
+      { task: 't', title: 'Empty', sections: [{ heading: ' ', content: ' ' }] },
+      mockCtx(),
+    );
+    expect(result.type).toBe('error');
+    expect(notesFromToolOutput(result)).toBeNull();
+  });
+
+  it('keeps a summary-only answer: a short request does not need sections', async () => {
+    const result = await generateNotesTool.execute(
+      { task: 't', title: 'Tiny', sections: [], summary: 'One line.' },
+      mockCtx(),
+    );
+    expect(result.type).toBe('notes');
+  });
+
+  it('what the tool answers is what the chat renders: the client reads the same output', async () => {
+    const result = await generateNotesTool.execute(input, mockCtx());
+    expect(notesFromToolOutput(result)).toEqual({
+      title: 'Photosynthesis',
+      sections: input.sections,
+      keyTerms: input.keyTerms,
+      summary: input.summary,
+    });
   });
 });

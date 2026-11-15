@@ -11,7 +11,7 @@ const flashcardSchema = z.object({
 
 export const finishTool = tool({
   description:
-    'Complete the current task and return the results to the user. Call this after generate_flashcards finishes.',
+    'Complete the current task and return the results to the user. Call this after generate_flashcards or generate_notes finishes. After notes use type "chat" with one short sentence as the message; the notes are already shown to the user.',
   inputSchema: z.object({
     type: z.enum(['chat', 'flashcards']).describe('Type of result to return'),
     message: z.string().optional().describe('Summary message for chat results'),
