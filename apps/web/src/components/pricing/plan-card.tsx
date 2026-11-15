@@ -26,7 +26,7 @@ export function PlanCard({
   const locale = useLocale();
   const descKey = `plan_${plan.key}_desc`;
   const noteKey = `plan_${plan.key}_note`;
-  const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
+  const description = t.has(descKey) ? t(descKey) : null;
   const note = t.has(noteKey) ? t(noteKey) : null;
   const ctaKey = ctaMessageKey(plan);
   const ctaLabel = t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
@@ -50,7 +50,8 @@ export function PlanCard({
       )}
       <CardHeader className="pb-4">
         <CardTitle className="text-xl">{plan.name}</CardTitle>
-        <p className="text-sm">{description}</p>
+        {/* No copy, no line: `description` is the seed's admin-internal column. */}
+        {description ? <p className="text-sm">{description}</p> : null}
         {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
       </CardHeader>
       <CardContent className="flex flex-col flex-1">

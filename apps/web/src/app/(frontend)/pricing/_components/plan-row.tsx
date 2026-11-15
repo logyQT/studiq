@@ -32,7 +32,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const descKey = `plan_${plan.key}_desc`;
   const noteKey = `plan_${plan.key}_note`;
   const ctaKey = ctaMessageKey(plan);
-  const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
+  const description = t.has(descKey) ? t(descKey) : null;
   const note = t.has(noteKey) ? t(noteKey) : null;
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
@@ -69,7 +69,8 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
       </div>
 
       <div className="mt-3 md:col-span-4 md:col-start-5 md:row-start-1 md:mt-0">
-        <p className="text-sm text-muted-foreground">{description}</p>
+        {/* No copy, no line: `description` is the seed's admin-internal column. */}
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         {note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}
       </div>
 
