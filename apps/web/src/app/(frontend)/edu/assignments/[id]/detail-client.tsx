@@ -27,6 +27,7 @@ import {
   CardTitle,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -267,6 +268,8 @@ export default function AssignmentDetailClient() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [extendOpen, setExtendOpen] = useState(false);
+  const [extendDeadline, setExtendDeadline] = useState('');
 
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
@@ -291,6 +294,12 @@ export default function AssignmentDetailClient() {
 
   const cancelMutation = useApiMutation<unknown, void>({
     mutationFn: () => apiPost<unknown>(`/api/v1/teacher/assignments/${id}/cancel`, undefined),
+    invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
+  });
+
+  const extendMutation = useApiMutation<unknown, { closesAt: string }>({
+    mutationFn: (vars) =>
+      apiPost<unknown>(`/api/v1/teacher/assignments/${id}/extend`, { closesAt: vars.closesAt }),
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
 
@@ -433,6 +442,18 @@ export default function AssignmentDetailClient() {
       );
     }
     setCancelOpen(false);
+  };
+
+  const handleExtend = async () => {
+    try {
+      await extendMutation.mutateAsync({ closesAt: new Date(extendDeadline).toISOString() });
+      void refetch();
+      setExtendOpen(false);
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? translateErrorCode(tErrors, error.code) : t('extend_failed'),
+      );
+    }
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -668,9 +689,23 @@ export default function AssignmentDetailClient() {
             </Button>
           )}
           {isPublished && isLiveRun && !isClosed && (
-            <Button variant="outline" size="sm" onClick={() => setCloseOpen(true)}>
-              {t('close')}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setExtendDeadline(
+                    assignment.deadline ? dbToDatetimeLocal(assignment.deadline) : '',
+                  );
+                  setExtendOpen(true);
+                }}
+              >
+                {t('extend')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCloseOpen(true)}>
+                {t('close')}
+              </Button>
+            </>
           )}
           {isPublished && !isClosed && (
             <Button variant="destructive" size="sm" onClick={() => setCancelOpen(true)}>
@@ -1232,6 +1267,35 @@ export default function AssignmentDetailClient() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={extendOpen} onOpenChange={setExtendOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('extend_title')}</DialogTitle>
+            <DialogDescription>{t('extend_hint')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="extend-deadline">{t('extend_new_deadline')}</Label>
+            <Input
+              id="extend-deadline"
+              type="datetime-local"
+              value={extendDeadline}
+              onChange={(e) => setExtendDeadline(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExtendOpen(false)}>
+              {t('common_cancel')}
+            </Button>
+            <Button
+              disabled={extendMutation.isPending || !extendDeadline}
+              onClick={() => void handleExtend()}
+            >
+              {extendMutation.isPending ? t('extending') : t('extend')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

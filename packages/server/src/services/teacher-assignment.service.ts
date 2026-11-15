@@ -20,6 +20,7 @@ import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -419,6 +420,93 @@ export class TeacherAssignmentService {
     const cancelled = await this.stampClose(supabase, id, new Date(), { status: 'cancelled' });
     if (isFailure(cancelled)) return cancelled;
     return success(cancelled.data);
+  }
+
+  /**
+   * Moves `closesAt` later, before the close (R12). Extending delays the reveal for the **whole
+   * cohort** — there is no per-student extension, which is what keeps one window and one reveal — and
+   * it can only move forward: shortening a window is the manager override (R20), and an extension
+   * that shrinks would be a silent early reveal.
+   *
+   * A run that already closed cannot be extended: reopening is impossible, and the repair path is a
+   * new assessment (makeup) over items with no exposure for the student.
+   */
+  async extend(id: string, closesAt: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const open = await this.loadOpenWindow(id, ctx);
+    if (isFailure(open)) return open;
+    const { supabase, run } = open.data;
+
+    const current = run.deadline ? new Date(run.deadline).getTime() : null;
+    if (current !== null && new Date(closesAt).getTime() <= current) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        {
+          code: 'custom',
+          path: ['closesAt'],
+          message: ValidationErrorCode.INVALID_INPUT,
+        },
+      ]);
+    }
+
+    // Closed between the read and the write: the extension must not land on a revealed run.
+    const updated = await this.writeWindow(supabase, id, {
+      deadline: closesAt,
+      updated_at: new Date().toISOString(),
+    });
+    if (isFailure(updated)) return updated;
+    return success(updated.data);
+  }
+
+  /**
+   * The manager override (R20): move either bound of the window, in either direction, on a published
+   * run. It exists for the cases the teacher paths cannot express — a shrink, a start moved, a late
+   * correction — and it stops exactly where the seal is: it **never unseals a live class and never
+   * un-reveals**. A shrink to a future instant is allowed (the cohort learns earlier, together); an
+   * override that would end the seal now, or move the start past now, is refused with
+   * `409 ASSESSMENT_LIVE`; a closed or cancelled run is refused outright, because both already
+   * released their items.
+   */
+  async override(
+    id: string,
+    input: { closesAt?: string; opensAt?: string },
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const open = await this.loadOpenWindow(id, ctx);
+    if (isFailure(open)) return open;
+    const { supabase, run } = open.data;
+
+    const now = new Date();
+    const closesAt = input.closesAt ?? run.deadline ?? null;
+    const opensAt = input.opensAt ?? run.start_time ?? null;
+
+    if (!closesAt) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['closesAt'], message: ValidationErrorCode.REQUIRED },
+      ]);
+    }
+    if (opensAt && new Date(opensAt).getTime() >= new Date(closesAt).getTime()) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['opensAt'], message: ValidationErrorCode.INVALID_INPUT },
+      ]);
+    }
+
+    // The window already opened: anything that moves the seal's edge to `now` or behind it would
+    // hand a live class its key early, or release items it is still being assessed on. The state is
+    // the run's **current** one — a proposed start in the future is exactly the move being refused.
+    const liveNow = !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
+    if (liveNow) {
+      const endsSeal = new Date(closesAt).getTime() <= now.getTime();
+      const movesStartAhead =
+        input.opensAt !== undefined && new Date(input.opensAt).getTime() > now.getTime();
+      if (endsSeal || movesStartAhead) return failure('ASSESSMENT_LIVE');
+    }
+
+    const updated = await this.writeWindow(supabase, id, {
+      deadline: closesAt,
+      start_time: opensAt,
+      updated_at: now.toISOString(),
+    });
+    if (isFailure(updated)) return updated;
+    return success(updated.data);
   }
 
   /**

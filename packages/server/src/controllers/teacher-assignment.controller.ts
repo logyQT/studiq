@@ -6,7 +6,9 @@ import { isFailure } from '@studiq/server/lib/service-result';
 import {
   AddQuestionsSchema,
   CreateTeacherAssignmentSchema,
+  ExtendAssignmentSchema,
   GradeAnswerSchema,
+  OverrideAssignmentSchema,
   PublishAssignmentSchema,
   RandomizeSchema,
   ReorderQuestionsSchema,
@@ -86,6 +88,26 @@ export class TeacherAssignmentController {
   async cancel(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     const result = await this.service.cancel(id, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async extend(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = ExtendAssignmentSchema.safeParse(body);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+    const result = await this.service.extend(id, parsed.data.closesAt, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
+    return controllerResponse.success(result.data);
+  }
+
+  async override(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = OverrideAssignmentSchema.safeParse(body);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+    const result = await this.service.override(id, parsed.data, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.success(result.data);
   }
 

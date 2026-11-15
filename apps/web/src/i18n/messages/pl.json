@@ -2911,7 +2911,13 @@
     "cancelling": "Anulowanie...",
     "cancel_confirm_title": "Anulować ten sprawdzian?",
     "cancel_confirm_desc": "Sprawdzian kończy się dla całej klasy bez ujawniania odpowiedzi. Rozpoczęte podejścia zostają zamknięte i nie można ich oddać, a pytania znów stają się dostępne. Tej operacji nie można cofnąć.",
-    "cancel_failed": "Anulowanie nie powiodło się"
+    "cancel_failed": "Anulowanie nie powiodło się",
+    "extend": "Przedłuż",
+    "extending": "Przedłużanie...",
+    "extend_title": "Przedłuż okno",
+    "extend_new_deadline": "Nowy termin",
+    "extend_hint": "Przegląd otwiera się o nowym terminie dla całej klasy — nie ma przedłużania dla pojedynczego ucznia.",
+    "extend_failed": "Przedłużenie nie powiodło się"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",

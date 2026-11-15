@@ -143,6 +143,41 @@ export const WithholdItemSchema = registry.register(
 export type WithholdItemInput = z.infer<typeof WithholdItemSchema>;
 
 /**
+ * The new close of an extension (#1174, R12). Only the bound moves: extending delays the reveal for
+ * the whole cohort, and it cannot move backwards — shortening is the manager override (R20).
+ */
+export const ExtendAssignmentSchema = registry.register(
+  'ExtendAssignmentRequest',
+  z.object({
+    closesAt: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .datetime({ offset: true, error: ValidationErrorCode.INVALID_INPUT }),
+  }),
+);
+export type ExtendAssignmentInput = z.infer<typeof ExtendAssignmentSchema>;
+
+/** A manager's window override (#1174, R20): either bound, either direction, never past the seal. */
+export const OverrideAssignmentSchema = registry.register(
+  'OverrideAssignmentRequest',
+  z
+    .object({
+      closesAt: z
+        .string()
+        .datetime({ offset: true, error: ValidationErrorCode.INVALID_INPUT })
+        .optional(),
+      opensAt: z
+        .string()
+        .datetime({ offset: true, error: ValidationErrorCode.INVALID_INPUT })
+        .optional(),
+    })
+    .refine((input) => input.closesAt !== undefined || input.opensAt !== undefined, {
+      error: ValidationErrorCode.REQUIRED,
+      path: ['closesAt'],
+    }),
+);
+export type OverrideAssignmentInput = z.infer<typeof OverrideAssignmentSchema>;
+
+/**
  * The publish preconditions, validated against the **stored** assessment plus the request's window.
  * Not registered: this is not a request contract, it is a server-side configuration check. Issues
  * carry the field `path`, so the client can point at the composer control that fixes it.
