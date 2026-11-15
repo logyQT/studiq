@@ -161,8 +161,7 @@ sequenceDiagram
     participant DB as Supabase
 
     U->>MW: POST /api/v1/questions
-    MW->>MW: Validate session + role
-    MW->>RT: Forward
+    MW->>RT: Forward — no session refresh, no route rule
     RT->>RT: Parse JSON body
     RT->>Ctrl: controller.create(body, userId)
     Ctrl->>Ctrl: Zod schema validation
