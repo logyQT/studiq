@@ -27,7 +27,13 @@
     "visibility_personal": "Only me",
     "visibility_group": "Groups",
     "groups_placeholder": "Select groups...",
-    "groups_empty": "No groups found"
+    "groups_empty": "No groups found",
+    "ERROR_ATTEMPTS_CLOSED": "This assessment has closed — no new attempt can be started.",
+    "ERROR_ATTEMPTS_NOT_OPEN": "This assessment has not opened yet.",
+    "ERROR_ATTEMPT_EXPIRED": "Your attempt ended when the assessment closed and was not submitted.",
+    "ERROR_ASSESSMENT_CLOSED": "This assessment is already closed.",
+    "ERROR_ASSESSMENT_NOT_LIVE": "Only a running assessment can be closed.",
+    "ERROR_ASSESSMENT_NOT_PUBLISHED": "This assessment has not been published yet."
   },
   "EmptyStates": {
     "load_error": "The list could not be loaded",
@@ -2873,7 +2879,13 @@
     "publish_invalid": "Complete the assessment first: a deadline, at least one student or group, and at least one question.",
     "deadline_required": "A deadline is required to publish the assessment.",
     "publish_failed": "Could not publish the assessment.",
-    "withdraw_live_hint": "A live assessment cannot be withdrawn — a scheduled one can be changed before it starts."
+    "withdraw_live_hint": "A live assessment cannot be withdrawn — a scheduled one can be changed before it starts.",
+    "closed": "Closed",
+    "close": "Close now",
+    "closing": "Closing...",
+    "close_confirm_title": "Close this assessment now?",
+    "close_confirm_desc": "Running attempts end and cannot be submitted, and the answers are revealed to the whole class. This cannot be undone.",
+    "close_failed": "Closing failed"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
@@ -3103,7 +3115,8 @@
     "last_attempt": "Last attempt",
     "attempts_left": "Attempts left: {left}/{total}",
     "attempts_exhausted": "All attempts used ({total}/{total})",
-    "results_hidden": "Results not available"
+    "results_hidden": "Results not available",
+    "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Upload failed",
@@ -3118,7 +3131,8 @@
     "next": "Next",
     "submitting": "Submitting...",
     "submit": "Submit",
-    "submit_failed": "Could not send your answers. Please try again."
+    "submit_failed": "Could not send your answers. Please try again.",
+    "attempt_closed": "The assessment closed before you submitted — this attempt ended."
   },
   "AppAssignmentReviewPage": {
     "not_available": "Review not available",

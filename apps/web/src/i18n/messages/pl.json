@@ -27,7 +27,13 @@
     "visibility_personal": "Tylko ja",
     "visibility_group": "Grupy",
     "groups_placeholder": "Wybierz grupy...",
-    "groups_empty": "Nie znaleziono grup"
+    "groups_empty": "Nie znaleziono grup",
+    "ERROR_ATTEMPTS_CLOSED": "Ta kartkówka została zakończona — nie można rozpocząć nowej próby.",
+    "ERROR_ATTEMPTS_NOT_OPEN": "Ta kartkówka jeszcze się nie rozpoczęła.",
+    "ERROR_ATTEMPT_EXPIRED": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
+    "ERROR_ASSESSMENT_CLOSED": "Ta kartkówka jest już zakończona.",
+    "ERROR_ASSESSMENT_NOT_LIVE": "Zamknąć można tylko uruchomioną kartkówkę.",
+    "ERROR_ASSESSMENT_NOT_PUBLISHED": "Ta kartkówka nie została jeszcze opublikowana."
   },
   "EmptyStates": {
     "load_error": "Nie udało się wczytać listy",
@@ -2854,7 +2860,13 @@
     "publish_invalid": "Uzupełnij brakujące dane kartkówki: termin, co najmniej jednego ucznia lub grupę oraz co najmniej jedno pytanie.",
     "deadline_required": "Termin jest wymagany, aby opublikować kartkówkę.",
     "publish_failed": "Nie udało się opublikować kartkówki.",
-    "withdraw_live_hint": "Uruchomionej kartkówki nie można wycofać — zmiany zaplanowanej są możliwe tylko przed jej rozpoczęciem."
+    "withdraw_live_hint": "Uruchomionej kartkówki nie można wycofać — zmiany zaplanowanej są możliwe tylko przed jej rozpoczęciem.",
+    "closed": "Zakończona",
+    "close": "Zakończ teraz",
+    "closing": "Zamykanie...",
+    "close_confirm_title": "Zakończyć tę kartkówkę teraz?",
+    "close_confirm_desc": "Trwające próby zakończą się i nie będzie można ich wysłać, a odpowiedzi zostaną ujawnione całej klasie. Tej operacji nie można cofnąć.",
+    "close_failed": "Nie udało się zakończyć"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",
@@ -3084,7 +3096,8 @@
     "last_attempt": "Ostatnia próba",
     "attempts_left": "Pozostało prób: {left}/{total}",
     "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})",
-    "results_hidden": "Podsumowanie niedostępne"
+    "results_hidden": "Podsumowanie niedostępne",
+    "attempt_expired": "Your attempt ended when the assessment closed and was not submitted."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",
@@ -3099,7 +3112,8 @@
     "next": "Następne",
     "submitting": "Wysyłanie...",
     "submit": "Wyślij",
-    "submit_failed": "Nie udało się wysłać odpowiedzi. Spróbuj ponownie."
+    "submit_failed": "Nie udało się wysłać odpowiedzi. Spróbuj ponownie.",
+    "attempt_closed": "Kartkówka zakończyła się przed wysłaniem — ta próba została zakończona."
   },
   "AppAssignmentReviewPage": {
     "not_available": "Podsumowanie niedostępne",

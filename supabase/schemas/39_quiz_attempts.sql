@@ -13,6 +13,9 @@ CREATE TABLE public.quiz_attempts (
   draft_answers    jsonb NOT NULL DEFAULT '{}'::jsonb,
   started_at       timestamptz DEFAULT now(),
   completed_at     timestamptz,
+  -- Written when the assessment closes while this attempt is still running: it counts as consumed
+  -- and can no longer be submitted (R7).
+  expired_at       timestamptz,
   assignment_id    uuid REFERENCES public.teacher_assignments(id) ON DELETE SET NULL,
   -- Set on insert from `assignment_id`, preserved on update: `assignment_id` becomes NULL when
   -- the assignment is deleted, this marker keeps the attempt out of the student's practice
@@ -28,14 +31,16 @@ CREATE INDEX idx_quiz_attempts_user ON public.quiz_attempts(user_id);
 CREATE INDEX idx_quiz_attempts_assignment ON public.quiz_attempts(assignment_id);
 CREATE INDEX idx_quiz_attempts_completed_at
   ON public.quiz_attempts(completed_at) WHERE completed_at IS NOT NULL;
+CREATE INDEX idx_quiz_attempts_expired_at
+  ON public.quiz_attempts(expired_at) WHERE expired_at IS NOT NULL;
 CREATE INDEX idx_quiz_attempts_organization
   ON public.quiz_attempts(organization_id, completed_at) WHERE organization_id IS NOT NULL;
 
--- At most one *running* attempt per assignment and student (#369). Completed
--- attempts stay unlimited — `max_attempts` is enforced by the service.
+-- At most one *running* attempt per assignment and student (#369). Completed and expired
+-- attempts are terminal, so they no longer occupy the slot.
 CREATE UNIQUE INDEX quiz_attempts_one_open_per_assignment
   ON public.quiz_attempts (assignment_id, user_id)
-  WHERE completed_at IS NULL AND assignment_id IS NOT NULL;
+  WHERE completed_at IS NULL AND expired_at IS NULL AND assignment_id IS NOT NULL;
 
 -- The assignment marker is database-controlled: derived on insert, preserved on update. A
 -- student may update their own attempts through PostgREST, and the quota, the resume card and

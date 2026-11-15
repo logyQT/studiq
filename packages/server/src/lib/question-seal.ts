@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { effectiveCloseAt, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
@@ -19,6 +20,8 @@ import { createServiceClient } from '@studiq/server/lib/supabase/service';
 export interface SealWindow {
   start_time?: string | null;
   deadline?: string | null;
+  /** Written at the durable close (R7/R12); the deadline cannot reopen a closed run. */
+  closed_at?: string | null;
 }
 
 /** Everything the reader paths need to subtract held items and to render the R14 notice. */
@@ -43,7 +46,7 @@ const SEAL_CHUNK = 200;
 /** Whether `now` is inside a window: `[start, close)`, with a missing bound left open. */
 export function isWindowOpen(window: SealWindow, now: Date): boolean {
   const started = !window.start_time || now.getTime() >= new Date(window.start_time).getTime();
-  const closed = !!window.deadline && now.getTime() >= new Date(window.deadline).getTime();
+  const closed = isAssessmentClosed(window, now);
   return started && !closed;
 }
 
@@ -113,7 +116,7 @@ export async function sealedItemsFor(
   // 2. Keep the published ones whose window is open, and the items each of them binds.
   const assignments = await supabase
     .from('teacher_assignments')
-    .select('id, start_time, deadline')
+    .select('id, start_time, deadline, closed_at')
     .in('id', candidateIds)
     .eq('status', 'published');
   if (assignments.error) return mapSupabaseError(assignments.error);
@@ -130,7 +133,7 @@ export async function sealedItemsFor(
     );
   if (links.error) return mapSupabaseError(links.error);
 
-  const closeByAssignment = new Map(open.map((row) => [row.id, row.deadline ?? null]));
+  const closeByAssignment = new Map(open.map((row) => [row.id, effectiveCloseAt(row)]));
   const seal = emptySeal();
   for (const link of dbRows(links.data)) {
     if (!link.question_id || !link.assignment_id) continue;

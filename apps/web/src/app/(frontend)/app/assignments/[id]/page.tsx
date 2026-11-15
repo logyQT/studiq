@@ -24,6 +24,8 @@ interface AssignmentDetail extends StudentAssignmentAttemptState {
   description: string | null;
   deadline: string | null;
   start_time: string | null;
+  /** Written by the durable close (R7/R12); a later clock change does not reopen it. */
+  closed_at: string | null;
   time_limit_min: number | null;
   question_count: number;
   total_points: number;
@@ -92,7 +94,8 @@ export default function StudentAssignmentDetailPage() {
   const lastCompleted: AttemptSummary | null = assignment.last_completed_attempt;
   const left = attemptsLeft(assignment);
   const now = new Date();
-  const isPastDeadline = !!assignment.deadline && now > new Date(assignment.deadline);
+  const isPastDeadline =
+    !!assignment.closed_at || (!!assignment.deadline && now > new Date(assignment.deadline));
   const isScheduled = !!assignment.start_time && now < new Date(assignment.start_time);
 
   const canStart = !running && left > 0 && !isPastDeadline && !isScheduled;
@@ -199,6 +202,14 @@ export default function StudentAssignmentDetailPage() {
         <Card className="border-gray-200 dark:border-gray-800 opacity-60">
           <CardContent className="pt-6 text-center">
             <p className="text-sm text-muted-foreground">This assignment is closed.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {assignment.attempt?.expired_at && !lastCompleted && (
+        <Card className="border-amber-200 dark:border-amber-800">
+          <CardContent className="pt-6 text-center">
+            <p className="text-sm text-muted-foreground">{t('attempt_expired')}</p>
           </CardContent>
         </Card>
       )}
