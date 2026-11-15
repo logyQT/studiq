@@ -13,7 +13,7 @@ import { fixtureExplanation } from '#test/helpers/question-text';
 import { json } from '#test/helpers/json';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { POST as createFlashcardPost } from '@/app/(backend)/api/v1/flashcards/route';
-import { POST as createTopicPost } from '@/app/(backend)/api/v1/flashcards/topics/route';
+import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
@@ -223,7 +223,7 @@ export async function seedViaApi(
     const topic = await api<{ id: string }>(
       'create-topic',
       createTopicPost,
-      '/api/v1/flashcards/topics',
+      '/api/v1/topics',
       'POST',
       { body: { name: `seed-topic-${tags}-${i}` } },
       cookie,

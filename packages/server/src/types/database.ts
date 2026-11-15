@@ -2313,6 +2313,7 @@ export type Database = {
           name: string;
           organization_id: string | null;
           search_vector: unknown;
+          updated_at: string | null;
           visibility: Database['public']['Enums']['visibility_type'];
         };
         ComputedFields: never;
@@ -2323,6 +2324,7 @@ export type Database = {
           name: string;
           organization_id?: string | null;
           search_vector?: never;
+          updated_at?: string | null;
           visibility?: Database['public']['Enums']['visibility_type'];
         };
         Update: {
@@ -2332,6 +2334,7 @@ export type Database = {
           name?: string;
           organization_id?: string | null;
           search_vector?: never;
+          updated_at?: string | null;
           visibility?: Database['public']['Enums']['visibility_type'];
         };
         Relationships: [

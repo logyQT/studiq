@@ -76,7 +76,7 @@ const COPY = {
 const TOPIC = 'Matematyka';
 const RENAMED = 'Matematyka 2';
 
-const TOPICS_URL = '/api/v1/flashcards/topics';
+const TOPICS_URL = '/api/v1/topics';
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -101,7 +101,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
   return body.data;
 }
 
-/** `GET /api/v1/flashcards/topics` — the same list the screen renders. */
+/** `GET /api/v1/topics` — the same list the screen renders. */
 async function listTopics(page: Page): Promise<TopicRow[]> {
   return (await getData<{ items: TopicRow[] }>(page, `${TOPICS_URL}?limit=50`)).items;
 }

@@ -16,20 +16,20 @@ Zalogowany teacher1.
 1. Otwórz /edu/topics.
 2. Utwórz temat „Algebra”.
 3. Zmień nazwę, a następnie usuń.
-4. Sprawdź filtr zakresu Wszystkie / Moje i filtr grup („Dowolna grupa” / „Moje grupy”).
+4. Sprawdź przycisk „Filtry”: wymiar „Moje” i wymiar „Grupy” (grupy w panelu obok listy).
 
 ## Expected result
 
 - Toasty utworzenia/aktualizacji/usunięcia; pusta nazwa → „Nazwa tematu jest wymagana”.
 - Temat powiązany z fiszkami/pytaniami pokazuje poprawną liczbę fiszek.
-- Filtry: Wszystkie / Moje + multi-select grup; brak opcji „Udostępnione”.
+- Filtry: jeden przycisk „Filtry” z wierszami „Moje” i „Grupy”; brak selecta zakresu i brak opcji „Udostępnione”.
 
 ## Observed on the shared app (walk, qa-env-8)
 
 - `/edu/topics` renders the breadcrumb „Panel Nauczyciela › Tematy fiszek”, the search
-  field („Szukaj tematów…”), the scope select („Wszystkie”), the group multi-select
-  („Dowolna grupa”), the „Moje grupy” quick action, the sort select („Od najnowszych”) and
-  the „Nowy temat” button. The sidebar entry is „Tematy”.
+  field („Szukaj tematów…”), one filter button „Filtry” (its rows are the dimensions
+  „Moje” and „Grupy”; the groups themselves open in a panel beside the list), the sort
+  select („Od najnowszych”) and the „Nowy temat” button. The sidebar entry is „Tematy”.
 - „Nowy temat” opens „Utwórz temat” / „Dodaj nowy temat fiszek” with one empty name field and
   the buttons „Anuluj” / „Utwórz”. Submitting the empty field shows the error toast
   „Nazwa tematu jest wymagana”, keeps the dialog open and sends no request.
@@ -45,11 +45,11 @@ Zalogowany teacher1.
   card badge uses the non-plural message `flashcards_count` („2 fiszek” instead of
   „2 fiszki”), which is a copy nit (P3), not a wrong count — the spec asserts the number and
   tolerates the plural form.
-- The scope select has exactly two options, „Wszystkie” and „Moje”; there is no
-  „Udostępnione” and no „Grupy” option. „Moje” keeps only the educator's own topics.
-- The group filter is a single multi-select: the trigger starts on „Dowolna grupa”, offers the
-  tenant group `G1` (with a search box), and „Moje grupy” selects the educator's groups,
-  leaves only the `G1`-linked topics and disables itself until the selection changes.
+- The „Filtry” button has exactly two dimension rows, „Moje” and „Grupy”; there is no
+  „Udostępnione” and no separate scope select. „Moje” keeps only the educator's own topics.
+- The „Grupy” row selects the educator's groups in one click (the trigger shows a „Grupy”
+  chip) and leaves only the `G1`-linked topics; ticking `G1` in the panel beside the list
+  narrows the list the same way and leaves the row unselected.
 
 ## QA tenant fixture (reconciled)
 

@@ -43,7 +43,7 @@ const CASE = 'STU-28';
 
 const DECKS_URL = '/api/v1/flashcards/decks';
 const CARDS_URL = '/api/v1/flashcards';
-const TOPICS_URL = '/api/v1/flashcards/topics';
+const TOPICS_URL = '/api/v1/topics';
 
 const DECK_A = { name: 'Talia A STU-28', description: 'Talia źródłowa' } as const;
 const DECK_B = { name: 'Talia B STU-28', description: 'Talia docelowa' } as const;

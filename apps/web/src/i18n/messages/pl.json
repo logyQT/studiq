@@ -35,20 +35,24 @@
     "ERROR_ASSESSMENT_NOT_LIVE": "Zamknąć można tylko uruchomioną kartkówkę.",
     "ERROR_ASSESSMENT_NOT_PUBLISHED": "Ta kartkówka nie została jeszcze opublikowana.",
     "ERROR_REVIEW_LOCKED": "Podsumowanie otwiera się po zakończeniu kartkówki.",
-    "ERROR_RELEASE_NOT_WITHHELD": "To pytanie nie było wstrzymane przed podsumowaniem."
+    "ERROR_RELEASE_NOT_WITHHELD": "To pytanie nie było wstrzymane przed podsumowaniem.",
+    "filter_label": "Filtry",
+    "filter_search": "Szukaj filtrów...",
+    "filter_empty": "Brak filtrów"
   },
   "EmptyStates": {
     "load_error": "Nie udało się wczytać listy",
     "load_error_desc": "Sprawdź połączenie i spróbuj ponownie.",
     "retry": "Spróbuj ponownie",
-    "no_results_query": "Brak wyników dla \"{query}\"",
-    "no_results_filters": "Nic nie pasuje do wybranych filtrów",
+    "no_results_query": "Nie znaleziono {subject} dla „{query}”",
+    "no_results_filters": "Nie znaleziono {subject} dla wybranych filtrów",
     "clear_filters": "Wyczyść filtry",
     "hint_dismiss": "Ukryj wskazówkę",
     "hint_decks": "Talia to zbiór fiszek o jednym temacie. Utwórz talię, dodaj do niej fiszki, a potem wróć do nich w zakładce Nauka zgodnie z harmonogramem powtórek.",
     "hint_question_banks": "Bank pytań grupuje pytania do testów i kartkówek. Utwórz bank, dodaj pytania, a potem użyj ich w teście.",
     "hint_edu_assignments": "Kartkówka to test dla wybranych grup z terminem i limitem czasu. Zbuduj ją z pytań z banku, opublikuj, a wyniki zobaczysz w tym miejscu.",
-    "hint_app_assignments": "Tutaj pojawią się kartkówki i sprawdziany od Twoich nauczycieli. Zacznij je przed terminem, bo po jego upływie nie będzie można ich oddać."
+    "hint_app_assignments": "Tutaj pojawią się kartkówki i sprawdziany od Twoich nauczycieli. Zacznij je przed terminem, bo po jego upływie nie będzie można ich oddać.",
+    "hint_topics": "Temat grupuje fiszki i pytania z jednego zagadnienia. Utwórz temat, przypisz do niego materiał, a potem filtruj listy po temacie."
   },
   "A11y": {
     "remove_row": "Usuń wiersz {number}",
@@ -831,22 +835,23 @@
     "view_deck": "Podgląd",
     "manage_deck": "Zarządzaj",
     "search_placeholder": "Szukaj talii...",
-    "owner_all": "Wszystkie",
     "owner_mine": "Moje",
-    "group_filter_any": "Dowolna grupa",
-    "group_filter_mine": "Moje grupy",
+    "group_filter": "Grupy",
     "sort_newest": "Od najnowszych",
     "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
     "sort_name_asc": "Nazwa (A-Z)",
     "sort_name_desc": "Nazwa (Z-A)",
     "select_cards": "Wybierz talie",
+    "select_all": "Zaznacz Wszystkie",
+    "deselect_all": "Odznacz Wszystkie",
+    "n_selected": "Wybrano {count}",
     "suspend_deck": "Zawieś talię",
     "unsuspend_deck": "Przywróć talię",
     "deck_suspended": "Talia zawieszona",
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
-    "show_suspended": "Pokaż zawieszone",
+    "show_suspended": "Zawieszone",
     "visibility_label": "Widoczność",
     "visibility_personal": "Tylko ja",
     "visibility_group": "Grupy",
@@ -878,7 +883,8 @@
     "import_failed": "Import nie powiódł się",
     "csv_map_required": "Proszę przypisać kolumny Przód i Tył",
     "csv_row": "Wiersz",
-    "csv_error": "Błąd"
+    "csv_error": "Błąd",
+    "no_results_subject": "talii"
   },
   "EduDeckViewPage": {
     "back": "Powrót",
@@ -1080,11 +1086,10 @@
     "delete_failed": "Nie udało się usunąć tematu",
     "name_required": "Nazwa tematu jest wymagana",
     "search_topics": "Szukaj tematów...",
-    "owner_all": "Wszystkie",
     "owner_mine": "Moje",
-    "group_filter_any": "Dowolna grupa",
-    "group_filter_mine": "Moje grupy",
+    "group_filter": "Grupy",
     "sort_newest": "Od najnowszych",
+    "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
     "sort_name_asc": "Nazwa (A-Z)",
     "sort_name_desc": "Nazwa (Z-A)",
@@ -1099,7 +1104,9 @@
     "cancel_selection": "Anuluj Zaznaczenie",
     "select_all": "Zaznacz Wszystkie",
     "deselect_all": "Odznacz Wszystkie",
-    "n_selected": "{count} wybranych"
+    "n_selected": "{count} wybranych",
+    "topics_count": "{count, plural, one {# temat} few {# tematy} many {# tematów} other {# tematów}}",
+    "no_results_subject": "tematów"
   },
   "EduStatsPage": {
     "title": "Statystyki",
@@ -1200,7 +1207,8 @@
     "manage_groups": "Zarządzaj grupami",
     "manage_groups_title": "Zarządzaj grupami: {name}",
     "group_membership_updated": "Przynależność do grup zaktualizowana",
-    "group_membership_failed": "Nie udało się zaktualizować przynależności do grup"
+    "group_membership_failed": "Nie udało się zaktualizować przynależności do grup",
+    "no_results_subject": "członków"
   },
   "ManageInvitationsPage": {
     "title": "Zaproszenia",
@@ -1240,7 +1248,8 @@
     "no_invitations": "Brak wysłanych zaproszeń",
     "row_error_missing_email": "Wiersz {row}: wpisz adres e-mail.",
     "row_error_missing_role": "Wiersz {row}: wybierz rolę.",
-    "incomplete_rows": "Uzupełnij wiersze: {rows}."
+    "incomplete_rows": "Uzupełnij wiersze: {rows}.",
+    "no_results_subject": "zaproszeń"
   },
   "ManageGroupsPage": {
     "title": "Grupy",
@@ -1672,11 +1681,10 @@
     "delete_failed": "Nie udało się usunąć tematu",
     "name_required": "Nazwa tematu jest wymagana",
     "search_topics": "Szukaj tematów...",
-    "owner_all": "Wszystkie",
     "owner_mine": "Moje",
-    "group_filter_any": "Dowolna grupa",
-    "group_filter_mine": "Moje grupy",
+    "group_filter": "Grupy",
     "sort_newest": "Od najnowszych",
+    "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
     "sort_name_asc": "Nazwa (A-Z)",
     "sort_name_desc": "Nazwa (Z-A)",
@@ -1685,7 +1693,9 @@
     "select_all": "Zaznacz Wszystkie",
     "deselect_all": "Odznacz Wszystkie",
     "n_selected": "{count} wybranych",
-    "select_cards": "Wybierz"
+    "select_cards": "Wybierz",
+    "topics_count": "{count, plural, one {# temat} few {# tematy} many {# tematów} other {# tematów}}",
+    "no_results_subject": "tematów"
   },
   "StudyGoal": {
     "title": "Dzienny cel nauki",
@@ -2381,10 +2391,8 @@
     "view_deck": "Podgląd",
     "manage_deck": "Zarządzaj",
     "search_placeholder": "Szukaj talii...",
-    "owner_all": "Wszystkie",
     "owner_mine": "Moje",
-    "group_filter_any": "Dowolna grupa",
-    "group_filter_mine": "Moje grupy",
+    "group_filter": "Grupy",
     "sort_newest": "Od najnowszych",
     "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
@@ -2395,7 +2403,7 @@
     "deck_suspended": "Talia zawieszona",
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
-    "show_suspended": "Pokaż zawieszone",
+    "show_suspended": "Zawieszone",
     "visibility_label": "Widoczność",
     "visibility_personal": "Tylko ja",
     "visibility_group": "Grupy",
@@ -2403,7 +2411,8 @@
     "groups_empty": "Nie znaleziono grup",
     "groups_required": "Wybierz co najmniej jedną grupę",
     "csv_parse_error": "Nie udało się sparsować pliku CSV",
-    "csv_map_required": "Proszę przypisać kolumny Przód i Tył"
+    "csv_map_required": "Proszę przypisać kolumny Przód i Tył",
+    "no_results_subject": "talii"
   },
   "AiChatPage": {
     "title": "Asystent AI",
@@ -2567,9 +2576,6 @@
     "edit_bank": "Edytuj bank",
     "search_placeholder": "Szukaj banków...",
     "no_banks": "Nic tu jeszcze nie ma, utwórz swój pierwszy bank pytań!",
-    "no_banks_match": "Nie znaleziono banków dla „{query}”",
-    "no_banks_match_filters": "Nie znaleziono banków dla wybranych filtrów",
-    "clear_filters": "Wyczyść filtry",
     "name_label": "Nazwa",
     "name_placeholder": "np. Biologia Egzamin",
     "description_label": "Opis",
@@ -2580,10 +2586,8 @@
     "bank_updated": "Bank pytań zaktualizowany",
     "bank_deleted": "Bank pytań usunięty",
     "bank_delete_blocked": "Nie można usunąć tego banku: zawiera pytania wykorzystane w opublikowanej kartkówce.",
-    "owner_all": "Wszystkie",
     "owner_mine": "Moje",
-    "group_filter_any": "Dowolna grupa",
-    "group_filter_mine": "Moje grupy",
+    "group_filter": "Grupy",
     "sort_name_asc": "Nazwa A-Z",
     "sort_name_desc": "Nazwa Z-A",
     "sort_newest": "Najnowsze",
@@ -2597,7 +2601,12 @@
     "visibility_personal": "Tylko ja",
     "visibility_group": "Grupy",
     "groups_placeholder": "Wybierz grupy...",
-    "groups_empty": "Nie znaleziono grup"
+    "groups_empty": "Nie znaleziono grup",
+    "banks_count": "{count, plural, one {# bank} few {# banki} many {# banków} other {# banków}}",
+    "no_results_subject": "banków",
+    "select_all": "Zaznacz Wszystkie",
+    "deselect_all": "Odznacz Wszystkie",
+    "n_selected": "Wybrano {count}"
   },
   "QuestionTransfer": {
     "export_note": "Eksport zapisuje cały bank, razem z kluczem odpowiedzi i wyjaśnieniami, i jest dostępny tylko dla kadry dydaktycznej.",
@@ -2900,35 +2909,13 @@
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",
-    "subtitle": "Zaktualizuj ustawienia kartkówki",
-    "basic_info": "Podstawowe informacje",
-    "title_field": "Tytuł *",
-    "description": "Opis",
-    "timing_limits": "Czas i limity",
-    "deadline": "Termin",
-    "time_limit_min": "Limit czasu (minuty)",
-    "no_limit": "Bez limitu",
-    "max_attempts": "Maks. prób",
-    "passing_score": "Próg zaliczenia (%)",
-    "no_threshold": "Bez progu",
-    "settings": "Ustawienia",
-    "shuffle_questions": "Losuj pytania",
-    "shuffle_questions_desc": "Losowa kolejność pytań",
-    "shuffle_answers": "Losuj odpowiedzi",
-    "shuffle_answers_desc": "Losowa kolejność odpowiedzi",
-    "show_results": "Pokaż wyniki",
-    "show_results_desc": "Pozwól uczniom zobaczyć wyniki",
-    "cancel": "Anuluj",
-    "saving": "Zapisywanie...",
-    "save_changes": "Zapisz zmiany"
+    "subtitle": "Zaktualizuj ustawienia kartkówki"
   },
-  "EduAssignmentNewPage": {
-    "title": "Nowa kartkówka",
-    "based_on": "Na podstawie: {name}",
-    "subtitle": "Utwórz nową kartkówkę dla uczniów",
+  "EduAssignmentForm": {
     "basic_info": "Podstawowe informacje",
     "title_field": "Tytuł *",
     "title_placeholder": "np. Kartkówka z rozdziału 5",
+    "based_on": "Na podstawie: {name}",
     "description": "Opis",
     "description_placeholder": "Opcjonalny opis",
     "timing_limits": "Czas i limity",
@@ -2946,8 +2933,14 @@
     "show_results": "Pokaż wyniki",
     "show_results_desc": "Pozwól uczniom zobaczyć wynik po ocenieniu",
     "cancel": "Anuluj",
+    "create": "Utwórz kartkówkę",
     "creating": "Tworzenie...",
-    "create": "Utwórz kartkówkę"
+    "save_changes": "Zapisz zmiany",
+    "saving": "Zapisywanie..."
+  },
+  "EduAssignmentNewPage": {
+    "title": "Nowa kartkówka",
+    "subtitle": "Utwórz nową kartkówkę dla uczniów"
   },
   "EduQuizzesPage": {
     "title": "Quizy",

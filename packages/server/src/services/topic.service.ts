@@ -16,10 +16,12 @@ import type {
 } from '@studiq/server/models/topic.model';
 import {
   applyAccessFilter,
+  EMPTY_PAGE,
+  listFilters,
   pageParams,
   pageQuery,
   pickDefined,
-  readPage,
+  readPageWithTotal,
 } from '@studiq/server/lib/query-list';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -75,40 +77,41 @@ export class TopicService {
     const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
-
-    let query = applyAccessFilter(
-      supabase.from('topics').select('*, flashcard_count:flashcard_topic_assignments(count)'),
-      filter,
-    );
-
-    // Apply owner filter on top of RBAC
-    if (queryParams?.owner === 'mine') query = query.eq('created_by', ctx.userId);
+    if (isImpossibleFilter(filter)) return success(EMPTY_PAGE);
 
     // Explicit group filter (#595): an extra AND after RBAC, so an unknown/foreign group id
     // can only narrow the result — never widen it.
+    let groupTopicIds: string[] | undefined;
     if (queryParams?.groups?.length) {
-      const groupTopicIds = await resolveGroupResourceIds('topic', queryParams.groups);
-      if (groupTopicIds.length === 0)
-        return success({ items: [], nextCursor: null, hasMore: false });
-      query = query.in('id', groupTopicIds);
+      groupTopicIds = await resolveGroupResourceIds('topic', queryParams.groups);
+      if (groupTopicIds.length === 0) return success(EMPTY_PAGE);
     }
 
-    // Apply search
-    if (queryParams?.q) {
-      query = query.or(`name.ilike.%${queryParams.q}%`);
-    }
-
-    const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 50 });
-    query = pageQuery(query, paging);
-
-    return readPage(query, {
-      ...paging,
-      map: (item) => ({
-        ...item,
-        flashcard_count: dbCount(item.flashcard_count),
-      }),
+    const applyFilters = listFilters(filter, {
+      userId: ctx.userId,
+      params: queryParams,
+      groupIds: groupTopicIds,
+      searchColumns: ['name'],
     });
+
+    const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 24 });
+
+    return readPageWithTotal(
+      pageQuery(
+        applyFilters(
+          supabase.from('topics').select('*, flashcard_count:flashcard_topic_assignments(count)'),
+        ),
+        paging,
+      ),
+      applyFilters(supabase.from('topics').select('id', { count: 'exact', head: true })),
+      {
+        ...paging,
+        map: (item) => ({
+          ...item,
+          flashcard_count: dbCount(item.flashcard_count),
+        }),
+      },
+    );
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

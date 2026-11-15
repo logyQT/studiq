@@ -6,5 +6,5 @@ import { DeckManagementScreen } from '@/components/flashcards/screens/deck-manag
 export default function EduDecksClient() {
   const t = useTranslations('EduFlashcardDecksPage');
 
-  return <DeckManagementScreen apiBase="/api/v1/flashcards" basePath="/edu/flashcards" t={t} />;
+  return <DeckManagementScreen basePath="/edu/flashcards" t={t} />;
 }

@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
       sortBy: searchParams.get('sortBy') ?? undefined,
       sortOrder: searchParams.get('sortOrder') ?? undefined,
       cursor: searchParams.get('cursor') ?? undefined,
-      limit: searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined,
+      // The list schema coerces `limit`; blank stays 'not sent' rather than `0`.
+      limit: searchParams.get('limit') || undefined,
     };
     return toNextResponse(await questionReportController.list(query, ctx));
   });

@@ -1,6 +1,6 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
-import { isFeatureKey } from '@studiq/server/services/feature.resolver';
+import { isFeatureKey } from '@studiq/authz';
 
 export const CreateUserFeatureOverrideSchema = registry.register(
   'CreateUserFeatureOverrideRequest',

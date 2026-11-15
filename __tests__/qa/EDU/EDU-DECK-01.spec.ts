@@ -46,10 +46,9 @@ const CASE = 'EDU-DECK-01';
 /** Polish copy from `EduFlashcardDecksPage` / `ScopeGroupFilter` (pl.json). */
 const COPY = {
   title: 'Talie fiszek',
-  ownerAll: 'Wszystkie',
+  filters: 'Filtry',
   ownerMine: 'Moje',
-  groupAny: 'Dowolna grupa',
-  groupMine: 'Moje grupy',
+  groups: 'Grupy',
 } as const;
 
 /** Decks the spec prepares in its own tenant; names are case-scoped. */
@@ -200,6 +199,23 @@ async function prepareTenant(page: Page, tenant: QaTenant): Promise<void> {
   await ensureDeck(page, DECKS.ownPersonal, { visibility: 'personal' });
 }
 
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub', () => {
   test('shows the deck list with the scope and group filters', async ({ page }) => {
     const tenant = loadTenant(CASE);
@@ -256,68 +272,77 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     ).toHaveCount(0);
 
     // --- Step 2a: the scope filter -----------------------------------------
-    // Radix `Select` triggers expose their value as the control's value, not its
-    // accessible name, so the owner select is the one quoting „Wszystkie”.
-    const ownerSelect = page
-      .locator('[data-slot="select-trigger"]')
-      .filter({ hasText: COPY.ownerAll });
-    await expect(ownerSelect).toBeVisible();
-    await ownerSelect.click();
+    // One control holds every filter; its accessible name stays „Filtry” and the
+    // active filters are its chips, so the name never doubles as the value.
+    const filters = page.getByRole('button', { name: COPY.filters, exact: true });
+    const filterRow = (name: string) => page.getByRole('option', { name, exact: true });
+    const groupRow = (name: string) =>
+      page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
-    const ownerOptions = page.getByRole('option');
-    await expect(ownerOptions).toHaveCount(2);
-    await expect(ownerOptions.nth(0)).toHaveText(COPY.ownerAll);
-    await expect(ownerOptions.nth(1)).toHaveText(COPY.ownerMine);
-    // The retired toggles must not come back as extra scope options.
-    await expect(page.getByRole('option', { name: 'Grupy', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('option', { name: 'Udostępnione', exact: true })).toHaveCount(0);
+    await expect(filters).toBeVisible();
+    await expect(filters).toContainText(COPY.filters);
+    await filters.click();
+
+    await expect(filterRow(COPY.ownerMine)).toBeVisible();
+    await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
+    // The retired scope values must not come back as filter rows.
+    await expect(page.getByRole('option', { name: 'Udostępnione' })).toHaveCount(0);
 
     const mineRequest = page.waitForRequest((request) => {
       if (!request.url().includes(`${DECKS_URL}?`)) return false;
       return new URL(request.url()).searchParams.get('owner') === 'mine';
     });
-    await page.getByRole('option', { name: COPY.ownerMine, exact: true }).click();
+    await filterRow(COPY.ownerMine).click();
     await mineRequest;
+    await closeFilterPopover(page);
 
     await expectDecksCount(page, 2);
     await expect(deckCard(page, DECKS.ownGroup)).toBeVisible();
     await expect(deckCard(page, DECKS.ownPersonal)).toBeVisible();
     await expect(deckCard(page, DECKS.shared), 'not the educator’s deck').toHaveCount(0);
+    await expect(filters).toContainText(COPY.ownerMine);
 
-    // Back to „Wszystkie”: the group-shared deck is readable again.
-    await page.locator('[data-slot="select-trigger"]').filter({ hasText: COPY.ownerMine }).click();
-    await page.getByRole('option', { name: COPY.ownerAll, exact: true }).click();
+    // Turning „Moje” off is the way back to the unfiltered list.
+    await filters.click();
+    await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'true');
+    await filterRow(COPY.ownerMine).click();
+    await closeFilterPopover(page);
     await expectDecksCount(page, 3);
     await expect(deckCard(page, DECKS.shared)).toBeVisible();
+    await expect(filters).toContainText(COPY.filters);
 
     // --- Step 2b: the group filter -----------------------------------------
-    // The group filter is the only combobox that is not a Radix `Select` trigger.
-    const groupSelect = page.locator('button[role="combobox"]:not([data-slot="select-trigger"])');
-    await expect(groupSelect).toContainText(COPY.groupAny);
-    const mineGroups = page.getByRole('button', { name: COPY.groupMine, exact: true });
-    await expect(mineGroups).toBeVisible();
-    await expect(mineGroups).toBeEnabled();
+    await filters.click();
+    const groupsRow = filterRow(COPY.groups);
+    await expect(groupsRow).toHaveAttribute('aria-checked', 'false');
+
+    // The individual groups live in the flyout beside the list, not in it.
+    await groupsRow.hover();
+    await expect(groupRow(group.name)).toBeVisible();
 
     const groupRequest = page.waitForRequest((request) => {
       if (!request.url().includes(`${DECKS_URL}?`)) return false;
       return new URL(request.url()).searchParams.get('groups') === group.id;
     });
-    await mineGroups.click();
+    // Clicking „Grupy” applies every group the caller is in.
+    await groupsRow.click();
     await groupRequest;
+    await closeFilterPopover(page);
 
     await expectDecksCount(page, 2);
-    await expect(groupSelect).toContainText(group.name);
-    await expect(mineGroups).toBeDisabled();
+    // With every own group selected the chip is „Grupy”, not the group's name.
+    await expect(filters).toContainText(COPY.groups);
     await expect(deckCard(page, DECKS.ownGroup)).toBeVisible();
     await expect(deckCard(page, DECKS.shared)).toBeVisible();
     await expect(deckCard(page, DECKS.ownPersonal), 'personal deck is outside G1').toHaveCount(0);
 
-    // Clearing the group selection restores the placeholder and the full list.
-    await groupSelect.click();
-    await page.getByRole('option', { name: group.name, exact: true }).click();
+    // Clearing the group selection restores the unfiltered list.
+    await filters.click();
+    await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
+    await groupsRow.click();
+    await closeFilterPopover(page);
 
-    await expect(groupSelect).toContainText(COPY.groupAny);
-    await expect(mineGroups).toBeEnabled();
+    await expect(filters).toContainText(COPY.filters);
     await expectDecksCount(page, 3);
     await expect(deckCard(page, DECKS.ownPersonal)).toBeVisible();
 

@@ -35,20 +35,24 @@
     "ERROR_ASSESSMENT_NOT_LIVE": "Only a running assessment can be closed.",
     "ERROR_ASSESSMENT_NOT_PUBLISHED": "This assessment has not been published yet.",
     "ERROR_REVIEW_LOCKED": "The review opens when the assessment closes.",
-    "ERROR_RELEASE_NOT_WITHHELD": "This item was not held back from the review."
+    "ERROR_RELEASE_NOT_WITHHELD": "This item was not held back from the review.",
+    "filter_label": "Filters",
+    "filter_search": "Search filters...",
+    "filter_empty": "No filters"
   },
   "EmptyStates": {
     "load_error": "The list could not be loaded",
     "load_error_desc": "Check your connection and try again.",
     "retry": "Try again",
-    "no_results_query": "No results for \"{query}\"",
-    "no_results_filters": "Nothing matches the current filters",
+    "no_results_query": "No {subject} found for \"{query}\"",
+    "no_results_filters": "No {subject} found for the selected filters",
     "clear_filters": "Clear filters",
     "hint_dismiss": "Dismiss the tip",
     "hint_decks": "A deck is a set of flashcards on one subject. Create a deck, add flashcards to it, then come back to them under Study on the review schedule.",
     "hint_question_banks": "A question bank groups the questions for quizzes and tests. Create a bank, add questions, then use them in a quiz.",
     "hint_edu_assignments": "An assignment is a test for chosen groups with a deadline and a time limit. Build it from bank questions, publish it, and the results show up here.",
-    "hint_app_assignments": "Quizzes and tests from your teachers show up here. Start them before the deadline: after it they can no longer be submitted."
+    "hint_app_assignments": "Quizzes and tests from your teachers show up here. Start them before the deadline: after it they can no longer be submitted.",
+    "hint_topics": "A topic groups flashcards and questions about one subject. Create a topic, assign material to it, then filter your lists by topic."
   },
   "A11y": {
     "remove_row": "Remove row {number}",
@@ -849,22 +853,23 @@
     "view_deck": "View",
     "manage_deck": "Manage",
     "search_placeholder": "Search decks...",
-    "owner_all": "All Decks",
     "owner_mine": "My Decks",
-    "group_filter_any": "Any group",
-    "group_filter_mine": "My groups",
+    "group_filter": "Groups",
     "sort_newest": "Newest First",
     "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
     "sort_name_desc": "Name (Z-A)",
     "select_cards": "Select Cards",
+    "select_all": "Select All",
+    "deselect_all": "Deselect All",
+    "n_selected": "{count} selected",
     "suspend_deck": "Suspend Deck",
     "unsuspend_deck": "Unsuspend Deck",
     "deck_suspended": "Deck suspended",
     "deck_unsuspended": "Deck unsuspended",
     "suspended": "Suspended",
-    "show_suspended": "Show suspended",
+    "show_suspended": "Suspended",
     "visibility_label": "Visibility",
     "visibility_personal": "Only me",
     "visibility_group": "Groups",
@@ -896,7 +901,8 @@
     "import_failed": "Import failed",
     "csv_map_required": "Please map both Front and Back columns",
     "csv_row": "Row",
-    "csv_error": "Error"
+    "csv_error": "Error",
+    "no_results_subject": "decks"
   },
   "EduDeckViewPage": {
     "back": "Back to Decks",
@@ -1098,11 +1104,10 @@
     "delete_failed": "Failed to delete topic",
     "name_required": "Topic name is required",
     "search_topics": "Search topics...",
-    "owner_all": "All Topics",
     "owner_mine": "My Topics",
-    "group_filter_any": "Any group",
-    "group_filter_mine": "My groups",
+    "group_filter": "Groups",
     "sort_newest": "Newest First",
+    "sort_recent": "Recently updated",
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
     "sort_name_desc": "Name (Z-A)",
@@ -1117,7 +1122,9 @@
     "cancel_selection": "Cancel Selection",
     "select_all": "Select All",
     "deselect_all": "Deselect All",
-    "n_selected": "{count} selected"
+    "n_selected": "{count} selected",
+    "topics_count": "{count, plural, one {# topic} other {# topics}}",
+    "no_results_subject": "topics"
   },
   "EduStatsPage": {
     "title": "Statistics",
@@ -1218,7 +1225,8 @@
     "manage_groups": "Manage groups",
     "manage_groups_title": "Manage groups: {name}",
     "group_membership_updated": "Group memberships updated",
-    "group_membership_failed": "Failed to update group memberships"
+    "group_membership_failed": "Failed to update group memberships",
+    "no_results_subject": "members"
   },
   "ManageInvitationsPage": {
     "title": "Invitations",
@@ -1258,7 +1266,8 @@
     "no_invitations": "No invitations sent yet",
     "row_error_missing_email": "Row {row}: enter an email address.",
     "row_error_missing_role": "Row {row}: choose a role.",
-    "incomplete_rows": "Complete the rows: {rows}."
+    "incomplete_rows": "Complete the rows: {rows}.",
+    "no_results_subject": "invites"
   },
   "ManageGroupsPage": {
     "title": "Groups",
@@ -1690,11 +1699,10 @@
     "delete_failed": "Failed to delete topic",
     "name_required": "Topic name is required",
     "search_topics": "Search topics...",
-    "owner_all": "All Topics",
     "owner_mine": "My Topics",
-    "group_filter_any": "Any group",
-    "group_filter_mine": "My groups",
+    "group_filter": "Groups",
     "sort_newest": "Newest First",
+    "sort_recent": "Recently updated",
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
     "sort_name_desc": "Name (Z-A)",
@@ -1703,7 +1711,9 @@
     "select_all": "Select All",
     "deselect_all": "Deselect All",
     "n_selected": "{count} selected",
-    "select_cards": "Select Cards"
+    "select_cards": "Select Cards",
+    "topics_count": "{count, plural, one {# topic} other {# topics}}",
+    "no_results_subject": "topics"
   },
   "StudyGoal": {
     "title": "Daily study goal",
@@ -2400,10 +2410,8 @@
     "view_deck": "View",
     "manage_deck": "Manage",
     "search_placeholder": "Search decks...",
-    "owner_all": "All Decks",
     "owner_mine": "My Decks",
-    "group_filter_any": "Any group",
-    "group_filter_mine": "My groups",
+    "group_filter": "Groups",
     "sort_newest": "Newest First",
     "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
@@ -2414,7 +2422,7 @@
     "deck_suspended": "Deck suspended",
     "deck_unsuspended": "Deck unsuspended",
     "suspended": "Suspended",
-    "show_suspended": "Show suspended",
+    "show_suspended": "Suspended",
     "visibility_label": "Visibility",
     "visibility_personal": "Only me",
     "visibility_group": "Groups",
@@ -2422,7 +2430,8 @@
     "groups_empty": "No groups found",
     "groups_required": "Select at least one group",
     "csv_parse_error": "Could not parse CSV file",
-    "csv_map_required": "Please map both Front and Back columns"
+    "csv_map_required": "Please map both Front and Back columns",
+    "no_results_subject": "decks"
   },
   "AiChatPage": {
     "title": "AI Assistant",
@@ -2586,9 +2595,6 @@
     "edit_bank": "Edit Bank",
     "search_placeholder": "Search banks...",
     "no_banks": "Nothing here yet, create your first question bank!",
-    "no_banks_match": "No banks found for “{query}”",
-    "no_banks_match_filters": "No banks match the selected filters",
-    "clear_filters": "Clear filters",
     "name_label": "Name",
     "name_placeholder": "e.g. Biology Midterm",
     "description_label": "Description",
@@ -2599,10 +2605,8 @@
     "bank_updated": "Question bank updated",
     "bank_deleted": "Question bank deleted",
     "bank_delete_blocked": "This bank can't be deleted: it contains questions used in a published assessment.",
-    "owner_all": "All",
     "owner_mine": "Mine",
-    "group_filter_any": "Any group",
-    "group_filter_mine": "My groups",
+    "group_filter": "Groups",
     "sort_name_asc": "Name A-Z",
     "sort_name_desc": "Name Z-A",
     "sort_newest": "Newest",
@@ -2616,7 +2620,12 @@
     "visibility_personal": "Only me",
     "visibility_group": "Groups",
     "groups_placeholder": "Select groups...",
-    "groups_empty": "No groups found"
+    "groups_empty": "No groups found",
+    "banks_count": "{count, plural, one {# bank} other {# banks}}",
+    "no_results_subject": "banks",
+    "select_all": "Select all",
+    "deselect_all": "Deselect all",
+    "n_selected": "{count} selected"
   },
   "QuestionTransfer": {
     "export_note": "Exporting saves the whole bank, answer key and explanations included, and is available to teaching staff only.",
@@ -2919,27 +2928,7 @@
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
-    "subtitle": "Update assignment settings",
-    "basic_info": "Basic Information",
-    "title_field": "Title *",
-    "description": "Description",
-    "timing_limits": "Timing & Limits",
-    "deadline": "Deadline",
-    "time_limit_min": "Time Limit (minutes)",
-    "no_limit": "No limit",
-    "max_attempts": "Max Attempts",
-    "passing_score": "Passing Score (%)",
-    "no_threshold": "No threshold",
-    "settings": "Settings",
-    "shuffle_questions": "Shuffle Questions",
-    "shuffle_questions_desc": "Randomize question order",
-    "shuffle_answers": "Shuffle Answers",
-    "shuffle_answers_desc": "Randomize answer order",
-    "show_results": "Show Results",
-    "show_results_desc": "Let students see scores",
-    "cancel": "Cancel",
-    "saving": "Saving...",
-    "save_changes": "Save Changes"
+    "subtitle": "Update assignment settings"
   },
   "EduQuizzesPage": {
     "title": "Quizzes",
@@ -2997,13 +2986,11 @@
     "questions": "Questions",
     "total_points": "Total Points"
   },
-  "EduAssignmentNewPage": {
-    "title": "New Assignment",
-    "based_on": "Based on: {name}",
-    "subtitle": "Create a new assignment for your students",
+  "EduAssignmentForm": {
     "basic_info": "Basic Information",
     "title_field": "Title *",
     "title_placeholder": "e.g. Chapter 5 Quiz",
+    "based_on": "Based on: {name}",
     "description": "Description",
     "description_placeholder": "Optional description",
     "timing_limits": "Timing & Limits",
@@ -3021,8 +3008,14 @@
     "show_results": "Show Results",
     "show_results_desc": "Let students see their score after grading",
     "cancel": "Cancel",
+    "create": "Create Assignment",
     "creating": "Creating...",
-    "create": "Create Assignment"
+    "save_changes": "Save Changes",
+    "saving": "Saving..."
+  },
+  "EduAssignmentNewPage": {
+    "title": "New Assignment",
+    "subtitle": "Create a new assignment for your students"
   },
   "EduAssignmentPrintPage": {
     "print_hint": "This page is optimized for printing. Use Ctrl+P (Cmd+P) to save as PDF.",
