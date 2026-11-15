@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * EDU-ASG-02 — Dodawanie pytań do kartkówki: ręczny wybór (`/edu/assignments/<id>`).
@@ -244,10 +245,12 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
 
     const bankAOpen = await ensureQuestion(page, bankA.id, QUESTION.bankAOpen, {
       type: 'open',
+      modelAnswer: FIXTURE_MODEL_ANSWER,
       topicIds: [topic.id],
     });
     await ensureQuestion(page, bankA.id, QUESTION.bankATrueFalse, {
       type: 'true_false',
+      explanation: FIXTURE_EXPLANATION,
       answers: [
         { content: 'Prawda', isCorrect: true, orderIndex: 0 },
         { content: 'Fałsz', isCorrect: false, orderIndex: 1 },
@@ -255,10 +258,12 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     });
     await ensureQuestion(page, bankB.id, QUESTION.bankBOpen, {
       type: 'open',
+      modelAnswer: FIXTURE_MODEL_ANSWER,
       topicIds: [topic.id],
     });
     const bankBOpenSecond = await ensureQuestion(page, bankB.id, QUESTION.bankBOpenSecond, {
       type: 'open',
+      modelAnswer: FIXTURE_MODEL_ANSWER,
     });
 
     const assignmentId = await createDraft(page);

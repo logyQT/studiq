@@ -93,6 +93,12 @@ test.describe('Teacher True/False question form (#154)', () => {
     await options.nth(0).fill('Tak');
     const content = `QA154 true/false ${Date.now()}`;
     await formDialog.getByPlaceholder(questionPlaceholder).fill(content);
+    // #1173: a P/F item is a choice item, so the explanation is required.
+    await formDialog
+      .getByPlaceholder(t('QuestionForm.explanation_placeholder'))
+      .fill(
+        'Ziemia jest trzecią planetą od Słońca, bo Merkury i Wenus krążą bliżej gwiazdy, więc zdanie jest prawdziwe.',
+      );
 
     const [response] = await Promise.all([
       page.waitForResponse(
@@ -125,6 +131,12 @@ test.describe('Teacher True/False question form (#154)', () => {
 
     await optionInputs(page).nth(1).fill('');
     await formDialog.getByPlaceholder(questionPlaceholder).fill(`QA154 blank option ${Date.now()}`);
+    // Keep the explanation valid so the only inline alert is the blank option under test.
+    await formDialog
+      .getByPlaceholder(t('QuestionForm.explanation_placeholder'))
+      .fill(
+        'Ziemia jest trzecią planetą od Słońca, bo Merkury i Wenus krążą bliżej gwiazdy, więc zdanie jest prawdziwe.',
+      );
     await formDialog.getByRole('button', { name: createButton }).click();
 
     await expect(formDialog.getByRole('alert')).toHaveText(t('QuestionForm.answers_required'));

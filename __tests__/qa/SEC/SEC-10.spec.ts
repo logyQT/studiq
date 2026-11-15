@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { asJson } from '#test/helpers/json';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 import {
   expect,
   loadTenant,
@@ -219,7 +220,12 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
     // --- Step 3c: the quiz question the student answers with the script -------
     const question = await expectData<{ id: string }>(
       await page.request.post('/api/v1/questions', {
-        data: { bankId: bank.id, type: 'open', content: QUESTION_CONTENT },
+        data: {
+          bankId: bank.id,
+          type: 'open',
+          content: QUESTION_CONTENT,
+          modelAnswer: FIXTURE_MODEL_ANSWER,
+        },
       }),
       'POST /api/v1/questions',
       201,
@@ -228,7 +234,12 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
     // targets a second, unbound question — reporting a held item answers 404, like a missing one.
     const reportable = await expectData<{ id: string }>(
       await page.request.post('/api/v1/questions', {
-        data: { bankId: bank.id, type: 'open', content: `${QUESTION_CONTENT} (do zgłoszenia)` },
+        data: {
+          bankId: bank.id,
+          type: 'open',
+          content: `${QUESTION_CONTENT} (do zgłoszenia)`,
+          modelAnswer: FIXTURE_MODEL_ANSWER,
+        },
       }),
       'POST /api/v1/questions',
       201,

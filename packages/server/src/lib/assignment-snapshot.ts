@@ -32,7 +32,10 @@ export interface QuestionSnapshot {
   snapshot_version?: number | null;
 }
 
-/** The published key: one explanation and the option ids that were correct at publish. */
+/**
+ * The published key: the explanation (choice items), the model answer (open items) and the option
+ * ids that were correct at publish.
+ */
 export type QuestionSnapshotKey = QuestionKey;
 
 /** The link columns every assignment read may select (never `snapshot_key`, never `*`). */
@@ -176,6 +179,8 @@ export function snapshotKeyFromJson(value: unknown): QuestionSnapshotKey | null 
     : [];
   return {
     explanation: typeof value.explanation === 'string' ? value.explanation : null,
+    // Absent in a snapshot published before #1173: the review says so instead of rendering nothing.
+    modelAnswer: typeof value.modelAnswer === 'string' ? value.modelAnswer : null,
     correctOptionIds,
   };
 }
@@ -260,6 +265,7 @@ export async function writeAssignmentSnapshots(
         },
         snapshot_key: {
           explanation: key?.explanation ?? null,
+          modelAnswer: key?.modelAnswer ?? null,
           correctOptionIds: key?.correctOptionIds ?? [],
         },
         snapshot_version: question.version,

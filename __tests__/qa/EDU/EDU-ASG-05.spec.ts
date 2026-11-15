@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-ASG-05 — unpublishing a quiz (`/edu/assignments/:id` → „Cofnij publikację”).
@@ -131,6 +132,7 @@ async function ensureQuestion(page: Page, bankId: string): Promise<string> {
   const created = await api<Question>(page.request, 'POST', QUESTIONS_URL, {
     bankId,
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content: QUESTION_CONTENT,
     answers: [
       { content: 'Odpowiedź A', isCorrect: true, orderIndex: 0 },

@@ -120,7 +120,13 @@ describe('Answer key on the app surface (#1170)', () => {
       false,
       false,
     ]);
-    expect(body.data.explanation).toBeNull();
+    // The explanation is part of the staff key surface (#1173: every choice item has one).
+    const { data: stored } = await createServiceClient()
+      .from('questions')
+      .select('explanation')
+      .eq('id', questionId)
+      .single();
+    expect(body.data.explanation).toBe(stored?.explanation);
   });
 
   it('serves the list without a key to a student and with one to the teacher', async () => {

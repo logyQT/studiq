@@ -39,14 +39,15 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * 1. „Utwórz pytanie” opens the question dialog in „Wielokrotny wybór” mode with the
  *    „Odpowiedzi” block (a „Dodaj odpowiedź” button and the correct-answer hint).
  * 2. Choosing „Otwarta odpowiedź” removes that block entirely — no answer inputs, no
- *    radio buttons — while the explanation textarea stays.
+ *    radio buttons — and swaps the choice item's explanation for the model-answer
+ *    field (#1173, R16: an open item has no key to explain).
  * 3. Saving answers „Pytanie utworzone”; the bank table shows one row with the type
  *    badge „Otwarte”, „—” topics and „0” answers, and the API returns
- *    `type: 'open'`, the stored explanation and `question_answers: []`.
+ *    `type: 'open'`, the stored model answer and `question_answers: []`.
  * 4. In the quiz the same question renders as a free-text field
  *    („Wpisz swoją odpowiedź…”) instead of answer options; the submitted text is
  *    stored as `text_answer`.
- * 5. „Oceń ucznia” shows the model answer („Wyjaśnienie: …”) and the student's text
+ * 5. „Oceń ucznia” shows the model answer („Odpowiedź wzorcowa: …”) and the student's text
  *    („Odpowiedź ucznia: …”) with a points input; saving „1” turns the header into
  *    „Wynik: 1/1 (ocenione)” and stores `teacher_points: 1`.
  */
@@ -64,7 +65,8 @@ const COPY = {
   typeOpen: 'Otwarta odpowiedź',
   answersLabel: 'Odpowiedzi',
   addAnswer: 'Dodaj odpowiedź',
-  explanationLabel: 'Wyjaśnienie (opcjonalnie)',
+  modelAnswerLabel: 'Odpowiedź wzorcowa',
+  modelAnswerPlaceholder: 'Napisz, co powinna zawierać dobra odpowiedź na to pytanie otwarte...',
   created: 'Pytanie utworzone',
   openBadge: 'Otwarte',
   startQuiz: 'Rozpocznij kartkówkę',
@@ -75,8 +77,8 @@ const COPY = {
 } as const;
 
 const QUESTION_CONTENT = 'Opisz drugą zasadę dynamiki Newtona i podaj przykład.';
-const EXPLANATION =
-  'F = m·a. Przykład: wózek o masie 2 kg pod działaniem siły 4 N uzyskuje przyspieszenie 2 m/s².';
+const MODEL_ANSWER =
+  'Dobra odpowiedź podaje wzór F = m·a i wyjaśnia, że przyspieszenie rośnie z siłą i maleje z masą; przykład: wózek o masie 2 kg pod działaniem siły 4 N uzyskuje 2 m/s².';
 const STUDENT_ANSWER =
   'Przyspieszenie ciała jest wprost proporcjonalne do wypadkowej siły i odwrotnie proporcjonalne do masy.';
 const ASSIGNMENT_TITLE = 'EDU-Q-04 kartkówka otwarta';
@@ -100,6 +102,7 @@ interface Question {
   type: 'mcq' | 'true_false' | 'open';
   content: string;
   explanation: string | null;
+  model_answer: string | null;
   question_answers: Array<{ id: string; content: string }>;
 }
 
@@ -239,7 +242,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       page.getByText('Brak pytań w tym banku. Utwórz swoje pierwsze pytanie!', { exact: true }),
     ).toBeVisible();
 
-    // ── Step 1: create an „Otwarta odpowiedź” question with an explanation ──
+    // ── Step 1: create an „Otwarta odpowiedź” question with a model answer ──
     await page.getByRole('button', { name: COPY.createQuestion }).click();
     const dialog = page.locator('[data-slot="dialog-content"]');
     await expect(dialog).toBeVisible();
@@ -253,7 +256,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
     await expect(dialog.getByRole('button', { name: COPY.addAnswer })).toBeVisible();
 
     // „Otwarta odpowiedź” → the answer list disappears; only the free-text
-    // question and the explanation remain.
+    // question and the model-answer field remain.
     await dialog.locator('[data-slot="select-trigger"]').click();
     await page.getByRole('option', { name: COPY.typeOpen, exact: true }).click();
     await expect(dialog.locator('[data-slot="select-trigger"]')).toContainText(COPY.typeOpen);
@@ -270,12 +273,12 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       dialog.locator('input[type="radio"]'),
       'an open question has no correct-answer radio',
     ).toHaveCount(0);
-    await expect(dialog.getByText(COPY.explanationLabel, { exact: true })).toBeVisible();
+    await expect(dialog.getByText(COPY.modelAnswerLabel, { exact: true })).toBeVisible();
 
     await dialog.locator('textarea[placeholder="Wpisz swoje pytanie..."]').fill(QUESTION_CONTENT);
     await dialog
-      .locator('textarea[placeholder="Wyjaśnij, dlaczego odpowiedź jest poprawna..."]')
-      .fill(EXPLANATION);
+      .locator(`textarea[placeholder="${COPY.modelAnswerPlaceholder}"]`)
+      .fill(MODEL_ANSWER);
     await dialog.getByRole('button', { name: 'Utwórz', exact: true }).click();
 
     // ── Expected: saved as „Otwarte”, with no answers ───────────────────────
@@ -293,7 +296,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
     const created = questions.find((question) => question.content === QUESTION_CONTENT);
     expect(created, 'the question is readable through the product API').toBeDefined();
     expect(created!.type, 'stored question type').toBe('open');
-    expect(created!.explanation, 'the model-answer explanation is stored').toBe(EXPLANATION);
+    expect(created!.model_answer, 'the model answer is stored').toBe(MODEL_ANSWER);
     expect(created!.question_answers, 'no answer rows are created for an open question').toEqual(
       [],
     );
@@ -363,7 +366,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
         page.getByRole('heading', { name: COPY.gradingTitle, exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText(`Wyjaśnienie: ${EXPLANATION}`, { exact: true }),
+        page.getByText(`Odpowiedź wzorcowa: ${MODEL_ANSWER}`, { exact: true }),
         'the grading view shows the model answer',
       ).toBeVisible();
       await expect(

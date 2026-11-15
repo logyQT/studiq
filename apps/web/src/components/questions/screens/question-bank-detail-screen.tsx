@@ -22,6 +22,11 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import {
+  fieldErrorsFromApiError,
+  type QuestionFormPayload,
+  type QuestionFormResult,
+} from '@/lib/question-form';
 import { bankAccess } from '@/lib/bank-access';
 import { bankDetailState } from '@/lib/bank-detail-state';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
@@ -152,14 +157,7 @@ export function QuestionBankDetailScreen({
     void queryClient.invalidateQueries({ queryKey: questionKeys.all });
   }
 
-  async function handleSubmit(data: {
-    content: string;
-    type: string;
-    explanation?: string;
-    topicIds?: string[];
-    bankId: string;
-    answers: { content: string; isCorrect: boolean; orderIndex: number }[];
-  }): Promise<boolean> {
+  async function handleSubmit(data: QuestionFormPayload): Promise<QuestionFormResult> {
     try {
       if (editingQuestion) {
         await apiPut(`/api/v1/questions/${editingQuestion.id}`, data);
@@ -168,14 +166,18 @@ export function QuestionBankDetailScreen({
         await apiPost('/api/v1/questions', data);
         toast.success(tForm('created'));
       }
-    } catch {
+    } catch (error) {
+      // A 422 names the field that broke a rule (R16/R17); show it there, and keep the toast for
+      // the failures that are not about this form's fields.
+      const errors = fieldErrorsFromApiError(error);
+      if (errors) return { saved: false, errors };
       toast.error(tForm('save_failed'));
-      return false;
+      return { saved: false };
     }
     invalidate();
     setDialogOpen(false);
     setEditingQuestion(null);
-    return true;
+    return { saved: true };
   }
 
   async function handleDelete() {

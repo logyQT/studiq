@@ -21,6 +21,7 @@ interface ReviewedItem {
   content: string;
   options: ReviewedOption[];
   explanation: string | null;
+  modelAnswer: string | null;
   graded: boolean;
   correct: boolean | null;
   selectedOptionId: string | null;
@@ -117,14 +118,15 @@ export default function ReviewAssignmentPage() {
             {review.score.earned} / {review.score.possible}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {review.score.possible > 0
-              ? Math.round((review.score.earned / review.score.possible) * 100)
-              : 0}
-            %
+            {Math.round((review.score.earned / review.score.possible) * 100)}%
           </p>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">{t('no_attempt')}</p>
+        // A submitted sheet of open items has no score (R16): say that, instead of claiming the
+        // student never sat the assessment.
+        <p className="text-sm text-muted-foreground">
+          {review.attemptId ? t('ungraded_only', { count: review.ungradedCount }) : t('no_attempt')}
+        </p>
       )}
 
       <div className="space-y-4">
@@ -211,10 +213,19 @@ export default function ReviewAssignmentPage() {
                 </div>
               )}
 
-              {item.explanation && (
+              {!isOpen && item.explanation && (
                 <div className="rounded-lg border bg-blue-50 p-3 text-sm">
                   <span className="font-medium">{t('explanation')}: </span>
                   {item.explanation}
+                </div>
+              )}
+
+              {isOpen && (
+                <div className="rounded-lg border bg-blue-50 p-3 text-sm">
+                  <span className="font-medium">{t('model_answer')}: </span>
+                  {/* A snapshot published before #1173 carries no model answer; say so rather
+                      than render an empty box (R11: the frozen item is never re-derived). */}
+                  {item.modelAnswer ?? t('model_answer_not_captured')}
                 </div>
               )}
             </div>

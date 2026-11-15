@@ -55,5 +55,7 @@ export function questionReviewLabels(
     yourAnswer: t('your_answer'),
     noAnswer: t('no_answer'),
     explanation: t('explanation'),
+    modelAnswer: t('model_answer'),
+    modelAnswerNotCaptured: t('model_answer_not_captured'),
   };
 }

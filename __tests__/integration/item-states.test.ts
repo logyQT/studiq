@@ -14,6 +14,7 @@ import {
   requiredAt,
 } from '#test/integration/test-utils';
 import { asJson, json } from '#test/helpers/json';
+import { fixtureExplanation } from '#test/helpers/question-text';
 import {
   GET as listQuestions,
   POST as createQuestionPost,
@@ -134,6 +135,7 @@ describe('Item states and versioning (#1171)', () => {
         bankId: targetBank,
         type: 'mcq',
         content: `state-${label}-stem`,
+        explanation: fixtureExplanation(`state-${label}`),
         answers: [
           { content: `state-${label}-correct`, isCorrect: true, orderIndex: 0 },
           { content: `state-${label}-wrong`, isCorrect: false, orderIndex: 1 },

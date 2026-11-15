@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
 const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -216,6 +217,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
     const mcq1 = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
       bankId: bank.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: `${CASE} pytanie poprawne ${tag}`,
       answers: [
         { content: ANSWERS.mcqCorrect, isCorrect: true, orderIndex: 0 },
@@ -225,6 +227,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
     const mcq2 = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
       bankId: bank.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: `${CASE} pytanie błędne ${tag}`,
       answers: [
         { content: 'Gamma', isCorrect: true, orderIndex: 0 },
@@ -234,6 +237,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
     const open = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
       bankId: bank.id,
       type: 'open',
+      modelAnswer: FIXTURE_MODEL_ANSWER,
       content: `${CASE} pytanie otwarte ${tag}`,
       answers: [],
     });

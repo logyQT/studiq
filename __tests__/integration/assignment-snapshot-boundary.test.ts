@@ -228,6 +228,8 @@ describe('Assignment snapshot key boundary (#1171)', () => {
       .single();
     expect(stored?.snapshot_key).toEqual({
       explanation: `snapshot-explanation-${tag}`,
+      // The open item's artefact is part of the published key (#1173); a choice item has none.
+      modelAnswer: null,
       correctOptionIds: [correctOptionId],
     });
   });

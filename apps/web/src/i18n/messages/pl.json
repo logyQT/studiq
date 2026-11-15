@@ -161,7 +161,12 @@
     "VALIDATION_UUID_INVALID": "Nieprawidłowy identyfikator.",
     "VALIDATION_TOO_SHORT": "Wartość jest za krótka.",
     "VALIDATION_TOO_LONG": "Wartość jest za długa.",
-    "VALIDATION_INVALID_ROLE": "Nieprawidłowa rola użytkownika."
+    "VALIDATION_INVALID_ROLE": "Nieprawidłowa rola użytkownika.",
+    "VALIDATION_EXPLANATION_REQUIRED": "Wyjaśnienie jest wymagane dla pytań zamkniętych.",
+    "VALIDATION_EXPLANATION_TOO_SHORT": "Wyjaśnienie musi mieć co najmniej 80 znaków.",
+    "VALIDATION_EXPLANATION_NAMES_OPTION": "Wyjaśnienie nie może wskazywać odpowiedzi literą ani numerem.",
+    "VALIDATION_EXPLANATION_QUOTES_OPTION": "Wyjaśnienie nie może powtarzać treści odpowiedzi.",
+    "VALIDATION_MODEL_ANSWER_REQUIRED": "Pytanie otwarte wymaga odpowiedzi wzorcowej."
   },
   "NotFoundPage": {
     "title": "Nie znaleziono strony",
@@ -2747,8 +2752,22 @@
     "answer_placeholder": "Odpowiedź {index}",
     "add_answer": "Dodaj odpowiedź",
     "correct_answer_hint": "Zaznacz przycisk radio dla poprawnej odpowiedzi",
-    "explanation": "Wyjaśnienie (opcjonalnie)",
-    "explanation_placeholder": "Wyjaśnij, dlaczego odpowiedź jest poprawna...",
+    "explanation": "Wyjaśnienie",
+    "explanation_placeholder": "Wyjaśnij tok rozumowania: dlaczego ta odpowiedź jest poprawna i jaki dystraktor studenci mylą najczęściej...",
+    "explanation_hint": "Wyjaśnienie zobaczą studenci po zamknięciu kartkówki. Opisz rozumowanie własnymi słowami — nie wskazuj odpowiedzi literą, numerem ani cytatem.",
+    "char_count": "{count} / {max} znaków (minimum {min})",
+    "model_answer": "Odpowiedź wzorcowa",
+    "model_answer_placeholder": "Napisz, co powinna zawierać dobra odpowiedź na to pytanie otwarte...",
+    "model_answer_hint": "Pytanie otwarte nie ma klucza, więc studenci zobaczą po zamknięciu tę odpowiedź wzorcową. Do czasu oceny ręcznej takie pytanie nie wchodzi do wyniku.",
+    "required": "To pole jest wymagane.",
+    "too_short": "Wartość jest za krótka.",
+    "too_long": "Wartość jest za długa.",
+    "invalid": "Wartość jest niepoprawna.",
+    "explanation_required": "Wyjaśnienie jest wymagane dla pytań zamkniętych.",
+    "explanation_too_short": "Wyjaśnienie musi mieć co najmniej 80 znaków — wyjaśnij rozumowanie, nie tylko wskaż odpowiedź.",
+    "explanation_names_option": "Nie wskazuj odpowiedzi literą ani numerem (np. „B”, „druga odpowiedź”). Opisz rozumowanie i nazwij dystraktor, który studenci mylą najczęściej.",
+    "explanation_quotes_option": "Nie powtarzaj treści odpowiedzi. Opisz własnymi słowami, dlaczego poprawna odpowiedź jest poprawna i co skłania studentów do wyboru dystraktora.",
+    "model_answer_required": "Pytanie otwarte wymaga odpowiedzi wzorcowej.",
     "topics_label": "Tematy",
     "topics_placeholder": "Wybierz tematy...",
     "cancel": "Anuluj",
@@ -3025,7 +3044,8 @@
     "feedback": "Informacja zwrotna",
     "feedback_placeholder": "Opcjonalna informacja zwrotna",
     "saving": "Zapisywanie...",
-    "save": "Zapisz ocenę"
+    "save": "Zapisz ocenę",
+    "model_answer": "Odpowiedź wzorcowa: {text}"
   },
   "EduPerQuestionGradingPage": {
     "grade_failed": "Błąd oceniania",
@@ -3102,7 +3122,8 @@
     "results_hidden": "Podsumowanie niedostępne",
     "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
     "review_locked": "Podsumowanie otwiera się po zakończeniu kartkówki.",
-    "review_available": "Kartkówka jest zakończona — możesz przejrzeć odpowiedzi."
+    "review_available": "Kartkówka jest zakończona — możesz przejrzeć odpowiedzi.",
+    "ungraded": "Oczekuje na ocenę — pytania otwarte nie wchodzą jeszcze do wyniku."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",
@@ -3133,7 +3154,10 @@
     "incorrect": "Niepoprawnie",
     "locked": "Podsumowanie zablokowane",
     "locked_hint": "Odpowiedzi są ujawniane po zakończeniu kartkówki.",
-    "no_attempt": "Nie wysłałeś żadnej próby. Odpowiedzi są widoczne, bo kartkówka jest zakończona."
+    "no_attempt": "Nie wysłałeś żadnej próby. Odpowiedzi są widoczne, bo kartkówka jest zakończona.",
+    "model_answer": "Odpowiedź wzorcowa",
+    "model_answer_not_captured": "Odpowiedź wzorcowa nie została zapisana w opublikowanej wersji tego pytania.",
+    "ungraded_only": "{count, plural, one {Oddano jedno pytanie otwarte — nie jest jeszcze ocenione, więc nie ma wyniku punktowego.} few {Oddano # pytania otwarte — nie są jeszcze ocenione, więc nie ma wyniku punktowego.} many {Oddano # pytań otwartych — nie są jeszcze ocenione, więc nie ma wyniku punktowego.} other {Oddano # pytania otwarte — nie są jeszcze ocenione, więc nie ma wyniku punktowego.}}"
   },
   "AppQuizTakingPage": {
     "loading": "Ładowanie…",
@@ -3172,7 +3196,9 @@
     "type_open": "Otwarta odpowiedź",
     "your_answer": "Twoja odpowiedź",
     "no_answer": "Brak odpowiedzi",
-    "explanation": "Wyjaśnienie"
+    "explanation": "Wyjaśnienie",
+    "model_answer": "Odpowiedź wzorcowa",
+    "model_answer_not_captured": "Brak zapisanej odpowiedzi wzorcowej dla tego pytania."
   },
   "AnswerImageUpload": {
     "uploading": "Przesyłanie...",

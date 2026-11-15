@@ -142,6 +142,8 @@ const APP_QUIZ_REVIEW_KEYS = [
   'your_answer',
   'no_answer',
   'explanation',
+  'model_answer',
+  'model_answer_not_captured',
 ] as const;
 
 /**

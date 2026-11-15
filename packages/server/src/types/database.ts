@@ -1662,6 +1662,7 @@ export type Database = {
           created_by: string | null;
           explanation: string | null;
           id: string;
+          model_answer: string | null;
           organization_id: string | null;
           search_vector: unknown;
           status: Database['public']['Enums']['question_status'];
@@ -1678,6 +1679,7 @@ export type Database = {
           created_by?: string | null;
           explanation?: string | null;
           id?: string;
+          model_answer?: string | null;
           organization_id?: string | null;
           search_vector?: never;
           status?: Database['public']['Enums']['question_status'];
@@ -1693,6 +1695,7 @@ export type Database = {
           created_by?: string | null;
           explanation?: string | null;
           id?: string;
+          model_answer?: string | null;
           organization_id?: string | null;
           search_vector?: never;
           status?: Database['public']['Enums']['question_status'];
