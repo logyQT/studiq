@@ -36,6 +36,11 @@ describe('/setup/org trailing-slash hardening', () => {
     expect(rule?.allowedAccountTypes).toEqual(['educator']);
   });
 
+  it('/setup/ (trailing slash) still allows EDUCATOR', () => {
+    const rule = matchRule('/setup/');
+    expect(rule?.allowedAccountTypes).toEqual(['educator']);
+  });
+
   it('/setup/anything still allows EDUCATOR', () => {
     const rule = matchRule('/setup/some-page');
     expect(rule?.allowedAccountTypes).toEqual(['educator']);
