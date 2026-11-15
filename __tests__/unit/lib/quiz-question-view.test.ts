@@ -108,7 +108,7 @@ describe('QuizQuestionView', () => {
 
     expect(radios(html)).toHaveLength(0);
     expect(html).toContain('<textarea');
-    expect(html).toContain('Wpisz swoją odpowiedź…');
+    expect(html).toContain(t('answer_placeholder'));
   });
 
   it('exposes the attempt position through the progressbar', () => {
@@ -128,7 +128,7 @@ describe('QuizQuestionView', () => {
     expect(html).not.toContain(question.options[0].label);
     // The reserved line and the progress stay put — the caller supplies the
     // line's wording — so the card cannot move on the swap.
-    expect(html).toContain('Pytanie 1 z 5');
+    expect(html).toContain(t('question_of', { current: 1, total: 5 }));
     expect(html).toContain('role="progressbar"');
   });
 });
@@ -147,7 +147,7 @@ describe('QuizQuestionPreview', () => {
     expect(html).toContain('Które organellum wytwarza większość ATP w komórce eukariotycznej?');
     // The preview runs its own sequence — four shipped question types, since the
     // open-answer card is deferred — so it opens on 1 of 4.
-    expect(html).toContain('Pytanie 1 z 4');
+    expect(html).toContain(t('question_of', { current: 1, total: 4 }));
     expect(radios(html)).toHaveLength(4);
   });
 });

@@ -1,5 +1,7 @@
 import { json } from '#test/helpers/json';
+import pl from '@/i18n/messages/pl.json';
 import { expect, test, type Page } from '@playwright/test';
+import { createTranslator } from 'next-intl';
 
 /**
  * PUB-05 — Strona Kontakt (/contact).
@@ -72,10 +74,17 @@ const HEADER_LINKS = [
   { name: 'Rejestracja', href: '/register' },
 ] as const;
 
+/**
+ * The footer's own labels, read from the catalogue the page renders from: the
+ * spec pins which destinations the public shell exposes, not the wording of the
+ * links. A copy edit in `pl.json` must not turn a working footer red.
+ */
+const footerCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'Footer' });
+
 const FOOTER_LINKS = [
-  { name: 'Kontakt', href: '/contact' },
-  { name: 'Polityka prywatności', href: '/privacy' },
-  { name: 'Regulamin', href: '/terms' },
+  { name: footerCopy('contact'), href: '/contact' },
+  { name: footerCopy('privacy'), href: '/privacy' },
+  { name: footerCopy('terms'), href: '/terms' },
 ] as const;
 
 /** Collect browser-side failures so "no errors" is asserted, not assumed. */

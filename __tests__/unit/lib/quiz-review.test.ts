@@ -1,4 +1,4 @@
-import { NextIntlClientProvider, useTranslations } from 'next-intl';
+import { createTranslator, NextIntlClientProvider, useTranslations } from 'next-intl';
 import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -26,7 +26,15 @@ import pl from '@/i18n/messages/pl.json';
  * and the landing preview render these same two components and build their copy
  * with the same helpers. These pin the four score states and the answer review,
  * so a preview cannot quietly stop matching what a student is graded with.
+ *
+ * Expected copy comes from the same catalogues the components read, so a wording
+ * change moves the expectation with the page instead of breaking the test.
+ * Fixture text — a stem, an option label, a typed answer — stays literal: it is
+ * the data under test, not UI copy.
  */
+const copy = createTranslator({ locale: 'pl', messages: pl, namespace: 'AppQuizReviewPage' });
+const landingCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'LandingPage' });
+
 const provider = (child: ReactElement) =>
   createElement(NextIntlClientProvider, { locale: 'pl', messages: pl }, child);
 
@@ -60,8 +68,8 @@ describe('QuizScoreSummary', () => {
   it('scores a practice quiz from the closed questions it asked', () => {
     const html = summary(attempt(4, ['mcq', 'mcq', 'mcq', 'mcq', 'mcq']));
 
-    expect(html).toContain('Wynik: 80%');
-    expect(html).toContain('4 z 5 poprawnych');
+    expect(html).toContain(copy('score_percent', { percentage: 80 }));
+    expect(html).toContain(copy('correct_of', { score: 4, total: 5 }));
   });
 
   it('scores an assignment in awarded points, not in questions', () => {
@@ -72,8 +80,8 @@ describe('QuizScoreSummary', () => {
       }),
     );
 
-    expect(html).toContain('Wynik: 88%');
-    expect(html).toContain('7 z 8 punktów');
+    expect(html).toContain(copy('score_percent', { percentage: 88 }));
+    expect(html).toContain(copy('points_out_of', { score: 7, total: 8 }));
   });
 
   it('replaces the percentage with the closed-question count when a question is open', () => {
@@ -81,16 +89,17 @@ describe('QuizScoreSummary', () => {
 
     // Two of three closed answers is 67%, but the mandated headline names both
     // numbers instead: the denominator a student can check.
-    expect(html).toContain('Poprawnie: 2 z 3 pytań zamkniętych');
-    expect(html).toContain('Pytanie otwarte: 1');
-    expect(html).not.toContain('Wynik: 67%');
+    expect(html).toContain(copy('correct_closed', { score: 2, total: 3 }));
+    expect(html).toContain(copy('open_questions_line', { count: 1 }));
+    expect(html).not.toContain(copy('score_percent', { percentage: 67 }));
   });
 
   it('shows no percentage at all when nothing was auto-graded', () => {
     const html = summary(attempt(0, ['open', 'open']));
 
-    expect(html).toContain('Tylko pytania otwarte');
-    expect(html).not.toContain('Wynik');
+    expect(html).toContain(copy('open_only_title'));
+    // The score line is the one thing that must be absent, whatever its wording.
+    expect(html).not.toContain('%');
   });
 
   it('keeps the attempt date on the review card, where the demo drops it', () => {
@@ -139,7 +148,7 @@ describe('QuizQuestionReview', () => {
 
     expect(html).toContain('data-correct="true"');
     expect(html).toContain('data-selected="true"');
-    expect(html).toContain('Niepoprawnie');
+    expect(html).toContain(copy('badge_incorrect'));
   });
 
   it('shows a typed answer for an open question instead of an answer key', () => {
@@ -149,7 +158,7 @@ describe('QuizQuestionReview', () => {
     );
 
     expect(html).toContain('Odpowiedź kontrolna.');
-    expect(html).toContain('Do samodzielnej oceny');
+    expect(html).toContain(copy('badge_self_check'));
   });
 });
 
@@ -233,9 +242,13 @@ describe('buildQuizDemoResult', () => {
   });
 
   it('shows the score the visitor earned in the review header', () => {
-    expect(summary(demo('pl', 'all').attempt)).toContain('Wynik: 100%');
-    expect(summary(demo('pl', 'all').attempt)).toContain('4 z 4 poprawnych');
-    expect(summary(demo('pl', 'none').attempt)).toContain('Wynik: 0%');
+    expect(summary(demo('pl', 'all').attempt)).toContain(
+      copy('score_percent', { percentage: 100 }),
+    );
+    expect(summary(demo('pl', 'all').attempt)).toContain(
+      copy('correct_of', { score: 4, total: 4 }),
+    );
+    expect(summary(demo('pl', 'none').attempt)).toContain(copy('score_percent', { percentage: 0 }));
   });
 });
 
@@ -255,7 +268,7 @@ describe('QuizScoreSummary (bare)', () => {
       provider(createElement(BareProbe, { value: demo('pl', 'all').attempt })),
     );
 
-    expect(html).toContain('4 z 4 poprawnych');
+    expect(html).toContain(copy('correct_of', { score: 4, total: 4 }));
     expect(html).not.toContain('2026');
     expect(html).not.toContain('text-center');
     expect(html).not.toContain('justify-center');
@@ -287,9 +300,10 @@ const renderedResult = (how: 'all' | 'none' | 'skipped' = 'all') =>
 describe('QuizResultPreview', () => {
   it('announces the real score once, from the block focus lands on', () => {
     const html = renderedResult();
+    const score = copy('correct_of', { score: 4, total: 4 });
 
-    expect(html.match(/4 z 4 poprawnych/g)).toHaveLength(1);
-    expect(html.indexOf('aria-live="polite"')).toBeLessThan(html.indexOf('4 z 4 poprawnych'));
+    expect(html.split(score)).toHaveLength(2);
+    expect(html.indexOf('aria-live="polite"')).toBeLessThan(html.indexOf(score));
     expect(html).toContain('tabindex="-1"');
     // The demo shows the attempt just finished, not a dated record.
     expect(html).not.toContain('2026');
@@ -297,12 +311,14 @@ describe('QuizResultPreview', () => {
 
   it('offers the primary action before the restart, both as 44px controls', () => {
     const html = renderedResult();
+    const cta = landingCopy('quiz_end_cta');
+    const restart = landingCopy('quiz_end_restart');
 
     expect(html).toContain('href="/register"');
-    expect(html).toContain('Rozwiąż własny test');
+    expect(html).toContain(cta);
     expect(html).toContain('type="button"');
-    expect(html).toContain('Zacznij od nowa');
-    expect(html.indexOf('Rozwiąż własny test')).toBeLessThan(html.indexOf('Zacznij od nowa'));
+    expect(html).toContain(restart);
+    expect(html.indexOf(cta)).toBeLessThan(html.indexOf(restart));
     expect(html.match(/h-11/g)).toHaveLength(2);
     expect(html.match(/rounded-control/g)?.length).toBeGreaterThanOrEqual(2);
     expect(html).toMatch(/<a[^>]*bg-primary[^>]*text-primary-foreground/);
@@ -320,7 +336,7 @@ describe('QuizResultPreview', () => {
       expect(list).toContain(QUIZ_QUESTION_FIXTURES.pl[subject].stem);
     }
     // The state is not colour or shape alone: each row names it for a screen reader.
-    expect(list.match(/Poprawnie/g)).toHaveLength(4);
+    expect(list.split(copy('badge_correct'))).toHaveLength(5);
     // Two lines before a stem is cut; the whole stem stays in the DOM either way.
     expect(list).toContain('line-clamp-2');
     expect(list).not.toContain('truncate');
@@ -351,8 +367,8 @@ describe('QuizResultPreview', () => {
     const list = html.match(/<ul[\s\S]*?<\/ul>/)?.[0] ?? '';
 
     expect(list.match(/<li /g)).toHaveLength(4);
-    expect(list.match(/Brak odpowiedzi/g)).toHaveLength(4);
+    expect(list.split(copy('no_answer'))).toHaveLength(5);
     expect(list).toContain('text-muted-foreground');
-    expect(list).not.toContain('Poprawnie');
+    expect(list).not.toContain(copy('badge_correct'));
   });
 });
