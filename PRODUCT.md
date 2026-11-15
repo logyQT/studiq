@@ -118,6 +118,7 @@ Roadmap-backed, so all of it is sellable. Status column is the roadmap's, not th
 | `SM-2` spaced repetition and study sessions                                     | 0, 5B           | ✅                                             |
 | Questions (multiple choice, true/false, open), banks, quizzes, attempts, review | 0, 3A           | ✅                                             |
 | Groups, org hierarchy, roles, per-group visibility                              | 1, 2            | ✅                                             |
+| Own branding: organization logo and brand colour                                | 8A              | ✅                                             |
 | Seats, plans, features and limits, Stripe checkout                              | 6               | 🏗️ integration complete, go-live pending #1019 |
 | AI flashcard generation from text or PDF, with a daily token budget             | 4A              | ✅                                             |
 | AI question and quiz generation                                                 | 4B (#658)       | 📋 ships before launch                         |

@@ -2023,6 +2023,7 @@
   "PricingPage": {
     "title": "Choose your plan",
     "subtitle": "Monthly prices in złoty. Every path starts free.",
+    "description": "One price list for students and educators, another for organizations. Monthly prices in złoty, and every ladder starts free.",
     "faq_title": "Frequently asked questions",
     "faq_q1": "How do I change a plan?",
     "faq_a1": "Open Payments, pick another plan and confirm. An upgrade starts right away, a downgrade starts when the paid period ends. In an organization, an admin makes the change.",
