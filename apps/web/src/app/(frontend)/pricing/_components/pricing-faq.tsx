@@ -40,12 +40,11 @@ export function PricingFaq({ audience }: { audience: PricingAudience }) {
         <h2 className="font-display text-h2 font-semibold text-balance">{t('faq_title')}</h2>
 
         {/*
-         * `forceMount` keeps every answer in the document, so the text is in the
-         * server HTML for search engines and a reader without JavaScript. Radix
-         * then leaves the panel mounted, which is why the panel's own
-         * `data-state` closes it here: a collapsed answer is `display: none`, so
-         * it leaves the layout and the accessibility tree (no four empty `region`
-         * landmarks) while its text stays in the HTML.
+         * `forceMount` keeps every answer in the server HTML, which is what a
+         * search engine indexes. The panel's own `data-state` then closes it: a
+         * collapsed answer is `display: none`, so it leaves the layout and the
+         * accessibility tree (no empty `region` landmark per question) while its
+         * text stays in the document.
          */}
         <Accordion type="single" collapsible className="mt-6 border-t border-border">
           {QUESTIONS[audience].map(([question, answer], index) => {
