@@ -40,7 +40,7 @@ export type QuestionSnapshotKey = QuestionKey;
 
 /** The link columns every assignment read may select (never `snapshot_key`, never `*`). */
 export const ASSIGNMENT_QUESTION_COLUMNS =
-  'id, assignment_id, question_id, order_index, points, snapshot, snapshot_version, withhold_from_review, released_at';
+  'id, assignment_id, question_id, order_index, points, snapshot, snapshot_version, withhold_from_review, released_at, taught_item';
 
 /** The live item projected for a snapshot write. */
 const OPTION_SELECT = 'id, content, order_index, match_group, match_side';
@@ -114,6 +114,8 @@ export interface AssignmentLink {
   question_id: string | null;
   order_index: number | null;
   points: number;
+  /** The teacher's declaration that this item was taught (R9); it waives eligibility only. */
+  taught_item: boolean;
   snapshot: QuestionSnapshot | null;
   snapshot_version: number | null;
 }
@@ -129,7 +131,7 @@ export async function readAssignmentLinks(
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('assignment_questions')
-    .select('question_id, order_index, points, snapshot, snapshot_version')
+    .select('question_id, order_index, points, snapshot, snapshot_version, taught_item')
     .eq('assignment_id', assignmentId)
     .order('order_index', { ascending: true });
 
@@ -147,6 +149,24 @@ export async function readAssignmentPoints(
     new Map(
       links.data.flatMap((link) => (link.question_id ? [[link.question_id, link.points]] : [])),
     ),
+  );
+}
+
+/**
+ * The items one assignment declares taught (R9). Read with the service role — the flag is a
+ * teacher decision, not a student-readable fact — and only after the caller proved authorship.
+ */
+export async function readTaughtItems(assignmentId: string): Promise<ServiceResult<Set<string>>> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id, taught_item')
+    .eq('assignment_id', assignmentId)
+    .eq('taught_item', true);
+
+  if (error) return toDbFailure(error);
+  return success(
+    new Set(dbRows(data).flatMap((row) => (row.question_id ? [row.question_id] : []))),
   );
 }
 

@@ -148,14 +148,29 @@ export const PublishAssignmentSchema = registry.register(
 );
 export type PublishAssignmentInput = z.infer<typeof PublishAssignmentSchema>;
 
-export const WithholdItemSchema = registry.register(
-  'WithholdItemRequest',
-  z.object({
-    /** `true` holds the item back from the cohort review; `false` takes the hold off again. */
-    withheld: z.boolean({ error: ValidationErrorCode.BOOL }),
-  }),
+/**
+ * The two per-item declarations a teacher makes about one bound item: whether its key is held back
+ * from the cohort review (R10) and whether it was taught (R9). One contract because they are one
+ * decision surface — the item flags — and because both are refused by the same closed-run guard.
+ */
+export const ItemDeclarationsSchema = registry.register(
+  'ItemDeclarationsRequest',
+  z
+    .object({
+      /** `true` holds the item back from the cohort review; `false` takes the hold off again. */
+      withheld: z.boolean({ error: ValidationErrorCode.BOOL }).optional(),
+      /**
+       * R9: the item was taught, so it stays eligible for a student who already saw its key or
+       * answered it. It waives eligibility only — never the seal or a review hold.
+       */
+      taught: z.boolean({ error: ValidationErrorCode.BOOL }).optional(),
+    })
+    .refine((input) => input.withheld !== undefined || input.taught !== undefined, {
+      error: ValidationErrorCode.REQUIRED,
+      path: ['taught'],
+    }),
 );
-export type WithholdItemInput = z.infer<typeof WithholdItemSchema>;
+export type ItemDeclarationsInput = z.infer<typeof ItemDeclarationsSchema>;
 
 /**
  * The new close of an extension (#1174, R12). Only the bound moves: extending delays the reveal for

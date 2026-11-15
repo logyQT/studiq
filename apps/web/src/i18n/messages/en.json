@@ -2923,6 +2923,7 @@
     "close_failed": "Closing failed",
     "held_back": "Held back from review",
     "hold_from_review": "Hold back from review",
+    "taught_item": "Taught in class",
     "released_to_review": "Released to the review",
     "release": "Release",
     "cancelled": "Cancelled",
@@ -3084,7 +3085,8 @@
     "feedback_placeholder": "Optional feedback",
     "saving": "Saving...",
     "save": "Save Grade",
-    "model_answer": "Model answer: {text}"
+    "model_answer": "Model answer: {text}",
+    "taught_item": "Taught in class"
   },
   "EduPerQuestionGradingPage": {
     "grade_failed": "Grade failed",

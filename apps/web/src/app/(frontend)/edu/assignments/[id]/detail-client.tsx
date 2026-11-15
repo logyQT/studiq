@@ -95,6 +95,8 @@ interface AssignmentDetail {
     /** R10: kept back from the cohort review until released. */
     withhold_from_review: boolean;
     released_at: string | null;
+    /** R9: graded even though students may have seen the key; excluded from fairness stats. */
+    taught_item: boolean;
     question: {
       id: string;
       content: string;
@@ -146,14 +148,17 @@ function SortableQuestionRow({
   question,
   index,
   onRemove,
+  onToggleTaught,
 }: {
   question: AssignmentDetail['assignment_questions'][number];
   index: number;
   onRemove: () => void;
+  onToggleTaught: (taught: boolean) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: question.id,
   });
+  const t = useTranslations('EduAssignmentDetailPage');
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -182,6 +187,14 @@ function SortableQuestionRow({
       <Badge variant="secondary" className="shrink-0">
         {question.question?.type}
       </Badge>
+      <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+        <input
+          type="checkbox"
+          checked={question.taught_item}
+          onChange={(event) => onToggleTaught(event.target.checked)}
+        />
+        {t('taught_item')}
+      </label>
       <span className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
         {question.points} pts
       </span>
@@ -305,7 +318,7 @@ export default function AssignmentDetailClient() {
 
   const withholdMutation = useApiMutation<unknown, { questionId: string; withheld: boolean }>({
     mutationFn: (vars) =>
-      apiPut<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/review`, {
+      apiPut<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/flags`, {
         withheld: vars.withheld,
       }),
     invalidateKeys: [assignmentKeys.detail(id)],
@@ -319,6 +332,16 @@ export default function AssignmentDetailClient() {
         `/api/v1/teacher/assignments/${id}/questions/${questionId}/release`,
         undefined,
       ),
+    invalidateKeys: [assignmentKeys.detail(id)],
+    onError: (error) =>
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null)),
+  });
+
+  const taughtMutation = useApiMutation<unknown, { questionId: string; taught: boolean }>({
+    mutationFn: (vars) =>
+      apiPut<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/flags`, {
+        taught: vars.taught,
+      }),
     invalidateKeys: [assignmentKeys.detail(id)],
     onError: (error) =>
       toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null)),
@@ -771,6 +794,9 @@ export default function AssignmentDetailClient() {
                       key={aq.id}
                       question={aq}
                       index={i}
+                      onToggleTaught={(taught) =>
+                        taughtMutation.mutate({ questionId: aq.question_id, taught })
+                      }
                       onRemove={() => {
                         removeQuestionMutation.mutate(aq.question_id);
                         setLocalQuestions((prev) => (prev ?? []).filter((q) => q.id !== aq.id));
@@ -798,8 +824,30 @@ export default function AssignmentDetailClient() {
                         {aq.released_at ? t('released_to_review') : t('held_back')}
                       </Badge>
                     )}
+                    {aq.taught_item && isClosed && (
+                      <Badge variant="outline" className="shrink-0">
+                        {t('taught_item')}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
+                    {/* R9: the declaration is what keeps a pre-exposed item gradeable. It changes
+                        eligibility, so it is refused once the run has closed. */}
+                    {!isClosed && (
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={aq.taught_item}
+                          onChange={(event) =>
+                            taughtMutation.mutate({
+                              questionId: aq.question_id,
+                              taught: event.target.checked,
+                            })
+                          }
+                        />
+                        {t('taught_item')}
+                      </label>
+                    )}
                     {/* R10: the hold is decided while the window is live; once it closes, the only
                         way back is the release. */}
                     {!isClosed ? (

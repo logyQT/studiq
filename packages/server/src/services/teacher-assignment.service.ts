@@ -6,6 +6,7 @@ import {
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
   readAttemptQuestions,
+  readTaughtItems,
   snapshotFromJson,
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
@@ -13,8 +14,8 @@ import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import {
   attemptHistory,
   drawSample,
+  sampleEligible,
   sampleServed,
-  sampleUnseen,
 } from '@studiq/server/lib/attempt-sample';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
 import {
@@ -35,6 +36,7 @@ import {
   type AddQuestionsInput,
   type CreateTeacherAssignmentInput,
   type GradeAnswerInput,
+  type ItemDeclarationsInput,
   type PublishAssignmentInput,
   PublishableAssignmentSchema,
   type RandomizeInput,
@@ -525,34 +527,58 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * Holds one item back from the cohort review (R10). The decision belongs to the live window: after
-   * the close the cohort has already read the key, so hiding an item then would be an un-reveal
-   * (R20) — the only action left is `releaseItem`.
+   * The two per-item declarations (R9/R10): holding an item back from the cohort review, and
+   * declaring it taught. One method because both are refused by the same state guard, and a
+   * combined request must not half-apply.
+   *
+   * - The hold belongs to a published, still-open window: after the close the cohort has already
+   *   read the key, so hiding an item then would be an un-reveal (R20) — the only action left is
+   *   `releaseItem`.
+   * - `taught_item` is accepted on a draft too, because the composer is where the teacher reads the
+   *   publish forecast, and it is refused once the run is closed, when eligibility is decided.
+   * - Neither flag unseals the item: sealing reads the window, not these columns (R2/R4).
    */
-  async setReviewHold(
+  async setItemDeclarations(
     id: string,
     questionId: string,
-    withheld: boolean,
+    input: ItemDeclarationsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const loaded = await this.loadOwnedCloseWindow(id, ctx);
-    if (isFailure(loaded)) return loaded;
-    const { supabase, run } = loaded.data;
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
-    if (run.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
+    const { data: run, error: runError } = await supabase
+      .from('teacher_assignments')
+      .select('status, deadline, closed_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (runError) return toDbFailure(runError);
+    if (!run) return failure('NOT_FOUND');
+    if (run.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
     if (isAssessmentClosed(run)) return failure('ASSESSMENT_CLOSED');
+    if (input.withheld !== undefined && run.status !== 'published') {
+      return failure('ASSESSMENT_NOT_PUBLISHED');
+    }
+
+    const update: Database['public']['Tables']['assignment_questions']['Update'] = {};
+    if (input.withheld !== undefined) {
+      update.withhold_from_review = input.withheld;
+      update.released_at = null;
+    }
+    if (input.taught !== undefined) update.taught_item = input.taught;
 
     const { data, error } = await supabase
       .from('assignment_questions')
-      .update({ withhold_from_review: withheld, released_at: null })
+      .update(update)
       .eq('assignment_id', id)
       .eq('question_id', questionId)
-      .select('id')
+      .select('withhold_from_review, taught_item')
       .maybeSingle();
 
     if (error) return toDbFailure(error);
     if (!data) return failure('NOT_FOUND');
-    return success({ withhold_from_review: withheld });
+    return success(data);
   }
 
   /**
@@ -946,6 +972,8 @@ export class TeacherAssignmentService {
     const snapshots = await readAssignmentSnapshots(id);
     if (isFailure(snapshots)) return snapshots;
     const keys = await readAssignmentSnapshotKeys(id);
+    const taught = await readTaughtItems(id);
+    if (isFailure(taught)) return taught;
 
     return success({
       ...attempt,
@@ -957,6 +985,9 @@ export class TeacherAssignmentService {
             ? withAnswerKey(frozen, q.question_id ? keys.get(q.question_id) : undefined)
             : null,
           max_points: maxPoints.data.get(q.question_id)?.points ?? null,
+          // R9: a pre-exposed item that is still graded is declared here, so the grading card can
+          // say so instead of presenting it as an ordinary item.
+          taught_item: !!q.question_id && taught.data.has(q.question_id),
         };
       }),
     });
@@ -1398,15 +1429,15 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * The items one attempt serves (R6/R7). The pool is everything the assessment binds; the draw is
-   * `attempt_item_count` of it (all of it when the teacher set no count).
+   * The items one attempt serves (R6/R7/R9). The pool is everything the assessment binds; the draw
+   * is `attempt_item_count` of it (all of it when the teacher set no count).
    *
-   * - First attempt: a draw from the pool.
-   * - Retake, default: a draw from the items this student has **not** seen — served, answered or
-   *   key-rendered. An exhausted inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse.
-   * - Retake, `allow_same_item_retake`: the items the earlier attempt was served, which is what
-   *   "same item" means. A prior attempt with no served rows is a corrupt state, and serving the
-   *   pool is the honest repair rather than a refusal.
+   * - Every attempt, first or retake, draws only from the items this student has **not** met —
+   *   served, answered or key-rendered — plus the items the teacher declared `taught_item`.
+   * - An exhausted inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse.
+   * - `allow_same_item_retake`: the items the earlier attempt was served, which is what "same item"
+   *   means. A prior attempt with no served rows is a corrupt state, and serving the pool is the
+   *   honest repair rather than a refusal.
    *
    * Both retake forms happen inside the window: this method already refused everything outside it.
    */
@@ -1416,22 +1447,20 @@ export class TeacherAssignmentService {
     links: AssignmentLink[],
     options: { isRetake: boolean; allowSameItemRetake: boolean; itemCount: number | null },
   ): Promise<ServiceResult<AssignmentLink[]>> {
-    if (!options.isRetake) return success(drawSample(links, options.itemCount));
-
     const candidates = [
       ...new Set(links.flatMap((link) => (link.question_id ? [link.question_id] : []))),
     ];
     const history = await attemptHistory(studentId, id, candidates);
     if (isFailure(history)) return history;
 
-    if (options.allowSameItemRetake) {
+    if (options.isRetake && options.allowSameItemRetake) {
       const same = sampleServed(links, history.data.served);
       return success(drawSample(same.length > 0 ? same : links, options.itemCount));
     }
 
-    const fresh = sampleUnseen(links, history.data.seen);
-    if (fresh.length === 0) return failure('NO_UNSEEN_ITEMS');
-    return success(drawSample(fresh, options.itemCount));
+    const eligible = sampleEligible(links, history.data.seen);
+    if (eligible.length === 0) return failure('NO_UNSEEN_ITEMS');
+    return success(drawSample(eligible, options.itemCount));
   }
 
   /**

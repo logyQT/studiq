@@ -1,36 +1,50 @@
-import { drawSample, sampleServed, sampleUnseen } from '@studiq/server/lib/attempt-sample';
+import { drawSample, sampleEligible, sampleServed } from '@studiq/server/lib/attempt-sample';
 import { describe, expect, it } from 'vitest';
 
-// #1174 phase 5: the pure half of the retake sample (R6/R7). The DB half (`attemptHistory`) is
-// covered by `__tests__/integration/assessment-retake.test.ts`; these pin the rules that decide
-// which bound items one attempt may serve.
+// #1174 phase 5 / #1172 phase 3: the pure half of the attempt sample (R6/R7/R9). The DB half
+// (`attemptHistory`) is covered by `__tests__/integration/assessment-eligibility.test.ts`; these pin
+// the rules that decide which bound items one attempt may serve.
 
-const links = (ids: Array<string | null>) => ids.map((question_id) => ({ question_id }));
+const links = (ids: Array<string | null>, taught: string[] = []) =>
+  ids.map((question_id) => ({
+    question_id,
+    taught_item: !!question_id && taught.includes(question_id),
+  }));
 
-describe('sampleUnseen (#1174, R7)', () => {
+describe('sampleEligible (#1172, R9)', () => {
   it('drops every item the student has already met', () => {
     const seen = new Set(['q-1', 'q-3']);
-    expect(sampleUnseen(links(['q-1', 'q-2', 'q-3']), seen)).toEqual([{ question_id: 'q-2' }]);
-  });
-
-  it('keeps the assignment order and a link without a question', () => {
-    expect(sampleUnseen(links(['q-3', null, 'q-1']), new Set(['q-2']))).toEqual([
-      { question_id: 'q-3' },
-      { question_id: null },
-      { question_id: 'q-1' },
+    expect(sampleEligible(links(['q-1', 'q-2', 'q-3']), seen)).toEqual([
+      { question_id: 'q-2', taught_item: false },
     ]);
   });
 
-  it('is empty when the pool holds nothing unseen — the refusal the caller turns into a 409', () => {
-    expect(sampleUnseen(links(['q-1', 'q-2']), new Set(['q-1', 'q-2']))).toEqual([]);
+  it('keeps a seen item the teacher declared taught', () => {
+    const seen = new Set(['q-1', 'q-2']);
+    expect(sampleEligible(links(['q-1', 'q-2', 'q-3'], ['q-2']), seen)).toEqual([
+      { question_id: 'q-2', taught_item: true },
+      { question_id: 'q-3', taught_item: false },
+    ]);
+  });
+
+  it('keeps the assignment order and a link without a question', () => {
+    expect(sampleEligible(links(['q-3', null, 'q-1']), new Set(['q-2']))).toEqual([
+      { question_id: 'q-3', taught_item: false },
+      { question_id: null, taught_item: false },
+      { question_id: 'q-1', taught_item: false },
+    ]);
+  });
+
+  it('is empty when every item was seen and none was declared — the 409 the caller returns', () => {
+    expect(sampleEligible(links(['q-1', 'q-2']), new Set(['q-1', 'q-2']))).toEqual([]);
   });
 });
 
 describe('sampleServed (#1174, R6)', () => {
   it('is the earlier attempt’s items, in the pool order', () => {
     expect(sampleServed(links(['q-1', 'q-2', 'q-3']), new Set(['q-3', 'q-1']))).toEqual([
-      { question_id: 'q-1' },
-      { question_id: 'q-3' },
+      { question_id: 'q-1', taught_item: false },
+      { question_id: 'q-3', taught_item: false },
     ]);
   });
 

@@ -29,6 +29,8 @@ interface StudentAnswers {
     order_index: number;
     /** Null when the question is no longer part of the assignment. */
     max_points: number | null;
+    /** R9: declared taught, so its pre-exposure does not make the score unfair. */
+    taught_item: boolean;
     question: {
       id: string;
       content: string;
@@ -174,6 +176,11 @@ export default function StudentGradingClient() {
                       <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
                         {aq.question.type}
                       </span>
+                      {aq.taught_item && (
+                        <span className="text-xs border px-1.5 py-0.5 rounded text-muted-foreground">
+                          {t('taught_item')}
+                        </span>
+                      )}
                       {isAutoGraded && (
                         <span
                           className={`text-xs font-medium ${

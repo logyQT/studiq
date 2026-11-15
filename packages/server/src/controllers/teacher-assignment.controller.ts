@@ -12,9 +12,9 @@ import {
   PublishAssignmentSchema,
   RandomizeSchema,
   ReorderQuestionsSchema,
+  ItemDeclarationsSchema,
   SetTargetsSchema,
   UpdateTeacherAssignmentSchema,
-  WithholdItemSchema,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import {
@@ -111,22 +111,17 @@ export class TeacherAssignmentController {
     return controllerResponse.success(result.data);
   }
 
-  async setReviewHold(
+  async setItemDeclarations(
     id: string,
     questionId: string,
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    const parsed = WithholdItemSchema.safeParse(body);
+    const parsed = ItemDeclarationsSchema.safeParse(body);
     if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
-    const result = await this.service.setReviewHold(id, questionId, parsed.data.withheld, ctx);
+    const result = await this.service.setItemDeclarations(id, questionId, parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

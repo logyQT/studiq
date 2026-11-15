@@ -24,7 +24,7 @@ import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/ass
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
 import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
-import { PUT as withholdPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/[questionId]/review/route';
+import { PUT as withholdPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/[questionId]/flags/route';
 import { POST as releasePost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/[questionId]/release/route';
 
 // #1171 slice 3b: withheld items (R10). `withholdFromReview` outranks the automatic release at the
@@ -76,7 +76,7 @@ describe('Withheld items stay sealed past the close until released (#1171)', () 
   ): Promise<Response> {
     as(user.user);
     const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/teacher/assignments/${assignmentId}/questions/${questionId}/review`,
+      `http://localhost/api/v1/teacher/assignments/${assignmentId}/questions/${questionId}/flags`,
       { id: assignmentId, questionId },
       {
         method: 'PUT',

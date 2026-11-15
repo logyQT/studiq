@@ -2904,6 +2904,7 @@
     "close_failed": "Nie udało się zakończyć",
     "held_back": "Wstrzymane przed podsumowaniem",
     "hold_from_review": "Wstrzymaj przed podsumowaniem",
+    "taught_item": "Uczone na lekcji",
     "released_to_review": "Udostępnione w podsumowaniu",
     "release": "Udostępnij",
     "cancelled": "Anulowane",
@@ -3065,7 +3066,8 @@
     "feedback_placeholder": "Opcjonalna informacja zwrotna",
     "saving": "Zapisywanie...",
     "save": "Zapisz ocenę",
-    "model_answer": "Odpowiedź wzorcowa: {text}"
+    "model_answer": "Odpowiedź wzorcowa: {text}",
+    "taught_item": "Uczone na lekcji"
   },
   "EduPerQuestionGradingPage": {
     "grade_failed": "Błąd oceniania",
