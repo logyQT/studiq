@@ -371,6 +371,9 @@ describe('Assignment review: locked before close, revealed at close (#1171)', ()
     expect(idleBody.items.map((item) => item.itemId).toSorted()).toEqual(
       body.items.map((item) => item.itemId).toSorted(),
     );
+    // A student who never sat the assessment has no verdict: the page renders a tick/cross only
+    // for `correct !== null`, so `false` here would mark every item wrong for the whole cohort.
+    expect(idleBody.items.every((item) => item.correct === null)).toBe(true);
   });
 
   it('reviews the named attempt when one is requested (tie-break by attempt id)', async () => {

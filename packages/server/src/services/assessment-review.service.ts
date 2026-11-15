@@ -125,7 +125,9 @@ export class AssessmentReviewService {
         })),
         explanation: item.key.explanation,
         graded,
-        correct: graded ? (answer?.is_correct ?? false) : null,
+        // No attempt at all is not "wrong": the cohort reveal serves the key, not a verdict on a
+        // student who never sat it (R5). A skipped item inside a real attempt is `false`.
+        correct: graded ? (attempt.data ? (answer?.is_correct ?? false) : null) : null,
         selectedOptionId: answer?.selected_option_id ?? null,
         textAnswer: answer?.text_answer ?? null,
         teacherPoints: answer?.teacher_points ?? null,
