@@ -15,7 +15,7 @@ import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateQuestionInput,
@@ -311,6 +311,65 @@ export class QuestionService {
 
     const [item] = await withKeys([withTopics(question)], ctx);
     return success(item);
+  }
+
+  /**
+   * Who already saw this item's key (#1172, R8): the staff view behind the exposure ledger. Staff
+   * with the key permission only — the same `question_bank.update` gate that lets them read the
+   * answer key — and the payload carries no key material, only the students, the moment and the
+   * classes the render happened in.
+   *
+   * Read through the caller's own client: the ledger's row policy already limits them to their
+   * organisation's events and their own, and this method refuses anyone without key access before
+   * reading a single row.
+   */
+  async exposureLedger(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.clientFactory();
+
+    const { data: question, error } = await supabase
+      .from('questions')
+      .select('id, created_by, organization_id')
+      .eq('id', id)
+      .neq('status', 'deleted')
+      .maybeSingle();
+    if (error) return toDbFailure(error);
+    if (!question) return failure('NOT_FOUND');
+    if (!canReadQuestionKey(ctx, question)) return failure('FORBIDDEN');
+
+    const { data: events, error: eventError } = await supabase
+      .from('exposure_events')
+      .select('student_id, group_ids, seen_correct, created_at, student:profiles(id, full_name)')
+      .eq('question_id', id)
+      .order('created_at', { ascending: true });
+    if (eventError) return toDbFailure(eventError);
+
+    const rows = dbRows(events);
+    const groupIds = [...new Set(rows.flatMap((row) => row.group_ids))];
+    const groupNames = new Map<string, string>();
+    if (groupIds.length > 0) {
+      const { data: groups, error: groupError } = await supabase
+        .from('groups')
+        .select('id, name')
+        .in('id', groupIds);
+      if (groupError) return toDbFailure(groupError);
+      for (const group of dbRows(groups)) groupNames.set(group.id, group.name);
+    }
+
+    return success({
+      questionId: id,
+      preExposedCount: rows.length,
+      groups: [...groupNames].map(([groupId, name]) => ({ id: groupId, name })),
+      events: rows.map((row) => {
+        const student = dbNested(row.student);
+        return {
+          studentId: row.student_id,
+          studentName: student?.full_name ?? null,
+          seenCorrect: row.seen_correct,
+          seenAt: row.created_at,
+          groupIds: row.group_ids,
+        };
+      }),
+    });
   }
 
   async update(

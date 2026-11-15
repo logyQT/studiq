@@ -17,6 +17,8 @@ import {
   requiredAt,
 } from '#test/integration/test-utils';
 import { POST as assignmentStart } from '@/app/(backend)/api/v1/assignments/[id]/start/route';
+import { GET as ledgerGet } from '@/app/(backend)/api/v1/questions/[id]/ledger/route';
+import { GET as assignmentGet } from '@/app/(backend)/api/v1/teacher/assignments/[id]/route';
 import { POST as attemptSubmit } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
@@ -99,7 +101,7 @@ describe('Assessment eligibility: a key render burns the item (#1172)', () => {
     return attemptSubmit(request, { params });
   }
 
-  async function createAssessment(input: {
+  async function createAssessmentDraft(input: {
     title: string;
     groupIds: string[];
     questionIds: string[];
@@ -150,7 +152,16 @@ describe('Assessment eligibility: a key render burns the item (#1172)', () => {
       cookie(),
     );
     expect((await targetsPut(targets.request, { params: targets.params })).status).toBe(200);
+    return id;
+  }
 
+  async function createAssessment(input: {
+    title: string;
+    groupIds: string[];
+    questionIds: string[];
+    maxAttempts?: number;
+  }): Promise<string> {
+    const id = await createAssessmentDraft(input);
     const publish = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/assignments/${id}/publish`,
       { id },
@@ -380,5 +391,94 @@ describe('Assessment eligibility: a key render burns the item (#1172)', () => {
     const refused = await flagsPut(late.request, { params: late.params });
     expect(refused.status, 'eligibility is decided by then').toBe(409);
     expect(await errorOf(refused)).toBe('ASSESSMENT_CLOSED');
+  });
+
+  it('forecasts the pre-exposure shortfall per item and per class before publish (R8/R9)', async () => {
+    const draft = await createAssessmentDraft({
+      title: `eligibility-forecast-${Date.now()}`,
+      groupIds: [seenGroupId, classmateGroupId],
+      questionIds: [burntId, freshId],
+    });
+
+    mockUser(teacher.user);
+    const detail = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${draft}`,
+      { id: draft },
+      {},
+      cookie(),
+    );
+    const response = await assignmentGet(detail.request, { params: detail.params });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const exposure = (
+      await json<{
+        data: {
+          exposure?: {
+            preExposure: {
+              itemCount: number;
+              studentCount: number;
+              items: Array<{ questionId: string; seenCount: number; answeredCount: number }>;
+              groups: Array<{ groupId: string; studentCount: number }>;
+            };
+          };
+        };
+      }>(response)
+    ).data.exposure;
+    expect(exposure, 'a draft carries the publish forecast').toBeDefined();
+
+    const burnt = exposure?.preExposure.items.find((item) => item.questionId === burntId);
+    expect(burnt?.seenCount, 'the ledger event is counted for the item').toBeGreaterThanOrEqual(1);
+    expect(
+      burnt?.answeredCount,
+      'a prior answer counts on its own, without a ledger event',
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      exposure?.preExposure.groups.find((group) => group.groupId === seenGroupId)?.studentCount,
+      'the class breakdown names the class the students are in',
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      exposure?.preExposure.items.every((item) => [burntId, freshId].includes(item.questionId)),
+      'the shortfall only names bound items',
+    ).toBe(true);
+  });
+
+  it('lists who saw the key for staff with the key permission, and never for a student (R8)', async () => {
+    mockUser(teacher.user);
+    const ledgerCall = createNextRequestWithParams(
+      `http://localhost/api/v1/questions/${burntId}/ledger`,
+      { id: burntId },
+      {},
+      cookie(),
+    );
+    const ledger = await ledgerGet(ledgerCall.request, { params: ledgerCall.params });
+    expect(ledger.status, await ledger.clone().text()).toBe(200);
+    const payload = await json<{
+      data: {
+        preExposedCount: number;
+        groups: Array<{ id: string; name: string }>;
+        events: Array<{ studentId: string; seenAt: string; groupIds: string[] }>;
+      };
+    }>(ledger);
+    expect(payload.data.preExposedCount).toBeGreaterThanOrEqual(1);
+    const event = payload.data.events.find((row) => row.studentId === seenStudent.user.id);
+    expect(event, 'the student whose key render burned the item is listed').toBeDefined();
+    expect(event?.seenAt).toBeTruthy();
+    expect(event?.groupIds).toContain(seenGroupId);
+    expect(
+      payload.data.groups.find((group) => group.id === seenGroupId)?.name,
+      'the class ids resolve to names',
+    ).toBeTruthy();
+    expect(JSON.stringify(payload), 'the ledger carries no key material').not.toMatch(
+      /is_correct|explanation|model_answer/,
+    );
+
+    mockUser(seenStudent.user);
+    const studentCall = createNextRequestWithParams(
+      `http://localhost/api/v1/questions/${burntId}/ledger`,
+      { id: burntId },
+      {},
+      cookie(),
+    );
+    const refused = await ledgerGet(studentCall.request, { params: studentCall.params });
+    expect(refused.status, 'a student never reads the staff ledger').toBe(403);
   });
 });

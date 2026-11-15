@@ -2918,7 +2918,14 @@
     "extend_title": "Przedłuż okno",
     "extend_new_deadline": "Nowy termin",
     "extend_hint": "Przegląd otwiera się o nowym terminie dla całej klasy — nie ma przedłużania dla pojedynczego ucznia.",
-    "extend_failed": "Przedłużenie nie powiodło się"
+    "extend_failed": "Przedłużenie nie powiodło się",
+    "ledger": "Dziennik odsłon",
+    "ledger_count": "{count, plural, =0 {Żaden uczeń nie widział tego klucza} one {# uczeń widział ten klucz} few {# uczniów widziało ten klucz} other {# uczniów widziało ten klucz}}",
+    "ledger_empty": "Żaden uczeń nie widział jeszcze tego klucza.",
+    "unknown_student": "Nieznany uczeń",
+    "pre_exposed_badge": "{count} już zna",
+    "pre_exposure_warning": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}} z {total} zostało już zobaczone lub rozwiązane przez {students, plural, one {# ucznia} few {# uczniów} other {# uczniów}} z wybranych klas. Ci uczniowie nie otrzymają tych pytań — oznacz pytanie jako uczone, aby mimo to je oceniać.",
+    "pre_exposure_classes": "Według klas: {classes}"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",

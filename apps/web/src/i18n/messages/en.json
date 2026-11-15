@@ -2937,7 +2937,14 @@
     "extend_title": "Extend the window",
     "extend_new_deadline": "New deadline",
     "extend_hint": "The review opens at the new deadline for the whole class — there is no per-student extension.",
-    "extend_failed": "Extending failed"
+    "extend_failed": "Extending failed",
+    "ledger": "Exposure ledger",
+    "ledger_count": "{count, plural, =0 {No student has seen this key} one {# student saw this key} other {# students saw this key}}",
+    "ledger_empty": "No student has seen this key yet.",
+    "unknown_student": "Unknown student",
+    "pre_exposed_badge": "{count} already met",
+    "pre_exposure_warning": "{count, plural, one {# question} other {# questions}} of {total} were already seen or answered by {students, plural, one {# student} other {# students}} in the selected classes. Those students will not be served them — declare an item taught to grade it anyway.",
+    "pre_exposure_classes": "By class: {classes}"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",

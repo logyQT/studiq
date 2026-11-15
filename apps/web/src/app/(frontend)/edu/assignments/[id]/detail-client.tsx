@@ -83,8 +83,20 @@ interface AssignmentDetail {
   seal_org_wide: boolean;
   /** Written by the durable close (R7/R12); a later clock change does not reopen it. */
   closed_at: string | null;
-  /** Cross-class forecast, computed for a draft only (the composer is the only reader). */
-  exposure?: { openItemCount: number; outsideStudentCount: number };
+  /**
+   * The publish forecast, computed for a draft only (the composer is the only reader): the
+   * cross-class half (R3) and the pre-exposure half (R8/R9).
+   */
+  exposure?: {
+    openItemCount: number;
+    outsideStudentCount: number;
+    preExposure: {
+      itemCount: number;
+      studentCount: number;
+      items: Array<{ questionId: string; seenCount: number; answeredCount: number }>;
+      groups: Array<{ groupId: string; studentCount: number }>;
+    };
+  };
   created_at: string;
   assignment_targets?: Array<{ group_id: string | null; student_id: string | null }>;
   assignment_questions: Array<{
@@ -144,14 +156,89 @@ function arrayMove<T>(arr: T[], from: number, to: number): T[] {
   return copy;
 }
 
+interface KeyLedger {
+  questionId: string;
+  preExposedCount: number;
+  groups: Array<{ id: string; name: string }>;
+  events: Array<{
+    studentId: string;
+    studentName: string | null;
+    seenCorrect: boolean;
+    seenAt: string;
+    groupIds: string[];
+  }>;
+}
+
+/**
+ * The staff view of one item's exposure ledger (R8): who already saw the key, when, and in which
+ * class. It renders no key material — the teacher reading this is deciding whether to declare the
+ * item taught, not reviewing it.
+ */
+function KeyLedgerDialog({ questionId }: { questionId: string }) {
+  const t = useTranslations('EduAssignmentDetailPage');
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useApiQuery<KeyLedger>({
+    queryKey: questionKeys.ledger(questionId),
+    url: `/api/v1/questions/${questionId}/ledger`,
+    enabled: open,
+  });
+  const groupNames = new Map((data?.groups ?? []).map((group) => [group.id, group.name]));
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        {t('ledger')}
+      </Button>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('ledger')}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {t('ledger_count', { count: data?.preExposedCount ?? 0 })}
+          </p>
+          {isLoading ? (
+            <div className="h-16 bg-muted animate-pulse rounded" />
+          ) : (data?.events.length ?? 0) === 0 ? (
+            <p className="text-sm">{t('ledger_empty')}</p>
+          ) : (
+            <ul className="space-y-2 max-h-80 overflow-y-auto">
+              {data?.events.map((event) => (
+                <li key={`${event.studentId}-${event.seenAt}`} className="rounded-md border p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {event.studentName ?? t('unknown_student')}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(event.seenAt).toLocaleString()}
+                    </span>
+                  </div>
+                  {event.groupIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {event.groupIds.map((id) => groupNames.get(id) ?? id).join(', ')}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SortableQuestionRow({
   question,
   index,
+  preExposed,
   onRemove,
   onToggleTaught,
 }: {
   question: AssignmentDetail['assignment_questions'][number];
   index: number;
+  /** Targeted students who already met this item; `0` when the forecast has nothing to say. */
+  preExposed: number;
   onRemove: () => void;
   onToggleTaught: (taught: boolean) => void;
 }) {
@@ -187,6 +274,11 @@ function SortableQuestionRow({
       <Badge variant="secondary" className="shrink-0">
         {question.question?.type}
       </Badge>
+      {preExposed > 0 && (
+        <Badge variant="outline" className="shrink-0">
+          {t('pre_exposed_badge', { count: preExposed })}
+        </Badge>
+      )}
       <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
         <input
           type="checkbox"
@@ -195,6 +287,7 @@ function SortableQuestionRow({
         />
         {t('taught_item')}
       </label>
+      <KeyLedgerDialog questionId={question.question_id} />
       <span className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
         {question.points} pts
       </span>
@@ -623,6 +716,21 @@ export default function AssignmentDetailClient() {
   const questions = localQuestions ?? [];
   const exposure = assignment.exposure;
   const exposureOpen = (exposure?.openItemCount ?? 0) > 0 && !sealOrgWide;
+  const preExposure = exposure?.preExposure;
+  // Per item, how many targeted students already met it: the shortfall the teacher is deciding on.
+  const preExposedByItem = new Map(
+    (preExposure?.items ?? []).map((item) => [
+      item.questionId,
+      item.seenCount + item.answeredCount,
+    ]),
+  );
+  const preExposureClasses = (preExposure?.groups ?? [])
+    .map((group) => {
+      const name = (groups ?? []).find((candidate) => candidate.id === group.groupId)?.name;
+      return name ? `${name} (${group.studentCount})` : null;
+    })
+    .filter((entry): entry is string => entry !== null)
+    .join(', ');
   // Publish validates all of this server-side; the composer states it up front so the button
   // cannot silently do nothing.
   // An audience and at least one item are what the composer can require up front; the deadline is
@@ -794,6 +902,7 @@ export default function AssignmentDetailClient() {
                       key={aq.id}
                       question={aq}
                       index={i}
+                      preExposed={preExposedByItem.get(aq.question_id) ?? 0}
                       onToggleTaught={(taught) =>
                         taughtMutation.mutate({ questionId: aq.question_id, taught })
                       }
@@ -827,6 +936,13 @@ export default function AssignmentDetailClient() {
                     {aq.taught_item && isClosed && (
                       <Badge variant="outline" className="shrink-0">
                         {t('taught_item')}
+                      </Badge>
+                    )}
+                    {(preExposedByItem.get(aq.question_id) ?? 0) > 0 && (
+                      <Badge variant="outline" className="shrink-0">
+                        {t('pre_exposed_badge', {
+                          count: preExposedByItem.get(aq.question_id) ?? 0,
+                        })}
                       </Badge>
                     )}
                   </div>
@@ -874,6 +990,7 @@ export default function AssignmentDetailClient() {
                         {t('release')}
                       </Button>
                     ) : null}
+                    <KeyLedgerDialog questionId={aq.question_id} />
                     <span className="text-sm text-muted-foreground">
                       {t('pts', { count: aq.points })}
                     </span>
@@ -1199,6 +1316,27 @@ export default function AssignmentDetailClient() {
                   <p className="text-xs text-muted-foreground">{t('seal_org_wide_hint')}</p>
                 </div>
               </div>
+
+              {(preExposure?.itemCount ?? 0) > 0 && (
+                <div
+                  role="note"
+                  data-testid="pre-exposure-warning"
+                  className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+                >
+                  <p>
+                    {t('pre_exposure_warning', {
+                      count: preExposure?.itemCount ?? 0,
+                      total: questions.length,
+                      students: preExposure?.studentCount ?? 0,
+                    })}
+                  </p>
+                  {preExposureClasses && (
+                    <p className="text-xs">
+                      {t('pre_exposure_classes', { classes: preExposureClasses })}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {exposureOpen && (
                 <div
