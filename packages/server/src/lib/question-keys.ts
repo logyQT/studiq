@@ -85,6 +85,14 @@ export async function readQuestionKeys(ids: readonly string[]): Promise<Map<stri
 }
 
 /**
+ * Whether this key carries an artefact the review actually renders: an explanation, a model answer
+ * or a correct option. An item with none of them renders no key, so reading it burns nothing (R8).
+ */
+export function carriesAnswerKey(key: QuestionKey | undefined): boolean {
+  return Boolean(key && (key.explanation || key.modelAnswer || key.correctOptionIds.length > 0));
+}
+
+/**
  * Adds the key, the explanation and the model answer to a question the caller may read them for.
  * Callers use it only on staff/grading rows; a reader payload is never passed through here, so it
  * keeps none of the three fields (absent, not null).

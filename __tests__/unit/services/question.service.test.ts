@@ -15,11 +15,17 @@ vi.mock('@studiq/server/lib/authz', () => ({
 }));
 
 /**
- * The key seam (#1170): whether a row may carry the key is decided here, and the key itself is
- * read with the service role. Unit tests switch the decision per test and never touch a
- * database.
+ * The key seam (#1170/#1180): whether a row may carry the key is decided here, and the key itself is
+ * read with the service role. Unit tests switch the decision per test, seed the stored key per id
+ * and never touch a database.
  */
-const keyAccess = vi.hoisted(() => ({ canReadQuestionKey: vi.fn(() => false) }));
+const keyAccess = vi.hoisted(() => ({
+  canReadQuestionKey: vi.fn(() => false),
+  byId: new Map<
+    string,
+    { explanation: string | null; modelAnswer: string | null; correctOptionIds: string[] }
+  >(),
+}));
 vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
   canReadQuestionKey: keyAccess.canReadQuestionKey,
@@ -29,11 +35,14 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
       { explanation: string | null; modelAnswer: string | null; correctOptionIds: string[] }
     >();
     for (const id of ids) {
-      keys.set(id, {
-        explanation: `explanation-${id}`,
-        modelAnswer: `model-answer-${id}`,
-        correctOptionIds: ['ans-2'],
-      });
+      keys.set(
+        id,
+        keyAccess.byId.get(id) ?? {
+          explanation: `explanation-${id}`,
+          modelAnswer: `model-answer-${id}`,
+          correctOptionIds: ['ans-2'],
+        },
+      );
     }
     return Promise.resolve(keys);
   }),
@@ -121,6 +130,7 @@ describe('QuestionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    keyAccess.byId.clear();
     sealState.seal.ids = new Set();
     sealState.seal.bankId = new Map();
     sealState.seal.closesAt = new Map();
@@ -477,18 +487,29 @@ describe('QuestionService', () => {
   });
 
   describe('update', () => {
-    // The authoring rules judge the merged item, so every update first reads the stored one.
+    // The authoring rules judge the merged item, so every update first reads the stored one. The
+    // stored explanation and model answer are not selectable through the caller's client (#1180,
+    // #1173): they come from the key reader, so the tests seed that copy.
     const CURRENT = {
       type: 'mcq',
-      explanation:
-        'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do dodawania.',
       question_answers: [{ id: 'ans-1', content: 'A' }],
     };
+    const STORED_EXPLANATION =
+      'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do dodawania.';
+
+    beforeEach(() => {
+      keyAccess.byId.set('q-1', {
+        explanation: STORED_EXPLANATION,
+        modelAnswer: 'model-answer-q-1',
+        correctOptionIds: [],
+      });
+    });
 
     it('updates question and returns it', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
+      const stored = chain(CURRENT);
 
-      mock.from.mockReturnValueOnce(chain(CURRENT));
+      mock.from.mockReturnValueOnce(stored);
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
 
@@ -496,14 +517,20 @@ describe('QuestionService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
+      // The stored item is read without the explanation: a user-session select of it is refused at
+      // the database boundary (#1180).
+      expect(firstCall(stored.select)[0]).not.toContain('explanation');
     });
 
     it('refuses an update that leaves a choice item without a usable explanation (R16)', async () => {
       // The stored item is legacy (no explanation) and the patch does not resend one: the merged
       // item is what R16 judges, so the update is a 422 with the field path, not a silent save.
-      mock.from.mockReturnValueOnce(
-        chain({ type: 'mcq', explanation: null, question_answers: [{ content: 'A' }] }),
-      );
+      keyAccess.byId.set('q-1', {
+        explanation: null,
+        modelAnswer: null,
+        correctOptionIds: [],
+      });
+      mock.from.mockReturnValueOnce(chain({ type: 'mcq', question_answers: [{ content: 'A' }] }));
 
       const result = await service.update('q-1', { content: 'Updated' }, ctx);
 
@@ -517,13 +544,14 @@ describe('QuestionService', () => {
 
     it('judges a renamed option against the untouched explanation (R17)', async () => {
       // The patch only renames an option; the stored explanation is what now quotes it.
+      keyAccess.byId.set('q-1', {
+        explanation:
+          'Warszawa jest stolicą Polski od 1596 roku, więc wybór wynika z historii kraju i z przeniesienia stolicy.',
+        modelAnswer: null,
+        correctOptionIds: [],
+      });
       mock.from.mockReturnValueOnce(
-        chain({
-          type: 'mcq',
-          explanation:
-            'Warszawa jest stolicą Polski od 1596 roku, więc wybór wynika z historii kraju i z przeniesienia stolicy.',
-          question_answers: [{ id: 'ans-1', content: 'Kraków' }],
-        }),
+        chain({ type: 'mcq', question_answers: [{ id: 'ans-1', content: 'Kraków' }] }),
       );
 
       const result = await service.update(
@@ -543,9 +571,7 @@ describe('QuestionService', () => {
       // read: renaming an open item must not demand its answer back.
       const updated = { id: 'q-1', content: 'Updated' };
 
-      mock.from.mockReturnValueOnce(
-        chain({ type: 'open', explanation: null, question_answers: [] }),
-      );
+      mock.from.mockReturnValueOnce(chain({ type: 'open', question_answers: [] }));
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
 
@@ -556,9 +582,7 @@ describe('QuestionService', () => {
     });
 
     it('refuses an open-item update that clears the model answer (R16)', async () => {
-      mock.from.mockReturnValueOnce(
-        chain({ type: 'open', explanation: null, question_answers: [] }),
-      );
+      mock.from.mockReturnValueOnce(chain({ type: 'open', question_answers: [] }));
 
       const result = await service.update('q-1', { modelAnswer: '' }, ctx);
 

@@ -207,8 +207,9 @@ export class TeacherAssignmentService {
       .from('teacher_assignments')
       .select(
         // Explicit question columns: `question_id(*)` would ask for the revoked `model_answer`
-        // and fail closed (42501) instead of serving the composer (#1173).
-        `*, assignment_targets(group_id, student_id), assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(id, bank_id, organization_id, created_by, type, content, status, version, visibility, explanation, created_at, updated_at, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
+        // (#1173) and `explanation` (#1180), and fail closed (42501) instead of serving the
+        // composer. The key reader adds both back below.
+        `*, assignment_targets(group_id, student_id), assignment_questions(${ASSIGNMENT_QUESTION_COLUMNS}, question:question_id(id, bank_id, organization_id, created_by, type, content, status, version, visibility, created_at, updated_at, question_answers:question_options(id, content, order_index, match_group, match_side)))`,
       )
       .eq('id', id)
       .maybeSingle();

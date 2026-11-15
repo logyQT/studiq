@@ -9,6 +9,9 @@ CREATE TABLE public.questions (
   created_by      uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   type            question_type NOT NULL DEFAULT 'mcq',
   content         text NOT NULL,
+  -- The choice item's teaching artefact and part of the answer key (R16). Revoked from
+  -- `authenticated` in 20261115130000_question_explanation_boundary.sql (#1180): it is read only by
+  -- the server-side key reader.
   explanation     text,
   -- The open item's teaching artefact (#1173, R16). Revoked from `authenticated` in
   -- 20261115120000_question_model_answer.sql: it is an answer, read only by the server-side
@@ -17,6 +20,7 @@ CREATE TABLE public.questions (
   status          question_status NOT NULL DEFAULT 'open',
   version         int NOT NULL DEFAULT 1,
   visibility      visibility_type NOT NULL DEFAULT 'personal',
+  -- Indexes the explanation, so it is revoked with it (#1180).
   search_vector   tsvector
                   GENERATED ALWAYS AS (
                     to_tsvector('english', coalesce(content, '')) ||

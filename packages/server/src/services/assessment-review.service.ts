@@ -4,6 +4,7 @@ import { readReviewItems } from '@studiq/server/lib/assignment-snapshot';
 import { reviewState } from '@studiq/server/lib/assignment-visibility';
 import { recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { wrapService } from '@studiq/server/lib/observability';
+import { carriesAnswerKey } from '@studiq/server/lib/question-keys';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
@@ -150,12 +151,14 @@ export class AssessmentReviewService {
     // adds nothing; a failed write is a server fault, not a reason to withhold the review.
     // Only a student's render is an exposure: a teacher previewing the cohort review is not a
     // learner who has now seen the key, and a staff row in the ledger would be a false event for
-    // phase 3's eligibility (#1172).
+    // phase 3's eligibility (#1172). An item whose review carries no key artefact burns nothing.
     if (ctx.accountType === AccountType.STUDENT) {
       const exposed = await recordReviewExposure({
         studentId: ctx.userId,
         assignmentId,
-        questionIds: items.map((item) => item.itemId),
+        questionIds: reviewItems.data
+          .filter((item) => carriesAnswerKey(item.key))
+          .map((item) => item.questionId),
       });
       if (isFailure(exposed)) return exposed;
     }

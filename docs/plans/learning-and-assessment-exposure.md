@@ -118,6 +118,19 @@ null` with `graded: boolean`, and an explicit `ungradedCount`. `correct: boolean
 10. **`taughtItem` waives both** the ledger event _and_ a prior answer when computing eligibility; it
     never unseals an item during the window.
 
+## Boundary amendments (v4)
+
+1. **The explanation is key-bearing, not a second artefact.** `questions.explanation` moves behind the
+   same database boundary as `question_options.is_correct` (#1180, phase 3 slice A of #1172):
+   `authenticated` can no longer select it, nor the generated `search_vector` that indexes it. Every
+   render — practice feedback, the authoring form, the staff export, the post-close review — is served
+   server-side from the key reader, which is fed ids from a query the caller was already authorized to
+   run. A client-readable path can no longer show an explanation (R4/R18).
+2. **The key render writes the ledger, by construction.** No explanation reaches a student without the
+   server having read the key for that student, so the read that renders it is also where the
+   `(item, student)` exposure event is written (R8). An item whose review carries no key artefact — no
+   explanation, no model answer, no correct option — burns nothing.
+
 ## Goals
 
 - Students learn from open questions with immediate feedback, explanations and retries.

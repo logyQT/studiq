@@ -27,11 +27,12 @@ GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, sna
                 withhold_from_review, released_at)
   ON public.assignment_questions TO authenticated;
 
--- `model_answer` is the open item's answer (#1173): the blanket GRANT above would re-open it on
--- every reset, so the reader columns come back without it. `explanation` stays as it is (#1180).
+-- `model_answer` is the open item's answer (#1173) and `explanation` is the choice item's key
+-- (#1180): the blanket GRANT above would re-open both on every reset, so the reader columns come
+-- back without them. `search_vector` indexes the explanation, so it goes with it.
 REVOKE SELECT ON public.questions FROM authenticated, anon;
-GRANT SELECT (id, created_by, type, content, explanation, created_at, updated_at,
-              organization_id, search_vector, visibility, bank_id, status, version)
+GRANT SELECT (id, created_by, type, content, created_at, updated_at,
+              organization_id, visibility, bank_id, status, version)
   ON public.questions TO authenticated;
 
 
