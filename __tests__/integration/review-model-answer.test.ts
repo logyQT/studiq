@@ -47,6 +47,8 @@ interface AttemptPayload {
 interface ReviewPayload {
   score: { earned: number; possible: number } | null;
   ungradedCount: number;
+  /** The per-attempt index (#1174, R5): each attempt carries its own ungraded count. */
+  attempts: Array<{ attemptId: string; ungradedCount: number }>;
   items: Array<{
     itemId: string;
     type: string;
@@ -291,6 +293,8 @@ describe('Review renders the teaching artefact and excludes ungraded items (#117
     expect(review.ungradedCount).toBe(1);
     // R16: the open item is outside the denominator — one graded point, not two.
     expect(review.score).toEqual({ earned: 1, possible: 1 });
+    // The attempt index counts the same open item for the attempt that was served it (#1174, R5).
+    expect(review.attempts[0]?.ungradedCount).toBe(1);
   });
 
   it('reports no score at all for a sheet of open items', async () => {
