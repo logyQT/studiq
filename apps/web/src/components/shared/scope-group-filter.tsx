@@ -204,11 +204,13 @@ export function ScopeGroupFilter({
 
                   {/* Beside the list, not below it: the rows never reflow, and the
                       panel is portalled so the command list cannot clip it. */}
+                  {/* Flush against the list and open on its left edge: the panel
+                      reads as the same surface extending, not a detached box. */}
                   <HoverCardContent
                     side="right"
                     align="start"
-                    sideOffset={6}
-                    className="max-h-72 w-48 overflow-y-auto p-0"
+                    sideOffset={-1}
+                    className="max-h-72 w-48 overflow-y-auto rounded-l-none border-l-0 p-0 shadow-none"
                   >
                     {visibleGroups.length === 0 ? (
                       <p className="px-2 py-1.5 text-sm text-muted-foreground">
