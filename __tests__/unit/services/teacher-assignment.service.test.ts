@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { readAssignmentSnapshots } from '@studiq/server/lib/assignment-snapshot';
 import { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
@@ -1066,6 +1067,67 @@ describe('TeacherAssignmentService', () => {
       if (result.success) {
         expect(asJson<{ attempts: unknown[] }>(result.data).attempts).toEqual([]);
       }
+    });
+
+    it('resolves a choice answer to its published option text (#1238)', async () => {
+      const attempt = {
+        ...attempts[0],
+        quiz_answers: [
+          {
+            question_id: 'q-1',
+            selected_option_id: 'option-a',
+            text_answer: null,
+            teacher_points: null,
+            teacher_feedback: null,
+          },
+          {
+            question_id: 'q-2',
+            selected_option_id: null,
+            text_answer: null,
+            teacher_points: null,
+            teacher_feedback: null,
+          },
+        ],
+      };
+      vi.mocked(readAssignmentSnapshots).mockResolvedValueOnce({
+        success: true,
+        data: new Map([
+          [
+            'q-1',
+            {
+              id: 'q-1',
+              content: 'Which planet is closest?',
+              type: 'mcq',
+              question_answers: [
+                {
+                  id: 'option-a',
+                  content: 'Merkury',
+                  order_index: 0,
+                  match_group: null,
+                  match_side: null,
+                },
+              ],
+            },
+          ],
+        ]),
+      });
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(chain([attempt]));
+
+      const result = await service.getResults(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      const [row] = asJson<{
+        attempts: Array<{ quiz_answers: Array<{ selected_option_content: string | null }> }>;
+      }>(result.data).attempts;
+      expect(row?.quiz_answers[0]?.selected_option_content).toBe('Merkury');
+      expect(row?.quiz_answers[1]?.selected_option_content, 'a skipped answer has no option').toBe(
+        null,
+      );
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {

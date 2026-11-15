@@ -25,6 +25,8 @@ interface ResultsData {
   quiz_answers?: Array<{
     question_id: string;
     text_answer: string | null;
+    /** The published option's text; the answer row itself carries only `selected_option_id`. */
+    selected_option_content?: string | null;
     teacher_points: number | null;
     teacher_feedback: string | null;
   }>;
@@ -73,11 +75,17 @@ export default function PerQuestionGradingClient() {
     }
   };
 
-  const getStudentAnswer = (attempt: ResultsData) => ({
-    answer: answerOf(attempt),
-    images: (attempt.assignment_answer_images ?? []).filter((img) => img.question_id === qId),
-    userName: attempt.user?.full_name ?? t('unknown'),
-  });
+  const getStudentAnswer = (attempt: ResultsData) => {
+    const answer = answerOf(attempt);
+    return {
+      answer,
+      // A choice answer prints its option's text; an open one its written answer. A skipped
+      // question has neither, so the card says so (#1238).
+      answerText: answer?.selected_option_content || answer?.text_answer || null,
+      images: (attempt.assignment_answer_images ?? []).filter((img) => img.question_id === qId),
+      userName: attempt.user?.full_name ?? t('unknown'),
+    };
+  };
 
   /** An attempt whose answer for this question is missing or still ungraded. */
   const needsGrading = (attempt: ResultsData) => {
@@ -135,10 +143,8 @@ export default function PerQuestionGradingClient() {
                 )}
               </div>
 
-              {studentData.answer?.text_answer ? (
-                <p className="text-sm">
-                  {t('student_answer', { text: studentData.answer.text_answer })}
-                </p>
+              {studentData.answerText ? (
+                <p className="text-sm">{t('student_answer', { text: studentData.answerText })}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">{t('no_answer')}</p>
               )}
