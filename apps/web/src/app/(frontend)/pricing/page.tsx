@@ -8,7 +8,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   const t = await getTranslations({ locale, namespace: 'PricingPage' });
   const title = t('title');
-  const description = t('subtitle');
+  /*
+   * One page, two audiences: the description names both ladders, so a search
+   * result or a shared link says which catalogues are behind the single URL.
+   */
+  const description = t('description');
 
   return {
     title,

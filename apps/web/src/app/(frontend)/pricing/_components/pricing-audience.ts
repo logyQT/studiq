@@ -1,11 +1,11 @@
+import { INDIVIDUAL_PRICING_URL, ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
+
 /**
  * Which pair of ladders the page is showing. It lives in the URL and nowhere
  * else: a shared link, the Back button and the navbar's "Cennik" link all reach
  * the ladder they name because all three change the address, not a local copy.
  */
 export type PricingAudience = 'individual' | 'organization';
-
-import { INDIVIDUAL_PRICING_URL, ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 
 /**
  * The written address of each audience. Individual is the bare route, so the

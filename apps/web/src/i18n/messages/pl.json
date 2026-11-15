@@ -2004,6 +2004,7 @@
   "PricingPage": {
     "title": "Wybierz swój plan",
     "subtitle": "Ceny miesięczne w złotych. Na każdej ścieżce zaczynasz za darmo.",
+    "description": "Cennik dla uczniów, studentów i edukatorów oraz osobny cennik dla organizacji. Ceny miesięczne w złotych, każda ścieżka zaczyna się za darmo.",
     "faq_title": "Najczęściej zadawane pytania",
     "faq_q1": "Jak zmienię plan?",
     "faq_a1": "W zakładce Płatności wybierasz inny plan i potwierdzasz zmianę. Ulepszenie wchodzi od razu, a obniżenie zaczyna się z końcem opłaconego okresu. W organizacji plan zmienia administrator.",
