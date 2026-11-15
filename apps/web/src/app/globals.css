@@ -301,45 +301,131 @@
   }
 }
 
-/* The paper surface of the shells: a light pool top-left, a warm shade
-   bottom-right, and the grain — all behind type. The marketing shells and the
-   product shell (`DashboardLayout`) both carry it. Radii are fixed px rather
-   than percentages so a long page grows a flat middle instead of stretching the
-   light into a wash.
+/* The paper surface of the shells: one lighting ramp, the grain and the dither,
+   all behind type. The marketing shells and the product shell (`DashboardLayout`)
+   both carry it.
+   The lighting is one `to bottom right` linear gradient rather than two pools.
+   Its iso-lines are straight, so no stop can curve into a band, and the ramp is
+   sampled off a quadratic ease at 14 and 22 stops: the ease is the shape with
+   the smallest slope step that still leaves zero slope at both ends, and the
+   stop count is set by the narrowest surface (`/register`'s 720px column), where
+   the same 12px window covers a larger share of the ramp. A quadratic — not a
+   smootherstep — because the second derivative, not its smoothness, is what a
+   band reads: the quadratic's is 4 against the smootherstep's 5.77.
+   The 28%-72% plateau is the paper's own tone. `to bottom right` puts the top-
+   right and bottom-left corners on the 50% line, so neither picks up light, and
+   the ramp is in percentages of the gradient line: every surface gets the same
+   share of it, where a px ramp would leave a short one unlit.
    `background-blend-mode` does not blend against `background-color` on its own,
    so the last gradient layer is mandatory — without it the page greys out.
-   The order of that list is load-bearing. The dither is the first (topmost)
-   entry so its `overlay` meets the tone stack the compositor is about to round,
-   and breaks the 8-bit tread the ramp would otherwise show as a stripe: the
-   tone layers underneath are `normal`, so a noise layer below them is covered by
-   their alpha instead of dithering them. `soft-light` is the grain, which is
-   meant to sit under the light and be seen where it thins.
+   The order of that list is load-bearing: both textures sit ABOVE the ramp,
+   because the ramp's stops are opaque and would cover them. The dither is the
+   topmost entry so its `overlay` meets the tone stack the compositor is about to
+   round and spreads the 8-bit tread into sub-step jitter; `soft-light` is the
+   grain, one layer down.
    There is deliberately no edge layer. Any shaped cue that has to reach the
    viewport edge lands somewhere, and both a 100px ramp and a 240px eased one
    were read as a vertical band down each side rather than as light: a band that
-   reads as a seam is not a lighting cue, so the two pools carry the sheet. */
+   reads as a seam is not a lighting cue, so the ramp carries the sheet. */
 @utility bg-paper-grain {
   background-color: var(--background);
   background-image:
-    var(--paper-dither),
-    radial-gradient(1300px 1000px at 18% 0%, rgb(255 252 242 / 0.93), rgb(255 252 242 / 0) 68%),
-    radial-gradient(1500px 1200px at 92% 100%, rgb(106 86 46 / 0.093), rgb(106 86 46 / 0) 70%),
-    var(--paper-grain), linear-gradient(var(--background), var(--background));
+    var(--paper-dither), var(--paper-grain),
+    linear-gradient(
+      to bottom right,
+      rgb(255 252 242) 0%,
+      rgb(255 252 242) 2%,
+      rgb(255 252 242) 4%,
+      rgb(255 251 241) 6%,
+      rgb(254 251 241) 8%,
+      rgb(254 250 240) 10%,
+      rgb(253 249 239) 12%,
+      rgb(253 249 239) 14%,
+      rgb(252 248 238) 16%,
+      rgb(251 247 237) 18%,
+      rgb(251 246 236) 20%,
+      rgb(250 246 236) 22%,
+      rgb(250 245 235) 24%,
+      rgb(250 245 235) 26%,
+      rgb(250 245 235) 28%,
+      rgb(250 245 235) 72%,
+      rgb(250 245 235) 73.27%,
+      rgb(250 245 235) 74.55%,
+      rgb(250 244 234) 75.82%,
+      rgb(249 244 234) 77.09%,
+      rgb(249 243 233) 78.36%,
+      rgb(248 243 232) 79.64%,
+      rgb(247 242 232) 80.91%,
+      rgb(247 241 231) 82.18%,
+      rgb(246 240 229) 83.45%,
+      rgb(245 239 228) 84.73%,
+      rgb(244 238 227) 86%,
+      rgb(242 236 225) 87.27%,
+      rgb(241 235 224) 88.55%,
+      rgb(240 234 222) 89.82%,
+      rgb(240 233 221) 91.09%,
+      rgb(239 232 221) 92.36%,
+      rgb(238 232 220) 93.64%,
+      rgb(238 231 219) 94.91%,
+      rgb(237 231 219) 96.18%,
+      rgb(237 230 218) 97.45%,
+      rgb(237 230 218) 98.73%,
+      rgb(237 230 218) 100%
+    ),
+    linear-gradient(var(--background), var(--background));
   background-size:
     64px 64px,
-    auto,
-    auto,
     180px 180px,
+    auto,
     auto;
-  background-repeat: repeat, no-repeat, no-repeat, repeat, no-repeat;
-  background-blend-mode: overlay, normal, normal, soft-light, normal;
+  background-repeat: repeat, repeat, no-repeat, no-repeat;
+  background-blend-mode: overlay, soft-light, normal, normal;
 
   .dark & {
     background-image:
-      var(--paper-dither),
-      radial-gradient(1200px 900px at 20% 0%, rgb(255 250 236 / 0.043), rgb(255 250 236 / 0) 66%),
-      radial-gradient(1500px 1100px at 90% 100%, rgb(0 0 0 / 0.357), rgb(0 0 0 / 0) 70%),
-      var(--paper-grain), linear-gradient(var(--background), var(--background));
+      var(--paper-dither), var(--paper-grain),
+      linear-gradient(
+        to bottom right,
+        rgb(16 22 36) 0%,
+        rgb(16 22 36) 2%,
+        rgb(16 22 36) 4%,
+        rgb(15 21 35) 6%,
+        rgb(14 20 35) 8%,
+        rgb(13 19 34) 10%,
+        rgb(12 18 33) 12%,
+        rgb(11 17 32) 14%,
+        rgb(9 16 30) 16%,
+        rgb(8 15 29) 18%,
+        rgb(7 14 28) 20%,
+        rgb(6 13 28) 22%,
+        rgb(5 12 27) 24%,
+        rgb(5 12 27) 26%,
+        rgb(5 12 27) 28%,
+        rgb(5 12 27) 72%,
+        rgb(5 12 27) 73.27%,
+        rgb(5 12 27) 74.55%,
+        rgb(5 12 27) 75.82%,
+        rgb(5 12 26) 77.09%,
+        rgb(5 11 26) 78.36%,
+        rgb(5 11 26) 79.64%,
+        rgb(5 11 25) 80.91%,
+        rgb(4 11 24) 82.18%,
+        rgb(4 10 24) 83.45%,
+        rgb(4 10 23) 84.73%,
+        rgb(4 10 22) 86%,
+        rgb(4 9 21) 87.27%,
+        rgb(4 9 20) 88.55%,
+        rgb(4 8 20) 89.82%,
+        rgb(3 8 19) 91.09%,
+        rgb(3 8 18) 92.36%,
+        rgb(3 8 18) 93.64%,
+        rgb(3 7 18) 94.91%,
+        rgb(3 7 17) 96.18%,
+        rgb(3 7 17) 97.45%,
+        rgb(3 7 17) 98.73%,
+        rgb(3 7 17) 100%
+      ),
+      linear-gradient(var(--background), var(--background));
   }
 
   @media (prefers-contrast: more) {

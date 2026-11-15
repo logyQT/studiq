@@ -165,28 +165,36 @@ fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
 
 ### The paper surface
 
-The shell is paper: `--background` with two light pools that run into the edges, the grain and
-a dither, painted by `bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell
-(`DashboardLayout`, which `/app`, `/edu` and `/manage` render inside). There is no edge layer:
-a shaped cue that reaches the viewport edge was read as a vertical band down both sides, and a
-band that reads as a seam is not a lighting cue, so the pools carry the sheet alone.
-`/register`'s form column carries the same class in both themes: the utility has its own
-`.dark &` block, so one class paints the correct stack for each.
+The shell is paper: `--background` under one lighting ramp, the grain and a dither, painted by
+`bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell (`DashboardLayout`,
+which `/app`, `/edu` and `/manage` render inside). The ramp is one `to bottom right` linear
+gradient — light at the top-left corner, the paper's own tone between 28% and 72%, warm shade at
+the bottom-right — with both ends eased over 14 and 22 stops. Two overlapping pools used to carry
+this, and each pool landed on a wall: the light died at its 68% stop with a slope of 0.10 levels
+per 12px and the shade at 70% with 0.22, which is the step the eye draws a band on. A straight
+ramp has no wall to land on, and the quadratic ease has the smallest slope step of any curve that
+still reaches zero slope at both ends, so what is left is 0.04 levels per 12px across the 1440
+page and 0.08 across `/register`'s narrower column. There is no edge layer: a shaped cue that
+reaches the viewport edge was read as a vertical band down both sides, and a band that reads as a
+seam is not a lighting cue. `/register`'s form column carries the same class in both themes: the
+utility has its own `.dark &` block, so one class paints the correct stack for each. The ramp is
+in percentages of the gradient line, not px, so every surface carries the same share of it; px
+stops would keep one pool size but leave a short column unlit.
 
-The order of that stack is the technique. The dither is the topmost layer and composites with
-`overlay`, so it meets the tone layers the compositor is about to round to 8 bits and spreads
-each tread into sub-step jitter instead of a stripe; the grain sits _under_ the tones with
-`soft-light`, where the pool's alpha thins it and the tooth shows. A dither belongs on top and
-the grain does not: the grain is five times the amplitude a dither needs, so putting it there
+The order of that stack is the technique. Both textures sit above the ramp, because its stops are
+opaque and would cover them. The dither is the topmost layer and composites with `overlay`, so it
+meets the tone the compositor is about to round to 8 bits and spreads each tread into sub-step
+jitter instead of a stripe; the grain is one layer down with `soft-light`. A dither belongs on top
+and the grain does not: the grain is five times the amplitude a dither needs, so putting it there
 would paint static rather than hide a step. The dither is its own 64px, one-octave tile pushed
 through a `table` transfer that linearises the filter's bell-shaped distribution, because a
 Gaussian tile only flips pixels at its tails and dithers nothing in the middle.
 
-Measured at 1440 the tone spans 9 levels with a flat middle and no step larger than ~1 level
-per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
-pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
-lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
-1.33x the 4.5:1 floor, not a regression. `/register`'s grained column measures 17.02 (ink),
+Measured at 1440 the surface spans 18-24 levels per channel with a flat middle and no step larger
+than 0.04 levels per 12px, which is why it reads as light on a sheet rather than a gradient band.
+Its worst text pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture
+that both lightens and darkens paper cannot leave the worst pixel at the flat token value, and
+that is 1.33x the 4.5:1 floor, not a regression. `/register`'s grained column measures 17.02 (ink),
 6.03 (muted) and 5.96 (placeholder) in light, 15.84, 7.36 and 5.52 in dark; the product shell
 measures 16.74 (ink) and 5.60 (muted) in light, 16.41 and 7.41 in dark.
 
