@@ -6,11 +6,13 @@ import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
 
 /**
- * The lifecycle actions on one assessment (#1174, R12/R19). They are one decision — what happens to
- * the run — so they share a handler the way the batch actions do.
+ * The lifecycle actions on one assessment (#1174, R12/R19/R20). They are one decision — what happens
+ * to the run's window — so they share a handler the way the batch actions do, instead of three
+ * identical route files.
  *
- * `cancel` ends a scheduled or live run without a reveal. `extend` and the manager `override` join it
- * in the next PR of the stack, which is why the segment is an action rather than a fixed path.
+ * `cancel` ends a scheduled or live run without a reveal, `extend` moves the close forward for the
+ * whole cohort, and `override` is a manager moving either bound (it can shrink a class's time, so it
+ * is manager-only; `withAuth` enforces that before any work happens).
  */
 interface LifecycleAction {
   run: (id: string, body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
@@ -21,6 +23,14 @@ const ACTIONS: Record<string, LifecycleAction> = {
   cancel: {
     run: (id, _body, ctx) => teacherAssignmentController.cancel(id, ctx),
     allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER],
+  },
+  extend: {
+    run: (id, body, ctx) => teacherAssignmentController.extend(id, body, ctx),
+    allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER],
+  },
+  override: {
+    run: (id, body, ctx) => teacherAssignmentController.override(id, body, ctx),
+    allowedAccountTypes: [AccountType.MANAGER],
   },
 };
 

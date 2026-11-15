@@ -2930,7 +2930,13 @@
     "cancelling": "Cancelling...",
     "cancel_confirm_title": "Cancel this assessment?",
     "cancel_confirm_desc": "The run ends for the whole class without revealing any answers. Running attempts are closed and cannot be submitted, and the questions become available again. This cannot be undone.",
-    "cancel_failed": "Cancelling failed"
+    "cancel_failed": "Cancelling failed",
+    "extend": "Extend",
+    "extending": "Extending...",
+    "extend_title": "Extend the window",
+    "extend_new_deadline": "New deadline",
+    "extend_hint": "The review opens at the new deadline for the whole class — there is no per-student extension.",
+    "extend_failed": "Extending failed"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
