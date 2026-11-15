@@ -289,24 +289,6 @@ export const groupsParamSchema = z
   )
   .transform((ids) => [...new Set(ids)]);
 
-/**
- * Forwards the named query params to a controller, dropping the ones the request
- * did not set — an empty string would otherwise reach the schema as a value.
- * Every list route builds the same object; `limit` arrives as a string and the
- * list schema coerces it, so an absent `?limit=` still falls back to its default.
- */
-export function listQuery(
-  searchParams: URLSearchParams,
-  keys: readonly string[],
-): Record<string, string> {
-  const query: Record<string, string> = {};
-  for (const key of keys) {
-    const value = searchParams.get(key);
-    if (value) query[key] = value;
-  }
-  return query;
-}
-
 export function createListQuerySchema<const TSort extends readonly [string, ...string[]]>(opts: {
   /** Sortable columns; `sortBy` is validated against exactly this list. */
   sortColumns: TSort;
