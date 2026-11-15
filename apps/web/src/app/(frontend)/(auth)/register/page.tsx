@@ -28,12 +28,10 @@ export default function RegisterPage() {
       <FreeIncluded />
 
       {/*
-       * The landing page's paper surface, gated to dark: `bg-paper-grain` carries its
-       * own `.dark &` block, so painting it unconditionally would also lay the light
-       * pools and grain on paper, where this column is meant to stay flat. The
-       * variant keeps the light column exactly as transparent as the page behind it.
+       * The shell's paper surface in both themes: `bg-paper-grain` carries its own
+       * `.dark &` block, so one class paints the correct stack for each.
        */}
-      <div className="flex flex-col p-content lg:p-12 dark:bg-paper-grain">
+      <div className="flex flex-col p-content lg:p-12 bg-paper-grain">
         <div className="mx-auto my-auto w-full max-w-md">
           <RegisterForm />
         </div>

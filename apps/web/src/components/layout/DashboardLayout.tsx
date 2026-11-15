@@ -21,7 +21,7 @@ export function DashboardLayout({
     <BreadcrumbProvider>
       <SidebarProvider style={{ maxHeight: '100dvh' }}>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="bg-paper-grain">
           <header className="print:hidden flex h-14 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
             <div className="flex items-center gap-2 px-4">
               <SidebarTrigger className="-ml-1" />
@@ -34,9 +34,16 @@ export function DashboardLayout({
             </div>
           </header>
           <div className="flex flex-1 flex-col min-h-0">
+            {/*
+              `relative` makes this scrollport the containing block for
+              absolutely positioned page content. Without it the nearest one is
+              the 100dvh inset, so a stray box (Radix renders the switch's bubble
+              input as an absolute sibling) becomes document scroll and the paper
+              surface ends on a seam.
+            */}
             <main
               className={cn(
-                'flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
+                'relative flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
                 fullWidth ? 'flex flex-col' : 'p-content',
               )}
             >

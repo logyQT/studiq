@@ -165,18 +165,50 @@ fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
 
 ### The paper surface
 
-The marketing shell is paper: `--background` with two light pools, a 100px edge curl and the
-grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout`. `/register`'s form
-column carries it in **dark only** (`dark:bg-paper-grain`): the utility has its own `.dark &`
-block, so the bare class would also lay the light pools and grain on paper, where that column
-stays flat. Product surfaces never carry the class, so `/app`, `/edu` and `/manage` stay flat.
+The shell is paper: `--background` under one lighting ramp, the grain and a dither, painted by
+`bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell (`DashboardLayout`,
+which `/app`, `/edu` and `/manage` render inside). The ramp is one `to bottom right` linear
+gradient — light at the top-left corner, the paper's own tone between 28% and 72%, warm shade at
+the bottom-right — with both ends eased over 14 and 22 stops. Two overlapping pools used to carry
+this, and each pool landed on a wall: the light died at its 68% stop with a slope of 0.10 levels
+per 12px and the shade at 70% with 0.22, which is the step the eye draws a band on. A straight
+ramp has no wall to land on, and the quadratic ease has the smallest slope step of any curve that
+still reaches zero slope at both ends, so what is left is a step of 0.019 levels per 12px on the
+tall landing page, 0.053-0.058 on the product shell (1184×900 and 1184×700), 0.069 on `/register`'s
+column, 0.101 on the phone shell and 0.22 on a short landscape viewport. A kink is a fixed 12px
+window against a gradient line as long as the surface's diagonal, so the shorter the surface the
+larger the share of the ramp that window covers, and the stop count is set by the shortest surface
+— the phone inset, gradient line about 930px — not the narrowest. There is no edge layer: a shaped
+cue that reaches the viewport edge was read as a vertical band down both sides, and a band that
+reads as a seam is not a lighting cue. `/register`'s form column carries the same class in both
+themes: the utility has its own `.dark &` block, so one class paints the correct stack for each.
+The ramp is in percentages of the gradient line, not px, so every surface carries the same share
+of it; px stops would keep one pool size but leave a short column unlit.
 
-Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
-per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
-pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
-lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
-1.33x the 4.5:1 floor, not a regression. On `/register`'s grained column the same sampling gives
-15.84 (ink), 7.30 (muted) and 5.52 (placeholder on `dark:bg-input/30`) at 1440×900.
+The order of that stack is the technique. Both textures sit above the ramp, because its stops are
+opaque and would cover them. The dither is the topmost layer and composites with `overlay`, so it
+meets the tone the compositor is about to round to 8 bits and spreads each tread into sub-step
+jitter instead of a stripe; the grain is one layer down with `soft-light`. A dither belongs on top
+and the grain does not: the grain is five times the amplitude a dither needs, so putting it there
+would paint static rather than hide a step. The dither is its own 64px, one-octave tile pushed
+through a `table` transfer that linearises the filter's bell-shaped distribution, because a
+Gaussian tile only flips pixels at its tails and dithers nothing in the middle.
+
+Measured at 1440 the surface spans 18-24 levels per channel with a flat middle and no step larger
+than 0.22 levels per 12px on the shortest surface, 0.019 on the tallest, which is why it reads as
+light on a sheet rather than a gradient band. Its worst text pixel is 17.07 (ink) and 6.12 (muted)
+in light, 15.59 and 7.36 in dark — a texture that both lightens and darkens paper cannot leave the
+worst pixel at the flat token value, and that is 1.33x the 4.5:1 floor, not a regression.
+`/register`'s grained column measures 17.02 (ink), 6.03 (muted) and 5.96 (placeholder) in light,
+15.84, 7.36 and 5.52 in dark; the product shell measures 16.74 (ink) and 5.60 (muted) in light,
+16.41 and 7.41 in dark.
+
+The dither is sized to that surface, not to a texture: on the tone alone (grain held out, which
+is what the eye integrates) it cuts the longest flat tread from 36px to 6px on `/login`'s light
+pool and from 24px to 6px on the dark one, and takes the distinct values along the same transect
+from 23 to 52 and 25 to 50. It moves the surface's mean by under 0.1 of a level, adds at most
+three levels to any pixel and stays under ΔL* 1 in light; the dark bands are narrower because
+`overlay` answers to `2b` on a near-black backdrop, so the same half-step costs a wider tile.
 
 **Creases were studied and rejected.** A fold reads because a sheet is seen at an angle and two
 planes catch directional light differently; a frontal, evenly lit page has no specular event, so
