@@ -1,39 +1,41 @@
 'use client';
 
-import { ArrowLeft, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Lock, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { reviewAttemptId, type StudentAssignmentAttemptState } from '@/lib/assignment-attempts';
+import { ApiError } from '@/lib/api';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
-interface ReviewQuestion {
+interface ReviewedOption {
   id: string;
   content: string;
+  isCorrect: boolean;
+}
+
+interface ReviewedItem {
+  itemId: string;
   type: string;
+  content: string;
+  options: ReviewedOption[];
   explanation: string | null;
-  question_answers: Array<{ id: string; content: string; is_correct: boolean }>;
+  graded: boolean;
+  correct: boolean | null;
+  selectedOptionId: string | null;
+  textAnswer: string | null;
+  teacherPoints: number | null;
+  teacherFeedback: string | null;
 }
 
-interface ReviewAnswer {
-  selected_answer_id: string | null;
-  text_answer: string | null;
-  is_correct: boolean;
-  teacher_points: number | null;
-  teacher_feedback: string | null;
-}
-
-interface ReviewData {
-  id: string;
-  assignment_id: string | null;
-  score: number;
-  total_questions: number;
-  total_points: number | null;
-  completed_at: string | null;
-  questions: ReviewQuestion[];
-  answers: Record<string, ReviewAnswer>;
+interface AssignmentReview {
+  assignmentId: string;
+  attemptId: string | null;
+  completedAt: string | null;
+  score: { earned: number; possible: number } | null;
+  ungradedCount: number;
+  items: ReviewedItem[];
 }
 
 export default function ReviewAssignmentPage() {
@@ -42,35 +44,35 @@ export default function ReviewAssignmentPage() {
   const searchParams = useSearchParams();
   const attemptIdParam = searchParams.get('attemptId');
 
-  // A bookmarked /review URL has no attempt id; fall back to the latest
-  // submitted attempt — the same row the detail page links to. The assignment is
-  // always fetched: its `show_results` decides whether there is a review to
-  // render at all (#374).
-  const { data: assignment, isLoading: isAssignmentLoading } = useApiQuery<
-    StudentAssignmentAttemptState & { id: string; show_results: boolean; title: string }
-  >({
+  // The assignment is fetched for the breadcrumb; the review itself is the cohort artefact and
+  // decides its own lock (R5).
+  const { data: assignment, isLoading: isAssignmentLoading } = useApiQuery<{
+    title: string;
+    show_results: boolean;
+  }>({
     queryKey: studentAssignmentKeys.detail(id),
     url: `/api/v1/assignments/${id}`,
     staleTime: 0,
   });
-
-  // The assignment title is the breadcrumb label; the raw UUID must never render.
   useBreadcrumbLabel(id, assignment?.title);
 
-  const resultsHidden = assignment?.show_results === false;
-  const attemptId = resultsHidden ? null : reviewAttemptId(attemptIdParam, assignment);
-
-  const { data: review, isLoading: isReviewLoading } = useApiQuery<ReviewData>({
-    queryKey: ['assignment-review', attemptId],
-    url: `/api/v1/quiz/${attemptId}`,
-    // Do not fire a doomed 403 request once the flag is known to be off.
-    enabled: !!attemptId && !isAssignmentLoading && !resultsHidden,
-    // Review data changes when a teacher grades/leaves feedback; the default
-    // Infinity would keep a pre-grading snapshot for 30 min.
+  const resultsEnabled = assignment?.show_results !== false;
+  const {
+    data: review,
+    isLoading,
+    error,
+  } = useApiQuery<AssignmentReview>({
+    queryKey: ['assignment-review', id, attemptIdParam ?? ''],
+    url: `/api/v1/assignments/${id}/review${attemptIdParam ? `?attemptId=${attemptIdParam}` : ''}`,
+    // When the teacher never opted into results there is no review at any time (R5), so the page
+    // does not fire a request it knows answers 404.
+    enabled: !!assignment && resultsEnabled,
+    retry: false,
+    // A teacher may grade an open answer after the close; the review must not sit on a stale copy.
     staleTime: 0,
   });
 
-  if (isAssignmentLoading || isReviewLoading) {
+  if (isAssignmentLoading || isLoading) {
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
@@ -79,13 +81,26 @@ export default function ReviewAssignmentPage() {
     );
   }
 
-  // A stale/mismatched attempt id must not render another assignment's review,
-  // and a running attempt has no answer key to show yet.
-  if (!review?.completed_at || review.assignment_id !== id) {
-    return <div className="p-6 text-center text-muted-foreground">{t('not_available')}</div>;
+  const code = error instanceof ApiError ? error.code : null;
+
+  // The key is the answer sheet while the window is open, so the review does not exist yet. This is
+  // a state, not a failure: it says when the review opens.
+  if (code === 'REVIEW_LOCKED') {
+    return (
+      <div className="p-6 max-w-2xl mx-auto space-y-4 text-center">
+        <Lock className="w-8 h-8 mx-auto text-muted-foreground" />
+        <h1 className="text-xl font-semibold">{t('locked')}</h1>
+        <p className="text-sm text-muted-foreground">{t('locked_hint')}</p>
+        <Link href={`/app/assignments/${id}`} className="text-sm underline">
+          {t('back')}
+        </Link>
+      </div>
+    );
   }
 
-  const total = review.total_points || review.total_questions;
+  if (!review || error) {
+    return <div className="p-6 text-center text-muted-foreground">{t('not_available')}</div>;
+  }
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -96,25 +111,32 @@ export default function ReviewAssignmentPage() {
         <ArrowLeft className="w-4 h-4" /> {t('back')}
       </Link>
 
-      <div className="text-center py-8">
-        <h1 className="text-3xl font-bold">
-          {review.score} / {total}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          {total > 0 ? Math.round((review.score / total) * 100) : 0}%
-        </p>
-      </div>
+      {review.score ? (
+        <div className="text-center py-8">
+          <h1 className="text-3xl font-bold">
+            {review.score.earned} / {review.score.possible}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {review.score.possible > 0
+              ? Math.round((review.score.earned / review.score.possible) * 100)
+              : 0}
+            %
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t('no_attempt')}</p>
+      )}
 
       <div className="space-y-4">
-        {review.questions.map((q) => {
-          const answer = review.answers[q.id];
-          const isOpen = q.type === 'open';
+        {review.items.map((item) => {
+          const isOpen = item.type === 'open';
 
           return (
-            <div key={q.id} className="rounded-lg border p-4 space-y-3">
+            <div key={item.itemId} className="rounded-lg border p-4 space-y-3">
               <div className="flex items-start gap-3">
-                {!isOpen &&
-                  (answer?.is_correct ? (
+                {item.graded &&
+                  item.correct !== null &&
+                  (item.correct ? (
                     <CheckCircle
                       className="w-5 h-5 text-green-600 shrink-0 mt-0.5"
                       aria-label={t('correct')}
@@ -126,50 +148,46 @@ export default function ReviewAssignmentPage() {
                     />
                   ))}
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{q.content}</p>
-                  {isOpen && (
+                  <p className="font-medium">{item.content}</p>
+                  {isOpen && review.attemptId && (
                     <p className="text-sm text-muted-foreground mt-1">
                       {t('your_answer')}:{' '}
                       <span className="whitespace-pre-wrap font-medium text-foreground">
-                        {answer?.text_answer || t('no_answer')}
+                        {item.textAnswer || t('no_answer')}
                       </span>
                     </p>
                   )}
-                  {isOpen &&
-                    answer &&
-                    answer.teacher_points == null &&
-                    !answer.teacher_feedback && (
-                      <p className="text-sm text-muted-foreground mt-1">{t('pending_review')}</p>
-                    )}
-                  {answer?.teacher_points != null && (
+                  {isOpen && review.attemptId && item.teacherPoints == null && (
+                    <p className="text-sm text-muted-foreground mt-1">{t('pending_review')}</p>
+                  )}
+                  {item.teacherPoints != null && (
                     <p className="text-sm text-green-700 mt-1">
-                      {t('points_awarded', { points: answer.teacher_points })}
+                      {t('points_awarded', { points: item.teacherPoints })}
                     </p>
                   )}
-                  {answer?.teacher_feedback && (
+                  {item.teacherFeedback && (
                     <p className="text-sm text-blue-600 mt-1">
-                      {t('feedback', { text: answer.teacher_feedback })}
+                      {t('feedback', { text: item.teacherFeedback })}
                     </p>
                   )}
                 </div>
               </div>
 
-              {!isOpen && q.question_answers.length > 0 && (
+              {!isOpen && item.options.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  {q.question_answers.map((option) => {
-                    const isSelected = option.id === answer?.selected_answer_id;
-                    const isCorrectOption = option.is_correct;
-                    const isWrongSelection = isSelected && !isCorrectOption;
+                  {item.options.map((option) => {
+                    const isSelected = option.id === item.selectedOptionId;
+                    const isWrongSelection = isSelected && !option.isCorrect;
 
                     return (
                       <div
                         key={option.id}
-                        data-correct={isCorrectOption}
+                        data-correct={option.isCorrect}
                         data-selected={isWrongSelection}
                         className="rounded-lg border p-3 data-[correct=true]:border-green-200 data-[correct=true]:bg-green-50 data-[selected=true]:border-red-200 data-[selected=true]:bg-red-50"
                       >
                         <div className="flex items-center gap-2">
-                          {isCorrectOption && (
+                          {option.isCorrect && (
                             <CheckCircle
                               className="w-4 h-4 text-green-600 shrink-0"
                               aria-label={t('correct')}
@@ -193,10 +211,10 @@ export default function ReviewAssignmentPage() {
                 </div>
               )}
 
-              {q.explanation && (
+              {item.explanation && (
                 <div className="rounded-lg border bg-blue-50 p-3 text-sm">
                   <span className="font-medium">{t('explanation')}: </span>
-                  {q.explanation}
+                  {item.explanation}
                 </div>
               )}
             </div>

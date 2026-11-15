@@ -79,3 +79,10 @@ bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   a `score` w `GET /api/v1/assignments/<id>` jest `null`; submit takiej kartkówki
   zwraca `score: null`.
 - Zachowanie zgodne z oczekiwanym rezultatem przypadku — brak rozbieżności.
+
+## Slice 3 update (#1171 — review at close)
+
+- „Pokaż wyniki” still decides whether a review exists, but it becomes readable only at the close:
+  the spec closes the visible quiz as the teacher before opening „Zobacz podsumowanie” (R5). The
+  hidden quiz keeps „Podsumowanie niedostępne” and its review API still answers 403, and the review
+  page no longer fires a doomed request for it.

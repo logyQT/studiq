@@ -12,6 +12,7 @@ import {
   ReorderQuestionsSchema,
   SetTargetsSchema,
   UpdateTeacherAssignmentSchema,
+  WithholdItemSchema,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import {
@@ -72,6 +73,42 @@ export class TeacherAssignmentController {
 
   async unpublish(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     const result = await this.service.unpublish(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async close(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.service.close(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async setReviewHold(
+    id: string,
+    questionId: string,
+    body: unknown,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    const parsed = WithholdItemSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+    const result = await this.service.setReviewHold(id, questionId, parsed.data.withheld, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async releaseItem(
+    id: string,
+    questionId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    const result = await this.service.releaseItem(id, questionId, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

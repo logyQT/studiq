@@ -4,8 +4,15 @@ import {
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
   readAttemptQuestions,
+  readReviewItems,
 } from '@studiq/server/lib/assignment-snapshot';
-import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
+import { ensureClosed, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
+import {
+  hiddenResultAssignmentIds,
+  resultsHidden,
+  reviewState,
+} from '@studiq/server/lib/assignment-visibility';
+import { recordExposure, recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
@@ -113,12 +120,14 @@ export class QuizAttemptService {
   > {
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
-      .select('id, assignment_id, completed_at')
+      .select('id, assignment_id, completed_at, expired_at')
       .eq('id', attemptId)
       .eq('user_id', userId)
       .maybeSingle();
 
     if (error || !attempt) return failure('NOT_FOUND');
+    // An attempt that expired at close is terminal (R7): neither a draft save nor a submit lands.
+    if (attempt.expired_at) return failure('ATTEMPT_EXPIRED');
     if (attempt.completed_at) return failure('BAD_REQUEST');
 
     const allowedIds = new Set<string>();
@@ -309,17 +318,30 @@ export class QuizAttemptService {
 
     if (attemptError || !attempt) return failure('NOT_FOUND');
 
-    // A finished attempt is a review: it may show which option was correct and
-    // the explanation. A running attempt never may (#331).
+    // A run that closed while this attempt was open: the attempt is expired, so there is nothing
+    // to resume. A finished attempt is a review: it may show which option was correct and
+    // the explanation — only after the close (R5). A running attempt never may (#331).
+    if (attempt.expired_at) return failure('ATTEMPT_EXPIRED');
     const isCompleted = attempt.completed_at !== null;
 
-    // The review payload is a result: withhold it while the assignment's
-    // „Pokaż wyniki” is off. A running attempt still resumes, so „Kontynuuj”
+    // The review payload is a result: it is absent while the teacher's „Pokaż wyniki” is off, and
+    // locked until the assessment closes (R5). A running attempt still resumes, so „Kontynuuj”
     // keeps working; practice attempts have no assignment flag (#374).
     if (isCompleted && attempt.assignment_id) {
-      const hidden = await hiddenResultAssignmentIds(supabase, [attempt.assignment_id]);
-      if (isFailure(hidden)) return hidden;
-      if (hidden.data.size > 0) return failure('FORBIDDEN');
+      const { data: assignment } = await supabase
+        .from('teacher_assignments')
+        .select('id, status, start_time, deadline, closed_at, show_results')
+        .eq('id', attempt.assignment_id)
+        .maybeSingle();
+
+      // The read can be the one that records a natural close, so the lock is decided on the settled
+      // row; a missing row fails closed (there is no review without its assignment).
+      const settled = assignment ? await ensureClosed(assignment) : null;
+      if (settled && !settled.success) return settled;
+
+      const state = reviewState(settled?.success ? settled.data : assignment);
+      if (state === 'hidden') return failure('FORBIDDEN');
+      if (state === 'locked') return failure('REVIEW_LOCKED');
     }
 
     // Drafts are served as `answers` below; the raw column is never serialised.
@@ -339,14 +361,37 @@ export class QuizAttemptService {
 
     // A finished attempt renders the key (service role): the published key for an assignment,
     // the live items for practice. A running attempt never gets it (#331).
-    const keys = isCompleted
-      ? attempt.assignment_id
-        ? await readAssignmentSnapshotKeys(attempt.assignment_id)
-        : await readQuestionKeys(questionRows.map((question) => question.id))
-      : null;
-    const questions = keys
-      ? questionRows.map((question) => withAnswerKey(question, keys.get(question.id)))
-      : questionRows;
+    // A finished attempt renders the key. An assignment renders the published key of the items the
+    // review is allowed to show — a held-back item is absent here too (R10) — and practice the live
+    // items. A running attempt never gets it (#331). Every render writes the exposure event (R8).
+    let questions = questionRows;
+    if (isCompleted) {
+      if (attempt.assignment_id) {
+        const reviewItems = await readReviewItems(attempt.assignment_id);
+        if (isFailure(reviewItems)) return reviewItems;
+        const byItem = new Map(reviewItems.data.map((item) => [item.questionId, item]));
+        questions = questionRows.flatMap((row) => {
+          const item = byItem.get(row.id);
+          return item ? [withAnswerKey(item.snapshot, item.key)] : [];
+        });
+
+        const exposed = await recordReviewExposure({
+          studentId: ctx.userId,
+          assignmentId: attempt.assignment_id,
+          questionIds: questions.map((question) => question.id),
+        });
+        if (isFailure(exposed)) return exposed;
+      } else {
+        const keys = await readQuestionKeys(questionRows.map((question) => question.id));
+        questions = questionRows.map((question) => withAnswerKey(question, keys.get(question.id)));
+
+        const exposed = await recordExposure({
+          studentId: ctx.userId,
+          questionIds: questions.map((question) => question.id),
+        });
+        if (isFailure(exposed)) return exposed;
+      }
+    }
 
     const answerObj: Record<
       string,
@@ -452,19 +497,19 @@ export class QuizAttemptService {
     if (attempt.assignment_id) {
       const { data: assignment } = await supabase
         .from('teacher_assignments')
-        .select('deadline, show_results')
+        .select('id, status, start_time, deadline, closed_at, show_results')
         .eq('id', attempt.assignment_id)
-        .single();
+        .maybeSingle();
 
       // Fail closed: a missing row hides the result.
       showResults = !resultsHidden(assignment);
 
-      if (assignment?.deadline) {
-        const graceEnd = new Date(assignment.deadline);
-        graceEnd.setSeconds(graceEnd.getSeconds() + 60);
-        if (new Date() > graceEnd) {
-          return failure('GONE');
-        }
+      // The close is durable and it ends attempts (R7): an attempt still open at that instant was
+      // expired by the close, so a submit that arrives afterwards is refused by its own code.
+      const settled = assignment ? await ensureClosed(assignment) : null;
+      if (settled && !settled.success) return settled;
+      if (settled?.success && isAssessmentClosed(settled.data)) {
+        return failure('ATTEMPT_EXPIRED');
       }
     }
 

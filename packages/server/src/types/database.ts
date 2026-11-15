@@ -70,9 +70,11 @@ export type Database = {
           order_index: number | null;
           points: number;
           question_id: string | null;
+          released_at: string | null;
           snapshot: Json | null;
           snapshot_key: Json | null;
           snapshot_version: number | null;
+          withhold_from_review: boolean;
         };
         ComputedFields: never;
         Insert: {
@@ -81,9 +83,11 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          released_at?: string | null;
           snapshot?: Json | null;
           snapshot_key?: Json | null;
           snapshot_version?: number | null;
+          withhold_from_review?: boolean;
         };
         Update: {
           assignment_id?: string | null;
@@ -91,9 +95,11 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          released_at?: string | null;
           snapshot?: Json | null;
           snapshot_key?: Json | null;
           snapshot_version?: number | null;
+          withhold_from_review?: boolean;
         };
         Relationships: [
           {
@@ -324,6 +330,59 @@ export type Database = {
             columns: ['group_id'];
             isOneToOne: false;
             referencedRelation: 'groups';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      exposure_events: {
+        Row: {
+          created_at: string;
+          group_ids: string[];
+          id: string;
+          organization_id: string | null;
+          question_id: string;
+          seen_correct: boolean;
+          student_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          group_ids?: string[];
+          id?: string;
+          organization_id?: string | null;
+          question_id: string;
+          seen_correct?: boolean;
+          student_id: string;
+        };
+        Update: {
+          created_at?: string;
+          group_ids?: string[];
+          id?: string;
+          organization_id?: string | null;
+          question_id?: string;
+          seen_correct?: boolean;
+          student_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'exposure_events_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'exposure_events_question_id_fkey';
+            columns: ['question_id'];
+            isOneToOne: false;
+            referencedRelation: 'questions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'exposure_events_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -1709,6 +1768,7 @@ export type Database = {
           completed_at: string | null;
           config: Json | null;
           draft_answers: NonNullable<Json>;
+          expired_at: string | null;
           graded_at: string | null;
           id: string;
           is_assignment_attempt: boolean;
@@ -1725,6 +1785,7 @@ export type Database = {
           completed_at?: string | null;
           config?: Json | null;
           draft_answers?: NonNullable<Json>;
+          expired_at?: string | null;
           graded_at?: string | null;
           id?: string;
           is_assignment_attempt?: boolean;
@@ -1740,6 +1801,7 @@ export type Database = {
           completed_at?: string | null;
           config?: Json | null;
           draft_answers?: NonNullable<Json>;
+          expired_at?: string | null;
           graded_at?: string | null;
           id?: string;
           is_assignment_attempt?: boolean;
@@ -2116,6 +2178,7 @@ export type Database = {
       };
       teacher_assignments: {
         Row: {
+          closed_at: string | null;
           created_at: string | null;
           created_by: string | null;
           deadline: string | null;
@@ -2139,6 +2202,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          closed_at?: string | null;
           created_at?: string | null;
           created_by?: string | null;
           deadline?: string | null;
@@ -2161,6 +2225,7 @@ export type Database = {
           updated_at?: string | null;
         };
         Update: {
+          closed_at?: string | null;
           created_at?: string | null;
           created_by?: string | null;
           deadline?: string | null;

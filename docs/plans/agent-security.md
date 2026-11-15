@@ -47,7 +47,7 @@ Compare with the standard `withAuth()` which builds a full `RequestContext` with
 
 ### Route config vs enforcement mismatch
 
-The route config declares:
+The route config used to declare:
 
 ```typescript
 {
@@ -58,7 +58,7 @@ The route config declares:
 }
 ```
 
-But the middleware skips all `/api/` routes entirely (line 28 of `src/proxy.ts`), and the route handler doesn't enforce `allowedAccountTypes`. **Any authenticated user can access the agent.**
+But the middleware skips all `/api/` routes entirely (`apps/web/src/proxy.ts`), so the rule could never run: `isApi` no longer exists and the rule was removed with #704. The finding is therefore about the handler alone — it enforced neither `allowedAccountTypes` nor the token budget, so **any authenticated user could access the agent**. `api/v1/ai/chat/route.ts` now passes `allowedAccountTypes` to `withAuth()`.
 
 ---
 

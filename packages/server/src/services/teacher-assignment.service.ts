@@ -8,7 +8,9 @@ import {
   snapshotFromJson,
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
+import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
+import { expireInProgressAttempts, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
@@ -59,7 +61,7 @@ const TARGET_CHUNK = 200;
  * columns keep `draft_answers` out of the read path (#349).
  */
 const STUDENT_ATTEMPT_SELECT =
-  'assignment_id, id, score, total_questions, total_points, completed_at, started_at';
+  'assignment_id, id, score, total_questions, total_points, completed_at, expired_at, started_at';
 
 type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
 
@@ -72,6 +74,7 @@ type StudentAttemptSummaryRow = Pick<
   | 'total_questions'
   | 'total_points'
   | 'completed_at'
+  | 'expired_at'
   | 'started_at'
 >;
 
@@ -352,6 +355,112 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
     return success(updated);
+  }
+
+  /**
+   * Ends a live run now (R7/R12): `closed_at := now`, in-progress attempts expire and are consumed,
+   * and the reservations end (withheld items keep theirs — R10). Staff only: the author or an org
+   * manager, the same rule that owns every other write here.
+   *
+   * Closing is once: a second call answers `409 ASSESSMENT_CLOSED` instead of moving the instant,
+   * and a run that never opened is `409 ASSESSMENT_NOT_LIVE` — cancelling a scheduled run is not a
+   * close. Reopening is impossible by design; the repair path is a new assessment.
+   */
+  async close(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const loaded = await this.loadOwnedCloseWindow(id, ctx);
+    if (isFailure(loaded)) return loaded;
+    const { supabase, run: assignment } = loaded.data;
+
+    if (assignment.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
+    if (assignment.closed_at) return failure('ASSESSMENT_CLOSED');
+
+    const now = new Date();
+    if (assignment.start_time && now < new Date(assignment.start_time)) {
+      return failure('ASSESSMENT_NOT_LIVE');
+    }
+
+    // The conditional update is the idempotence guard: two closes race here, and only one fills the
+    // empty column. A NULL result means the other request (or a natural expiry) got there first.
+    const { data: updated, error } = await supabase
+      .from('teacher_assignments')
+      .update({ closed_at: now.toISOString(), updated_at: now.toISOString() })
+      .eq('id', id)
+      .is('closed_at', null)
+      .select()
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!updated) return failure('ASSESSMENT_CLOSED');
+
+    // The expiry needs the service role: a teacher may not write another user's attempt rows.
+    const expired = await expireInProgressAttempts(id, updated.closed_at ?? now.toISOString());
+    if (isFailure(expired)) return expired;
+
+    return success({ ...updated, expired_attempts: expired.data });
+  }
+
+  /**
+   * Holds one item back from the cohort review (R10). The decision belongs to the live window: after
+   * the close the cohort has already read the key, so hiding an item then would be an un-reveal
+   * (R20) — the only action left is `releaseItem`.
+   */
+  async setReviewHold(
+    id: string,
+    questionId: string,
+    withheld: boolean,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const loaded = await this.loadOwnedCloseWindow(id, ctx);
+    if (isFailure(loaded)) return loaded;
+    const { supabase, run } = loaded.data;
+
+    if (run.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
+    if (isAssessmentClosed(run)) return failure('ASSESSMENT_CLOSED');
+
+    const { data, error } = await supabase
+      .from('assignment_questions')
+      .update({ withhold_from_review: withheld, released_at: null })
+      .eq('assignment_id', id)
+      .eq('question_id', questionId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    return success({ withhold_from_review: withheld });
+  }
+
+  /**
+   * Releases a held-back item: it becomes visible in the review and practiceable again (R10).
+   * Releasing something that was never held back is a refusal, not a silent success.
+   */
+  async releaseItem(
+    id: string,
+    questionId: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
+
+    const { data: link, error } = await supabase
+      .from('assignment_questions')
+      .select('id, withhold_from_review, released_at')
+      .eq('assignment_id', id)
+      .eq('question_id', questionId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!link) return failure('NOT_FOUND');
+    if (!link.withhold_from_review || link.released_at) return failure('RELEASE_NOT_WITHHELD');
+
+    const releasedAt = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from('assignment_questions')
+      .update({ released_at: releasedAt })
+      .eq('id', link.id);
+
+    if (updateError) return toDbFailure(updateError);
+    return success({ released_at: releasedAt });
   }
 
   /**
@@ -878,82 +987,6 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * The published assignment `id`, already proved to target `userId` (directly or through one of
-   * their groups). Both student reads start here, so the targeting proof cannot drift between
-   * `getForStudent` and `startAttempt`.
-   */
-  private async loadTargetedAssignment(
-    supabase: SupabaseClient<Database>,
-    id: string,
-    userId: string,
-  ) {
-    const { data: assignment, error } = await supabase
-      .from('teacher_assignments')
-      .select('*, assignment_targets(*)')
-      .eq('id', id)
-      .eq('status', 'published')
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-    if (!assignment) return failure('NOT_FOUND');
-
-    const targeted = await this.isAssignmentTarget(supabase, assignment, userId);
-    if (isFailure(targeted)) return targeted;
-    if (!targeted.data) return failure('NOT_FOUND');
-
-    return success(assignment);
-  }
-
-  /**
-   * A student may see / start an assignment only if it targets them directly,
-   * targets one of their groups, or they authored it (teacher preview).
-   * Same rule as the list endpoint, so id-based access cannot bypass it.
-   */
-  private async isAssignmentTarget(
-    supabase: SupabaseClient<Database>,
-    assignment: {
-      created_by?: string | null;
-      organization_id?: string | null;
-      assignment_targets?: { group_id?: string | null; student_id?: string | null }[] | null;
-    },
-    userId: string,
-  ): Promise<ServiceResult<boolean>> {
-    // Org content requires current org membership; group_members is not an
-    // authorization source on its own (#249). Without this a stale
-    // group_members row keeps granting access after the user was removed from
-    // the organization (the author included: "after removal you lose access to
-    // all organization data").
-    if (assignment.organization_id) {
-      const { data: membership, error } = await supabase
-        .from('org_members')
-        .select('id')
-        .eq('organization_id', assignment.organization_id)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) return toDbFailure(error);
-      if (!membership) return success(false);
-    }
-
-    if (assignment.created_by === userId) return success(true);
-
-    const targets = assignment.assignment_targets ?? [];
-    if (targets.some((t) => t.student_id === userId)) return success(true);
-
-    const targetGroupIds = targets.map((t) => t.group_id).filter((g): g is string => !!g);
-    if (targetGroupIds.length === 0) return success(false);
-
-    const { data: memberships, error } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', userId)
-      .in('group_id', targetGroupIds);
-
-    if (error) return toDbFailure(error);
-    return success(dbRows(memberships).length > 0);
-  }
-
-  /**
    * Attempt state shared by the student list and detail payloads.
    * `attempts_used` counts *completed* attempts only — the same rule
    * `startAttempt` enforces. A running attempt is resumed, not counted.
@@ -977,7 +1010,8 @@ export class TeacherAssignmentService {
     return {
       attempt: withScore(ordered.at(-1)),
       last_completed_attempt: withScore(completed.at(-1)),
-      attempts_used: completed.length,
+      // Consumed = submitted or expired at close; a running attempt is resumed, not counted.
+      attempts_used: ordered.filter((row) => row.completed_at || row.expired_at).length,
     };
   }
 
@@ -1042,7 +1076,7 @@ export class TeacherAssignmentService {
   async getForStudent(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const loaded = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    const loaded = await loadTargetedAssignment(supabase, id, ctx.userId);
     if (isFailure(loaded)) return loaded;
     const assignment = loaded.data;
 
@@ -1056,6 +1090,9 @@ export class TeacherAssignmentService {
 
     return success({
       ...assignment,
+      // Review is unlocked by the close, for the whole cohort (R5) — including a student who used
+      // no attempt. `show_results` still decides whether a review exists at all.
+      review_unlocked: isAssessmentClosed(assignment),
       ...this.summarizeAttempts(dbRows(attempts), assignment.show_results),
     });
   }
@@ -1063,21 +1100,18 @@ export class TeacherAssignmentService {
   async startAttempt(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const target = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    const target = await loadTargetedAssignment(supabase, id, ctx.userId);
     if (isFailure(target)) return target;
     const assignment = target.data;
 
-    // Check time window
+    // The window is the only place attempts exist (R7): after the close (`closed_at`, not the
+    // clock) there is no way back in, and before it opens there is nothing to start.
     const now = new Date();
-    if (assignment.start_time && now < new Date(assignment.start_time)) {
-      return failure('BAD_REQUEST');
+    if (isAssessmentClosed(assignment, now)) {
+      return failure('ATTEMPTS_CLOSED');
     }
-    if (assignment.deadline) {
-      const graceEnd = new Date(assignment.deadline);
-      graceEnd.setSeconds(graceEnd.getSeconds() + 60);
-      if (now > graceEnd) {
-        return failure('GONE');
-      }
+    if (assignment.start_time && now < new Date(assignment.start_time)) {
+      return failure('ATTEMPTS_NOT_OPEN');
     }
 
     const { data: existingAttempts, error: attemptsError } = await supabase
@@ -1092,7 +1126,8 @@ export class TeacherAssignmentService {
     if (attemptsError) return toDbFailure(attemptsError);
 
     const attempts = dbRows(existingAttempts);
-    const openAttempt = attempts.find((a) => !a.completed_at);
+    // An attempt that expired at close is terminal: it is not resumable and it is consumed (R7).
+    const openAttempt = attempts.find((a) => !a.completed_at && !a.expired_at);
 
     // „Kontynuuj" must reopen the same attempt, never mint a new one —
     // otherwise a student farms fresh attempts and dodges max_attempts (#369).
@@ -1100,7 +1135,7 @@ export class TeacherAssignmentService {
       return this.loadAttemptForTake(supabase, openAttempt);
     }
 
-    const completedCount = attempts.filter((a) => a.completed_at).length;
+    const completedCount = attempts.filter((a) => a.completed_at || a.expired_at).length;
 
     if (completedCount >= assignment.max_attempts) {
       return failure('RATE_LIMITED');
@@ -1411,6 +1446,60 @@ export class TeacherAssignmentService {
     const supabase = await this.clientFactory();
     if (!(await this.verifyOwnership(id, ctx))) return null;
     return supabase;
+  }
+
+  /**
+   * The client and the window fields for an assessment the caller may write. Ownership is proved
+   * first (a foreign or missing id is `NOT_FOUND`), then the row the action decides on is read.
+   */
+  private async loadOwnedCloseWindow(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<
+    ServiceResult<{
+      supabase: SupabaseClient<Database>;
+      run: {
+        id: string;
+        status: string;
+        start_time: string | null;
+        deadline: string | null;
+        closed_at: string | null;
+      };
+    }>
+  > {
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
+
+    const loaded = await this.loadCloseWindow(supabase, id);
+    if (isFailure(loaded)) return loaded;
+    return success({ supabase, run: loaded.data });
+  }
+
+  /**
+   * The window fields the close decides on. Ownership already proved the caller may write, so a
+   * missing row here is only a stale id.
+   */
+  private async loadCloseWindow(
+    supabase: SupabaseClient<Database>,
+    id: string,
+  ): Promise<
+    ServiceResult<{
+      id: string;
+      status: string;
+      start_time: string | null;
+      deadline: string | null;
+      closed_at: string | null;
+    }>
+  > {
+    const { data, error } = await supabase
+      .from('teacher_assignments')
+      .select('id, status, start_time, deadline, closed_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    return success(data);
   }
 
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {

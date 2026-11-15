@@ -23,7 +23,8 @@ GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
   ON public.question_options TO authenticated;
 
 REVOKE SELECT ON public.assignment_questions FROM authenticated, anon;
-GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version)
+GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version,
+                withhold_from_review, released_at)
   ON public.assignment_questions TO authenticated;
 
 -- Read-only tables: written by the admin app (service role) and seeds (postgres).
@@ -44,6 +45,12 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
 -- Service-role-only billing tables: no PostgREST surface at all. Without this,
 -- `GRANT ALL ON ALL TABLES` above would leave SELECT granted and RLS would
 -- silently return zero rows instead of failing closed.
+-- The exposure ledger is written by the server only; a client insert could burn another
+-- student's items. RLS has no INSERT policy, and the privilege is revoked here after the
+-- blanket GRANT above.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON public.exposure_events FROM authenticated, anon;
+
 REVOKE ALL ON public.billing_customers,
               public.stripe_prices,
               public.stripe_webhook_events

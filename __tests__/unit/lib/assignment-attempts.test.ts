@@ -5,7 +5,6 @@ import {
   groupStudentAssignments,
   hasAttemptsLeft,
   openAttempt,
-  reviewAttemptId,
   type StudentAssignmentAttemptState,
   type StudentAssignmentTiming,
 } from '@/lib/assignment-attempts';
@@ -17,6 +16,7 @@ function attempt(overrides: Partial<AttemptSummary> = {}): AttemptSummary {
     total_questions: 2,
     total_points: 2,
     completed_at: '2026-07-13T01:00:00Z',
+    expired_at: null,
     started_at: '2026-07-13T00:00:00Z',
     ...overrides,
   };
@@ -227,35 +227,5 @@ describe('groupStudentAssignments (#368)', () => {
       closed: [],
       completed: [],
     });
-  });
-});
-
-describe('reviewAttemptId (#175)', () => {
-  it('prefers an explicit attempt id so older attempts stay linkable', () => {
-    const completed = attempt({ id: 'attempt-latest' });
-    const s = state({ last_completed_attempt: completed });
-    expect(reviewAttemptId('attempt-older', s)).toBe('attempt-older');
-  });
-
-  it('falls back to the latest completed attempt when no id is requested', () => {
-    const completed = attempt({ id: 'attempt-latest' });
-    const s = state({ last_completed_attempt: completed });
-    expect(reviewAttemptId(null, s)).toBe('attempt-latest');
-  });
-
-  it('falls back when the query param is an empty string', () => {
-    const completed = attempt({ id: 'attempt-latest' });
-    const s = state({ last_completed_attempt: completed });
-    expect(reviewAttemptId('', s)).toBe('attempt-latest');
-  });
-
-  it('returns null when nothing was completed and no id was requested', () => {
-    const s = state({ attempt: attempt({ completed_at: null }) });
-    expect(reviewAttemptId(undefined, s)).toBeNull();
-  });
-
-  it('returns null when the assignment is not loaded yet', () => {
-    expect(reviewAttemptId(null, undefined)).toBeNull();
-    expect(reviewAttemptId(null, null)).toBeNull();
   });
 });
