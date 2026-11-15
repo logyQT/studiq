@@ -126,6 +126,12 @@ describe('ctaMessageKey', () => {
     expect(ctaMessageKey(plan('spark', 'student', 4, { priceMonthly: 999 }))).toBe('cta_spark');
   });
 
+  it('gives a sales-led plan the conversation the page already offers', () => {
+    expect(ctaMessageKey(plan('campus', 'manager', 12, { priceMonthly: 69900 }))).toBe(
+      'cta_contact',
+    );
+  });
+
   it('resolves every catalogue plan to a label both locales carry', () => {
     for (const row of catalogue) {
       const key = ctaMessageKey(row);
