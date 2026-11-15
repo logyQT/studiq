@@ -1,0 +1,26 @@
+{
+  "key": "STU-47:slow-stream",
+  "case": "STU-47",
+  "match": { "firstUserContains": "Opowiedz powoli o układzie krążenia", "hasTools": true },
+  "turns": [
+    {
+      "content": [
+        "Układ krążenia ",
+        "składa się z serca, ",
+        "naczyń krwionośnych ",
+        "i krwi. ",
+        "Serce pompuje krew ",
+        "do płuc i do całego ciała. ",
+        "Tętnice niosą krew od serca, ",
+        "żyły prowadzą ją z powrotem. ",
+        "Naczynia włosowate ",
+        "wymieniają gazy i substancje odżywcze ",
+        "z tkankami. ",
+        "To zamknięty obieg, ",
+        "który działa bez przerwy."
+      ],
+      "usage": { "input": 90, "output": 60 },
+      "delay": { "chunkMs": 400 }
+    }
+  ]
+}

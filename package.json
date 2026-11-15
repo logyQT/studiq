@@ -58,6 +58,7 @@
     "loadtest:seed": "varlock run --inject vars -- bun scripts/load-test/seed.ts",
     "loadtest:bots": "varlock run --inject vars -- bun scripts/load-test/bots.ts",
     "loadtest:reset": "varlock run --inject vars -- bun scripts/load-test/seed.ts --reset",
+    "mock:llm": "bun scripts/fake-llm/server.ts",
     "build:admin": "varlock run --inject vars -- bun run --filter @studiq/admin build",
     "start:admin": "varlock run --inject vars -- bun run --filter @studiq/admin start",
     "lint:admin": "bun run --filter @studiq/admin lint",

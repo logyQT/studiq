@@ -1,0 +1,14 @@
+{
+  "key": "STU-48:text-instead-of-tool",
+  "case": "STU-48",
+  "match": { "firstUserContains": "Fiszki o planetach, sama odpowiedź tekstowa", "hasTools": true },
+  "turns": [
+    {
+      "content": [
+        "Oto fiszki: 1) Merkury to najmniejsza planeta. ",
+        "2) Jowisz to największa planeta."
+      ],
+      "usage": { "input": 100, "output": 35 }
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "key": "STU-48:unknown-tool",
+  "case": "STU-48",
+  "match": { "firstUserContains": "Fiszki o planetach, nieznane narzędzie", "hasTools": true },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_ghost",
+          "name": "make_flashcards",
+          "arguments": { "topic": "planety", "cards": 3 }
+        }
+      ],
+      "usage": { "input": 100, "output": 20 }
+    },
+    {
+      "match": { "hasToolResult": true },
+      "toolCalls": [
+        {
+          "id": "call_cards",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "planety",
+            "deck_name": "Planety",
+            "flashcards": [
+              { "front": "Najmniejsza planeta Układu Słonecznego", "back": "Merkury" },
+              { "front": "Planeta nazywana Czerwoną Planetą", "back": "Mars" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 180, "output": 60 }
+    },
+    {
+      "match": { "hasToolResult": true },
+      "toolCalls": [
+        {
+          "id": "call_finish",
+          "name": "finish",
+          "arguments": {
+            "type": "flashcards",
+            "deckName": "Planety",
+            "flashcards": [
+              { "front": "Najmniejsza planeta Układu Słonecznego", "back": "Merkury" },
+              { "front": "Planeta nazywana Czerwoną Planetą", "back": "Mars" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 300, "output": 40 }
+    }
+  ]
+}

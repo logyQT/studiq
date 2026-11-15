@@ -1,0 +1,17 @@
+{
+  "key": "STU-47:happy-path",
+  "case": "STU-47",
+  "match": { "firstUserContains": "Wyjaśnij pojęcie fotosyntezy", "hasTools": true },
+  "turns": [
+    {
+      "reasoning": ["Użytkownik pyta o fotosyntezę. ", "Wyjaśnię ją krótko i prosto."],
+      "content": [
+        "Fotosynteza to proces, w którym rośliny ",
+        "zamieniają światło, wodę i dwutlenek węgla ",
+        "w glukozę i tlen."
+      ],
+      "usage": { "input": 120, "output": 40 },
+      "delay": { "chunkMs": 15 }
+    }
+  ]
+}

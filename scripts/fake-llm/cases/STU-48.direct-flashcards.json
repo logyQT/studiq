@@ -1,0 +1,49 @@
+{
+  "key": "STU-48:direct-flashcards",
+  "case": "STU-48",
+  "match": { "firstUserContains": "Stwórz 5 fiszek o układzie słonecznym", "hasTools": true },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_cards",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "Stwórz 5 fiszek o układzie słonecznym",
+            "deck_name": "Układ Słoneczny",
+            "count": 5,
+            "flashcards": [
+              { "front": "Która planeta jest najbliżej Słońca?", "back": "Merkury" },
+              { "front": "Która planeta jest największa w Układzie Słonecznym?", "back": "Jowisz" },
+              { "front": "Jak nazywa się nasza galaktyka?", "back": "Droga Mleczna" },
+              { "front": "Która planeta ma najbardziej widoczne pierścienie?", "back": "Saturn" },
+              { "front": "Jak nazywa się naturalny satelita Ziemi?", "back": "Księżyc" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 200, "output": 150 }
+    },
+    {
+      "match": { "hasToolResult": true },
+      "toolCalls": [
+        {
+          "id": "call_finish",
+          "name": "finish",
+          "arguments": {
+            "type": "flashcards",
+            "deckName": "Układ Słoneczny",
+            "flashcards": [
+              { "front": "Która planeta jest najbliżej Słońca?", "back": "Merkury" },
+              { "front": "Która planeta jest największa w Układzie Słonecznym?", "back": "Jowisz" },
+              { "front": "Jak nazywa się nasza galaktyka?", "back": "Droga Mleczna" },
+              { "front": "Która planeta ma najbardziej widoczne pierścienie?", "back": "Saturn" },
+              { "front": "Jak nazywa się naturalny satelita Ziemi?", "back": "Księżyc" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 400, "output": 60 }
+    }
+  ]
+}
