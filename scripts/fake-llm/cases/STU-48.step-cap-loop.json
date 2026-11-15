@@ -1,0 +1,21 @@
+{
+  "key": "STU-48:step-cap-loop",
+  "case": "STU-48",
+  "match": { "lastUserContains": "Fiszki o planetach, pętla wywołań", "hasTools": true },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_again",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "planety",
+            "deck_name": "Planety",
+            "flashcards": [{ "front": "Ile planet ma Układ Słoneczny?", "back": "Osiem" }]
+          }
+        }
+      ],
+      "usage": { "input": 50, "output": 10 }
+    }
+  ]
+}

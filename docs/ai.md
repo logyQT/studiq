@@ -270,13 +270,19 @@ The legacy pipeline was fully replaced by the agent pipeline. These files were r
 
 ## Testing
 
-| Type        | Location                 | Status                       |
-| ----------- | ------------------------ | ---------------------------- |
-| Unit        | `__tests__/unit/agents/` | ✅ `generic.test.ts` exists  |
-| Integration | `__tests__/integration/` | No agent-specific suites yet |
-| E2E         | `__tests__/e2e/`         | Not yet planned              |
+| Type            | Location                                | Status                                                                             |
+| --------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| Unit            | `__tests__/unit/agents/`                | ✅ `generic.test.ts` exists                                                        |
+| Integration     | `__tests__/integration/`                | No agent-specific suites yet                                                       |
+| E2E             | `__tests__/e2e/`                        | Not yet planned                                                                    |
+| QA (fake model) | `__tests__/qa/AI/`, `scripts/fake-llm/` | ✅ STU-47, STU-48 against the [fake inference server](ai/fake-inference-server.md) |
 
 Run agent tests: `bunx vitest run __tests__/unit/agents/`
+
+A new AI feature is tested without a provider: add a fixture
+(`scripts/fake-llm/cases/<CASE>.<slug>.json`) that scripts what the model says
+and a spec under `__tests__/qa/AI/`; the engine does not change. Run it with
+`bun run mock:llm` and `bun run test:qa __tests__/qa/AI`.
 
 ---
 

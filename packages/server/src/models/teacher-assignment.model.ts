@@ -1,44 +1,56 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
+/**
+ * The field contract shared by create and update, deliberately default-free: Zod keeps a `.default()`
+ * through `.partial()`, so an update built from a defaulted schema would fill the create defaults in
+ * for every omitted field and rewrite the run's rules on any edit (#1222). Defaults live on the
+ * create schema alone, where an omitted field is a decision the caller made.
+ */
+const teacherAssignmentFields = z.object({
+  title: z
+    .string({ error: ValidationErrorCode.REQUIRED })
+    .nonempty({ error: ValidationErrorCode.REQUIRED })
+    .max(200, { error: ValidationErrorCode.TOO_LONG }),
+  description: z.string().max(2000, { error: ValidationErrorCode.TOO_LONG }).optional(),
+  quizId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+  deadline: z.string().datetime().optional(),
+  timeLimitMin: z
+    .number({ error: ValidationErrorCode.NUMBER })
+    .int({ error: ValidationErrorCode.INTEGER })
+    .min(1, { error: ValidationErrorCode.TOO_SMALL })
+    .max(300, { error: ValidationErrorCode.TOO_BIG })
+    .optional(),
+  shuffleQuestions: z.boolean({ error: ValidationErrorCode.BOOL }),
+  shuffleAnswers: z.boolean({ error: ValidationErrorCode.BOOL }),
+  showResults: z.boolean({ error: ValidationErrorCode.BOOL }),
+  maxAttempts: z
+    .number({ error: ValidationErrorCode.NUMBER })
+    .int({ error: ValidationErrorCode.INTEGER })
+    .min(1, { error: ValidationErrorCode.TOO_SMALL })
+    .max(10, { error: ValidationErrorCode.TOO_BIG }),
+  passingScore: z
+    .number({ error: ValidationErrorCode.NUMBER })
+    .int({ error: ValidationErrorCode.INTEGER })
+    .min(0, { error: ValidationErrorCode.TOO_SMALL })
+    .max(100, { error: ValidationErrorCode.TOO_BIG })
+    .optional(),
+});
+
 export const CreateTeacherAssignmentSchema = registry.register(
   'CreateTeacherAssignmentRequest',
-  z.object({
-    title: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .max(200, { error: ValidationErrorCode.TOO_LONG }),
-    description: z.string().max(2000, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    quizId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
-    deadline: z.string().datetime().optional(),
-    timeLimitMin: z
-      .number({ error: ValidationErrorCode.NUMBER })
-      .int({ error: ValidationErrorCode.INTEGER })
-      .min(1, { error: ValidationErrorCode.TOO_SMALL })
-      .max(300, { error: ValidationErrorCode.TOO_BIG })
-      .optional(),
-    shuffleQuestions: z.boolean({ error: ValidationErrorCode.BOOL }).default(true),
-    shuffleAnswers: z.boolean({ error: ValidationErrorCode.BOOL }).default(true),
-    showResults: z.boolean({ error: ValidationErrorCode.BOOL }).default(false),
-    maxAttempts: z
-      .number({ error: ValidationErrorCode.NUMBER })
-      .int({ error: ValidationErrorCode.INTEGER })
-      .min(1, { error: ValidationErrorCode.TOO_SMALL })
-      .max(10, { error: ValidationErrorCode.TOO_BIG })
-      .default(1),
-    passingScore: z
-      .number({ error: ValidationErrorCode.NUMBER })
-      .int({ error: ValidationErrorCode.INTEGER })
-      .min(0, { error: ValidationErrorCode.TOO_SMALL })
-      .max(100, { error: ValidationErrorCode.TOO_BIG })
-      .optional(),
+  teacherAssignmentFields.extend({
+    shuffleQuestions: teacherAssignmentFields.shape.shuffleQuestions.default(true),
+    shuffleAnswers: teacherAssignmentFields.shape.shuffleAnswers.default(true),
+    showResults: teacherAssignmentFields.shape.showResults.default(false),
+    maxAttempts: teacherAssignmentFields.shape.maxAttempts.default(1),
   }),
 );
 export type CreateTeacherAssignmentInput = z.infer<typeof CreateTeacherAssignmentSchema>;
 
 export const UpdateTeacherAssignmentSchema = registry.register(
   'UpdateTeacherAssignmentRequest',
-  CreateTeacherAssignmentSchema.partial(),
+  teacherAssignmentFields.partial(),
 );
 export type UpdateTeacherAssignmentInput = z.infer<typeof UpdateTeacherAssignmentSchema>;
 

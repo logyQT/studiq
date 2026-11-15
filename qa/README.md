@@ -61,13 +61,17 @@ start it, sign requests for it, or file findings against it. No case requires it
 A handful of cases depend on something only a person can provide. Treat them as
 `N/D` unless the input exists; don't fake it.
 
-| Input                                       | Scenarios                                   | Without it                                                    |
-| ------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
-| An LLM API key configured for the app       | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly) |
-| `fiszki_poprawne.csv` / `fiszki_bledne.csv` | `STU-05`, `STU-19`, `STU-20`, `STU-42`      | Import steps can't run → `N/D`                                |
-| `logo.png` (< 1 MB)                         | `MGR-SET-02`                                | Branding upload can't run → `N/D`                             |
-| A text PDF                                  | `STU-49`                                    | PDF extraction can't run → `N/D`                              |
-| A PNG/JPG image and an MP3 file             | `STU-22`                                    | Media upload can't run → `N/D`                                |
+| Input                                       | Scenarios                              | Without it                                                    |
+| ------------------------------------------- | -------------------------------------- | ------------------------------------------------------------- |
+| An LLM API key configured for the app       | `EDU-DECK-05`, `STU-49`                | AI features unavailable → `N/D` (the cases say so explicitly) |
+| `fiszki_poprawne.csv` / `fiszki_bledne.csv` | `STU-05`, `STU-19`, `STU-20`, `STU-42` | Import steps can't run → `N/D`                                |
+| `logo.png` (< 1 MB)                         | `MGR-SET-02`                           | Branding upload can't run → `N/D`                             |
+| A text PDF                                  | `STU-49`                               | PDF extraction can't run → `N/D`                              |
+| A PNG/JPG image and an MP3 file             | `STU-22`                               | Media upload can't run → `N/D`                                |
+
+`STU-47` and `STU-48` need no key **in CI**: the `ai-suite` job runs them against the fake
+inference server (`bun run mock:llm`, see `docs/ai/fake-inference-server.md`). A manual run
+without a key and without that server stays `N/D`.
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
 content — is done by the agent through the app API or the local DB.

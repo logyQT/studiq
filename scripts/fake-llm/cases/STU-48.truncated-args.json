@@ -1,0 +1,26 @@
+{
+  "key": "STU-48:truncated-args",
+  "case": "STU-48",
+  "match": { "lastUserContains": "Fiszki o planetach, ucięte argumenty", "hasTools": true },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_cut",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "planety",
+            "flashcards": [{ "front": "Ile planet ma Układ Słoneczny?", "back": "Osiem" }]
+          }
+        }
+      ],
+      "truncateArgumentsAt": 70,
+      "usage": { "input": 100, "output": 30 }
+    },
+    {
+      "match": { "hasToolResult": true },
+      "content": "Spróbuję inaczej. Podaj proszę temat jeszcze raz.",
+      "usage": { "input": 160, "output": 15 }
+    }
+  ]
+}

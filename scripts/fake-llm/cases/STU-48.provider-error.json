@@ -1,0 +1,13 @@
+{
+  "key": "STU-48:provider-error",
+  "case": "STU-48",
+  "match": { "lastUserContains": "Fiszki o planetach, awaria dostawcy", "hasTools": true },
+  "turns": [
+    {
+      "http": {
+        "status": 503,
+        "body": { "error": { "message": "Model is overloaded", "type": "overloaded_error" } }
+      }
+    }
+  ]
+}
