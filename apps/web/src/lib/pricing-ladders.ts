@@ -1,4 +1,5 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
+import { getVisibleLimitKeys } from '@/lib/pricing-limits';
 
 /**
  * The one plan per ladder that carries the page's single `signal` action. Every
@@ -69,4 +70,33 @@ export function splitFeatureRows(plans: readonly PlanInfo[]): FeatureRows {
     common: all.filter((feature) => carriers.get(feature) === plans.length),
     differing: all.filter((feature) => carriers.get(feature) !== plans.length),
   };
+}
+
+/** Uncapped, and the one token for a cap the plan does not offer. */
+const UNLIMITED = '∞';
+const ABSENT = '—';
+
+/**
+ * What a comparison cell prints for one limit. `-1` is the catalogue's
+ * "unlimited", a cap of `0` is "not offered" — printing `0 / dzień` reads as a
+ * rendering bug (N-14) — and a missing key means the same thing as `0`.
+ */
+export function formatLimitValue(value: number | undefined): string {
+  if (value === undefined || value === 0) return ABSENT;
+  return value < 0 ? UNLIMITED : String(value);
+}
+
+/**
+ * Limits to tabulate: the keys the ladder can show at all, minus the ones that
+ * are identical on every plan. Seats and groups are dropped from a student
+ * ladder by `getVisibleLimitKeys`, and the comparison is made on the printed
+ * value, so two plans whose caps both read `—` do not make a row either.
+ */
+export function splitLimitRows(plans: readonly PlanInfo[]): string[] {
+  // `for_account_type` is one value per ladder, so the first plan names it.
+  const accountType = plans[0]?.forAccountType ?? '';
+  return getVisibleLimitKeys(plans, accountType).filter((key) => {
+    const printed = new Set(plans.map((plan) => formatLimitValue(plan.limits[key])));
+    return printed.size > 1;
+  });
 }

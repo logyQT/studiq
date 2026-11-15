@@ -1,11 +1,13 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { describe, expect, it } from 'vitest';
 import {
+  formatLimitValue,
   getPlanLadders,
   isRecommendedPlan,
   RECOMMENDED_PLAN_KEYS,
   shortPlanName,
   splitFeatureRows,
+  splitLimitRows,
 } from '@/lib/pricing-ladders';
 
 // The /pricing page is one URL for two audiences: the catalogue arrives as one flat
@@ -111,5 +113,59 @@ describe('splitFeatureRows', () => {
 
   it('claims nothing as common when there are no plans', () => {
     expect(splitFeatureRows([])).toEqual({ common: [], differing: [] });
+  });
+});
+
+describe('splitLimitRows', () => {
+  it('keeps the limit that separates the plans and drops the one they share', () => {
+    const ladder = [
+      plan('base', 'student', 1, { limits: { max_flashcards: 100, max_decks: 10 } }),
+      plan('spark', 'student', 2, { limits: { max_flashcards: 500, max_decks: 10 } }),
+    ];
+
+    expect(splitLimitRows(ladder)).toEqual(['max_flashcards']);
+  });
+
+  it('keeps a seat limit on an educator ladder', () => {
+    const ladder = [
+      plan('lite', 'educator', 1, { limits: { max_students: 5 } }),
+      plan('guide', 'educator', 2, { limits: { max_students: 50 } }),
+    ];
+
+    expect(splitLimitRows(ladder)).toEqual(['max_students']);
+  });
+
+  it('drops the seat limits a student ladder cannot enforce', () => {
+    const ladder = [
+      plan('base', 'student', 1, { limits: { max_flashcards: 100, max_students: -1 } }),
+      plan('spark', 'student', 2, { limits: { max_flashcards: 500 } }),
+    ];
+
+    expect(splitLimitRows(ladder)).toEqual(['max_flashcards']);
+  });
+
+  it('drops a row whose cells would all read the same even though the raw values differ', () => {
+    const ladder = [
+      plan('base', 'student', 1, { limits: { max_ai_tokens_per_day: 0 } }),
+      plan('spark', 'student', 2, { limits: {} }),
+    ];
+
+    expect(splitLimitRows(ladder)).toEqual([]);
+  });
+});
+
+describe('formatLimitValue', () => {
+  it('prints the catalogue unlimited marker as one glyph', () => {
+    expect(formatLimitValue(-1)).toBe('∞');
+  });
+
+  it('prints a cap the plan does not offer — and a missing one — as absent', () => {
+    expect(formatLimitValue(0)).toBe('—');
+    expect(formatLimitValue(undefined)).toBe('—');
+  });
+
+  it('prints a real cap as a bare number, because the row label carries the unit', () => {
+    expect(formatLimitValue(200000)).toBe('200000');
+    expect(formatLimitValue(10)).toBe('10');
   });
 });
