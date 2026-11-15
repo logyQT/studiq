@@ -147,7 +147,7 @@ Supabase provides:
 - Authentication (email/password, sessions)
 - Real-time subscriptions (used for live flashcard updates)
 
-Schema is managed through SQL migration files in `supabase/migrations/`, logical schema files in `supabase/schemas/`, and seed data in `supabase/seeds/`.
+Schema is managed through SQL migration files in `supabase/migrations/`, with seed data in `supabase/seeds/`.
 
 ## Request Flow
 

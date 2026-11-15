@@ -37,7 +37,7 @@ studiq/
 │   ├── ui/        # `@studiq/ui` — shared shadcn/ui components
 │   └── tsconfig/  # Shared tsconfig base (`base.json`)
 ├── __tests__/     # Root-level tests: unit/, integration/, e2e/, helpers/, mocks/, setup.ts
-├── supabase/      # migrations/, schemas/, seeds/, templates/, config.toml
+├── supabase/      # migrations/, seeds/, templates/, config.toml
 ├── rules/         # ast-grep tautology rules for `bun run review:static` (sgconfig.yml)
 ├── scripts/       # Dev workflow scripts (spin, pr, import + migration guards)
 ├── docs/          # Project documentation
@@ -621,7 +621,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **Avatar routes**: `/api/v1/avatar/user/[seed]` and `/api/v1/avatar/org/[seed]` are public (DiceBear). `@dicebear/core` is server-only.
 - **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. A deliberately public route must be declared in `PUBLIC_API` (`packages/server/src/config/routes.config.ts`); `__tests__/unit/proxy/api-auth-inventory.test.ts` fails otherwise.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
-- **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
+- **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it)
 - **Payment posture uses `APP_ENV`, never `NODE_ENV`** — production is the default; `PAYMENT_DRIVER=mock` is a boot error there (no override), production rejects test keys and needs an `https://` non-localhost site URL. Dev/test/QA must set `APP_ENV` explicitly. See `packages/server/src/lib/app-env.ts` and `docs/deployment.md`.
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.

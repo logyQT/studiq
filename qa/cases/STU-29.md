@@ -33,7 +33,7 @@ The suite version uses the case's own tenant and never the legacy accounts.
   `visibility: "group"` deck whose owner he is.
 - A card in that deck must carry an official question (`flashcards.question_id`), because the
   product only offers „Zgłoś nieprawidłowość” for cards generated from a question; standalone
-  cards have no report thread (`supabase/schemas/30_flashcards.sql`). The spec therefore has
+  cards have no report thread (`supabase/migrations/20260915000001_flashcards_question_link.sql`). The spec therefore has
   T1 create the bank `STU-29 bank` (shared to `G1`) with one question and one card in
   `O1G1T1` created with that `questionId`. Empty `question_id` would make the case's report
   point untestable rather than failed.
