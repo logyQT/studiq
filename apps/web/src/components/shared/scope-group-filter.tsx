@@ -8,6 +8,9 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -26,35 +29,54 @@ interface ScopeGroupFilterProps {
   options: GroupOption[];
   /** The caller's own groups: the "Grupy" row applies them all at once. */
   myGroupIds: string[];
-  /** One list-specific filter row, e.g. the deck "show suspended" toggle. */
+  /** One list-specific filter row, e.g. the deck "Zawieszone" toggle. */
   extra?: { label: string; checked: boolean; onToggle: () => void };
   t: ReturnType<typeof useTranslations>;
 }
 
+/** A filter dimension row, inside the searchable command list. */
 function FilterItem({
   label,
   checked,
   onSelect,
   onHover,
-  indent,
 }: {
   label: string;
   checked: boolean;
   onSelect: () => void;
   onHover?: () => void;
-  indent?: boolean;
 }) {
   return (
-    <CommandItem
-      value={label}
-      onSelect={onSelect}
-      onMouseEnter={onHover}
-      onFocus={onHover}
-      className={cn('gap-2', indent && 'pl-7')}
-    >
+    <CommandItem value={label} onSelect={onSelect} onMouseEnter={onHover} onFocus={onHover}>
       <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
       <span className="truncate">{label}</span>
     </CommandItem>
+  );
+}
+
+/**
+ * A row in the side panel. `CommandItem` needs the `Command` context and this
+ * panel renders beside it, so it is a plain button.
+ */
+function SideItem({
+  label,
+  checked,
+  onSelect,
+}: {
+  label: string;
+  checked: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={onSelect}
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+    >
+      <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 
@@ -63,9 +85,9 @@ function FilterItem({
  *
  * One control for every filter dimension: `Moje` (owner), `Grupy` and any
  * list-specific row. Nothing selected is the default, so the trigger shows a
- * plain label instead of a chip that stands for "no filter". Individual groups
- * live under `Grupy`, revealed on hover (or focus, or once you type to search),
- * so they do not clutter the list.
+ * plain label instead of a chip that stands for "no filter". The groups open in
+ * a panel beside the list — revealing them never pushes the other rows down —
+ * on hover, on focus, or while searching.
  *
  * Filters are independent: `Moje` plus a group is the teacher case — my content
  * shared to those groups.
@@ -105,8 +127,12 @@ export function ScopeGroupFilter({
     ...(extra?.checked ? [extra.label] : []),
   ];
 
-  // Typing searches the groups too, so the sub-list cannot hide the match.
-  const showGroups = options.length > 0 && (groupsOpen || search.trim().length > 0);
+  // Typing searches the groups too, so the side panel cannot hide the match.
+  const query = search.trim().toLowerCase();
+  const showGroups = options.length > 0 && (groupsOpen || query.length > 0);
+  const visibleGroups = query
+    ? options.filter((group) => group.name.toLowerCase().includes(query))
+    : options;
 
   return (
     <Popover
@@ -120,16 +146,24 @@ export function ScopeGroupFilter({
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="max-w-72 gap-1.5">
+        {/* Fixed width so the toolbar does not shift between locales or as filters
+            are added; it fits the longest label ("Zawieszone" / "Suspended"). */}
+        <Button
+          variant="outline"
+          size="sm"
+          title={chips.length === 0 ? t('filter_label') : chips.join(' · ')}
+          className="w-44 justify-between gap-1.5"
+        >
           {chips.length === 0 ? (
-            <span className="text-muted-foreground">{t('filter_label')}</span>
+            <span className="truncate text-muted-foreground">{t('filter_label')}</span>
           ) : (
             <span className="truncate">{chips.join(' · ')}</span>
           )}
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
+
+      <PopoverContent align="start" className="w-56 p-0">
         <Command shouldFilter>
           <CommandInput value={search} onValueChange={setSearch} placeholder={t('filter_search')} />
           <CommandList>
@@ -142,23 +176,49 @@ export function ScopeGroupFilter({
               />
 
               {options.length > 0 && (
-                <FilterItem
-                  label={t('group_filter')}
-                  checked={allMineSelected}
-                  onSelect={() => onGroupIdsChange(allMineSelected ? [] : myGroupIds)}
-                  onHover={() => setGroupsOpen(true)}
-                />
+                <HoverCard
+                  open={showGroups}
+                  onOpenChange={setGroupsOpen}
+                  openDelay={100}
+                  closeDelay={150}
+                >
+                  {/* The span is the anchor: `CommandItem` renders a div without a
+                      ref, which Radix needs to place the panel beside the row. */}
+                  <HoverCardTrigger asChild>
+                    <span className="block">
+                      <FilterItem
+                        label={t('group_filter')}
+                        checked={allMineSelected}
+                        onSelect={() => onGroupIdsChange(allMineSelected ? [] : myGroupIds)}
+                        onHover={() => setGroupsOpen(true)}
+                      />
+                    </span>
+                  </HoverCardTrigger>
+
+                  {/* Beside the list, not below it: the rows never reflow, and the
+                      panel is portalled so the command list cannot clip it. */}
+                  <HoverCardContent
+                    side="right"
+                    align="start"
+                    className="max-h-72 w-48 overflow-y-auto p-1"
+                  >
+                    {visibleGroups.length === 0 ? (
+                      <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                        {t('filter_empty')}
+                      </p>
+                    ) : (
+                      visibleGroups.map((group) => (
+                        <SideItem
+                          key={group.id}
+                          label={group.name}
+                          checked={groupIds.includes(group.id)}
+                          onSelect={() => toggleGroup(group.id)}
+                        />
+                      ))
+                    )}
+                  </HoverCardContent>
+                </HoverCard>
               )}
-              {showGroups &&
-                options.map((group) => (
-                  <FilterItem
-                    key={group.id}
-                    label={group.name}
-                    checked={groupIds.includes(group.id)}
-                    onSelect={() => toggleGroup(group.id)}
-                    indent
-                  />
-                ))}
 
               {extra && (
                 <FilterItem label={extra.label} checked={extra.checked} onSelect={extra.onToggle} />
