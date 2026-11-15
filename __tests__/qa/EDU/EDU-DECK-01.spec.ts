@@ -199,6 +199,23 @@ async function prepareTenant(page: Page, tenant: QaTenant): Promise<void> {
   await ensureDeck(page, DECKS.ownPersonal, { visibility: 'personal' });
 }
 
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub', () => {
   test('shows the deck list with the scope and group filters', async ({ page }) => {
     const tenant = loadTenant(CASE);
@@ -258,7 +275,7 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     // One control holds every filter; its accessible name stays „Filtry” and the
     // active filters are its chips, so the name never doubles as the value.
     const filters = page.getByRole('button', { name: COPY.filters, exact: true });
-    const filterRow = (name: string) => page.getByRole('menuitemcheckbox', { name, exact: true });
+    const filterRow = (name: string) => page.getByRole('option', { name, exact: true });
     const groupRow = (name: string) =>
       page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
@@ -269,7 +286,7 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     await expect(filterRow(COPY.ownerMine)).toBeVisible();
     await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
     // The retired scope values must not come back as filter rows.
-    await expect(page.getByRole('menuitemcheckbox', { name: 'Udostępnione' })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Udostępnione' })).toHaveCount(0);
 
     const mineRequest = page.waitForRequest((request) => {
       if (!request.url().includes(`${DECKS_URL}?`)) return false;
@@ -277,7 +294,7 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     });
     await filterRow(COPY.ownerMine).click();
     await mineRequest;
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expectDecksCount(page, 2);
     await expect(deckCard(page, DECKS.ownGroup)).toBeVisible();
@@ -289,7 +306,7 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     await filters.click();
     await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'true');
     await filterRow(COPY.ownerMine).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expectDecksCount(page, 3);
     await expect(deckCard(page, DECKS.shared)).toBeVisible();
     await expect(filters).toContainText(COPY.filters);
@@ -310,7 +327,7 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     // Clicking „Grupy” applies every group the caller is in.
     await groupsRow.click();
     await groupRequest;
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expectDecksCount(page, 2);
     // With every own group selected the chip is „Grupy”, not the group's name.
@@ -323,7 +340,7 @@ test.describe('@case:EDU-DECK-01 @area:EDU @prio:P2 educator flashcard deck hub'
     await filters.click();
     await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(filters).toContainText(COPY.filters);
     await expectDecksCount(page, 3);

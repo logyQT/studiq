@@ -202,7 +202,7 @@ function deckMenuTrigger(page: Page, name: string): Locator {
  */
 async function toggleShowSuspended(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Filtry', exact: true }).click();
-  await page.getByRole('menuitemcheckbox', { name: COPY.showSuspended, exact: true }).click();
+  await page.getByRole('option', { name: COPY.showSuspended, exact: true }).click();
   await page.keyboard.press('Escape');
 }
 
@@ -285,7 +285,7 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
     // ── Step 2: „Zawieszone” ───────────────────────────────────────────────
     const filters = page.getByRole('button', { name: 'Filtry', exact: true });
     await filters.click();
-    const suspendedRow = page.getByRole('menuitemcheckbox', {
+    const suspendedRow = page.getByRole('option', {
       name: COPY.showSuspended,
       exact: true,
     });

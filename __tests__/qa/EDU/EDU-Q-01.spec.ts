@@ -264,6 +264,23 @@ async function setGroupMembers(
  * pickers only when it has one), so both rosters are written here through the same
  * endpoint `/manage/groups` uses — tenant-local and idempotent.
  */
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.beforeEach(async ({ browser }) => {
   resolveTenant();
   const baseURL = process.env.QA_APP_URL ?? 'http://localhost:3010';
@@ -462,7 +479,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     // 4a. One filter control holds every dimension; its accessible name stays
     // „Filtry” while the chips carry the active filters.
     const filters = page.getByRole('button', { name: COPY.filters, exact: true });
-    const filterRow = (name: string) => page.getByRole('menuitemcheckbox', { name, exact: true });
+    const filterRow = (name: string) => page.getByRole('option', { name, exact: true });
     const groupRow = (name: string) =>
       page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
@@ -473,8 +490,8 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
     // „Grupy” here is the group dimension, not a visibility; the retired scope
     // values must not come back as rows.
-    await expect(page.getByRole('menuitemcheckbox', { name: 'Udostępnione' })).toHaveCount(0);
-    await page.keyboard.press('Escape');
+    await expect(page.getByRole('option', { name: 'Udostępnione' })).toHaveCount(0);
+    await closeFilterPopover(page);
 
     // 4b. The groups sit in the flyout beside the list, not in the list itself.
     await filters.click();
@@ -483,7 +500,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     await groupsRow.hover();
     await expect(groupRow(GROUP_1)).toBeVisible();
     await expect(groupRow(GROUP_2)).toBeVisible();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0);
 
     // Picking only G1 keeps the G1 bank and drops the G2 and ungrouped ones.
@@ -492,7 +509,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     const g1Request = bankListRequest(page, (params) => params.get('groups') === GROUP_1_ID);
     await groupRow(GROUP_1).click();
     await g1Request;
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(filters).toContainText(GROUP_1);
     await expect(bankCard(page, BANKS.group), 'the G1 bank').toBeVisible();
@@ -515,7 +532,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     await filters.click();
     await groupsRow.click();
     await mineGroupsRequest;
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(filters).toContainText(COPY.groups);
     await expect(bankCard(page, BANKS.group)).toBeVisible();
@@ -528,7 +545,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     await filters.click();
     await filterRow(COPY.ownerMine).click();
     await mineRequest;
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(filters).toContainText(COPY.ownerMine);
     await expect(filters).toContainText(COPY.groups);

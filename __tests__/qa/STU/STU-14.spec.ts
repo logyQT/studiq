@@ -54,6 +54,23 @@ const TENANT = loadTenant(CASE);
 let GROUP_G2_ID: string;
 
 // The tenant is per attempt, so the derived group id is resolved per attempt.
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.beforeEach(() => {
   GROUP_G2_ID = tenantId(TENANT.key, 'group:2');
 });
@@ -170,7 +187,7 @@ function filtersButton(page: Page) {
 
 /** A filter dimension row inside the open filter control. */
 function filterRow(page: Page, name: string) {
-  return page.getByRole('menuitemcheckbox', { name, exact: true });
+  return page.getByRole('option', { name, exact: true });
 }
 
 /** A group inside the flyout beside the list. */
@@ -269,15 +286,11 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     await filtersButton(page).click();
     await expect(filterRow(page, COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
     // The retired group-scope values are gone; „Grupy” is the group dimension.
-    await expect(page.getByRole('menuitemcheckbox', { name: COPY.retiredGroupScope })).toHaveCount(
-      0,
-    );
-    await expect(page.getByRole('menuitemcheckbox', { name: COPY.retiredSharedScope })).toHaveCount(
-      0,
-    );
+    await expect(page.getByRole('option', { name: COPY.retiredGroupScope })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: COPY.retiredSharedScope })).toHaveCount(0);
 
     await filterRow(page, COPY.ownerMine).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(filtersButton(page)).toContainText(COPY.ownerMine);
     await expect(page.getByText(COPY.oneDeck, { exact: true })).toBeVisible();
@@ -289,7 +302,7 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     // ── Step 3: „Grupy”, then clear back to the unfiltered list ──────────────
     await filtersButton(page).click();
     await filterRow(page, COPY.ownerMine).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(page.getByText(COPY.twoDecks, { exact: true })).toBeVisible();
 
     await filtersButton(page).click();
@@ -304,7 +317,7 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     ).toHaveCount(1);
 
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(filtersButton(page)).toContainText(COPY.groups);
     await expect(page.getByText(COPY.oneDeck, { exact: true })).toBeVisible();
@@ -320,7 +333,7 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     await filtersButton(page).click();
     await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(filtersButton(page)).toContainText(COPY.filters);
     await expect(page.getByText(COPY.twoDecks, { exact: true })).toBeVisible();
     await expect(deckCard(page, GROUP_DECK)).toHaveCount(1);

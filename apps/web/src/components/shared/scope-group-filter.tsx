@@ -39,23 +39,18 @@ function FilterItem({
   label,
   checked,
   onSelect,
-  onHover,
 }: {
   label: string;
   checked: boolean;
   onSelect: () => void;
-  onHover?: () => void;
 }) {
   return (
     <CommandItem
       value={label}
       onSelect={onSelect}
-      onMouseEnter={onHover}
-      onFocus={onHover}
-      // cmdk's `aria-selected` follows the highlight; the filter's state is `checked`.
-      role="menuitemcheckbox"
+      // cmdk owns `role="option"` and `aria-selected` (which follows the keyboard
+      // highlight, not the filter), so the filter's own state rides on `aria-checked`.
       aria-checked={checked}
-      aria-selected={undefined}
       className="rounded-none px-3 py-2"
     >
       <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
@@ -113,7 +108,6 @@ export function ScopeGroupFilter({
   t,
 }: ScopeGroupFilterProps) {
   const [open, setOpen] = useState(false);
-  const [groupsOpen, setGroupsOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const mineActive = owner === 'mine';
@@ -137,9 +131,10 @@ export function ScopeGroupFilter({
     ...(extra?.checked ? [extra.label] : []),
   ];
 
-  // Typing searches the groups too, so the side panel cannot hide the match.
+  // Typing searches the groups too, so the flyout cannot hide the match. Hover is
+  // Radix's own (an uncontrolled open): driving it from state re-rendered the row
+  // under the pointer and detached it mid-click.
   const query = search.trim().toLowerCase();
-  const showGroups = options.length > 0 && (groupsOpen || query.length > 0);
   const visibleGroups = query
     ? options.filter((group) => group.name.toLowerCase().includes(query))
     : options;
@@ -149,10 +144,7 @@ export function ScopeGroupFilter({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) {
-          setGroupsOpen(false);
-          setSearch('');
-        }
+        if (!next) setSearch('');
       }}
     >
       <PopoverTrigger asChild>
@@ -190,8 +182,7 @@ export function ScopeGroupFilter({
 
               {options.length > 0 && (
                 <HoverCard
-                  open={showGroups}
-                  onOpenChange={setGroupsOpen}
+                  open={query.length > 0 ? true : undefined}
                   openDelay={100}
                   closeDelay={150}
                 >
@@ -203,7 +194,6 @@ export function ScopeGroupFilter({
                         label={t('group_filter')}
                         checked={allMineSelected}
                         onSelect={() => onGroupIdsChange(allMineSelected ? [] : myGroupIds)}
-                        onHover={() => setGroupsOpen(true)}
                       />
                     </span>
                   </HoverCardTrigger>

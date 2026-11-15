@@ -200,6 +200,23 @@ async function seedGroupBank(page: Page, tenant: QaTenant, spec: GroupBankSpec):
   }
 }
 
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
   test('lists the group banks with counts and read-only actions, and filters them', async ({
     page,
@@ -242,7 +259,7 @@ test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
 
     // The toolbar the case exercises: one filter control, search, sort.
     const filters = page.getByRole('button', { name: COPY.filters, exact: true });
-    const filterRow = (name: string) => page.getByRole('menuitemcheckbox', { name, exact: true });
+    const filterRow = (name: string) => page.getByRole('option', { name, exact: true });
     const groupRow = (name: string) =>
       page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
@@ -292,12 +309,12 @@ test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
     await filters.click();
     await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
     await expect(
-      page.getByRole('menuitemcheckbox', { name: 'Udostępnione', exact: true }),
+      page.getByRole('option', { name: 'Udostępnione', exact: true }),
       'the retired shared scope is not offered',
     ).toHaveCount(0);
 
     await filterRow(COPY.ownerMine).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(page.locator('[data-slot="card"]'), '„Moje” keeps only the own bank').toHaveCount(
       1,
     );
@@ -309,7 +326,7 @@ test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
     // Turning „Moje” off restores every bank.
     await filters.click();
     await filterRow(COPY.ownerMine).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(page.locator('[data-slot="card"]'), 'unfiltered restores every bank').toHaveCount(
       3,
     );
@@ -366,9 +383,11 @@ test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
       1,
     );
     await groupRow(tenant.group!.name).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
-    await expect(filters).toContainText(tenant.group!.name);
+    // The student belongs to exactly one group, so picking it selects every own
+    // group and the chip reads „Grupy” rather than the group's name.
+    await expect(filters).toContainText(COPY.groups);
     await expect(
       page.locator('[data-slot="card"]'),
       'the group filter keeps only the banks shared with the group',
@@ -388,14 +407,14 @@ test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
     await filters.click();
     await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(filters).toContainText(COPY.filters);
     await expect(page.locator('[data-slot="card"]')).toHaveCount(3);
 
     // „Grupy” is the same selection in one click, shown as the dimension's chip.
     await filters.click();
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(filters).toContainText(COPY.groups);
     await expect(page.locator('[data-slot="card"]')).toHaveCount(2);
     await expect(bankCard(page, OWN_BANK.name)).toHaveCount(0);

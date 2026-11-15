@@ -231,6 +231,23 @@ function dialog(page: Page): Locator {
   return page.locator('[data-slot="dialog-content"]');
 }
 
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filters', () => {
   test('creates, renames and deletes „Algebra”, counts its flashcards and filters the list', async ({
     page,
@@ -403,7 +420,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     // One filter control holds every dimension; its accessible name stays
     // „Filtry” while the chips carry the active filters.
     const filters = page.getByRole('button', { name: COPY.filters, exact: true });
-    const filterRow = (name: string) => page.getByRole('menuitemcheckbox', { name, exact: true });
+    const filterRow = (name: string) => page.getByRole('option', { name, exact: true });
     const groupRow = (name: string) =>
       page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
@@ -414,7 +431,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     await expect(filterRow(COPY.ownerMine)).toBeVisible();
     await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
     // The retired scope values must not come back as filter rows.
-    await expect(page.getByRole('menuitemcheckbox', { name: 'Udostępnione' })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Udostępnione' })).toHaveCount(0);
 
     const mineRequest = page.waitForRequest((request) => {
       if (!request.url().includes(`${TOPICS_URL}?`)) return false;
@@ -422,7 +439,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     });
     await filterRow(COPY.ownerMine).click();
     await mineRequest;
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
 
     await expect(topicCard(page, OWN_TOPIC)).toBeVisible();
     await expect(topicCard(page, SHARED_TOPIC), 'not the educator’s topic').toHaveCount(0);
@@ -435,7 +452,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     // Turning „Moje” off is the way back to the unfiltered list.
     await filters.click();
     await filterRow(COPY.ownerMine).click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(topicCard(page, SHARED_TOPIC)).toBeVisible();
     await expect(topicCard(page, OWN_TOPIC)).toBeVisible();
     await expect(filters).toContainText(COPY.filters);
@@ -454,7 +471,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
 
     // Clicking „Grupy” applies every group the educator is in.
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(filters).toContainText(COPY.groups);
     await expect(topicCard(page, SHARED_TOPIC), 'the G1 topic stays').toBeVisible();
     await expect(topicCard(page, OWN_TOPIC), 'personal topics are outside G1').toHaveCount(0);
@@ -463,7 +480,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     await filters.click();
     await expect(groupsRow).toHaveAttribute('aria-checked', 'true');
     await groupsRow.click();
-    await page.keyboard.press('Escape');
+    await closeFilterPopover(page);
     await expect(filters).toContainText(COPY.filters);
     await expect(topicCard(page, OWN_TOPIC)).toBeVisible();
     await expect(topicCard(page, SHARED_TOPIC)).toBeVisible();
