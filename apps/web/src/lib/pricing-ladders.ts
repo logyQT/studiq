@@ -18,8 +18,18 @@ export function isRecommendedPlan(key: string): boolean {
  * tier's verb. Both the price list and the dashboard card ask this, so a new plan
  * needs a `cta_<key>` message and nothing else.
  */
+/**
+ * Plans sold through a conversation rather than a checkout. The label is the one
+ * sales verb the page already uses, not a per-plan string: "Kontakt z działem
+ * handlowym" is wider than the price list's action column and ran over the
+ * figure beside it.
+ */
+const SALES_LED_PLAN_KEYS: readonly string[] = ['campus'];
+
 export function ctaMessageKey(plan: Pick<PlanInfo, 'key' | 'priceMonthly'>): string {
-  return plan.priceMonthly === 0 ? 'cta_free' : `cta_${plan.key}`;
+  if (plan.priceMonthly === 0) return 'cta_free';
+  if (SALES_LED_PLAN_KEYS.includes(plan.key)) return 'cta_contact';
+  return `cta_${plan.key}`;
 }
 
 export type PlanLadders = {

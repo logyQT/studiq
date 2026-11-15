@@ -82,7 +82,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
            * contact into a purchase (one behaviour per label).
            */
           <CtaButton href="/contact" tone="quiet" fullWidth className="whitespace-nowrap">
-            {t('cta_campus')}
+            {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
           </CtaButton>
         ) : signedIn ? (
           isFree ? null : (
