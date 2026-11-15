@@ -222,6 +222,33 @@ describe('Assessment attempts: fresh-sample retakes and the budget (#1174)', () 
     expect(response.status).toBe(409);
     expect(await errorOf(response)).toBe('NO_ATTEMPTS_LEFT');
   });
+
+  it('reopens the whole pool when the count is cleared (R7)', async () => {
+    mockUser(teacher.user);
+    const cleared = await assignmentPut(
+      createNextRequestWithParams(
+        `http://localhost/api/v1/teacher/assignments/${assignmentId}`,
+        { id: assignmentId },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attemptItemCount: null }),
+        },
+        cookie(),
+      ).request,
+      { params: Promise.resolve({ id: assignmentId }) },
+    );
+    expect(cleared.status, await cleared.clone().text()).toBe(200);
+
+    // The composer's "Whole pool" is an explicit null, not an omission: an omitted key would leave
+    // the old count in place and the field could never be reopened.
+    const { data: row } = await service
+      .from('teacher_assignments')
+      .select('attempt_item_count')
+      .eq('id', assignmentId)
+      .single();
+    expect(asJson<{ attempt_item_count: number | null }>(row).attempt_item_count).toBeNull();
+  });
 });
 
 describe('Assessment attempts: exhausted inventory (#1174)', () => {
