@@ -3300,6 +3300,7 @@
     "label": "Theme",
     "light": "Light",
     "system": "System",
+    "system_name": "Theme: system",
     "dark": "Dark",
     "system_resolved": "System ({theme})",
     "resolved_light": "light",
