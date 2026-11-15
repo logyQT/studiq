@@ -308,10 +308,11 @@
    Its iso-lines are straight, so no stop can curve into a band, and the ramp is
    sampled off a quadratic ease at 14 and 22 stops: the ease is the shape with
    the smallest slope step that still leaves zero slope at both ends, and the
-   stop count is set by the narrowest surface (`/register`'s 720px column), where
-   the same 12px window covers a larger share of the ramp. A quadratic — not a
-   smootherstep — because the second derivative, not its smoothness, is what a
-   band reads: the quadratic's is 4 against the smootherstep's 5.77.
+   stop count is set by the shortest surface — the phone inset, gradient line
+   about 930px — where the same 12px window covers a larger share of the ramp. A
+   quadratic — not a smootherstep — because the second derivative, not its
+   smoothness, is what a band reads: the quadratic's is 4 against the
+   smootherstep's 5.77.
    The 28%-72% plateau is the paper's own tone. `to bottom right` puts the top-
    right and bottom-left corners on the 50% line, so neither picks up light, and
    the ramp is in percentages of the gradient line: every surface gets the same
