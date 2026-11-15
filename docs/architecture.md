@@ -97,12 +97,13 @@ sequenceDiagram
     participant R as Route Handler
 
     C->>M: HTTP Request
+    M->>M: /api/* ? forward, the handler's withAuth() decides
     M->>M: updateSession (refresh Supabase cookie)
     M->>M: Match route rule
     alt Auth required + no session
-        M->>C: 401 JSON or 302 to /login
+        M->>C: 302 to /login?next=…
     else Role restricted + wrong role
-        M->>C: 403 JSON or 302 to role dashboard
+        M->>C: 302 to role dashboard
     else Redirect if authenticated
         M->>C: 302 to role-specific dashboard (by role)
     else All checks pass
@@ -111,25 +112,25 @@ sequenceDiagram
     end
 ```
 
-Route rules are defined in `src/server/config/routes.config.ts`:
+Route rules are defined in `packages/server/src/config/routes.config.ts` and cover UI paths only — the proxy returns for `/api/*` before they are consulted, so a rule for an API path could never run (and the API auth inventory test rejects one):
 
 ```typescript
 export const routeRules: RouteRule[] = [
   {
-    matcher: /^\/api\/v1\/teacher(\/.*)?$/,
-    requireAuth: true,
-    allowedRoles: [UserRole.TEACHER],
-    isApi: true,
+    matcher: /^\/(login|register)(\/.*)?$/,
+    redirectIfAuthenticatedByAccountType: {
+      [AccountType.MANAGER]: '/manage',
+      [AccountType.EDUCATOR]: '/edu',
+      [AccountType.STUDENT]: '/app',
+    },
   },
-  { matcher: /^\/edu(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER] },
-  {
-    matcher: /^\/app(\/.*)?$/,
-    requireAuth: true,
-    allowedRoles: [UserRole.STUDENT, UserRole.FREE, UserRole.PREMIUM],
-  },
+  { matcher: /^\/edu(\/.*)?$/, requireAuth: true, allowedAccountTypes: [AccountType.EDUCATOR] },
+  { matcher: /^\/app(\/.*)?$/, requireAuth: true, allowedAccountTypes: [AccountType.STUDENT] },
   // ...
 ];
 ```
+
+The same file declares `PUBLIC_API`, the `/api` handlers that are open by design (pricing catalogue, avatars, health, auth bootstrap, the Stripe webhook). Every other handler is protected by its own `withAuth()`.
 
 ### Data Layer
 

@@ -10,39 +10,14 @@ export type RouteRule = {
   /** If the user is ALREADY logged in, redirect them here (useful for /login, /register) */
   redirectIfAuthenticated?: string;
   redirectIfAuthenticatedByAccountType?: Partial<Record<AccountType, string>>;
-  /** Is this an API route? Determines if we return a JSON error (401/403) or a 302 Redirect */
-  isApi?: boolean;
 };
 
+/**
+ * UI route rules, evaluated in order by `apps/web/src/proxy.ts`. API routes are
+ * absent on purpose: the proxy returns for every `/api/*` request before these
+ * rules are consulted, so a handler is protected only by its own `withAuth()`.
+ */
 export const routeRules: RouteRule[] = [
-  // --- API ROUTES ---
-  {
-    matcher: /^\/api\/v1\/teacher(\/.*)?$/,
-    requireAuth: true,
-    allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER],
-    isApi: true,
-  },
-  {
-    matcher: /^\/api\/v1\/ai(\/.*)?$/,
-    requireAuth: true,
-    allowedAccountTypes: [AccountType.STUDENT, AccountType.EDUCATOR],
-    isApi: true,
-  },
-  // Stripe webhook is public (signature-verified in production)
-  {
-    matcher: /^\/api\/v1\/stripe\/webhook(\/.*)?$/,
-    isApi: true,
-  },
-  // Documentation of the intended public API prefixes. The web proxy returns for
-  // `/api/*` before evaluating `routeRules`, so this rule never gates a request —
-  // `withAuth()` in each route is authoritative. Keep the list aligned with the
-  // public set in AGENTS.md.
-  {
-    matcher: /^\/api\/v\d+\/(?!auth|health|avatar|subscription-plans|stripe\/webhook)(.*)$/,
-    requireAuth: true,
-    isApi: true,
-  },
-
   // --- AUTH ROUTES ---
   {
     matcher: /^\/(login|register)(\/.*)?$/,
@@ -98,3 +73,29 @@ export const routeRules: RouteRule[] = [
     allowedAccountTypes: [AccountType.STUDENT],
   },
 ];
+
+/**
+ * The API surface that is open by design. Nothing here is enforced at runtime —
+ * the proxy skips `/api/*` and `withAuth()` decides per handler — so this is the
+ * only record of which unauthenticated handlers were intended.
+ *
+ * The list is prefix-level: a new handler inside an already-public group
+ * inherits the declaration, while a handler in a new group fails
+ * `__tests__/unit/proxy/api-auth-inventory.test.ts` until the group is added
+ * here. That test also fails when an entry stops matching a real route, so a
+ * stale declaration cannot outlive the route it describes.
+ */
+export const PUBLIC_API = {
+  /** Exact paths: the version banner (`/api`) and the Stripe webhook. */
+  exact: ['/api', '/api/v1/stripe/webhook'],
+  /** Groups in which a handler may run without a session. */
+  prefixes: [
+    // Session bootstrap and recovery — there is no session to require yet.
+    '/api/v1/auth',
+    '/api/v1/health',
+    // DiceBear avatars, addressed by seed.
+    '/api/v1/avatar',
+    // Public pricing catalogue (`listPublic` / `getByKey`).
+    '/api/v1/subscription-plans',
+  ],
+} as const;

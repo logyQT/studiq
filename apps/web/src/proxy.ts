@@ -2,7 +2,6 @@ import { AccountType } from '@studiq/authz';
 import { routeRules } from '@studiq/server/config/routes.config';
 import { authGuard } from '@studiq/server/guards/auth.guard';
 import { roleGuard } from '@studiq/server/guards/role.guard';
-import { APP_ERRORS } from '@studiq/server/lib/errors';
 import { updateSession } from '@studiq/server/lib/supabase/session';
 import { type NextRequest, NextResponse } from 'next/server';
 import { toSafeInternalPath } from '@/lib/safe-redirect';
@@ -36,7 +35,8 @@ function resolveAccountType(jwtAccountType: unknown): AccountType {
 }
 
 export async function proxy(request: NextRequest) {
-  // API routes handle auth internally via withAuth() — skip middleware to avoid double getUser()
+  // API routes authenticate themselves with `withAuth()` (or are declared open
+  // in `PUBLIC_API`, routes.config.ts); the proxy never gates `/api/*`.
   if (request.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
@@ -79,35 +79,19 @@ export async function proxy(request: NextRequest) {
 
   // 3. Handle Authentication Requirement
   if (matchedRule.requireAuth && !authGuard(user)) {
-    if (matchedRule.isApi) {
-      const res = NextResponse.json(
-        { success: false, error: APP_ERRORS.UNAUTHORIZED.code },
-        { status: 401 },
-      );
-      return preserveCookies(supabaseResponse, res);
-    } else {
-      const loginUrl = new URL('/login', request.url);
-      // Keep the query string: a signed-out `/app/study/quiz?type=open` must
-      // come back to that exact URL after login. Re-validated by
-      // `toSafeInternalPath` on the way in and on the login page.
-      loginUrl.searchParams.set('next', `${path}${request.nextUrl.search}`);
-      return preserveCookies(supabaseResponse, NextResponse.redirect(loginUrl));
-    }
+    const loginUrl = new URL('/login', request.url);
+    // Keep the query string: a signed-out `/app/study/quiz?type=open` must
+    // come back to that exact URL after login. Re-validated by
+    // `toSafeInternalPath` on the way in and on the login page.
+    loginUrl.searchParams.set('next', `${path}${request.nextUrl.search}`);
+    return preserveCookies(supabaseResponse, NextResponse.redirect(loginUrl));
   }
 
   // 4. Handle Account Type Access Control
   if (matchedRule.allowedAccountTypes && matchedRule.allowedAccountTypes.length > 0) {
     if (!roleGuard(accountType, matchedRule.allowedAccountTypes)) {
-      if (matchedRule.isApi) {
-        const res = NextResponse.json(
-          { success: false, error: APP_ERRORS.FORBIDDEN.code },
-          { status: 403 },
-        );
-        return preserveCookies(supabaseResponse, res);
-      } else {
-        const fallbackUrl = new URL(ACCOUNT_TYPE_REDIRECTS[accountType] || '/login', request.url);
-        return preserveCookies(supabaseResponse, NextResponse.redirect(fallbackUrl));
-      }
+      const fallbackUrl = new URL(ACCOUNT_TYPE_REDIRECTS[accountType] || '/login', request.url);
+      return preserveCookies(supabaseResponse, NextResponse.redirect(fallbackUrl));
     }
   }
 
