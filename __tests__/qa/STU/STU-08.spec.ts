@@ -455,7 +455,9 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
 
     await page.goto('/app/study/cram');
     await expect(page, 'the picker redirects to login').toHaveURL(/\/login(\?|$)/);
-    await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.loginTitle);
+    await expect(
+      page.getByRole('heading', { level: 1, name: COPY.loginTitle, exact: true }),
+    ).toBeVisible();
 
     await page.goto('/app/study/session/cram?deckId=00000000-0000-5000-8000-000000000000');
     await expect(page, 'the session deep link redirects to login').toHaveURL(/\/login(\?|$)/);
