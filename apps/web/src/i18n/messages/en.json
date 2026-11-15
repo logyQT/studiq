@@ -33,7 +33,8 @@
     "ERROR_ATTEMPT_EXPIRED": "Your attempt ended when the assessment closed and was not submitted.",
     "ERROR_ASSESSMENT_CLOSED": "This assessment is already closed.",
     "ERROR_ASSESSMENT_NOT_LIVE": "Only a running assessment can be closed.",
-    "ERROR_ASSESSMENT_NOT_PUBLISHED": "This assessment has not been published yet."
+    "ERROR_ASSESSMENT_NOT_PUBLISHED": "This assessment has not been published yet.",
+    "ERROR_REVIEW_LOCKED": "The review opens when the assessment closes."
   },
   "EmptyStates": {
     "load_error": "The list could not be loaded",
@@ -3116,7 +3117,9 @@
     "attempts_left": "Attempts left: {left}/{total}",
     "attempts_exhausted": "All attempts used ({total}/{total})",
     "results_hidden": "Results not available",
-    "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana."
+    "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
+    "review_locked": "The review opens when the assessment closes.",
+    "review_available": "The assessment is closed — you can review its answers."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Upload failed",
@@ -3144,7 +3147,10 @@
     "points_awarded": "Points awarded: {points}",
     "explanation": "Explanation",
     "correct": "Correct",
-    "incorrect": "Incorrect"
+    "incorrect": "Incorrect",
+    "locked": "Review locked",
+    "locked_hint": "Answers are revealed when the assessment closes.",
+    "no_attempt": "You did not submit an attempt. The answers are shown because the assessment is closed."
   },
   "AppQuizTakingPage": {
     "loading": "Loading…",

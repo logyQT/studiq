@@ -8,12 +8,9 @@ import {
   snapshotFromJson,
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
+import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
-import {
-  ensureClosed,
-  expireInProgressAttempts,
-  isAssessmentClosed,
-} from '@studiq/server/lib/assessment-close';
+import { expireInProgressAttempts, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
@@ -929,86 +926,6 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * The published assignment `id`, already proved to target `userId` (directly or through one of
-   * their groups). Both student reads start here, so the targeting proof cannot drift between
-   * `getForStudent` and `startAttempt`.
-   *
-   * It is also where a run's natural expiry becomes durable: the first student read after the
-   * deadline writes `closed_at` (and expires the attempts that were still running), so the close
-   * survives a later deadline edit (R7/R12).
-   */
-  private async loadTargetedAssignment(
-    supabase: SupabaseClient<Database>,
-    id: string,
-    userId: string,
-  ) {
-    const { data: assignment, error } = await supabase
-      .from('teacher_assignments')
-      .select('*, assignment_targets(*)')
-      .eq('id', id)
-      .eq('status', 'published')
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-    if (!assignment) return failure('NOT_FOUND');
-
-    const targeted = await this.isAssignmentTarget(supabase, assignment, userId);
-    if (isFailure(targeted)) return targeted;
-    if (!targeted.data) return failure('NOT_FOUND');
-
-    return ensureClosed(assignment);
-  }
-
-  /**
-   * A student may see / start an assignment only if it targets them directly,
-   * targets one of their groups, or they authored it (teacher preview).
-   * Same rule as the list endpoint, so id-based access cannot bypass it.
-   */
-  private async isAssignmentTarget(
-    supabase: SupabaseClient<Database>,
-    assignment: {
-      created_by?: string | null;
-      organization_id?: string | null;
-      assignment_targets?: { group_id?: string | null; student_id?: string | null }[] | null;
-    },
-    userId: string,
-  ): Promise<ServiceResult<boolean>> {
-    // Org content requires current org membership; group_members is not an
-    // authorization source on its own (#249). Without this a stale
-    // group_members row keeps granting access after the user was removed from
-    // the organization (the author included: "after removal you lose access to
-    // all organization data").
-    if (assignment.organization_id) {
-      const { data: membership, error } = await supabase
-        .from('org_members')
-        .select('id')
-        .eq('organization_id', assignment.organization_id)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) return toDbFailure(error);
-      if (!membership) return success(false);
-    }
-
-    if (assignment.created_by === userId) return success(true);
-
-    const targets = assignment.assignment_targets ?? [];
-    if (targets.some((t) => t.student_id === userId)) return success(true);
-
-    const targetGroupIds = targets.map((t) => t.group_id).filter((g): g is string => !!g);
-    if (targetGroupIds.length === 0) return success(false);
-
-    const { data: memberships, error } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', userId)
-      .in('group_id', targetGroupIds);
-
-    if (error) return toDbFailure(error);
-    return success(dbRows(memberships).length > 0);
-  }
-
-  /**
    * Attempt state shared by the student list and detail payloads.
    * `attempts_used` counts *completed* attempts only — the same rule
    * `startAttempt` enforces. A running attempt is resumed, not counted.
@@ -1098,7 +1015,7 @@ export class TeacherAssignmentService {
   async getForStudent(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const loaded = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    const loaded = await loadTargetedAssignment(supabase, id, ctx.userId);
     if (isFailure(loaded)) return loaded;
     const assignment = loaded.data;
 
@@ -1122,7 +1039,7 @@ export class TeacherAssignmentService {
   async startAttempt(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const target = await this.loadTargetedAssignment(supabase, id, ctx.userId);
+    const target = await loadTargetedAssignment(supabase, id, ctx.userId);
     if (isFailure(target)) return target;
     const assignment = target.data;
 

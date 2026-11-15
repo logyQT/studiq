@@ -33,7 +33,8 @@
     "ERROR_ATTEMPT_EXPIRED": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
     "ERROR_ASSESSMENT_CLOSED": "Ta kartkówka jest już zakończona.",
     "ERROR_ASSESSMENT_NOT_LIVE": "Zamknąć można tylko uruchomioną kartkówkę.",
-    "ERROR_ASSESSMENT_NOT_PUBLISHED": "Ta kartkówka nie została jeszcze opublikowana."
+    "ERROR_ASSESSMENT_NOT_PUBLISHED": "Ta kartkówka nie została jeszcze opublikowana.",
+    "ERROR_REVIEW_LOCKED": "Podsumowanie otwiera się po zakończeniu kartkówki."
   },
   "EmptyStates": {
     "load_error": "Nie udało się wczytać listy",
@@ -3097,7 +3098,9 @@
     "attempts_left": "Pozostało prób: {left}/{total}",
     "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})",
     "results_hidden": "Podsumowanie niedostępne",
-    "attempt_expired": "Your attempt ended when the assessment closed and was not submitted."
+    "attempt_expired": "Your attempt ended when the assessment closed and was not submitted.",
+    "review_locked": "Podsumowanie otwiera się po zakończeniu kartkówki.",
+    "review_available": "Kartkówka jest zakończona — możesz przejrzeć odpowiedzi."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",
@@ -3125,7 +3128,10 @@
     "points_awarded": "Przyznane punkty: {points}",
     "explanation": "Wyjaśnienie",
     "correct": "Poprawnie",
-    "incorrect": "Niepoprawnie"
+    "incorrect": "Niepoprawnie",
+    "locked": "Podsumowanie zablokowane",
+    "locked_hint": "Odpowiedzi są ujawniane po zakończeniu kartkówki.",
+    "no_attempt": "Nie wysłałeś żadnej próby. Odpowiedzi są widoczne, bo kartkówka jest zakończona."
   },
   "AppQuizTakingPage": {
     "loading": "Ładowanie…",

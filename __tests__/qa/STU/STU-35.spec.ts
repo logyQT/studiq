@@ -69,6 +69,7 @@ const COPY = {
   attachedPhotos: 'Dodane zdjęcia',
   completed: 'Ukończono',
   review: 'Zobacz podsumowanie',
+  reviewLocked: 'Podsumowanie otwiera się po zakończeniu kartkówki.',
   pendingReview: 'Oczekuje na ocenę',
 } as const;
 
@@ -389,15 +390,15 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     // --- Prerequisite: a published quiz with MCQ, P/F and open questions ----
+    // The teacher session stays open: the review only unlocks after the teacher closes the run
+    // (R5), which this walk does once the student has submitted.
     const teacherContext = await browser.newContext({ baseURL });
-    let assignment: { id: string; title: string };
-    try {
-      const teacherPage = await teacherContext.newPage();
-      await loginAs(teacherPage, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
-      assignment = await prepareAssignment(teacherPage, student.id);
-    } finally {
-      await teacherContext.close();
-    }
+    const teacherPage = await teacherContext.newPage();
+    await loginAs(teacherPage, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
+    const assignment: { id: string; title: string } = await prepareAssignment(
+      teacherPage,
+      student.id,
+    );
 
     // --- The student's own surface ------------------------------------------
     await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
@@ -510,11 +511,27 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
       page.getByText('Wynik: 2/3', { exact: true }),
       'the two closed questions are auto-graded',
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: COPY.review, exact: true })).toBeVisible();
+    // Results are on, but the key is not out yet: the review opens at the close (R5).
+    await expect(
+      page.getByText(COPY.reviewLocked, { exact: true }),
+      'the review is locked while the window is open',
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: COPY.review, exact: true })).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: COPY.start, exact: true }),
       'a single-attempt quiz cannot be started again',
     ).toHaveCount(0);
+
+    // The teacher closes the run; the review unlocks for the whole cohort.
+    await api<unknown>(
+      teacherPage.request,
+      'POST',
+      `${ASSIGNMENTS_URL}/${assignment.id}/close`,
+      {},
+    );
+    await teacherContext.close();
+    await page.reload();
+    await expect(page.getByRole('link', { name: COPY.review, exact: true })).toBeVisible();
 
     // --- Expected result, server side ---------------------------------------
     const completedAssignment = await getStudentAssignment(page, assignment.id);

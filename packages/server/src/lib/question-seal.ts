@@ -113,7 +113,8 @@ export async function sealedItemsFor(
   const candidateIds = [...assignmentIds].filter((id): id is string => !!id);
   if (candidateIds.length === 0) return success(emptySeal());
 
-  // 2. Keep the published ones whose window is open, and the items each of them binds.
+  // 2. Keep the published ones whose window is open — and the ones that already ended but still
+  //    hold an item back from the review (R10) — and the items each of them binds.
   const assignments = await supabase
     .from('teacher_assignments')
     .select('id, start_time, deadline, closed_at')
@@ -121,22 +122,24 @@ export async function sealedItemsFor(
     .eq('status', 'published');
   if (assignments.error) return mapSupabaseError(assignments.error);
 
-  const open = dbRows(assignments.data).filter((row) => isWindowOpen(row, now));
-  if (open.length === 0) return success(emptySeal());
+  const windows = dbRows(assignments.data);
+  const live = windows.filter((row) => isWindowOpen(row, now));
+  if (live.length === 0) return success(emptySeal());
 
   const links = await supabase
     .from('assignment_questions')
     .select('assignment_id, question_id')
     .in(
       'assignment_id',
-      open.map((row) => row.id),
+      windows.map((row) => row.id),
     );
   if (links.error) return mapSupabaseError(links.error);
 
-  const closeByAssignment = new Map(open.map((row) => [row.id, effectiveCloseAt(row)]));
+  const closeByAssignment = new Map(live.map((row) => [row.id, effectiveCloseAt(row)]));
   const seal = emptySeal();
   for (const link of dbRows(links.data)) {
     if (!link.question_id || !link.assignment_id) continue;
+
     seal.ids.add(link.question_id);
     seal.closesAt.set(
       link.question_id,
