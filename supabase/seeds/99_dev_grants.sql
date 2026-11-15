@@ -46,6 +46,14 @@ GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, sna
                 withhold_from_review, released_at)
   ON public.assignment_questions TO authenticated;
 
+-- `model_answer` is the open item's answer (#1173): the blanket GRANT above would re-open it on
+-- every reset, so the reader columns come back without it. `explanation` stays as it is (#1180).
+REVOKE SELECT ON public.questions FROM authenticated, anon;
+GRANT SELECT (id, created_by, type, content, explanation, created_at, updated_at,
+              organization_id, search_vector, visibility, bank_id, status, version)
+  ON public.questions TO authenticated;
+
+
 -- ==========================================
 -- Read-only tables: written by the admin app (service role) and seeds (postgres)
 -- only. Keep SELECT for authenticated.

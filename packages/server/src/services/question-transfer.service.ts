@@ -139,7 +139,8 @@ export class QuestionTransferService {
     // caller is not a member of a stale/forged id).
     let owned = supabase
       .from('questions')
-      .select('*', { count: 'exact', head: true })
+      // `*` would need SELECT on the revoked `model_answer` (#1173); the count needs one column.
+      .select('id', { count: 'exact', head: true })
       .eq('created_by', ctx.userId)
       .neq('status', 'deleted');
     owned = organizationId

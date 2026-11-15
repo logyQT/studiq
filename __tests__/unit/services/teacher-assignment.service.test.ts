@@ -2671,7 +2671,7 @@ describe('TeacherAssignmentService', () => {
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('falls back to total_questions when total_points is 0 or null', async () => {
+    it('keeps a 0 denominator and falls back to total_questions only when total_points is null', async () => {
       const attempts = [
         {
           id: 'attempt-1',
@@ -2697,8 +2697,10 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.exportAnswers(assignmentId, undefined, ctx);
 
+      // `0` is the real denominator of a sheet of open items (R16: ungraded items are excluded),
+      // so only a missing value may fall back to the question count.
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.map((row) => row.score)).toEqual(['5/8', '3/8']);
+      if (result.success) expect(result.data.map((row) => row.score)).toEqual(['5/0', '3/8']);
     });
 
     it('returns an empty list when there are no attempts', async () => {

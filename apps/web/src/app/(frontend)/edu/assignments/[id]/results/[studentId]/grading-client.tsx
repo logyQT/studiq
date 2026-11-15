@@ -33,6 +33,7 @@ interface StudentAnswers {
       content: string;
       type: string;
       explanation: string | null;
+      model_answer?: string | null;
       question_answers: Array<{
         id: string;
         content: string;
@@ -217,6 +218,14 @@ export default function StudentGradingClient() {
                 {aq.question.explanation && (
                   <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
                     {t('explanation', { text: aq.question.explanation })}
+                  </p>
+                )}
+
+                {/* An open item has no key to explain, so the grader reads the model answer
+                    instead (#1173, R16). */}
+                {!isAutoGraded && aq.question.model_answer && (
+                  <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                    {t('model_answer', { text: aq.question.model_answer })}
                   </p>
                 )}
 

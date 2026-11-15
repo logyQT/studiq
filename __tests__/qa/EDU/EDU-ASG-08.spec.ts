@@ -344,8 +344,9 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
     const row = resultRow(page, student.email);
     await expect(row, 'the submitted attempt is listed').toBeVisible();
-    // One point for the correctly answered closed question, three in total.
-    await expect(row.locator('td').nth(2), 'the score before grading').toHaveText('1/3');
+    // One point for the correctly answered closed question; the open item is ungraded and stays
+    // outside the denominator (#1173, R16), so the sheet is out of two until it is graded.
+    await expect(row.locator('td').nth(2), 'the score before grading').toHaveText('1/2');
     await expect(row.getByText(COPY.submitted, { exact: true })).toBeVisible();
     await expect(row.getByText(COPY.graded, { exact: true })).toHaveCount(0);
 
@@ -356,7 +357,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
     // ── Step 2: „Oceń ucznia” shows the answers and the uploaded photo ───────
     await expect(page.getByRole('heading', { name: COPY.gradingTitle })).toBeVisible();
-    await expect(content(page).getByText('Wynik: 1/3', { exact: true })).toBeVisible();
+    await expect(content(page).getByText('Wynik: 1/2', { exact: true })).toBeVisible();
 
     // Closed question answered correctly: „Poprawna” + the answer *texts*.
     const correctCard = questionCard(page, closedCorrectContent);
@@ -440,6 +441,9 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await saveButton.click();
     expect((await saved).status(), 'PUT the grade').toBe(200);
 
+    // A reload proves the grade persisted, and it re-reads the denominator: the graded open
+    // answer now counts (#1173), so the sheet is out of three.
+    await page.reload();
     await expect(
       content(page).getByText('Wynik: 2/3 (ocenione)', { exact: true }),
       'the score includes the graded open answer',
