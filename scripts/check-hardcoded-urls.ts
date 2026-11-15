@@ -13,7 +13,7 @@
  * Usage: `bun scripts/check-hardcoded-urls.ts`
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 const LOCAL_URL_RE = /\b(?:localhost|127\.0\.0\.1):(?:3000|3010|4000|4010|54321|54421)\b/g;
@@ -39,7 +39,8 @@ const violations = new Map<string, { line: number; url: string }[]>();
 for (const root of roots) {
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) continue;
   for (const file of walk(root)) {
-    if (ALLOWED_FILES.has(file)) continue;
+    // `walk` joins with the platform separator; the allowlist is written with `/`.
+    if (ALLOWED_FILES.has(file.split(sep).join('/'))) continue;
     readFileSync(file, 'utf8')
       .split('\n')
       .forEach((text, index) => {
