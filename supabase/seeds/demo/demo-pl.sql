@@ -567,7 +567,9 @@ FROM (VALUES
 ) AS b(bank_id, start_ord, author)
 CROSS JOIN LATERAL generate_series(1, 44) AS g(n);
 
-INSERT INTO public.questions (id, organization_id, created_by, type, content, explanation, visibility, bank_id, created_at)
+-- An open item's teaching artefact is its model answer (#1173, R16); the demo pool keeps that
+-- text in `explanation`, so it is copied across for the open rows.
+INSERT INTO public.questions (id, organization_id, created_by, type, content, explanation, model_answer, visibility, bank_id, created_at)
 SELECT
   m.question_id,
   'e0000000-0000-4000-8000-000000000001',
@@ -575,6 +577,7 @@ SELECT
   p.qtype::public.question_type,
   p.content,
   p.explanation,
+  CASE WHEN p.qtype = 'open' THEN p.explanation END,
   'group',
   m.bank_id,
   now() - ((m.slot / 3) || ' days')::interval
@@ -712,6 +715,7 @@ SET snapshot = jsonb_build_object(
     ),
     snapshot_key = jsonb_build_object(
       'explanation', q.explanation,
+      'modelAnswer', q.model_answer,
       'correctOptionIds', (
         SELECT COALESCE(jsonb_agg(o.id), '[]'::jsonb)
         FROM public.question_options o

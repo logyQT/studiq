@@ -112,7 +112,9 @@ export class QuestionController {
     const question = await this.service.update(id, parsed.data, ctx, bankVisibility);
 
     if (isFailure(question)) {
-      return controllerResponse.error(question.error);
+      // The authoring rules are judged on the merged item inside the service, so their per-field
+      // issues travel with the failure and have to reach the client like a schema 422 does.
+      return controllerResponse.error(question.error, question.details);
     }
 
     return controllerResponse.success(question.data);

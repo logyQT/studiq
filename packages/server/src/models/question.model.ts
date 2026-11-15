@@ -1,8 +1,22 @@
+import {
+  EXPLANATION_MAX_LENGTH,
+  MODEL_ANSWER_MAX_LENGTH,
+  questionTextIssues,
+} from '@studiq/server/lib/question-explanation';
 import { groupsParamSchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
 export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'open']);
+
+/** The authoring artefact of a choice item: required, bounded, and checked by R17. */
+const ExplanationField = z.string().max(EXPLANATION_MAX_LENGTH, {
+  error: ValidationErrorCode.TOO_LONG,
+});
+/** The authoring artefact of an open item, which has no key to explain. */
+const ModelAnswerField = z.string().max(MODEL_ANSWER_MAX_LENGTH, {
+  error: ValidationErrorCode.TOO_LONG,
+});
 
 /**
  * Query of `GET /api/v1/questions`. Without `page` the endpoint keeps answering with the
@@ -37,7 +51,8 @@ export const CreateQuestionSchema = registry.register(
         .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
         .min(1, { error: ValidationErrorCode.TOO_SHORT })
         .max(255, { error: ValidationErrorCode.TOO_LONG }),
-      explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      explanation: ExplanationField.optional(),
+      modelAnswer: ModelAnswerField.optional(),
       answers: z
         .array(
           z.object({
@@ -55,9 +70,23 @@ export const CreateQuestionSchema = registry.register(
         )
         .default([]),
     })
-    .refine((data) => data.type === 'open' || data.answers.length > 0, {
-      error: ValidationErrorCode.INVALID_INPUT,
-      path: ['answers'],
+    .superRefine((data, ctx) => {
+      // R16/R17: the item's artefact is part of its validity, not a form nicety.
+      for (const issue of questionTextIssues({
+        type: data.type,
+        explanation: data.explanation,
+        modelAnswer: data.modelAnswer,
+        options: data.answers.map((answer) => answer.content),
+      })) {
+        ctx.addIssue({ code: 'custom', message: issue.message, path: issue.path });
+      }
+      if (data.type !== 'open' && data.answers.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_INPUT,
+          path: ['answers'],
+        });
+      }
     }),
 );
 
@@ -74,7 +103,8 @@ export const UpdateQuestionSchema = registry.register(
         .min(1, { error: ValidationErrorCode.TOO_SHORT })
         .max(255, { error: ValidationErrorCode.TOO_LONG })
         .optional(),
-      explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      explanation: ExplanationField.optional(),
+      modelAnswer: ModelAnswerField.optional(),
       answers: z
         .array(
           z.object({
@@ -118,6 +148,8 @@ export interface Question {
   type: 'mcq' | 'true_false' | 'open';
   content: string;
   explanation: string | null;
+  /** The open item's model answer; only a caller who may read the key receives it. */
+  model_answer?: string | null;
   visibility?: 'personal' | 'group';
   difficulty: 'easy' | 'medium' | 'hard';
   created_at: string;

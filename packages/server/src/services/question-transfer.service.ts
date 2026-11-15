@@ -89,6 +89,7 @@ export class QuestionTransferService {
         type: row.type,
         content: row.content,
         ...(row.explanation ? { explanation: row.explanation } : {}),
+        ...(row.model_answer ? { modelAnswer: row.model_answer } : {}),
         topics: row.topics.map((topic) => topic.name),
         answers: answers.map((a) => ({ content: a.content, isCorrect: a.is_correct })),
       };
@@ -167,6 +168,7 @@ export class QuestionTransferService {
         type: question.type,
         content: question.content,
         explanation: question.explanation ?? null,
+        model_answer: question.modelAnswer ?? null,
         created_by: ctx.userId,
         organization_id: organizationId,
         visibility: bank.visibility,

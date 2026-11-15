@@ -51,6 +51,9 @@ const QUESTIONS_URL = '/api/v1/questions';
 /** The case's prerequisite bank and the question it creates. */
 const BANK_NAME = 'Fizyka';
 const QUESTION_CONTENT = 'Przyspieszenie ziemskie wynosi około 9,81 m/s².';
+// R16: a P/F item is a choice item, so it needs a teaching-length explanation as well.
+const EXPLANATION =
+  'Przyspieszenie ziemskie to około 9,81 m/s², bo tyle wynika z masy i promienia Ziemi; na Księżycu ta wartość jest ponad sześć razy mniejsza.';
 
 /** Polish copy the case quotes, as the current product renders it. */
 const COPY = {
@@ -63,6 +66,8 @@ const COPY = {
   /** Filter label for `open` in `QuestionBankDetail` (the form says „Otwarta odpowiedź”). */
   filterOpen: 'Otwarte',
   contentPlaceholder: 'Wpisz swoje pytanie...',
+  explanationPlaceholder:
+    'Wyjaśnij tok rozumowania: dlaczego ta odpowiedź jest poprawna i jaki dystraktor studenci mylą najczęściej...',
   answer1: 'Odpowiedź 1',
   answer2: 'Odpowiedź 2',
   trueLabel: 'Prawda',
@@ -104,6 +109,7 @@ interface Question {
   type: string;
   content: string;
   bank_id: string;
+  explanation: string | null;
   question_answers: QuestionAnswer[];
 }
 
@@ -246,6 +252,7 @@ test.describe('@case:EDU-Q-03 @area:EDU @prio:P2 true/false question', () => {
 
     // --- Step 2: content, mark „Fałsz” as correct, save -----------------------
     await dialog.getByPlaceholder(COPY.contentPlaceholder).fill(QUESTION_CONTENT);
+    await dialog.getByPlaceholder(COPY.explanationPlaceholder).fill(EXPLANATION);
     await radios.nth(1).check();
     await expect(radios.nth(1)).toBeChecked();
     await expect(radios.nth(0)).not.toBeChecked();
@@ -272,6 +279,7 @@ test.describe('@case:EDU-Q-03 @area:EDU @prio:P2 true/false question', () => {
     if (!saved) throw new Error(`${CASE} the created question is not stored`);
     expect(saved.type, 'the saved type is P/F').toBe('true_false');
     expect(saved.bank_id, 'the question belongs to „Fizyka”').toBe(bank.id);
+    expect(saved.explanation, 'the explanation is stored').toBe(EXPLANATION);
 
     const answers = [...saved.question_answers].toSorted((a, b) => a.order_index - b.order_index);
     expect(

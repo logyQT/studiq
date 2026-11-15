@@ -79,6 +79,9 @@ const COPY = {
 const QUESTIONS = {
   mcq: {
     content: 'Która planeta jest największa?',
+    // R16/R17: every choice item carries a teaching explanation.
+    explanation:
+      'Jowisz jest największą planetą Układu Słonecznego, bo jego masa jest ponad dwa razy większa od masy wszystkich pozostałych planet razem.',
     answers: [
       { text: 'Jowisz', correct: true },
       { text: 'Mars', correct: false },
@@ -87,10 +90,14 @@ const QUESTIONS = {
   },
   tf: {
     content: 'Ziemia jest trzecią planetą od Słońca.',
+    explanation:
+      'Merkury i Wenus krążą bliżej Słońca niż Ziemia, dlatego nasza planeta jest trzecia w kolejności od gwiazdy, a nie druga.',
   },
   open: {
     content: 'Opisz cykl wodny.',
-    explanation: 'Parowanie, kondensacja, opad i spływ.',
+    // R16: an open item has no key, so its artefact is a model answer.
+    modelAnswer:
+      'Woda paruje z mórz i lądów, skrapla się w chmury, spada jako opad i wraca do zbiorników, po czym obieg zaczyna się od nowa.',
   },
 } as const;
 
@@ -112,6 +119,7 @@ interface QuestionRow {
   content: string;
   type: 'mcq' | 'true_false' | 'open';
   explanation: string | null;
+  model_answer?: string | null;
   topics?: { id: string; name: string }[];
   question_answers?: { content: string; is_correct: boolean; order_index: number }[];
 }
@@ -199,15 +207,22 @@ async function selectType(page: Page, label: string): Promise<void> {
   await expect(dialog(page).locator('[data-slot="select-trigger"]')).toContainText(label);
 }
 
+/** Fill the choice item's explanation, or the open item's model answer. */
+async function fillArtefact(
+  page: Page,
+  kind: 'explanation' | 'modelAnswer',
+  text: string,
+): Promise<void> {
+  const placeholder =
+    kind === 'explanation'
+      ? 'Wyjaśnij tok rozumowania: dlaczego ta odpowiedź jest poprawna i jaki dystraktor studenci mylą najczęściej...'
+      : 'Napisz, co powinna zawierać dobra odpowiedź na to pytanie otwarte...';
+  await dialog(page).locator(`textarea[placeholder="${placeholder}"]`).fill(text);
+}
+
 /** Fill the question's content and submit the dialog. */
-async function saveQuestion(page: Page, content: string, explanation?: string): Promise<void> {
-  const form = dialog(page);
-  await form.locator('textarea[placeholder="Wpisz swoje pytanie..."]').fill(content);
-  if (explanation) {
-    await form
-      .locator('textarea[placeholder="Wyjaśnij, dlaczego odpowiedź jest poprawna..."]')
-      .fill(explanation);
-  }
+async function saveQuestion(page: Page, content: string): Promise<void> {
+  await dialog(page).locator('textarea[placeholder="Wpisz swoje pytanie..."]').fill(content);
   await submitButton(page).click();
   await expect(toast(page, COPY.questionCreated), 'the „Pytanie utworzone” toast').toBeVisible();
   await expect(dialog(page), 'the question dialog closes').toHaveCount(0);
@@ -290,6 +305,8 @@ test.describe('@case:STU-32 @area:STU @prio:P2 own question bank and questions',
       await form.locator(`input[placeholder="Odpowiedź ${index + 1}"]`).fill(answer.text);
     }
 
+    await fillArtefact(page, 'explanation', QUESTIONS.mcq.explanation);
+
     // Exactly one correct answer: the first radio.
     await form.locator('input[type="radio"]').first().check();
     await expect(form.locator('input[type="radio"]').first()).toBeChecked();
@@ -313,6 +330,7 @@ test.describe('@case:STU-32 @area:STU @prio:P2 own question bank and questions',
     await expect(tfAnswers.nth(1), 'the second option').toHaveValue(COPY.falseLabel);
     await expect(form.locator('input[type="radio"]').first(), '„Prawda” is correct').toBeChecked();
 
+    await fillArtefact(page, 'explanation', QUESTIONS.tf.explanation);
     await saveQuestion(page, QUESTIONS.tf.content);
 
     const tfRow = questionRow(page, QUESTIONS.tf.content);
@@ -320,13 +338,14 @@ test.describe('@case:STU-32 @area:STU @prio:P2 own question bank and questions',
     await expect(tfRow).toContainText(COPY.badgeTf);
     await expect(tfRow.locator('td').nth(3)).toHaveText('2');
 
-    // --- Step 3c: Otwarta odpowiedź with an explanation --------------------
+    // --- Step 3c: Otwarta odpowiedź with a model answer ---------------------
     form = await openQuestionDialog(page);
     await selectType(page, COPY.typeOpen);
     // An open question has no answer inputs at all.
     await expect(form.locator('input[placeholder^="Odpowiedź"]'), 'no answer rows').toHaveCount(0);
 
-    await saveQuestion(page, QUESTIONS.open.content, QUESTIONS.open.explanation);
+    await fillArtefact(page, 'modelAnswer', QUESTIONS.open.modelAnswer);
+    await saveQuestion(page, QUESTIONS.open.content);
 
     const openRow = questionRow(page, QUESTIONS.open.content);
     await expect(openRow, 'the open question is in the table').toBeVisible();
@@ -362,8 +381,8 @@ test.describe('@case:STU-32 @area:STU @prio:P2 own question bank and questions',
 
     const open = questions.find((question) => question.content === QUESTIONS.open.content);
     expect(open?.type, 'open type').toBe('open');
-    expect(open?.explanation, 'the open question keeps its explanation').toBe(
-      QUESTIONS.open.explanation,
+    expect(open?.model_answer, 'the open question keeps its model answer').toBe(
+      QUESTIONS.open.modelAnswer,
     );
     expect(open?.question_answers ?? [], 'an open question stores no answers').toHaveLength(0);
 

@@ -161,7 +161,12 @@
     "VALIDATION_UUID_INVALID": "Invalid identifier.",
     "VALIDATION_TOO_SHORT": "Value is too short.",
     "VALIDATION_TOO_LONG": "Value is too long.",
-    "VALIDATION_INVALID_ROLE": "Invalid user role."
+    "VALIDATION_INVALID_ROLE": "Invalid user role.",
+    "VALIDATION_EXPLANATION_REQUIRED": "A choice question needs an explanation.",
+    "VALIDATION_EXPLANATION_TOO_SHORT": "The explanation needs at least 80 characters.",
+    "VALIDATION_EXPLANATION_NAMES_OPTION": "The explanation may not point at an answer by letter or number.",
+    "VALIDATION_EXPLANATION_QUOTES_OPTION": "The explanation may not repeat an option's wording.",
+    "VALIDATION_MODEL_ANSWER_REQUIRED": "An open question needs a model answer."
   },
   "Navbar": {
     "logo": "StudiQ",
@@ -2760,8 +2765,22 @@
     "answer_placeholder": "Answer {index}",
     "add_answer": "Add Answer",
     "correct_answer_hint": "Select the radio button for the correct answer",
-    "explanation": "Explanation (optional)",
-    "explanation_placeholder": "Explain why the answer is correct...",
+    "explanation": "Explanation",
+    "explanation_placeholder": "Explain the reasoning: why this answer is right, and which distractor students confuse it with...",
+    "explanation_hint": "Students read this after the assessment closes. Explain the reasoning in your own words — do not point at an answer by letter, number or quote.",
+    "char_count": "{count} / {max} characters (minimum {min})",
+    "model_answer": "Model answer",
+    "model_answer_placeholder": "Write what a good answer to this open question should contain...",
+    "model_answer_hint": "An open question has no key, so students read this model answer after the close. Until manual grading exists the item stays out of the score.",
+    "required": "This field is required.",
+    "too_short": "The value is too short.",
+    "too_long": "The value is too long.",
+    "invalid": "The value is invalid.",
+    "explanation_required": "A choice question needs an explanation.",
+    "explanation_too_short": "The explanation needs at least 80 characters — explain the reasoning, do not just point at the answer.",
+    "explanation_names_option": "Do not point at an answer by letter or number (e.g. “B”, “the second one”). Explain the reasoning and name the distractor students confuse it with.",
+    "explanation_quotes_option": "Do not repeat an option's wording. Explain in your own words why the correct answer is right and what makes students pick the distractor.",
+    "model_answer_required": "An open question needs a model answer.",
     "topics_label": "Topics",
     "topics_placeholder": "Select topics...",
     "cancel": "Cancel",
@@ -3167,7 +3186,7 @@
     "no_attempt": "You did not submit an attempt. The answers are shown because the assessment is closed.",
     "model_answer": "Model answer",
     "model_answer_not_captured": "The model answer was not captured in the published version of this question.",
-    "ungraded_only": "You submitted {count} open questions — they are not graded yet, so there is no score."
+    "ungraded_only": "{count, plural, one {You submitted one open question — it is not graded yet, so there is no score.} other {You submitted # open questions — they are not graded yet, so there is no score.}}"
   },
   "AppQuizTakingPage": {
     "loading": "Loading…",

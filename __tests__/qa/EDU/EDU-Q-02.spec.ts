@@ -51,7 +51,10 @@ const BANK_NAME = 'Fizyka';
 const BANK_DESCRIPTION = 'Dział: kinematyka';
 const TOPIC_NAME = 'Kinematyka';
 const QUESTION_CONTENT = 'Ile wynosi przyspieszenie ziemskie?';
-const EXPLANATION = 'Przyspieszenie ziemskie wynosi około 9,81 m/s².';
+// R16/R17: the explanation is required for a choice item and has to teach the reasoning, so the
+// case's own step now writes a sentence about why the answer is right (and not a label).
+const EXPLANATION =
+  'Przyspieszenie ziemskie wynosi około 9,81 m/s², bo tyle wynika z masy i promienia Ziemi; pozostałe wartości dotyczą innych planet albo są błędne.';
 const ANSWERS = ['9,81 m/s²', '3,14 m/s²', '1,62 m/s²', '0 m/s²'] as const;
 /** Index of the answer the case marks with the radio. */
 const CORRECT_INDEX = 0;
@@ -65,7 +68,8 @@ const COPY = {
   contentPlaceholder: 'Wpisz swoje pytanie...',
   answersLabel: 'Odpowiedzi',
   addAnswer: 'Dodaj odpowiedź',
-  explanationPlaceholder: 'Wyjaśnij, dlaczego odpowiedź jest poprawna...',
+  explanationPlaceholder:
+    'Wyjaśnij tok rozumowania: dlaczego ta odpowiedź jest poprawna i jaki dystraktor studenci mylą najczęściej...',
   topicsPlaceholder: 'Wybierz tematy...',
   create: 'Utwórz',
   created: 'Pytanie utworzone',

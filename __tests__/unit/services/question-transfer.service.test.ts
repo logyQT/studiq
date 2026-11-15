@@ -128,9 +128,13 @@ const ctx: RequestContext = {
 /** The same caller with no organisation selected in the app. */
 const personalCtx: RequestContext = { ...ctx, activeOrgId: null };
 
+const TEACHING =
+  'Warszawa jest stolicą od 1596 roku, gdy przeniesiono tu stolicę z Krakowa, i pozostaje nią do dziś.';
+
 const q = (over: Partial<TransferQuestion> = {}): TransferQuestion => ({
   type: 'mcq',
   content: 'Q',
+  explanation: TEACHING,
   topics: [],
   answers: [
     { content: 'A', isCorrect: true },
@@ -149,7 +153,8 @@ const listed = (rows: unknown[], total = rows.length) => {
 const row = (over: Record<string, unknown> = {}) => ({
   type: 'mcq',
   content: 'Q',
-  explanation: null,
+  explanation: TEACHING,
+  model_answer: null,
   topics: [],
   question_answers: [
     { content: 'A', is_correct: true, order_index: 0 },
@@ -174,14 +179,22 @@ describe('QuestionTransferService.exportBank', () => {
           {
             type: 'mcq',
             content: 'Q1',
-            explanation: 'because',
+            explanation: TEACHING,
+            model_answer: null,
             topics: [{ name: 'Mechanika' }],
             question_answers: [
               { content: 'B', is_correct: false, order_index: 1 },
               { content: 'A', is_correct: true, order_index: 0 },
             ],
           },
-          { type: 'open', content: 'Q2', explanation: null, topics: [], question_answers: [] },
+          {
+            type: 'open',
+            content: 'Q2',
+            explanation: null,
+            model_answer: 'Woda paruje, skrapla się w chmury i wraca na ziemię jako opad.',
+            topics: [],
+            question_answers: [],
+          },
         ],
       }),
     );
@@ -195,14 +208,20 @@ describe('QuestionTransferService.exportBank', () => {
         {
           type: 'mcq',
           content: 'Q1',
-          explanation: 'because',
+          explanation: TEACHING,
           topics: ['Mechanika'],
           answers: [
             { content: 'A', isCorrect: true },
             { content: 'B', isCorrect: false },
           ],
         },
-        { type: 'open', content: 'Q2', topics: [], answers: [] },
+        {
+          type: 'open',
+          content: 'Q2',
+          modelAnswer: 'Woda paruje, skrapla się w chmury i wraca na ziemię jako opad.',
+          topics: [],
+          answers: [],
+        },
       ],
       notReimportable: 0,
     });

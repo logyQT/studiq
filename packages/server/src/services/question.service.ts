@@ -9,6 +9,7 @@ import {
   type QuestionKeyResource,
   withAnswerKey,
 } from '@studiq/server/lib/question-keys';
+import { questionTextIssues } from '@studiq/server/lib/question-explanation';
 import { OPTION_READER_COLUMNS } from '@studiq/server/lib/question-view';
 import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
@@ -128,6 +129,7 @@ export class QuestionService {
         type: data.type,
         content: data.content,
         explanation: data.explanation ?? null,
+        model_answer: data.modelAnswer ?? null,
         created_by: ctx.userId,
         organization_id: ctx.activeOrgId,
         visibility,
@@ -319,10 +321,36 @@ export class QuestionService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
+    // R16/R17 are rules about the item, not about the patch: an update that renames an option can
+    // make an untouched explanation illegal, and one that does not resend the explanation still
+    // has to be judged against the stored one. The check therefore runs on the merged item, after
+    // proving the caller authors it, and answers the same per-field issues a create does.
+    const current = await this.loadTextState(supabase, id, ctx);
+    if (isFailure(current)) return current;
+
+    const type = data.type ?? current.data.type;
+    const issues = questionTextIssues({
+      type,
+      explanation: data.explanation !== undefined ? data.explanation : current.data.explanation,
+      // A stored model answer is not readable through the caller's client (it is revoked from
+      // `authenticated`), so a patch that omits it is judged against the key reader's copy —
+      // otherwise renaming an open item would demand its answer back. `loadTextState` proved the
+      // caller authors this item, which is what makes the service-role read safe here.
+      modelAnswer:
+        data.modelAnswer !== undefined
+          ? data.modelAnswer
+          : type === 'open'
+            ? (await readQuestionKeys([id])).get(id)?.modelAnswer
+            : undefined,
+      options: data.answers ? data.answers.map((answer) => answer.content) : current.data.options,
+    });
+    if (issues.length > 0) return failure('UNPROCESSABLE_ENTITY', issues);
+
     const updateFields: Database['public']['Tables']['questions']['Update'] = {};
     if (data.type) updateFields.type = data.type;
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
+    if (data.modelAnswer !== undefined) updateFields.model_answer = data.modelAnswer;
 
     let updateQuery = supabase
       .from('questions')
@@ -399,6 +427,41 @@ export class QuestionService {
     if (!data || (Array.isArray(data) && data.length === 0)) return failure('FORBIDDEN');
 
     return success(undefined);
+  }
+
+  /**
+   * The author's stored item, in the shape the authoring rules judge: type, explanation and option
+   * texts. Scoped to the caller exactly like the write, so a foreign item is `FORBIDDEN` here and
+   * not only at the update.
+   */
+  private async loadTextState(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    ctx: RequestContext,
+  ): Promise<
+    ServiceResult<{
+      type: Database['public']['Enums']['question_type'];
+      explanation: string | null;
+      options: string[];
+    }>
+  > {
+    let query = supabase
+      .from('questions')
+      .select(`type, explanation, question_answers:question_options(${OPTION_READER_COLUMNS})`)
+      .eq('id', id)
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
+    if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+    const { data, error } = await query.maybeSingle();
+    if (error) return toDbFailure(error);
+    if (!data) return failure('FORBIDDEN');
+
+    return success({
+      type: data.type,
+      explanation: data.explanation,
+      options: dbRows(data.question_answers).map((option) => option.content),
+    });
   }
 
   /**

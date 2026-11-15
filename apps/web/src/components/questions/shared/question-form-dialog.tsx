@@ -22,13 +22,25 @@ import {
 } from '@studiq/ui';
 import { Plus, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   normalizeTrueFalseAnswers,
-  type QuestionFormError,
+  QUESTION_FORM_LIMITS,
+  type QuestionFormErrors,
+  type QuestionFormPayload,
+  type QuestionFormResult,
   validateQuestionForm,
 } from '@/lib/question-form';
 import { SrLabel } from '@/components/shared/sr-label';
+
+/** One field's problem, tied to its input by position and announced as an alert. */
+function FieldError({ children }: { children: ReactNode }) {
+  return (
+    <p className="mt-1 text-sm font-medium text-destructive" role="alert">
+      {children}
+    </p>
+  );
+}
 
 interface AnswerForm {
   content: string;
@@ -42,14 +54,11 @@ interface QuestionFormDialogProps {
   bankId: string;
   /** Topic options for the picker, fetched by the screen from `GET /api/v1/topics`. */
   topics?: Topic[];
-  onSubmit: (data: {
-    content: string;
-    type: string;
-    explanation?: string;
-    topicIds?: string[];
-    bankId: string;
-    answers: { content: string; isCorrect: boolean; orderIndex: number }[];
-  }) => Promise<boolean>;
+  /**
+   * Saves the item. A refusal that names fields (the server's 422) renders under those fields
+   * instead of as a toast.
+   */
+  onSubmit: (data: QuestionFormPayload) => Promise<QuestionFormResult>;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -65,10 +74,12 @@ export function QuestionFormDialog({
   const [content, setContent] = useState('');
   const [type, setType] = useState<string>('mcq');
   const [explanation, setExplanation] = useState('');
+  const [modelAnswer, setModelAnswer] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [answers, setAnswers] = useState<AnswerForm[]>([{ content: '', isCorrect: false }]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<QuestionFormError | 'save_failed' | null>(null);
+  const [errors, setErrors] = useState<QuestionFormErrors>({});
+  const [saveFailed, setSaveFailed] = useState(false);
 
   // The teacher's T/F wording, remembered while the type is switched away so
   // `true_false → mcq → true_false` restores it. Reset whenever the dialog opens.
@@ -81,7 +92,8 @@ export function QuestionFormDialog({
 
   useEffect(() => {
     if (open) {
-      setError(null);
+      setErrors({});
+      setSaveFailed(false);
       tfDraftRef.current = null;
       if (initialValues) {
         const storedAnswers = initialValues.question_answers.map((a) => ({
@@ -91,6 +103,7 @@ export function QuestionFormDialog({
         setContent(initialValues.content);
         setType(initialValues.type);
         setExplanation(initialValues.explanation ?? '');
+        setModelAnswer(initialValues.model_answer ?? '');
         setTopicIds(initialValues.topics?.map((topic) => topic.id) ?? []);
         // Never re-translate stored wording: only pad missing legacy rows.
         setAnswers(
@@ -102,6 +115,7 @@ export function QuestionFormDialog({
         setContent('');
         setType('mcq');
         setExplanation('');
+        setModelAnswer('');
         setTopicIds([]);
         setAnswers([{ content: '', isCorrect: false }]);
       }
@@ -110,9 +124,10 @@ export function QuestionFormDialog({
 
   // Clear a stale inline message as soon as the user edits the form.
   useEffect(() => {
-    setError(null);
+    setErrors({});
+    setSaveFailed(false);
     // Every form field is listed on purpose: editing any of them must clear the stale error.
-  }, [content, type, explanation, answers, topicIds]);
+  }, [content, type, explanation, modelAnswer, answers, topicIds]);
 
   function addAnswer() {
     setAnswers([...answers, { content: '', isCorrect: false }]);
@@ -146,19 +161,21 @@ export function QuestionFormDialog({
   }
 
   async function handleSubmit() {
-    const validationError = validateQuestionForm({ type, content, answers });
-    if (validationError) {
-      setError(validationError);
+    const fieldErrors = validateQuestionForm({ type, content, explanation, modelAnswer, answers });
+    if (fieldErrors) {
+      setErrors(fieldErrors);
       return;
     }
 
-    setError(null);
+    setErrors({});
+    setSaveFailed(false);
     setSubmitting(true);
     try {
-      const saved = await onSubmit({
+      const result = await onSubmit({
         content: content.trim(),
         type,
         explanation: explanation.trim() || undefined,
+        modelAnswer: modelAnswer.trim() || undefined,
         topicIds,
         bankId,
         answers:
@@ -172,11 +189,16 @@ export function QuestionFormDialog({
                   orderIndex: i,
                 })),
       });
-      if (saved) onOpenChange(false);
+      if (!result.saved) {
+        if (result.errors) setErrors(result.errors);
+        else setSaveFailed(true);
+        return;
+      }
+      onOpenChange(false);
     } catch {
-      // Callers catch and return `false`, so this only guards a contract
+      // Callers catch and resolve with field errors, so this only guards a contract
       // violation — never leak the rejection as an unhandled one.
-      setError('save_failed');
+      setSaveFailed(true);
     } finally {
       setSubmitting(false);
     }
@@ -222,6 +244,7 @@ export function QuestionFormDialog({
               placeholder={t('question_placeholder')}
               rows={3}
             />
+            {errors.content && <FieldError>{t(errors.content)}</FieldError>}
           </div>
 
           {type !== 'open' && (
@@ -258,18 +281,46 @@ export function QuestionFormDialog({
                 </Button>
               )}
               <p className="text-xs text-muted-foreground mt-1">{t('correct_answer_hint')}</p>
+              {errors.answers && <FieldError>{t(errors.answers)}</FieldError>}
             </div>
           )}
 
-          <div>
-            <Label>{t('explanation')}</Label>
-            <Textarea
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-              placeholder={t('explanation_placeholder')}
-              rows={2}
-            />
-          </div>
+          {type === 'open' ? (
+            <div>
+              <Label>{t('model_answer')}</Label>
+              <Textarea
+                value={modelAnswer}
+                onChange={(e) => setModelAnswer(e.target.value)}
+                placeholder={t('model_answer_placeholder')}
+                rows={3}
+                aria-invalid={!!errors.modelAnswer}
+              />
+              <p className="text-xs text-muted-foreground mt-1">{t('model_answer_hint')}</p>
+              {errors.modelAnswer && <FieldError>{t(errors.modelAnswer)}</FieldError>}
+            </div>
+          ) : (
+            <div>
+              <Label>{t('explanation')}</Label>
+              <Textarea
+                value={explanation}
+                onChange={(e) => setExplanation(e.target.value)}
+                placeholder={t('explanation_placeholder')}
+                rows={3}
+                aria-invalid={!!errors.explanation}
+              />
+              <div className="mt-1 flex items-start justify-between gap-3">
+                <p className="text-xs text-muted-foreground">{t('explanation_hint')}</p>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {t('char_count', {
+                    count: explanation.length,
+                    min: QUESTION_FORM_LIMITS.explanationMin,
+                    max: QUESTION_FORM_LIMITS.explanationMax,
+                  })}
+                </span>
+              </div>
+              {errors.explanation && <FieldError>{t(errors.explanation)}</FieldError>}
+            </div>
+          )}
 
           <div>
             <Label className="mb-2 block">{t('topics_label')}</Label>
@@ -281,9 +332,9 @@ export function QuestionFormDialog({
             />
           </div>
         </div>
-        {error && (
+        {saveFailed && (
           <p className="text-sm font-medium text-destructive" role="alert">
-            {t(error)}
+            {t('save_failed')}
           </p>
         )}
         <DialogFooter>
