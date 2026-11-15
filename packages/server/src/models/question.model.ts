@@ -151,7 +151,6 @@ export interface Question {
   /** The open item's model answer; only a caller who may read the key receives it. */
   model_answer?: string | null;
   visibility?: 'personal' | 'group';
-  difficulty: 'easy' | 'medium' | 'hard';
   created_at: string;
   updated_at: string;
   question_answers: QuestionAnswer[];

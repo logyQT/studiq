@@ -173,7 +173,6 @@ describe('QuestionService', () => {
         {
           type: 'mcq',
           content: 'Q1',
-          difficulty: 'easy',
           answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
         },
         ctx,
@@ -303,7 +302,6 @@ describe('QuestionService', () => {
         {
           type: 'mcq',
           content: 'Q1',
-          difficulty: 'easy',
           answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
         },
         ctx,

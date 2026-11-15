@@ -27,7 +27,7 @@ describe('CreateQuestionSchema', () => {
       type: 'true_false',
       content: 'True or false?',
       explanation: TEACHING,
-      difficulty: 'easy',
+      topicIds: ['00000000-0000-4000-8020-000000000002'],
       answers: [{ content: 'True', isCorrect: true, orderIndex: 0 }],
     });
     expect(result.success).toBe(true);
