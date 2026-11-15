@@ -105,6 +105,20 @@
      (0.70 vs 0.25) rather than the same number reused. */
   --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.7'%20intercept%3D'0.1500'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
 
+  /*
+   * Paper dither: turbulence at 64px and one octave — fine enough to read as
+   * noise rather than tooth — pushed through a `table` transfer that linearises
+   * the filter's bell-shaped distribution, so within the band the tile is uniform
+   * instead of piled up around 0.5. Composited with `overlay` on top of the tone
+   * layers, that jitters each ramp pixel by at most half an 8-bit step, which is
+   * what turns a quantised tread into a continuous falloff. Per-channel bands,
+   * because `overlay` answers to the headroom each channel has to its own
+   * extreme: R sits nearest white in the light paper and moves least, B furthest.
+   * The logit-shaped values are the normal CDF (σ≈0.106, measured off the tile)
+   * scaled into ±band/2.
+   */
+  --paper-dither: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'64'%20height%3D'64'%3E%3Cfilter%20id%3D'd'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'1'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'table'%20tableValues%3D'0.485%200.485001%200.485006%200.485048%200.485275%200.486154%200.488575%200.493332%200.5%200.506668%200.511425%200.513846%200.514725%200.514952%200.514994%200.514999%200.515'%2F%3E%3CfeFuncG%20type%3D'table'%20tableValues%3D'0.465%200.465001%200.465014%200.465112%200.465642%200.467692%200.473341%200.484441%200.5%200.515559%200.526659%200.532308%200.534358%200.534888%200.534986%200.534999%200.535'%2F%3E%3CfeFuncB%20type%3D'table'%20tableValues%3D'0.4725%200.472501%200.472511%200.472588%200.473005%200.474615%200.479053%200.487775%200.5%200.512225%200.520947%200.525385%200.526995%200.527412%200.527489%200.527499%200.5275'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'64'%20height%3D'64'%20filter%3D'url(%23d)'%2F%3E%3C%2Fsvg%3E");
+
   --radius: 0.75rem;
 
   /*
@@ -183,6 +197,12 @@
     --sidebar-ring: var(--ring);
     /* Same filter, different amplitude: soft-light lifts much harder on near-black. */
     --paper-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'180'%20height%3D'180'%3E%3Cfilter%20id%3D'g'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.55'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncG%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3CfeFuncB%20type%3D'linear'%20slope%3D'0.25'%20intercept%3D'0.3750'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'180'%20height%3D'180'%20filter%3D'url(%23g)'%2F%3E%3C%2Fsvg%3E");
+    /*
+     * Same dither, its own bands: `overlay` answers to `2b` below mid-grey, so a
+     * near-black backdrop needs a narrower band for the same half-step output,
+     * and a band wider than that would read as static on the dark paper.
+     */
+    --paper-dither: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'64'%20height%3D'64'%3E%3Cfilter%20id%3D'd'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%20color-interpolation-filters%3D'sRGB'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'1'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'matrix'%20values%3D'1%200%200%200%200%201%200%200%200%200%201%200%200%200%200%200%200%200%200%201'%2F%3E%3CfeComponentTransfer%3E%3CfeFuncR%20type%3D'table'%20tableValues%3D'0.46%200.460001%200.460016%200.460128%200.460734%200.463077%200.469532%200.482218%200.5%200.517782%200.530468%200.536923%200.539266%200.539872%200.539984%200.539999%200.54'%2F%3E%3CfeFuncG%20type%3D'table'%20tableValues%3D'0.4725%200.472501%200.472511%200.472588%200.473005%200.474615%200.479053%200.487775%200.5%200.512225%200.520947%200.525385%200.526995%200.527412%200.527489%200.527499%200.5275'%2F%3E%3CfeFuncB%20type%3D'table'%20tableValues%3D'0.485%200.485001%200.485006%200.485048%200.485275%200.486154%200.488575%200.493332%200.5%200.506668%200.511425%200.513846%200.514725%200.514952%200.514994%200.514999%200.515'%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D'64'%20height%3D'64'%20filter%3D'url(%23d)'%2F%3E%3C%2Fsvg%3E");
   }
 }
 
@@ -281,55 +301,142 @@
   }
 }
 
-/* The paper surface of the marketing shell: a light pool top-left, a warm shade
-   bottom-right, 100px of edge curl, and the grain — all behind type. Product
-   surfaces never carry this class, so /app, /edu and /manage are untouched.
-   Radii are fixed px rather than percentages so a long page grows a flat middle
-   instead of stretching the light into a wash.
+/* The paper surface of the shells: one lighting ramp, the grain and the dither,
+   all behind type. The marketing shells and the product shell (`DashboardLayout`)
+   both carry it.
+   The lighting is one `to bottom right` linear gradient rather than two pools.
+   Its iso-lines are straight, so no stop can curve into a band, and the ramp is
+   sampled off a quadratic ease at 14 and 22 stops: the ease is the shape with
+   the smallest slope step that still leaves zero slope at both ends, and the
+   stop count is set by the shortest surface — the phone inset, gradient line
+   about 930px — where the same 12px window covers a larger share of the ramp. A
+   quadratic — not a smootherstep — because the second derivative, not its
+   smoothness, is what a band reads: the quadratic's is 4 against the
+   smootherstep's 5.77.
+   The 28%-72% plateau is the paper's own tone. `to bottom right` puts the top-
+   right and bottom-left corners on the 50% line, so neither picks up light, and
+   the ramp is in percentages of the gradient line: every surface gets the same
+   share of it, where a px ramp would leave a short one unlit.
    `background-blend-mode` does not blend against `background-color` on its own,
-   so the last gradient layer is mandatory — without it the page greys out. The
-   order of that list is load-bearing: `soft-light` must be the 4th entry (the
-   grain blends with paper) and the tone layers composite over it with `normal`. */
+   so the last gradient layer is mandatory — without it the page greys out.
+   The order of that list is load-bearing: both textures sit ABOVE the ramp,
+   because the ramp's stops are opaque and would cover them. The dither is the
+   topmost entry so its `overlay` meets the tone stack the compositor is about to
+   round and spreads the 8-bit tread into sub-step jitter; `soft-light` is the
+   grain, one layer down.
+   There is deliberately no edge layer. Any shaped cue that has to reach the
+   viewport edge lands somewhere, and both a 100px ramp and a 240px eased one
+   were read as a vertical band down each side rather than as light: a band that
+   reads as a seam is not a lighting cue, so the ramp carries the sheet. */
 @utility bg-paper-grain {
   background-color: var(--background);
   background-image:
-    radial-gradient(1300px 1000px at 18% 0%, rgb(255 252 242 / 0.93), rgb(255 252 242 / 0) 68%),
-    radial-gradient(1500px 1200px at 92% 100%, rgb(106 86 46 / 0.093), rgb(106 86 46 / 0) 70%),
+    var(--paper-dither), var(--paper-grain),
     linear-gradient(
-      to right,
-      rgb(106 86 46 / 0.045),
-      rgb(106 86 46 / 0) 100px,
-      rgb(106 86 46 / 0) calc(100% - 100px),
-      rgb(106 86 46 / 0.045)
+      to bottom right,
+      rgb(255 252 242) 0%,
+      rgb(255 252 242) 2%,
+      rgb(255 252 242) 4%,
+      rgb(255 251 241) 6%,
+      rgb(254 251 241) 8%,
+      rgb(254 250 240) 10%,
+      rgb(253 249 239) 12%,
+      rgb(253 249 239) 14%,
+      rgb(252 248 238) 16%,
+      rgb(251 247 237) 18%,
+      rgb(251 246 236) 20%,
+      rgb(250 246 236) 22%,
+      rgb(250 245 235) 24%,
+      rgb(250 245 235) 26%,
+      rgb(250 245 235) 28%,
+      rgb(250 245 235) 72%,
+      rgb(250 245 235) 73.27%,
+      rgb(250 245 235) 74.55%,
+      rgb(250 244 234) 75.82%,
+      rgb(249 244 234) 77.09%,
+      rgb(249 243 233) 78.36%,
+      rgb(248 243 232) 79.64%,
+      rgb(247 242 232) 80.91%,
+      rgb(247 241 231) 82.18%,
+      rgb(246 240 229) 83.45%,
+      rgb(245 239 228) 84.73%,
+      rgb(244 238 227) 86%,
+      rgb(242 236 225) 87.27%,
+      rgb(241 235 224) 88.55%,
+      rgb(240 234 222) 89.82%,
+      rgb(240 233 221) 91.09%,
+      rgb(239 232 221) 92.36%,
+      rgb(238 232 220) 93.64%,
+      rgb(238 231 219) 94.91%,
+      rgb(237 231 219) 96.18%,
+      rgb(237 230 218) 97.45%,
+      rgb(237 230 218) 98.73%,
+      rgb(237 230 218) 100%
     ),
-    var(--paper-grain), linear-gradient(var(--background), var(--background));
+    linear-gradient(var(--background), var(--background));
   background-size:
-    auto,
-    auto,
-    auto,
+    64px 64px,
     180px 180px,
+    auto,
     auto;
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat;
-  background-blend-mode: normal, normal, normal, soft-light, normal;
+  background-repeat: repeat, repeat, no-repeat, no-repeat;
+  background-blend-mode: overlay, soft-light, normal, normal;
 
   .dark & {
     background-image:
-      radial-gradient(1200px 900px at 20% 0%, rgb(255 250 236 / 0.043), rgb(255 250 236 / 0) 66%),
-      radial-gradient(1500px 1100px at 90% 100%, rgb(0 0 0 / 0.357), rgb(0 0 0 / 0) 70%),
+      var(--paper-dither), var(--paper-grain),
       linear-gradient(
-        to right,
-        rgb(0 0 0 / 0.238),
-        rgb(0 0 0 / 0) 100px,
-        rgb(0 0 0 / 0) calc(100% - 100px),
-        rgb(0 0 0 / 0.238)
+        to bottom right,
+        rgb(16 22 36) 0%,
+        rgb(16 22 36) 2%,
+        rgb(16 22 36) 4%,
+        rgb(15 21 35) 6%,
+        rgb(14 20 35) 8%,
+        rgb(13 19 34) 10%,
+        rgb(12 18 33) 12%,
+        rgb(11 17 32) 14%,
+        rgb(9 16 30) 16%,
+        rgb(8 15 29) 18%,
+        rgb(7 14 28) 20%,
+        rgb(6 13 28) 22%,
+        rgb(5 12 27) 24%,
+        rgb(5 12 27) 26%,
+        rgb(5 12 27) 28%,
+        rgb(5 12 27) 72%,
+        rgb(5 12 27) 73.27%,
+        rgb(5 12 27) 74.55%,
+        rgb(5 12 27) 75.82%,
+        rgb(5 12 26) 77.09%,
+        rgb(5 11 26) 78.36%,
+        rgb(5 11 26) 79.64%,
+        rgb(5 11 25) 80.91%,
+        rgb(4 11 24) 82.18%,
+        rgb(4 10 24) 83.45%,
+        rgb(4 10 23) 84.73%,
+        rgb(4 10 22) 86%,
+        rgb(4 9 21) 87.27%,
+        rgb(4 9 20) 88.55%,
+        rgb(4 8 20) 89.82%,
+        rgb(3 8 19) 91.09%,
+        rgb(3 8 18) 92.36%,
+        rgb(3 8 18) 93.64%,
+        rgb(3 7 18) 94.91%,
+        rgb(3 7 17) 96.18%,
+        rgb(3 7 17) 97.45%,
+        rgb(3 7 17) 98.73%,
+        rgb(3 7 17) 100%
       ),
-      var(--paper-grain), linear-gradient(var(--background), var(--background));
+      linear-gradient(var(--background), var(--background));
   }
 
   @media (prefers-contrast: more) {
     &,
     .dark & {
       background-image: linear-gradient(var(--background), var(--background));
+      /* One layer, so the first entry of each list would otherwise apply to it. */
+      background-size: auto;
+      background-repeat: no-repeat;
+      background-blend-mode: normal;
     }
   }
 
