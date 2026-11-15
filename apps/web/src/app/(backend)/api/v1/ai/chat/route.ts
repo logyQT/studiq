@@ -8,6 +8,7 @@ import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract
 import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
 import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
 import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/generate-flashcards.tool';
+import { generateNotesTool } from '@studiq/server/agents/tools/generic/generate-notes.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
 import { commandInstruction, commandOfLastMessage } from '@studiq/server/lib/ai/commands';
@@ -115,6 +116,7 @@ ${commandInstruction(command)}`
         extract_concepts: extractConceptsTool,
         evaluate_quality: evaluateQualityTool,
         generate_flashcards: generateFlashcardsTool,
+        generate_notes: generateNotesTool,
         finish: finishTool,
       },
       stopWhen: [hasToolCall('finish'), hasToolCall('ask_user'), stepCountIs(30)],

@@ -62,9 +62,29 @@ Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispa
 | `webfetch`         | Fetch content from URL                            | External HTTP           | None      |
 | `extract_concepts` | Extract key terms from material                   | Trace log               | None      |
 | `evaluate_quality` | Review output quality                             | No-op (always passes)   | None      |
+| `generate_notes`   | Write structured study notes (see below)          | Trace log               | None      |
 | `call_agent`       | Delegate to sub-agent                             | Trace log               | None      |
 | `batch_call_agent` | Parallel sub-agent dispatch (concurrency control) | Trace log               | None      |
 | `finish`           | Complete and return results                       | Trace log               | None      |
+
+### Study notes (`generate_notes`)
+
+The model writes the notes in the tool call itself (`title`, ordered `sections[{heading, content}]`,
+optional `keyTerms[{term, definition}]` and `summary`), the same shape as `generate_flashcards`: the
+tool validates and echoes them, it does not call a model. `parseNotes` in `services/ai-utils.ts` is
+tolerant (trims, drops a section with neither a heading nor a body and a term without a name, accepts
+a JSON string) and runs twice: on the call's arguments in the tool, and on its output in the client
+(`notesFromToolOutput` in `lib/ai-notes.ts`), so a stored transcript is read like a fresh one. A call
+that leaves neither a section nor a summary answers `{ type: 'error' }` and the model writes it again.
+
+v1 is **copy-only**: there is no notes table and nothing is persisted. `notes-block.tsx` renders the
+sections, the key terms and the summary, with a copy button (Markdown, labels in the UI language).
+"Make flashcards from these notes" hands the key terms (or the sections, when there are no terms) to
+the existing `FlashcardBlock`, which owns the one save path; nothing is written before the user saves
+there. The raw tool call is hidden once it succeeded and stays visible while it runs and when it fails.
+
+`ChatMessage.result.type` is the union `ChatResultType` (`'flashcards' | 'notes'`); a new kind of
+result is a new member, so the renderer cannot miss it.
 
 ### FlashcardAgent — 5 tools
 

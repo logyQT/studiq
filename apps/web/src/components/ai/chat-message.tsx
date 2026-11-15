@@ -1,5 +1,6 @@
 'use client';
 
+import { parseNotes } from '@studiq/server/services/ai-utils';
 import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
 import { memo, useState } from 'react';
 import {
@@ -7,6 +8,7 @@ import {
   type FlashcardData,
   FlashcardBlock,
 } from '@/components/ai/flashcard-block';
+import { NotesBlock } from '@/components/ai/notes-block';
 import { PlanBlock } from '@/components/ai/plan-block';
 import { QuestionBlock } from '@/components/ai/question-block';
 import { ThinkingBlock } from '@/components/ai/thinking-block';
@@ -14,6 +16,7 @@ import { ToolCallBlock } from '@/components/ai/tool-call-block';
 import { CollapsibleToggle } from '@/components/shared/collapsible-toggle';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
+import { notesFromToolOutput } from '@/lib/ai-notes';
 import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
@@ -66,6 +69,17 @@ export const ChatMessage = memo(
         message.toolName === 'finish' ||
         message.toolName === 'ask_user' ||
         message.toolName === 'generate_flashcards')
+    ) {
+      return null;
+    }
+
+    // The notes block shows what the tool wrote, so the raw call is hidden once it succeeded. While
+    // it runs (writing long notes takes a while) and when it failed, the call stays visible.
+    if (
+      isToolCall &&
+      message.toolName === 'generate_notes' &&
+      message.status === 'complete' &&
+      notesFromToolOutput(message.toolResult)
     ) {
       return null;
     }
@@ -159,12 +173,8 @@ export const ChatMessage = memo(
             <QuestionBlock question={message.question} onAnswer={onAnswer} />
           )}
 
-          {message.result && !isFlashcardResult && !isStreaming && (
-            <div className="mt-2 rounded-lg border bg-background/80 p-3 text-xs text-muted-foreground">
-              {message.result.type === 'summary' && <span>Summary ready</span>}
-              {message.result.type === 'quiz' && <span>Quiz questions ready</span>}
-              {message.result.type === 'explain' && <span>Explanation ready</span>}
-            </div>
+          {result?.type === 'notes' && (
+            <NotesBlock notes={parseNotes(result.data)} targetDeck={deckTarget} />
           )}
 
           {isError && message.error && (
