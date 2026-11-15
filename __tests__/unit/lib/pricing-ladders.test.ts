@@ -1,6 +1,9 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { describe, expect, it } from 'vitest';
+import en from '@/i18n/messages/en.json';
+import pl from '@/i18n/messages/pl.json';
 import {
+  ctaMessageKey,
   formatLimitValue,
   getPlanLadders,
   isRecommendedPlan,
@@ -37,20 +40,30 @@ function plan(
 }
 
 // Catalogue order is deliberate: `sort_order` is global across the ladders, so the
-// seed interleaves them (base 1, lite 2, launch 3, spark 4, …).
+// seed interleaves them (base 1, lite 2, launch 3, spark 4, …). Prices are the
+// seed's, in grosze, so `ctaMessageKey` sees the real free/paid split.
 const catalogue = [
   plan('base', 'student', 1, { features: ['flashcards', 'quiz'] }),
   plan('lite', 'educator', 2, { features: ['flashcards', 'quiz', 'group.manage'] }),
   plan('launch', 'manager', 3, { features: ['flashcards', 'quiz'] }),
-  plan('spark', 'student', 4, { features: ['flashcards', 'quiz'] }),
-  plan('guide', 'educator', 5, { features: ['flashcards', 'quiz'] }),
-  plan('team', 'manager', 6, { features: ['flashcards', 'quiz'] }),
-  plan('ace', 'student', 7, { features: ['flashcards', 'quiz', 'ai.chat'] }),
-  plan('creator', 'educator', 8, { features: ['flashcards', 'quiz', 'ai.chat'] }),
-  plan('hub', 'manager', 9, { features: ['flashcards', 'quiz', 'ai.chat'] }),
-  plan('pro', 'student', 10, { features: ['flashcards', 'quiz', 'ai.chat'] }),
-  plan('master', 'educator', 11, { features: ['flashcards', 'quiz', 'ai.chat'] }),
-  plan('campus', 'manager', 12, { features: ['flashcards', 'quiz', 'ai.chat'] }),
+  plan('spark', 'student', 4, { features: ['flashcards', 'quiz'], priceMonthly: 999 }),
+  plan('guide', 'educator', 5, { features: ['flashcards', 'quiz'], priceMonthly: 1999 }),
+  plan('team', 'manager', 6, { features: ['flashcards', 'quiz'], priceMonthly: 9900 }),
+  plan('ace', 'student', 7, { features: ['flashcards', 'quiz', 'ai.chat'], priceMonthly: 1999 }),
+  plan('creator', 'educator', 8, {
+    features: ['flashcards', 'quiz', 'ai.chat'],
+    priceMonthly: 3999,
+  }),
+  plan('hub', 'manager', 9, { features: ['flashcards', 'quiz', 'ai.chat'], priceMonthly: 29900 }),
+  plan('pro', 'student', 10, { features: ['flashcards', 'quiz', 'ai.chat'], priceMonthly: 3999 }),
+  plan('master', 'educator', 11, {
+    features: ['flashcards', 'quiz', 'ai.chat'],
+    priceMonthly: 7999,
+  }),
+  plan('campus', 'manager', 12, {
+    features: ['flashcards', 'quiz', 'ai.chat'],
+    priceMonthly: 69900,
+  }),
 ];
 
 describe('getPlanLadders', () => {
@@ -100,6 +113,24 @@ describe('isRecommendedPlan', () => {
       expect(plans.filter((row) => isRecommendedPlan(row.key)).map((row) => row.key)).toEqual([
         recommended,
       ]);
+    }
+  });
+});
+
+describe('ctaMessageKey', () => {
+  it('gives a free plan the shared free action', () => {
+    expect(ctaMessageKey(plan('base', 'student', 1))).toBe('cta_free');
+  });
+
+  it('names the plan in a paid plan’s own action', () => {
+    expect(ctaMessageKey(plan('spark', 'student', 4, { priceMonthly: 999 }))).toBe('cta_spark');
+  });
+
+  it('resolves every catalogue plan to a label both locales carry', () => {
+    for (const row of catalogue) {
+      const key = ctaMessageKey(row);
+      expect(Object.keys(pl.PricingPage), `pl is missing ${key}`).toContain(key);
+      expect(Object.keys(en.PricingPage), `en is missing ${key}`).toContain(key);
     }
   });
 });
