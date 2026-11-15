@@ -9,6 +9,10 @@ import {
   AudienceSwitch,
   type PricingAudience,
 } from '@/app/(frontend)/pricing/_components/audience-switch';
+import {
+  ComparisonTable,
+  type PricingLadderKind,
+} from '@/app/(frontend)/pricing/_components/comparison-table';
 import { PlanRow } from '@/app/(frontend)/pricing/_components/plan-row';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -54,10 +58,15 @@ export function PricingPageClient({ initialAudience }: { initialAudience: Pricin
   const ladders = getPlanLadders(plans ?? []);
   const organization = audience === 'organization';
 
-  const sections = organization
+  const sections: Array<{
+    kind: PricingLadderKind;
+    title: string;
+    lede: string;
+    plans: PlanInfo[];
+  }> = organization
     ? [
         {
-          key: 'organization',
+          kind: 'organization',
           title: t('ladder_org_title'),
           lede: t('ladder_org_lede'),
           plans: ladders.organization,
@@ -65,13 +74,13 @@ export function PricingPageClient({ initialAudience }: { initialAudience: Pricin
       ]
     : [
         {
-          key: 'student',
+          kind: 'student',
           title: t('ladder_student_title'),
           lede: t('ladder_student_lede'),
           plans: ladders.individual.student,
         },
         {
-          key: 'educator',
+          kind: 'educator',
           title: t('ladder_educator_title'),
           lede: t('ladder_educator_lede'),
           plans: ladders.individual.educator,
@@ -116,7 +125,7 @@ export function PricingPageClient({ initialAudience }: { initialAudience: Pricin
         ) : (
           sections.map((section) =>
             section.plans.length > 0 ? (
-              <section key={section.key} className="py-16 md:py-20">
+              <section key={section.kind} className="py-16 md:py-20">
                 <div className="mx-auto max-w-content px-content">
                   <h2 className="font-display text-h2 font-semibold text-balance">
                     {section.title}
@@ -133,6 +142,7 @@ export function PricingPageClient({ initialAudience }: { initialAudience: Pricin
                       />
                     ))}
                   </ul>
+                  <ComparisonTable plans={section.plans} kind={section.kind} />
                 </div>
               </section>
             ) : null,
