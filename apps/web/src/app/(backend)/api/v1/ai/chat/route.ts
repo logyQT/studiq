@@ -10,6 +10,7 @@ import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
 import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/generate-flashcards.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
+import { commandInstruction, commandOfLastMessage } from '@studiq/server/lib/ai/commands';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
@@ -83,10 +84,28 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
     data: { messageCount: messages.length, lastRole: messages[messages.length - 1]?.role },
   });
 
+  // A slash command in the message being answered becomes an instruction for the model. It is derived
+  // from the stored transcript on every request, so a retry behaves like the first send, and the
+  // transcript itself still shows what the user typed.
+  const command = commandOfLastMessage(messages);
+  if (command) {
+    enqueueTrace({
+      conversationId,
+      agentName: 'general',
+      eventType: 'step',
+      label: `slash command /${command.command.name}`,
+      data: { command: command.command.name, hasArguments: command.args.length > 0 },
+    });
+  }
+
   return conversationStorage.run({ conversationId, requestContext: ctx }, async () => {
     const result = streamText({
       model: chatModel,
-      system: systemPrompt,
+      system: command
+        ? `${systemPrompt}
+
+${commandInstruction(command)}`
+        : systemPrompt,
       messages: await convertToModelMessages(messages),
       tools: {
         create_plan: createPlanTool,
