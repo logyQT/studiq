@@ -3116,7 +3116,7 @@
     "attempts_left": "Attempts left: {left}/{total}",
     "attempts_exhausted": "All attempts used ({total}/{total})",
     "results_hidden": "Results not available",
-    "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana."
+    "attempt_expired": "Your attempt ended when the assessment closed and was not submitted."
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Upload failed",
