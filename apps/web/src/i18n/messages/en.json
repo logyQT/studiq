@@ -2038,7 +2038,7 @@
     "faq_a_org_1": "A seat is a member account covered by the organization's plan. A seated member gets the features and limits of the plan the seat pool comes from, while organization-wide capacity such as students and groups comes from the organization plan.",
     "faq_q_org_2": "Who sees an organization's material?",
     "faq_a_org_2": "Visibility follows roles and group assignments. A question bank goes to the groups you pick, and a role decides who manages members, groups and the plan.",
-    "most_popular": "Most Popular",
+    "recommended_badge": "Recommended",
     "current_plan_badge": "Your plan",
     "feature_flashcards": "Flashcards",
     "feature_quiz": "Quizzes",

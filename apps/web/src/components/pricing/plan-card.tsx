@@ -75,7 +75,7 @@ export function PlanCard({
       {popular && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
           <Sparkles className="size-3 mr-1" />
-          {t('most_popular')}
+          {t('recommended_badge')}
         </Badge>
       )}
       {isCurrentPlan && (

@@ -35,7 +35,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
   const note = t.has(noteKey) ? t(noteKey) : null;
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
-  const label = isCurrent ? t('current_plan_badge') : recommended ? t('most_popular') : null;
+  const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
 
   return (
     <li className="border-b border-border py-6 md:grid md:grid-cols-12 md:items-start md:gap-x-8">
