@@ -52,6 +52,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { AssignmentNotFound } from '@/components/edu/assignment-not-found';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -544,7 +545,7 @@ export default function AssignmentDetailClient() {
   }
 
   if (!assignment) {
-    return <div className="p-6 text-center text-muted-foreground">{t('not_found')}</div>;
+    return <AssignmentNotFound />;
   }
 
   const isDraft = assignment.status === 'draft';
