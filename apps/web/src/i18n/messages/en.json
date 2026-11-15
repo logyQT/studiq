@@ -35,7 +35,10 @@
     "ERROR_ASSESSMENT_NOT_LIVE": "Only a running assessment can be closed.",
     "ERROR_ASSESSMENT_NOT_PUBLISHED": "This assessment has not been published yet.",
     "ERROR_REVIEW_LOCKED": "The review opens when the assessment closes.",
-    "ERROR_RELEASE_NOT_WITHHELD": "This item was not held back from the review."
+    "ERROR_RELEASE_NOT_WITHHELD": "This item was not held back from the review.",
+    "filter_label": "Filters",
+    "filter_search": "Search filters...",
+    "filter_empty": "No filters"
   },
   "EmptyStates": {
     "load_error": "The list could not be loaded",

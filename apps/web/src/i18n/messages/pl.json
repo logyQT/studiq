@@ -35,7 +35,10 @@
     "ERROR_ASSESSMENT_NOT_LIVE": "Zamknąć można tylko uruchomioną kartkówkę.",
     "ERROR_ASSESSMENT_NOT_PUBLISHED": "Ta kartkówka nie została jeszcze opublikowana.",
     "ERROR_REVIEW_LOCKED": "Podsumowanie otwiera się po zakończeniu kartkówki.",
-    "ERROR_RELEASE_NOT_WITHHELD": "To pytanie nie było wstrzymane przed podsumowaniem."
+    "ERROR_RELEASE_NOT_WITHHELD": "To pytanie nie było wstrzymane przed podsumowaniem.",
+    "filter_label": "Filtry",
+    "filter_search": "Szukaj filtrów...",
+    "filter_empty": "Brak filtrów"
   },
   "EmptyStates": {
     "load_error": "Nie udało się wczytać listy",
