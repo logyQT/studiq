@@ -21,6 +21,19 @@ export const CONTROL_RADIUS = 'rounded-[0.25rem]';
 export const PANEL_RADIUS = 'rounded-[0.5rem]';
 
 /**
+ * The opaque surface of a field that sits on the paper texture.
+ *
+ * `bg-card` rather than the grain showing through: `border-control` measures
+ * 2.93–3.10:1 against the texture and 3.35:1 (light) / 3.18:1 (dark) against card,
+ * so the grain pushed a control identified only by its edge under the 3:1 that
+ * WCAG 1.4.11 requires. The dark twin is spelled out because the kit's
+ * `dark:bg-input/30` outranks a bare `bg-card` on specificity; `cn` collapses both
+ * against the kit's own `bg-transparent` / `dark:bg-input/30`, so the field is one
+ * composite of fill + radius + border.
+ */
+export const CONTROL_SURFACE = 'bg-card dark:bg-card';
+
+/**
  * One geometry for the pair, in border-box terms.
  *
  * `box` is the control's outer height, borders included, so the language

@@ -6,12 +6,10 @@ import { type RegisterInput, RegisterSchema } from '@studiq/server/models/auth.m
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-  Input,
   Item,
   ItemContent,
   ItemDescription,
@@ -30,94 +28,23 @@ import {
   GraduationCap,
   Loader2,
   Lock,
-  type LucideIcon,
   Mail,
   User,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { type Control, useForm } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
+import { AuthField } from '@/components/shared/auth-field';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 // `CONTROL_RADIUS` spells the token's value out because `cn` cannot collapse the
 // marketing name against the kit's `rounded-md`, which would then win the cascade.
-import { CONTROL_RADIUS } from '@/components/shared/preference-controls';
+import { CONTROL_RADIUS, CONTROL_SURFACE } from '@/components/shared/preference-controls';
 import { ApiError, apiPost } from '@/lib/api';
 import { translateErrorCode } from '@/lib/error-messages';
 import { cn } from '@/lib/utils';
-
-interface RegisterFieldProps {
-  control: Control<RegisterInput>;
-  name: 'name' | 'email' | 'password';
-  label: string;
-  icon: LucideIcon;
-  disabled: boolean;
-  placeholder?: string;
-  /** Only the password field overrides the input type; the rest are text. */
-  type?: 'password';
-  autoComplete?: string;
-  description?: string;
-}
-
-/**
- * The three typed fields share one shell because the mark sits inside the control:
- * the input's left padding and the mark's position are a single decision, and the
- * description slot belongs to whichever field states a rule up front.
- */
-function RegisterField({
-  control,
-  name,
-  label,
-  icon: Icon,
-  disabled,
-  placeholder,
-  type,
-  autoComplete,
-  description,
-}: RegisterFieldProps) {
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field, fieldState }) => (
-        <FormItem>
-          <FormLabel htmlFor={field.name}>{label}</FormLabel>
-          {/*
-           * `FormControl` has to own the `<input>` itself: it is a Radix `Slot`, so
-           * whatever element it wraps receives `aria-describedby` / `aria-invalid`.
-           * Wrapping the icon's `<div>` put both attributes on that div instead, and
-           * the password hint was never announced with the field.
-           */}
-          <div className="relative">
-            <Icon
-              aria-hidden
-              className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <FormControl>
-              <Input
-                id={field.name}
-                type={type}
-                autoComplete={autoComplete}
-                placeholder={placeholder}
-                className={cn(
-                  'pl-9',
-                  CONTROL_RADIUS,
-                  fieldState.error && 'border-destructive focus-visible:ring-destructive',
-                )}
-                disabled={disabled}
-                {...field}
-              />
-            </FormControl>
-          </div>
-          {description ? <FormDescription>{description}</FormDescription> : null}
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
 
 export function RegisterForm() {
   const t = useTranslations('RegisterPage');
@@ -193,7 +120,7 @@ export function RegisterForm() {
       ) : (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-4">
-            <RegisterField
+            <AuthField
               control={form.control}
               name="name"
               label={t('name_label')}
@@ -202,7 +129,7 @@ export function RegisterForm() {
               autoComplete="name"
               disabled={isLoading}
             />
-            <RegisterField
+            <AuthField
               control={form.control}
               name="email"
               label={t('email_label')}
@@ -223,6 +150,14 @@ export function RegisterForm() {
                       <SelectTrigger
                         className={cn(
                           'w-full',
+                          CONTROL_SURFACE,
+                          /*
+                           * The kit raises the fill to `dark:hover:bg-input/50`, where the
+                           * border falls to 1.85:1 against the field's own surface — a
+                           * control identified only by its edge has to hold 3:1 in every
+                           * state, so the hover keeps the card fill.
+                           */
+                          'dark:hover:bg-card',
                           CONTROL_RADIUS,
                           fieldState.error && 'border-destructive focus-visible:ring-destructive',
                         )}
@@ -286,7 +221,7 @@ export function RegisterForm() {
                 </FormItem>
               )}
             />
-            <RegisterField
+            <AuthField
               control={form.control}
               name="password"
               label={t('password_label')}

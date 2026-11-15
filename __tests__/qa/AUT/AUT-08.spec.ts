@@ -63,7 +63,9 @@ async function openLogin(page: Page): Promise<void> {
   const host = new URL(test.info().project.use.baseURL ?? 'http://localhost:3010').hostname;
   await page.context().addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: host, path: '/' }]);
   await page.goto('/login');
-  await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.header);
+  await expect(
+    page.getByRole('heading', { level: 1, name: COPY.header, exact: true }),
+  ).toBeVisible();
 }
 
 function loginButton(page: Page) {
@@ -139,7 +141,9 @@ test('answers a wrong password and an unknown account with the same message', as
   // Step 2: an address that belongs to nobody. A reload clears the first toast, so
   // the second message is read on its own rather than next to the first one.
   await page.reload();
-  await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.header);
+  await expect(
+    page.getByRole('heading', { level: 1, name: COPY.header, exact: true }),
+  ).toBeVisible();
 
   await fillCredentials(page, unknownEmail(), GHOST_PASSWORD);
   const unknownAccount = await submitAndReadResponse(page);
