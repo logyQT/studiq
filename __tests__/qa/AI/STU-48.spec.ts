@@ -22,10 +22,12 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   fallback of the name field; the generation tool always names the deck
  *   („Generated Flashcards” when the model gives none), so the name the
  *   fixture chose is the one the deck gets.
- * - The case expects the toast „Talia utworzona z N fiszkami”; this flow renders
- *   `flashcard_saved` („Zapisano N fiszki do talii”) instead, so that is what the
- *   spec asserts. The preview and save copy inflects (1 fiszkę / 2 fiszki /
- *   5 fiszek) but is not the case's wording.
+ * - The case expects the toast „Talia utworzona z N fiszkami”; saving into a new
+ *   deck does fire that toast (`flashcard_deck_created`). The spec asserts the
+ *   inline saved panel instead, `flashcard_saved` („Zapisano N fiszki do talii”),
+ *   which is the string that stays on screen. The save copy and the generated
+ *   header inflect (1 fiszkę / 2 fiszki / 5 fiszek); the read-only ask-user
+ *   preview (`flashcards_preview`) still does not.
  * - Behaviour pinned as it is today, not as it should be: a nested model call
  *   (`fetch_material`) is never metered, a call with truncated or unknown tool
  *   input is fed back to the model as a tool error with no UI of its own, and
