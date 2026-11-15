@@ -9,29 +9,11 @@ import {
 } from '@/components/marketing/previews/flashcard-review-fixtures';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
-import { cn } from '@/lib/utils';
 
 const MESSAGES = { pl, en };
 
 /** The rating buttons' own shortcut keys: 1–4, in scale order. */
 const RATING_SHORTCUTS = new Set(['1', '2', '3', '4']);
-
-/**
- * The card's box in the landing band: shorter than the product's own card, so the
- * four ledger rows under it stay in one screen. The panel on `/register` shows the
- * same component at the card's own height instead.
- */
-const BAND_CARD_HEIGHT =
-  '[&_fieldset]:h-48 sm:[&_fieldset]:h-64 md:[&_fieldset]:h-72 lg:[&_fieldset]:h-56';
-
-export interface FlashcardReviewPreviewProps {
-  /**
-   * The fieldset's height utility, whole rather than merged: the caller's value
-   * replaces the band's ladder instead of adding to it, and the two are never
-   * combined. Omitted, the band's stepped height applies.
-   */
-  cardHeight?: string;
-}
 
 /**
  * The flashcard review loop as the marketing page shows it: the component the
@@ -52,9 +34,7 @@ export interface FlashcardReviewPreviewProps {
  * Copy is the study session's own, from the page's locale; the fixtures are
  * localised to match, never mixed.
  */
-export function FlashcardReviewPreview({
-  cardHeight = BAND_CARD_HEIGHT,
-}: FlashcardReviewPreviewProps) {
+export function FlashcardReviewPreview() {
   const rawLocale = useLocale();
   const locale: FlashcardFixtureLocale = rawLocale === 'en' ? 'en' : 'pl';
 
@@ -102,12 +82,12 @@ export function FlashcardReviewPreview({
      * selector on the flip card's own `fieldset` root, no change to the product
      * component. The height steps with the column width so the card stays
      * landscape: tallest at md, where the stacked preview takes the whole page.
-     *
-     * A caller that shows the card without the band can replace that ladder; see
-     * `cardHeight`.
      */
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the band is not a control; it forwards the digits its own buttons advertise.
-    <div className={cn('flex flex-col gap-6', cardHeight)} onKeyDown={handleRatingKey}>
+    <div
+      className="flex flex-col gap-6 [&_fieldset]:h-48 sm:[&_fieldset]:h-64 md:[&_fieldset]:h-72 lg:[&_fieldset]:h-56"
+      onKeyDown={handleRatingKey}
+    >
       <FlashcardReview
         cardKey={card.id}
         front={card.front}

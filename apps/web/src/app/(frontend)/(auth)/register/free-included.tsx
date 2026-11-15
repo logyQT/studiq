@@ -1,7 +1,6 @@
-import { Check, GraduationCap } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { FlashcardReviewPreview } from '@/components/marketing/previews/flashcard-review-preview';
 import { cn } from '@/lib/utils';
 
 /*
@@ -32,27 +31,24 @@ const PANEL_FOCUS =
  * light and ink on cobalt in dark, so the panel reads in both modes without a
  * second set of rules.
  *
- * It carries the page's one surface as well as its copy. The specimen is the
- * product's own flashcard at the card's own height, entering from the bottom-right
- * corner and cut by the panel's edge: `overflow-hidden` plus the negative right
- * offset crop it, and the box stops below the card's face so the reveal hint and
- * the four rating buttons are out of frame. That crop is the reason it can be
- * `inert` — a panel that cannot be tabbed into (NFR-05 pins the wordmark, the
- * sign-in exit and `#name` as the first three stops) may only show the part of the
- * surface that has no behaviour. A "click to reveal" line over a card that cannot
- * be clicked is a false affordance, not a preview.
+ * The panel is type only: the ledger below the statement is the panel's object,
+ * and it is the landing page's ledger (`components/marketing/features.tsx`) in the
+ * same idiom — a 40px rail holding a mono tabular ordinal, the term at `text-h3`,
+ * the description under it. From `lg` the statement takes the panel's spare height
+ * on both sides, so a tall panel distributes it around the statement instead of
+ * leaving one void between a headline and a ledger pinned to the floor.
  */
 export function FreeIncluded() {
   const t = useTranslations('RegisterPage');
   const tLanding = useTranslations('LandingPage');
 
   return (
-    <div className="relative flex flex-col overflow-hidden bg-primary p-content text-primary-foreground lg:p-12">
+    <div className="flex flex-col bg-primary p-content text-primary-foreground lg:p-12">
       {/* No `useBranding` here: this page has no active org, so the wordmark is the product's. */}
       <Link
         href="/"
         className={cn(
-          'inline-flex h-9 w-fit items-center gap-2 rounded-control text-xl font-bold tracking-tight transition-opacity hover:opacity-80',
+          'mb-6 inline-flex h-9 w-fit items-center gap-2 rounded-control text-xl font-bold tracking-tight transition-opacity hover:opacity-80',
           PANEL_FOCUS,
         )}
       >
@@ -65,11 +61,15 @@ export function FreeIncluded() {
        * viewport, and at 1440 a full-width paragraph would run past 66ch.
        *
        * Phones drop the lede and start the block 24px under the mark instead of 48:
-       * at 375×667 the full panel pushed the first input of the stacked column to
-       * y=782, so no form control was in the first paint. Both paragraphs return at
-       * `sm`.
+       * at 375×667 the full panel pushed the first input of the stacked column below
+       * the fold, and `#name` is 108px above it today. Both paragraphs return at `sm`.
+       *
+       * `lg:my-auto` is the panel's vertical distribution, and the wordmark's `mb-6`
+       * is its floor: at 1024×768 the content is within 11px of the panel's height,
+       * so an auto margin resolving to zero would set the eyebrow against the
+       * wordmark.
        */}
-      <div className="mt-6 max-w-xl sm:mt-12">
+      <div className="max-w-xl sm:mt-6 lg:my-auto">
         <p className="font-mono text-xs tracking-[0.08em] uppercase">{t('aside_eyebrow')}</p>
         {/*
          * The accent's one appearance on this page: a 2px rule under the word the
@@ -86,58 +86,35 @@ export function FreeIncluded() {
       </div>
 
       {/*
-       * The ledger sits on the panel's floor from `xl`, where the specimen takes the
-       * right of the same band, and spans the column below it, where there is no
-       * specimen to share the width with. Its descriptions survive only in that
-       * middle range: they are what keeps a full-width panel from reading as a list
-       * of four headings, and beside the card they would be the second competing
-       * list this composition exists to avoid. The width at `xl` is the longest
-       * row's measured text (232px, English) plus its mark and gap.
+       * A term/description list rather than four headings, so the four rows read as
+       * a spec sheet. The ordinal is decorative scaffolding for the same reason the
+       * landing's is: four hairline rows need a column for the eye to land on, and
+       * the number carries no rank.
        */}
-      <div className="mt-8 xl:mt-auto xl:w-[17rem]">
-        <ul className="border-t border-primary-foreground/25">
-          {FREE_FEATURES.map(({ titleKey, descKey }) => (
-            <li key={titleKey} className="flex gap-3 border-b border-primary-foreground/25 py-2">
-              {/*
-               * Decorative, so it takes the panel's own foreground at reduced
-               * emphasis: the row title is the fact, and `signal` is the h1's
-               * underline alone.
-               */}
-              <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-primary-foreground/70" />
-              <div>
-                <p className="font-semibold">{tLanding(titleKey)}</p>
-                {/*
-                 * Visible from `sm` to below `xl`, hidden outside that window. Two
-                 * media blocks with no base display class rather than `hidden
-                 * sm:block xl:hidden`, so no two display rules can be resolved by
-                 * stylesheet order.
-                 */}
-                <p className="mt-1 text-sm max-sm:hidden xl:hidden">{tLanding(descKey)}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+      <dl className="mt-6 border-t border-primary-foreground/25">
+        {FREE_FEATURES.map(({ titleKey, descKey }, index) => (
+          <div key={titleKey} className="border-b border-primary-foreground/25 py-2 pl-10 sm:py-4">
+            <dt className="relative text-h3 font-semibold">
+              <span
+                aria-hidden="true"
+                className="absolute -left-10 top-1 font-mono text-xs tabular-nums text-primary-foreground/80"
+              >
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              {tLanding(titleKey)}
+            </dt>
+            {/*
+             * Phones keep the terms only: the four descriptions add ~190px to a
+             * panel that has 108px of slack above `#name` at 375×667.
+             */}
+            <dd className="mt-1 text-sm leading-snug max-sm:hidden">{tLanding(descKey)}</dd>
+          </div>
+        ))}
+      </dl>
 
-        <p className="mt-6 hidden font-mono text-xs tracking-[0.08em] uppercase sm:block">
-          {tLanding('free_point_card')}
-        </p>
-      </div>
-
-      {/*
-       * `text-foreground` is load-bearing: the card's faces inherit their colour, so
-       * without it the panel's paper-on-cobalt would land on the card's own paper
-       * surface and the question would render at 1:1.
-       *
-       * `inert` plus `pointer-events-none` is what makes the specimen decorative:
-       * no tab stop, nothing announced twice by a screen reader, and a cursor that
-       * does not promise a flip the panel does not wire up.
-       */}
-      <div
-        inert
-        className="pointer-events-none absolute -right-6 bottom-0 hidden h-[38svh] max-h-[21.25rem] w-[19rem] overflow-hidden text-foreground xl:block"
-      >
-        <FlashcardReviewPreview cardHeight="[&_fieldset]:h-88" />
-      </div>
+      <p className="mt-6 hidden font-mono text-xs tracking-[0.08em] uppercase sm:block">
+        {tLanding('free_point_card')}
+      </p>
     </div>
   );
 }

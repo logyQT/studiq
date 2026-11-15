@@ -381,16 +381,6 @@ reason disappears with the captures.
 
 Stock art, illustration and hand-built lookalikes remain banned outright.
 
-**A specimen can be a still, and then it is `inert`.** `/register`'s panel shows the flashcard
-at the card's own 22rem, cropped by the panel's bottom edge, between the headline and the
-free-tier ledger. That page's tab order is a contract — the wordmark, the sign-in exit and
-`#name` are its first three stops — so the specimen adds none, and `inert` also keeps a
-surface that is already read out by the panel's copy from being announced twice. The crop is
-the other half of the same rule: the box stops below the card's face, so the reveal hint and
-the four rating buttons are out of frame. Either a preview is live, or only its still part is
-shown. A "click to reveal" line over a card that cannot be clicked is the same false claim as
-a hand-drawn lookalike, and it is worse than not showing the surface at all.
-
 | Property                | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Source                  | A product component under `apps/web/src/components/**`, reused as-is, driven by fixtures from `components/marketing/previews/**`. There is no `public/marketing` directory and no capture step.                                                                                                                                                                                                                                                       |
