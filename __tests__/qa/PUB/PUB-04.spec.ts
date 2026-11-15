@@ -4,23 +4,34 @@ import { expect, test, type Page } from '@playwright/test';
 import { createTranslator } from 'next-intl';
 
 /**
- * PUB-04 — Podstrona planów (/pricing/student) – karty planów.
+ * PUB-04 — Strona „Cennik” (/pricing) – plany dla uczniów i studentów.
  *
- * Prerequisite "Brak sesji": the plan page is public, so the spec runs with an
+ * Mapping note (the redesign, `feat/pricing-design-system`): the case was written
+ * for `/pricing/student`, a page of plan cards. That route is gone; the individual
+ * audience of `/pricing` now prints the student ladder as a price list (one `<li>`
+ * per plan with its `h3#<key>` handle), one differences-only comparison table below
+ * it, and the FAQ. The case ID and its acceptance intent — every configured student
+ * plan, its price, its limits and its CTA, with „Najpopularniejszy” on one plan —
+ * are unchanged.
+ *
+ * Prerequisite "Brak sesji": the pricing page is public, so the spec runs with an
  * empty storage state and never signs in. PUB-04's isolated tenant
  * (`qa/cases/PUB-04.md::PUB-04::qa-shared`, seeded with
- * `bun scripts/qa-tenant.ts PUB-04`) exists per case but is deliberately not
- * used for a session — the acceptance criteria belong to the anonymous visitor.
+ * `bun scripts/qa-tenant.ts PUB-04`) exists per case but is deliberately not used
+ * for a session — the acceptance criteria belong to the anonymous visitor.
  *
  * The plan catalogue is shared, mutable product config (QA-SUITE-APPROACH hard
  * limits), so the spec reads it through the public
- * `GET /api/v1/subscription-plans?for=student` endpoint and asserts that the
- * page renders *that* configuration: plan names and order, grosze → PLN price
- * formatting, the configured feature lists, and the `-1` → unlimited limit
- * formatting. Page copy comes from the catalogue the page renders from (below);
- * what stays literal is the plan ladder and the price line's `zł` / `/miesiąc`
- * pattern, which pins the number format rather than a label.
+ * `GET /api/v1/subscription-plans` endpoint and asserts that the page renders
+ * *that* configuration: plan names, order, grosze → PLN price formatting, which
+ * features differ between the plans, and the `-1` → `∞` / `0` → `—` limit
+ * formatting. Page copy comes from the `PricingPage` catalogue the page renders
+ * from, so a rewording does not turn the spec red.
  */
+
+const CASE = 'PUB-04';
+
+const copy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
 
 interface PlanInfo {
   key: string;
@@ -29,72 +40,30 @@ interface PlanInfo {
   currency: string;
   features: string[];
   limits: Record<string, number>;
+  sortOrder: number;
+  isActive: boolean;
+  forAccountType: string | null;
 }
-
-const CASE = 'PUB-04';
-
-/**
- * The page copy, read from the catalogue the page renders from: headings, the
- * popular badge, the CTA and the feature/limit labels. The spec pins which plans
- * and limits the page shows, not the wording that names them. Everything read
- * from the plan catalogue over the API — names, prices, feature keys — stays
- * data, and so does the `—` the table uses for an absent value.
- */
-const copy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
 
 /** The student ladder the public pricing page documents (`base` … `pro`). */
 const STUDENT_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
-/** CTA copy per plan key — product copy from the message catalogue, not DB config. */
-const PLAN_CTA: Record<string, string> = {
-  base: copy('cta_free'),
-  spark: copy('cta_spark'),
-  ace: copy('cta_ace'),
-  pro: copy('cta_pro'),
-};
-
 /** The student plan highlighted as the popular one. */
 const POPULAR_PLAN = 'ace';
 
-const PAGE_TITLE = copy('title');
-const PAGE_SUBTITLE = copy('subtitle');
-const COMPARISON_TITLE = copy('comparison_title');
-const POPULAR_BADGE = copy('most_popular');
-const UNLIMITED = copy('limit_unlimited');
-const NO_VALUE = '—';
+/** The individual FAQ, in the order the page asks it. */
+const FAQ_PAIRS = [
+  ['faq_q1', 'faq_a1'],
+  ['faq_q2', 'faq_a2'],
+  ['faq_q3', 'faq_a3'],
+  ['faq_q_ind_1', 'faq_a_ind_1'],
+  ['faq_q_ind_2', 'faq_a_ind_2'],
+] as const;
 
-/** Feature labels, read from the `feature_*` messages the card renders. */
-const FEATURE_LABELS: Record<string, string> = {
-  flashcards: copy('feature_flashcards'),
-  quiz: copy('feature_quiz'),
-  ai: copy('feature_ai'),
-  'ai.chat': copy('feature_ai_chat'),
-  'advanced.stats': copy('feature_advanced_stats'),
-  documents: copy('feature_documents'),
-  quiz_builder: copy('feature_quiz_builder'),
-  org_manage: copy('feature_org_manage'),
-  group_manage: copy('feature_group_manage'),
-  member_manage: copy('feature_member_manage'),
-  role_builder: copy('feature_role_builder'),
-  branding: copy('feature_branding'),
-};
+const UNLIMITED = '∞';
+const ABSENT = '—';
 
-/** Unknown keys fall back to the humanized form the page itself renders. */
-function featureLabel(key: string): string {
-  const label = FEATURE_LABELS[key];
-  if (label) return label;
-  const humanized = key.replace(/[.\s-]+/g, ' ').trim();
-  return humanized.charAt(0).toUpperCase() + humanized.slice(1);
-}
-
-/** Copy for a key the spec names explicitly — a gap here is a spec bug, not a render bug. */
-function labelFor(labels: Record<string, string>, key: string): string {
-  const label = labels[key];
-  if (!label) throw new Error(`${CASE} has no copy for ${key}`);
-  return label;
-}
-
-/** Comparison-table order and labels (`apps/web/src/lib/pricing-limits.ts`). */
+/** Comparison-row order the page documents (`apps/web/src/lib/pricing-limits.ts`). */
 const SORTED_LIMIT_KEYS = [
   'max_flashcards',
   'max_decks',
@@ -109,22 +78,24 @@ const SORTED_LIMIT_KEYS = [
 /** Seat/group limits never apply to a student's personal plan. */
 const ORG_ONLY_LIMIT_KEYS: readonly string[] = ['max_students', 'max_groups'];
 
-const LIMIT_LABELS: Record<string, string> = {
-  max_flashcards: copy('limit_max_flashcards'),
-  max_decks: copy('limit_max_decks'),
-  max_questions: copy('limit_max_questions'),
-  max_question_banks: copy('limit_max_question_banks'),
-  max_quiz_attempts_per_day: copy('limit_max_quiz_attempts_per_day'),
-  max_ai_tokens_per_day: copy('limit_max_ai_tokens_per_day'),
-  max_students: copy('limit_max_students'),
-  max_groups: copy('limit_max_groups'),
-};
+/** `StudiQ Ace` → `Ace`: the page names the tier in its own column. */
+function shortPlanName(name: string): string {
+  return name.replace(/^StudiQ\s+/i, '').trim();
+}
 
-/** Limit keys the student comparison must render, in order. */
-function visibleLimitKeys(plans: PlanInfo[]): string[] {
-  return SORTED_LIMIT_KEYS.filter(
-    (key) => !ORG_ONLY_LIMIT_KEYS.includes(key) && plans.some((plan) => key in plan.limits),
-  );
+/** A feature key's label, read from the `feature_*` messages the table renders. */
+function featureLabel(key: string): string {
+  const messageKey = `feature_${key.replace(/[.\s-]+/g, '_')}`;
+  if (copy.has(messageKey)) return copy(messageKey);
+  const words = key.replace(/[.\s-]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** A limit key's label; a gap here is a spec bug, not a render bug. */
+function limitLabel(key: string): string {
+  const messageKey = `limit_${key}`;
+  if (!copy.has(messageKey)) throw new Error(`${CASE} has no copy for ${messageKey}`);
+  return copy(messageKey);
 }
 
 /** "9,99 zł" → 9.99 (the price is stored in grosze and must be divided by 100). */
@@ -133,65 +104,86 @@ function moneyValue(amount: string): number {
 }
 
 /**
- * A comparison-table limit cell: a number (k = thousands), the unlimited marker
- * for `-1`, or the empty marker when the plan does not carry the limit at all.
- * Number grouping is accepted in either locale form; the numeric value must match
- * the configuration.
+ * What a limit cell must print: `-1` is the catalogue's "unlimited", a cap of `0`
+ * (or a missing key) is "not offered", and a number is grouped in the locale.
  */
-function readLimitCell(raw: string, key: string): number | string {
-  const text = raw
-    .replace(/\u00a0/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (text === UNLIMITED) return UNLIMITED;
-  if (text === NO_VALUE) return NO_VALUE;
+function printLimit(value: number | undefined): string {
+  if (value === undefined || value === 0) return ABSENT;
+  if (value < 0) return UNLIMITED;
+  return new Intl.NumberFormat('pl').format(value);
+}
 
-  let body = text;
-  if (key === 'max_ai_tokens_per_day') {
-    expect(text, `${key} cell "${raw}" carries the per-day suffix`).toMatch(/\/ dzień$/);
-    body = text.replace(/\s*\/\s*dzień$/, '');
+/** Features carried by some plans only, sorted the way the table sorts them. */
+function differingFeatures(plans: PlanInfo[]): string[] {
+  const carriers = new Map<string, number>();
+  for (const plan of plans) {
+    for (const feature of plan.features) {
+      carriers.set(feature, (carriers.get(feature) ?? 0) + 1);
+    }
   }
+  return [...carriers.keys()].filter((key) => carriers.get(key) !== plans.length).toSorted();
+}
 
-  expect(body, `${key} cell "${raw}" is a number`).toMatch(/^\d[\d.,\s]*k?$/);
-  const compact = body.replace(/\s/g, '');
-  const thousands = compact.endsWith('k');
-  const value = Number(compact.replace(/[.,]/g, '').replace(/k$/i, ''));
-  return thousands ? value * 1000 : value;
+/** Features every plan carries — printed once above the table, in label order. */
+function commonFeatures(plans: PlanInfo[]): string[] {
+  const union = new Set(plans.flatMap((plan) => plan.features));
+  return [...union]
+    .filter((feature) => plans.every((plan) => plan.features.includes(feature)))
+    .toSorted();
+}
+
+/** Limits the ladder can show and whose printed value is not the same everywhere. */
+function differingLimits(plans: PlanInfo[]): string[] {
+  return SORTED_LIMIT_KEYS.filter(
+    (key) => !ORG_ONLY_LIMIT_KEYS.includes(key) && plans.some((plan) => key in plan.limits),
+  ).filter((key) => new Set(plans.map((plan) => printLimit(plan.limits[key]))).size > 1);
 }
 
 /** Collect browser-side failures so "the page loads without errors" is asserted. */
 function watchForErrors(page: Page) {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
-  const failedDocuments: string[] = [];
+  const failedResponses: string[] = [];
 
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('response', (response) => {
-    if (response.request().resourceType() === 'document' && response.status() >= 400) {
-      failedDocuments.push(`${response.status()} ${response.url()}`);
-    }
+    if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`);
   });
 
   return {
     expectClean() {
       expect(pageErrors, 'uncaught page errors').toEqual([]);
       expect(consoleErrors, 'console errors').toEqual([]);
-      expect(failedDocuments, 'failed document responses').toEqual([]);
+      expect(failedResponses, 'HTTP responses >= 400').toEqual([]);
     },
   };
 }
 
 async function fetchStudentPlans(page: Page): Promise<PlanInfo[]> {
-  const response = await page.request.get('/api/v1/subscription-plans?for=student');
-  expect(response.status(), 'student plan catalogue').toBe(200);
+  const response = await page.request.get('/api/v1/subscription-plans');
+  expect(response.status(), 'the public plan catalogue').toBe(200);
   const { data } = await json<{ data: PlanInfo[] }>(response);
-  return data;
+  return data
+    .filter((plan) => plan.isActive && plan.forAccountType === 'student')
+    .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 
-test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
+/** The student ladder section: the plan list, its comparison table and its caption. */
+function studentLadder(page: Page) {
+  return page
+    .locator('#pricing-plans section')
+    .filter({ has: page.getByRole('heading', { level: 2, name: copy('ladder_student_title') }) });
+}
+
+/** The `<li>` of one plan, addressed by the `h3` handle the page gives it. */
+function planRow(page: Page, key: string) {
+  return page.locator('#pricing-plans li').filter({ has: page.locator(`h3#${key}`) });
+}
+
+test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FAQ', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test.beforeEach(async ({ context, baseURL }) => {
@@ -201,28 +193,26 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     await context.addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
   });
 
-  test('renders every student plan card and limit from the plan configuration', async ({
+  test('renders the student price list, its comparison table and the FAQ from the catalogue', async ({
     page,
   }) => {
     const errors = watchForErrors(page);
 
     // Step 1 — open the page directly, as an anonymous visitor.
-    const response = await page.goto('/pricing/student');
+    const response = await page.goto('/pricing');
     expect(response?.status(), 'document status').toBe(200);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-    // The slug's own title (the plan-page tile label), then the site name.
-    await expect(page).toHaveTitle(`${copy('tile_student_title')} | StudiQ`);
+    await expect(page).toHaveTitle(`${copy('title')} | StudiQ`);
 
-    // Prerequisite "Brak sesji": no user, so no "Obecny Plan" and no checkout CTA.
+    // Prerequisite "Brak sesji": no user, so no „Twój plan” and no checkout CTA.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status()).toBe(200);
     const meBody = await json<{ data?: { user?: unknown } }>(me);
     expect(meBody.data?.user ?? null).toBeNull();
 
     await expect(
-      page.getByRole('heading', { level: 1, name: PAGE_TITLE, exact: true }),
+      page.getByRole('heading', { level: 1, name: copy('title'), exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(PAGE_SUBTITLE, { exact: true })).toBeVisible();
 
     const plans = await fetchStudentPlans(page);
     expect(
@@ -230,161 +220,204 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
       'the student ladder is Base, Spark, Ace and Pro',
     ).toEqual([...STUDENT_PLAN_KEYS]);
 
-    // Step 2 — one card per configured plan, in catalogue order.
-    const cards = page.locator('main [data-slot="card"]');
-    await expect(cards).toHaveCount(plans.length);
-    const titles = (await page.locator('main [data-slot="card-title"]').allTextContents()).map(
-      (title) => title.trim(),
-    );
-    expect(titles).toEqual(plans.map((plan) => plan.name));
+    // Step 2 — one row per configured plan, in catalogue order, with the name,
+    // the price, the description and a registration action.
+    const ladder = studentLadder(page);
+    await expect(
+      ladder.getByRole('heading', { level: 2, name: copy('ladder_student_title'), exact: true }),
+    ).toBeVisible();
+    await expect(ladder.locator('ul > li')).toHaveCount(plans.length);
 
-    for (const [index, plan] of plans.entries()) {
-      const card = cards.nth(index);
-      await expect(card.locator('[data-slot="card-title"]')).toHaveText(plan.name);
+    for (const plan of plans) {
+      const row = planRow(page, plan.key);
+      await expect(row, `one row for ${plan.key}`).toHaveCount(1);
 
-      // Name + a readable description ("—" is not a description).
-      const description = card.locator('[data-slot="card-header"] p');
-      await expect(description).toHaveCount(1);
-      expect((await description.innerText()).trim().length).toBeGreaterThan(10);
-      expect(await description.innerText(), `${plan.key} description is copy`).not.toMatch(
-        /^plan_/,
-      );
+      // The row's handle is the plan's own name, under the ladder it belongs to.
+      await expect(row.locator(`h3#${plan.key}`)).toHaveText(shortPlanName(plan.name));
 
       // Price: the configured grosze value rendered as PLN, e.g. 999 → "9,99 zł".
-      const priceBlock = card.locator('[data-slot="card-content"] > div').first();
-      const priceLine = (await priceBlock.innerText())
+      const priceLine = (await row.locator('p').first().innerText())
         .replace(/\u00a0/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-      const priceMatch = /^(?<amount>[\d\s.,]+zł)(?<period>\/miesiąc)?$/.exec(priceLine);
-      expect(priceMatch, `${plan.key} price line "${priceLine}"`).not.toBeNull();
-      const amount = priceMatch?.groups?.amount;
-      if (!amount) throw new Error(`${CASE} ${plan.key} price line has no amount: "${priceLine}"`);
-      const period = priceMatch.groups?.period;
-
-      expect(moneyValue(amount), `${plan.key} price from grosze`).toBe(plan.priceMonthly / 100);
-      if (plan.priceMonthly > 0) {
+      if (plan.priceMonthly === 0) {
+        expect(priceLine, `${plan.key} free plan price`).toBe(copy('price_free'));
+      } else {
+        const priceMatch = /^(?<amount>[\d\s.,]+zł)(?<period>\/miesiąc)?$/.exec(priceLine);
+        expect(priceMatch, `${plan.key} price line "${priceLine}"`).not.toBeNull();
+        const amount = priceMatch?.groups?.amount;
+        if (!amount)
+          throw new Error(`${CASE} ${plan.key} price line has no amount: "${priceLine}"`);
+        expect(moneyValue(amount), `${plan.key} price from grosze`).toBe(plan.priceMonthly / 100);
         // A paid plan is sold per month and keeps the grosze decimals.
-        expect(period, `${plan.key} billing period`).toBe('/miesiąc');
+        expect(priceMatch.groups?.period, `${plan.key} billing period`).toBe('/miesiąc');
         if (plan.priceMonthly % 100 !== 0) {
           expect(amount, `${plan.key} grosze are shown`).toMatch(/,\d{2}\s*zł$/);
         }
-      } else {
-        expect(period, `${plan.key} free plan has no billing period`).toBeUndefined();
-        expect(amount, `${plan.key} free price`).toMatch(/^0\s*zł$/);
       }
 
-      // Features: exactly the configured feature list, labelled in Polish.
-      const features = (
-        await card.locator('[data-slot="card-content"] ul li').allTextContents()
-      ).map((feature) => feature.trim());
-      const expectedFeatures = plan.features.map(featureLabel);
-      expect(features.length, `${plan.key} feature count`).toBeGreaterThan(0);
-      expect(features.length, `${plan.key} has no duplicate features`).toBe(new Set(features).size);
-      expect([...features].toSorted(), `${plan.key} feature labels`).toEqual(
-        [...expectedFeatures].toSorted(),
-      );
+      // The description is copy, not a leftover key.
+      const description = copy.has(`plan_${plan.key}_desc`) ? copy(`plan_${plan.key}_desc`) : null;
+      if (description) await expect(row.getByText(description, { exact: true })).toBeVisible();
 
-      // CTA: one link per card, specific to the plan, pointing an anonymous
-      // visitor at registration.
-      const cta = card.locator('[data-slot="card-content"] a');
+      // CTA: one link per row, pointing an anonymous visitor at registration.
+      const cta = row.getByRole('link');
       await expect(cta, `${plan.key} CTA`).toHaveCount(1);
-      await expect(cta).toHaveText(labelFor(PLAN_CTA, plan.key));
+      await expect(cta).toHaveText(
+        plan.priceMonthly === 0 ? copy('cta_free') : copy('cta_register'),
+      );
       await expect(cta).toHaveAttribute('href', '/register');
     }
 
-    // CTA labels really differ per plan.
-    expect(new Set(Object.values(PLAN_CTA)).size).toBe(plans.length);
-
-    // The popular badge marks exactly the documented popular plan, once.
-    const badges = page.locator('main [data-slot="badge"]');
-    await expect(badges).toHaveCount(1);
-    await expect(badges).toHaveText(POPULAR_BADGE);
-    const popularPlan = plans.find((plan) => plan.key === POPULAR_PLAN)!;
-    await expect(badges.locator('..').locator('[data-slot="card-title"]')).toHaveText(
-      popularPlan.name,
-    );
-
-    // Limits live in the comparison table; each cell must show the configured
-    // value and read "Bez ograniczeń" where the catalogue stores -1.
+    // „Najpopularniejszy” marks exactly the documented popular plan, once.
+    await expect(ladder.getByText(copy('most_popular'), { exact: true })).toHaveCount(1);
     await expect(
-      page.getByRole('heading', { level: 2, name: COMPARISON_TITLE, exact: true }),
+      planRow(page, POPULAR_PLAN).getByText(copy('most_popular'), { exact: true }),
     ).toBeVisible();
-    const table = page.locator('main table');
-    await expect(table).toBeVisible();
 
-    const headers = (await table.locator('thead th').allTextContents()).map((header) =>
+    // Step 3 — the differences-only comparison table for this ladder.
+    const table = ladder.locator('table');
+    await expect(table, 'one comparison table for the student ladder').toHaveCount(1);
+
+    const caption = copy('comparison_caption_student');
+    await expect(table.locator('caption')).toHaveText(caption);
+    // The scrollable region is named and focusable, so a truncated reading stays
+    // keyboard-navigable (it is the table's container, whatever it scrolls to).
+    const region = table.locator('xpath=..');
+    await expect(region).toHaveAttribute('aria-label', caption);
+    await expect(region).toHaveAttribute('tabindex', '0');
+
+    await expect(
+      ladder.getByRole('heading', { level: 3, name: copy('comparison_title') }),
+    ).toBeVisible();
+
+    const columnHeaders = (await table.locator('th[scope="col"]').allTextContents()).map((header) =>
       header.trim(),
     );
-    const [firstHeader] = headers;
-    if (!firstHeader) throw new Error(`${CASE} the comparison table has no header`);
-    expect(firstHeader.length, 'the first column is labelled').toBeGreaterThan(0);
-    expect(headers.slice(1), 'comparison columns follow the card order').toEqual(
-      plans.map((plan) => plan.name),
+    expect(columnHeaders, 'the first column is the feature name').toEqual([
+      copy('comparison_feature'),
+      ...plans.map((plan) => shortPlanName(plan.name)),
+    ]);
+
+    // "All plans include" — the intersection, printed once instead of as N rows.
+    const common = commonFeatures(plans);
+    const included = new Intl.ListFormat('pl', { style: 'long', type: 'conjunction' }).format(
+      common.map(featureLabel),
+    );
+    await expect(
+      ladder.getByText(copy('comparison_all_include', { features: included }), { exact: true }),
+    ).toBeVisible();
+
+    const features = differingFeatures(plans);
+    const limits = differingLimits(plans);
+    const rows = table.locator('tbody tr');
+    await expect(rows, 'one row per differing feature and limit').toHaveCount(
+      features.length + limits.length,
     );
 
-    const limitKeys = visibleLimitKeys(plans);
-    const featureKeys = [...new Set(plans.flatMap((plan) => plan.features))].toSorted();
-    const rows = table.locator('tbody tr');
-    await expect(rows).toHaveCount(featureKeys.length + limitKeys.length);
-
-    const rowLabels = (await rows.locator('td:first-child').allTextContents()).map((label) =>
+    const rowLabels = (await rows.locator('th[scope="row"]').allTextContents()).map((label) =>
       label.trim(),
     );
-    expect(rowLabels.slice(0, featureKeys.length), 'feature rows').toEqual(
-      featureKeys.map(featureLabel),
-    );
-    expect(rowLabels.slice(featureKeys.length), 'limit rows').toEqual(
-      limitKeys.map((key) => labelFor(LIMIT_LABELS, key)),
-    );
+    expect(rowLabels).toEqual([...features.map(featureLabel), ...limits.map(limitLabel)]);
 
-    for (const [rowIndex, feature] of featureKeys.entries()) {
-      for (const [planIndex, plan] of plans.entries()) {
-        const cell = rows
-          .nth(rowIndex)
-          .locator('td')
-          .nth(planIndex + 1);
-        const included = plan.features.includes(feature);
-        await expect(
-          cell.locator(included ? 'svg.lucide-check' : 'svg.lucide-minus'),
-          `${plan.key} × ${feature}`,
-        ).toHaveCount(1);
-      }
-    }
-
-    for (const [offset, key] of limitKeys.entries()) {
-      const row = rows.nth(featureKeys.length + offset);
-      await expect(row.locator('td').first()).toHaveText(labelFor(LIMIT_LABELS, key));
-      for (const [planIndex, plan] of plans.entries()) {
-        const configured = plan.limits[key];
-        const cellText = (
-          await row
-            .locator('td')
-            .nth(planIndex + 1)
-            .innerText()
-        ).trim();
-        const rendered = readLimitCell(cellText, key);
-        if (configured === undefined) {
-          expect(rendered, `${plan.key} ${key} (absent)`).toBe(NO_VALUE);
-        } else if (configured === -1) {
-          expect(rendered, `${plan.key} ${key} (-1)`).toBe(UNLIMITED);
-        } else {
-          expect(rendered, `${plan.key} ${key}`).toBe(configured);
+    // A differing feature row: the plans that carry it show the check, the plans
+    // that do not show the absence mark.
+    for (const [offset, feature] of features.entries()) {
+      const row = rows.nth(offset);
+      for (const [index, plan] of plans.entries()) {
+        const cell = row.locator('td').nth(index);
+        const carried = plan.features.includes(feature);
+        await expect(cell.locator('svg.lucide-check'), `${plan.key} × ${feature}`).toHaveCount(
+          carried ? 1 : 0,
+        );
+        if (!carried) {
+          await expect(
+            cell.locator('span[aria-hidden="true"]'),
+            `${plan.key} × ${feature} absence mark`,
+          ).toHaveText(ABSENT);
         }
       }
     }
 
+    // A limit row: every cell is the configured value, with `-1` printed as the
+    // unlimited glyph and a cap the plan does not offer printed as an em dash.
+    for (const [offset, key] of limits.entries()) {
+      const row = rows.nth(features.length + offset);
+      await expect(row.locator('th[scope="row"]')).toHaveText(limitLabel(key));
+      for (const [index, plan] of plans.entries()) {
+        // The printed value is the cell's first span; the spoken form (`Bez
+        // ograniczeń` / `Nie`) is the extra, screen-reader-only span beside it.
+        await expect(
+          row.locator('td').nth(index).locator('span').first(),
+          `${plan.key} ${key}`,
+        ).toHaveText(printLimit(plan.limits[key]));
+      }
+    }
+    // The ladder really does exercise both glyphs, not only plain numbers.
+    const printedLimits = await table
+      .locator('tbody tr')
+      .evaluateAll((tableRows) =>
+        tableRows.flatMap((row) =>
+          Array.from(row.querySelectorAll('td span[aria-hidden="true"]')).map((cell) =>
+            cell.textContent.trim(),
+          ),
+        ),
+      );
+    expect(printedLimits, 'an uncapped plan prints ∞').toContain(UNLIMITED);
+    expect(printedLimits, 'a plan without a cap prints —').toContain(ABSENT);
+
+    // Step 4 — the FAQ: collapsed on load, single-open, answers still in the DOM.
+    await expect(
+      page.getByRole('heading', { level: 2, name: copy('faq_title'), exact: true }),
+    ).toBeVisible();
+
+    const panels: string[] = [];
+    for (const [index, [question, answer]] of FAQ_PAIRS.entries()) {
+      const trigger = page.getByRole('button', { name: copy(question), exact: true });
+      await expect(
+        page.getByRole('heading', { level: 3, name: copy(question), exact: true }),
+        `the question is an h3 (${index})`,
+      ).toBeVisible();
+      await expect(trigger, `${question} starts collapsed`).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+
+      const panelId = await trigger.getAttribute('aria-controls');
+      if (!panelId) throw new Error(`${CASE} ${question} trigger has no aria-controls`);
+      panels.push(panelId);
+      const panel = page.locator(`#${panelId}`);
+      await expect(panel, `${question} answer is not visible`).toBeHidden();
+      // The answer stays in the document for search engines and no-JS readers.
+      await expect(panel).toHaveText(copy(answer));
+    }
+
+    const [firstPanel, secondPanel] = panels;
+    const firstTrigger = page.getByRole('button', { name: copy(FAQ_PAIRS[0][0]), exact: true });
+    const secondTrigger = page.getByRole('button', { name: copy(FAQ_PAIRS[1][0]), exact: true });
+    if (!firstPanel || !secondPanel) throw new Error(`${CASE} has no FAQ panels`);
+
+    await secondTrigger.click();
+    await expect(page.locator(`#${secondPanel}`)).toBeVisible();
+    await expect(secondTrigger).toHaveAttribute('aria-expanded', 'true');
+
+    // Opening another question closes the one that was open: the group is `single`.
+    await firstTrigger.click();
+    await expect(page.locator(`#${firstPanel}`)).toBeVisible();
+    await expect(page.locator(`#${secondPanel}`)).toBeHidden();
+    await expect(secondTrigger).toHaveAttribute('aria-expanded', 'false');
+
     // No raw translation keys or missing values on the page.
-    const body = await page.locator('main').innerText();
+    const body = await page.locator('#pricing-plans').innerText();
     expect(body, 'raw translation keys').not.toMatch(/\b(?:PricingPage|Common)\.[A-Za-z_]+/);
     expect(body, 'literal undefined').not.toMatch(/\bundefined\b/);
     expect(body, 'literal NaN').not.toMatch(/\bNaN\b/);
 
-    // Adjacent regression: the page is reachable by direct link and survives a
-    // reload with the same catalogue (no client-side-only pricing state).
+    // Adjacent regression: a reload renders the same catalogue, so no pricing
+    // state lives only in the first client render.
     await page.reload();
-    await expect(cards).toHaveCount(plans.length);
-    await expect(page.getByRole('heading', { level: 1, name: PAGE_TITLE })).toBeVisible();
+    await expect(planRow(page, STUDENT_PLAN_KEYS[0])).toHaveCount(1);
+    await expect(studentLadder(page).locator('ul > li')).toHaveCount(plans.length);
 
     errors.expectClean();
   });
