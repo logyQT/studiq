@@ -382,8 +382,10 @@ interface CollectionScreenProps<T extends { id: string }> {
   screen: CollectionScreenState<T>;
   /** Toolbar buttons, e.g. create and import. */
   actions?: ReactNode;
-  /** List-specific toolbar control after the sort select, e.g. the deck suspend toggle. */
+  /** List-specific toolbar control after the sort select. */
   toolbarExtra?: ReactNode;
+  /** List-specific row inside the filter list, e.g. the deck "show suspended" toggle. */
+  filterExtra?: { label: string; checked: boolean; onToggle: () => void };
   /** Placeholder copy for the search input; defaults to `search_placeholder`. */
   searchPlaceholder?: string;
   /** Sort orders the collection supports; defaults to the shared content set. */
@@ -422,6 +424,7 @@ export function CollectionScreen<T extends { id: string }>({
   screen,
   actions,
   toolbarExtra,
+  filterExtra,
   searchPlaceholder,
   sortOptions,
   countLabel,
@@ -487,6 +490,7 @@ export function CollectionScreen<T extends { id: string }>({
         onGroupIdsChange={screen.setGroupIds}
         groupOptions={screen.groupOptions}
         myGroupIds={screen.myGroupIds}
+        filterExtra={filterExtra}
         sortBy={screen.sortBy}
         sortOrder={screen.sortOrder}
         onSortChange={screen.setSort}

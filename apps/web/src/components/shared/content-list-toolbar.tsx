@@ -20,6 +20,8 @@ interface ContentListToolbarProps {
   groupOptions: GroupOption[];
   /** The caller's own groups; the group trigger applies them in one click. */
   myGroupIds: string[];
+  /** One list-specific filter row, e.g. the deck "show suspended" toggle. */
+  filterExtra?: { label: string; checked: boolean; onToggle: () => void };
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
@@ -44,6 +46,7 @@ export function ContentListToolbar({
   onGroupIdsChange,
   groupOptions,
   myGroupIds,
+  filterExtra,
   sortBy,
   sortOrder,
   onSortChange,
@@ -68,6 +71,7 @@ export function ContentListToolbar({
         onGroupIdsChange={onGroupIdsChange}
         options={groupOptions}
         myGroupIds={myGroupIds}
+        extra={filterExtra}
         t={t}
       />
       <SortSelect

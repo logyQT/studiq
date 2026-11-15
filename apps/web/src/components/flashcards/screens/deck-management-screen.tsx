@@ -18,6 +18,7 @@ import dynamic from 'next/dynamic';
 import type { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import {
   CollectionScreen,
@@ -60,6 +61,12 @@ interface DeckFormValues {
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
   const permission = usePermission();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Students get the suspend filter inside the filter list; teachers keep the
+  // toolbar toggle, because suspending is their action rather than a view option.
+  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  const rawAccountType: unknown = user?.app_metadata.account_type;
+  const isStudent = rawAccountType === 'student';
   const [includeSuspended, setIncludeSuspended] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -160,18 +167,29 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           </Button>
         </>
       }
+      filterExtra={
+        isStudent
+          ? {
+              label: t('show_suspended'),
+              checked: includeSuspended,
+              onToggle: () => setIncludeSuspended((previous) => !previous),
+            }
+          : undefined
+      }
       toolbarExtra={
-        <Button
-          variant={includeSuspended ? 'default' : 'outline'}
-          size="sm"
-          aria-label={t('show_suspended')}
-          aria-pressed={includeSuspended}
-          onClick={() => setIncludeSuspended(!includeSuspended)}
-          className="gap-1.5"
-        >
-          <EyeOff className="h-4 w-4" />
-          {includeSuspended && <span>{t('show_suspended')}</span>}
-        </Button>
+        isStudent ? undefined : (
+          <Button
+            variant={includeSuspended ? 'default' : 'outline'}
+            size="sm"
+            aria-label={t('show_suspended')}
+            aria-pressed={includeSuspended}
+            onClick={() => setIncludeSuspended(!includeSuspended)}
+            className="gap-1.5"
+          >
+            <EyeOff className="h-4 w-4" />
+            {includeSuspended && <span>{t('show_suspended')}</span>}
+          </Button>
+        )
       }
       countLabel={(total) => t('decks_count', { count: total })}
       hint={<FirstVisitHint id="decks" />}

@@ -12,6 +12,8 @@ interface ScopeGroupFilterProps {
   options: GroupOption[];
   /** The caller's own groups: the "Grupy" row applies them all at once. */
   myGroupIds: string[];
+  /** One list-specific filter row, e.g. the deck "show suspended" toggle. */
+  extra?: { label: string; checked: boolean; onToggle: () => void };
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -19,6 +21,7 @@ interface ScopeGroupFilterProps {
 const ALL = '__all__';
 const MINE = '__mine__';
 const ALL_GROUPS = '__all_groups__';
+const EXTRA = '__extra__';
 
 /**
  * The content-list filters shared by decks, question banks and topics (#595).
@@ -36,6 +39,7 @@ export function ScopeGroupFilter({
   onGroupIdsChange,
   options,
   myGroupIds,
+  extra,
   t,
 }: ScopeGroupFilterProps) {
   const mineActive = owner === 'mine';
@@ -49,19 +53,26 @@ export function ScopeGroupFilter({
     { value: ALL, label: t('owner_all') },
     { value: MINE, label: t('owner_mine') },
     ...(myGroupIds.length > 0 ? [{ value: ALL_GROUPS, label: t('group_filter') }] : []),
+    ...(extra ? [{ value: EXTRA, label: extra.label }] : []),
     ...options.map((group) => ({ value: group.id, label: group.name })),
   ];
 
   const selected = [...(nothingSelected ? [ALL] : []), ...(mineActive ? [MINE] : []), ...groupIds];
 
   const handleChange = (next: string[]) => {
+    // A list-specific row owns its own state; the click is forwarded to the screen.
+    if (extra && next.includes(EXTRA) !== extra.checked) {
+      extra.onToggle();
+      return;
+    }
+
     // "Grupy" is an action, not a state: it ticks (or clears) the caller's groups.
     if (next.includes(ALL_GROUPS)) {
       onGroupIdsChange(allMineSelected ? [] : myGroupIds);
       return;
     }
 
-    const values = next.filter((value) => value !== ALL);
+    const values = next.filter((value) => value !== ALL && value !== EXTRA);
     if (values.length === 0) {
       onOwnerChange('all');
       onGroupIdsChange([]);
