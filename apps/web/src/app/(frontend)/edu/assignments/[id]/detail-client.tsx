@@ -90,6 +90,9 @@ interface AssignmentDetail {
     question_id: string;
     order_index: number | null;
     points: number;
+    /** R10: kept back from the cohort review until released. */
+    withhold_from_review: boolean;
+    released_at: string | null;
     question: {
       id: string;
       content: string;
@@ -282,6 +285,27 @@ export default function AssignmentDetailClient() {
   const closeMutation = useApiMutation<unknown, void>({
     mutationFn: () => apiPost<unknown>(`/api/v1/teacher/assignments/${id}/close`, undefined),
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
+  });
+
+  const withholdMutation = useApiMutation<unknown, { questionId: string; withheld: boolean }>({
+    mutationFn: (vars) =>
+      apiPut<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/review`, {
+        withheld: vars.withheld,
+      }),
+    invalidateKeys: [assignmentKeys.detail(id)],
+    onError: (error) =>
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null)),
+  });
+
+  const releaseMutation = useApiMutation<unknown, string>({
+    mutationFn: (questionId) =>
+      apiPost<unknown>(
+        `/api/v1/teacher/assignments/${id}/questions/${questionId}/release`,
+        undefined,
+      ),
+    invalidateKeys: [assignmentKeys.detail(id)],
+    onError: (error) =>
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null)),
   });
 
   const publishMutation = useApiMutation<unknown, void>({
@@ -691,7 +715,7 @@ export default function AssignmentDetailClient() {
               questions.map((aq, i) => (
                 <div
                   key={aq.id}
-                  className="flex items-center justify-between p-3 rounded-lg border"
+                  className="flex items-center justify-between gap-3 p-3 rounded-lg border"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-sm font-medium text-muted-foreground w-6 shrink-0">
@@ -701,10 +725,43 @@ export default function AssignmentDetailClient() {
                     <Badge variant="secondary" className="shrink-0">
                       {aq.question?.type}
                     </Badge>
+                    {aq.withhold_from_review && (
+                      <Badge variant="secondary" className="shrink-0">
+                        {aq.released_at ? t('released_to_review') : t('held_back')}
+                      </Badge>
+                    )}
                   </div>
-                  <span className="text-sm text-muted-foreground shrink-0 ml-3">
-                    {t('pts', { count: aq.points })}
-                  </span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {/* R10: the hold is decided while the window is live; once it closes, the only
+                        way back is the release. */}
+                    {!isClosed ? (
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={aq.withhold_from_review}
+                          onChange={(event) =>
+                            withholdMutation.mutate({
+                              questionId: aq.question_id,
+                              withheld: event.target.checked,
+                            })
+                          }
+                        />
+                        {t('hold_from_review')}
+                      </label>
+                    ) : aq.withhold_from_review && !aq.released_at ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => releaseMutation.mutate(aq.question_id)}
+                        disabled={releaseMutation.isPending}
+                      >
+                        {t('release')}
+                      </Button>
+                    ) : null}
+                    <span className="text-sm text-muted-foreground">
+                      {t('pts', { count: aq.points })}
+                    </span>
+                  </div>
                 </div>
               ))
             )}

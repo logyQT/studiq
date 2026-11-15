@@ -34,7 +34,8 @@
     "ERROR_ASSESSMENT_CLOSED": "This assessment is already closed.",
     "ERROR_ASSESSMENT_NOT_LIVE": "Only a running assessment can be closed.",
     "ERROR_ASSESSMENT_NOT_PUBLISHED": "This assessment has not been published yet.",
-    "ERROR_REVIEW_LOCKED": "The review opens when the assessment closes."
+    "ERROR_REVIEW_LOCKED": "The review opens when the assessment closes.",
+    "ERROR_RELEASE_NOT_WITHHELD": "This item was not held back from the review."
   },
   "EmptyStates": {
     "load_error": "The list could not be loaded",
@@ -2886,7 +2887,11 @@
     "closing": "Closing...",
     "close_confirm_title": "Close this assessment now?",
     "close_confirm_desc": "Running attempts end and cannot be submitted, and the answers are revealed to the whole class. This cannot be undone.",
-    "close_failed": "Closing failed"
+    "close_failed": "Closing failed",
+    "held_back": "Held back from review",
+    "hold_from_review": "Hold back from review",
+    "released_to_review": "Released to the review",
+    "release": "Release"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",

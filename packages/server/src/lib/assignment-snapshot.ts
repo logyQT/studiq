@@ -37,7 +37,7 @@ export type QuestionSnapshotKey = QuestionKey;
 
 /** The link columns every assignment read may select (never `snapshot_key`, never `*`). */
 export const ASSIGNMENT_QUESTION_COLUMNS =
-  'id, assignment_id, question_id, order_index, points, snapshot, snapshot_version';
+  'id, assignment_id, question_id, order_index, points, snapshot, snapshot_version, withhold_from_review, released_at';
 
 /** The live item projected for a snapshot write. */
 const OPTION_SELECT = 'id, content, order_index, match_group, match_side';
@@ -196,7 +196,7 @@ export async function readReviewItems(assignmentId: string): Promise<ServiceResu
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('assignment_questions')
-    .select('question_id, snapshot, snapshot_key')
+    .select('question_id, snapshot, snapshot_key, withhold_from_review, released_at')
     .eq('assignment_id', assignmentId)
     .order('order_index', { ascending: true });
 
@@ -205,6 +205,7 @@ export async function readReviewItems(assignmentId: string): Promise<ServiceResu
   const items: ReviewItem[] = [];
   for (const row of dbRows(data)) {
     if (!row.question_id) continue;
+    if (row.withhold_from_review && !row.released_at) continue;
     const snapshot = snapshotFromJson(row.snapshot);
     const key = snapshotKeyFromJson(row.snapshot_key);
     if (!snapshot || !key) continue;
