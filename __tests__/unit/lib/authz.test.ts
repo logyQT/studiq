@@ -248,17 +248,50 @@ describe('authz (unified lib)', () => {
       expect(filter).toEqual({ organization_id: 'org-1', created_by: 'user-1' });
     });
 
-    it('keeps card access through a group-visible deck', async () => {
+    it('keeps card access through a group-visible deck, by deck rather than by card', async () => {
       mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-shared' }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'd-shared' }]));
-      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
 
       const filter = await accessibleFilter(groupCtx, 'flashcard.read', 'flashcard');
 
       expect(filter).toEqual({
         organization_id: 'org-1',
-        or: 'created_by.eq.user-1,id.in.(fc-1)',
+        or: 'created_by.eq.user-1,deck_id.in.(d-shared)',
       });
+      // #1049: the cards of the deck are never listed, so the filter does not grow with them.
+      expect(mock.from).not.toHaveBeenCalledWith('flashcards');
+    });
+
+    it('keeps question access through a shared bank, by bank rather than by question', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([{ bank_id: 'b-1' }, { bank_id: 'b-2' }, { bank_id: 'b-1' }]),
+      );
+
+      const filter = await accessibleFilter(
+        { ...groupCtx, permissionScopes: { 'question.read': 'group' } },
+        'question.read',
+        'question',
+      );
+
+      expect(filter).toEqual({
+        organization_id: 'org-1',
+        or: 'created_by.eq.user-1,bank_id.in.(b-1,b-2)',
+      });
+      // #1049: a bank of thousands of questions must not put thousands of ids in the URL.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('questions');
+    });
+
+    it('falls back to own questions when no bank is shared with the group', async () => {
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const filter = await accessibleFilter(
+        { ...groupCtx, permissionScopes: { 'question.read': 'group' } },
+        'question.read',
+        'question',
+      );
+
+      expect(filter).toEqual({ organization_id: 'org-1', created_by: 'user-1' });
     });
 
     it('denies group access to a personal deck even when a stale link exists', async () => {

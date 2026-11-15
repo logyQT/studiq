@@ -17,10 +17,11 @@ import { expect, loadTenant, test, type QaRole, type QaTenant } from '#test/qa/f
  * manager/teacher/student accounts and the default group; no id is hard-coded.
  *
  * The case's expected result is the *intended* behavior, not a defect report:
- * an anonymous visitor cannot finish a checkout, and the mock webhook — which is
- * excluded from the proxy's catch-all auth rule because a real Stripe webhook is
- * unauthenticated — authenticates the caller itself. It therefore must reject an
- * anonymous call and must never act on a `user_id` other than the caller's.
+ * an anonymous visitor cannot finish a checkout, and the mock webhook — declared
+ * in `PUBLIC_API` (`packages/server/src/config/routes.config.ts`), because a real
+ * Stripe webhook is unauthenticated — authenticates the caller itself. It
+ * therefore must reject an anonymous call and must never act on a `user_id`
+ * other than the caller's.
  *
  * Acceptance points confirmed during the walk on the shared app:
  * 1. `GET /checkout?plan_id=spark` without a session redirects to

@@ -35,6 +35,16 @@ export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse
   });
 }
 
+/**
+ * `toNextResponse` for a body that can carry a signed URL (a hosted invoice):
+ * a shared cache must never store it.
+ */
+export function toNoStoreNextResponse<T>(response: ControllerResponse<T>): NextResponse {
+  const nextResponse = toNextResponse(response);
+  nextResponse.headers.set('Cache-Control', 'private, no-store');
+  return nextResponse;
+}
+
 // eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise<NextResponse> contract for await-ing callers.
 export async function handleApiError(
   error: unknown,
