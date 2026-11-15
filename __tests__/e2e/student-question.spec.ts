@@ -38,6 +38,12 @@ test.describe('Student Question Flow', () => {
     await formDialog.getByRole('combobox').first().click();
     await page.getByRole('option', { name: t('QuestionForm.open_answer') }).click();
     await formDialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill(questionContent);
+    // #1173: an open item has no key, so it is saved with a model answer.
+    await formDialog
+      .getByPlaceholder(t('QuestionForm.model_answer_placeholder'))
+      .fill(
+        'Dobra odpowiedź wymienia trzy przyczyny i krótko uzasadnia każdą z nich, odwołując się do przykładu z lekcji.',
+      );
     await formDialog.getByRole('button', { name: t('QuestionForm.create') }).click();
     await expect(page.getByText(t('QuestionForm.created'))).toBeVisible();
     await expect(page.locator('tbody').getByText(questionContent).first()).toBeVisible();

@@ -313,11 +313,14 @@ INSERT INTO "public"."flashcard_topic_assignments" ("flashcard_id", "topic_id") 
 ON CONFLICT DO NOTHING;
 
 -- Questions (teachers only)
+-- Every choice item carries an explanation that teaches the reasoning, because R16/R17 make it a
+-- condition of saving the item (#1173): a seed that could not be saved through the authoring form
+-- would be a trap for whoever opens it next.
 INSERT INTO "public"."questions" ("id", "organization_id", "created_by", "type", "content", "explanation", "visibility", "bank_id") VALUES
-  ('00000000-0000-4000-8030-000000000001', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000003', 'mcq', 'O1G1T1', 'O1G1T1', 'group', '00000000-0000-4000-8020-000000000001'),
-  ('00000000-0000-4000-8030-000000000002', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000004', 'mcq', 'O1G2T2', 'O1G2T2', 'group', '00000000-0000-4000-8020-000000000002'),
-  ('00000000-0000-4000-8030-000000000003', '00000000-0000-4000-8000-00000000000A', '00000000-0000-4000-8001-000000000003', 'mcq', 'O2G1T1', 'O2G1T1', 'group', '00000000-0000-4000-8020-000000000003'),
-  ('00000000-0000-4000-8030-000000000004', '00000000-0000-4000-8000-00000000000A', '00000000-0000-4000-8001-000000000004', 'mcq', 'O2G2T2', 'O2G2T2', 'group', '00000000-0000-4000-8020-000000000004')
+  ('00000000-0000-4000-8030-000000000001', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000003', 'mcq', 'O1G1T1', 'Pytanie testowe pierwszej organizacji sprawdza uprawnienia odczytu: klucz wskazuje dystraktor, który studenci najczęściej mylą z poprawnym rozwiązaniem.', 'group', '00000000-0000-4000-8020-000000000001'),
+  ('00000000-0000-4000-8030-000000000002', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000004', 'mcq', 'O1G2T2', 'Pytanie testowe drugiej grupy pierwszej organizacji sprawdza, czy odczyt respektuje przynależność do grupy: poprawna jest odpowiedź zgodna z kluczem.', 'group', '00000000-0000-4000-8020-000000000002'),
+  ('00000000-0000-4000-8030-000000000003', '00000000-0000-4000-8000-00000000000A', '00000000-0000-4000-8001-000000000003', 'mcq', 'O2G1T1', 'Pytanie testowe pierwszej grupy drugiej organizacji sprawdza izolację najemców: odpowiedź spoza organizacji nie jest widoczna dla jej członków.', 'group', '00000000-0000-4000-8020-000000000003'),
+  ('00000000-0000-4000-8030-000000000004', '00000000-0000-4000-8000-00000000000A', '00000000-0000-4000-8001-000000000004', 'mcq', 'O2G2T2', 'Pytanie testowe drugiej grupy drugiej organizacji sprawdza to samo w drugą stronę: członek pierwszej organizacji nie widzi tego pytania.', 'group', '00000000-0000-4000-8020-000000000004')
 ON CONFLICT DO NOTHING;
 
 -- Question-topic assignments
@@ -458,20 +461,22 @@ INSERT INTO "public"."topic_groups" ("topic_id", "group_id") VALUES
   ('00000000-0000-4000-8010-000000000009', '00000000-0000-4000-8000-00000000000F')
 ON CONFLICT DO NOTHING;
 
--- Questions (10 total: 4 MCQ, 3 True/False, 3 Open)
-INSERT INTO "public"."questions" ("id", "organization_id", "created_by", "type", "content", "explanation", "visibility", "bank_id") VALUES
+-- Questions (10 total: 4 MCQ, 3 True/False, 3 Open). A choice item needs an explanation that
+-- teaches and an open item a model answer (#1173, R16) — the seed is what the demo and the QA
+-- cases edit, so it has to pass the same validator the authoring form runs.
+INSERT INTO "public"."questions" ("id", "organization_id", "created_by", "type", "content", "explanation", "model_answer", "visibility", "bank_id") VALUES
   -- Bank 1: Historia — 2 MCQ, 1 TF, 1 Open
-  ('00000000-0000-4000-8030-000000000005', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Który rok uważa się za datę chrztu Polski?', 'Chrzest Polski przyjmuje się na rok 966.', 'group', '00000000-0000-4000-8020-000000000005'),
-  ('00000000-0000-4000-8030-000000000006', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Kto był pierwszym królem Polski?', 'Bolesław Chrobry został koronowany w 1025 roku.', 'group', '00000000-0000-4000-8020-000000000005'),
-  ('00000000-0000-4000-8030-000000000007', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'true_false', 'Bitwa pod Grunwaldem miała miejsce w 1410 roku.', 'Tak, bitwa pod Grunwaldem odbyła się 15 lipca 1410.', 'group', '00000000-0000-4000-8020-000000000005'),
-  ('00000000-0000-4000-8030-000000000008', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'open',       'Wymień trzy przyczyny upadku Rzeczypospolitej Obojga Narodów.', 'Liberum veto, słaba władza królewska, ingerencja mocarstw ościennych.', 'group', '00000000-0000-4000-8020-000000000005'),
+  ('00000000-0000-4000-8030-000000000005', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Który rok uważa się za datę chrztu Polski?', 'Chrzest Polski przyjmuje się na rok 966, gdy Mieszko I przyjął chrzest w obrządku łacińskim. Wydarzenie to włączyło państwo Piastów w krąg kultury chrześcijańskiej.', NULL, 'group', '00000000-0000-4000-8020-000000000005'),
+  ('00000000-0000-4000-8030-000000000006', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Kto był pierwszym królem Polski?', 'Koronacja Bolesława Chrobrego w 1025 roku uczyniła go pierwszym królem Polski. Wcześniejsi władcy z dynastii Piastów nosili tytuł księcia, a nie króla.', NULL, 'group', '00000000-0000-4000-8020-000000000005'),
+  ('00000000-0000-4000-8030-000000000007', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'true_false', 'Bitwa pod Grunwaldem miała miejsce w 1410 roku.', 'Bitwa pod Grunwaldem rozegrała się 15 lipca 1410 roku i zakończyła zwycięstwem wojsk polsko-litewskich nad zakonem krzyżackim. To jedna z największych bitew średniowiecza.', NULL, 'group', '00000000-0000-4000-8020-000000000005'),
+  ('00000000-0000-4000-8030-000000000008', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'open',       'Wymień trzy przyczyny upadku Rzeczypospolitej Obojga Narodów.', NULL, 'Liberum veto, słaba władza królewska i ingerencja mocarstw ościennych: każde z tych zjawisk osłabiało państwo, a razem uniemożliwiły skuteczną obronę i reformy.', 'group', '00000000-0000-4000-8020-000000000005'),
   -- Bank 2: Geografia i Nauka — 2 MCQ, 2 TF, 2 Open
-  ('00000000-0000-4000-8030-000000000009', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Jaka jest najdłuższa rzeka w Polsce?', 'Wisła ma długość około 1047 km.', 'group', '00000000-0000-4000-8020-000000000006'),
-  ('00000000-0000-4000-8030-00000000000A', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Który pierwiastek chemiczny ma symbol Fe?', 'Fe to symbol żelaza (ferrum).', 'group', '00000000-0000-4000-8020-000000000006'),
-  ('00000000-0000-4000-8030-00000000000B', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'true_false', 'Woda zamarza w temperaturze 0 stopni Celsjusza.', 'Tak, woda zamarza w 0°C pod ciśnieniem atmosferycznym.', 'group', '00000000-0000-4000-8020-000000000006'),
-  ('00000000-0000-4000-8030-00000000000C', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'true_false', 'Australia jest największym kontynentem na Ziemi.', 'Australia jest najmniejszym kontynentem. Azja jest największa.', 'group', '00000000-0000-4000-8020-000000000006'),
-  ('00000000-0000-4000-8030-00000000000D', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'open',       'Opisz krótko obieg wody w przyrodzie.', 'Parowanie → kondensacja → opady → spływ powierzchniowy → parowanie.', 'group', '00000000-0000-4000-8020-000000000006'),
-  ('00000000-0000-4000-8030-00000000000E', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'open',       'Wymień trzy źródła energii odnawialnej.', 'Energia słoneczna, wiatrowa i wodna.', 'group', '00000000-0000-4000-8020-000000000006')
+  ('00000000-0000-4000-8030-000000000009', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Jaka jest najdłuższa rzeka w Polsce?', 'Najdłuższą rzeką w Polsce jest Wisła: liczy około 1047 km i uchodzi do Bałtyku, wyznaczając oś hydrograficzną kraju. Pozostałe rzeki są od niej krótsze.', NULL, 'group', '00000000-0000-4000-8020-000000000006'),
+  ('00000000-0000-4000-8030-00000000000A', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'mcq',        'Który pierwiastek chemiczny ma symbol Fe?', 'Symbol Fe pochodzi od łacińskiej nazwy tego metalu, ferrum. Pierwiastek jest jednym z najczęściej występujących w skorupie ziemskiej i wchodzi w skład hemoglobiny.', NULL, 'group', '00000000-0000-4000-8020-000000000006'),
+  ('00000000-0000-4000-8030-00000000000B', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'true_false', 'Woda zamarza w temperaturze 0 stopni Celsjusza.', 'Pod normalnym ciśnieniem atmosferycznym woda przechodzi w lód w temperaturze zera stopni Celsjusza. Dodatek soli obniża tę temperaturę, dlatego soli się jezdnie zimą.', NULL, 'group', '00000000-0000-4000-8020-000000000006'),
+  ('00000000-0000-4000-8030-00000000000C', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'true_false', 'Australia jest największym kontynentem na Ziemi.', 'Azja jest największym kontynentem, a Australia najmniejszym, więc zdanie odwraca prawidłową kolejność wielkości. Australię często myli się z Antarktydą, która jest większa.', NULL, 'group', '00000000-0000-4000-8020-000000000006'),
+  ('00000000-0000-4000-8030-00000000000D', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'open',       'Opisz krótko obieg wody w przyrodzie.', NULL, 'Woda paruje z powierzchni mórz i lądów, skrapla się w chmury, spada jako opad, spływa powierzchniowo i podziemnie, po czym paruje ponownie — obieg się zamyka.', 'group', '00000000-0000-4000-8020-000000000006'),
+  ('00000000-0000-4000-8030-00000000000E', '00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', 'open',       'Wymień trzy źródła energii odnawialnej.', NULL, 'Energia słoneczna, wiatrowa i wodna; jako odnawialne wymienia się też geotermię i biomasę, bo ich zasoby odtwarzają się w czasie krótszym niż życie jednego pokolenia.', 'group', '00000000-0000-4000-8020-000000000006')
 ON CONFLICT DO NOTHING;
 
 -- Question-topic assignments
