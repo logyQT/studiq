@@ -99,10 +99,12 @@ export function PricingPageClient() {
       ];
 
   function selectAudience(next: PricingAudience) {
-    // `replace`, not `push`: flipping between two audiences should not fill the
-    // Back stack. `scroll: false` keeps the reader at the switch rather than
-    // throwing them back to the hero.
-    router.replace(AUDIENCE_HREF[next], { scroll: false });
+    /*
+     * `push`, not `replace`: the address is the audience, so Back has to undo the
+     * switch and return the ladder the reader left. `scroll: false` keeps the
+     * reader at the switch rather than throwing them back to the hero.
+     */
+    router.push(AUDIENCE_HREF[next], { scroll: false });
   }
 
   return (
