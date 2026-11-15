@@ -194,7 +194,9 @@ async function createPublishedQuiz(page: Page, tenant: QaTenant): Promise<string
   // the student start a second attempt after completing the first.
   const assignment = await expectApi<{ id: string }>(
     await page.request.post('/api/v1/teacher/assignments', {
-      data: { title: QUIZ_NAME, quizId: quiz.id, maxAttempts: 3 },
+      // The spec completes more than one attempt over the same pool, which is the flagged
+      // same-item retake (#1174, R6) — a fresh sample would have nothing left to draw.
+      data: { title: QUIZ_NAME, quizId: quiz.id, maxAttempts: 3, allowSameItemRetake: true },
     }),
     'POST /api/v1/teacher/assignments',
   );

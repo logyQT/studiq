@@ -40,7 +40,7 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  *   and no longer renders a start/continue button.
  * - The list moves the row to „Ukończone (1)” with the score; opening it from the list
  *   again still shows no start button.
- * - `POST /api/v1/assignments/<id>/start` answers 429 `RATE_LIMITED` and creates no new
+ * - `POST /api/v1/assignments/<id>/start` answers 409 `NO_ATTEMPTS_LEFT` and creates no new
  *   attempt — `attempts_used` stays 1 and the newest attempt is still the completed one.
  */
 
@@ -312,10 +312,10 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
 
     // --- Step 2b: try to start again through the start endpoint directly --------
     const startResponse = await page.request.post(`/api/v1/assignments/${assignment.id}/start`);
-    expect(startResponse.status(), 'POST start after the limit').toBe(429);
+    expect(startResponse.status(), 'POST start after the limit').toBe(409);
     const startBody = await json<{ success: boolean; error: string }>(startResponse);
     expect(startBody.success).toBe(false);
-    expect(startBody.error).toBe('RATE_LIMITED');
+    expect(startBody.error).toBe('NO_ATTEMPTS_LEFT');
 
     // No attempt was created: the budget and the newest attempt are unchanged.
     const afterRejectedStart = await readAssignment(page, assignment.id);
