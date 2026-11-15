@@ -5,8 +5,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 /**
  * BIL-03 — Zakup planu studenta, ścieżka poprawna.
  *
- * A standalone student on the free `base` plan buys Spark (9,99 zł/mies.) from
- * `/pricing/student`: the checkout summary shows the plan, its price and
+ * A standalone student on the free `base` plan buys Spark (9,99 zł/mies.) from the
+ * student ladder of `/pricing`: the checkout summary shows the plan, its price and
  * „Razem”, the card fields format themselves, the „Zapłać” button unlocks only
  * when every field is valid, the simulated payment shows
  * „Płatność udana! Przekierowywanie...”, then „Zakup udany!” and finally the
@@ -40,8 +40,9 @@ const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname
 
 const UI = {
   loginTitle: 'Witaj ponownie',
-  pricingTitle: 'Wybierz Swój Plan',
+  pricingTitle: 'Wybierz swój plan',
   sparkName: 'StudiQ Spark',
+  sparkRowName: 'Spark',
   sparkCta: 'Przejdź na Spark',
   summary: 'Podsumowanie zamówienia',
   total: 'Razem',
@@ -52,7 +53,7 @@ const UI = {
   pay: /Zapłać/,
   success: /Płatność udana! Przekierowywanie/,
   successPageTitle: 'Zakup udany!',
-  currentPlan: 'Obecny Plan',
+  currentPlan: 'Twój plan',
 } as const;
 
 /** The simulated card the case uses (a Stripe test number, never charged). */
@@ -72,7 +73,9 @@ interface PlanResponse {
 }
 
 test.describe('BIL-03 — student plan purchase', () => {
-  test('buys Spark from /pricing/student and lands on the upgraded panel', async ({ page }) => {
+  test('buys Spark from the /pricing student ladder and lands on the upgraded panel', async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
 
     const tenant = loadTenant(CASE);
@@ -95,16 +98,18 @@ test.describe('BIL-03 — student plan purchase', () => {
     const basePlan = (await json<{ data: PlanResponse }>(planBefore)).data;
     expect(basePlan.key, 'the case starts on the free Base plan').toBe('base');
 
-    // --- Step 1: pick Spark on /pricing/student -------------------------
-    await page.goto('/pricing/student');
+    // --- Step 1: pick Spark on the /pricing student ladder ----------------
+    await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
 
-    const sparkCard = page.locator('[data-slot="card"]').filter({ hasText: UI.sparkName });
-    await expect(sparkCard, 'one Spark plan card').toHaveCount(1);
-    await expect(sparkCard, 'the Spark card shows the plan name').toContainText(UI.sparkName);
-    await expect(sparkCard, 'the Spark card shows the monthly price').toContainText(/9,99/);
-    const sparkCta = sparkCard.getByRole('button', { name: UI.sparkCta, exact: true });
-    await expect(sparkCta, 'the Spark card offers its purchase button').toBeVisible();
+    const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
+    await expect(sparkRow, 'one Spark plan row').toHaveCount(1);
+    await expect(sparkRow.locator('h3#spark'), 'the Spark row names the plan').toHaveText(
+      UI.sparkRowName,
+    );
+    await expect(sparkRow, 'the Spark row shows the monthly price').toContainText(/9,99/);
+    const sparkCta = sparkRow.getByRole('button', { name: UI.sparkCta, exact: true });
+    await expect(sparkCta, 'the Spark row offers its purchase button').toBeVisible();
     await sparkCta.click();
 
     // --- Step 2: order summary on /checkout ------------------------------
