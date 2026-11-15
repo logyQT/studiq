@@ -140,7 +140,7 @@ function FormBody({
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder={namePlaceholder}
-                className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
+                className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary"
               />
               <label className="sr-only">{descriptionLabel}</label>
               <Textarea
@@ -153,7 +153,7 @@ function FormBody({
                 }
                 placeholder={descriptionPlaceholder}
                 rows={2}
-                className="text-sm text-muted-foreground resize-none px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
+                className="text-sm text-muted-foreground resize-none px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary"
               />
             </div>
           </div>

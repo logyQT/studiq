@@ -87,7 +87,7 @@ export function TopicFormDialog({
                   value={formData.name}
                   onChange={(e) => onFormDataChange({ ...formData, name: e.target.value })}
                   placeholder={t('topic_name_placeholder')}
-                  className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
+                  className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary"
                 />
               </div>
             </div>
