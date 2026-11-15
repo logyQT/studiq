@@ -2119,7 +2119,6 @@
     "close_org_cta": "Let's talk rollout",
     "catalogue_unavailable": "The price list could not be loaded.",
     "feature_ai_chat": "AI Assistant",
-    "limit_per_day": "{value} / day",
     "cta_generic": "Choose plan"
   },
   "UpgradePage": {

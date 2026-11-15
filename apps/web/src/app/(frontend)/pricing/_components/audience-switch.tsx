@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import type { PricingAudience } from '@/app/(frontend)/pricing/_components/pricing-audience';
+import { FOCUS_RING_WITHIN } from '@/components/shared/focus-ring';
 import { cn } from '@/lib/utils';
 
 const OPTIONS = ['individual', 'organization'] as const;
@@ -30,10 +31,9 @@ export function AudienceSwitch({ value, onChange, controls }: AudienceSwitchProp
       <div
         className={cn(
           'mt-2 flex overflow-hidden rounded-control border border-input sm:inline-flex',
-          // FOCUS_RING moved to the pair: the focused input is `sr-only`, so a
-          // ring on it would draw a 1px box. The segments share one 1px edge, so
-          // a per-segment ring would sit on its neighbour.
-          'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background has-[:focus-visible]:outline-none',
+          // The ring belongs to the pair: the focused input is `sr-only`, so a
+          // ring on it would draw a 1px box, and the segments share one 1px edge.
+          FOCUS_RING_WITHIN,
         )}
       >
         {OPTIONS.map((option, index) => (

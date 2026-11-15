@@ -2100,7 +2100,6 @@
     "close_org_cta": "Porozmawiajmy o wdrożeniu",
     "catalogue_unavailable": "Nie udało się wczytać cennika.",
     "feature_ai_chat": "Asystent AI",
-    "limit_per_day": "{value} / dzień",
     "cta_generic": "Wybierz plan"
   },
   "UpgradePage": {
