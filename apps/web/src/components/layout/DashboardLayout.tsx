@@ -34,9 +34,16 @@ export function DashboardLayout({
             </div>
           </header>
           <div className="flex flex-1 flex-col min-h-0">
+            {/*
+              `relative` makes this scrollport the containing block for
+              absolutely positioned page content. Without it the nearest one is
+              the 100dvh inset, so a stray box (Radix renders the switch's bubble
+              input as an absolute sibling) becomes document scroll and the paper
+              surface ends on a seam.
+            */}
             <main
               className={cn(
-                'flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
+                'relative flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
                 fullWidth ? 'flex flex-col' : 'p-content',
               )}
             >

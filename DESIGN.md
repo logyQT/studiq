@@ -173,13 +173,17 @@ the bottom-right — with both ends eased over 14 and 22 stops. Two overlapping 
 this, and each pool landed on a wall: the light died at its 68% stop with a slope of 0.10 levels
 per 12px and the shade at 70% with 0.22, which is the step the eye draws a band on. A straight
 ramp has no wall to land on, and the quadratic ease has the smallest slope step of any curve that
-still reaches zero slope at both ends, so what is left is 0.04 levels per 12px across the 1440
-page and 0.08 across `/register`'s narrower column. There is no edge layer: a shaped cue that
-reaches the viewport edge was read as a vertical band down both sides, and a band that reads as a
-seam is not a lighting cue. `/register`'s form column carries the same class in both themes: the
-utility has its own `.dark &` block, so one class paints the correct stack for each. The ramp is
-in percentages of the gradient line, not px, so every surface carries the same share of it; px
-stops would keep one pool size but leave a short column unlit.
+still reaches zero slope at both ends, so what is left is a step of 0.019 levels per 12px on the
+tall landing page, 0.053-0.058 on the product shell (1184×900 and 1184×700), 0.069 on `/register`'s
+column, 0.101 on the phone shell and 0.22 on a short landscape viewport. A kink is a fixed 12px
+window against a gradient line as long as the surface's diagonal, so the shorter the surface the
+larger the share of the ramp that window covers, and the stop count is set by the shortest surface
+— the phone inset, gradient line about 930px — not the narrowest. There is no edge layer: a shaped
+cue that reaches the viewport edge was read as a vertical band down both sides, and a band that
+reads as a seam is not a lighting cue. `/register`'s form column carries the same class in both
+themes: the utility has its own `.dark &` block, so one class paints the correct stack for each.
+The ramp is in percentages of the gradient line, not px, so every surface carries the same share
+of it; px stops would keep one pool size but leave a short column unlit.
 
 The order of that stack is the technique. Both textures sit above the ramp, because its stops are
 opaque and would cover them. The dither is the topmost layer and composites with `overlay`, so it
@@ -191,12 +195,13 @@ through a `table` transfer that linearises the filter's bell-shaped distribution
 Gaussian tile only flips pixels at its tails and dithers nothing in the middle.
 
 Measured at 1440 the surface spans 18-24 levels per channel with a flat middle and no step larger
-than 0.04 levels per 12px, which is why it reads as light on a sheet rather than a gradient band.
-Its worst text pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture
-that both lightens and darkens paper cannot leave the worst pixel at the flat token value, and
-that is 1.33x the 4.5:1 floor, not a regression. `/register`'s grained column measures 17.02 (ink),
-6.03 (muted) and 5.96 (placeholder) in light, 15.84, 7.36 and 5.52 in dark; the product shell
-measures 16.74 (ink) and 5.60 (muted) in light, 16.41 and 7.41 in dark.
+than 0.22 levels per 12px on the shortest surface, 0.019 on the tallest, which is why it reads as
+light on a sheet rather than a gradient band. Its worst text pixel is 17.07 (ink) and 6.12 (muted)
+in light, 15.59 and 7.36 in dark — a texture that both lightens and darkens paper cannot leave the
+worst pixel at the flat token value, and that is 1.33x the 4.5:1 floor, not a regression.
+`/register`'s grained column measures 17.02 (ink), 6.03 (muted) and 5.96 (placeholder) in light,
+15.84, 7.36 and 5.52 in dark; the product shell measures 16.74 (ink) and 5.60 (muted) in light,
+16.41 and 7.41 in dark.
 
 The dither is sized to that surface, not to a texture: on the tone alone (grain held out, which
 is what the eye integrates) it cuts the longest flat tread from 36px to 6px on `/login`'s light
