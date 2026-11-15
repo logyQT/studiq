@@ -2905,7 +2905,13 @@
     "held_back": "Wstrzymane przed podsumowaniem",
     "hold_from_review": "Wstrzymaj przed podsumowaniem",
     "released_to_review": "Udostępnione w podsumowaniu",
-    "release": "Udostępnij"
+    "release": "Udostępnij",
+    "cancelled": "Anulowane",
+    "cancel": "Anuluj sprawdzian",
+    "cancelling": "Anulowanie...",
+    "cancel_confirm_title": "Anulować ten sprawdzian?",
+    "cancel_confirm_desc": "Sprawdzian kończy się dla całej klasy bez ujawniania odpowiedzi. Rozpoczęte podejścia zostają zamknięte i nie można ich oddać, a pytania znów stają się dostępne. Tej operacji nie można cofnąć.",
+    "cancel_failed": "Anulowanie nie powiodło się"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",

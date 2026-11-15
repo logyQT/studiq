@@ -83,6 +83,12 @@ export class TeacherAssignmentController {
     return controllerResponse.success(result.data);
   }
 
+  async cancel(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.service.cancel(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
   async setReviewHold(
     id: string,
     questionId: string,

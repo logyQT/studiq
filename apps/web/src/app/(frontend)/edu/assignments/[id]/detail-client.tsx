@@ -66,7 +66,7 @@ interface AssignmentDetail {
   id: string;
   title: string;
   description: string | null;
-  status: 'draft' | 'published';
+  status: 'draft' | 'published' | 'cancelled';
   deadline: string | null;
   start_time: string | null;
   quiz_id: string | null;
@@ -266,6 +266,7 @@ export default function AssignmentDetailClient() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
@@ -285,6 +286,11 @@ export default function AssignmentDetailClient() {
 
   const closeMutation = useApiMutation<unknown, void>({
     mutationFn: () => apiPost<unknown>(`/api/v1/teacher/assignments/${id}/close`, undefined),
+    invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
+  });
+
+  const cancelMutation = useApiMutation<unknown, void>({
+    mutationFn: () => apiPost<unknown>(`/api/v1/teacher/assignments/${id}/cancel`, undefined),
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
 
@@ -415,6 +421,18 @@ export default function AssignmentDetailClient() {
       );
     }
     setCloseOpen(false);
+  };
+
+  const handleCancel = async () => {
+    try {
+      await cancelMutation.mutateAsync(undefined);
+      void refetch();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? translateErrorCode(tErrors, error.code) : t('cancel_failed'),
+      );
+    }
+    setCancelOpen(false);
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -550,6 +568,7 @@ export default function AssignmentDetailClient() {
 
   const isDraft = assignment.status === 'draft';
   const isPublished = assignment.status === 'published';
+  const isCancelled = assignment.status === 'cancelled';
   const isLiveRun =
     isPublished && (!assignment.start_time || new Date(assignment.start_time) <= new Date());
   const isClosed =
@@ -581,14 +600,22 @@ export default function AssignmentDetailClient() {
             <h1 className="text-2xl font-bold tracking-tight">{assignment.title}</h1>
             <span
               className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                isClosed
-                  ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-                  : isPublished
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                isCancelled
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  : isClosed
+                    ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                    : isPublished
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
               }`}
             >
-              {isClosed ? t('closed') : isPublished ? t('published') : t('draft')}
+              {isCancelled
+                ? t('cancelled')
+                : isClosed
+                  ? t('closed')
+                  : isPublished
+                    ? t('published')
+                    : t('draft')}
             </span>
             {assignment.quiz_id && (
               <Link
@@ -643,6 +670,11 @@ export default function AssignmentDetailClient() {
           {isPublished && isLiveRun && !isClosed && (
             <Button variant="outline" size="sm" onClick={() => setCloseOpen(true)}>
               {t('close')}
+            </Button>
+          )}
+          {isPublished && !isClosed && (
+            <Button variant="destructive" size="sm" onClick={() => setCancelOpen(true)}>
+              {t('cancel')}
             </Button>
           )}
         </div>
@@ -1172,6 +1204,30 @@ export default function AssignmentDetailClient() {
               className="bg-destructive text-destructive-foreground"
             >
               {closeMutation.isPending ? t('closing') : t('close')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('cancel_confirm_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('cancel_confirm_desc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelMutation.isPending}>
+              {t('common_cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={cancelMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleCancel();
+              }}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {cancelMutation.isPending ? t('cancelling') : t('cancel')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

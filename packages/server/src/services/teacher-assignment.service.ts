@@ -10,7 +10,11 @@ import {
 } from '@studiq/server/lib/assignment-snapshot';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
-import { expireInProgressAttempts, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
+import {
+  ensureClosed,
+  expireInProgressAttempts,
+  isAssessmentClosed,
+} from '@studiq/server/lib/assessment-close';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
@@ -64,6 +68,18 @@ const STUDENT_ATTEMPT_SELECT =
   'assignment_id, id, score, total_questions, total_points, completed_at, expired_at, started_at';
 
 type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
+
+/** A run the caller may write, with the client that proved they may. */
+interface OwnedWindow {
+  supabase: SupabaseClient<Database>;
+  run: {
+    id: string;
+    status: string;
+    start_time: string | null;
+    deadline: string | null;
+    closed_at: string | null;
+  };
+}
 
 /** The slice of a `quiz_attempts` row `STUDENT_ATTEMPT_SELECT` projects. */
 type StudentAttemptSummaryRow = Pick<
@@ -374,6 +390,7 @@ export class TeacherAssignmentService {
     if (isFailure(loaded)) return loaded;
     const { supabase, run: assignment } = loaded.data;
 
+    if (assignment.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
     if (assignment.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
     if (assignment.closed_at) return failure('ASSESSMENT_CLOSED');
 
@@ -382,24 +399,26 @@ export class TeacherAssignmentService {
       return failure('ASSESSMENT_NOT_LIVE');
     }
 
-    // The conditional update is the idempotence guard: two closes race here, and only one fills the
-    // empty column. A NULL result means the other request (or a natural expiry) got there first.
-    const { data: updated, error } = await supabase
-      .from('teacher_assignments')
-      .update({ closed_at: now.toISOString(), updated_at: now.toISOString() })
-      .eq('id', id)
-      .is('closed_at', null)
-      .select()
-      .maybeSingle();
+    const closed = await this.stampClose(supabase, id, now, {});
+    if (isFailure(closed)) return closed;
+    return success(closed.data);
+  }
 
-    if (error) return toDbFailure(error);
-    if (!updated) return failure('ASSESSMENT_CLOSED');
+  /**
+   * Cancels a published run — scheduled or live (R12/R19). It is the ending that does **not** reveal:
+   * the run stops, its in-progress attempts expire (consumed, unsubmittable), its reservations end,
+   * and no review exists at any time (`reviewState` reads the cancelled status). Cancelling a closed
+   * run is refused — the cohort already read the key, so that would be an un-reveal (R20) — and the
+   * status is terminal in the database, so nothing can revive it.
+   */
+  async cancel(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const open = await this.loadOpenWindow(id, ctx);
+    if (isFailure(open)) return open;
+    const { supabase } = open.data;
 
-    // The expiry needs the service role: a teacher may not write another user's attempt rows.
-    const expired = await expireInProgressAttempts(id, updated.closed_at ?? now.toISOString());
-    if (isFailure(expired)) return expired;
-
-    return success({ ...updated, expired_attempts: expired.data });
+    const cancelled = await this.stampClose(supabase, id, new Date(), { status: 'cancelled' });
+    if (isFailure(cancelled)) return cancelled;
+    return success(cancelled.data);
   }
 
   /**
@@ -508,7 +527,9 @@ export class TeacherAssignmentService {
     if (!config.success) return failure('UNPROCESSABLE_ENTITY', config.error.issues);
 
     // Publish-once applies from live: a scheduled run has no exposure yet, but it is still
-    // published — withdraw it to draft to change it.
+    // published — withdraw it to draft to change it. A cancelled run is terminal: publishing it
+    // again would serve an assessment whose items were released and whose attempts expired.
+    if (before.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
     if (before.status === 'published') return failure('ASSESSMENT_ALREADY_PUBLISHED');
 
     // Sealing for the whole organisation leaves nothing exposed, so the forecast is only needed for
@@ -1505,24 +1526,92 @@ export class TeacherAssignmentService {
   private async loadOwnedCloseWindow(
     id: string,
     ctx: RequestContext,
-  ): Promise<
-    ServiceResult<{
-      supabase: SupabaseClient<Database>;
-      run: {
-        id: string;
-        status: string;
-        start_time: string | null;
-        deadline: string | null;
-        closed_at: string | null;
-      };
-    }>
-  > {
+  ): Promise<ServiceResult<OwnedWindow>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
     const loaded = await this.loadCloseWindow(supabase, id);
     if (isFailure(loaded)) return loaded;
     return success({ supabase, run: loaded.data });
+  }
+
+  /**
+   * The prelude every lifecycle action shares (R12/R19/R20): ownership, then a published run that
+   * still has a window to act on. A cancelled run is terminal, a draft was never published, and a
+   * closed run already released its items and expired its attempts — none of the three has anything
+   * left to move, and reviving one would serve an assessment whose first attempt already happened.
+   *
+   * The natural expiry is settled here, so the refusal is decided on the durable close: a run whose
+   * deadline has passed is closed even if no reader had written `closed_at` yet, and this is the read
+   * that writes it down.
+   */
+  private async loadOpenWindow(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<OwnedWindow>> {
+    const loaded = await this.loadOwnedCloseWindow(id, ctx);
+    if (isFailure(loaded)) return loaded;
+
+    if (loaded.data.run.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
+    if (loaded.data.run.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
+
+    const settled = await ensureClosed(loaded.data.run);
+    if (isFailure(settled)) return settled;
+    if (isAssessmentClosed(settled.data)) return failure('ASSESSMENT_CLOSED');
+
+    return success({ supabase: loaded.data.supabase, run: settled.data });
+  }
+
+  /**
+   * The once-only close: fills `closed_at` under the race guard (two closes serialise on the empty
+   * column, and a natural expiry may have got there first) and then expires the attempts that were
+   * still running. The expiry needs the service role — a teacher may not write another user's
+   * attempt rows — so it lives here rather than in the caller.
+   */
+  private async stampClose(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    now: Date,
+    extra: Database['public']['Tables']['teacher_assignments']['Update'],
+  ): Promise<
+    ServiceResult<
+      Database['public']['Tables']['teacher_assignments']['Row'] & { expired_attempts: number }
+    >
+  > {
+    const closedAt = now.toISOString();
+    const updated = await this.writeWindow(supabase, id, {
+      ...extra,
+      closed_at: closedAt,
+      updated_at: closedAt,
+    });
+    if (isFailure(updated)) return updated;
+
+    const expired = await expireInProgressAttempts(id, updated.data.closed_at ?? closedAt);
+    if (isFailure(expired)) return expired;
+    return success({ ...updated.data, expired_attempts: expired.data });
+  }
+
+  /**
+   * Writes window fields on a run that is still open, refusing to land on a run that closed between
+   * the read and the write: a moved bound must never touch a revealed run.
+   */
+  private async writeWindow(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    patch: Database['public']['Tables']['teacher_assignments']['Update'],
+  ): Promise<ServiceResult<Database['public']['Tables']['teacher_assignments']['Row']>> {
+    const { data: updated, error } = await supabase
+      .from('teacher_assignments')
+      .update(patch)
+      .eq('id', id)
+      .eq('status', 'published')
+      .is('closed_at', null)
+      .select()
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!updated) return failure('ASSESSMENT_CLOSED');
+    return success(updated);
   }
 
   /**

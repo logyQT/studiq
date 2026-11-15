@@ -2924,7 +2924,13 @@
     "held_back": "Held back from review",
     "hold_from_review": "Hold back from review",
     "released_to_review": "Released to the review",
-    "release": "Release"
+    "release": "Release",
+    "cancelled": "Cancelled",
+    "cancel": "Cancel assessment",
+    "cancelling": "Cancelling...",
+    "cancel_confirm_title": "Cancel this assessment?",
+    "cancel_confirm_desc": "The run ends for the whole class without revealing any answers. Running attempts are closed and cannot be submitted, and the questions become available again. This cannot be undone.",
+    "cancel_failed": "Cancelling failed"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
