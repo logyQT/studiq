@@ -3034,6 +3034,8 @@
     "title": "Oceń pytanie",
     "need_grading": "{count} uczniów oczekuje na ocenę",
     "graded_points": "Ocenione: {points} pkt",
+    "student_answer": "Odpowiedź ucznia: {text}",
+    "no_answer": "Brak odpowiedzi",
     "view_image": "Zobacz zdjęcie",
     "points": "Punkty",
     "feedback": "Informacja zwrotna",
