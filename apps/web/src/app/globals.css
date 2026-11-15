@@ -66,9 +66,14 @@
    * --border is decorative (1.32:1 on paper), so it has no minimum;
    * --input identifies a control by its edge and therefore stays >= 3:1.
    * Collapsing these back into one token breaks WCAG 1.4.11 for fields.
+   *
+   * 0.600, not 0.630: the floor is measured on the painted page, and the grain
+   * darkens the paper under it. 0.600 paints 3.19–3.86 — 3.55 on the pixel above
+   * a field, 3.19 at the gradient's darkest stop — while 0.630 fell to 3.15 there
+   * and 2.82–2.95 where it is darkest.
    */
   --border: oklch(0.880 0.012 85);
-  --input: oklch(0.630 0.020 264);
+  --input: oklch(0.600 0.020 264);
 
   /*
    * Charts — categorical, equal weight on paper (>= 3:1 each). Six steps: five
