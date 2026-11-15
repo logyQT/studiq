@@ -21,6 +21,11 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
+import {
+  DEFAULT_COLLECTION_FILTERS,
+  normaliseCollectionFilters,
+  type PersistedCollectionFilters,
+} from '@/lib/collection-filters';
 import { contentSortOptions, type SortOption } from '@/lib/content-sort-options';
 import { type ListEmptyView, resolveListEmptyView } from '@/lib/list-empty-view';
 
@@ -38,19 +43,7 @@ export type CollectionFilters = Record<string, string | undefined> & {
   sortOrder: string;
 };
 
-interface PersistedFilters {
-  owner: string;
-  groupIds: string[];
-  sortBy: string;
-  sortOrder: string;
-}
-
-const DEFAULT_FILTERS: PersistedFilters = {
-  owner: 'all',
-  groupIds: [],
-  sortBy: 'created_at',
-  sortOrder: 'desc',
-};
+const DEFAULT_FILTERS = DEFAULT_COLLECTION_FILTERS;
 
 /** One-shot migration from the retired `all|mine` group toggle (#595). */
 interface LegacyMine {
@@ -151,9 +144,10 @@ export function useCollectionScreen<T extends { id: string }>({
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const [persisted, setPersisted] = usePersistedState<PersistedFilters>(
+  const [persisted, setPersisted] = usePersistedState<PersistedCollectionFilters>(
     persistKey,
     DEFAULT_FILTERS,
+    normaliseCollectionFilters,
   );
   // A legacy persisted `mine` is the only owner value the API still understands.
   const owner = persisted.owner === 'mine' ? 'mine' : 'all';
