@@ -43,6 +43,7 @@ interface FakeQueryBuilder<T> {
   order: Mock;
   limit: Mock;
   or: Mock;
+  ilike: Mock;
   single: Mock;
   maybeSingle: Mock;
   then: Promise<QueryResult<T>>['then'];
@@ -64,6 +65,7 @@ function qb<T>(data: T, error: DbError | null = null, count?: number): FakeQuery
     order: vi.fn(),
     limit: vi.fn(),
     or: vi.fn(),
+    ilike: vi.fn(),
     single: vi.fn().mockResolvedValue(result),
     maybeSingle: vi.fn().mockResolvedValue(result),
     then: promise.then.bind(promise),
@@ -80,6 +82,7 @@ function qb<T>(data: T, error: DbError | null = null, count?: number): FakeQuery
     b.order,
     b.limit,
     b.or,
+    b.ilike,
   ]) {
     method.mockImplementation(() => b);
   }

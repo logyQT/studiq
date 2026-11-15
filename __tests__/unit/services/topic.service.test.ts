@@ -21,6 +21,7 @@ interface QueryBuilder {
   order: ChainMock;
   limit: ChainMock;
   or: ChainMock;
+  ilike: ChainMock;
   single: ChainMock;
   maybeSingle: ChainMock;
   then: ChainMock;
@@ -38,6 +39,7 @@ const CHAIN_METHODS = [
   'order',
   'limit',
   'or',
+  'ilike',
 ] as const;
 
 function qb(data: unknown, error: unknown = null, count: number | null = null): QueryBuilder {
@@ -53,6 +55,7 @@ function qb(data: unknown, error: unknown = null, count: number | null = null): 
     order: vi.fn(),
     limit: vi.fn(),
     or: vi.fn(),
+    ilike: vi.fn(),
     single: vi.fn(),
     maybeSingle: vi.fn(),
     then: vi.fn(),
