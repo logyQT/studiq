@@ -93,15 +93,10 @@ const DECK_GROUP_REQUIRED_NAMESPACES = [
 ] as const;
 
 /**
- * #360 (STU-31) — the bank grid picks its copy from these keys, so a missing
- * translation would show a raw key instead of the empty / no-results state.
+ * #360 (STU-31) — the bank grid names its own empty state; the no-results copy and
+ * the reset action come from `EmptyStates`, which `SHARED_LIST_MESSAGE_KEYS` covers.
  */
-const QUESTION_BANK_EMPTY_STATE_KEYS = [
-  'no_banks',
-  'no_banks_match',
-  'no_banks_match_filters',
-  'clear_filters',
-] as const;
+const QUESTION_BANK_EMPTY_STATE_KEYS = ['no_banks'] as const;
 
 /**
  * #284 — the public /status page renders every `StatusPage` key directly, so a

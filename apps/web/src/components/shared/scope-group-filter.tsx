@@ -52,6 +52,10 @@ function FilterItem({
       onSelect={onSelect}
       onMouseEnter={onHover}
       onFocus={onHover}
+      // cmdk's `aria-selected` follows the highlight; the filter's state is `checked`.
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      aria-selected={undefined}
       className="rounded-none px-3 py-2"
     >
       <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
@@ -157,7 +161,7 @@ export function ScopeGroupFilter({
         <Button
           variant="outline"
           size="sm"
-          title={chips.length === 0 ? t('filter_label') : chips.join(' · ')}
+          title={chips.length === 0 ? undefined : chips.join(' · ')}
           className="w-44 justify-between gap-1.5"
         >
           {chips.length === 0 ? (

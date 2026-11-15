@@ -11,7 +11,7 @@ import { json } from '#test/helpers/json';
 const searchPlaceholder = t('QuestionBankManagement.search_placeholder');
 const newBank = t('QuestionBankManagement.new_bank');
 const noBanks = t('QuestionBankManagement.no_banks');
-const clearFilters = t('QuestionBankManagement.clear_filters');
+const clearFilters = t('EmptyStates.clear_filters');
 
 /** Creates a bank through the API so the collection is guaranteed non-empty. */
 async function createBank(page: Page, name: string): Promise<string> {
