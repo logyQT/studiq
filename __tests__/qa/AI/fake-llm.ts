@@ -60,6 +60,48 @@ export function rolesOf(entry: JournalEntry): string[] {
   return requestSchema.parse(entry.request).messages.map((message) => message.role);
 }
 
+const toolCallDeltas = z.object({
+  choices: z.array(
+    z.object({
+      delta: z.object({
+        tool_calls: z
+          .array(
+            z.object({
+              index: z.number(),
+              function: z.object({ arguments: z.string().optional() }),
+            }),
+          )
+          .optional(),
+      }),
+    }),
+  ),
+});
+
+/**
+ * The arguments of each tool call as the app received them, reassembled from the SSE
+ * deltas of the journaled reply, in call order. A truncated call shows up here as a
+ * string that is not valid JSON.
+ */
+export function toolArgumentsOf(entry: JournalEntry): string[] {
+  const calls = new Map<number, string>();
+  for (const frame of entry.wire.split('\n\n')) {
+    const data = frame.replace(/^data: /, '');
+    if (data === '' || data === '[DONE]') continue;
+    const payload: unknown = JSON.parse(data);
+    const parsed = toolCallDeltas.safeParse(payload);
+    if (!parsed.success) continue;
+    for (const choice of parsed.data.choices) {
+      for (const toolCall of choice.delta.tool_calls ?? []) {
+        calls.set(
+          toolCall.index,
+          (calls.get(toolCall.index) ?? '') + (toolCall.function.arguments ?? ''),
+        );
+      }
+    }
+  }
+  return [...calls.entries()].toSorted(([a], [b]) => a - b).map(([, args]) => args);
+}
+
 /** Whether the app asked for a streamed reply. */
 export function wasStreamed(entry: JournalEntry): boolean {
   return requestSchema.parse(entry.request).stream === true;

@@ -295,6 +295,24 @@ describe('fake-llm faults', () => {
     expect(llm.journal.list()[0]).toMatchObject({ outcome: 'http-fault', fault: 'http' });
   });
 
+  it('does not treat a switched-off flag as a stream fault', async () => {
+    const llm = new modules.FakeLlm([fixture('off', [{ content: 'x', omitDone: false }])]);
+    const response = await ask(llm, 'off', { stream: false });
+    expect(response.status).toBe(200);
+    expect(outcomeOf(response)).toBeNull();
+  });
+
+  it('writes nothing once the reader cancelled while the first frame was pending', async () => {
+    const llm = new modules.FakeLlm([
+      fixture('cut', [{ content: ['a', 'b'], delay: { chunkMs: 40 } }]),
+    ]);
+    const response = await ask(llm, 'cut');
+    // the pull that waits out the delay of the first frame is already running
+    await response.body?.cancel();
+    // ... and must not resume to journal a frame nobody received
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(llm.journal.list()[0]?.wire).toBe('');
+  });
   it('refuses a stream-only fault on a non-streaming request', async () => {
     const llm = new modules.FakeLlm([fixture('ns', [{ content: 'x', destroyAfter: 1 }])]);
     expect(outcomeOf(await ask(llm, 'ns', { stream: false }))).toBe('fault-not-applicable');
@@ -411,6 +429,18 @@ describe('fake-llm fixture validation', () => {
     ],
   ])('rejects %s', (_label, parse, message) => {
     expect(parse).toThrow(message);
+  });
+
+  it('accepts a switched-off stream fault on a non-streaming turn', () => {
+    const turn = { content: 'x', stream: false, omitDone: false };
+    expect(() => modules.parseFixture({ ...valid, turns: [turn] }, 'f.json')).not.toThrow();
+  });
+
+  it('still counts a numeric stream fault of zero', () => {
+    const turn = { content: 'x', stream: false, errorFrameAt: 0 };
+    expect(() => modules.parseFixture({ ...valid, turns: [turn] }, 'f.json')).toThrow(
+      /needs a streaming reply/,
+    );
   });
 
   it('names the file and the path of the problem', () => {

@@ -154,8 +154,6 @@ export function renderCompletion(turn: Turn, ctx: ReplyContext): string {
   });
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 export interface StreamHooks {
   /** Called with every frame right before it is written. */
   onFrame: (frame: string) => void;
@@ -171,18 +169,33 @@ export function openStream(
 ): ReadableStream<Uint8Array> {
   let next = 0;
   let ended = false;
+  // Wakes a pull that is waiting out a delay, so a cancelled reader does not leave it
+  // running: it would append an undelivered frame to the journal and enqueue on a
+  // stream nobody reads any more.
+  let wake: (() => void) | undefined;
+  const pause = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
   const end = () => {
     if (ended) return;
     ended = true;
+    wake?.();
     hooks.onEnd();
   };
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
+      if (ended) return;
       if (next >= plan.frames.length) {
         if (plan.ending === 'destroy') {
           // Give the last frame a moment to leave before the connection drops.
-          await sleep(10);
+          await pause(10);
+          if (ended) return;
           end();
           controller.error(new Error('fake-llm: connection destroyed'));
           return;
@@ -192,7 +205,8 @@ export function openStream(
         return;
       }
       const wait = next === 0 ? (delay?.firstChunkMs ?? delay?.chunkMs) : delay?.chunkMs;
-      if (wait) await sleep(wait);
+      if (wait) await pause(wait);
+      if (ended) return;
       const frame = plan.frames[next++];
       if (frame === undefined) return;
       hooks.onFrame(frame);

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { STREAM_ONLY_FAULTS } from './fixtures';
+import { activeStreamFaults } from './fixtures';
 import { Journal } from './journal';
 import { faultOf, openStream, planStream, renderCompletion } from './stream';
 import type { Fixture, JournalEntry, Match, Outcome, Turn } from './types';
@@ -188,7 +188,7 @@ export class FakeLlm {
       );
     }
     const fault = faultOf(turn);
-    if (!wire.stream && STREAM_ONLY_FAULTS.some((name) => turn[name] !== undefined)) {
+    if (!wire.stream && activeStreamFaults(turn).length > 0) {
       return fail('fault-not-applicable', `${fault} only applies to a streaming reply`, {
         ...known,
         fault,

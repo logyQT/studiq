@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { z } from 'zod';
-import { fakeLlm, rolesOf, wasStreamed } from '#test/qa/AI/fake-llm';
+import { fakeLlm, rolesOf, toolArgumentsOf, wasStreamed } from '#test/qa/AI/fake-llm';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
@@ -125,6 +125,10 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     await expect(page.getByText('Chloroplast', { exact: true })).toBeVisible();
     await expect(page.getByText('Chlorofil', { exact: true })).toBeVisible();
 
+    // The preview can render before the last continuation request reaches the server.
+    await expect
+      .poll(async () => (await fakeLlm.requestsOf('STU-48:plan-path')).length, { timeout: 10_000 })
+      .toBe(5);
     const requests = await fakeLlm.journal();
     const outer = requests.filter((entry) => entry.fixture === 'STU-48:plan-path');
     const nested = requests.filter((entry) => entry.fixture === 'STU-48:plan-material');
@@ -150,9 +154,12 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     expect(await deckNames(page)).toEqual(decksBefore);
     const requests = await fakeLlm.requestsOf('STU-48:truncated-args');
     expect(requests).toHaveLength(2);
-    expect(requests[0]?.wire).not.toContain(
-      '"flashcards":[{"front":"Ile planet ma Układ Słoneczny?","back":"Osiem"}]}',
-    );
+    // What reached the app is the cut-off start of the arguments, not valid JSON.
+    const [args] = requests[0] ? toolArgumentsOf(requests[0]) : [];
+    expect(args).toMatch(/^\{"task":"planety"/);
+    expect(() => {
+      JSON.parse(args ?? '');
+    }).toThrow();
     expect(requests[1] && rolesOf(requests[1]).at(-1)).toBe('tool');
   });
 

@@ -46,12 +46,24 @@ const TURN_KEYS = [
 ] as const;
 
 /** Faults that shape an SSE stream; they make no sense for a non-streaming reply. */
-export const STREAM_ONLY_FAULTS = [
+const STREAM_ONLY_FAULTS = [
   'errorFrameAt',
   'closeWithoutFinish',
   'omitDone',
   'destroyAfter',
 ] as const;
+
+/**
+ * The stream-only faults a turn switches on. A boolean flag counts only when it is `true`
+ * (`omitDone: false` is off), while a number counts whenever it is present: `errorFrameAt: 0`
+ * and `destroyAfter: 0` are real faults.
+ */
+export function activeStreamFaults(turn: Turn): string[] {
+  return STREAM_ONLY_FAULTS.filter((name) => {
+    const value = turn[name];
+    return typeof value === 'boolean' ? value : value !== undefined;
+  });
+}
 
 const KEY_PATTERN = /^[A-Za-z0-9-]+:[a-z0-9][a-z0-9-]*$/;
 
@@ -202,7 +214,7 @@ function readTurn(r: Reader, value: unknown, path: string): Turn {
     turn.http = http.body === undefined ? { status } : { status, body: http.body };
   }
 
-  const streamFaults = STREAM_ONLY_FAULTS.filter((name) => turn[name] !== undefined);
+  const streamFaults = activeStreamFaults(turn);
   if (streamFaults.length > 1)
     r.fail(path, `at most one stream fault per turn, got ${streamFaults.join(', ')}`);
   if (turn.stream === false && streamFaults.length > 0) {

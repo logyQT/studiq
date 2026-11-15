@@ -69,8 +69,9 @@ A handful of cases depend on something only a person can provide. Treat them as
 | A text PDF                                  | `STU-49`                               | PDF extraction can't run → `N/D`                              |
 | A PNG/JPG image and an MP3 file             | `STU-22`                               | Media upload can't run → `N/D`                                |
 
-`STU-47` and `STU-48` need no key: the `ai-suite` job runs them against the fake
-inference server (`bun run mock:llm`, see `docs/ai/fake-inference-server.md`).
+`STU-47` and `STU-48` need no key **in CI**: the `ai-suite` job runs them against the fake
+inference server (`bun run mock:llm`, see `docs/ai/fake-inference-server.md`). A manual run
+without a key and without that server stays `N/D`.
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
 content — is done by the agent through the app API or the local DB.

@@ -14,9 +14,10 @@ AI włączone; skonfigurowany LLM_API_KEY. Bez klucza oznacz N/D.
 ## Seed (QA-suite)
 
 - Not a shard case: it runs in the `ai-suite` job (`__tests__/qa/AI/STU-47.spec.ts`)
-  against the fake inference server, so no `LLM_API_KEY` is needed and the `N/D`
-  above never applies. Locally: `bun run mock:llm` with the `LLM_*` values of
-  `docs/ai/fake-inference-server.md` in root `.env.local`.
+  against the fake inference server, so there no `LLM_API_KEY` is needed. A manual run
+  without a key and without the fake server is still `N/D` (above). To run it locally:
+  `bun run mock:llm` with the `LLM_*` values of `docs/ai/fake-inference-server.md` in
+  root `.env.local`.
 - Tenant: `bun scripts/qa-tenant.ts STU-47 --fresh` (`__tests__/qa/profiles/STU-47.json`
   → `content` on the `hub` plan, a finite daily AI budget of 200 000 tokens). The spec
   signs in as the tenant's `users.student`.
