@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { z } from 'zod';
-import { fakeLlm, rolesOf, wasStreamed } from '#test/qa/fixtures/fake-llm';
+import { fakeLlm, rolesOf, wasStreamed } from '#test/qa/AI/fake-llm';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**

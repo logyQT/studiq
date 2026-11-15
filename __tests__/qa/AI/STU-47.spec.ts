@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { fakeLlm, wasStreamed } from '#test/qa/fixtures/fake-llm';
+import { fakeLlm, wasStreamed } from '#test/qa/AI/fake-llm';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
