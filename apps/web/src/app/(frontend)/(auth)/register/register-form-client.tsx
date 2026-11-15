@@ -186,7 +186,7 @@ export function RegisterForm() {
           <p className="text-sm text-muted-foreground">{t('activation_instructions')}</p>
 
           {/* The submit is gone, so this is the screen's single action. */}
-          <CtaButton href="/login" fullWidth>
+          <CtaButton href="/login" tone="primary" fullWidth>
             {t('back_to_login')}
           </CtaButton>
         </div>
@@ -296,7 +296,12 @@ export function RegisterForm() {
               description={t('password_hint')}
               disabled={isLoading}
             />
-            <CtaButton submit fullWidth disabled={isLoading}>
+            {/*
+             * Cobalt, not `signal`: this page's accent is the panel's underline, so
+             * the action takes the brand fill and the two never compete at button
+             * scale (DESIGN.md §Dosage).
+             */}
+            <CtaButton submit tone="primary" fullWidth disabled={isLoading}>
               {t('register_button')}
               {/* Both glyphs are decorative: the button's name stays the label alone. */}
               {isLoading ? (

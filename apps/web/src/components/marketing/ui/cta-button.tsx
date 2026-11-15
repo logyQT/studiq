@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { cn } from '@/lib/utils';
 
-type Tone = 'signal' | 'quiet';
+type Tone = 'signal' | 'primary' | 'quiet';
 
 interface CtaButtonBaseProps {
   children: React.ReactNode;
@@ -46,6 +46,14 @@ type CtaButtonProps = CtaLinkProps | CtaSubmitProps;
 const TONE: Record<Tone, string> = {
   // 44px tall, not the kit's 40px: DESIGN.md §Accessibility promises it for CTAs.
   signal: 'bg-signal text-signal-foreground hover:bg-signal/90',
+  /*
+   * The brand fill, for a page whose action sits beside the cobalt panel instead of
+   * on paper alone (`/register`): paper on cobalt is 7.15:1 in light, ink on cobalt
+   * 6.48:1 in dark. Hover steps the fill itself back 10%, which keeps 5.83:1 and
+   * 5.43:1; `--cobalt-hover` is the token for the hover of a cobalt fill, but at
+   * 4.47:1 under paper text it cannot carry this label.
+   */
+  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
   quiet: 'border border-input text-foreground hover:bg-secondary',
 };
 

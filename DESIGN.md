@@ -132,6 +132,24 @@ built as a marketing-local component (§Components), not a new `Button` variant.
 default `Button` stays cobalt, which is correct for the product surfaces. Cobalt and
 `signal` never both act as "the" button on the same screen.
 
+**`/register` gives the action to cobalt and puts the accent on the panel.** That page's only
+action sits beside a full-height cobalt panel, where a `signal` button would put two saturated
+fills at button scale next to each other — the "which one do I press" problem the palette
+exists to avoid. The CTA is therefore `--primary` (`CtaButton tone="primary"`: paper on cobalt
+7.15:1 in light, ink on cobalt 6.48:1 in dark), and the accent's one appearance on that page is
+the sanctioned 2px underline under the word the claim turns on (`ćwiczeniami` / `practice`).
+Measured at 1440: a 264×2px rule, **0.08% of the panel's painted area** and 0.04% of the
+viewport, so the 5% cap is nowhere near it. Against the light panel the rule is **5.62:1**
+(`signal` on `cobalt`); in dark the panel's fill is the _light_ cobalt, where the same rule
+measures **2.12:1**. It ships because it is decoration asserting emphasis rather than
+information — the word itself is `--primary-foreground` at 6.48:1 — and because it is that
+mode's only carrier of the accent, so gating it away would leave one theme with no accent at
+all. `prefers-contrast: more` turns it into `currentColor`, which is the strong underline a
+low-vision visitor needs and the one thing the hue cannot give them. A second accent on the
+panel was rejected: every candidate form (a lime label, lime figures, lime check glyphs) is
+`signal` as text, or a fill whose edge lands at 2.12:1, on light cobalt in dark — and a lime
+fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
+
 ### Retired, with reasons
 
 - **`--secondary` as a violet tint** (`0.94 0.035 265`) — a second brand hue doing no
@@ -307,13 +325,13 @@ Marketing components are page-owned. The kit is used only where it is invisible
 (Button semantics, Badge markup). **None of them exist yet**: the table is the build spec
 for the token migration, not a description of current code.
 
-| Component       | Spec                                                                                                                               |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `CtaButton`     | `signal` fill, `ink` text (13.76:1), `rounded-control`, height `2.75rem` (44px), hover = `signal` at 90% opacity. One per screen.  |
-| `Eyebrow`       | Geist Mono, `0.75rem`, uppercase, `0.08em`, `text-primary`. Section labels are identity, so they carry the brand rather than grey. |
-| `SectionHeader` | Eyebrow + H2 + lede. Left-aligned by default.                                                                                      |
-| `ProofStrip`    | Only renders when passed real data. No fallback numbers.                                                                           |
-| `FeatureSplit`  | 7/5 asymmetric text/media. Replaces the equal-card row.                                                                            |
+| Component       | Spec                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CtaButton`     | `signal` fill, `ink` text (13.76:1), `rounded-control`, height `2.75rem` (44px), hover = the fill at 90%. One per screen. `tone="primary"` swaps the fill for cobalt (§Dosage). |
+| `Eyebrow`       | Geist Mono, `0.75rem`, uppercase, `0.08em`, `text-primary`. Section labels are identity, so they carry the brand rather than grey.                                              |
+| `SectionHeader` | Eyebrow + H2 + lede. Left-aligned by default.                                                                                                                                   |
+| `ProofStrip`    | Only renders when passed real data. No fallback numbers.                                                                                                                        |
+| `FeatureSplit`  | 7/5 asymmetric text/media. Replaces the equal-card row.                                                                                                                         |
 
 **A marketing section is not a card grid.** If a section can be expressed as "N equal
 `<Card>`s in a row", it is the kit's default layout wearing a headline, and it is what made
@@ -362,6 +380,16 @@ _capture_ looking pasted onto a dark page; a component renders in the visitor's 
 reason disappears with the captures.
 
 Stock art, illustration and hand-built lookalikes remain banned outright.
+
+**A specimen can be a still, and then it is `inert`.** `/register`'s panel shows the flashcard
+at the card's own 22rem, cropped by the panel's bottom edge, between the headline and the
+free-tier ledger. That page's tab order is a contract — the wordmark, the sign-in exit and
+`#name` are its first three stops — so the specimen adds none, and `inert` also keeps a
+surface that is already read out by the panel's copy from being announced twice. The crop is
+the other half of the same rule: the box stops below the card's face, so the reveal hint and
+the four rating buttons are out of frame. Either a preview is live, or only its still part is
+shown. A "click to reveal" line over a card that cannot be clicked is the same false claim as
+a hand-drawn lookalike, and it is worse than not showing the surface at all.
 
 | Property                | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
