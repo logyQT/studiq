@@ -1,0 +1,11 @@
+{
+  "key": "STU-48:plan-material",
+  "case": "STU-48",
+  "match": { "hasTools": false, "systemContains": "educational content generator" },
+  "turns": [
+    {
+      "content": "Fotosynteza zachodzi w chloroplastach. Chlorofil pochłania światło, a roślina wytwarza glukozę i tlen.",
+      "usage": { "input": 1000, "output": 1000 }
+    }
+  ]
+}

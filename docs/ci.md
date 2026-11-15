@@ -28,7 +28,7 @@ id; the workflow is also named `pr-triage`, so the two match on purpose.
 
 ### `verify.yml` jobs
 
-- `scope` — diff router. Publishes `app` and `qa_shards`; docs-only,
+- `scope` — diff router. Publishes `app`, `qa_shards` and `ai_suite`; docs-only,
   `apps/admin`-only and QA-only PRs skip the jobs they cannot affect. `checks`
   is deliberately ungated (ADR-0008).
 - `checks` — `format:check`, `lint`, `review:static --rules-only` (the ast-grep
@@ -37,6 +37,12 @@ id; the workflow is also named `pr-triage`, so the two match on purpose.
   branch; nightly: dashboard + trend report, see [Duplication](#duplication)).
 - `unit` / `integration` — gated on `scope.app`.
 - `qa-suite` — one runner per shard from `scope.qa_shards`.
+- `ai-suite` — the QA cases that need a model (`__tests__/qa/AI`), run against
+  the fake inference server (`scripts/fake-llm`, see
+  [its design](ai/fake-inference-server.md)) so no job calls a provider. Starts
+  when `scope.ai_suite` is true: the AI files, the code the chat is made of, the
+  nightly run and a manual dispatch. One worker: the server's reset and journal
+  are global. Files that belong to it alone never start a `qa-suite` shard.
 - `e2e` — always runs the chromium and firefox legs so the required names exist;
   the steps no-op when `scope.app` is false.
 
@@ -139,13 +145,14 @@ bun run typecheck:all
 bun run dup:base
 ```
 
-| CI job        | Local                                       |
-| ------------- | ------------------------------------------- |
-| `unit`        | `bun run test:unit`                         |
-| `integration` | `bun run test:integration` (local Supabase) |
-| `e2e`         | `bun run test:e2e`                          |
-| `qa-suite`    | `bun run test:qa`                           |
-| `pr-triage`   | `bun run pr:size`                           |
+| CI job        | Local                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| `unit`        | `bun run test:unit`                                                                                  |
+| `integration` | `bun run test:integration` (local Supabase)                                                          |
+| `e2e`         | `bun run test:e2e`                                                                                   |
+| `qa-suite`    | `bun run test:qa`                                                                                    |
+| `ai-suite`    | `bun run mock:llm`, then `bun run test:qa __tests__/qa/AI` (the `LLM_*` values in root `.env.local`) |
+| `pr-triage`   | `bun run pr:size`                                                                                    |
 
 `bun run pr:size` measures committed changes only (`git diff <base>...HEAD`), so
 commit before checking — uncommitted work is invisible to it.
