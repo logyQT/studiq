@@ -147,7 +147,7 @@ export function ScopeGroupFilter({
   ];
 
   const query = search.trim().toLowerCase();
-  const visibleGroups = query
+  const matchingGroups = query
     ? options.filter((group) => group.name.toLowerCase().includes(query))
     : options;
 
@@ -240,7 +240,12 @@ export function ScopeGroupFilter({
           <Command shouldFilter onKeyDown={handleCommandKeyDown}>
             <CommandInput
               value={search}
-              onValueChange={setSearch}
+              onValueChange={(value) => {
+                setSearch(value);
+                // A typed query swaps the panel for inline rows; a stale open panel
+                // would come back as soon as the query is cleared.
+                if (value) setPanelOpen(false);
+              }}
               placeholder={t('filter_search')}
             />
             <CommandList>
@@ -252,12 +257,10 @@ export function ScopeGroupFilter({
                   onSelect={() => onOwnerChange(mineActive ? 'all' : 'mine')}
                 />
 
-                {options.length > 0 && (
+                {options.length > 0 && !query && (
                   <HoverCard
-                    // Typing searches the groups too, so the flyout cannot hide the
-                    // match while a query is active.
-                    open={query.length > 0 ? true : panelOpen}
-                    onOpenChange={query.length > 0 ? undefined : setPanelOpen}
+                    open={panelOpen}
+                    onOpenChange={setPanelOpen}
                     openDelay={100}
                     closeDelay={150}
                   >
@@ -288,21 +291,15 @@ export function ScopeGroupFilter({
                         aria-label={t('group_filter')}
                         className="m-0 min-w-0 border-0 p-0"
                       >
-                        {visibleGroups.length === 0 ? (
-                          <p className="px-2 py-1.5 text-sm text-muted-foreground">
-                            {t('filter_empty')}
-                          </p>
-                        ) : (
-                          visibleGroups.map((group) => (
-                            <SideItem
-                              key={group.id}
-                              label={group.name}
-                              checked={groupIds.includes(group.id)}
-                              onSelect={() => toggleGroup(group.id)}
-                              onKeyDown={handlePanelKeyDown}
-                            />
-                          ))
-                        )}
+                        {options.map((group) => (
+                          <SideItem
+                            key={group.id}
+                            label={group.name}
+                            checked={groupIds.includes(group.id)}
+                            onSelect={() => toggleGroup(group.id)}
+                            onKeyDown={handlePanelKeyDown}
+                          />
+                        ))}
                       </fieldset>
                     </HoverCardContent>
                   </HoverCard>
@@ -316,6 +313,21 @@ export function ScopeGroupFilter({
                   />
                 )}
               </CommandGroup>
+
+              {/* A query lists the matches as ordinary rows: the „Grupy” row it would
+                  anchor a panel to is the first thing cmdk filters out. */}
+              {query && matchingGroups.length > 0 && (
+                <CommandGroup heading={t('group_filter')} className="p-0">
+                  {matchingGroups.map((group) => (
+                    <FilterItem
+                      key={group.id}
+                      label={group.name}
+                      checked={groupIds.includes(group.id)}
+                      onSelect={() => toggleGroup(group.id)}
+                    />
+                  ))}
+                </CommandGroup>
+              )}
             </CommandList>
           </Command>
         </div>
