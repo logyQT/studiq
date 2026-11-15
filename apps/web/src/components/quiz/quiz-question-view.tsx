@@ -112,6 +112,18 @@ export function QuizQuestionView({
      * `min-height`, which is how the preview reserves its box.
      */
     <div className="flex flex-1 flex-col gap-6">
+      {/*
+       * Stepping replaces the card's contents without moving focus — the pressed
+       * Next/Previous stays under the pointer — so the new question is announced
+       * here instead. The region is a sibling of the card and never wraps it: the
+       * answer controls must not become part of every announcement.
+       */}
+      {!result && (
+        <p aria-live="polite" className="sr-only">
+          {`${labels.questionOf}: ${question.stem}`}
+        </p>
+      )}
+
       <div className="flex justify-end">
         <span className="text-sm text-muted-foreground">{labels.questionOf}</span>
       </div>

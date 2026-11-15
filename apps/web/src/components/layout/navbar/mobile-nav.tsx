@@ -33,6 +33,7 @@ interface MobileNavItem {
 interface MobileNavProps {
   items: MobileNavItem[];
   isActive: (href: string) => boolean;
+  isCurrent: (href: string) => boolean;
   isLoggedIn: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -80,7 +81,14 @@ const PANEL_ID = 'mobile-nav-panel';
  * returns focus to this trigger. What it stops doing is locking the page, so the
  * scroll lock below is ours.
  */
-export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: MobileNavProps) {
+export function MobileNav({
+  items,
+  isActive,
+  isCurrent,
+  isLoggedIn,
+  open,
+  onOpenChange,
+}: MobileNavProps) {
   const t = useTranslations('Navbar');
   const tCommon = useTranslations('Common');
   const { panelRef, close, onOpenAutoFocus } = usePanelChrome(open, onOpenChange);
@@ -125,10 +133,15 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
 
         {/* Destinations, at the shared panel row: one line each, a full row to
             itself, so the list reads as the page's structure rather than as
-            links in a box. The list owns the hairlines between rows. */}
+            links in a box. The list owns the hairlines between rows.
+
+            `p-1` is the ring's room, not decoration: the row is full width and the
+            row above the fold touches the scrollport's top edge, so the 2px ring
+            plus its 2px offset used to be clipped there (and at both side edges).
+            Four pixels of gutter on every side keep the indicator whole. */}
         <nav
           aria-label={t('mobile_menu')}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1"
         >
           <ul className={PANEL_LIST}>
             {items.map(({ label, href }) => {
@@ -138,7 +151,7 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
                   <Link
                     href={href}
                     onClick={close}
-                    aria-current={active ? 'page' : undefined}
+                    aria-current={isCurrent(href) ? 'page' : undefined}
                     className={cn(PANEL_ROW, active && 'bg-accent')}
                   >
                     <span className="flex-1">{label}</span>

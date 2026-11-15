@@ -144,8 +144,12 @@ export function AccountPanel({
 
         {/* The list — same rows, same rhythm as the navigation panel. It owns
             every hairline between siblings; a row draws no edge of its own, so
-            no boundary can double. Preferences stay in the navigation panel. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            no boundary can double. Preferences stay in the navigation panel.
+
+            The 4px gutter is the row focus ring's room: the first row sits on the
+            scrollport's top edge, where the ring (2px + 2px offset) used to be cut
+            off. Same fix, same cost as the navigation panel. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
           <div className={PANEL_LIST}>
             <UserMenuItems variant="panel" preferences={false} logout={false} onItemClick={close} />
             <AccountNotificationsRow onNavigate={close} />

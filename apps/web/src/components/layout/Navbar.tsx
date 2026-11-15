@@ -112,6 +112,15 @@ export function Navbar() {
     setAccountOpen(false);
   };
 
+  /**
+   * The logo is a destination, not a close: it leaves for `/`, so both panels go
+   * and neither hands focus back to a trigger behind the visitor's next page.
+   */
+  const leaveForHome = () => {
+    closeMobile();
+    closeAccount(false);
+  };
+
   /*
    * The account mark is `sm:hidden` and the burger `lg:hidden`. A panel left open
    * across the breakpoint would keep its trigger hidden and its state stuck, so
@@ -155,6 +164,12 @@ export function Navbar() {
   })();
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  /*
+   * `aria-current` is exact, the styling is not: standing on `/pricing/student`
+   * makes `/pricing` the section the visitor is in, but only the exact target is
+   * "the current page" — a prefix match would claim that for two links at once.
+   */
+  const isCurrent = (href: string) => pathname === href;
 
   // A signed-in account gets the public links followed by its dashboard links;
   // anonymous visitors get the public links alone. `navLinks` never contains a
@@ -198,7 +213,7 @@ export function Navbar() {
           <div className="flex h-full min-w-0 flex-1 items-center gap-6">
             <Link
               href="/"
-              onClick={closeMobile}
+              onClick={leaveForHome}
               className={cn(
                 'inline-flex h-9 shrink-0 items-center gap-2 rounded-control text-xl font-bold tracking-tight transition-opacity hover:opacity-80',
                 FOCUS_RING,
@@ -224,7 +239,7 @@ export function Navbar() {
 
             {/* Desktop nav */}
             <div className="hidden h-full min-w-0 flex-1 items-center lg:flex">
-              <DesktopNav links={allLinks} isActive={isActive} />
+              <DesktopNav links={allLinks} isActive={isActive} isCurrent={isCurrent} />
             </div>
           </div>
 
@@ -312,6 +327,7 @@ export function Navbar() {
             <MobileNav
               items={mobileItems}
               isActive={isActive}
+              isCurrent={isCurrent}
               isLoggedIn={!!user}
               open={mobileOpen}
               onOpenChange={(next) => {

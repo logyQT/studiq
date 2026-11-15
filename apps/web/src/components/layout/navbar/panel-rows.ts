@@ -13,11 +13,19 @@ import { cn } from '@/lib/utils';
  * at 80px the signed-in burger (six rows plus the preference band) overflowed
  * by 49px while the account panel's identity, four rows and logout left almost
  * no air. 72px is still far above the 44px touch target and leaves the account
- * panel a visible gap. The signed-in burger does not quite fit either: six rows
- * and the five hairlines between them are 437px against the 435px the preference
- * band (68px plus its top hairline) leaves, so its list scrolls 2px and the last
- * row's bottom edge is clipped by that much. Accepting the scroll is the trade
- * that keeps both the row's height and the band's controls.
+ * panel a visible gap.
+ *
+ * The list's 4px gutter is the focus ring's room: a row is full width, so the
+ * first one touches the scrollport's top edge and its 2px ring at a 2px offset
+ * was clipped there — and at both side edges. `p-1` around the list makes the
+ * ring whole without moving the indicator inside the row, where it would read
+ * as a second hairline. It costs 8px of list height: the signed-in burger's six
+ * rows and the five hairlines between them are 437px, which becomes 445px
+ * against the 435px the preference band (68px plus its top hairline) leaves, so
+ * its list now scrolls 10px instead of 2px. The last row's bottom edge is
+ * clipped by that much until the list is scrolled; the row's height and the
+ * band's controls are the trade, and the 320×568 budget still holds — the panel
+ * itself never exceeds the viewport, only the list inside it scrolls.
  */
 export const PANEL_ROW = cn(
   'group flex min-h-18 w-full items-center gap-3 px-4 py-3 text-xl leading-tight font-semibold tracking-tight text-foreground transition-colors hover:bg-accent',

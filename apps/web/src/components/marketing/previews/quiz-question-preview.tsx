@@ -107,17 +107,6 @@ export function QuizQuestionPreview() {
    */
   return (
     <div className="flex min-h-[656px] flex-col min-[360px]:min-h-[584px] min-[640px]:min-h-[520px] min-[860px]:min-h-[492px] lg:min-h-[584px] xl:min-h-[560px]">
-      {/*
-       * Previous/Next swaps the card's contents without moving focus (the pressed
-       * control stays under the pointer), so the new question is announced here.
-       * The region is a sibling of the card and never wraps it: the answer controls
-       * must not turn every option into an announcement.
-       */}
-      {!result && (
-        <p aria-live="polite" className="sr-only">
-          {`${t('question_of', { current: position, total })}: ${fixture.stem}`}
-        </p>
-      )}
       <QuizQuestionView
         question={question}
         headingRef={headingRef}

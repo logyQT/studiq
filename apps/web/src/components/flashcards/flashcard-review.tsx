@@ -80,8 +80,9 @@ export function FlashcardReview({
   onRate,
   exitDirection = 'right',
 }: FlashcardReviewProps) {
-  // The outgoing card may leave only if the preference allows it: under reduced
-  // motion it fades where it stands instead of sliding off its rating's side.
+  // Reduced motion drops the transforms in both directions: the outgoing card fades
+  // where it stands instead of sliding off its rating's side, and the arriving one
+  // fades in place instead of rotating up from 60px below.
   const reduceMotion = useReducedMotion() === true;
 
   /*
@@ -116,24 +117,35 @@ export function FlashcardReview({
       <AnimatePresence
         mode="wait"
         custom={exitDirection}
+        // The first card is already on the page when it is served: animating it in
+        // meant it mounted at `opacity: 0`, so the server render painted a gap and
+        // a visitor without JS never saw a card at all. Later cards still enter.
+        initial={false}
         onExitComplete={() => cardRef.current?.focus({ preventScroll: true })}
       >
         <motion.div
           key={cardKey}
           custom={exitDirection}
           variants={{
-            initial: (direction: string) => ({
-              rotate: -10,
-              y: 60,
-              opacity: 0,
-              transformOrigin: direction === 'left' ? 'left center' : 'right center',
-            }),
-            animate: (direction: string) => ({
-              rotate: 0,
-              y: 0,
-              opacity: 1,
-              transformOrigin: direction === 'left' ? 'left center' : 'right center',
-            }),
+            // Under reduced motion the card only fades: no rotation, no travel.
+            initial: (direction: string) =>
+              reduceMotion
+                ? { opacity: 0 }
+                : {
+                    rotate: -10,
+                    y: 60,
+                    opacity: 0,
+                    transformOrigin: direction === 'left' ? 'left center' : 'right center',
+                  },
+            animate: (direction: string) =>
+              reduceMotion
+                ? { opacity: 1 }
+                : {
+                    rotate: 0,
+                    y: 0,
+                    opacity: 1,
+                    transformOrigin: direction === 'left' ? 'left center' : 'right center',
+                  },
             exit: (direction: string) =>
               reduceMotion
                 ? { opacity: 0 }
