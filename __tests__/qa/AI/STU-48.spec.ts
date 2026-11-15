@@ -22,6 +22,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   fallback of the name field; the generation tool always names the deck
  *   („Generated Flashcards” when the model gives none), so the name the
  *   fixture chose is the one the deck gets.
+ * - The case expects the toast „Talia utworzona z N fiszkami”; this flow renders
+ *   `flashcard_saved` („Zapisano N fiszki do talii”) instead, so that is what the
+ *   spec asserts. The preview and save copy inflects (1 fiszkę / 2 fiszki /
+ *   5 fiszek) but is not the case's wording.
  * - Behaviour pinned as it is today, not as it should be: a nested model call
  *   (`fetch_material`) is never metered, a call with truncated or unknown tool
  *   input is fed back to the model as a tool error with no UI of its own, and
@@ -66,7 +70,7 @@ async function usedTokens(page: Page): Promise<number> {
   return Number(used);
 }
 
-const saveButton = (page: Page) => page.getByRole('button', { name: /^Zapisz \d+ fiszek/ });
+const saveButton = (page: Page) => page.getByRole('button', { name: /^Zapisz \d+ fisz/ });
 
 test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', () => {
   test.beforeEach(async () => {
@@ -87,10 +91,10 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
 
     // Drop the last card, keep four.
     await page.getByTitle('Usuń kartę').last().click();
-    await expect(saveButton(page)).toHaveText('Zapisz 4 fiszek jako talię');
+    await expect(saveButton(page)).toHaveText('Zapisz 4 fiszki jako talię');
     await saveButton(page).click();
 
-    await expect(page.getByText('Zapisano 4 fiszek do talii')).toBeVisible();
+    await expect(page.getByText('Zapisano 4 fiszki do talii')).toBeVisible();
     const open = page.getByRole('link', { name: 'Otwórz talię' });
     const href = await open.getAttribute('href');
     expect(href).toMatch(/^\/app\/flashcards\/[0-9a-f-]{36}$/);
@@ -121,7 +125,7 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     const before = await usedTokens(page);
 
     await send(page, 'Przygotuj fiszki o fotosyntezie z materiału');
-    await expect(page.getByText('Wygenerowano 2 fiszek')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Wygenerowano 2 fiszki')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Chloroplast', { exact: true })).toBeVisible();
     await expect(page.getByText('Chlorofil', { exact: true })).toBeVisible();
 
@@ -167,7 +171,7 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     await openChat(page);
     await send(page, 'Fiszki o planetach, nieznane narzędzie');
 
-    await expect(page.getByText('Wygenerowano 2 fiszek')).toBeVisible();
+    await expect(page.getByText('Wygenerowano 2 fiszki')).toBeVisible();
     await expect(page.getByText('Najmniejsza planeta Układu Słonecznego')).toBeVisible();
     const requests = await fakeLlm.requestsOf('STU-48:unknown-tool');
     expect(requests.map((entry) => entry.turn)).toEqual([0, 1, 2]);
@@ -181,7 +185,7 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     await expect(page.getByText('Oto fiszki: 1) Merkury to najmniejsza planeta.')).toBeVisible();
 
     await expect(saveButton(page)).toHaveCount(0);
-    await expect(page.getByText(/Wygenerowano \d+ fiszek/)).toHaveCount(0);
+    await expect(page.getByText(/Wygenerowano \d+ fisz/)).toHaveCount(0);
     expect(await deckNames(page)).toEqual(decksBefore);
   });
 
