@@ -74,7 +74,16 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
       </div>
 
       <div className="mt-4 md:col-span-2 md:col-start-11 md:row-start-1 md:mt-0 md:justify-self-end">
-        {signedIn ? (
+        {contactOnly ? (
+          /*
+           * Campus is a 699 zł conversation, not a self-serve checkout, and the
+           * label says so in both states: signing in must not turn a sales
+           * contact into a purchase (one behaviour per label).
+           */
+          <CtaButton href="/contact" tone="quiet" fullWidth className="whitespace-nowrap">
+            {t('cta_campus')}
+          </CtaButton>
+        ) : signedIn ? (
           isFree ? null : (
             <CheckoutButton
               planKey={plan.key}
@@ -94,12 +103,12 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
           )
         ) : (
           <CtaButton
-            href={contactOnly ? '/contact' : '/register'}
+            href="/register"
             tone={recommended ? 'signal' : 'quiet'}
             fullWidth
             className="whitespace-nowrap"
           >
-            {contactOnly ? t('cta_contact') : isFree ? t('cta_free') : t('cta_register')}
+            {isFree ? t('cta_free') : t('cta_register')}
           </CtaButton>
         )}
       </div>
