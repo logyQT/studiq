@@ -7,6 +7,7 @@ import {
   type AssignmentFormValues,
   type AssignmentPayload,
 } from '@/components/edu/assignment-form';
+import { AssignmentNotFound } from '@/components/edu/assignment-not-found';
 import { AssignmentPage } from '@/components/edu/assignment-page';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
@@ -51,12 +52,16 @@ export default function EditAssignmentClient() {
     router.push(`/edu/assignments/${id}`);
   };
 
-  if (isLoading || !assignment) {
+  if (isLoading) {
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
       </div>
     );
+  }
+
+  if (!assignment) {
+    return <AssignmentNotFound />;
   }
 
   const initial: AssignmentFormValues = {
