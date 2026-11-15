@@ -40,7 +40,7 @@ Scenariusz jest odtwarzany w **własnym tenancie** przypadku, nie na kontach leg
   uczeń jest członkiem organizacji i grupy `G1`;
 - warunek „Talia z EDU-DECK-02” powstaje przez `POST /api/v1/flashcards/decks`
   („Matematyka – klasa 1”, `visibility: 'group'`, `groupIds: [G1]`) w tym tenancie;
-- temat do kroku 3 powstaje przez `POST /api/v1/flashcards/topics` w tym samym tenancie.
+- temat do kroku 3 powstaje przez `POST /api/v1/topics` w tym samym tenancie.
 
 Nic globalnego nie jest czytane ani zapisywane: żadne ustawienie admina, flaga
 funkcji, plan, statystyka platformy ani wiersz singletonu.

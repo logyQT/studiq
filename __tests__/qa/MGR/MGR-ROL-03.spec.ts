@@ -148,7 +148,7 @@ async function resetContent(page: Page, tenant: QaTenant): Promise<void> {
     '/api/v1/flashcards',
     '/api/v1/flashcards/decks',
     '/api/v1/questions/banks',
-    '/api/v1/flashcards/topics',
+    '/api/v1/topics',
   ]) {
     const ownedByMember: string[] = [];
     for (const row of await listRows(page, path)) {
@@ -253,7 +253,7 @@ async function createContent(page: Page, tenant: QaTenant): Promise<CaseContent>
     name: CONTENT_NAMES.deck.own,
     visibility: 'personal',
   });
-  const ownTopic = await postJson<ContentRow>(page, '/api/v1/flashcards/topics', {
+  const ownTopic = await postJson<ContentRow>(page, '/api/v1/topics', {
     name: CONTENT_NAMES.topic.own,
     visibility: 'personal',
   });
@@ -276,12 +276,12 @@ async function createContent(page: Page, tenant: QaTenant): Promise<CaseContent>
     name: CONTENT_NAMES.deck.org,
     visibility: 'personal',
   });
-  const groupTopic = await postJson<ContentRow>(page, '/api/v1/flashcards/topics', {
+  const groupTopic = await postJson<ContentRow>(page, '/api/v1/topics', {
     name: CONTENT_NAMES.topic.group,
     visibility: 'group',
     groupIds: [groupId],
   });
-  const orgTopic = await postJson<ContentRow>(page, '/api/v1/flashcards/topics', {
+  const orgTopic = await postJson<ContentRow>(page, '/api/v1/topics', {
     name: CONTENT_NAMES.topic.org,
     visibility: 'personal',
   });
@@ -498,7 +498,7 @@ async function expectReaderContent(page: Page, context: CaseContext, scope: Scop
   expect(await listIds(page, '/api/v1/flashcards'), 'flashcards').toEqual(
     expectedCards.map((row) => row.id).toSorted(),
   );
-  expect(await listIds(page, '/api/v1/flashcards/topics'), 'topics').toEqual(
+  expect(await listIds(page, '/api/v1/topics'), 'topics').toEqual(
     expectedTopics.map((row) => row.id).toSorted(),
   );
   expect(await listIds(page, '/api/v1/questions/banks'), 'question banks').toEqual(

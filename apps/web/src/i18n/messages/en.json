@@ -2877,27 +2877,7 @@
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
-    "subtitle": "Update assignment settings",
-    "basic_info": "Basic Information",
-    "title_field": "Title *",
-    "description": "Description",
-    "timing_limits": "Timing & Limits",
-    "deadline": "Deadline",
-    "time_limit_min": "Time Limit (minutes)",
-    "no_limit": "No limit",
-    "max_attempts": "Max Attempts",
-    "passing_score": "Passing Score (%)",
-    "no_threshold": "No threshold",
-    "settings": "Settings",
-    "shuffle_questions": "Shuffle Questions",
-    "shuffle_questions_desc": "Randomize question order",
-    "shuffle_answers": "Shuffle Answers",
-    "shuffle_answers_desc": "Randomize answer order",
-    "show_results": "Show Results",
-    "show_results_desc": "Let students see scores",
-    "cancel": "Cancel",
-    "saving": "Saving...",
-    "save_changes": "Save Changes"
+    "subtitle": "Update assignment settings"
   },
   "EduQuizzesPage": {
     "title": "Quizzes",
@@ -2955,13 +2935,11 @@
     "questions": "Questions",
     "total_points": "Total Points"
   },
-  "EduAssignmentNewPage": {
-    "title": "New Assignment",
-    "based_on": "Based on: {name}",
-    "subtitle": "Create a new assignment for your students",
+  "EduAssignmentForm": {
     "basic_info": "Basic Information",
     "title_field": "Title *",
     "title_placeholder": "e.g. Chapter 5 Quiz",
+    "based_on": "Based on: {name}",
     "description": "Description",
     "description_placeholder": "Optional description",
     "timing_limits": "Timing & Limits",
@@ -2979,8 +2957,14 @@
     "show_results": "Show Results",
     "show_results_desc": "Let students see their score after grading",
     "cancel": "Cancel",
+    "create": "Create Assignment",
     "creating": "Creating...",
-    "create": "Create Assignment"
+    "save_changes": "Save Changes",
+    "saving": "Saving..."
+  },
+  "EduAssignmentNewPage": {
+    "title": "New Assignment",
+    "subtitle": "Create a new assignment for your students"
   },
   "EduAssignmentPrintPage": {
     "print_hint": "This page is optimized for printing. Use Ctrl+P (Cmd+P) to save as PDF.",

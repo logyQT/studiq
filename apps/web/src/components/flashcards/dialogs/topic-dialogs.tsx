@@ -83,7 +83,7 @@ export function TopicDialogs({
 
     setCreatingTopic(true);
     try {
-      const newTopic = await apiPost<{ id: string; name: string }>('/api/v1/flashcards/topics', {
+      const newTopic = await apiPost<{ id: string; name: string }>('/api/v1/topics', {
         name,
       });
       const currentIds = getTopicIds(fc);

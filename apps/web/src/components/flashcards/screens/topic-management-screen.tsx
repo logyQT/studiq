@@ -75,7 +75,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     queryKey: topicKeys.paginated(filters, activeOrg?.id),
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>(
-        `/api/v1/flashcards/topics?limit=50${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
+        `/api/v1/topics?limit=50${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
       ),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: '',
@@ -91,7 +91,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   const createTopic = useApiMutation({
     mutationFn: (data: { name: string; visibility?: string; groupIds?: string[] }) =>
-      apiPost<Topic>('/api/v1/flashcards/topics', data),
+      apiPost<Topic>('/api/v1/topics', data),
     invalidateKeys: [topicKeys.all],
   });
   const updateTopic = useApiMutation({
@@ -103,7 +103,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       name: string;
       visibility?: Topic['visibility'];
       groupIds?: string[];
-    }) => apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
+    }) => apiPut<Topic>(`/api/v1/topics/${id}`, data),
     invalidateKeys: [topicKeys.all],
     onMutate: async ({ id, ...data }) => {
       await queryClient.cancelQueries({ queryKey: topicKeys.all });
@@ -118,7 +118,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     },
   });
   const deleteTopic = useApiMutation({
-    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/topics/${id}`),
+    mutationFn: (id: string) => apiDelete(`/api/v1/topics/${id}`),
     invalidateKeys: [topicKeys.all],
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: topicKeys.all });
@@ -133,8 +133,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     },
   });
   const batchDeleteTopics = useApiMutation({
-    mutationFn: (data: { ids: string[] }) =>
-      apiPost('/api/v1/flashcards/topics/batch/delete', data),
+    mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/topics/batch/delete', data),
     invalidateKeys: [topicKeys.all],
   });
 

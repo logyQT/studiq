@@ -1,7 +1,7 @@
 import { featuresController } from '@studiq/server/controllers/features.controller';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
-import { isFeatureKey } from '@studiq/server/services/feature.resolver';
+import { isFeatureKey } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {

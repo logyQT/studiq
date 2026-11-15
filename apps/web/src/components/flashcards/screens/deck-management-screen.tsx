@@ -1,7 +1,7 @@
 'use client';
 
 import type { Deck } from '@studiq/server/models/flashcard-deck.model';
-import { Button, Card, Skeleton } from '@studiq/ui';
+import { Button } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckSquare,
@@ -22,7 +22,7 @@ import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { ContentListToolbar } from '@/components/shared/content-list-toolbar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { PageGrid } from '@/components/shared/page-grid';
+import { CollectionCardSkeleton, PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import { useApiMutation } from '@/hooks/use-api';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
@@ -344,32 +344,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       <PageGrid
         cols={4}
         isLoading={isLoading || orgsPending}
-        skeleton={
-          <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
-            <div className="flex items-center gap-3 p-4 sm:hidden">
-              <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-3 w-1/4" />
-              </div>
-              <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-            </div>
-            <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-10 w-10 rounded-xl" />
-                <Skeleton className="h-6 w-3/4" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-4/5" />
-              </div>
-              <div className="flex items-center justify-between pt-4 mt-auto">
-                <Skeleton className="h-6 w-16 rounded-full" />
-                <Skeleton className="h-8 w-24 rounded-md" />
-              </div>
-            </div>
-          </Card>
-        }
+        skeleton={<CollectionCardSkeleton />}
         skeletonCount={12}
         hasNextPage={hasNextPage}
         isFetchingNextPage={isFetchingNextPage}

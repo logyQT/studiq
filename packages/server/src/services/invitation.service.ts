@@ -5,7 +5,7 @@ import { getMailer } from '@studiq/server/lib/mailer';
 import type { Mailer, MailLocale } from '@studiq/server/lib/mailer/mailer';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
@@ -720,29 +720,46 @@ export class InvitationService {
     );
   }
 
-  async updateInvitation(
+  /**
+   * The org-scoped "pending invitation" guard shared by the update and delete
+   * paths. withAuth only sets activeOrgId (and orgRoleId) when a real
+   * org_members row exists for that exact org+user, so the pair is the
+   * membership proof — without it a forged cookie would let any manager
+   * retarget another tenant's pending invitation (MGR-INV-03). A foreign id and
+   * an unknown id are the same NOT_FOUND (no existence oracle), and an accepted
+   * invitation is never rewritten.
+   */
+  private async loadPendingInvitation(
     ctx: RequestContext,
     id: string,
-    data: { targetOrgRoleId?: string },
-  ): Promise<ServiceResult<void>> {
-    // withAuth only sets activeOrgId (and orgRoleId) when a real org_members row
-    // exists for that exact org+user, so the pair is the membership proof. Without
-    // it a forged cookie would let any manager retarget another tenant's pending
-    // invitation (MGR-INV-03).
+  ): Promise<ServiceResult<{ supabase: SupabaseClient<Database>; orgId: string }>> {
     if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
+    const orgId = ctx.activeOrgId;
 
     const supabase = await this.clientFactory();
 
-    const { data: invite, error: fetchError } = await supabase
+    const { data: invite, error } = await supabase
       .from('invitations')
       .select('id, is_accepted')
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .maybeSingle();
 
-    if (fetchError) return toDbFailure(fetchError);
+    if (error) return toDbFailure(error);
     if (!invite) return failure('NOT_FOUND');
     if (invite.is_accepted) return failure('FORBIDDEN');
+
+    return success({ supabase, orgId });
+  }
+
+  async updateInvitation(
+    ctx: RequestContext,
+    id: string,
+    data: { targetOrgRoleId?: string },
+  ): Promise<ServiceResult<void>> {
+    const pending = await this.loadPendingInvitation(ctx, id);
+    if (isFailure(pending)) return pending;
+    const { supabase, orgId } = pending.data;
 
     const updateData: Database['public']['Tables']['invitations']['Update'] = {};
 
@@ -753,7 +770,7 @@ export class InvitationService {
         .from('org_roles')
         .select('id')
         .eq('id', data.targetOrgRoleId)
-        .eq('organization_id', ctx.activeOrgId)
+        .eq('organization_id', orgId)
         .maybeSingle();
 
       if (roleError) return toDbFailure(roleError);
@@ -768,36 +785,22 @@ export class InvitationService {
       .from('invitations')
       .update(updateData)
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId);
+      .eq('organization_id', orgId);
     if (error) return toDbFailure(error);
 
     return success(undefined);
   }
 
   async deleteInvitation(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    // See updateInvitation: the cookie alone proves nothing, orgRoleId does.
-    if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
-
-    const supabase = await this.clientFactory();
-
-    const { data: invite, error: fetchError } = await supabase
-      .from('invitations')
-      .select('id, is_accepted')
-      .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId)
-      .maybeSingle();
-
-    if (fetchError) return toDbFailure(fetchError);
-    // A foreign or unknown id is indistinguishable to the caller (no existence
-    // oracle), and the row is never touched.
-    if (!invite) return failure('NOT_FOUND');
-    if (invite.is_accepted) return failure('FORBIDDEN');
+    const pending = await this.loadPendingInvitation(ctx, id);
+    if (isFailure(pending)) return pending;
+    const { supabase, orgId } = pending.data;
 
     const { error } = await supabase
       .from('invitations')
       .delete()
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId);
+      .eq('organization_id', orgId);
     if (error) return toDbFailure(error);
 
     return success(undefined);

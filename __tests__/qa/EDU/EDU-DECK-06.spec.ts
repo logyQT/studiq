@@ -214,13 +214,10 @@ async function ensureDeck(page: Page, tenant: QaTenant): Promise<DeckRow> {
 }
 
 async function ensureTopic(page: Page): Promise<TopicRow> {
-  const { items } = await getData<{ items: TopicRow[] }>(
-    page,
-    '/api/v1/flashcards/topics?limit=100',
-  );
+  const { items } = await getData<{ items: TopicRow[] }>(page, '/api/v1/topics?limit=100');
   const existing = items.find((topic) => topic.name === TOPIC_NAME);
   if (existing) return existing;
-  return postData<TopicRow>(page, '/api/v1/flashcards/topics', { name: TOPIC_NAME });
+  return postData<TopicRow>(page, '/api/v1/topics', { name: TOPIC_NAME });
 }
 
 /**

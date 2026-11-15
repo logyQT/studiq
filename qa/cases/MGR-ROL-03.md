@@ -72,7 +72,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
   zapisane zakresy jako zaznaczone; `GET /api/v1/organization/roles/<id>` zwraca dokładnie
   20 wierszy uprawnień z wybranym zakresem.
 - Zakresy działają na liście treści i w API stron (`/api/v1/flashcards/decks`,
-  `/api/v1/flashcards`, `/api/v1/flashcards/topics`, `/api/v1/questions/banks`,
+  `/api/v1/flashcards`, `/api/v1/topics`, `/api/v1/questions/banks`,
   `/api/v1/questions`), dla wszystkich pięciu sekcji:
   - „Własne” → wyłącznie wiersze utworzone przez użytkownika (1),
   - „Grupa” → własne + udostępnione grupie (2), bez treści tylko-organizacyjnych,

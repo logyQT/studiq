@@ -20,6 +20,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
 import { ApiError, apiPost, apiPut, getFieldErrorCode, getFieldErrorCodes } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { PageHeading } from '@/components/shared/page-heading';
 
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
@@ -113,10 +114,7 @@ export function AccountPageContent() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
-      </div>
+      <PageHeading title={t('title')} subtitle={t('subtitle')} />
 
       <Card>
         <CardHeader>

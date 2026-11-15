@@ -2858,35 +2858,13 @@
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",
-    "subtitle": "Zaktualizuj ustawienia kartkówki",
-    "basic_info": "Podstawowe informacje",
-    "title_field": "Tytuł *",
-    "description": "Opis",
-    "timing_limits": "Czas i limity",
-    "deadline": "Termin",
-    "time_limit_min": "Limit czasu (minuty)",
-    "no_limit": "Bez limitu",
-    "max_attempts": "Maks. prób",
-    "passing_score": "Próg zaliczenia (%)",
-    "no_threshold": "Bez progu",
-    "settings": "Ustawienia",
-    "shuffle_questions": "Losuj pytania",
-    "shuffle_questions_desc": "Losowa kolejność pytań",
-    "shuffle_answers": "Losuj odpowiedzi",
-    "shuffle_answers_desc": "Losowa kolejność odpowiedzi",
-    "show_results": "Pokaż wyniki",
-    "show_results_desc": "Pozwól uczniom zobaczyć wyniki",
-    "cancel": "Anuluj",
-    "saving": "Zapisywanie...",
-    "save_changes": "Zapisz zmiany"
+    "subtitle": "Zaktualizuj ustawienia kartkówki"
   },
-  "EduAssignmentNewPage": {
-    "title": "Nowa kartkówka",
-    "based_on": "Na podstawie: {name}",
-    "subtitle": "Utwórz nową kartkówkę dla uczniów",
+  "EduAssignmentForm": {
     "basic_info": "Podstawowe informacje",
     "title_field": "Tytuł *",
     "title_placeholder": "np. Kartkówka z rozdziału 5",
+    "based_on": "Na podstawie: {name}",
     "description": "Opis",
     "description_placeholder": "Opcjonalny opis",
     "timing_limits": "Czas i limity",
@@ -2904,8 +2882,14 @@
     "show_results": "Pokaż wyniki",
     "show_results_desc": "Pozwól uczniom zobaczyć wynik po ocenieniu",
     "cancel": "Anuluj",
+    "create": "Utwórz kartkówkę",
     "creating": "Tworzenie...",
-    "create": "Utwórz kartkówkę"
+    "save_changes": "Zapisz zmiany",
+    "saving": "Zapisywanie..."
+  },
+  "EduAssignmentNewPage": {
+    "title": "Nowa kartkówka",
+    "subtitle": "Utwórz nową kartkówkę dla uczniów"
   },
   "EduQuizzesPage": {
     "title": "Quizy",

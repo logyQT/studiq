@@ -97,7 +97,7 @@ const SHARED_TOPIC = 'EDU-TOP-01 wspólny';
 const DECK = 'EDU-TOP-01 talia';
 const CARD_FRONTS = ['Pytanie 1', 'Pytanie 2'] as const;
 
-const TOPICS_URL = '/api/v1/flashcards/topics';
+const TOPICS_URL = '/api/v1/topics';
 const DECKS_URL = '/api/v1/flashcards/decks';
 const FLASHCARDS_URL = '/api/v1/flashcards';
 
@@ -135,7 +135,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
   return body.data;
 }
 
-/** `GET /api/v1/flashcards/topics` — the same list the screen renders. */
+/** `GET /api/v1/topics` — the same list the screen renders. */
 async function listTopics(page: Page, query = ''): Promise<TopicRow[]> {
   const data = await getData<{ items: TopicRow[] }>(page, `${TOPICS_URL}?limit=50${query}`);
   return data.items;

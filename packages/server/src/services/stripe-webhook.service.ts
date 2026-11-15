@@ -732,37 +732,9 @@ export class StripeWebhookService {
     if (isFailure(mirrorResult)) throw new Error('subscription mirror read failed');
     const mirror = mirrorResult.data;
 
-    const subscription = await this.retrieveSubscription(subscriptionId, null);
-    if (!subscription) {
-      logError('billing.subscription_unresolved', {
-        eventId: event.id,
-        subscriptionId,
-        object: 'invoice',
-      });
-      return { ignored: true };
-    }
-
-    const owner =
-      this.ownerFromMirror(mirror) ??
-      this.ownerFromMetadata(subscription.metadata) ??
-      this.ownerFromMetadata(invoice.parent?.subscription_details?.metadata ?? null) ??
-      (objectId(invoice.customer)
-        ? await this.ownerFromCustomer(objectId(invoice.customer)!)
-        : null);
-    if (!owner) {
-      logError('billing.owner_unresolved', {
-        eventId: event.id,
-        objectId: invoice.id,
-        object: 'invoice',
-      });
-      return { ignored: true };
-    }
-
-    const resolved = await this.resolvePlan(subscription, subscription.metadata, owner);
-    if (!resolved) {
-      logError('billing.price_unmapped', { eventId: event.id, subscriptionId });
-      return { ignored: true };
-    }
+    const target = await this.resolveInvoiceTarget(event, invoice, subscriptionId, mirror);
+    if (!target) return { ignored: true };
+    const { subscription, owner, resolved } = target;
 
     // Reconcile the mirror from the *current* subscription (an upgrade with
     // `pending_if_incomplete` applies its price only after payment).
@@ -881,37 +853,9 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
-    const subscription = await this.retrieveSubscription(subscriptionId, null);
-    if (!subscription) {
-      logError('billing.subscription_unresolved', {
-        eventId: event.id,
-        subscriptionId,
-        object: 'invoice',
-      });
-      return { ignored: true };
-    }
-
-    const owner =
-      this.ownerFromMirror(mirror) ??
-      this.ownerFromMetadata(subscription.metadata) ??
-      this.ownerFromMetadata(invoice.parent?.subscription_details?.metadata ?? null) ??
-      (objectId(invoice.customer)
-        ? await this.ownerFromCustomer(objectId(invoice.customer)!)
-        : null);
-    if (!owner) {
-      logError('billing.owner_unresolved', {
-        eventId: event.id,
-        objectId: invoice.id,
-        object: 'invoice',
-      });
-      return { ignored: true };
-    }
-
-    const resolved = await this.resolvePlan(subscription, subscription.metadata, owner);
-    if (!resolved) {
-      logError('billing.price_unmapped', { eventId: event.id, subscriptionId });
-      return { ignored: true };
-    }
+    const target = await this.resolveInvoiceTarget(event, invoice, subscriptionId, mirror);
+    if (!target) return { ignored: true };
+    const { subscription, owner, resolved } = target;
 
     // D14: a failed or 3DS-pending payment keeps access. The mirror follows the
     // **current** subscription status: `past_due`/`active` re-apply the same
@@ -961,6 +905,55 @@ export class StripeWebhookService {
     // `incomplete` and anything unknown: keep the previous plan until the
     // invoice is paid or the subscription is deleted.
     return success('applied');
+  }
+
+  /**
+   * The subscription, owner and plan behind an invoice event. Both invoice
+   * handlers resolve them the same way; `null` means the reason was logged and
+   * the event is ignored.
+   */
+  private async resolveInvoiceTarget(
+    event: Stripe.Event,
+    invoice: Stripe.Invoice,
+    subscriptionId: string,
+    mirror: SubscriptionMirror | null,
+  ): Promise<{
+    subscription: Stripe.Subscription;
+    owner: ResolvedOwner;
+    resolved: ResolvedPlan;
+  } | null> {
+    const subscription = await this.retrieveSubscription(subscriptionId, null);
+    if (!subscription) {
+      logError('billing.subscription_unresolved', {
+        eventId: event.id,
+        subscriptionId,
+        object: 'invoice',
+      });
+      return null;
+    }
+
+    const customerId = objectId(invoice.customer);
+    const owner =
+      this.ownerFromMirror(mirror) ??
+      this.ownerFromMetadata(subscription.metadata) ??
+      this.ownerFromMetadata(invoice.parent?.subscription_details?.metadata ?? null) ??
+      (customerId ? await this.ownerFromCustomer(customerId) : null);
+    if (!owner) {
+      logError('billing.owner_unresolved', {
+        eventId: event.id,
+        objectId: invoice.id,
+        object: 'invoice',
+      });
+      return null;
+    }
+
+    const resolved = await this.resolvePlan(subscription, subscription.metadata, owner);
+    if (!resolved) {
+      logError('billing.price_unmapped', { eventId: event.id, subscriptionId });
+      return null;
+    }
+
+    return { subscription, owner, resolved };
   }
 
   /** Owner priority (§6.4): mirror → metadata → customer mapping. */

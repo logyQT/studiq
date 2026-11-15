@@ -14,9 +14,8 @@ import { GET as getDecks, POST as createDeck } from '@/app/(backend)/api/v1/flas
 import {
   GET as getTopicsScreen,
   POST as createTopicsScreen,
-} from '@/app/(backend)/api/v1/flashcards/topics/route';
+} from '@/app/(backend)/api/v1/topics/route';
 import { GET as getBanks, POST as createBank } from '@/app/(backend)/api/v1/questions/banks/route';
-import { GET as getTopics } from '@/app/(backend)/api/v1/topics/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -85,7 +84,7 @@ describe(`Content list filters (#595)`, () => {
       visibility: 'group',
       groupIds: [groupId],
     });
-    linkedTopicId = await post(createTopicsScreen, '/api/v1/flashcards/topics', {
+    linkedTopicId = await post(createTopicsScreen, '/api/v1/topics', {
       name: `content-filters-595-topic-${suiteId}`,
       visibility: 'group',
       groupIds: [groupId],
@@ -118,14 +117,8 @@ describe(`Content list filters (#595)`, () => {
       linkedId: () => linkedBankId,
     },
     {
-      label: 'GET /api/v1/flashcards/topics',
-      get: getTopicsScreen,
-      url: '/api/v1/flashcards/topics',
-      linkedId: () => linkedTopicId,
-    },
-    {
       label: 'GET /api/v1/topics',
-      get: getTopics,
+      get: getTopicsScreen,
       url: '/api/v1/topics',
       linkedId: () => linkedTopicId,
     },
