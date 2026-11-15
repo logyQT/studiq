@@ -281,9 +281,9 @@
   }
 }
 
-/* The paper surface of the marketing shell: a light pool top-left, a warm shade
-   bottom-right, 100px of edge curl, and the grain — all behind type. Product
-   surfaces never carry this class, so /app, /edu and /manage are untouched.
+/* The paper surface of the shells: a light pool top-left, a warm shade
+   bottom-right, 100px of edge curl, and the grain — all behind type. The
+   marketing shells and the product shell (`DashboardLayout`) both carry it.
    Radii are fixed px rather than percentages so a long page grows a flat middle
    instead of stretching the light into a wash.
    `background-blend-mode` does not blend against `background-color` on its own,

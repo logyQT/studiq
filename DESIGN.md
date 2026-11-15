@@ -165,18 +165,19 @@ fill on cobalt has no `paper` between them, which is the rule two paragraphs up.
 
 ### The paper surface
 
-The marketing shell is paper: `--background` with two light pools, a 100px edge curl and the
-grain, painted by `bg-paper-grain` on `MarketingShell` and `MainLayout`. `/register`'s form
-column carries it in **dark only** (`dark:bg-paper-grain`): the utility has its own `.dark &`
-block, so the bare class would also lay the light pools and grain on paper, where that column
-stays flat. Product surfaces never carry the class, so `/app`, `/edu` and `/manage` stay flat.
+The shell is paper: `--background` with two light pools, a 100px edge curl and the grain,
+painted by `bg-paper-grain` on `MarketingShell`, `MainLayout` and the product shell
+(`DashboardLayout`, which `/app`, `/edu` and `/manage` render inside). `/register`'s form column
+carries the same class in both themes: the utility has its own `.dark &` block, so one class
+paints the correct stack for each.
 
 Measured at 1440 the tone spans 16 levels with a flat middle and no step larger than ~1 level
 per 25px, which is why it reads as light on a sheet rather than a gradient band. Its worst text
 pixel is 17.07 (ink) and 6.12 (muted) in light, 15.59 and 7.36 in dark — a texture that both
 lightens and darkens paper cannot leave the worst pixel at the flat token value, and that is
-1.33x the 4.5:1 floor, not a regression. On `/register`'s grained column the same sampling gives
-15.84 (ink), 7.30 (muted) and 5.52 (placeholder on `dark:bg-input/30`) at 1440×900.
+1.33x the 4.5:1 floor, not a regression. `/register`'s grained column measures 17.02 (ink),
+6.03 (muted) and 5.96 (placeholder) in light, 15.84, 7.36 and 5.52 in dark; the product shell
+measures 16.74 (ink) and 5.60 (muted) in light, 16.41 and 7.41 in dark.
 
 **Creases were studied and rejected.** A fold reads because a sheet is seen at an angle and two
 planes catch directional light differently; a frontal, evenly lit page has no specular event, so

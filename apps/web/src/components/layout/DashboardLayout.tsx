@@ -21,7 +21,7 @@ export function DashboardLayout({
     <BreadcrumbProvider>
       <SidebarProvider style={{ maxHeight: '100dvh' }}>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="bg-paper-grain">
           <header className="print:hidden flex h-14 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
             <div className="flex items-center gap-2 px-4">
               <SidebarTrigger className="-ml-1" />
