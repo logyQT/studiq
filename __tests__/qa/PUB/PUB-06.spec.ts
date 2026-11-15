@@ -1,4 +1,7 @@
+import en from '@/i18n/messages/en.json';
+import pl from '@/i18n/messages/pl.json';
 import { expect, test, type Page } from '@playwright/test';
+import { createTranslator } from 'next-intl';
 
 /**
  * PUB-06 — Polityka prywatności i Regulamin (strony publiczne, brak sesji).
@@ -13,7 +16,37 @@ import { expect, test, type Page } from '@playwright/test';
  * Each test runs in a fresh browser context (empty cookie jar), so the pages
  * render their `pl` default without the suite having to clear another visitor's
  * language choice.
+ *
+ * The identity assertions — the footer's link label and each page's title and
+ * `h1` — read their copy from the same catalogues the pages render from, so the
+ * spec pins *which* document the visitor reached, not the wording of it. The
+ * section inventories below stay literal on purpose: they are the case's list of
+ * sections that must exist, and a key rename must not silently shrink it.
  */
+const copy = {
+  pl: {
+    footer: createTranslator({ locale: 'pl', messages: pl, namespace: 'Footer' }),
+    privacy: createTranslator({ locale: 'pl', messages: pl, namespace: 'PrivacyPage' }),
+    terms: createTranslator({ locale: 'pl', messages: pl, namespace: 'TermsPage' }),
+  },
+  en: {
+    privacy: createTranslator({ locale: 'en', messages: en, namespace: 'PrivacyPage' }),
+    terms: createTranslator({ locale: 'en', messages: en, namespace: 'TermsPage' }),
+  },
+} as const;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The root layout appends the site name to every document title (`'%s | StudiQ'`
+ * in `apps/web/src/app/layout.tsx`), so a page's own title is asserted *within*
+ * the rendered title — the same thing the case means by "the page is titled X".
+ */
+function titleContaining(title: string): RegExp {
+  return new RegExp(escapeRegExp(title));
+}
 
 const PRIVACY_PL = [
   'Administrator Danych',
@@ -105,15 +138,15 @@ test('serves every privacy-policy and terms section to a visitor without a sessi
 }) => {
   // A visitor reaches the legal pages from the public footer.
   await page.goto('/');
-  await expect(page.locator('footer a[href="/privacy"]')).toHaveText('Polityka Prywatności');
-  await expect(page.locator('footer a[href="/terms"]')).toHaveText('Regulamin');
+  await expect(page.locator('footer a[href="/privacy"]')).toHaveText(copy.pl.footer('privacy'));
+  await expect(page.locator('footer a[href="/terms"]')).toHaveText(copy.pl.footer('terms'));
 
   await page.locator('footer a[href="/privacy"]').click();
   await expect(page).toHaveURL(/\/privacy$/);
 
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-  await expect(page).toHaveTitle(/Polityka Prywatności/);
-  await expect(page.locator('main h1')).toHaveText('Polityka Prywatności');
+  await expect(page).toHaveTitle(titleContaining(copy.pl.privacy('title')));
+  await expect(page.locator('main h1')).toHaveText(copy.pl.privacy('title'));
   await expectSections(page, PRIVACY_PL);
   await expectNoCyrillic(page, '/privacy (pl)');
 
@@ -121,8 +154,8 @@ test('serves every privacy-policy and terms section to a visitor without a sessi
   await expect(page).toHaveURL(/\/terms$/);
 
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-  await expect(page).toHaveTitle(/Regulamin/);
-  await expect(page.locator('main h1')).toHaveText('Regulamin');
+  await expect(page).toHaveTitle(titleContaining(copy.pl.terms('title')));
+  await expect(page.locator('main h1')).toHaveText(copy.pl.terms('title'));
   await expectSections(page, TERMS_PL);
   await expectNoCyrillic(page, '/terms (pl)');
 
@@ -137,42 +170,42 @@ test('language toggle serves the English legal pages after a refresh, then Polis
   page,
 }) => {
   await page.goto('/privacy');
-  await expect(page.locator('main h1')).toHaveText('Polityka Prywatności');
+  await expect(page.locator('main h1')).toHaveText(copy.pl.privacy('title'));
   await expectSections(page, PRIVACY_PL);
 
   await switchLanguage(page, 'English');
 
-  await expect(page.locator('main h1')).toHaveText('Privacy Policy');
+  await expect(page.locator('main h1')).toHaveText(copy.en.privacy('title'));
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page).toHaveTitle(/Privacy Policy/);
+  await expect(page).toHaveTitle(titleContaining(copy.en.privacy('title')));
   await expectSections(page, PRIVACY_EN);
   await expectNoCyrillic(page, '/privacy (en)');
   expect(await localeCookie(page), 'the visitor language choice is stored').toBe('en');
 
   // Step 2 of the case: refresh the page and the English version stays.
   await page.reload();
-  await expect(page.locator('main h1')).toHaveText('Privacy Policy');
+  await expect(page.locator('main h1')).toHaveText(copy.en.privacy('title'));
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expectSections(page, PRIVACY_EN);
 
   await page.goto('/terms');
-  await expect(page.locator('main h1')).toHaveText('Terms of Service');
-  await expect(page).toHaveTitle(/Terms of Service/);
+  await expect(page.locator('main h1')).toHaveText(copy.en.terms('title'));
+  await expect(page).toHaveTitle(titleContaining(copy.en.terms('title')));
   await expectSections(page, TERMS_EN);
   await expectNoCyrillic(page, '/terms (en)');
 
   await page.reload();
-  await expect(page.locator('main h1')).toHaveText('Terms of Service');
+  await expect(page.locator('main h1')).toHaveText(copy.en.terms('title'));
   await expectSections(page, TERMS_EN);
 
   // The same toggle must lead back to Polish, and the choice must survive a refresh.
   await switchLanguage(page, 'Polski');
-  await expect(page.locator('main h1')).toHaveText('Regulamin');
+  await expect(page.locator('main h1')).toHaveText(copy.pl.terms('title'));
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
   expect(await localeCookie(page)).toBe('pl');
 
   await page.reload();
-  await expect(page.locator('main h1')).toHaveText('Regulamin');
+  await expect(page.locator('main h1')).toHaveText(copy.pl.terms('title'));
   await expectSections(page, TERMS_PL);
   await expectNoCyrillic(page, '/terms (pl)');
 });

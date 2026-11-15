@@ -9,12 +9,17 @@ interface StateBreakdownChartProps {
   states: StateBreakdown;
 }
 
+/*
+ * Each state owns one ramp step. Leeched takes `--chart-6`, the ramp's only red:
+ * the state that needs attention must read as a problem, and `--destructive` is a
+ * UI semantic (errors, danger actions) rather than a data-series colour.
+ */
 const COLORS = {
-  neverPracticed: 'oklch(0.52 0.03 265)',
-  learning: 'oklch(0.546 0.245 265)',
-  review: 'oklch(0.65 0.17 155)',
-  relearning: 'oklch(0.75 0.15 75)',
-  leeched: 'oklch(0.577 0.245 27.325)',
+  neverPracticed: 'var(--chart-2)',
+  learning: 'var(--chart-1)',
+  review: 'var(--chart-5)',
+  relearning: 'var(--chart-3)',
+  leeched: 'var(--chart-6)',
 };
 
 /** Recharts legend label renderer — hoisted so the reference stays stable across renders. */

@@ -83,10 +83,14 @@ survive the objections below, the claim is wrong, not the objection.
 | "Is this in Polish?"                     | Polish is the default locale. English second.                                                                          |
 | "Will it cover my syllabus?"             | It is built from your material, topic by topic, not from a generic deck.                                               |
 
-**Proof available today.** Screens that exist and can be photographed: SM-2 practice
-session, stats overview, quiz builder, assignments, seats, roles, the AI chat with PDF
-input. No marketing screenshot exists in `apps/web/public` yet, so producing them is part
-of the work. What may **not** appear: any number about usage, any quote from a person.
+**Proof available today is the product itself.** The strongest thing on the page is that the
+UI shown is the UI you get: imagery is rendered by the product's own components with fixture
+data, so signing up delivers exactly what the page previewed. That beats any screenshot,
+because a capture freezes a claim that drifts as the product moves.
+
+What may **not** appear: any number about usage, any quote from a person, or a hand-built
+lookalike of the interface. Re-using the real component is proof; re-drawing it is a
+fabrication.
 
 **Section order.** `#hero` → `#features` → `#how-it-works` → `#pricing` → `#get-started`.
 That order is not a suggestion: `__tests__/qa/PUB/PUB-01.spec.ts` pins the presence of those
@@ -94,7 +98,17 @@ five ids, one `<h1>` inside `#hero`, a heading per section, no empty section, `l
 and the header and footer link targets. Renaming or removing a section means updating the
 spec and `qa/cases/PUB-01.md` in the same change.
 
-## What we may claim
+### A surface visited once
+
+The homepage is not a place people return to. They arrive once, or they never arrive at all because they come back straight to `/login` or a deep link. GitHub is the same shape: a near-static front page that still has to work for someone who has never seen the product and will judge it in one scroll.
+
+Three consequences, and they decide arguments that otherwise run in circles:
+
+- **The menu is orientation, not a navigation system.** It needs a few large, unambiguous destinations and one action, not every route in the app. Depth lives in the product, behind a sign-in, where people actually navigate.
+- **One primary action, aimed at the first-time visitor.** Sign up. Someone returning already knows the account mark exists in the top-right, because it is in the same corner after sign-in as before it.
+- **Nothing may assume a second visit.** No "welcome back", no personalisation, no tour that only makes sense after onboarding. Everything needed to decide has to be on this one page, in the first screens.
+
+That is why the phone menu is a full-page takeover with four oversized rows and a single button, rather than a drawer full of links: a drawer exists to keep the page visible while you navigate around it, and there is nowhere here to navigate around.
 
 Roadmap-backed, so all of it is sellable. Status column is the roadmap's, not the code's.
 
@@ -121,21 +135,23 @@ The page may sell the 📋 rows. It may not sell anything absent from this table
 
 ## Gaps: claimed, but not in the roadmap
 
-Four claims are live or planned and have no roadmap row. Under the rule above they get no
-promise until they do. Each is a decision, not a design task.
+Three claims are live and have no roadmap row. Under the rule above they get no promise until
+they do. Each is a decision, not a design task.
 
-1. **AI exam simulation** (`LandingPage.ai_exam_sim`). Shown as Premium value on the landing
-   page and `/features`. Subphase 4C covers learning paths, report agents and adaptive
-   difficulty, not exam simulation. Either add it to the roadmap or drop it from the page.
-2. **14-day free trial** (`PricingPage.faq_a3`). Every `/pricing/*` page states new users
+1. **14-day free trial** (`PricingPage.faq_a3`). Every `/pricing/*` page states new users
    get a 14-day trial of all Premium features. No trial exists in the code or the roadmap.
-3. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
+2. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
    `cancel_at_period_end`; the 30-day grace belongs to soft-deleted _accounts_, not
    subscriptions.
-4. **"Free Forever"** (`LandingPage.free_badge`). The free-tier band is badged "Free Forever"
+3. **"Free Forever"** (`LandingPage.free_badge`). The free-tier band is badged "Free Forever"
    / "Zawsze za darmo". The free plan is 0 zł today, but "forever" is a pricing promise, and
    the roadmap makes none: nothing in it or in `subscription_plans` fixes that price. Either
    back it with a policy decision or drop the badge from the band.
+
+**Dropped:** AI exam simulation. It was sold as Premium value on the landing page, the
+marketing premium card and `/features`, and subphase 4C covers learning paths, report agents
+and adaptive difficulty — not exam simulation. It is gone from all three surfaces and its
+keys with it; it returns only when the roadmap has a row for it.
 
 Separately, one entitlement inconsistency that is not a roadmap question: the landing org
 card prices from `team` (99 zł) and lists "Everything in Premium", but `ace` (19.99 zł) is
@@ -146,20 +162,21 @@ seed or fix the bullet, but the current pair cannot both be true.
 ## Voice
 
 Direct, plain, specific. Polish is the default locale and the primary draft; English must
-make the same claim, not a different one. Today it does not: `pl.hero_title` is "Tylko to,
-co musisz umieć." and `en.hero_title` is "Learn Smarter, Not Harder". Fix the pair, Polish
-first.
+make the same claim, not a different one. The hero is the reference pair: `pl.hero_title` is
+"Ucz się tylko tego, co potrzebne." and `en.hero_title` is "Study only what you need." Both
+make the learner the actor and scope the claim to what the material requires.
 
 - Say the concrete thing: "turn your lecture slides into a question bank", not
   "AI-powered learning".
 - No superlatives without a measurement: "the best", "#1", "world-class".
 - No hedged verbs: "helps you", "empowers", "supercharge". Name the action.
 - No "AI-powered" as an adjective or a badge. It is the least informative phrase available
-  about a product that does something specific. Two live strings break this:
-  `LandingPage.hero_badge` ("AI-Powered Learning Platform" / "Platforma edukacyjna oparta na
-  AI") and `LandingPage.ai_exam_sim` ("AI-Powered Exam Simulation").
-- No dashes as punctuation, in either locale. One sentence currently breaks this with a
-  spaced hyphen: `pl.LandingPage.hero_subtitle`.
+  about a product that does something specific. The two strings that broke this,
+  `LandingPage.hero_badge` and `LandingPage.ai_exam_sim`, are gone: the badge names where the
+  material comes from, and the exam simulation was dropped with its keys.
+- No dashes as punctuation, in either locale. `pl.LandingPage.hero_subtitle` was the one
+  sentence that broke this with a spaced hyphen; it has been rewritten, so the landing copy
+  now obeys the rule in both catalogues.
 - Every number on the page is measured in the app or absent.
 
 ## References

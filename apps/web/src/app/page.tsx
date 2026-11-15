@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { MainLayout } from '@/components/layout/MainLayout';
+import { MarketingShell } from '@/components/layout/MarketingShell';
 import { CtaBanner } from '@/components/marketing/cta-banner';
 import { Features } from '@/components/marketing/features';
 import { Hero } from '@/components/marketing/hero';
@@ -23,12 +23,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default function HomePage() {
   return (
-    <MainLayout>
+    <MarketingShell>
       <Hero />
       <Features />
       <HowItWorks />
       <Pricing />
       <CtaBanner />
-    </MainLayout>
+    </MarketingShell>
   );
 }

@@ -14,12 +14,11 @@ import {
   Progress,
 } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Brain, Check, Loader2, Minus, X, Zap } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
+import { ArrowLeft, Brain, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
+import { FlashcardReview } from '@/components/flashcards/flashcard-review';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
@@ -28,7 +27,6 @@ import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
 import { formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
 import { overlayOpen } from '@/lib/shortcuts';
-import { cn } from '@/lib/utils';
 
 interface Flashcard {
   id: string;
@@ -819,151 +817,40 @@ export default function SessionClient(props: SessionClientProps) {
             </div>
           )}
 
-          <AnimatePresence mode="wait" custom={exitDirection}>
-            <motion.div
-              key={currentCard.id}
-              custom={exitDirection}
-              variants={{
-                initial: (direction: string) => ({
-                  rotate: -10,
-                  y: 60,
-                  opacity: 0,
-                  transformOrigin: direction === 'left' ? 'left center' : 'right center',
-                }),
-                animate: (direction: string) => ({
-                  rotate: 0,
-                  y: 0,
-                  opacity: 1,
-                  transformOrigin: direction === 'left' ? 'left center' : 'right center',
-                }),
-                exit: (direction: string) => ({
-                  rotate: direction === 'left' ? -15 : 15,
-                  x: direction === 'left' ? -200 : 80,
-                  opacity: 0,
-                  transformOrigin: direction === 'left' ? 'left center' : 'right center',
-                  transition: { duration: direction === 'left' ? 0.2 : 0.15, ease: 'easeIn' },
-                }),
-              }}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={{
-                type: 'spring',
-                stiffness: 300,
-                damping: 25,
-              }}
-            >
-              <FlashcardFlip
-                isFlipped={flipped}
-                onClick={() => {
-                  // The card keeps focus when the shortcuts panel opens; never flip it behind a layer.
-                  if (overlayOpen()) return;
-                  setFlipped((prev) => !prev);
-                }}
-                ariaLabel={t('flashcard_aria')}
-                className="cursor-pointer max-h-[32rem]"
-                front={
-                  <>
-                    <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
-                      <div className="flex h-[200%] w-[200%] rotate-[45deg] flex-col items-center justify-center gap-y-16 opacity-[0.02]">
-                        {Array.from({ length: 24 }).map((_, rowIndex) => (
-                          <div
-                            key={rowIndex}
-                            className={cn(
-                              'flex items-center gap-x-16',
-                              rowIndex % 2 === 0 ? 'translate-x-8' : '',
-                            )}
-                          >
-                            {Array.from({ length: 24 }).map((_col, colIndex) => (
-                              <span
-                                key={colIndex}
-                                className="-rotate-45 text-5xl font-bold select-none"
-                              >
-                                ?
-                              </span>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+          <FlashcardReview
+            cardKey={currentCard.id}
+            exitDirection={exitDirection}
+            front={<MarkdownRenderer content={currentCard.front} />}
+            back={<MarkdownRenderer content={currentCard.back} />}
+            isFlipped={flipped}
+            onFlip={() => {
+              // The card keeps focus when the shortcuts panel opens; never flip it behind a layer.
+              if (overlayOpen()) return;
+              setFlipped((prev) => !prev);
+            }}
+            ariaLabel={t('flashcard_aria')}
+            hint={t('click_hint', { action: t('reveal_answer') })}
+            progress={
+              <>
+                {!isCram && isLearningState && (
+                  <div className="text-center text-sm text-muted-foreground">
+                    {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
+                  </div>
+                )}
 
-                    <div className="relative z-10 flex w-full flex-1 items-center justify-center overflow-y-auto px-8 text-center text-2xl font-medium">
-                      <MarkdownRenderer content={currentCard.front} />
-                    </div>
-                  </>
-                }
-                back={
-                  <>
-                    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" />
-                    <div className="relative z-10 flex w-full flex-1 items-center justify-center overflow-y-auto px-8 text-center text-2xl font-medium">
-                      <MarkdownRenderer content={currentCard.back} />
-                    </div>
-                  </>
-                }
-              />
-            </motion.div>
-          </AnimatePresence>
-
-          {!flipped && (
-            <p className="text-center text-sm text-muted-foreground">
-              {t('click_hint', { action: t('reveal_answer') })}
-            </p>
-          )}
-
-          {!isCram && isLearningState && (
-            <div className="text-center text-sm text-muted-foreground">
-              {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
-            </div>
-          )}
-
-          {nextReviewAt && (
-            <p className="text-center text-xs text-muted-foreground">
-              {t('next_review_line', {
-                date: formatDateTime(nextReviewAt, locale),
-                interval: nextReviewInterval ?? '--',
-              })}
-            </p>
-          )}
-
-          <div
-            className={cn(
-              'grid grid-cols-2 gap-2 transition-opacity duration-150',
-              flipped ? '' : 'pointer-events-none opacity-30',
-            )}
-          >
-            <Button
-              variant="ghost"
-              onClick={() => handleAnswer(false, 1)}
-              aria-keyshortcuts="1"
-              style={{ boxShadow: '0 0 8px rgba(239,68,68,0.12)' }}
-            >
-              <X className="mr-1.5 size-4 text-red-500" /> {ratingLabels.again}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => handleAnswer(true, 3)}
-              aria-keyshortcuts="3"
-              style={{ boxShadow: '0 0 8px rgba(217,119,6,0.12)' }}
-            >
-              <Check className="mr-1.5 size-4 text-amber-500" /> {ratingLabels.good}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => handleAnswer(false, 2)}
-              aria-keyshortcuts="2"
-              style={{ boxShadow: '0 0 8px rgba(249,115,22,0.12)' }}
-            >
-              <Minus className="mr-1.5 size-4 text-orange-500" /> {ratingLabels.hard}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => handleAnswer(true, 4)}
-              aria-keyshortcuts="4"
-              style={{ boxShadow: '0 0 8px rgba(34,197,94,0.12)' }}
-            >
-              <Zap className="mr-1.5 size-4 text-green-500" /> {ratingLabels.easy}
-            </Button>
-          </div>
+                {nextReviewAt && (
+                  <p className="text-center text-xs text-muted-foreground">
+                    {t('next_review_line', {
+                      date: formatDateTime(nextReviewAt, locale),
+                      interval: nextReviewInterval ?? '--',
+                    })}
+                  </p>
+                )}
+              </>
+            }
+            ratingLabels={ratingLabels}
+            onRate={(confidenceLevel) => void handleAnswer(confidenceLevel >= 3, confidenceLevel)}
+          />
         </div>
 
         <KeyboardShortcutsPanel

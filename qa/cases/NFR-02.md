@@ -29,9 +29,10 @@ Zalogowany użytkownik.
    kodu…”. Wpisz `ang`, `en`, `pol` (wyniki tylko pasujące od początku słowa), potem `zzz`
    („Brak pasującego języka”) i wyczyść pole przyciskiem ✕. Wybierz „English” — widok wraca do
    menu, panel zostaje otwarty, a wiersz pokazuje „English”.
-6. Na wąskim ekranie w menu hamburger na stronach publicznych wiersz „Język” rozwija ten sam
-   panel z wyszukiwaniem **w miejscu**; po wybraniu języka panel się zwija, a fokus wraca
-   **na wiersz „Język”**.
+6. Na wąskim ekranie w menu hamburger na stronach publicznych wybierz język w stopce panelu:
+   przycisk z flagą i nazwą języka („Język: Polski”) otwiera nad sobą listę języków bez pola
+   wyszukiwania; po wybraniu języka strona przełącza się w miejscu, lista się zamyka, a fokus
+   wraca **na ten przycisk**.
 7. Przełącz język na głębokiej podstronie (np. `/app/stats/content`) i sprawdź adres oraz pozycję
    przewinięcia; następnie odśwież stronę (F5).
 
@@ -40,9 +41,10 @@ Zalogowany użytkownik.
 - Język jest **jednym, opisanym kontrolnym elementem** („Język” + aktualna nazwa), a nie dwoma
   osobnymi pozycjami menu. Flaga jest dekoracyjna, nazwa języka jest zawsze widoczna i nie jest
   tłumaczona przez tłumacza przeglądarki.
-- Na komputerze wybór to zwykłe pole wyboru bez wyszukiwania; na ekranach dotykowych panel ma
-  pole wyszukiwania (po nazwie własnej, nazwie w języku interfejsu i kodzie, bez znaczenia
-  wielkości liter i polskich znaków); przy braku dopasowania widać „Brak pasującego języka”.
+- Na komputerze wybór to zwykłe pole wyboru bez wyszukiwania; w panelu konta w aplikacji (ekrany
+  dotykowe) język ma pole wyszukiwania (po nazwie własnej, nazwie w języku interfejsu i kodzie,
+  bez znaczenia wielkości liter i polskich znaków); przy braku dopasowania widać „Brak pasującego
+  języka”. Lista w menu publicznym nie ma pola wyszukiwania.
 - Po wybraniu języka treść zmienia się **bez przeładowania strony** (w tym karty talii i banków
   pytań): adres i pozycja przewinięcia pozostają. Ciasteczko `NEXT_LOCALE` jest ważne rok.
 - Zmiana języka jest komunikowana czytnikowi ekranu **raz**, w języku, w którym użytkownik czytał
@@ -97,7 +99,7 @@ The suite version uses the case's own tenant and never the legacy accounts.
   „Upgrade, Account, Billing, Theme, Logout”).
 - Public landing page: the footer „Language” button switches the hero
   („Tylko to, co musisz umieć.” ↔ „Learn Smarter, Not Harder”) and footer links
-  („Funkcje / Cennik / Kontakt / Polityka Prywatności / Regulamin” ↔
+  („Funkcje / Cennik / Kontakt / Polityka prywatności / Regulamin” ↔
   „Features / Pricing / Contact / Privacy Policy / Terms of Service”). This toggle uses
   `router.refresh()`, so the URL stays `/` and the document is not reloaded; the active
   language is marked in bold instead of ✓ (the ✓ is the user-menu indicator).

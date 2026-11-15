@@ -56,12 +56,9 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
 
       <ChartContainer
         config={{
-          reviews: { label: t('reviews'), color: 'oklch(0.546 0.245 265)' },
-          correct: { label: t('correct'), color: 'oklch(0.65 0.17 155)' },
-          goal: {
-            label: t('daily_goal'),
-            theme: { light: 'var(--destructive)', dark: 'var(--destructive-foreground)' },
-          },
+          reviews: { label: t('reviews'), color: 'var(--chart-1)' },
+          correct: { label: t('correct'), color: 'var(--chart-5)' },
+          goal: { label: t('daily_goal'), color: 'var(--destructive)' },
         }}
       >
         <ResponsiveContainer width="100%" height="100%">
@@ -84,7 +81,7 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
                 }}
               />
             )}
-            <Brush dataKey="date" height={30} stroke="oklch(0.546 0.245 265)" />
+            <Brush dataKey="date" height={30} stroke="var(--chart-1)" fill="var(--muted)" />
             <Bar dataKey="reviews" fill="var(--color-reviews)" radius={[4, 4, 0, 0]} />
             <Bar dataKey="correct" fill="var(--color-correct)" radius={[4, 4, 0, 0]} />
           </BarChart>

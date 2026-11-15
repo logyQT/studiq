@@ -1,5 +1,7 @@
 import { json } from '#test/helpers/json';
+import pl from '@/i18n/messages/pl.json';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { createTranslator } from 'next-intl';
 
 /**
  * PUB-02 — Strona „Funkcje” (/features) dla gościa bez sesji.
@@ -12,7 +14,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * row, so the spec consumes no user, org or content id.
  *
  * Product decision on the comparison table (case says values "Tak / Nie /
- * Indywidualny"): every one of the eleven rows is binary, so the table only ever
+ * Indywidualny"): every one of the ten rows is binary, so the table only ever
  * carries Tak / Nie and `FeaturesPage.comparison_custom` stays unused — see
  * #291 / PR #639 ("the table has no row whose value is custom"). The spec asserts
  * that binary matrix as the intended behaviour.
@@ -22,38 +24,83 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * reads the visible marker, so it holds both before and after that a11y fix.
  */
 
-const TITLE = 'Wszystko Czego Potrzebujesz, Aby Odnieść Sukces';
-const SUBTITLE = 'Od podstawowych fiszek po egzaminy oparte na AI';
-const COMPARISON_TITLE = 'Porównanie Planów';
-const CTA = 'Zacznij Za Darmo';
+/**
+ * The page's copy, read from the catalogue it renders from: the spec pins which
+ * features, plans and labels the page shows, not the wording that spells them. A
+ * copy edit moves the expectation with the page; the plan counts and the
+ * inclusion matrix below stay literal because they are what the case asserts.
+ */
+const copy = createTranslator({ locale: 'pl', messages: pl, namespace: 'FeaturesPage' });
+/** The shell the page is reached through, and the form its CTA opens. */
+const navbarCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'Navbar' });
+const registerCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'RegisterPage' });
 
-type Plan = 'Darmowy' | 'Premium' | 'Uniwersytecki';
+const TITLE = copy('title');
+/**
+ * The hero's range claim, pinned because it enumerates what the product covers:
+ * manual cards at one end, whole-institution analytics at the other. Copy that
+ * promises a capability the app does not ship (an AI exam simulation) fails here
+ * rather than on a visitor's first login. It is the one string on this page that
+ * is a claim rather than a label, so it stays literal.
+ */
+const SUBTITLE = 'Od ręcznych fiszek po analitykę dla całej uczelni';
+const COMPARISON_TITLE = copy('comparison_title');
+const CTA = copy('cta_button');
 
-const FEATURES: readonly { title: string; plan: Plan }[] = [
-  { title: 'Ręczne Tworzenie Pytań', plan: 'Darmowy' },
-  { title: 'Ćwiczenie z Fiszkami', plan: 'Darmowy' },
-  { title: 'Rozwiązywanie Testów', plan: 'Darmowy' },
-  { title: 'Podstawowe Statystyki', plan: 'Darmowy' },
-  { title: 'Generowanie Pytań przez AI', plan: 'Premium' },
-  { title: 'Generowanie Fiszek przez AI', plan: 'Premium' },
-  { title: 'Symulacja Egzaminu AI', plan: 'Premium' },
-  { title: 'Zaawansowana Analityka', plan: 'Premium' },
-  { title: 'Zarządzanie Organizacją', plan: 'Uniwersytecki' },
-  { title: 'Masowe Zaproszenia', plan: 'Uniwersytecki' },
-  { title: 'Analityka Uczelni', plan: 'Uniwersytecki' },
-] as const;
+type Plan = 'free' | 'premium' | 'university';
 
-const PLAN_TOTALS: Record<Plan, number> = {
-  Darmowy: 4,
-  Premium: 4,
-  Uniwersytecki: 3,
+/** A plan's name as the comparison table spells it: the column header. */
+const PLAN_LABEL: Record<Plan, string> = {
+  free: copy('comparison_free'),
+  premium: copy('comparison_premium'),
+  university: copy('comparison_university'),
 };
 
-const COLUMNS = ['Funkcja', 'Darmowy', 'Premium', 'Uniwersytecki'] as const;
+/**
+ * The badge reuses one plan-name key per tier (`planBadge` in the page), so it is
+ * read from that key rather than from the table's column label: the two are
+ * separate messages and a copy edit to one must not fail the other.
+ */
+const PLAN_BADGE: Record<Plan, string> = {
+  free: copy('manual_questions_plan'),
+  premium: copy('ai_questions_plan'),
+  university: copy('org_management_plan'),
+};
+
+const FEATURES: readonly { title: string; plan: Plan }[] = [
+  { title: copy('manual_questions'), plan: 'free' },
+  { title: copy('flashcard_practice'), plan: 'free' },
+  { title: copy('quiz_taking'), plan: 'free' },
+  { title: copy('basic_stats'), plan: 'free' },
+  { title: copy('ai_questions'), plan: 'premium' },
+  { title: copy('ai_flashcards'), plan: 'premium' },
+  { title: copy('advanced_stats'), plan: 'premium' },
+  { title: copy('org_management'), plan: 'university' },
+  { title: copy('bulk_invites'), plan: 'university' },
+  { title: copy('uni_analytics'), plan: 'university' },
+] as const;
+
+/** The three plans, in the ladder the page badges. */
+const PLANS = ['free', 'premium', 'university'] as const satisfies readonly Plan[];
+
+/** How many cards each plan badges — counted from the case, not from the page. */
+const PLAN_TOTALS: Record<Plan, number> = {
+  free: 4,
+  premium: 3,
+  university: 3,
+};
+
+/** The table header: the feature column, then one column per plan. */
+const COLUMNS = [
+  copy('comparison_feature'),
+  PLAN_LABEL.free,
+  PLAN_LABEL.premium,
+  PLAN_LABEL.university,
+] as const;
 
 type Included = true | false;
 
-const PLAN_RANK: Record<Plan, number> = { Darmowy: 0, Premium: 1, Uniwersytecki: 2 };
+const PLAN_RANK: Record<Plan, number> = { free: 0, premium: 1, university: 2 };
 
 /** A plan column includes a feature when it is at least the feature's own plan. */
 function includes(column: Plan, feature: Plan): Included {
@@ -71,9 +118,9 @@ const COMPARISON: readonly {
   university: Included;
 }[] = FEATURES.map(({ title, plan }) => ({
   feature: title,
-  free: includes('Darmowy', plan),
-  premium: includes('Premium', plan),
-  university: includes('Uniwersytecki', plan),
+  free: includes('free', plan),
+  premium: includes('premium', plan),
+  university: includes('university', plan),
 }));
 
 /** Collect browser-side failures so "the page loads without errors" is asserted. */
@@ -129,7 +176,8 @@ async function expectCellValue(cell: Locator, included: Included, where: string)
 async function expectFeaturesPage(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/features$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-  await expect(page).toHaveTitle(/^Funkcje/);
+  // The root layout's `%s | StudiQ` template appends the site name.
+  await expect(page).toHaveTitle(`${copy('meta_title')} | StudiQ`);
 
   // --- Title / hero -------------------------------------------------------
   await expect(page.getByRole('heading', { level: 1, name: TITLE, exact: true })).toBeVisible();
@@ -141,8 +189,10 @@ async function expectFeaturesPage(page: Page): Promise<void> {
 
   const badges = page.locator('main [data-slot="badge"]');
   await expect(badges).toHaveCount(FEATURES.length);
-  for (const [plan, total] of Object.entries(PLAN_TOTALS)) {
-    await expect(badges.filter({ hasText: plan }), `${plan} badges`).toHaveCount(total);
+  for (const plan of PLANS) {
+    await expect(badges.filter({ hasText: PLAN_BADGE[plan] }), `${plan} badges`).toHaveCount(
+      PLAN_TOTALS[plan],
+    );
   }
 
   for (const [index, feature] of FEATURES.entries()) {
@@ -153,7 +203,7 @@ async function expectFeaturesPage(page: Page): Promise<void> {
     await expect(card.locator('svg').first(), `${where} icon`).toBeVisible();
     const badge = card.locator('[data-slot="badge"]');
     await expect(badge, `${where} plan badge`).toHaveCount(1);
-    await expect(badge).toHaveText(feature.plan);
+    await expect(badge).toHaveText(PLAN_BADGE[feature.plan]);
 
     await expect(card.locator('[data-slot="card-title"]'), `${where} title`).toHaveText(
       feature.title,
@@ -187,9 +237,13 @@ async function expectFeaturesPage(page: Page): Promise<void> {
     await expect(cells).toHaveCount(COLUMNS.length);
     await expect(cells.first(), `row ${index + 1} feature name`).toHaveText(row.feature);
 
-    await expectCellValue(cells.nth(1), row.free, `${row.feature} / Darmowy`);
-    await expectCellValue(cells.nth(2), row.premium, `${row.feature} / Premium`);
-    await expectCellValue(cells.nth(3), row.university, `${row.feature} / Uniwersytecki`);
+    await expectCellValue(cells.nth(1), row.free, `${row.feature} / ${PLAN_LABEL.free}`);
+    await expectCellValue(cells.nth(2), row.premium, `${row.feature} / ${PLAN_LABEL.premium}`);
+    await expectCellValue(
+      cells.nth(3),
+      row.university,
+      `${row.feature} / ${PLAN_LABEL.university}`,
+    );
   }
 
   // --- No raw translation keys, no "undefined"/"NaN" placeholders ----------
@@ -226,7 +280,7 @@ test.describe('@case:PUB-02 @area:PUB @prio:P2 features page', () => {
     await expectFeaturesPage(page);
 
     // The CTA is the last section's call to action and points at registration.
-    const cta = sectionWithHeading(page, 'Gotowy, Aby Zacząć Naukę?').getByRole('link', {
+    const cta = sectionWithHeading(page, copy('cta_title')).getByRole('link', {
       name: CTA,
       exact: true,
     });
@@ -240,14 +294,19 @@ test.describe('@case:PUB-02 @area:PUB @prio:P2 features page', () => {
     const errors = watchForErrors(page);
 
     await page.goto('/');
-    await page.locator('header').getByRole('link', { name: 'Funkcje', exact: true }).click();
+    await page
+      .locator('header')
+      .getByRole('link', { name: navbarCopy('features'), exact: true })
+      .click();
     await expectFeaturesPage(page);
 
     // Case step: "Przycisk «Zacznij Za Darmo» prowadzi do rejestracji".
     await page.getByRole('link', { name: CTA, exact: true }).click();
     await expect(page).toHaveURL(/\/register$/);
-    await expect(page.getByText('Utwórz konto', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Zarejestruj się', exact: true })).toBeVisible();
+    await expect(page.getByText(registerCopy('header'), { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: registerCopy('register_button'), exact: true }),
+    ).toBeVisible();
 
     errors.expectClean();
   });

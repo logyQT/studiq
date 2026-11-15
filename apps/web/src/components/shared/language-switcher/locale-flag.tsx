@@ -2,6 +2,7 @@
 
 import type { ComponentType } from 'react';
 import { useId } from 'react';
+import { CONTROL_GLYPH } from '@/components/shared/preference-controls';
 import type { Locale } from '@/lib/locale';
 import { cn } from '@/lib/utils';
 
@@ -64,12 +65,11 @@ const FLAG_BY_LOCALE: Record<Locale, ComponentType> = {
 };
 
 /**
- * 4:3 box, artwork cropped to fill (no letterboxing). The hairline is an
- * overlay *above* the artwork, so the PL flag's white field stays visible on
- * light and dark surfaces.
+ * 16px square — the same box as the theme glyphs beside it — artwork cropped to
+ * fill (no letterboxing). The hairline is an overlay *above* the artwork, so the
+ * PL flag's white field stays visible on light and dark surfaces.
  */
-const FLAG_WRAPPER_CLASS =
-  "relative inline-flex h-3.5 w-[1.1875rem] shrink-0 overflow-hidden rounded-[3px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:shadow-[inset_0_0_0_1px_rgb(0_0_0/0.14)] after:content-[''] dark:after:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2)]";
+const FLAG_WRAPPER_CLASS = `relative inline-flex ${CONTROL_GLYPH} shrink-0 overflow-hidden rounded-[3px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:shadow-[inset_0_0_0_1px_rgb(0_0_0/0.14)] after:content-[''] dark:after:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2)]`;
 
 export function LocaleFlag({ locale, className }: { locale: Locale; className?: string }) {
   const Flag = FLAG_BY_LOCALE[locale];

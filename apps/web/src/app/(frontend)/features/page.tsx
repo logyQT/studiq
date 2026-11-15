@@ -12,7 +12,6 @@ import {
   type LucideIcon,
   Mail,
   Sparkles,
-  Target,
   TrendingUp,
   Zap,
 } from 'lucide-react';
@@ -50,7 +49,6 @@ export default function FeaturesPage() {
     { icon: BarChart3, title: t('basic_stats'), desc: t('basic_stats_desc'), plan: FREE },
     { icon: Sparkles, title: t('ai_questions'), desc: t('ai_questions_desc'), plan: PREMIUM },
     { icon: Zap, title: t('ai_flashcards'), desc: t('ai_flashcards_desc'), plan: PREMIUM },
-    { icon: Target, title: t('ai_exam'), desc: t('ai_exam_desc'), plan: PREMIUM },
     { icon: TrendingUp, title: t('advanced_stats'), desc: t('advanced_stats_desc'), plan: PREMIUM },
     {
       icon: Building2,
@@ -80,7 +78,6 @@ export default function FeaturesPage() {
     { feature: t('basic_stats'), free: true, premium: true, university: true },
     { feature: t('ai_questions'), free: false, premium: true, university: true },
     { feature: t('ai_flashcards'), free: false, premium: true, university: true },
-    { feature: t('ai_exam'), free: false, premium: true, university: true },
     { feature: t('advanced_stats'), free: false, premium: true, university: true },
     { feature: t('org_management'), free: false, premium: false, university: true },
     { feature: t('bulk_invites'), free: false, premium: false, university: true },

@@ -63,15 +63,12 @@ describe('quiz flow components', () => {
   const form = read('apps/web/src/components/study/quiz-content.tsx');
 
   it('keeps no English UI literals on the taking page', () => {
-    for (const literal of [
-      'Previous',
-      'Submit Quiz',
-      'Type your answer',
-      'Failed to',
-      'Loading...',
-    ]) {
-      expect(taking, literal).not.toContain(literal);
-    }
+    // Copy reaches the page as a quoted string or as JSX text. Bare substrings
+    // would also flag identifiers that legitimately contain one of these words
+    // (`onPrevious`), which is code rather than untranslated UI.
+    const englishCopy =
+      /(['"`])(?:Previous|Submit Quiz|Type your answer|Loading\.\.\.|Failed to)(?![A-Za-z])|>\s*(?:Previous|Submit Quiz|Type your answer|Loading\.\.\.|Failed to)(?![A-Za-z])/;
+    expect(taking).not.toMatch(englishCopy);
     expect(taking).not.toMatch(/Question \{currentQ/);
   });
 

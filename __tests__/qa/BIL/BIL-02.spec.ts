@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import pl from '@/i18n/messages/pl.json';
+import { createTranslator } from 'next-intl';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
 
@@ -56,12 +58,21 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
 
 const CASE = 'BIL-02';
 
+/**
+ * The page copy, read from the catalogues the two upgrade pages render from: the
+ * shared shell is `UpgradePage`, the plan cards are `PricingPage`. The spec pins
+ * the catalogue's plans and the badge/control each one carries, not the wording.
+ * Plan names come from the plan catalogue over the API, so they stay data.
+ */
+const upgradeCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'UpgradePage' });
+const pricingCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
+
 const UPGRADE_COPY = {
-  title: 'Rozwiń swój plan',
-  subtitle: 'Wybierz plan odpowiedni dla Twoich potrzeb',
+  title: upgradeCopy('title'),
+  subtitle: upgradeCopy('subtitle'),
 } as const;
 
-const CURRENT_BADGE = 'Obecny Plan';
+const CURRENT_BADGE = pricingCopy('current_plan_badge');
 
 /** The student plans the case names, in catalogue order. */
 const STUDENT_PLAN_NAMES = ['StudiQ Base', 'StudiQ Spark', 'StudiQ Ace', 'StudiQ Pro'] as const;
@@ -73,16 +84,16 @@ const EDUCATOR_PLAN_NAMES = [
   'StudiQ Master',
 ] as const;
 
-/** Plan key → the Polish purchase/selection label `PlanCard` renders for it. */
+/** Plan key → the purchase/selection label `PlanCard` renders for it. */
 const PLAN_CTA: Record<string, string> = {
-  base: 'Zacznij za Darmo',
-  spark: 'Przejdź na Spark',
-  ace: 'Wybierz Ace',
-  pro: 'Wybierz Pro',
-  lite: 'Zacznij za Darmo',
-  guide: 'Przejdź na Guide',
-  creator: 'Wybierz Creator',
-  master: 'Wybierz Master',
+  base: pricingCopy('cta_free'),
+  spark: pricingCopy('cta_spark'),
+  ace: pricingCopy('cta_ace'),
+  pro: pricingCopy('cta_pro'),
+  lite: pricingCopy('cta_free'),
+  guide: pricingCopy('cta_guide'),
+  creator: pricingCopy('cta_creator'),
+  master: pricingCopy('cta_master'),
 };
 
 interface PlanInfo {
