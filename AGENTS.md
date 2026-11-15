@@ -582,6 +582,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - Tests run sequentially within files (`sequence.concurrent: false`); file-level parallelism is on (`fileParallelism: true`)
 - Coverage targets `packages/server/src/**/*.ts` (excludes `routes.config.ts`)
 - **Load testing**: `scripts/load-test/` — `seed.ts` provisions accounts via the Supabase Admin API; `bots.ts` drives concurrent role-based journeys (`--shards` spreads them over CPU cores). See `scripts/load-test/README.md`
+- **QA cases**: `__tests__/qa/<AREA>/<ID>.spec.ts` (one spec per case ID) with a tenant profile in `__tests__/qa/profiles/<ID>.json`; `bun run test:qa`, seeded by `bun scripts/qa-tenant.ts`. Adding, mutating or pruning one: `.agents/skills/studiq-qa-case/SKILL.md`
 
 ---
 

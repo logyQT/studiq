@@ -8,10 +8,10 @@ Source of truth: `source/Studiq_Dokument_Testera_v1.3.docx`
 linking, is dropped as not planned (#893), and the admin module + 5 admin-dependent cases
 are out of scope, so 188 cases remain).
 
-Automation: the campaign that turns these cases into the Playwright suite is
-[`docs/plans/archive/e2e-campaign.md`](../docs/plans/archive/e2e-campaign.md) (archived);
-current mapping in
-[`coverage.md`](coverage.md).
+Automation: the suite that turns these cases into Playwright specs lives in
+[`__tests__/qa/`](../__tests__/qa/) — one spec per case, one tenant profile per case —
+and the technique classification (e2e / api / manual) is
+[`coverage.md`](coverage.md). Current coverage state: `#926`.
 
 ## Layout
 
@@ -71,7 +71,8 @@ A handful of cases depend on something only a person can provide. Treat them as
 
 `STU-47` and `STU-48` need no key **in CI**: the `ai-suite` job runs them against the fake
 inference server (`bun run mock:llm`, see `docs/ai/fake-inference-server.md`). A manual run
-without a key and without that server stays `N/D`.
+without a key and without that server stays `N/D`. Any further AI case (`EDU-DECK-05`,
+`STU-49`) runs the same way once it has a spec — a key is a convenience, not a gate.
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
 content — is done by the agent through the app API or the local DB.
@@ -118,10 +119,25 @@ in `QA-SUITE-APPROACH.md`.
 - QA environment setup is maintained outside this repository and is
   intentionally not documented here.
 
-## QA suite generation
+## QA suite
 
-`QA-SUITE-APPROACH.md` defines the QA-suite loop: one spec per case, a fresh
-browser session per run and one isolated tenant per case. Only tests that pass
-3/3 independent runs are admitted to `qa-suite`; legacy `@dev.local` accounts are
-not used in the suite. Manager and worker prompts are in
-`QA-SUITE-MANAGER.md` and `QA-SUITE-WORKER.md`.
+One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts`, one isolated tenant per case
+(and per attempt), so a shard runs its files in parallel:
+
+```bash
+bun run env:ensure --profile web                 # this checkout's app + stack
+bun scripts/qa-tenant.ts STU-21 --fresh          # seed the case's tenant
+bun run test:qa __tests__/qa/STU/STU-21.spec.ts  # run it
+```
+
+CI seeds a shard's areas once (`bun scripts/qa-tenant.ts --all --areas … --run ci<id>`)
+and runs Playwright at `QA_WORKERS=4` across four path-scoped shards (`edu`, `stu`,
+`mgr-sec-bil`, `aut-nfr-onb-pub-lim`); AI cases run in `ai-suite` against the fake
+inference server. Only specs that pass **5/5** independent fresh-tenant runs are admitted,
+and no spec is skipped, `fixme`d or written as expected-to-fail.
+
+Designing, writing, mutating or pruning a case: `.agents/skills/studiq-qa-case/SKILL.md`.
+The three campaign prompts (`QA-SUITE-APPROACH.md`, `QA-SUITE-MANAGER.md`,
+`QA-SUITE-WORKER.md`) describe the retired shared-VM loop; they are parked for rewrite, and
+nothing in them is authoritative except the retry-safety, copy-literal and admission rules the
+skill now carries.

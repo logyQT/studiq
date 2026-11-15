@@ -1,8 +1,8 @@
 # QA case coverage
 
-Every case in `qa/cases/` mapped to the test that should own it. This is the coverage
-checklist for the phase-2 gate on #173: the lint-debt clean-up must not start until the
-automated cases below are green.
+Every case in `qa/cases/` mapped to the technique that should own it. This is the
+classification, not the scoreboard — what has actually shipped is tracked in `#926`
+(172 specs of 188 cases, 7 blocked by an open issue, 8 parked, 1 ready to write).
 
 - **188 cases**: 170 end-to-end, 10 API-level,
   8 manual-only (listed with a reason at the bottom).
@@ -10,6 +10,9 @@ automated cases below are green.
   API work is filed under `e2e`, because the UI is what has to be exercised either way.
 - `manual` does not mean "skip": it means no assertion is possible without a print
   pipeline, CDP network emulation or human judgement. Those stay on the release checklist.
+- A case whose product behaviour contradicts its text is an issue, not a spec — `#926`
+  tracks the open ones. Turning a case into a spec:
+  `.agents/skills/studiq-qa-case/SKILL.md`.
 
 ## By area
 
@@ -235,11 +238,16 @@ automated cases below are green.
 
 ## How the automated cases get built
 
-- One spec per case: `__tests__/e2e/cases/<ID>.spec.ts`, `test.describe('@case:<ID> ...')`,
-  so a run reports coverage per case ID and a failure names the case.
-- UI cases use the slot fixtures (`qa/env.json`), a seeded database and the same browser the
-  QA agents use; API cases use Playwright's request context with the seeded session cookie.
-- Run through `qa/tools/qa-playwright` against a slot, and in CI as one job per area, so the
-  suite stays parallel across the eight slots.
-- Gate: every `e2e` and `api` case green on `main`, and the manual list above acknowledged
-  as the only remaining manual coverage.
+- One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts`,
+  `test.describe('@case:<ID> …')`, so a shard's report names the case that failed.
+- Every case gets an isolated tenant from `__tests__/qa/profiles/<ID>.json`
+  (`bun scripts/qa-tenant.ts <ID>`), read through `loadTenant()`; no spec creates
+  accounts or writes shared rows.
+- UI cases drive the real path with the tenant's own users; API cases use
+  Playwright's request context with the seeded session cookie.
+- Run it with `bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts`; CI seeds a
+  shard's areas once and runs four path-scoped shards, plus `ai-suite` for the AI
+  cases against the fake inference server.
+- Gate: 5/5 independent fresh-tenant runs, a mutation that turns the spec red for
+  the right reason, and the manual list above acknowledged as the only remaining
+  manual coverage.
