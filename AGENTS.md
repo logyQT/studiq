@@ -506,13 +506,13 @@ Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 - `apps/web/src/proxy.ts` — main app: for non-API paths it refreshes the Supabase session, then applies `routeRules`. Every `/api/*` request returns early — before the session refresh and before any rule is evaluated — so `withAuth()` in the route file is the authoritative (and only) API authentication gate.
 - `apps/admin` has **no `proxy.ts`** and no app-level auth, and it is **not deployed**. Its API routes are not `withAuth`-protected. Do not expose it; deployment is blocked until the ADR-0009 blockers clear. See `docs/decisions/0009-admin-is-internal-not-deployed.md`.
 
-Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order. The `/api/*` entries are documentation only: the proxy returns for `/api/*` before `routeRules` is consulted, so they never run.
+Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order, for UI paths only: the proxy returns for `/api/*` before `routeRules` is consulted, so an API rule could never run and none is declared.
 
 1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
-2. If `requireAuth` + no session → 401 (API) or redirect to `/login?next=…` (UI)
-3. If `allowedAccountTypes` + account type mismatch → 403 (API) or redirect to the account-type dashboard (UI)
+2. If `requireAuth` + no session → redirect to `/login?next=…`
+3. If `allowedAccountTypes` + account type mismatch → redirect to the account-type dashboard
 
-API catch-all rule (documents the intended public prefixes — it does **not** enforce API authentication, because `apps/web/src/proxy.ts` skips `/api/*` before evaluating `routeRules`): `/api/v1/` is intended to be `withAuth()`-protected except for `auth`, `health`, `avatar`, `subscription-plans`, `stripe/webhook`. `subscription-plans` is the public pricing catalogue (`listPublic`/`getByKey`, no session). `stripe/webhook` is excluded from the proxy rule only so a real Stripe webhook can stay unauthenticated; the mock webhook authenticates the caller itself (`withAuth`) and only acts on that caller's own account. A new route outside this set is public unless it calls `withAuth()`.
+API auth is per handler. `withAuth()` in the route file is the only gate (the proxy skips `/api/*`); the handlers that are deliberately open are declared in `PUBLIC_API` in the same `routes.config.ts`, and `__tests__/unit/proxy/api-auth-inventory.test.ts` fails on an undeclared open handler, on a declaration that no longer matches a route, or on a route rule that claims an API path. `subscription-plans` is the public pricing catalogue (`listPublic`/`getByKey`, no session). `stripe/webhook` is public because Stripe cannot send a session (signature-verified under the `stripe` driver); the mock driver still authenticates the caller itself (`withAuth`) and must keep doing so. A new route outside the declared set is public unless it calls `withAuth()`.
 
 UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/register redirect logged-in users by account type. The system admin panel is the **separate `apps/admin` app** (port 4000), not a route in `apps/web`.
 
@@ -619,7 +619,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **`@studiq/server/lib/zod`**: Always import `{ z, registry }` from here, not from `'zod'` — shares one Zod instance and the schema registry
 - **No backward compatibility layers**: Pre-market app. Delete old code paths and deprecated keys cleanly, never keep them "just in case"
 - **Avatar routes**: `/api/v1/avatar/user/[seed]` and `/api/v1/avatar/org/[seed]` are public (DiceBear). `@dicebear/core` is server-only.
-- **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
+- **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. A deliberately public route must be declared in `PUBLIC_API` (`packages/server/src/config/routes.config.ts`); `__tests__/unit/proxy/api-auth-inventory.test.ts` fails otherwise.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
 - **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
 - **Payment posture uses `APP_ENV`, never `NODE_ENV`** — production is the default; `PAYMENT_DRIVER=mock` is a boot error there (no override), production rejects test keys and needs an `https://` non-localhost site URL. Dev/test/QA must set `APP_ENV` explicitly. See `packages/server/src/lib/app-env.ts` and `docs/deployment.md`.

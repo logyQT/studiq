@@ -904,7 +904,7 @@ const event = gateway.webhooks.constructEvent(rawBody, signature, webhookSecret)
 
 - Default signature tolerance is **300 s**; do not pass `tolerance: 0` in production.
 - `constructEvent` (sync) is fine on Node. `constructEventAsync` is only for Edge/Workers; the route pins `runtime = 'nodejs'`.
-- The route is excluded from `withAuth` by branch, and `routes.config.ts` already excludes `/api/v1/stripe/webhook` from the API catch-all. No route-rule change is needed.
+- The route is excluded from `withAuth` by branch; `/api/v1/stripe/webhook` is declared in `PUBLIC_API` (`routes.config.ts`). There is no API catch-all to be excluded from — the proxy never applies route rules to `/api/*`.
 - Do not add the webhook to `requireAuth`; Stripe cannot log in.
 
 ### 6.2 Idempotency

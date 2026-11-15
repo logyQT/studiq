@@ -1638,6 +1638,7 @@ SET search_path = ''
 AS $$
 DECLARE
   v_completed_at timestamptz;
+  v_expired_at timestamptz;
   v_completed_id uuid;
 BEGIN
   -- The service-role client (server-side) names the owner explicitly; an end
@@ -1648,13 +1649,15 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT att.completed_at INTO v_completed_at
+  SELECT att.completed_at, att.expired_at INTO v_completed_at, v_expired_at
   FROM public.quiz_attempts att
   WHERE att.id = p_attempt_id
     AND att.user_id = p_user_id
   FOR UPDATE;
 
-  IF NOT FOUND OR v_completed_at IS NOT NULL THEN
+  -- An attempt the close expired is terminal (R7): the refusal lives here too, so a caller that
+  -- skips the service check still cannot submit one.
+  IF NOT FOUND OR v_completed_at IS NOT NULL OR v_expired_at IS NOT NULL THEN
     RETURN;
   END IF;
 
@@ -1691,6 +1694,7 @@ BEGIN
   WHERE att.id = p_attempt_id
     AND att.user_id = p_user_id
     AND att.completed_at IS NULL
+    AND att.expired_at IS NULL
   RETURNING att.id INTO v_completed_id;
 
   IF v_completed_id IS NULL THEN

@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { effectiveCloseAt, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
@@ -19,6 +20,8 @@ import { createServiceClient } from '@studiq/server/lib/supabase/service';
 export interface SealWindow {
   start_time?: string | null;
   deadline?: string | null;
+  /** Written at the durable close (R7/R12); the deadline cannot reopen a closed run. */
+  closed_at?: string | null;
 }
 
 /** Everything the reader paths need to subtract held items and to render the R14 notice. */
@@ -43,7 +46,7 @@ const SEAL_CHUNK = 200;
 /** Whether `now` is inside a window: `[start, close)`, with a missing bound left open. */
 export function isWindowOpen(window: SealWindow, now: Date): boolean {
   const started = !window.start_time || now.getTime() >= new Date(window.start_time).getTime();
-  const closed = !!window.deadline && now.getTime() >= new Date(window.deadline).getTime();
+  const closed = isAssessmentClosed(window, now);
   return started && !closed;
 }
 
@@ -110,36 +113,49 @@ export async function sealedItemsFor(
   const candidateIds = [...assignmentIds].filter((id): id is string => !!id);
   if (candidateIds.length === 0) return success(emptySeal());
 
-  // 2. Keep the published ones whose window is open, and the items each of them binds.
+  // 2. Keep the published ones whose window is open — and the ones that already ended but still
+  //    hold an item back from the review (R10) — and the items each of them binds.
   const assignments = await supabase
     .from('teacher_assignments')
-    .select('id, start_time, deadline')
+    .select('id, start_time, deadline, closed_at')
     .in('id', candidateIds)
     .eq('status', 'published');
   if (assignments.error) return mapSupabaseError(assignments.error);
 
-  const open = dbRows(assignments.data).filter((row) => isWindowOpen(row, now));
-  if (open.length === 0) return success(emptySeal());
+  const windows = dbRows(assignments.data);
+  const started = (row: { start_time?: string | null }) =>
+    !row.start_time || now.getTime() >= new Date(row.start_time).getTime();
+  const live = windows.filter((row) => isWindowOpen(row, now));
+  // A run that has not opened yet holds nothing: withholding only keeps an item past its close.
+  const ended = windows.filter((row) => started(row) && !isWindowOpen(row, now));
+  if (live.length === 0 && ended.length === 0) return success(emptySeal());
 
   const links = await supabase
     .from('assignment_questions')
-    .select('assignment_id, question_id')
+    .select('assignment_id, question_id, withhold_from_review, released_at')
     .in(
       'assignment_id',
-      open.map((row) => row.id),
+      windows.map((row) => row.id),
     );
   if (links.error) return mapSupabaseError(links.error);
 
-  const closeByAssignment = new Map(open.map((row) => [row.id, row.deadline ?? null]));
+  const liveIds = new Set(live.map((row) => row.id));
+  const closeByAssignment = new Map(live.map((row) => [row.id, effectiveCloseAt(row)]));
   const seal = emptySeal();
   for (const link of dbRows(links.data)) {
     if (!link.question_id || !link.assignment_id) continue;
+    const isLive = liveIds.has(link.assignment_id);
+    // A closed window no longer holds its items, except the ones held back from its review: those
+    // stay sealed until the teacher releases them, and then they have no date ("until released").
+    const heldBack = link.withhold_from_review && !link.released_at;
+    if (!isLive && !heldBack) continue;
+
     seal.ids.add(link.question_id);
     seal.closesAt.set(
       link.question_id,
       mergeClose(
         seal.closesAt.get(link.question_id),
-        closeByAssignment.get(link.assignment_id) ?? null,
+        isLive ? (closeByAssignment.get(link.assignment_id) ?? null) : null,
       ),
     );
   }

@@ -25,7 +25,10 @@ AI włączone.
   Organizuję w talie…" exist as messages but no component renders them, so they are
   not asserted. The deck is named by the generation tool („Generated Flashcards"
   when the model gives no name); „AI Wygenerowane Fiszki" is only the fallback of the
-  name field, so the spec asserts the name the fixture chose.
+  name field, so the spec asserts the name the fixture chose. The Expected result's
+  toast „Talia utworzona z N fiszkami" does fire on save (`flashcard_deck_created`);
+  the spec asserts the inline saved panel instead, `flashcard_saved` („Zapisano N
+  fiszki do talii"), which is the string that stays on screen.
 
 ## Steps
 

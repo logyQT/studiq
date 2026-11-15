@@ -63,6 +63,7 @@ const COPY = {
   score: 'Wynik: 1/1',
   submit: 'Wyślij',
   review: 'Zobacz podsumowanie',
+  reviewLocked: 'Podsumowanie otwiera się po zakończeniu kartkówki.',
 } as const;
 
 interface ApiEnvelope<T> {
@@ -277,7 +278,10 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
     // The attempt is completed and the result card replaces the start action.
     await expect(page.getByText(COPY.completedCard, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.score, { exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: COPY.review })).toBeVisible();
+    // Results are on, but the key is held back until the close (R5): the card says so instead of
+    // offering the review link.
+    await expect(page.getByText(COPY.reviewLocked, { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: COPY.review })).toHaveCount(0);
     await expect(
       startControls(page),
       'no start/continue action after the only attempt',
