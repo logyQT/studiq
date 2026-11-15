@@ -254,6 +254,17 @@ describe('fake-llm faults', () => {
     expect(text).not.toContain('[DONE]');
   });
 
+  it('omitDone keeps the finish reason and the usage but drops [DONE]', async () => {
+    const { text } = await runFault('nodone', {
+      content: 'whole',
+      usage: { input: 1, output: 1 },
+      omitDone: true,
+    });
+    expect(text).toContain('"finish_reason":"stop"');
+    expect(text).toContain('total_tokens');
+    expect(text).not.toContain('[DONE]');
+  });
+
   it('finish: null keeps [DONE] but sends no finish reason', async () => {
     const { text } = await runFault('nofinish', { content: 'half', finish: null });
     expect(text).not.toContain('"finish_reason":"stop"');
@@ -370,7 +381,7 @@ describe('fake-llm fixture validation', () => {
     ['an unknown turn field', bad({ turns: [{ contnet: 'x' }] }), /unknown field/],
     [
       'two stream faults on one turn',
-      bad({ turns: [{ content: 'x', destroyAfter: 1, errorFrameAt: 1 }] }),
+      bad({ turns: [{ content: 'x', destroyAfter: 1, omitDone: true }] }),
       /at most one stream fault/,
     ],
     [

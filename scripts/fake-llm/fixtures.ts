@@ -40,12 +40,18 @@ const TURN_KEYS = [
   'truncateArgumentsAt',
   'errorFrameAt',
   'closeWithoutFinish',
+  'omitDone',
   'destroyAfter',
   'delay',
 ] as const;
 
 /** Faults that shape an SSE stream; they make no sense for a non-streaming reply. */
-export const STREAM_ONLY_FAULTS = ['errorFrameAt', 'closeWithoutFinish', 'destroyAfter'] as const;
+export const STREAM_ONLY_FAULTS = [
+  'errorFrameAt',
+  'closeWithoutFinish',
+  'omitDone',
+  'destroyAfter',
+] as const;
 
 const KEY_PATTERN = /^[A-Za-z0-9-]+:[a-z0-9][a-z0-9-]*$/;
 
@@ -184,6 +190,7 @@ function readTurn(r: Reader, value: unknown, path: string): Turn {
     turn.errorFrameAt = r.count(raw.errorFrameAt, `${path}.errorFrameAt`);
   if (raw.closeWithoutFinish !== undefined)
     turn.closeWithoutFinish = r.boolean(raw.closeWithoutFinish, `${path}.closeWithoutFinish`);
+  if (raw.omitDone !== undefined) turn.omitDone = r.boolean(raw.omitDone, `${path}.omitDone`);
   if (raw.destroyAfter !== undefined)
     turn.destroyAfter = r.count(raw.destroyAfter, `${path}.destroyAfter`);
   if (raw.delay !== undefined) turn.delay = readDelay(r, raw.delay, `${path}.delay`);

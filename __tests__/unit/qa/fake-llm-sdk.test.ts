@@ -202,6 +202,16 @@ describe('fake-llm against the app model client', () => {
     expect(outcome.text).toBe('par');
   });
 
+  it('accepts a stream that ends without [DONE] once the finish reason arrived', async () => {
+    const outcome = await stream([
+      { content: 'whole', usage: { input: 2, output: 1 }, omitDone: true },
+    ]);
+    expect(outcome.errors).toEqual([]);
+    expect(outcome.text).toBe('whole');
+    expect(outcome.finishReason).toBe('stop');
+    expect(outcome.totalUsage?.totalTokens).toBe(3);
+  });
+
   it('treats [DONE] without a finish reason the same way', async () => {
     const outcome = await stream([{ content: 'par', finish: null }]);
     expect(errorName(outcome.errors[0])).toBe('AI_InvalidResponseDataError');

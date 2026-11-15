@@ -54,6 +54,7 @@ export function faultOf(turn: Turn): string | null {
   if (turn.truncateArgumentsAt !== undefined) return 'truncateArgumentsAt';
   if (turn.errorFrameAt !== undefined) return 'errorFrameAt';
   if (turn.closeWithoutFinish) return 'closeWithoutFinish';
+  if (turn.omitDone) return 'omitDone';
   if (turn.destroyAfter !== undefined) return 'destroyAfter';
   if (turn.delay) return 'delay';
   return null;
@@ -109,6 +110,7 @@ export function planStream(turn: Turn, ctx: ReplyContext): StreamPlan {
   tail.push('data: [DONE]\n\n');
 
   if (turn.closeWithoutFinish) return { frames: body, ending: 'close' };
+  if (turn.omitDone) return { frames: [...body, ...tail.slice(0, -1)], ending: 'close' };
   if (turn.errorFrameAt !== undefined) {
     const error = sse({ error: { message: 'fake provider error', type: 'fake_error' } });
     return { frames: [...body.slice(0, turn.errorFrameAt), error], ending: 'close' };

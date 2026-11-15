@@ -79,6 +79,8 @@ export interface Turn {
   errorFrameAt?: number;
   /** End the stream without `finish_reason` and without `[DONE]`. */
   closeWithoutFinish?: boolean;
+  /** Send the finish reason (and usage) but end the stream without `[DONE]`. */
+  omitDone?: boolean;
   /** Reset the connection after this many frames. */
   destroyAfter?: number;
   delay?: Delay;
