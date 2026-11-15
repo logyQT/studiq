@@ -77,19 +77,19 @@ Page background is **cobalt-tinted** (`#050C1B`), not neutral near-black, so dar
 reads as the brand rather than as the default theme inverted. This is the live mode for
 anyone whose OS is dark (`defaultTheme="system"`), not an optional extra.
 
-| Token            | OKLCH                | Hex       | Gamut | Contrast                          |
-| ---------------- | -------------------- | --------- | ----- | --------------------------------- |
-| `bg`             | `0.155 0.035 264`    | `#050C1B` | ok    | —                                 |
-| `card`           | `0.215 0.022 264`    | `#141924` | ok    | —                                 |
-| `sunk`           | `0.190 0.030 264`    | `#0D1421` | ok    | 1.00:1 vs bg                      |
-| `ink`            | `0.960 0.006 85`     | `#F4F1ED` | ok    | **17.42:1** bg · 15.60:1 card     |
-| `ink-muted`      | `0.720 0.020 264`    | `#9EA5B2` | ok    | **7.89:1** bg · 7.06:1 card       |
-| `border-control` | `0.520 0.025 264`    | `#626978` | ok    | **3.55:1** bg · 3.18:1 card       |
-| `cobalt`         | `0.680 0.150 264`    | `#6895F4` | ok    | **6.69:1** bg · 5.99:1 card       |
-| `signal`         | `0.880 0.210 122`    | `#C1EC16` | ok    | 14.19:1 bg                        |
-| `destructive`    | `0.620 0.180 27.325` | `#DE4F46` | ok    | 4.93:1 bg (4.42:1 card — bg only) |
-| `success`        | `0.720 0.130 155`    | `#57BC80` | ok    | 8.33:1 bg                         |
-| `warning`        | `0.780 0.125 75`     | `#E6AB53` | ok    | 9.62:1 bg                         |
+| Token            | OKLCH                | Hex       | Gamut | Contrast                      |
+| ---------------- | -------------------- | --------- | ----- | ----------------------------- |
+| `bg`             | `0.155 0.035 264`    | `#050C1B` | ok    | —                             |
+| `card`           | `0.215 0.022 264`    | `#141924` | ok    | —                             |
+| `sunk`           | `0.190 0.030 264`    | `#0D1421` | ok    | 1.00:1 vs bg                  |
+| `ink`            | `0.960 0.006 85`     | `#F4F1ED` | ok    | **17.42:1** bg · 15.60:1 card |
+| `ink-muted`      | `0.720 0.020 264`    | `#9EA5B2` | ok    | **7.89:1** bg · 7.06:1 card   |
+| `border-control` | `0.520 0.025 264`    | `#626978` | ok    | **3.55:1** bg · 3.18:1 card   |
+| `cobalt`         | `0.680 0.150 264`    | `#6895F4` | ok    | **6.69:1** bg · 5.99:1 card   |
+| `signal`         | `0.880 0.210 122`    | `#C1EC16` | ok    | 14.19:1 bg                    |
+| `destructive`    | `0.635 0.180 27.325` | `#E3544A` | ok    | 5.24:1 bg · 4.70:1 card       |
+| `success`        | `0.720 0.130 155`    | `#57BC80` | ok    | 8.33:1 bg                     |
+| `warning`        | `0.780 0.125 75`     | `#E6AB53` | ok    | 9.62:1 bg                     |
 
 An earlier draft used `0.680 0.180 264` for dark cobalt. That value is **out of sRGB
 gamut** (blue channel 1.064, clamped by the browser), so it rendered as
@@ -408,7 +408,7 @@ Everything lands in `apps/web/src/app/globals.css` (`:root`, `.dark`, `@theme in
 | `--muted-foreground`           | `0.470 0.020 264`           | `0.720 0.020 264`           |
 | `--accent`                     | `0.930 0.012 85`            | `0.265 0.028 264`           |
 | `--accent-foreground`          | `var(--foreground)`         | `var(--foreground)`         |
-| `--destructive`                | `0.560 0.185 27.325`        | `0.620 0.180 27.325`        |
+| `--destructive`                | `0.560 0.185 27.325`        | `0.635 0.180 27.325`        |
 | `--destructive-foreground`     | `0.972 0.014 85`            | `0.175 0.022 264`           |
 | `--success`                    | `0.505 0.100 155`           | `0.720 0.130 155`           |
 | `--warning`                    | `0.530 0.100 75`            | `0.780 0.125 75`            |
@@ -452,15 +452,9 @@ acid lime. `--signal` is a new token consumed by exactly three utilities: `bg-si
 Removing the old identity from the code is not finished by changing tokens, and these are
 deliberately not in this PR:
 
-- `oklch(0.546 0.245 265)` is hardcoded in four chart files, five occurrences
-  (`stats/daily-activity-chart.tsx:59,87`, `stats/state-breakdown-chart.tsx:14`,
-  `stats/study-time-card.tsx:104`, `edu/dashboard/group-performance-card.tsx:70`). They
-  should read `var(--chart-1)`.
 - 65 hardcoded `violet-/indigo-/cyan-/purple-` utilities across 12 files, including
   `packages/ui/src/components/ui/stat-card.tsx`.
 - 27 arbitrary font sizes (`text-[11px]`×10, `text-[10px]`×10, `text-[15px]`×4, …).
-- `session-summary-dialog.tsx:78` calls `hsl(var(--chart-2))` on a token that does not
-  exist; `hsl()` around an OKLCH token is invalid CSS.
 - The kit's focus ring is `ring-[3px] ring-ring/50`, and cobalt at 50% over paper measures
   **2.45:1**, below the 3:1 that 1.4.11 requires. Marketing components use a solid ring;
   fixing the kit is its own change.

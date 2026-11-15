@@ -63,13 +63,12 @@ signs nobody in and sends no storage state.
 
 ## Re-check (2026-11-14, branch `landing/13-final`)
 
-Copy zostało poprawione w `3ac0e12e`; poniższe ustalenia zastępują spacer z 2026-10-28.
+The copy was corrected in `3ac0e12e`; the findings below replace the 2026-10-28 walk.
 
-- Podtytuł to „Od ręcznych fiszek po analitykę dla całej uczelni”: symulacji egzaminu nie
-  ma w produkcie, więc obietnica kończy się na dwóch krańcach, które strona faktycznie
-  wymienia.
-- Dziesięć kart i dziesięć wierszy tabeli. „Symulacja Egzaminu AI” nie istnieje, więc
-  Premium ma trzy karty (Generowanie Pytań przez AI, Generowanie Fiszek przez AI,
-  Zaawansowana Analityka), a tabela dziesięć wierszy.
-- Karta „Masowe Zaproszenia” mówi „Zaproś kilku członków naraz i przypisz każdemu rolę” —
-  bez importu tekstu/CSV i bez automatycznej rejestracji.
+- The subtitle is „Od ręcznych fiszek po analitykę dla całej uczelni”: the product ships
+  no exam simulation, so the promise stops at the two ends the page actually lists.
+- Ten cards and ten table rows. „Symulacja Egzaminu AI” does not exist, so Premium has
+  three cards (Generowanie Pytań przez AI, Generowanie Fiszek przez AI, Zaawansowana
+  Analityka) and the table's rows are those same ten features.
+- The „Masowe Zaproszenia” card says „Zaproś kilku członków naraz i przypisz każdemu
+  rolę” — with no text/CSV import and no automatic registration.
