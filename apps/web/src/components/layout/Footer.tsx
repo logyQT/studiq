@@ -12,7 +12,7 @@ import { LanguageSwitcher } from '@/components/shared/language-switcher/language
  * the footer's compact rhythm and the `li` gap alone still governs the spacing.
  */
 const FOOTER_LINK =
-  'inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground transition md:min-h-0';
+  'inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground transition md:min-h-6';
 
 export function Footer() {
   const t = useTranslations('Footer');
