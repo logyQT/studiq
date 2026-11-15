@@ -5,9 +5,9 @@
  * `routeRules`, so the rules only describe UI paths; the API surface is audited
  * by `api-auth-inventory.test.ts`.
  *
- * Verifies that:
- * 1. routeRules patterns match both the plain and the trailing-slash form
- * 2. rule ordering keeps `/setup/org` on the MANAGER rule, not the EDUCATOR one
+ * Verifies that routeRules patterns match both the plain and the trailing-slash
+ * form of the auth and dashboard routes. `/setup/*` ordering is covered by
+ * `setup-org-trailing-slash-audit.test.ts`.
  */
 
 import { routeRules } from '@studiq/server/config/routes.config';
@@ -28,33 +28,6 @@ function assertSameRule(a: string, b: string) {
 }
 
 describe('routeRules — trailing slash consistency', () => {
-  describe('onboarding routes — /setup/org privilege escalation audit', () => {
-    it('/setup/org matches the MANAGER rule (strict regex)', () => {
-      const orgRule = matchRule('/setup/org');
-      expect(orgRule?.allowedAccountTypes).toEqual(['manager']);
-    });
-
-    it('/setup/org/ (trailing slash) also matches the MANAGER rule — hardened', () => {
-      const orgRule = matchRule('/setup/org/');
-      expect(orgRule?.allowedAccountTypes).toEqual(['manager']);
-    });
-
-    it('/setup (without /org) matches the EDUCATOR catch-all rule', () => {
-      const setupRule = matchRule('/setup');
-      expect(setupRule?.allowedAccountTypes).toEqual(['educator']);
-    });
-
-    it('/setup/ (with trailing slash) matches the EDUCATOR catch-all rule', () => {
-      const setupRule = matchRule('/setup/');
-      expect(setupRule?.allowedAccountTypes).toEqual(['educator']);
-    });
-
-    it('/setup/anything matches the EDUCATOR catch-all rule', () => {
-      const setupRule = matchRule('/setup/some-page');
-      expect(setupRule?.allowedAccountTypes).toEqual(['educator']);
-    });
-  });
-
   // --- UI routes ---
   describe('UI dashboard routes', () => {
     it('matches /manage and /manage/ to same rule', () => {

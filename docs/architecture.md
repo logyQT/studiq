@@ -86,29 +86,34 @@ graph LR
 
 ### Middleware Layer
 
-**Location:** `src/proxy.ts`
+**Location:** `apps/web/src/proxy.ts`
 
-The middleware intercepts every request and applies route rules before the request reaches a handler:
+The proxy forwards every `/api/*` request untouched — the handler's own `withAuth()` decides — and only refreshes the session and applies the route rules to UI paths:
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant M as Middleware
+    participant M as Proxy
     participant R as Route Handler
 
     C->>M: HTTP Request
-    M->>M: /api/* ? forward, the handler's withAuth() decides
-    M->>M: updateSession (refresh Supabase cookie)
-    M->>M: Match route rule
-    alt Auth required + no session
-        M->>C: 302 to /login?next=…
-    else Role restricted + wrong role
-        M->>C: 302 to role dashboard
-    else Redirect if authenticated
-        M->>C: 302 to role-specific dashboard (by role)
-    else All checks pass
-        M->>R: Forward request
+    alt Path starts with /api/
+        M->>R: Forward — no updateSession, no route rule
+        R->>R: withAuth() gates it, or PUBLIC_API declares the handler open
         R->>C: Response
+    else UI path
+        M->>M: updateSession (refresh Supabase cookie)
+        M->>M: Match route rule (no match → forward)
+        alt Auth required + no session
+            M->>C: 302 to /login?next=…
+        else Role restricted + wrong role
+            M->>C: 302 to role dashboard
+        else Redirect if authenticated
+            M->>C: 302 to role-specific dashboard (by role)
+        else All checks pass
+            M->>R: Forward request
+            R->>C: Response
+        end
     end
 ```
 
