@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { signIn } from '#test/e2e/fixtures/tenant';
 import { json } from '#test/helpers/json';
-import { t } from '#test/e2e/utils';
+import { mockAiChatEntitled, t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
 const TEACHER_EMAIL = 'teacher1@dev.local';
@@ -23,29 +23,6 @@ async function aiChatEntitled(page: Page): Promise<boolean> {
   expect(res.status()).toBe(200);
   const { features } = (await json<{ data: { features: string[] } }>(res)).data;
   return features.includes('ai.chat');
-}
-
-/**
- * No seed account — shared or isolated tenant — is entitled to `ai.chat`
- * (personal `lite` / org `launch`, neither grants it), so the reset cases below
- * would take an entitlement early-return and assert nothing. Fulfilling the
- * feature query makes entitlement deterministic and lets the real page render.
- * Registered before the first navigation so the value is fixed for the dashboard
- * shell and the AI page alike; the locked branch is covered by the #375
- * plan-gate suite.
- */
-async function mockAiChatEntitled(page: Page) {
-  await page.route('**/api/v1/features/me', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        statusCode: 200,
-        data: { features: ['ai.chat'], rollout: {} },
-      }),
-    }),
-  );
 }
 
 /**

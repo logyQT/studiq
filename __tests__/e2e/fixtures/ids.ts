@@ -23,7 +23,11 @@ export function shortHash(value: string): string {
   return createHash('sha1').update(value).digest('hex').slice(0, 10);
 }
 
-/** The identity of one test's fixture graph: file + full title + browser project. */
+/**
+ * The identity of one test's fixture graph: file + full title + browser project. The file is
+ * reduced to its name with either separator: Playwright reports a Windows path with `\`, and the
+ * seeder and the spec must agree on the key.
+ */
 export function tenantKey(file: string, title: string, project: string): string {
-  return `${file.split('/').pop()}::${title}::${project}`;
+  return `${file.split(/[\\/]/).pop()}::${title}::${project}`;
 }
