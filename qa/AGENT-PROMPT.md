@@ -67,12 +67,11 @@ repair it.
 Everything else — accounts, orgs, groups, seeded content, plan/feature overrides —
 you set up yourself through the app API or the database you are given.
 
-- **An LLM API key** configured for the app: required only for `EDU-DECK-05`
-  and `STU-49`. If it is absent, mark those two `N/D` — do not fabricate AI
-  output or file a bug for the missing key. `STU-47` and `STU-48` need no key
-  when the fake inference server runs (`bun run mock:llm`, see
-  `docs/ai/fake-inference-server.md`); without a key **and** without that server
-  they stay `N/D`.
+- **An LLM API key** configured for the app, or an app the operator has already
+  pointed at the fake inference server (`docs/ai/fake-inference-server.md`):
+  required only for `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49`. If neither is
+  present, mark those scenarios `N/D` — do not fabricate AI output, do not start
+  or reconfigure the server yourself, and do not file a bug for the missing key.
 - **Local test fixtures** from the „Studiq dane testowe" pack — not in the repo:
   - `fiszki_poprawne.csv` / `fiszki_bledne.csv` — `STU-05`, `STU-19`, `STU-20`, `STU-42`.
   - `logo.png` (< 1 MB) — `MGR-SET-02`.
