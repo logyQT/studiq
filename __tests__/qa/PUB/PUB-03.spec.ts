@@ -226,6 +226,19 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(ladderSection(page, copy('ladder_student_title'))).toHaveCount(0);
     await expect(organizationRadio).toBeChecked();
 
+    // --- Back undoes the switch ---------------------------------------------
+    // The address is the audience, so leaving the organization ladder is one Back
+    // away, the same way the reader arrived.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/pricing$/);
+    await expectLadder(page, copy('ladder_student_title'), studentPlans);
+    await expect(page.locator('#pricing-plans h3#launch')).toHaveCount(0);
+    await expect(individualRadio).toBeChecked();
+
+    await page.goForward();
+    await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
+    await expectLadder(page, copy('ladder_org_title'), managerPlans);
+
     // Back to individual: the address drops the parameter again.
     await group
       .locator('label')
