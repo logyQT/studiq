@@ -165,8 +165,8 @@ export function Navbar() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   /*
-   * `aria-current` is exact, the styling is not: standing on `/pricing/student`
-   * makes `/pricing` the section the visitor is in, but only the exact target is
+   * `aria-current` is exact, the styling is not: standing on `/edu/upgrade`
+   * makes `/edu` the section the visitor is in, but only the exact target is
    * "the current page" — a prefix match would claim that for two links at once.
    */
   const isCurrent = (href: string) => pathname === href;

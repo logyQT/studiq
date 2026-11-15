@@ -34,6 +34,7 @@ import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 import { isArrayOf } from '@/lib/unknown-value';
 
 const PERMISSION_GROUPS = [
@@ -201,7 +202,7 @@ export default function RolesPage() {
       </div>
 
       {!featuresPending && !canBuild && (
-        <RoleBuilderLockedCard onUpgrade={() => router.push('/pricing?audience=organization')} />
+        <RoleBuilderLockedCard onUpgrade={() => router.push(ORGANIZATION_PRICING_URL)} />
       )}
 
       <Card>
