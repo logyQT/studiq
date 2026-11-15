@@ -56,7 +56,9 @@ export function PlanCard({
 }) {
   const locale = useLocale();
   const descKey = `plan_${plan.key}_desc`;
+  const noteKey = `plan_${plan.key}_note`;
   const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
+  const note = t.has(noteKey) ? t(noteKey) : null;
   const ctaKey = CTA_KEY_MAP[plan.key];
   const ctaLabel = ctaKey && t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
   const popular =
@@ -83,14 +85,8 @@ export function PlanCard({
       )}
       <CardHeader className="pb-4">
         <CardTitle className="text-xl">{plan.name}</CardTitle>
-        <p className="text-sm">
-          {description.split(';').map((part, i) => (
-            <span key={i} className={i === 1 ? 'text-xs text-muted-foreground' : ''}>
-              {i > 0 && <br />}
-              {part}
-            </span>
-          ))}
-        </p>
+        <p className="text-sm">{description}</p>
+        {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
       </CardHeader>
       <CardContent className="flex flex-col flex-1">
         <div className="mb-6">
