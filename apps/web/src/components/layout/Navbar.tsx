@@ -187,6 +187,13 @@ export function Navbar() {
    * rather than keys.
    */
   const sectionHref = (id: string) => (pathname === '/' ? `#${id}` : `/#${id}`);
+  /*
+   * On /pricing the pricing section *is* the page, so the ladder is the
+   * destination: `/#pricing` would leave the page the reader is reading and drop
+   * them at the landing's band. Every audience variant lands on the bare route,
+   * which is the individual ladder.
+   */
+  const pricingHref = pathname.startsWith('/pricing') ? '/pricing' : sectionHref('pricing');
   const mobileItems = user
     ? allLinks.map(({ labelKey, href, namespace }) => ({
         label: namespace === 'DashboardLayout' ? tDash(labelKey) : t(labelKey),
@@ -195,7 +202,7 @@ export function Navbar() {
     : [
         { label: t('features'), href: sectionHref('features') },
         { label: tLanding('how_it_works_title'), href: sectionHref('how-it-works') },
-        { label: t('pricing'), href: sectionHref('pricing') },
+        { label: t('pricing'), href: pricingHref },
         { label: tFooter('contact'), href: '/contact' },
       ];
 
