@@ -27,9 +27,11 @@ interface ComparisonTableProps {
  * plan carries is printed once above the table and a limit whose value is the
  * same everywhere is not a row, so no fact appears twice (N-06).
  *
- * Four value columns fit a 320px phone, so the table is the whole comparison
- * rather than a window onto one. The region is still focusable: a future fifth
- * plan would overflow it, and a truncated reading has to stay navigable (N-02).
+ * Measured at 320px on `/pricing?audience=organization`, the tightest ladder:
+ * five columns fill the 288px gutter exactly (label 94px, plans 47/44/50/53px),
+ * no cell clips and the region does not scroll. The region is still focusable,
+ * because a fifth plan would overflow it and a truncated reading has to stay
+ * navigable (N-02).
  */
 export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
   const t = useTranslations('PricingPage');
@@ -72,7 +74,7 @@ export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
             <tr className="border-b border-border">
               <th
                 scope="col"
-                className="w-full py-2 pr-2 text-left font-normal text-muted-foreground"
+                className="w-full py-2 pr-1 text-left font-normal text-muted-foreground md:pr-3"
               >
                 {t('comparison_feature')}
               </th>
@@ -80,7 +82,7 @@ export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
                 <th
                   key={plan.key}
                   scope="col"
-                  className="px-1 py-2 text-center font-semibold whitespace-nowrap"
+                  className="min-w-11 px-0.5 py-2 text-center font-semibold whitespace-nowrap md:min-w-16 md:px-2"
                 >
                   {shortPlanName(plan.name)}
                 </th>
@@ -90,7 +92,7 @@ export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
           <tbody>
             {differing.map((feature) => (
               <tr key={feature} className="border-b border-border">
-                <th scope="row" className="py-2 pr-2 text-left font-normal">
+                <th scope="row" className="py-2 pr-1 text-left font-normal md:pr-3">
                   {getFeatureLabel(feature, t)}
                 </th>
                 {plans.map((plan) => (
@@ -100,14 +102,14 @@ export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
                     yesLabel={yesLabel}
                     noLabel={noLabel}
                     checkClassName="text-primary"
-                    className="px-1 py-2"
+                    className="min-w-11 px-0.5 py-2 md:min-w-16 md:px-2"
                   />
                 ))}
               </tr>
             ))}
             {limits.map((limit) => (
               <tr key={limit} className="border-b border-border">
-                <th scope="row" className="py-2 pr-2 text-left font-normal">
+                <th scope="row" className="py-2 pr-1 text-left font-normal md:pr-3">
                   {getLimitLabel(limit, t)}
                 </th>
                 {plans.map((plan) => {
@@ -123,9 +125,11 @@ export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
                   return (
                     <td
                       key={plan.key}
-                      className="px-1 py-2 text-center tabular-nums whitespace-nowrap"
+                      className="min-w-11 px-0.5 py-2 text-center tabular-nums whitespace-nowrap md:min-w-16 md:px-2"
                     >
-                      <span aria-hidden={spoken ? true : undefined}>{formatLimitValue(value)}</span>
+                      <span aria-hidden={spoken ? true : undefined}>
+                        {formatLimitValue(value, locale)}
+                      </span>
                       {spoken ? <span className="sr-only">{spoken}</span> : null}
                     </td>
                   );
