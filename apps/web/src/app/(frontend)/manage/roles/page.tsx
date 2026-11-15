@@ -201,7 +201,7 @@ export default function RolesPage() {
       </div>
 
       {!featuresPending && !canBuild && (
-        <RoleBuilderLockedCard onUpgrade={() => router.push('/pricing/org')} />
+        <RoleBuilderLockedCard onUpgrade={() => router.push('/pricing?audience=organization')} />
       )}
 
       <Card>
