@@ -18,6 +18,8 @@ interface ContentListToolbarProps {
   groupIds: string[];
   onGroupIdsChange: (value: string[]) => void;
   groupOptions: GroupOption[];
+  /** The caller's own groups; the group trigger applies them in one click. */
+  myGroupIds: string[];
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
@@ -41,6 +43,7 @@ export function ContentListToolbar({
   groupIds,
   onGroupIdsChange,
   groupOptions,
+  myGroupIds,
   sortBy,
   sortOrder,
   onSortChange,
@@ -64,6 +67,7 @@ export function ContentListToolbar({
         groupIds={groupIds}
         onGroupIdsChange={onGroupIdsChange}
         options={groupOptions}
+        myGroupIds={myGroupIds}
         t={t}
       />
       <SortSelect

@@ -486,6 +486,7 @@ export function CollectionScreen<T extends { id: string }>({
         groupIds={screen.effectiveGroupIds}
         onGroupIdsChange={screen.setGroupIds}
         groupOptions={screen.groupOptions}
+        myGroupIds={screen.myGroupIds}
         sortBy={screen.sortBy}
         sortOrder={screen.sortOrder}
         onSortChange={screen.setSort}
