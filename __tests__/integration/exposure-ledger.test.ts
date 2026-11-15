@@ -411,6 +411,166 @@ describe('Exposure ledger (#1171)', () => {
     expect(recorded, 'a practice key render is an exposure too').toHaveLength(1);
     expect(recorded[0]?.organization_id).toBe(orgId);
     expect(recorded[0]?.group_ids, 'practice belongs to no assessment cohort').toEqual([]);
+
+    // A reload renders the same key again; the (student, item) row is the idempotency key.
+    expect((await attemptGet(reviewCall.request, { params: reviewCall.params })).status).toBe(200);
+    expect(await events(student.user.id, practiceId), 'a repeat render adds nothing').toHaveLength(
+      1,
+    );
+  });
+
+  it('does not burn an item whose review renders no key artefact (R8)', async () => {
+    // An open item authored before #1173 has no model answer, and an open item has no key at all:
+    // the review shows the stem and the student's own text, so nothing was exposed and nothing is
+    // burnt. The attempt is written directly so the case does not depend on the practice draw.
+    const { data: bare, error: bareError } = await service
+      .from('questions')
+      .insert({
+        organization_id: orgId,
+        created_by: teacher.user.id,
+        bank_id: bankId,
+        type: 'open',
+        content: `ledger-keyless-${Date.now()}`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    if (bareError) throw new Error(`keyless item: ${bareError.message}`);
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert({
+        user_id: student.user.id,
+        score: 0,
+        total_questions: 1,
+        config: { questionTypes: ['open'], questionCount: 1 },
+        completed_at: new Date().toISOString(),
+        is_assignment_attempt: false,
+      })
+      .select('id')
+      .single();
+    if (attemptError) throw new Error(`attempt: ${attemptError.message}`);
+
+    await service
+      .from('quiz_attempt_questions')
+      .insert({ attempt_id: attempt.id, question_id: bare.id, order_index: 0 });
+    await service.from('student_answers').insert({
+      attempt_id: attempt.id,
+      question_id: bare.id,
+      question_type: 'open',
+      text_answer: 'moja odpowiedź',
+      is_correct: false,
+    });
+
+    as(student.user);
+    const reviewCall = createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attempt.id}`,
+      { attemptId: attempt.id },
+      {},
+      cookie(),
+    );
+    const response = await attemptGet(reviewCall.request, { params: reviewCall.params });
+    expect(response.status, await response.clone().text()).toBe(200);
+
+    expect(await events(student.user.id, bare.id), 'nothing rendered, nothing burnt').toEqual([]);
+  });
+
+  it('does not burn a keyless open item at the cohort reveal (R8)', async () => {
+    // The same rule on the assessment path: an open item published before #1173 has no model
+    // answer, so the reveal renders its stem and no key. A separate assignment keeps the shared
+    // fixture's item list intact.
+    const { data: bare, error: bareError } = await service
+      .from('questions')
+      .insert({
+        organization_id: orgId,
+        created_by: teacher.user.id,
+        bank_id: bankId,
+        type: 'open',
+        content: `ledger-reveal-keyless-${Date.now()}`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    if (bareError) throw new Error(`keyless item: ${bareError.message}`);
+
+    as(teacher.user);
+    const created = await createAssignmentPost(
+      createNextRequest(
+        'http://localhost/api/v1/teacher/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `ledger-keyless-${Date.now()}`,
+            deadline: FUTURE(),
+            showResults: true,
+          }),
+        },
+        cookie(),
+      ),
+    );
+    expect(created.status, await created.clone().text()).toBe(201);
+    const keylessAssignmentId = (await json<{ data: { id: string } }>(created)).data.id;
+
+    const add = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${keylessAssignmentId}/questions`,
+      { id: keylessAssignmentId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionIds: [bare.id] }),
+      },
+      cookie(),
+    );
+    expect((await addQuestionsPost(add.request, { params: add.params })).status).toBe(200);
+
+    const targets = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${keylessAssignmentId}/targets`,
+      { id: keylessAssignmentId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupIds: [groupId] }),
+      },
+      cookie(),
+    );
+    expect((await targetsPut(targets.request, { params: targets.params })).status).toBe(200);
+
+    const publish = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${keylessAssignmentId}/publish`,
+      { id: keylessAssignmentId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deadline: FUTURE() }),
+      },
+      cookie(),
+    );
+    expect((await publishPost(publish.request, { params: publish.params })).status).toBe(200);
+
+    const closeCall = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${keylessAssignmentId}/close`,
+      { id: keylessAssignmentId },
+      { method: 'POST' },
+      cookie(),
+    );
+    expect((await closePost(closeCall.request, { params: closeCall.params })).status).toBe(200);
+
+    as(student.user);
+    const reveal = createNextRequestWithParams(
+      `http://localhost/api/v1/assignments/${keylessAssignmentId}/review`,
+      { id: keylessAssignmentId },
+      {},
+      cookie(),
+    );
+    const response = await reviewGet(reveal.request, { params: reveal.params });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await json<{ data?: ReviewPayload }>(response);
+    expect(body.data?.items.map((item) => item.itemId)).toEqual([bare.id]);
+    expect(
+      await events(student.user.id, bare.id),
+      'the reveal rendered no key, so it burnt nothing',
+    ).toEqual([]);
   });
 
   it('lets the student read their own ledger and the staff read their org, and nobody else', async () => {

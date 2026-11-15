@@ -10,7 +10,10 @@ import {
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { GET as GET_BANK_EXPORT } from '@/app/(backend)/api/v1/questions/banks/[id]/export/route';
-import { GET as GET_QUESTION } from '@/app/(backend)/api/v1/questions/[id]/route';
+import {
+  GET as GET_QUESTION,
+  PUT as PUT_QUESTION,
+} from '@/app/(backend)/api/v1/questions/[id]/route';
 import { GET as GET_LIST } from '@/app/(backend)/api/v1/questions/route';
 
 // #1170, R15: the API is the second line, not the first — but a reader payload must not carry
@@ -216,5 +219,35 @@ describe('Answer key on the app surface (#1170)', () => {
     expect(response.status).toBe(200);
     // The CSV names the correct answer by its 1-based position; answer-a is index 1.
     expect(body.split('\n')[1]).toContain(',1');
+  });
+
+  it('judges an authoring patch against the stored explanation read server-side (#1180)', async () => {
+    // `explanation` is revoked from `authenticated`, so the author's own item cannot be read with
+    // their client: the update has to judge the merged item against the key reader's copy instead
+    // of failing closed or accepting an item that no longer satisfies R16.
+    const { data: stored } = await createServiceClient()
+      .from('questions')
+      .select('explanation')
+      .eq('id', questionId)
+      .single();
+
+    mockUser(educator.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/questions/${questionId}`,
+      { id: questionId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Renamed stem' }),
+      },
+      orgCookies(),
+    );
+
+    const response = await PUT_QUESTION(request, { params });
+    const body = await json<SingleEnvelope>(response);
+
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(body.data.content).toBe('Renamed stem');
+    expect(body.data.explanation).toBe(stored?.explanation);
   });
 });

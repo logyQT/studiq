@@ -301,7 +301,7 @@ describe('Question authoring rules (#1173)', () => {
     expect(row.model_answer).toBe(FIXTURE_MODEL_ANSWER);
   });
 
-  it('keeps the model answer off the client-readable surface', async () => {
+  it('keeps the answer artefacts off the client-readable surface', async () => {
     // A real PostgREST session with the anon key — the exact path a browser uses.
     const client: SupabaseClient<Database> = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -317,7 +317,12 @@ describe('Question authoring rules (#1173)', () => {
     const keyed = await client.from('questions').select('id, model_answer').limit(1);
     expect(keyed.error?.code, 'model_answer must not be selectable').toBe('42501');
 
-    const reader = await client.from('questions').select('id, content, explanation').limit(1);
+    // The explanation is key-bearing too (#1180): it left the client-readable surface with the
+    // model answer, so only the server-side key reader can return it.
+    const explanation = await client.from('questions').select('id, content, explanation').limit(1);
+    expect(explanation.error?.code, 'explanation must not be selectable').toBe('42501');
+
+    const reader = await client.from('questions').select('id, content, type').limit(1);
     expect(reader.error).toBeNull();
   });
 });
