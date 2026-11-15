@@ -12,10 +12,15 @@ import { firstRecorded } from '#test/mocks/recorded';
 // pure module shared by the server (export) and the browser (reading a file), and
 // TransferQuestionSchema is the one place a question is validated.
 
+// R16/R17: a choice item carries a teaching-length explanation, an open item a model answer.
+const TEACHING =
+  'Warszawa jest stolicą od 1596 roku, gdy przeniesiono tu stolicę z Krakowa, i pozostaje nią do dziś.';
+const MODEL_ANSWER = 'Woda paruje, skrapla się w chmury i wraca na ziemię jako opad.';
+
 const mcq = {
   type: 'mcq' as const,
   content: 'Stolica Polski?',
-  explanation: 'Warszawa od 1596',
+  explanation: TEACHING,
   topics: ['Geografia', 'Europa'],
   answers: [
     { content: 'Kraków', isCorrect: false },
@@ -26,13 +31,21 @@ const mcq = {
 const trueFalse = {
   type: 'true_false' as const,
   content: 'Ziemia jest płaska',
+  explanation:
+    'Ziemia jest kulą spłaszczoną na biegunach, co widać po horyzoncie i cieniu podczas zaćmienia Księżyca.',
   topics: [],
   answers: [
     { content: 'Prawda', isCorrect: false },
     { content: 'Fałsz', isCorrect: true },
   ],
 };
-const open = { type: 'open' as const, content: 'Opisz fotosyntezę', topics: [], answers: [] };
+const open = {
+  type: 'open' as const,
+  content: 'Opisz fotosyntezę',
+  modelAnswer: MODEL_ANSWER,
+  topics: [],
+  answers: [],
+};
 
 function readCsv(csv: string) {
   const parsed = parse<Record<string, string>>(csv, {
@@ -48,7 +61,7 @@ describe('questionsToCsv', () => {
     const csv = questionsToCsv([mcq, open]);
     const lines = csv.split('\n');
 
-    expect(csv.startsWith('﻿type,content,explanation,topics,answer_1,')).toBe(true);
+    expect(csv.startsWith('﻿type,content,explanation,model_answer,topics,answer_1,')).toBe(true);
     expect(lines[0]).toMatch(/,answer_10,correct$/);
     expect(lines).toHaveLength(3);
   });
@@ -98,12 +111,12 @@ describe('csvRecordsToQuestions', () => {
       mcq,
       trueFalse,
       open,
-      { ...mcq, content: '=1+1', explanation: undefined, topics: [] },
+      { ...mcq, content: '=1+1', explanation: `${TEACHING} =1+1`, topics: [] },
       // Values that look escaped already: the apostrophes are the user's text, not our escape.
       {
         ...mcq,
         content: "'=SUM(A1)",
-        explanation: "'+1",
+        explanation: `'+1 ${TEACHING}`,
         topics: ["'=T"],
         answers: [
           { content: "'-2", isCorrect: true },
@@ -209,8 +222,18 @@ describe('TransferQuestionSchema', () => {
   });
 
   it('trims text and defaults topics and answers', () => {
-    const parsed = TransferQuestionSchema.parse({ type: 'open', content: '  Q  ' });
-    expect(parsed).toEqual({ type: 'open', content: 'Q', topics: [], answers: [] });
+    const parsed = TransferQuestionSchema.parse({
+      type: 'open',
+      content: '  Q  ',
+      modelAnswer: `  ${MODEL_ANSWER}  `,
+    });
+    expect(parsed).toEqual({
+      type: 'open',
+      content: 'Q',
+      modelAnswer: MODEL_ANSWER,
+      topics: [],
+      answers: [],
+    });
   });
 });
 
@@ -235,5 +258,39 @@ describe('ImportQuestionsSchema', () => {
     });
     expect(result.success).toBe(false);
     expect(!result.success && result.error.issues[0]?.path).toEqual(['questions', 1, 'answers']);
+  });
+});
+
+describe('the transfer format carries the model answer (#1173)', () => {
+  it('round-trips an open item through CSV without losing its model answer', () => {
+    const { questions } = readCsv(questionsToCsv([open]));
+    expect(questions[0]?.modelAnswer).toBe(MODEL_ANSWER);
+    expect(TransferQuestionSchema.safeParse(questions[0]).success).toBe(true);
+  });
+
+  it('enforces the same authoring rules on import as the authoring form', () => {
+    const cases = [
+      ['a choice item without an explanation', { ...mcq, explanation: undefined }],
+      ['an explanation that is only a label', { ...mcq, explanation: 'Warszawa od 1596' }],
+      [
+        'an explanation that points at an option',
+        {
+          ...mcq,
+          explanation:
+            'Poprawna jest odpowiedź B, bo Warszawa jest stolicą od 1596 roku i tak pozostaje.',
+        },
+      ],
+      ['an open item without a model answer', { ...open, modelAnswer: undefined }],
+    ] as const;
+
+    for (const [name, question] of cases) {
+      const result = TransferQuestionSchema.safeParse(question);
+      expect(result.success, name).toBe(false);
+    }
+  });
+
+  it('names the field the import has to fix', () => {
+    const result = TransferQuestionSchema.safeParse({ ...open, modelAnswer: undefined });
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['modelAnswer']);
   });
 });

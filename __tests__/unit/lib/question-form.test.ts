@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeTrueFalseAnswers, validateQuestionForm } from '@/lib/question-form';
+import {
+  fieldErrorsFromApiError,
+  normalizeTrueFalseAnswers,
+  validateQuestionForm,
+} from '@/lib/question-form';
+import { ApiError } from '@/lib/api';
 
 function mcq(...contents: string[]) {
   return contents.map((content) => ({ content }));
@@ -7,43 +12,84 @@ function mcq(...contents: string[]) {
 
 const plLabels = { trueLabel: 'Prawda', falseLabel: 'Fałsz' };
 
+const TEACHING =
+  'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do dodawania.';
+
 describe('validateQuestionForm (#155)', () => {
   it('requires content', () => {
-    expect(validateQuestionForm({ type: 'open', content: '', answers: [] })).toBe(
-      'content_required',
-    );
-    expect(validateQuestionForm({ type: 'mcq', content: '   ', answers: mcq('a', 'b') })).toBe(
-      'content_required',
-    );
+    expect(
+      validateQuestionForm({ type: 'open', content: '', modelAnswer: 'x', answers: [] }),
+    ).toEqual({ content: 'content_required' });
+    expect(
+      validateQuestionForm({
+        type: 'mcq',
+        content: '   ',
+        explanation: TEACHING,
+        answers: mcq('a', 'b'),
+      }),
+    ).toEqual({ content: 'content_required' });
   });
 
-  it('accepts an open question without answers', () => {
-    expect(validateQuestionForm({ type: 'open', content: 'Wyjaśnij', answers: [] })).toBeNull();
+  it('accepts an open question without answers once it has a model answer', () => {
+    expect(
+      validateQuestionForm({
+        type: 'open',
+        content: 'Wyjaśnij',
+        modelAnswer: 'Bo woda paruje i wraca jako opad.',
+        answers: [],
+      }),
+    ).toBeNull();
   });
 
   it('requires at least two options for mcq', () => {
-    expect(validateQuestionForm({ type: 'mcq', content: 'Pytanie', answers: mcq() })).toBe(
-      'mcq_min_answers',
-    );
-    expect(validateQuestionForm({ type: 'mcq', content: 'Pytanie', answers: mcq('a') })).toBe(
-      'mcq_min_answers',
-    );
     expect(
-      validateQuestionForm({ type: 'mcq', content: 'Pytanie', answers: mcq('a', 'b') }),
+      validateQuestionForm({
+        type: 'mcq',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq(),
+      }),
+    ).toEqual({ answers: 'mcq_min_answers' });
+    expect(
+      validateQuestionForm({
+        type: 'mcq',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq('a'),
+      }),
+    ).toEqual({ answers: 'mcq_min_answers' });
+    expect(
+      validateQuestionForm({
+        type: 'mcq',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq('a', 'b'),
+      }),
     ).toBeNull();
   });
 
   it('requires both options for true_false', () => {
-    expect(validateQuestionForm({ type: 'true_false', content: 'Pytanie', answers: mcq() })).toBe(
-      'answers_required',
-    );
-    expect(
-      validateQuestionForm({ type: 'true_false', content: 'Pytanie', answers: mcq('Prawda') }),
-    ).toBe('answers_required');
     expect(
       validateQuestionForm({
         type: 'true_false',
         content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq(),
+      }),
+    ).toEqual({ answers: 'answers_required' });
+    expect(
+      validateQuestionForm({
+        type: 'true_false',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq('Prawda'),
+      }),
+    ).toEqual({ answers: 'answers_required' });
+    expect(
+      validateQuestionForm({
+        type: 'true_false',
+        content: 'Pytanie',
+        explanation: TEACHING,
         answers: mcq('Prawda', 'Fałsz'),
       }),
     ).toBeNull();
@@ -51,14 +97,90 @@ describe('validateQuestionForm (#155)', () => {
 
   it('ignores whitespace-only options when counting', () => {
     expect(
-      validateQuestionForm({ type: 'mcq', content: 'Pytanie', answers: mcq('a', '   ') }),
-    ).toBe('mcq_min_answers');
+      validateQuestionForm({
+        type: 'mcq',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq('a', '   '),
+      }),
+    ).toEqual({ answers: 'mcq_min_answers' });
     expect(
-      validateQuestionForm({ type: 'true_false', content: 'Pytanie', answers: mcq('  ') }),
-    ).toBe('answers_required');
+      validateQuestionForm({
+        type: 'true_false',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq('  '),
+      }),
+    ).toEqual({ answers: 'answers_required' });
     expect(
-      validateQuestionForm({ type: 'true_false', content: 'Pytanie', answers: mcq('Prawda', ' ') }),
-    ).toBe('answers_required');
+      validateQuestionForm({
+        type: 'true_false',
+        content: 'Pytanie',
+        explanation: TEACHING,
+        answers: mcq('Prawda', ' '),
+      }),
+    ).toEqual({ answers: 'answers_required' });
+  });
+
+  it('reports the explanation and model-answer rules per field (R16/R17)', () => {
+    expect(
+      validateQuestionForm({ type: 'mcq', content: 'Pytanie', answers: mcq('a', 'b') }),
+    ).toEqual({ explanation: 'explanation_required' });
+
+    expect(
+      validateQuestionForm({
+        type: 'mcq',
+        content: 'Pytanie',
+        explanation: 'Za krótko.',
+        answers: mcq('a', 'b'),
+      }),
+    ).toEqual({ explanation: 'explanation_too_short' });
+
+    expect(
+      validateQuestionForm({
+        type: 'mcq',
+        content: 'Pytanie',
+        explanation:
+          'Poprawna jest druga odpowiedź, bo cztery to wynik dodania dwóch jedynek, a nie pięciu, co widać na palcach.',
+        answers: mcq('a', 'b'),
+      }),
+    ).toEqual({ explanation: 'explanation_names_option' });
+
+    expect(
+      validateQuestionForm({ type: 'open', content: 'Opisz obieg wody', answers: [] }),
+    ).toEqual({ modelAnswer: 'model_answer_required' });
+  });
+
+  it('collects every field problem at once instead of stopping at the first', () => {
+    expect(
+      validateQuestionForm({ type: 'mcq', content: '', explanation: '', answers: mcq() }),
+    ).toEqual({
+      content: 'content_required',
+      answers: 'mcq_min_answers',
+      explanation: 'explanation_required',
+    });
+  });
+});
+
+describe('fieldErrorsFromApiError', () => {
+  it('maps a 422 issue tree onto the form fields', () => {
+    const error = new ApiError('UNPROCESSABLE_ENTITY', 422, {
+      errors: [],
+      properties: {
+        explanation: { errors: ['VALIDATION_EXPLANATION_QUOTES_OPTION'] },
+        modelAnswer: { errors: ['VALIDATION_MODEL_ANSWER_REQUIRED'] },
+      },
+    });
+
+    expect(fieldErrorsFromApiError(error)).toEqual({
+      explanation: 'explanation_quotes_option',
+      modelAnswer: 'model_answer_required',
+    });
+  });
+
+  it('answers null when the failure is not about a form field', () => {
+    expect(fieldErrorsFromApiError(new ApiError('FORBIDDEN', 403))).toBeNull();
+    expect(fieldErrorsFromApiError(new Error('boom'))).toBeNull();
   });
 });
 

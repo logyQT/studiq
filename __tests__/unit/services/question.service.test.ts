@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { firstCall } from '#test/mocks/recorded';
 import { readQuestionKeys } from '@studiq/server/lib/question-keys';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
@@ -23,9 +24,16 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
   canReadQuestionKey: keyAccess.canReadQuestionKey,
   readQuestionKeys: vi.fn((ids: readonly string[]) => {
-    const keys = new Map<string, { explanation: string | null; correctOptionIds: string[] }>();
+    const keys = new Map<
+      string,
+      { explanation: string | null; modelAnswer: string | null; correctOptionIds: string[] }
+    >();
     for (const id of ids) {
-      keys.set(id, { explanation: `explanation-${id}`, correctOptionIds: ['ans-2'] });
+      keys.set(id, {
+        explanation: `explanation-${id}`,
+        modelAnswer: `model-answer-${id}`,
+        correctOptionIds: ['ans-2'],
+      });
     }
     return Promise.resolve(keys);
   }),
@@ -313,8 +321,7 @@ describe('QuestionService', () => {
             content: 'Q1',
             question_answers: [],
             explanation: 'explanation-q-1',
-            // The staff export shape carries the open item's artefact too (#1173).
-            model_answer: null,
+            model_answer: 'model-answer-q-1',
             topics: [],
           },
         ],
@@ -470,9 +477,18 @@ describe('QuestionService', () => {
   });
 
   describe('update', () => {
+    // The authoring rules judge the merged item, so every update first reads the stored one.
+    const CURRENT = {
+      type: 'mcq',
+      explanation:
+        'Cztery jest poprawne, bo dodanie dwóch jedynek daje dokładnie cztery, a nie pięć — to pierwszy krok do dodawania.',
+      question_answers: [{ id: 'ans-1', content: 'A' }],
+    };
+
     it('updates question and returns it', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
 
+      mock.from.mockReturnValueOnce(chain(CURRENT));
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
 
@@ -480,6 +496,46 @@ describe('QuestionService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
+    });
+
+    it('refuses an update that leaves a choice item without a usable explanation (R16)', async () => {
+      // The stored item is legacy (no explanation) and the patch does not resend one: the merged
+      // item is what R16 judges, so the update is a 422 with the field path, not a silent save.
+      mock.from.mockReturnValueOnce(
+        chain({ type: 'mcq', explanation: null, question_answers: [{ content: 'A' }] }),
+      );
+
+      const result = await service.update('q-1', { content: 'Updated' }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(result.details?.[0]?.path).toEqual(['explanation']);
+        expect(result.details?.[0]?.message).toBe(ValidationErrorCode.EXPLANATION_REQUIRED);
+      }
+    });
+
+    it('judges a renamed option against the untouched explanation (R17)', async () => {
+      // The patch only renames an option; the stored explanation is what now quotes it.
+      mock.from.mockReturnValueOnce(
+        chain({
+          type: 'mcq',
+          explanation:
+            'Warszawa jest stolicą Polski od 1596 roku, więc wybór wynika z historii kraju i z przeniesienia stolicy.',
+          question_answers: [{ id: 'ans-1', content: 'Kraków' }],
+        }),
+      );
+
+      const result = await service.update(
+        'q-1',
+        { answers: [{ content: 'Warszawa jest stolicą Polski', isCorrect: true, orderIndex: 0 }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.details?.[0]?.message).toBe(ValidationErrorCode.EXPLANATION_QUOTES_OPTION);
+      }
     });
 
     it('returns FORBIDDEN when question not owned by user', async () => {
@@ -495,11 +551,16 @@ describe('QuestionService', () => {
       const updated = { id: 'q-1', content: 'Updated', type: 'open' };
       const optionsChain = chain(null);
 
+      mock.from.mockReturnValueOnce(chain(CURRENT));
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(optionsChain);
       mock.from.mockReturnValueOnce(chain(updated));
 
-      const result = await service.update('q-1', { type: 'open', answers: [] }, ctx);
+      const result = await service.update(
+        'q-1',
+        { type: 'open', answers: [], modelAnswer: 'Woda paruje, skrapla się i wraca jako opad.' },
+        ctx,
+      );
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('question_options');
@@ -510,6 +571,7 @@ describe('QuestionService', () => {
     it('updates question with answers replacement', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
 
+      mock.from.mockReturnValueOnce(chain(CURRENT));
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValueOnce(chain(null));
@@ -533,6 +595,7 @@ describe('QuestionService', () => {
       const updated = { id: 'q-1', content: 'Updated' };
       const updateChain = chain(updated);
 
+      mock.from.mockReturnValueOnce(chain(CURRENT));
       mock.from.mockReturnValueOnce(updateChain);
       mock.from.mockReturnValueOnce(chain(updated));
 
@@ -551,6 +614,7 @@ describe('QuestionService', () => {
       const updated = { id: 'q-1', content: 'Updated' };
       const updateChain = chain(updated);
 
+      mock.from.mockReturnValueOnce(chain(CURRENT));
       mock.from.mockReturnValueOnce(updateChain);
       mock.from.mockReturnValueOnce(chain(updated));
 
@@ -627,8 +691,7 @@ describe('QuestionService', () => {
         id: 'q-1',
         content: 'Q1',
         explanation: 'explanation-q-1',
-        // The key reader carries the open item's artefact too (#1173); this fixture has none.
-        model_answer: null,
+        model_answer: 'model-answer-q-1',
         question_answers: [
           { id: 'ans-1', content: 'A', order_index: 0, is_correct: false },
           { id: 'ans-2', content: 'B', order_index: 1, is_correct: true },
