@@ -1,7 +1,7 @@
 'use client';
 
 import type { Deck } from '@studiq/server/models/flashcard-deck.model';
-import { Button, Card, Skeleton } from '@studiq/ui';
+import { Button } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckSquare,
@@ -16,28 +16,22 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
-import { BulkActionBar } from '@/components/shared/bulk-action-bar';
-import { ContentListToolbar } from '@/components/shared/content-list-toolbar';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { PageGrid } from '@/components/shared/page-grid';
-import { SpeedDial } from '@/components/shared/speed-dial';
-import { useApiMutation } from '@/hooks/use-api';
-import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import { useDebounce } from '@/hooks/use-debounce';
-import { useGroupOptions } from '@/hooks/use-group-options';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { useOrgs } from '@/hooks/use-orgs';
-import { usePermission } from '@/hooks/use-permission';
-import { usePersistedState } from '@/hooks/use-persisted-state';
-import { useSelection } from '@/hooks/use-selection';
-import { apiDelete, apiPost, apiPut, isNetworkError } from '@/lib/api';
-import { contentSortOptions } from '@/lib/content-sort-options';
-import { resolveListEmptyView } from '@/lib/list-empty-view';
-import { flashcardKeys } from '@/lib/query-keys';
+import {
+  CollectionScreen,
+  contentFormDialogLabels,
+  contentFormDialogProps,
+  useCollectionScreen,
+} from '@/components/shared/collection-screen';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
+import { CollectionCardSkeleton } from '@/components/shared/page-grid';
+import { useApiMutation } from '@/hooks/use-api';
+import { usePermission } from '@/hooks/use-permission';
+import { apiPost, apiPut, isNetworkError } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
 
 const ImportDialog = dynamic(
   () =>
@@ -53,123 +47,41 @@ const DeckFormDialog = dynamic(() =>
 );
 
 interface DeckManagementScreenProps {
-  apiBase: string;
   basePath: string;
   t: ReturnType<typeof useTranslations>;
 }
 
+interface DeckFormValues {
+  name: string;
+  description: string;
+  visibility?: 'personal' | 'group';
+  groupIds?: string[];
+}
+
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
-  const { activeOrg, isPending: orgsPending } = useOrgs();
   const permission = usePermission();
-  const {
-    groupsData,
-    options: groupOptions,
-    myGroupIds,
-    groupNameMap,
-    ready: groupsReady,
-  } = useGroupOptions();
   const queryClient = useQueryClient();
-
-  const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebounce(searchInput, 300);
-  const [rawOwner, setOwner] = usePersistedState('flashcard_decks_owner', 'all');
-  // A legacy persisted `group` must never be forwarded: the API now rejects it (#595).
-  const owner = rawOwner === 'mine' ? 'mine' : 'all';
-  const [groupIds, setGroupIds] = usePersistedState<string[]>('flashcard_decks_group_ids', []);
-  const [sortBy, setSortBy] = usePersistedState('flashcard_decks_sort_by', 'created_at');
-  const [sortOrder, setSortOrder] = usePersistedState('flashcard_decks_sort_order', 'desc');
+  const { user } = useAuth();
+  // Students get the suspend filter inside the filter list; teachers keep the
+  // toolbar toggle, because suspending is their action rather than a view option.
+  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  const rawAccountType: unknown = user?.app_metadata.account_type;
+  const isStudent = rawAccountType === 'student';
   const [includeSuspended, setIncludeSuspended] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
-  const optionIds = new Set(groupOptions.map((group) => group.id));
-  // Org switch / lost membership must never leave stale ids in the request.
-  const effectiveGroupIds = groupIds.filter((id) => optionIds.has(id));
-  const groupsParam = effectiveGroupIds.join(',') || undefined;
-
-  // One-shot migration from the retired `all|mine` group toggle (#595).
-  const legacyMigrationDone = useRef(false);
-  useEffect(() => {
-    if (!groupsReady || legacyMigrationDone.current) return;
-    legacyMigrationDone.current = true;
-    const legacy = localStorage.getItem('flashcard_decks_group_filter');
-    if (legacy !== null) localStorage.removeItem('flashcard_decks_group_filter');
-    if (legacy === null) return;
-    try {
-      if (JSON.parse(legacy) === 'mine') {
-        setGroupIds((prev) => (prev.length > 0 ? prev : myGroupIds));
-      }
-    } catch {
-      /* ignore malformed legacy state */
-    }
-  }, [groupsReady, myGroupIds, setGroupIds]);
-
-  const {
-    items: decks,
-    total,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-    refetch,
-  } = useCursorPagination<Deck>({
-    queryKey: flashcardKeys.decks.paginated(
-      {
-        q: debouncedSearch,
-        owner,
-        groups: groupsParam,
-        sortBy,
-        sortOrder,
-        includeSuspended: includeSuspended ? 'true' : undefined,
-      },
-      activeOrg?.id,
-    ),
+  const screen = useCollectionScreen<Deck>({
     url: '/api/v1/flashcards/decks',
-    filters: {
-      q: debouncedSearch || undefined,
-      owner: owner !== 'all' ? owner : undefined,
-      groups: groupsParam,
-      sortBy,
-      sortOrder,
-      includeSuspended: includeSuspended ? 'true' : undefined,
-    },
-    limit: 24,
-    staleTime: Infinity,
-    // Hold the first paint while a persisted selection waits for its options, so the list
-    // never briefly shows unfiltered rows.
-    enabled: !orgsPending && !(groupIds.length > 0 && !groupsReady),
-  });
-
-  const loadMoreRef = useInfiniteScroll({ hasNextPage, isFetchingNextPage, fetchNextPage });
-
-  const createDeck = useApiMutation({
-    mutationFn: (data: {
-      name: string;
-      description?: string;
-      visibility?: string;
-      groupIds?: string[];
-    }) => apiPost<Deck>('/api/v1/flashcards/decks', data),
+    persistKey: 'flashcard_decks_filters',
+    legacyMine: { key: 'flashcard_decks_group_filter' },
+    queryKey: (filters, orgId) => flashcardKeys.decks.paginated(filters, orgId),
     invalidateKeys: [flashcardKeys.decks.all],
+    extraFilters: { includeSuspended: includeSuspended ? 'true' : undefined },
+    // The student's „Zawieszone” row is a filter like any other, so an empty list
+    // under it is a no-results state, not an empty collection.
+    extraActiveFilters: includeSuspended ? 1 : 0,
   });
-  const updateDeck = useApiMutation({
-    mutationFn: ({
-      id,
-      ...data
-    }: {
-      id: string;
-      name: string;
-      description?: string;
-      visibility?: string;
-      groupIds?: string[];
-    }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
-  });
-  const deleteDeck = useApiMutation({
-    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
-    invalidateKeys: [flashcardKeys.decks.all],
-  });
-  const batchDeleteDecks = useApiMutation({
-    mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/flashcards/decks/batch/delete', data),
-    invalidateKeys: [flashcardKeys.decks.all],
-  });
+  const { create, update, batchDelete, selection } = screen;
 
   const batchToggleSuspend = useApiMutation({
     mutationFn: (data: { deckIds: string[]; suspended: boolean }) =>
@@ -177,64 +89,29 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     invalidateKeys: [...flashcardKeys.afterDeckSuspend],
   });
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Deck | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const selection = useSelection();
-
-  function openCreate() {
-    setEditing(null);
-    setDialogOpen(true);
-  }
-
-  function openEdit(deck: Deck) {
-    setEditing(deck);
-    setDialogOpen(true);
-  }
-
-  async function handleSubmit(data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) {
+  async function handleSubmit(data: DeckFormValues) {
     if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
     }
+    const body = {
+      name: data.name,
+      description: data.description || undefined,
+      visibility: data.visibility,
+      groupIds: data.visibility === 'group' ? data.groupIds : [],
+    };
     try {
-      if (editing) {
-        await updateDeck.mutateAsync({
-          id: editing.id,
-          name: data.name,
-          description: data.description || undefined,
-          visibility: data.visibility,
-          groupIds: data.visibility === 'group' ? data.groupIds : [],
-        });
+      if (screen.editing) {
+        await update.mutateAsync({ id: screen.editing.id, ...body });
         await queryClient.refetchQueries({ queryKey: flashcardKeys.decks.all });
       } else {
-        await createDeck.mutateAsync({
-          name: data.name,
-          description: data.description || undefined,
-          visibility: data.visibility,
-          groupIds: data.visibility === 'group' ? data.groupIds : [],
-        });
+        await create.mutateAsync(body);
       }
-      setDialogOpen(false);
-      setEditing(null);
-      toast.success(editing ? t('deck_updated') : t('deck_created'));
+      screen.closeDialog();
+      toast.success(screen.editing ? t('deck_updated') : t('deck_created'));
     } catch (error) {
       toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
-  }
-
-  function handleToggleSelect(id: string) {
-    selection.toggleSelect(id);
-  }
-
-  function handleClearSelection() {
-    selection.handleClearSelection();
   }
 
   function handleBatchExportSelection() {
@@ -247,9 +124,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     const ids = Array.from(selection.selectedIds);
     if (ids.length === 0) return;
     try {
-      await batchDeleteDecks.mutateAsync({ ids });
+      await batchDelete.mutateAsync(ids);
       toast.success(t('deck_deleted'));
-      handleClearSelection();
+      selection.handleClearSelection();
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -261,7 +138,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     try {
       await batchToggleSuspend.mutateAsync({ deckIds: ids, suspended });
       toast.success(suspended ? t('deck_suspended') : t('deck_unsuspended'));
-      handleClearSelection();
+      selection.handleClearSelection();
     } catch (error) {
       toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
@@ -279,236 +156,126 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     }
   }
 
-  async function handleDelete() {
-    if (!deleteId) return;
-    try {
-      await deleteDeck.mutateAsync(deleteId);
-      toast.success(t('deck_deleted'));
-    } catch {
-      toast.error(t('delete_failed'));
-    }
-    setDeleteId(null);
-  }
-
   return (
-    <div className="space-y-6">
-      <ContentListToolbar
-        searchInput={searchInput}
-        onSearchChange={setSearchInput}
-        owner={owner}
-        onOwnerChange={(v) => {
-          setOwner(v);
-        }}
-        groupIds={effectiveGroupIds}
-        onGroupIdsChange={setGroupIds}
-        groupOptions={groupOptions}
-        myGroupIds={myGroupIds}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onSortChange={(sb, so) => {
-          setSortBy(sb);
-          setSortOrder(so);
-        }}
-        sortOptions={contentSortOptions(t)}
-        actions={
-          <>
-            <Button variant="outline" className="justify-start" onClick={() => setImportOpen(true)}>
-              <FileUp className="h-4 w-4" /> {t('common_import')}
-            </Button>
-            <Button className="justify-start" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> {t('new_deck')}
-            </Button>
-          </>
-        }
-        t={t}
-      >
-        <Button
-          variant={includeSuspended ? 'default' : 'outline'}
-          size="sm"
-          aria-label={t('show_suspended')}
-          aria-pressed={includeSuspended}
-          onClick={() => setIncludeSuspended(!includeSuspended)}
-          className="gap-1.5"
-        >
-          <EyeOff className="h-4 w-4" />
-          {includeSuspended && <span>{t('show_suspended')}</span>}
-        </Button>
-      </ContentListToolbar>
-
-      {!isLoading && !orgsPending && total !== undefined && (
-        <p className="text-sm text-muted-foreground">{t('decks_count', { count: total })}</p>
-      )}
-
-      <FirstVisitHint id="decks" />
-
-      <PageGrid
-        cols={4}
-        isLoading={isLoading || orgsPending}
-        skeleton={
-          <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
-            <div className="flex items-center gap-3 p-4 sm:hidden">
-              <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-3 w-1/4" />
-              </div>
-              <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-            </div>
-            <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-10 w-10 rounded-xl" />
-                <Skeleton className="h-6 w-3/4" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-4/5" />
-              </div>
-              <div className="flex items-center justify-between pt-4 mt-auto">
-                <Skeleton className="h-6 w-16 rounded-full" />
-                <Skeleton className="h-8 w-24 rounded-md" />
-              </div>
-            </div>
-          </Card>
-        }
-        skeletonCount={12}
-        hasNextPage={hasNextPage}
-        isFetchingNextPage={isFetchingNextPage}
-        loadMoreRef={loadMoreRef}
-        isEmpty={decks.length === 0}
-        isError={isError}
-        onRetry={() => refetch()}
-        emptyView={resolveListEmptyView({
-          visibleCount: decks.length,
-          query: debouncedSearch,
-          activeFilters: (owner !== 'all' ? 1 : 0) + effectiveGroupIds.length,
-        })}
-        onClearFilters={() => {
-          setSearchInput('');
-          setOwner('all');
-          setGroupIds([]);
-        }}
-        emptyIcon={<FolderOpen className="h-10 w-10 text-muted-foreground" />}
-        emptyTitle={t('no_decks')}
-        emptyAction={
-          <Button variant="outline" size="sm" onClick={openCreate}>
-            <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+    <CollectionScreen<Deck>
+      t={t}
+      screen={screen}
+      actions={
+        <>
+          <Button variant="outline" className="justify-start" onClick={() => setImportOpen(true)}>
+            <FileUp className="h-4 w-4" /> {t('common_import')}
           </Button>
-        }
-      >
-        {decks.map((deck) => (
-          <DeckCard
-            key={deck.id}
-            deck={deck}
-            isSelecting={selection.isSelecting}
-            isSelected={selection.selectedIds.has(deck.id)}
-            onToggleSelect={() => handleToggleSelect(deck.id)}
-            basePath={basePath}
-            t={t}
-            canUpdate={permission('deck.update', {
-              createdBy: deck.created_by,
-              orgId: deck.organization_id,
-            })}
-            canDelete={permission('deck.delete', {
-              createdBy: deck.created_by,
-              orgId: deck.organization_id,
-            })}
-            onEdit={() => openEdit(deck)}
-            onDelete={() => setDeleteId(deck.id)}
-            onExport={() =>
-              window.open(`/api/v1/flashcards/export/csv?deckIds=${deck.id}`, '_blank')
+          <Button className="justify-start" onClick={screen.openCreate}>
+            <Plus className="h-4 w-4" /> {t('new_deck')}
+          </Button>
+        </>
+      }
+      filterExtra={
+        isStudent
+          ? {
+              label: t('show_suspended'),
+              checked: includeSuspended,
+              onToggle: () => setIncludeSuspended((previous) => !previous),
+              onClear: () => setIncludeSuspended(false),
             }
-            onSelect={() => selection.setIsSelecting(true)}
-            onToggleSuspend={() => handleToggleSuspend(deck)}
-            groupNames={deck.groupIds
-              ?.map((id) => groupNameMap.get(id))
-              .filter((name): name is string => Boolean(name))}
-          />
-        ))}
-      </PageGrid>
-
+          : undefined
+      }
+      toolbarExtra={
+        isStudent ? undefined : (
+          <Button
+            variant={includeSuspended ? 'default' : 'outline'}
+            size="sm"
+            aria-label={t('show_suspended')}
+            aria-pressed={includeSuspended}
+            onClick={() => setIncludeSuspended(!includeSuspended)}
+            className="gap-1.5"
+          >
+            <EyeOff className="h-4 w-4" />
+            {includeSuspended && <span>{t('show_suspended')}</span>}
+          </Button>
+        )
+      }
+      countLabel={(total) => t('decks_count', { count: total })}
+      hint={<FirstVisitHint id="decks" />}
+      skeleton={<CollectionCardSkeleton />}
+      skeletonCount={12}
+      emptyIcon={<FolderOpen className="h-10 w-10 text-muted-foreground" />}
+      emptyTitle={t('no_decks')}
+      emptyAction={
+        <Button variant="outline" size="sm" onClick={screen.openCreate}>
+          <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+        </Button>
+      }
+      noResultsSubject={t('no_results_subject')}
+      deleteLabels={{ title: t('delete_dialog_title'), description: t('delete_dialog_desc') }}
+      deletedMessage={t('deck_deleted')}
+      bulkActions={
+        <>
+          <Button variant="outline" size="sm" onClick={() => handleBatchToggleSuspend(true)}>
+            <EyeOff className="mr-1.5 h-4 w-4" /> {t('suspend_deck')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleBatchToggleSuspend(false)}>
+            <EyeOff className="mr-1.5 h-4 w-4" /> {t('unsuspend_deck')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleBatchExportSelection}>
+            <Download className="mr-1.5 h-4 w-4" /> {t('common_export')}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={handleBatchDeleteSelection}>
+            <Trash2 className="mr-1.5 h-4 w-4" /> {t('common_delete')}
+          </Button>
+        </>
+      }
+      speedDialItems={[
+        { icon: SquarePen, label: t('new_deck'), onClick: screen.openCreate },
+        { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
+        {
+          icon: CheckSquare,
+          label: t('select_cards'),
+          onClick: () => selection.setIsSelecting(true),
+        },
+      ]}
+      renderCard={(deck) => (
+        <DeckCard
+          deck={deck}
+          isSelecting={selection.isSelecting}
+          isSelected={selection.selectedIds.has(deck.id)}
+          onToggleSelect={() => selection.toggleSelect(deck.id)}
+          basePath={basePath}
+          t={t}
+          canUpdate={permission('deck.update', {
+            createdBy: deck.created_by,
+            orgId: deck.organization_id,
+          })}
+          canDelete={permission('deck.delete', {
+            createdBy: deck.created_by,
+            orgId: deck.organization_id,
+          })}
+          onEdit={() => screen.openEdit(deck)}
+          onDelete={() => screen.setDeleteId(deck.id)}
+          onExport={() => window.open(`/api/v1/flashcards/export/csv?deckIds=${deck.id}`, '_blank')}
+          onSelect={() => selection.setIsSelecting(true)}
+          onToggleSuspend={() => handleToggleSuspend(deck)}
+          groupNames={deck.groupIds
+            ?.map((id) => screen.groupNameMap.get(id))
+            .filter((name): name is string => Boolean(name))}
+        />
+      )}
+    >
       <DeckFormDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setTimeout(() => setEditing(null), 200);
-        }}
-        initialValues={
-          editing
-            ? {
-                name: editing.name,
-                description: editing.description ?? '',
-                visibility: editing.visibility,
-                groupIds: editing.groupIds ?? [],
-              }
-            : null
-        }
+        {...contentFormDialogProps(screen, (deck) => ({
+          visibility: deck.visibility,
+          groupIds: deck.groupIds ?? [],
+        }))}
         onSubmit={handleSubmit}
-        title={editing ? t('edit_title') : t('new_deck_title')}
-        description={editing ? t('edit_desc') : t('new_deck_desc')}
-        nameLabel={t('name_label')}
-        namePlaceholder={t('name_placeholder')}
-        descriptionLabel={t('description_label')}
-        descriptionPlaceholder={t('description_placeholder')}
-        cancelLabel={t('common_cancel')}
-        submitLabel={editing ? t('common_update') : t('common_create')}
-        groups={groupsData}
-        visibilityLabel={t('visibility_label')}
-        visibilityPersonalLabel={t('visibility_personal')}
-        visibilityGroupLabel={t('visibility_group')}
-        groupsPlaceholder={t('groups_placeholder')}
-        groupsEmptyText={t('groups_empty')}
+        title={screen.editing ? t('edit_title') : t('new_deck_title')}
+        description={screen.editing ? t('edit_desc') : t('new_deck_desc')}
+        submitLabel={screen.editing ? t('common_update') : t('common_create')}
+        groups={screen.groupsData}
         groupsRequiredText={t('groups_required')}
+        {...contentFormDialogLabels(t)}
       />
-
-      <DeleteConfirmDialog
-        open={!!deleteId}
-        onOpenChange={() => setDeleteId(null)}
-        onConfirm={handleDelete}
-        title={t('delete_dialog_title')}
-        description={t('delete_dialog_desc')}
-        cancelText={t('common_cancel')}
-        confirmText={t('common_delete')}
-      />
-
-      <BulkActionBar
-        selectedCount={selection.selectedIds.size}
-        onClearSelection={handleClearSelection}
-      >
-        <Button variant="outline" size="sm" onClick={() => handleBatchToggleSuspend(true)}>
-          <EyeOff className="mr-1.5 h-4 w-4" /> {t('suspend_deck')}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => handleBatchToggleSuspend(false)}>
-          <EyeOff className="mr-1.5 h-4 w-4" /> {t('unsuspend_deck')}
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleBatchExportSelection}>
-          <Download className="mr-1.5 h-4 w-4" /> {t('common_export')}
-        </Button>
-        <Button variant="destructive" size="sm" onClick={handleBatchDeleteSelection}>
-          <Trash2 className="mr-1.5 h-4 w-4" /> {t('common_delete')}
-        </Button>
-      </BulkActionBar>
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} t={t} />
-
-      {!selection.isSelecting && (
-        <div className="sm:hidden">
-          <SpeedDial
-            items={[
-              {
-                icon: SquarePen,
-                label: t('new_deck'),
-                onClick: openCreate,
-              },
-              { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
-              {
-                icon: CheckSquare,
-                label: t('select_cards'),
-                onClick: () => selection.setIsSelecting(true),
-              },
-            ]}
-          />
-        </div>
-      )}
-    </div>
+    </CollectionScreen>
   );
 }

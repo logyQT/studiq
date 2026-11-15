@@ -1,6 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
-import type { FeatureKey, FeatureResolution } from '@studiq/server/services/feature.resolver';
+import type { FeatureKey, FeatureResolution } from '@studiq/authz';
 import { featureResolver } from '@studiq/server/services/feature.resolver';
 
 export async function resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {

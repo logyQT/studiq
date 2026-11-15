@@ -63,7 +63,7 @@ export default function DifficultyBucketClient() {
     hasMore: boolean;
   }>({
     queryKey: topicKeys.paginated({}, activeOrg?.id),
-    url: '/api/v1/flashcards/topics?limit=200',
+    url: '/api/v1/topics?limit=200',
     enabled: !orgsPending,
   });
 

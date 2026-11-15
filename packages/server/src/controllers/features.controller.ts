@@ -2,7 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { resolveFeatures } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
-import type { FeatureKey } from '@studiq/server/services/feature.resolver';
+import type { FeatureKey } from '@studiq/authz';
 
 export interface MyFeaturesData {
   features: FeatureKey[];

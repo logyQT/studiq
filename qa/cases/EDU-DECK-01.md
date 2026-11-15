@@ -14,11 +14,11 @@ Zalogowany teacher1@dev.local.
 ## Steps
 
 1. Otwórz /edu/flashcards.
-2. Sprawdź listę talii, filtr zakresu (Wszystkie / Moje) i filtr grup.
+2. Sprawdź listę talii oraz filtry pod przyciskiem „Filtry” (wymiary „Moje” i „Grupy”).
 
 ## Expected result
 
-- Tytuł „Talie fiszek”, filtr zakresu: Wszystkie / Moje oraz jeden filtr grup z placeholderem „Dowolna grupa” (i akcją „Moje grupy”, gdy użytkownik należy do grup). Brak opcji „Grupy” i „Udostępnione”.
+- Tytuł „Talie fiszek” i jeden przycisk „Filtry”, którego wierszami są wymiary: „Moje” (własność) i „Grupy” (przypisanie do grup). Grupy otwierają się w panelu obok listy. Brak selecta zakresu i brak opcji „Udostępnione”.
 - T1 widzi własne talie (O1G1T1, O2G1T1 zależnie od aktywnej organizacji) z plakietkami grup.
 - Talie T2 (O1G2T2) widoczne zgodnie z regułami uprawnień (zanotuj – oczekiwane: tylko jeśli T1 ma dostęp organizacyjny).
 

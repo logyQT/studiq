@@ -21,6 +21,7 @@ interface QueryBuilder {
   order: ChainMock;
   limit: ChainMock;
   or: ChainMock;
+  ilike: ChainMock;
   single: ChainMock;
   maybeSingle: ChainMock;
   then: ChainMock;
@@ -38,10 +39,11 @@ const CHAIN_METHODS = [
   'order',
   'limit',
   'or',
+  'ilike',
 ] as const;
 
-function qb(data: unknown, error: unknown = null): QueryBuilder {
-  const result = { data: data ?? null, error };
+function qb(data: unknown, error: unknown = null, count: number | null = null): QueryBuilder {
+  const result = { data: data ?? null, error, count };
   const promise = Promise.resolve(result);
   const builder: QueryBuilder = {
     select: vi.fn(),
@@ -53,6 +55,7 @@ function qb(data: unknown, error: unknown = null): QueryBuilder {
     order: vi.fn(),
     limit: vi.fn(),
     or: vi.fn(),
+    ilike: vi.fn(),
     single: vi.fn(),
     maybeSingle: vi.fn(),
     then: vi.fn(),
@@ -299,37 +302,60 @@ describe('TopicService', () => {
   });
 
   describe('list filters (#595)', () => {
-    it('resolves group ids through topic_groups and narrows the list query', async () => {
+    it('resolves group ids through topic_groups and narrows the page and its count', async () => {
+      const groupQb = qb([{ topic_id: 't-1' }]);
       const pageQb = qb([{ id: 't-1', name: 'Topic' }]);
-      mock.from.mockReturnValueOnce(pageQb); // topics query builder
-      mock.from.mockReturnValueOnce(qb([{ topic_id: 't-1' }])); // topic_groups
+      const countQb = qb(null, null, 1);
+      mock.from.mockReturnValueOnce(groupQb); // topic_groups
+      mock.from.mockReturnValueOnce(pageQb); // list page
+      mock.from.mockReturnValueOnce(countQb); // total count
 
       const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('topic_groups');
+      // Both queries carry the group filter, so `total` matches the visible set.
       expect(pageQb.in).toHaveBeenCalledWith('id', ['t-1']);
+      expect(countQb.in).toHaveBeenCalledWith('id', ['t-1']);
     });
 
-    it('returns an empty page without running the topic query when no topic matches the groups', async () => {
-      const pageQb = qb([]);
-      mock.from.mockReturnValueOnce(pageQb); // topics query builder
-      mock.from.mockReturnValueOnce(qb([])); // topic_groups → no linked topics
+    it('returns an empty page with total 0 when no row matches the groups', async () => {
+      mock.from.mockReturnValueOnce(qb([])); // topic_groups → no linked rows
 
       const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
-      expect(pageQb.in).not.toHaveBeenCalled();
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false, total: 0 });
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * An impossible RBAC scope is a filter that cannot match, so it must answer
+     * the same empty page as every other non-match — `total` included, or the
+     * count line disappears on exactly the path that has nothing to count.
+     */
+    it('keeps the page shape when the RBAC scope can match nothing', async () => {
+      const result = await service.list({
+        ...ctx,
+        activeOrgId: null,
+        permissionScopes: { 'topic.read': 'group' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false, total: 0 });
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('composes owner=mine with the RBAC filter and skips the group lookup', async () => {
       const pageQb = qb([]);
+      const countQb = qb(null, null, 0);
       mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
 
       await service.list(ctx, { owner: 'mine' });
 
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
     });
   });

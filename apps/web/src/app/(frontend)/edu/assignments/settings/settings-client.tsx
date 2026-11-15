@@ -3,6 +3,7 @@
 import { Button, Card, CardContent, CardHeader, CardTitle, Label, Switch } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { AssignmentPage } from '@/components/edu/assignment-page';
 
 interface PrintSettings {
   showNameField: boolean;
@@ -52,12 +53,7 @@ export default function AssignmentSettingsClient() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
-
+    <AssignmentPage title={t('title')} subtitle={t('subtitle')}>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{t('pdf_defaults')}</CardTitle>
@@ -108,6 +104,6 @@ export default function AssignmentSettingsClient() {
         {saved && <p className="text-sm text-green-600">{t('saved')}</p>}
         <Button onClick={handleSave}>{t('save')}</Button>
       </div>
-    </div>
+    </AssignmentPage>
   );
 }

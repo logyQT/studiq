@@ -47,6 +47,88 @@ const stopLinkClick = (e: React.MouseEvent) => {
   if (e.target instanceof Element && e.target.closest('a')) e.stopPropagation();
 };
 
+/** Trigger styling differs between the mobile row and the desktop hover affordance. */
+const TRIGGER_CLASS = {
+  compact: 'h-7 w-7 shrink-0 text-muted-foreground/80 hover:text-foreground',
+  hover: 'text-muted-foreground hover:text-foreground transition-colors',
+} as const;
+
+type FlashcardActionsMenuProps = Pick<
+  FlashcardCardProps,
+  | 'fc'
+  | 'canUpdate'
+  | 'canDelete'
+  | 'topics'
+  | 't'
+  | 'onEnterSelectionMode'
+  | 'onEdit'
+  | 'onDelete'
+  | 'onMove'
+  | 'onCopy'
+  | 'onReport'
+  | 'onAddTopic'
+  | 'onManageTopics'
+  | 'onViewByTopic'
+> & { variant: keyof typeof TRIGGER_CLASS };
+
+function FlashcardActionsMenu({
+  variant,
+  fc,
+  canUpdate,
+  canDelete,
+  topics,
+  t,
+  onEnterSelectionMode,
+  onEdit,
+  onDelete,
+  onMove,
+  onCopy,
+  onReport,
+  onAddTopic,
+  onManageTopics,
+  onViewByTopic,
+}: FlashcardActionsMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size={variant === 'compact' ? 'icon' : 'icon-xs'}
+          className={TRIGGER_CLASS[variant]}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical className="h-3 w-3" />
+          <SrLabel k="more_actions_flashcard" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <FlashcardContextMenu
+          t={t}
+          mode={canUpdate ? 'owned' : 'view-only'}
+          onSelect={() => onEnterSelectionMode?.(fc.id)}
+          onEdit={canUpdate ? () => onEdit(fc) : undefined}
+          onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
+          onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
+          onViewByTopic={
+            canUpdate
+              ? () => {
+                  const firstAssigned = topics.find((topic) =>
+                    fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
+                  );
+                  if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
+                }
+              : undefined
+          }
+          onMove={canUpdate ? () => onMove(fc) : undefined}
+          onReport={fc.question_id ? () => onReport?.(fc) : undefined}
+          onCopy={() => onCopy(fc)}
+          onDelete={canDelete ? () => onDelete(fc.id) : null}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export const FlashcardCard = memo(function FlashcardCardContent({
   fc,
   canUpdate,
@@ -69,6 +151,23 @@ export const FlashcardCard = memo(function FlashcardCardContent({
   const fcTopics = topics.filter((topic) =>
     fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
   );
+
+  const menuProps = {
+    fc,
+    canUpdate,
+    canDelete,
+    topics,
+    t,
+    onEnterSelectionMode,
+    onEdit,
+    onDelete,
+    onMove,
+    onCopy,
+    onReport,
+    onAddTopic,
+    onManageTopics,
+    onViewByTopic,
+  };
 
   return (
     <Card
@@ -102,45 +201,7 @@ export const FlashcardCard = memo(function FlashcardCardContent({
               </div>
             </div>
           </div>
-          {!selectable && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 text-muted-foreground/80 hover:text-foreground"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-3 w-3" />
-                  <SrLabel k="more_actions_flashcard" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <FlashcardContextMenu
-                  t={t}
-                  mode={canUpdate ? 'owned' : 'view-only'}
-                  onSelect={() => onEnterSelectionMode?.(fc.id)}
-                  onEdit={canUpdate ? () => onEdit(fc) : undefined}
-                  onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
-                  onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
-                  onViewByTopic={
-                    canUpdate
-                      ? () => {
-                          const firstAssigned = topics.find((topic) =>
-                            fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
-                          );
-                          if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
-                        }
-                      : undefined
-                  }
-                  onMove={canUpdate ? () => onMove(fc) : undefined}
-                  onReport={fc.question_id ? () => onReport?.(fc) : undefined}
-                  onCopy={() => onCopy(fc)}
-                  onDelete={canDelete ? () => onDelete(fc.id) : null}
-                />
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          {!selectable && <FlashcardActionsMenu {...menuProps} variant="compact" />}
         </div>
 
         {/* Clean Separator line */}
@@ -189,43 +250,7 @@ export const FlashcardCard = memo(function FlashcardCardContent({
         )}
         {!selectable && (
           <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-3 w-3" />
-                  <SrLabel k="more_actions_flashcard" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <FlashcardContextMenu
-                  t={t}
-                  mode={canUpdate ? 'owned' : 'view-only'}
-                  onSelect={() => onEnterSelectionMode?.(fc.id)}
-                  onEdit={canUpdate ? () => onEdit(fc) : undefined}
-                  onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
-                  onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
-                  onViewByTopic={
-                    canUpdate
-                      ? () => {
-                          const firstAssigned = topics.find((topic) =>
-                            fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
-                          );
-                          if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
-                        }
-                      : undefined
-                  }
-                  onMove={canUpdate ? () => onMove(fc) : undefined}
-                  onReport={fc.question_id ? () => onReport?.(fc) : undefined}
-                  onCopy={() => onCopy(fc)}
-                  onDelete={canDelete ? () => onDelete(fc.id) : null}
-                />
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <FlashcardActionsMenu {...menuProps} variant="hover" />
           </div>
         )}
 

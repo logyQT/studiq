@@ -1,10 +1,5 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
-import {
-  FEATURES,
-  FeatureResolver,
-  isUserOverrideActive,
-  rolloutBucket,
-} from '@studiq/server/services/feature.resolver';
+import { AccountType, FEATURES, type RequestContext, rolloutBucket } from '@studiq/authz';
+import { FeatureResolver, isUserOverrideActive } from '@studiq/server/services/feature.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 

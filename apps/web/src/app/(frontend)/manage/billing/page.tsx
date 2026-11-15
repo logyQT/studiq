@@ -3,20 +3,12 @@
 import { AccountType } from '@studiq/authz';
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Skeleton,
-} from '@studiq/ui';
+import { Badge, Button, Card, CardContent, Skeleton } from '@studiq/ui';
 import { Mail, Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
+import { BillingPageShell, CurrentPlanCardHeader } from '@/components/billing/billing-page-parts';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -66,26 +58,18 @@ export default function ManageBillingPage() {
   const seatsUsed = seatPools?.reduce((sum, pool) => sum + pool.assigned, 0) ?? 0;
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
-      </div>
-
+    <BillingPageShell>
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>{t('current_plan')}</CardTitle>
-              <CardDescription>{t('org_plan')}</CardDescription>
-            </div>
-            {planLoading || plansLoading ? (
+        <CurrentPlanCardHeader
+          description={t('org_plan')}
+          badge={
+            planLoading || plansLoading ? (
               <Skeleton className="h-6 w-24" />
             ) : planName ? (
               <Badge variant="secondary">{planName}</Badge>
-            ) : null}
-          </div>
-        </CardHeader>
+            ) : null
+          }
+        />
         <CardContent className="space-y-4">
           {seatsTotal > 0 && (
             <div className="flex items-center gap-2 text-sm">
@@ -116,6 +100,6 @@ export default function ManageBillingPage() {
           void refetchSubscription();
         }}
       />
-    </div>
+    </BillingPageShell>
   );
 }

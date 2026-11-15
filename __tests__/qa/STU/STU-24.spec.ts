@@ -85,7 +85,7 @@ const ONE_CARD_FOR_TOPIC = '1 fiszka z tym tematem';
 
 const DECKS_URL = '/api/v1/flashcards/decks';
 const FLASHCARDS_URL = '/api/v1/flashcards';
-const TOPICS_URL = '/api/v1/flashcards/topics';
+const TOPICS_URL = '/api/v1/topics';
 
 interface ApiEnvelope<T> {
   success: boolean;

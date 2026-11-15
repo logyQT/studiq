@@ -1,4 +1,5 @@
-import type { RequestContext } from '@studiq/authz';
+import type { FeatureKey, FeatureResolution, RequestContext } from '@studiq/authz';
+import { ADMIN_ONLY_FEATURES, FEATURES, isFeatureKey, rolloutBucket } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -6,42 +7,6 @@ import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
-
-// Canonical flat feature keys — the single source of truth for both the
-// application AND the database. `feature_flags`, `plan_features`,
-// `org_role_features` and `user_feature_overrides` all store these exact
-// keys (no legacy snake_case aliases, no mapping layer).
-export const FEATURES = [
-  'ai.chat',
-  'flashcards',
-  'quiz',
-  'quiz.builder',
-  'documents',
-  'org.manage',
-  'group.manage',
-  'member.manage',
-  'role.builder',
-  'advanced.stats',
-  'branding',
-] as const;
-export type FeatureKey = (typeof FEATURES)[number];
-
-const FEATURE_KEY_SET: ReadonlySet<string> = new Set<string>(FEATURES);
-
-export function isFeatureKey(key: string): key is FeatureKey {
-  return FEATURE_KEY_SET.has(key);
-}
-
-/**
- * Features that should never be granted to non-admin org roles through seat
- * upgrades. These are management/structure privileges that belong to the org
- * admin role only.
- */
-const ADMIN_ONLY_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
-  'org.manage',
-  'member.manage',
-  'role.builder',
-]);
 
 /**
  * Features describing control *over the organization* (structure, membership,
@@ -55,33 +20,6 @@ const ORG_SCOPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   'group.manage',
   'branding',
 ]);
-
-export interface FeatureResolution {
-  /** Enabled feature keys, ordered by `FEATURES`. */
-  features: FeatureKey[];
-  /**
-   * `X-Feature-Rollout` payload: the rollout percentage that was actually
-   * applied for each enabled feature currently gated by a live rollout
-   * (i.e. `rollout_percentage < 100`). Clients can expose this to users
-   * (e.g. "you're in the 25% pilot of ai.chat").
-   */
-  rollout: Partial<Record<FeatureKey, number>>;
-}
-
-/**
- * Deterministic per-(key, user) rollout bucket in `0..99`. Stable across
- * requests (FNV-1a over `${key}:${userId}`), so a given user either always
- * sees a partially-rolled-out feature or never does — no flapping.
- */
-export function rolloutBucket(userId: string, key: FeatureKey): number {
-  let hash = 0x811c9dc5;
-  const input = `${key}:${userId}`;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash % 100;
-}
 
 /**
  * A user override only applies while it has no expiry or its expiry is still in

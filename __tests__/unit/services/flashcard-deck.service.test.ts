@@ -37,6 +37,7 @@ interface QueryBuilder {
   not: ChainMock;
   neq: ChainMock;
   rpc: ChainMock;
+  ilike: ChainMock;
   single: ChainMock;
   maybeSingle: ChainMock;
   then: ChainMock;
@@ -58,6 +59,7 @@ const CHAIN_METHODS = [
   'not',
   'neq',
   'rpc',
+  'ilike',
 ] as const;
 
 function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder {
@@ -78,6 +80,7 @@ function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder 
     not: vi.fn(),
     neq: vi.fn(),
     rpc: vi.fn(),
+    ilike: vi.fn(),
     single: vi.fn().mockResolvedValue(result),
     maybeSingle: vi.fn().mockResolvedValue(result),
     then: vi.fn(promise.then.bind(promise)),
@@ -436,7 +439,7 @@ describe('FlashcardDeckService', () => {
       // owner + search filters are applied to both queries
       expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
-      const searchOr = 'name.ilike.%bio%,description.ilike.%bio%';
+      const searchOr = 'name.ilike."%bio%",description.ilike."%bio%"';
       expect(countQb.or).toHaveBeenCalledWith(searchOr);
       expect(pageQb.or).toHaveBeenCalledWith(searchOr);
       // cursor + limit only on the page query

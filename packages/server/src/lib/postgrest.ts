@@ -11,11 +11,11 @@ export interface FilterableBuilder<T> {
   neq(column: string, value: string): T;
   not(column: string, operator: string, value: string): T;
   in(column: string, values: readonly string[]): T;
+  ilike(column: string, pattern: string): T;
 }
 
-/** The same builder, for filters that also need `is`/`ilike`/`filter`. */
+/** The same builder, for filters that also need `is`/`filter`. */
 export interface FilterableBuilderWithExtra<T> extends FilterableBuilder<T> {
   is(column: string, value: boolean | null): T;
-  ilike(column: string, pattern: string): T;
   filter(column: string, operator: string, value: string): T;
 }

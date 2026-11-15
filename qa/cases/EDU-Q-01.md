@@ -51,11 +51,12 @@ version uses the case's own tenant and never the legacy accounts.
   pytanie”, and the empty row „Brak pytań w tym banku.”.
 - The `G2` student's `/app/questions` does not render the bank and
   `GET /api/v1/questions/banks/<id>` answers **404 NOT_FOUND**.
-- Toolbar: scope select with exactly „Wszystkie” / „Moje” (no „Grupy”, no
-  „Udostępnione”), one group multi-select with the „Dowolna grupa” placeholder and a
-  „Moje grupy” quick action. Selecting `G1` leaves only the `G1` bank; „Moje grupy”
-  selects `G1` + `G2` (both group banks, the personal one filtered out) and disables
-  itself; „Moje” keeps the educator's own banks and sends `owner=mine`.
+- Toolbar: one filter button named „Filtry”, whose rows are the dimensions „Moje” and
+  „Grupy” (no „Udostępnione”, no separate scope select). The „Grupy” row selects every
+  group the caller belongs to (`G1` + `G2` for this teacher, which filters out the personal
+  bank) and shows a „Grupy” chip; the groups themselves open in a panel beside the list,
+  where ticking `G1` leaves only the `G1` bank. „Moje” keeps the educator's own banks and
+  sends `owner=mine`.
 - The retired `groupFilter` scope is rejected: `GET /api/v1/questions/banks?groupFilter=mine`
   → 422 `UNPROCESSABLE_ENTITY` (it is not silently ignored).
 
@@ -64,10 +65,10 @@ version uses the case's own tenant and never the legacy accounts.
 1. Kliknij „Nowy bank”, nazwa „Fizyka”, opis opcjonalny, widoczność „Grupy” → O1G1.
 2. Zapisz.
 3. Sprawdź widok studenta1 (/app/questions).
-4. Na /edu/questions sprawdź filtr zakresu Wszystkie / Moje i filtr grup („Dowolna grupa” / „Moje grupy”).
+4. Na /edu/questions sprawdź przycisk „Filtry”: wymiar „Moje” i wymiar „Grupy” (grupy w panelu obok listy).
 
 ## Expected result
 
 - Toast „Bank pytań utworzony”; student1 widzi bank z etykietą „Podgląd banku”.
 - Student spoza grupy nie widzi banku.
-- Filtry banków: Wszystkie / Moje + multi-select grup; brak „Grupy” jako zakresu.
+- Filtry banków: jeden przycisk „Filtry” z wierszami „Moje” i „Grupy”; pojedyncza grupa wybrana w panelu zawęża listę; brak osobnego selecta zakresu.

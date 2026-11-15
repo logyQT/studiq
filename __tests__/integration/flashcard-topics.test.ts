@@ -16,8 +16,8 @@ import {
   DELETE as deleteFn,
   GET as getById,
   PUT as update,
-} from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
-import { GET, POST } from '@/app/(backend)/api/v1/flashcards/topics/route';
+} from '@/app/(backend)/api/v1/topics/[id]/route';
+import { GET, POST } from '@/app/(backend)/api/v1/topics/route';
 
 /** Fields of the topic payloads these tests read. */
 interface TopicPayload {
@@ -65,11 +65,11 @@ describe(`Flashcard Topics Integration`, () => {
     useRealSupabase();
   });
 
-  describe('POST /api/v1/flashcards/topics', () => {
+  describe('POST /api/v1/topics', () => {
     it('creates a topic and returns 201', async () => {
       mockUser(teacher.user);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+      const req = createNextRequest('http://localhost/api/v1/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'topic-Math Topics' }),
@@ -86,7 +86,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 422 when name is empty', async () => {
       mockUser(teacher.user);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+      const req = createNextRequest('http://localhost/api/v1/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '' }),
@@ -103,7 +103,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 422 when name is whitespace-only', async () => {
       mockUser(teacher.user);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+      const req = createNextRequest('http://localhost/api/v1/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '   ' }),
@@ -123,7 +123,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+      const req = createNextRequest('http://localhost/api/v1/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'topic-Math Topics' }),
@@ -137,11 +137,11 @@ describe(`Flashcard Topics Integration`, () => {
     });
   });
 
-  describe('GET /api/v1/flashcards/topics', () => {
+  describe('GET /api/v1/topics', () => {
     it('lists topics for user', async () => {
       mockUser(teacher.user);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
+      const req = createNextRequest('http://localhost/api/v1/topics');
       const response = await GET(req);
       const body = await json<TopicListPayload>(response);
 
@@ -153,7 +153,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
+      const req = createNextRequest('http://localhost/api/v1/topics');
       const response = await GET(req);
       const body = await json<ApiEnvelope>(response);
 
@@ -162,13 +162,13 @@ describe(`Flashcard Topics Integration`, () => {
     });
   });
 
-  describe('GET /api/v1/flashcards/topics/:id', () => {
+  describe('GET /api/v1/topics/:id', () => {
     it('returns topic when found', async () => {
       mockUser(teacher.user);
 
       const topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topicId}`,
+        `http://localhost/api/v1/topics/${topicId}`,
         { id: topicId },
       );
       const response = await getById(request, { params });
@@ -184,7 +184,7 @@ describe(`Flashcard Topics Integration`, () => {
 
       const fakeId = '00000000-0000-4000-8000-000000000099';
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${fakeId}`,
+        `http://localhost/api/v1/topics/${fakeId}`,
         { id: fakeId },
       );
       const response = await getById(request, { params });
@@ -195,13 +195,13 @@ describe(`Flashcard Topics Integration`, () => {
     });
   });
 
-  describe('PUT /api/v1/flashcards/topics/:id', () => {
+  describe('PUT /api/v1/topics/:id', () => {
     it('updates own topic and returns 200', async () => {
       mockUser(teacher.user);
 
       const topicId = requiredAt(teacher.created.topics, 1, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topicId}`,
+        `http://localhost/api/v1/topics/${topicId}`,
         { id: topicId },
         {
           method: 'PUT',
@@ -222,7 +222,7 @@ describe(`Flashcard Topics Integration`, () => {
 
       const topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topicId}`,
+        `http://localhost/api/v1/topics/${topicId}`,
         { id: topicId },
         {
           method: 'PUT',
@@ -242,7 +242,7 @@ describe(`Flashcard Topics Integration`, () => {
 
       const topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topicId}`,
+        `http://localhost/api/v1/topics/${topicId}`,
         { id: topicId },
         {
           method: 'PUT',
@@ -258,13 +258,13 @@ describe(`Flashcard Topics Integration`, () => {
     });
   });
 
-  describe('DELETE /api/v1/flashcards/topics/:id', () => {
+  describe('DELETE /api/v1/topics/:id', () => {
     it('deletes own topic and returns 200', async () => {
       mockUser(teacher.user);
 
       const topicId = requiredAt(teacher.created.topics, 2, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topicId}`,
+        `http://localhost/api/v1/topics/${topicId}`,
         { id: topicId },
         { method: 'DELETE' },
       );
@@ -280,7 +280,7 @@ describe(`Flashcard Topics Integration`, () => {
 
       const topicId = requiredAt(teacher.created.topics, 3, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topicId}`,
+        `http://localhost/api/v1/topics/${topicId}`,
         { id: topicId },
         { method: 'DELETE' },
       );

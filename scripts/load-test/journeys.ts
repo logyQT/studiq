@@ -148,7 +148,7 @@ const studentActions: Action[] = [
     name: 'topics.list',
     weight: 8,
     run: async (state) => {
-      const result = await state.client.get('/api/v1/flashcards/topics?limit=200', 'topics.list');
+      const result = await state.client.get('/api/v1/topics?limit=200', 'topics.list');
       remember(extractItems(result.body), state.topicIds);
       return result;
     },

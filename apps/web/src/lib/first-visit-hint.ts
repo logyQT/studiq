@@ -1,6 +1,7 @@
 /** The pages that show a first-visit tip; each has a `hint_<id>` message in `EmptyStates`. */
 export const FIRST_VISIT_HINTS = [
   'decks',
+  'topics',
   'question_banks',
   'edu_assignments',
   'app_assignments',

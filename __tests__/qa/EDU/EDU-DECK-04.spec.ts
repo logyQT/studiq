@@ -180,19 +180,16 @@ async function resetDecks(page: Page): Promise<void> {
 
 /** The tenant's topic, created once per tenant (a re-run reuses it). */
 async function ensureTopic(page: Page): Promise<TopicRow> {
-  const { items } = await getData<{ items: TopicRow[] }>(
-    page,
-    '/api/v1/flashcards/topics?limit=100',
-  );
+  const { items } = await getData<{ items: TopicRow[] }>(page, '/api/v1/topics?limit=100');
   const existing = items.find((row) => row.name === TOPIC_NAME);
   if (existing) return existing;
 
-  const response = await page.request.post('/api/v1/flashcards/topics', {
+  const response = await page.request.post('/api/v1/topics', {
     data: { name: TOPIC_NAME },
   });
   expect(
     response.status(),
-    `POST /api/v1/flashcards/topics → ${response.status()} ${await response.text()}`,
+    `POST /api/v1/topics → ${response.status()} ${await response.text()}`,
   ).toBe(201);
   return (await json<ApiEnvelope<TopicRow>>(response)).data;
 }

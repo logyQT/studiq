@@ -74,10 +74,9 @@ const COPY = {
   created: 'Bank pytań utworzony',
   manage: 'Zarządzaj',
   viewBank: 'Podgląd banku',
-  ownerAll: 'Wszystkie',
+  filters: 'Filtry',
   ownerMine: 'Moje',
-  groupAny: 'Dowolna grupa',
-  groupMine: 'Moje grupy',
+  groups: 'Grupy',
   bankDetailTitle: 'Pytania',
   readOnlyNotice: 'Podgląd banku. Pytania może dodawać i zmieniać tylko jego autor lub nauczyciel.',
   noQuestionsReadOnly: 'Brak pytań w tym banku.',
@@ -265,6 +264,23 @@ async function setGroupMembers(
  * pickers only when it has one), so both rosters are written here through the same
  * endpoint `/manage/groups` uses — tenant-local and idempotent.
  */
+/**
+ * Close the filter popover. The pointer has to leave the „Grupy” row first: while
+ * it rests there the hover flyout reopens after every Escape, and Escape is spent
+ * closing that layer instead of the popover.
+ */
+async function closeFilterPopover(page: Page): Promise<void> {
+  const content = page.locator('[data-slot="popover-content"]');
+  // The pointer has to leave the „Grupy” row first: while it rests there the hover
+  // flyout reopens after every Escape, and Escape is spent closing that layer.
+  await page.mouse.move(0, 0);
+  for (let attempt = 0; attempt < 3 && (await content.count()) > 0; attempt += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+  await expect(content).toHaveCount(0);
+}
+
 test.beforeEach(async ({ browser }) => {
   resolveTenant();
   const baseURL = process.env.QA_APP_URL ?? 'http://localhost:3010';
@@ -460,49 +476,42 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
       await expect(bankCard(page, name), `card "${name}" before filtering`).toBeVisible();
     }
 
-    // 4a. The scope select offers exactly „Wszystkie” / „Moje”. It is the first
-    // Radix `Select` of the toolbar (the second one is the sort select).
-    const ownerSelect = page.locator('[data-slot="select-trigger"]').first();
-    await expect(ownerSelect).toContainText(COPY.ownerAll);
-    await ownerSelect.click();
+    // 4a. One filter control holds every dimension; its accessible name stays
+    // „Filtry” while the chips carry the active filters.
+    const filters = page.getByRole('button', { name: COPY.filters, exact: true });
+    const filterRow = (name: string) => page.getByRole('option', { name, exact: true });
+    const groupRow = (name: string) =>
+      page.locator('[data-slot="hover-card-content"]').getByRole('button', { name, exact: true });
 
-    const ownerOptions = page.getByRole('option');
-    await expect(ownerOptions).toHaveCount(2);
-    await expect(ownerOptions.nth(0)).toHaveText(COPY.ownerAll);
-    await expect(ownerOptions.nth(1)).toHaveText(COPY.ownerMine);
-    // „Grupy” is a visibility, not a list scope, and the retired toggles must not return.
-    await expect(page.getByRole('option', { name: COPY.visibilityGroup, exact: true })).toHaveCount(
-      0,
-    );
-    await page.keyboard.press('Escape');
+    await expect(filters).toContainText(COPY.filters);
+    await filters.click();
 
-    // 4b. The group filter is one multi-select with both groups and a quick action.
-    const groupSelect = page.locator('button[role="combobox"]:not([data-slot="select-trigger"])');
-    await expect(groupSelect).toContainText(COPY.groupAny);
-    await groupSelect.click();
-    const groupFilterOptions = page.locator('[data-slot="popover-content"] [role="option"]');
-    await expect(groupFilterOptions).toHaveCount(2);
-    expect((await groupFilterOptions.allInnerTexts()).toSorted(), 'group filter options').toEqual([
-      GROUP_1,
-      GROUP_2,
-    ]);
-    await page.keyboard.press('Escape');
+    await expect(filterRow(COPY.ownerMine)).toBeVisible();
+    await expect(filterRow(COPY.ownerMine)).toHaveAttribute('aria-checked', 'false');
+    // „Grupy” here is the group dimension, not a visibility; the retired scope
+    // values must not come back as rows.
+    await expect(page.getByRole('option', { name: 'Udostępnione' })).toHaveCount(0);
+    await closeFilterPopover(page);
+
+    // 4b. The groups sit in the flyout beside the list, not in the list itself.
+    await filters.click();
+    const groupsRow = filterRow(COPY.groups);
+    await expect(groupsRow).toHaveAttribute('aria-checked', 'false');
+    await groupsRow.hover();
+    await expect(groupRow(GROUP_1)).toBeVisible();
+    await expect(groupRow(GROUP_2)).toBeVisible();
+    await closeFilterPopover(page);
     await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0);
-
-    const mineGroups = page.getByRole('button', { name: COPY.groupMine, exact: true });
-    await expect(mineGroups).toBeVisible();
-    await expect(mineGroups).toBeEnabled();
 
     // Picking only G1 keeps the G1 bank and drops the G2 and ungrouped ones.
-    await groupSelect.click();
-    await expect(page.getByRole('option', { name: GROUP_1, exact: true })).toBeVisible();
+    await filters.click();
+    await groupsRow.hover();
     const g1Request = bankListRequest(page, (params) => params.get('groups') === GROUP_1_ID);
-    await page.getByRole('option', { name: GROUP_1, exact: true }).click();
+    await groupRow(GROUP_1).click();
     await g1Request;
-    await page.keyboard.press('Escape');
-    await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0);
+    await closeFilterPopover(page);
 
-    await expect(groupSelect).toContainText(GROUP_1);
+    await expect(filters).toContainText(GROUP_1);
     await expect(bankCard(page, BANKS.group), 'the G1 bank').toBeVisible();
     await expect(
       bankCard(page, BANKS.secondGroup),
@@ -513,18 +522,19 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
       'an ungrouped bank is outside the filter',
     ).toHaveCount(0);
 
-    // „Moje grupy” selects G1 + G2: both group banks stay, the personal one does not.
+    // „Grupy” selects every group the caller is in: both group banks stay, the
+    // personal one does not.
     const bothGroups = [GROUP_1_ID, GROUP_2_ID].toSorted().join(',');
     const mineGroupsRequest = bankListRequest(
       page,
       (params) => (params.get('groups') ?? '').split(',').toSorted().join(',') === bothGroups,
     );
-    await mineGroups.click();
+    await filters.click();
+    await groupsRow.click();
     await mineGroupsRequest;
+    await closeFilterPopover(page);
 
-    await expect(mineGroups).toBeDisabled();
-    await expect(groupSelect).toContainText(GROUP_1);
-    await expect(groupSelect).toContainText(GROUP_2);
+    await expect(filters).toContainText(COPY.groups);
     await expect(bankCard(page, BANKS.group)).toBeVisible();
     await expect(bankCard(page, BANKS.secondGroup)).toBeVisible();
     await expect(bankCard(page, BANKS.personal)).toHaveCount(0);
@@ -532,11 +542,13 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     // „Moje” narrows the scope to the educator's own banks — all three are theirs,
     // so the group selection (and its result) stays while the request carries it.
     const mineRequest = bankListRequest(page, (params) => params.get('owner') === 'mine');
-    await ownerSelect.click();
-    await page.getByRole('option', { name: COPY.ownerMine, exact: true }).click();
+    await filters.click();
+    await filterRow(COPY.ownerMine).click();
     await mineRequest;
+    await closeFilterPopover(page);
 
-    await expect(ownerSelect).toContainText(COPY.ownerMine);
+    await expect(filters).toContainText(COPY.ownerMine);
+    await expect(filters).toContainText(COPY.groups);
     await expect(bankCard(page, BANKS.group)).toBeVisible();
     await expect(bankCard(page, BANKS.secondGroup)).toBeVisible();
     await expect(bankCard(page, BANKS.personal)).toHaveCount(0);

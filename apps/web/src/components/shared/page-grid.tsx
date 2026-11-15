@@ -1,3 +1,4 @@
+import { Card, Skeleton } from '@studiq/ui';
 import type { ReactNode, RefObject } from 'react';
 import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
 import type { ListEmptyView } from '@/lib/list-empty-view';
@@ -18,10 +19,16 @@ interface PageGridProps {
   isError?: boolean;
   onRetry?: () => void;
   /** When a search or filter hid every row, the grid names it instead of the collection copy. */
-  emptyView?: ListEmptyView;
-  onClearFilters?: () => void;
   children?: ReactNode;
 }
+
+/**
+ * The no-results state names the collection ("no banks found for …"), so a caller
+ * that offers a filter reset must also supply the noun.
+ */
+type NoResultsProps =
+  | { emptyView?: undefined; onClearFilters?: undefined; noResultsSubject?: undefined }
+  | { emptyView: ListEmptyView; onClearFilters: () => void; noResultsSubject: string };
 
 export function PageGrid({
   cols = 3,
@@ -38,9 +45,10 @@ export function PageGrid({
   isError,
   onRetry,
   emptyView,
+  noResultsSubject,
   onClearFilters,
   children,
-}: PageGridProps) {
+}: PageGridProps & NoResultsProps) {
   const gridCols =
     cols === 4
       ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
@@ -77,9 +85,10 @@ export function PageGrid({
       {loadMoreRef && <div ref={loadMoreRef} className="min-h-px" />}
       {isEmpty &&
         !isFetchingNextPage &&
-        (emptyView?.kind === 'no-results' && onClearFilters ? (
+        (emptyView?.kind === 'no-results' && onClearFilters && noResultsSubject ? (
           <NoResultsState
             query={emptyView.query}
+            subject={noResultsSubject}
             onClear={onClearFilters}
             className="col-span-full"
           />
@@ -92,5 +101,35 @@ export function PageGrid({
           />
         ))}
     </div>
+  );
+}
+
+/** Loading cell for a collection grid: icon, title and the card's description lines. */
+export function CollectionCardSkeleton() {
+  return (
+    <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
+      <div className="flex items-center gap-3 p-4 sm:hidden">
+        <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-3 w-1/4" />
+        </div>
+        <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+      </div>
+      <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-xl" />
+          <Skeleton className="h-6 w-3/4" />
+        </div>
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-4/5" />
+        </div>
+        <div className="flex items-center justify-between pt-4 mt-auto">
+          <Skeleton className="h-6 w-16 rounded-full" />
+          <Skeleton className="h-8 w-24 rounded-md" />
+        </div>
+      </div>
+    </Card>
   );
 }
