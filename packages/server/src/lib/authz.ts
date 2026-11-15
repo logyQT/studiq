@@ -271,29 +271,12 @@ export async function resolveGroupResourceIds(
         .eq('visibility', 'group');
       return [...new Set((sharedDecks ?? []).map((r) => r.id))];
     }
-    case 'flashcard': {
-      // Cards inherit the deck gate: a card is readable through a group only when its deck is.
-      const deckIds = await resolveGroupResourceIds('deck', groupIds);
-      if (deckIds.length === 0) return [];
-      const { data } = await supabase.from('flashcards').select('id').in('deck_id', deckIds);
-      return [...new Set((data ?? []).map((r) => r.id))];
-    }
     case 'question_bank': {
       const { data } = await supabase
         .from('bank_groups')
         .select('bank_id')
         .in('group_id', groupIds);
       return [...new Set((data ?? []).map((r) => r.bank_id))];
-    }
-    case 'question': {
-      const { data: banks } = await supabase
-        .from('bank_groups')
-        .select('bank_id')
-        .in('group_id', groupIds);
-      const bankIds = [...new Set((banks ?? []).map((r) => r.bank_id))];
-      if (bankIds.length === 0) return [];
-      const { data } = await supabase.from('questions').select('id').in('bank_id', bankIds);
-      return [...new Set((data ?? []).map((r) => r.id))];
     }
     case 'topic': {
       const { data } = await supabase
@@ -304,6 +287,28 @@ export async function resolveGroupResourceIds(
     }
     default:
       return [];
+  }
+}
+
+/**
+ * The rows of `resourceType` a group share link reaches, as a column of that resource's own
+ * table and the parents the column must be in. Cards and questions are reached through their
+ * deck and bank, so the filter names those parents: it stays as small as the number of shared
+ * decks and banks instead of growing with every card and question inside them (#1049). The
+ * filter ends up in the request URL, and PostgREST refuses one beyond ~15 KB (~390 ids).
+ */
+async function resolveGroupScope(
+  resourceType: ResourceType,
+  groupIds: string[],
+): Promise<{ column: 'id' | 'deck_id' | 'bank_id'; ids: string[] }> {
+  switch (resourceType) {
+    // A card is readable through a group only when its deck is (same gate as `deck`).
+    case 'flashcard':
+      return { column: 'deck_id', ids: await resolveGroupResourceIds('deck', groupIds) };
+    case 'question':
+      return { column: 'bank_id', ids: await resolveGroupResourceIds('question_bank', groupIds) };
+    default:
+      return { column: 'id', ids: await resolveGroupResourceIds(resourceType, groupIds) };
   }
 }
 
@@ -330,14 +335,14 @@ export async function accessibleFilter(
         return { organization_id: ctx.activeOrgId, created_by: ctx.userId };
       }
 
-      const resourceIds = await resolveGroupResourceIds(resourceType, ctx.groupIds);
-      if (resourceIds.length === 0) {
+      const { column, ids } = await resolveGroupScope(resourceType, ctx.groupIds);
+      if (ids.length === 0) {
         return { organization_id: ctx.activeOrgId, created_by: ctx.userId };
       }
 
       return {
         organization_id: ctx.activeOrgId,
-        or: `created_by.eq.${ctx.userId},id.in.(${resourceIds.join(',')})`,
+        or: `created_by.eq.${ctx.userId},${column}.in.(${ids.join(',')})`,
       };
     }
     default:
