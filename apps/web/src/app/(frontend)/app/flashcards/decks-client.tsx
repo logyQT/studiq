@@ -6,5 +6,5 @@ import { DeckManagementScreen } from '@/components/flashcards/screens/deck-manag
 export default function DecksClient() {
   const t = useTranslations('AppFlashcardDecksPage');
 
-  return <DeckManagementScreen apiBase="/api/v1/flashcards" basePath="/app/flashcards" t={t} />;
+  return <DeckManagementScreen basePath="/app/flashcards" t={t} />;
 }

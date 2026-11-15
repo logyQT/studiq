@@ -6,7 +6,5 @@ import { QuestionBankManagementScreen } from '@/components/questions/screens/que
 export default function AppBanksClient() {
   const t = useTranslations('QuestionBankManagement');
 
-  return (
-    <QuestionBankManagementScreen apiBase="/api/v1/questions" basePath="/app/questions" t={t} />
-  );
+  return <QuestionBankManagementScreen basePath="/app/questions" t={t} />;
 }

@@ -6,5 +6,5 @@ import { TopicManagementScreen } from '@/components/flashcards/screens/topic-man
 export default function EduTopicsClient() {
   const t = useTranslations('EduFlashcardTopicsPage');
 
-  return <TopicManagementScreen apiBase="/api/v1" t={t} />;
+  return <TopicManagementScreen t={t} />;
 }

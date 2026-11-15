@@ -96,8 +96,11 @@ export function PageGrid({
   );
 }
 
-/** Loading cell for a collection grid: icon + title + the description lines. */
-export function CollectionCardSkeleton() {
+/**
+ * Loading cell for a collection grid: icon + title, plus the description lines
+ * that the deck and question-bank cards carry and the topic card does not.
+ */
+export function CollectionCardSkeleton({ description = true }: { description?: boolean }) {
   return (
     <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
       <div className="flex items-center gap-3 p-4 sm:hidden">
@@ -113,10 +116,14 @@ export function CollectionCardSkeleton() {
           <Skeleton className="h-10 w-10 rounded-xl" />
           <Skeleton className="h-6 w-3/4" />
         </div>
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-4/5" />
-        </div>
+        {description ? (
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
         <div className="flex items-center justify-between pt-4 mt-auto">
           <Skeleton className="h-6 w-16 rounded-full" />
           <Skeleton className="h-8 w-24 rounded-md" />
