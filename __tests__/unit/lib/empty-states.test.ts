@@ -4,7 +4,6 @@ import { asJson } from '#test/helpers/json';
 import { describe, expect, it } from 'vitest';
 import { FIRST_VISIT_HINTS, hintStorageKey } from '@/lib/first-visit-hint';
 import { resolveListEmptyView } from '@/lib/list-empty-view';
-import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
 
 // #666: the list pages show one shared empty state and, on first visit, a dismissible tip.
 // A static guard keeps the lists on `EmptyState`, so a new list does not drift back to a bare
@@ -27,6 +26,7 @@ const LISTS_WITH_EMPTY_STATE = [
 /** The screens that show a first-visit tip, and the tip each one shows. */
 const HINT_SCREENS: Array<[string, string]> = [
   ['components/flashcards/screens/deck-management-screen.tsx', 'decks'],
+  ['components/flashcards/screens/topic-management-screen.tsx', 'topics'],
   ['components/questions/screens/question-bank-management-screen.tsx', 'question_banks'],
   ['app/(frontend)/edu/assignments/assignments-client.tsx', 'edu_assignments'],
   ['app/(frontend)/app/assignments/page.tsx', 'app_assignments'],
@@ -97,15 +97,17 @@ describe('lists report a failed load', () => {
     expect(code.indexOf('<ErrorState')).toBeLessThan(code.indexOf('<EmptyState'));
   });
 
-  it('the decks and topics grids get the failure and a retry through PageGrid', () => {
+  it('the shared collection frame hands the failure, the retry and the empty view to PageGrid', () => {
+    const frame = src('components/shared/collection-screen.tsx');
+    expect(frame).toContain('isError={screen.isError}');
+    expect(frame).toContain('onRetry={() => screen.refetch()}');
+    expect(frame).toContain('emptyView={screen.emptyView}');
+
     for (const file of [
       'components/flashcards/screens/deck-management-screen.tsx',
       'components/flashcards/screens/topic-management-screen.tsx',
     ]) {
-      const code = src(file);
-      expect(code).toContain('isError={isError}');
-      expect(code).toContain('onRetry={() => refetch()}');
-      expect(code).toContain('resolveListEmptyView(');
+      expect(src(file)).toContain('<CollectionScreen');
     }
   });
 
@@ -146,21 +148,12 @@ describe('resolveListEmptyView', () => {
       kind: 'no-results',
       query: 'algebra',
     });
+    // One active owner/group filter, no search text: name the filter, not a query.
     expect(resolveListEmptyView({ visibleCount: 0, activeFilters: 1 })).toEqual({
       kind: 'no-results',
       query: null,
     });
-  });
-
-  it('keeps the question-bank rule of #360 as a thin wrapper', () => {
-    expect(resolveQuestionBankEmptyView({ query: '', owner: 'all', groupIds: [] })).toEqual({
-      kind: 'collection-empty',
-    });
-    expect(resolveQuestionBankEmptyView({ query: ' x ', owner: 'all', groupIds: [] })).toEqual({
-      kind: 'no-results',
-      query: 'x',
-    });
-    expect(resolveQuestionBankEmptyView({ query: '', owner: 'mine', groupIds: [] })).toEqual({
+    expect(resolveListEmptyView({ visibleCount: 0, query: '   ', activeFilters: 2 })).toEqual({
       kind: 'no-results',
       query: null,
     });

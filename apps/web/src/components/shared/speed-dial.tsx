@@ -6,7 +6,7 @@ import { Plus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useState } from 'react';
 
-interface SpeedDialItem {
+export interface SpeedDialItem {
   icon: LucideIcon;
   label: string;
   onClick: () => void;

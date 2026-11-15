@@ -44,6 +44,56 @@ export function applyAccessFilter<T extends FilterableBuilder<T>>(
 }
 
 /**
+ * The filter composition every content list shares: RBAC scope, then an optional
+ * owner restriction, explicit group ids and a text search. The page query and its
+ * `total` count both go through it, so the two can never disagree about what the
+ * list contains.
+ */
+export interface ListFilterOptions {
+  userId: string;
+  /** The list's query params: paging plus the shared `owner`/`q` filters. */
+  params: (PageQueryParams & { owner?: string; q?: string }) | undefined;
+  groupIds?: string[];
+  /** Columns the search term is matched against with `ilike`. */
+  searchColumns?: readonly string[];
+}
+
+export function applyListFilters<T extends FilterableBuilder<T>>(
+  query: T,
+  filter: AccessFilter,
+  options: ListFilterOptions,
+): T {
+  let filtered = applyAccessFilter(query, filter);
+  if (options.params?.owner === 'mine') filtered = filtered.eq('created_by', options.userId);
+  if (options.groupIds) filtered = filtered.in('id', options.groupIds);
+  const search = options.params?.q;
+  if (search && options.searchColumns && options.searchColumns.length > 0) {
+    filtered = filtered.or(
+      options.searchColumns.map((column) => `${column}.ilike.%${search}%`).join(','),
+    );
+  }
+  return filtered;
+}
+
+/**
+ * Binds `applyListFilters` to one list's scope, so a service reads its filters as
+ * a single call instead of re-stating the same option bag in the page and count.
+ */
+export function listFilters(
+  filter: AccessFilter,
+  options: ListFilterOptions,
+): <T extends FilterableBuilder<T>>(q: T) => T {
+  return (q) => applyListFilters(q, filter, options);
+}
+
+/**
+ * The page a list returns when a filter cannot match anything (an explicit group
+ * the caller does not teach, an impossible RBAC scope). `total` is 0 for the same
+ * reason the rows are: nothing is visible.
+ */
+export const EMPTY_PAGE = { items: [], nextCursor: null, hasMore: false, total: 0 } as const;
+
+/**
  * Applies an opaque `(sortBy, id)` cursor. The strict `>` on the tie-breaker
  * makes the boundary row belong to the previous page only, so paging neither
  * repeats nor skips rows that share the sort value.
@@ -147,6 +197,27 @@ export async function readPage<TRow extends { id: string }, TItem>(
   const { data, error } = await query;
   if (error) return toDbFailure(error);
   return success(toPage(data, options));
+}
+
+export interface CountedPage<TItem> extends PaginatedResult<TItem> {
+  /** Rows matching the same filters as the page, ignoring the cursor. */
+  total: number;
+}
+
+/**
+ * Awaits a list page and its `total` count in parallel. Both queries must be
+ * built from the same filter function, so the count always describes the set the
+ * page was drawn from — a list that shows "3 decks" must not page through 2.
+ */
+export async function readPageWithTotal<TRow extends { id: string }, TItem>(
+  page: PromiseLike<{ data: TRow[] | null; error: PostgrestError | null }>,
+  count: PromiseLike<{ count: number | null; error: PostgrestError | null }>,
+  options: PageOptions<TRow, TItem>,
+): Promise<ServiceResult<CountedPage<TItem>>> {
+  const [{ data, error }, counted] = await Promise.all([page, count]);
+  if (error) return toDbFailure(error);
+  if (counted.error) return toDbFailure(counted.error);
+  return success({ ...toPage(data, options), total: counted.count ?? 0 });
 }
 
 /**

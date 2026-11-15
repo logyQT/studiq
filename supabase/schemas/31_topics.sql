@@ -16,7 +16,8 @@ CREATE TABLE public.topics (
                     to_tsvector('english', coalesce(name, '')) ||
                     to_tsvector('polish', coalesce(name, ''))
                   ) STORED,
-  created_at      timestamptz DEFAULT now()
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
 );
 
 CREATE INDEX idx_topics_search_vector ON public.topics USING GIN (search_vector);

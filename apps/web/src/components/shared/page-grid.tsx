@@ -19,10 +19,16 @@ interface PageGridProps {
   isError?: boolean;
   onRetry?: () => void;
   /** When a search or filter hid every row, the grid names it instead of the collection copy. */
-  emptyView?: ListEmptyView;
-  onClearFilters?: () => void;
   children?: ReactNode;
 }
+
+/**
+ * The no-results state names the collection ("no banks found for …"), so a caller
+ * that offers a filter reset must also supply the noun.
+ */
+type NoResultsProps =
+  | { emptyView?: undefined; onClearFilters?: undefined; noResultsSubject?: undefined }
+  | { emptyView: ListEmptyView; onClearFilters: () => void; noResultsSubject: string };
 
 export function PageGrid({
   cols = 3,
@@ -39,9 +45,10 @@ export function PageGrid({
   isError,
   onRetry,
   emptyView,
+  noResultsSubject,
   onClearFilters,
   children,
-}: PageGridProps) {
+}: PageGridProps & NoResultsProps) {
   const gridCols =
     cols === 4
       ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
@@ -78,9 +85,10 @@ export function PageGrid({
       {loadMoreRef && <div ref={loadMoreRef} className="min-h-px" />}
       {isEmpty &&
         !isFetchingNextPage &&
-        (emptyView?.kind === 'no-results' && onClearFilters ? (
+        (emptyView?.kind === 'no-results' && onClearFilters && noResultsSubject ? (
           <NoResultsState
             query={emptyView.query}
+            subject={noResultsSubject}
             onClear={onClearFilters}
             className="col-span-full"
           />
@@ -96,7 +104,7 @@ export function PageGrid({
   );
 }
 
-/** Loading cell for a collection grid: icon + title + the description lines. */
+/** Loading cell for a collection grid: icon, title and the card's description lines. */
 export function CollectionCardSkeleton() {
   return (
     <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">

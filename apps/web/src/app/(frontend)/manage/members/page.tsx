@@ -366,6 +366,7 @@ export default function MembersPage() {
                     <NoResultsState
                       compact
                       query={emptyView.query}
+                      subject={t('no_results_subject')}
                       onClear={() => {
                         setSearch('');
                         setFilterRole('all');

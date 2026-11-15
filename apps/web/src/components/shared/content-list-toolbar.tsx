@@ -11,12 +11,17 @@ import type { SortOption } from '@/lib/content-sort-options';
 interface ContentListToolbarProps {
   searchInput: string;
   onSearchChange: (value: string) => void;
+  /** Placeholder copy; defaults to the list's `search_placeholder` message. */
+  searchPlaceholder?: string;
   owner: string;
   onOwnerChange: (value: string) => void;
   groupIds: string[];
   onGroupIdsChange: (value: string[]) => void;
   groupOptions: GroupOption[];
+  /** The caller's own groups; the group trigger applies them in one click. */
   myGroupIds: string[];
+  /** One list-specific filter row, e.g. the deck "show suspended" toggle. */
+  filterExtra?: { label: string; checked: boolean; onToggle: () => void };
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
@@ -34,12 +39,14 @@ interface ContentListToolbarProps {
 export function ContentListToolbar({
   searchInput,
   onSearchChange,
+  searchPlaceholder,
   owner,
   onOwnerChange,
   groupIds,
   onGroupIdsChange,
   groupOptions,
   myGroupIds,
+  filterExtra,
   sortBy,
   sortOrder,
   onSortChange,
@@ -53,7 +60,7 @@ export function ContentListToolbar({
       search={{
         value: searchInput,
         onChange: onSearchChange,
-        placeholder: t('search_placeholder'),
+        placeholder: searchPlaceholder ?? t('search_placeholder'),
       }}
       actions={actions}
     >
@@ -64,6 +71,7 @@ export function ContentListToolbar({
         onGroupIdsChange={onGroupIdsChange}
         options={groupOptions}
         myGroupIds={myGroupIds}
+        extra={filterExtra}
         t={t}
       />
       <SortSelect

@@ -16,10 +16,12 @@ import type {
 } from '@studiq/server/models/flashcard-deck.model';
 import {
   applyAccessFilter,
+  EMPTY_PAGE,
+  listFilters,
   pageParams,
   pageQuery,
   pickDefined,
-  toPage,
+  readPageWithTotal,
 } from '@studiq/server/lib/query-list';
 import type { FilterableBuilder } from '@studiq/server/lib/postgrest';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
@@ -156,8 +158,7 @@ export class FlashcardDeckService {
     const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (isImpossibleFilter(filter))
-      return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
+    if (isImpossibleFilter(filter)) return success(EMPTY_PAGE);
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
     const includeSuspended = queryParams?.includeSuspended ?? false;
@@ -168,62 +169,45 @@ export class FlashcardDeckService {
     let groupIds: string[] | null = null;
     if (queryParams?.groups?.length) {
       groupIds = await resolveGroupResourceIds('deck', queryParams.groups);
-      if (groupIds.length === 0)
-        return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
+      if (groupIds.length === 0) return success(EMPTY_PAGE);
     }
 
-    // Every filter (RBAC, suspended, owner, group, search) lives here and is shared by the page
-    // query and the total-count query, so `total` always matches the visible set. The cursor and
-    // limit are applied to the page query only, which keeps `total` stable while paging.
+    const scoped = listFilters(filter, {
+      userId: ctx.userId,
+      params: queryParams,
+      groupIds: groupIds ?? undefined,
+      searchColumns: ['name', 'description'],
+    });
     const applyFilters = <T extends FilterableBuilder<T>>(q: T): T => {
-      let filtered = applyAccessFilter(q, filter);
-
+      const filtered = scoped(q);
       // Exclude suspended decks by default
-      if (!includeSuspended && suspendedIds.size > 0) {
-        filtered = filtered.not('id', 'in', `(${[...suspendedIds].join(',')})`);
-      }
-
-      if (queryParams?.owner === 'mine') {
-        filtered = filtered.eq('created_by', ctx.userId);
-      }
-
-      if (groupIds) filtered = filtered.in('id', groupIds);
-
-      if (queryParams?.q) {
-        filtered = filtered.or(
-          `name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`,
-        );
-      }
-      return filtered;
+      return !includeSuspended && suspendedIds.size > 0
+        ? filtered.not('id', 'in', `(${[...suspendedIds].join(',')})`)
+        : filtered;
     };
 
-    let query = applyFilters(
-      supabase
-        .from('flashcard_decks')
-        .select('*, flashcard_count:flashcards(count), deck_groups(group_id)'),
-    );
-    const countQuery = applyFilters(
-      supabase.from('flashcard_decks').select('id', { count: 'exact', head: true }),
-    );
-
     const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 24 });
-    query = pageQuery(query, paging);
 
-    const [{ data, error }, { count, error: countError }] = await Promise.all([query, countQuery]);
-    if (error) return toDbFailure(error);
-    if (countError) return toDbFailure(countError);
-
-    const page = toPage(data, {
-      ...paging,
-      map: (item) => ({
-        ...item,
-        flashcard_count: dbCount(item.flashcard_count),
-        groupIds: dbRows(item.deck_groups).map((g) => g.group_id),
-        suspended: suspendedIds.has(item.id),
-      }),
-    });
-
-    return success({ ...page, total: count ?? 0 });
+    return readPageWithTotal(
+      pageQuery(
+        applyFilters(
+          supabase
+            .from('flashcard_decks')
+            .select('*, flashcard_count:flashcards(count), deck_groups(group_id)'),
+        ),
+        paging,
+      ),
+      applyFilters(supabase.from('flashcard_decks').select('id', { count: 'exact', head: true })),
+      {
+        ...paging,
+        map: (item) => ({
+          ...item,
+          flashcard_count: dbCount(item.flashcard_count),
+          groupIds: dbRows(item.deck_groups).map((g) => g.group_id),
+          suspended: suspendedIds.has(item.id),
+        }),
+      },
+    );
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

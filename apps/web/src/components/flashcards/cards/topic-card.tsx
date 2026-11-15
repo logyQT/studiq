@@ -24,6 +24,8 @@ interface TopicCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onToggleSelect: () => void;
+  /** Enter selection mode; the menu also selects this card. */
+  onSelect: () => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -35,6 +37,7 @@ export function TopicCard({
   onEdit,
   onDelete,
   onToggleSelect,
+  onSelect,
   t,
 }: TopicCardProps) {
   const gradientHex = getGradientHex(topic.name);
@@ -198,7 +201,8 @@ export function TopicCard({
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
-                      // onSelect();
+                      onSelect();
+                      onToggleSelect();
                     }}
                   >
                     <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}

@@ -99,6 +99,8 @@ export function ErrorState({ onRetry, compact = false, className }: ErrorStatePr
 interface NoResultsStateProps {
   /** The active search text, if any; the copy names it. */
   query: string | null;
+  /** Plural noun for the collection, e.g. "banków" / "banks". */
+  subject: string;
   onClear: () => void;
   compact?: boolean;
   className?: string;
@@ -107,6 +109,7 @@ interface NoResultsStateProps {
 /** A search or filter hid every row: say so and offer to reset it, instead of "create one". */
 export function NoResultsState({
   query,
+  subject,
   onClear,
   compact = false,
   className,
@@ -116,7 +119,9 @@ export function NoResultsState({
   return (
     <EmptyState
       icon={SearchX}
-      title={query ? t('no_results_query', { query }) : t('no_results_filters')}
+      title={
+        query ? t('no_results_query', { subject, query }) : t('no_results_filters', { subject })
+      }
       compact={compact}
       className={className}
       action={

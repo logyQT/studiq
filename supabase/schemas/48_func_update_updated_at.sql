@@ -21,3 +21,8 @@ CREATE TRIGGER set_flashcard_decks_updated_at
   BEFORE UPDATE ON public.flashcard_decks
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER set_topics_updated_at
+  BEFORE UPDATE ON public.topics
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();

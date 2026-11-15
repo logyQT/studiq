@@ -402,37 +402,43 @@ describe('QuestionBankService', () => {
   });
 
   describe('list filters (#595)', () => {
-    it('resolves group ids through bank_groups and narrows the list query', async () => {
+    it('resolves group ids through bank_groups and narrows the page and its count', async () => {
+      const groupQb = qb([{ bank_id: 'b-1' }]);
       const pageQb = qb([{ id: 'b-1', name: 'Bank' }]);
-      mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
-      mock.from.mockReturnValueOnce(qb([{ bank_id: 'b-1' }])); // bank_groups
+      const countQb = qb(null, null, 1);
+      mock.from.mockReturnValueOnce(groupQb); // bank_groups
+      mock.from.mockReturnValueOnce(pageQb); // list page
+      mock.from.mockReturnValueOnce(countQb); // total count
 
       const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('bank_groups');
+      // Both queries carry the group filter, so `total` matches the visible set.
       expect(pageQb.in).toHaveBeenCalledWith('id', ['b-1']);
+      expect(countQb.in).toHaveBeenCalledWith('id', ['b-1']);
     });
 
-    it('returns an empty page without running the bank query when no bank matches the groups', async () => {
-      const pageQb = qb([]);
-      mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
-      mock.from.mockReturnValueOnce(qb([])); // bank_groups → no linked banks
+    it('returns an empty page with total 0 when no row matches the groups', async () => {
+      mock.from.mockReturnValueOnce(qb([])); // bank_groups → no linked rows
 
       const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
-      expect(pageQb.in).not.toHaveBeenCalled();
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false, total: 0 });
+      expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
     it('composes owner=mine with the RBAC filter and skips the group lookup', async () => {
       const pageQb = qb([]);
+      const countQb = qb(null, null, 0);
       mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
 
       await service.list(ctx, { owner: 'mine' });
 
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
     });
   });
