@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
-import type { PricingAudience } from '@/app/(frontend)/pricing/_components/audience-switch';
+import { connection } from 'next/server';
 import { PricingPageClient } from '@/app/(frontend)/pricing/_components/pricing-page-client';
 import { MarketingShell } from '@/components/layout/MarketingShell';
-
-type PricingSearchParams = Record<string, string | string[] | undefined>;
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
@@ -23,20 +21,19 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function PricingPage({
-  searchParams,
-}: {
-  searchParams: Promise<PricingSearchParams>;
-}) {
-  const { audience } = await searchParams;
-  // A query key can repeat; the switch only ever writes a single value.
-  const selected = Array.isArray(audience) ? audience[0] : audience;
-  const initialAudience: PricingAudience =
-    selected === 'organization' ? 'organization' : 'individual';
+export default async function PricingPage() {
+  /*
+   * The audience is read from the query string by the client switch, and a
+   * dynamic render is what lets that read answer during the server render too:
+   * a cold `?audience=organization` arrives with the organization ladder in the
+   * HTML instead of swapping after hydration. `connection()` is the request
+   * signal that keeps the route out of the prerender.
+   */
+  await connection();
 
   return (
     <MarketingShell>
-      <PricingPageClient initialAudience={initialAudience} />
+      <PricingPageClient />
     </MarketingShell>
   );
 }

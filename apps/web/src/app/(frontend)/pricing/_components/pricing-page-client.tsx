@@ -2,18 +2,19 @@
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import {
-  AudienceSwitch,
-  type PricingAudience,
-} from '@/app/(frontend)/pricing/_components/audience-switch';
+import { AudienceSwitch } from '@/app/(frontend)/pricing/_components/audience-switch';
 import {
   ComparisonTable,
   type PricingLadderKind,
 } from '@/app/(frontend)/pricing/_components/comparison-table';
 import { PlanRow } from '@/app/(frontend)/pricing/_components/plan-row';
+import {
+  AUDIENCE_HREF,
+  audienceFromParam,
+  type PricingAudience,
+} from '@/app/(frontend)/pricing/_components/pricing-audience';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
@@ -23,17 +24,19 @@ import { getPlanLadders } from '@/lib/pricing-ladders';
 /** The region the audience radios swap; the switch's `aria-controls` points here. */
 const PLANS_REGION_ID = 'pricing-plans';
 
-/** The audience lives in the URL so a shared link opens on the ladder it named. */
-const AUDIENCE_URL: Record<PricingAudience, string> = {
-  individual: '/pricing',
-  organization: '/pricing?audience=organization',
-};
-
-export function PricingPageClient({ initialAudience }: { initialAudience: PricingAudience }) {
+export function PricingPageClient() {
   const t = useTranslations('PricingPage');
   const router = useRouter();
-  const [audience, setAudience] = useState(initialAudience);
+  const searchParams = useSearchParams();
   const { user } = useAuth();
+
+  /*
+   * The URL is the audience. A local copy would keep rendering the ladder the
+   * reader left while the address said something else: Back from
+   * `?audience=organization` and the navbar's "Cennik" link both change the
+   * address without clicking the switch.
+   */
+  const audience = audienceFromParam(searchParams.get('audience'));
   const { activeOrg } = useOrgs();
 
   // One request: the catalogue is a flat list and `sort_order` spans all three
@@ -88,11 +91,10 @@ export function PricingPageClient({ initialAudience }: { initialAudience: Pricin
       ];
 
   function selectAudience(next: PricingAudience) {
-    if (next === audience) return;
-    // State first: the ladder swaps on the click, and the URL follows without
-    // scrolling the reader back to the top of the page.
-    setAudience(next);
-    router.replace(AUDIENCE_URL[next], { scroll: false });
+    // `replace`, not `push`: flipping between two audiences should not fill the
+    // Back stack. `scroll: false` keeps the reader at the switch rather than
+    // throwing them back to the hero.
+    router.replace(AUDIENCE_HREF[next], { scroll: false });
   }
 
   return (
