@@ -1,5 +1,6 @@
 import type { APIResponse, Browser, Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 import {
   expect,
   loadTenant,
@@ -254,7 +255,12 @@ async function createAssignmentAttempt(teacher: Page, student: Page): Promise<As
   const bankId = (await json<ApiEnvelope<{ id: string }>>(bank)).data!.id;
 
   const question = await teacher.request.post('/api/v1/questions', {
-    data: { bankId, content: `SEC-11 answer photo ${suffix}`, type: 'open' },
+    data: {
+      bankId,
+      content: `SEC-11 answer photo ${suffix}`,
+      type: 'open',
+      modelAnswer: FIXTURE_MODEL_ANSWER,
+    },
   });
   expect(question.status(), `POST /api/v1/questions → ${await question.text()}`).toBe(201);
   const questionId = (await json<ApiEnvelope<{ id: string }>>(question)).data!.id;

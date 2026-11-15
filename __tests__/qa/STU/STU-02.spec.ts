@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * STU-02 — Checklista „Pierwsze kroki” (student, `/app`).
@@ -358,6 +359,7 @@ test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', (
     await postData<{ id: string }>(page, '/api/v1/questions', {
       bankId: bank.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: QUIZ_CONTENT,
       answers: [
         { content: QUIZ_CORRECT, isCorrect: true, orderIndex: 0 },

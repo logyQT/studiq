@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-REP-01 — the educator's report inbox (`/edu/reports`).
@@ -182,6 +183,7 @@ async function ensureQuestion(page: Page, bankId: string): Promise<QuestionRow> 
     data: {
       bankId,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: QUESTION_CONTENT,
       answers: [
         { content: '4', isCorrect: true, orderIndex: 0 },

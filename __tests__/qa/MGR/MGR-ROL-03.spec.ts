@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * MGR-ROL-03 — the role permission editor (`/manage/roles` → „Uprawnienia roli”).
@@ -239,6 +240,7 @@ async function createContent(page: Page, tenant: QaTenant): Promise<CaseContent>
     postJson<QuestionRow>(page, '/api/v1/questions', {
       bankId,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: `${CONTENT_NAMES.bank[scope]}-question`,
       answers: [
         { content: 'correct', isCorrect: true },

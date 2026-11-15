@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
 
@@ -237,6 +238,7 @@ async function createQuestion(
     {
       bankId,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: questionContent,
       answers: [
         { content: 'Odpowiedź poprawna', isCorrect: true, orderIndex: 0 },

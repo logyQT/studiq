@@ -133,7 +133,9 @@ export class QuestionService {
         visibility,
         bank_id: data.bankId,
       })
-      .select()
+      // Explicit columns: `select()` means `*`, and `*` needs SELECT on `model_answer`, which
+      // `authenticated` does not have (#1173) — the insert would come back as a 403.
+      .select('id')
       .single();
 
     if (qError) return toDbFailure(qError);
@@ -277,6 +279,7 @@ export class QuestionService {
       return {
         ...question,
         explanation: key?.explanation ?? null,
+        model_answer: key?.modelAnswer ?? null,
         question_answers: question.question_answers.map((option) => ({
           ...option,
           is_correct: key?.correctOptionIds.includes(option.id) ?? false,
@@ -333,7 +336,8 @@ export class QuestionService {
     // .eq('organization_id', null) serialises to `eq.null` → 22P02 → 500 (#148).
     if (ctx.activeOrgId) updateQuery = updateQuery.eq('organization_id', ctx.activeOrgId);
 
-    const { data: question, error: qError } = await updateQuery.select().single();
+    // `select('id')` for the same reason as `create`: a bare `select()` is `*` (#1173).
+    const { data: question, error: qError } = await updateQuery.select('id').single();
 
     if (qError && qError.code !== 'PGRST116') return toDbFailure(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
@@ -408,7 +412,9 @@ export class QuestionService {
   ): Promise<number> {
     let query = supabase
       .from('questions')
-      .select('*', { count: 'exact', head: true })
+      // A `*` projection needs SELECT on every column, including the revoked `model_answer`
+      // (#1173); the count only needs a column the reader may see.
+      .select('id', { count: 'exact', head: true })
       .eq('created_by', ctx.userId)
       .neq('status', 'deleted');
 

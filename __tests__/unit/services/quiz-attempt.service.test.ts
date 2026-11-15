@@ -612,6 +612,7 @@ describe('QuizAttemptService', () => {
         {
           id: 'q-1',
           explanation: 'explanation-q-1',
+          model_answer: null,
           question_answers: [
             { id: 'ans-1', is_correct: true },
             { id: 'ans-2', is_correct: false },
@@ -962,7 +963,8 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).score).toBe(0);
+      // R16: an open item is ungraded, so a sheet of open items has no score at all.
+      expect(expectSuccess(result).score).toBeNull();
       expect(mock.rpc).toHaveBeenCalledWith('submit_quiz_attempt', {
         p_attempt_id: 'a-1',
         p_user_id: ctx.userId,

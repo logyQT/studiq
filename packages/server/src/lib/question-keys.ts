@@ -4,9 +4,13 @@ import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 
-/** One question's key: its explanation and the ids of its correct options. */
+/**
+ * One question's answer artefacts: the explanation of a choice item, the model answer of an open
+ * item, and the ids of the correct options.
+ */
 export interface QuestionKey {
   explanation: string | null;
+  modelAnswer: string | null;
   correctOptionIds: string[];
 }
 
@@ -54,7 +58,7 @@ export async function readQuestionKeys(ids: readonly string[]): Promise<Map<stri
   for (let i = 0; i < unique.length; i += KEY_BATCH_SIZE) {
     const batch = unique.slice(i, i + KEY_BATCH_SIZE);
     const [questions, options] = await Promise.all([
-      supabase.from('questions').select('id, explanation').in('id', batch),
+      supabase.from('questions').select('id, explanation, model_answer').in('id', batch),
       supabase
         .from('question_options')
         .select('id, question_id, is_correct')
@@ -65,7 +69,11 @@ export async function readQuestionKeys(ids: readonly string[]): Promise<Map<stri
     if (options.error) return mapSupabaseError(options.error);
 
     for (const question of dbRows(questions.data)) {
-      keys.set(question.id, { explanation: question.explanation, correctOptionIds: [] });
+      keys.set(question.id, {
+        explanation: question.explanation,
+        modelAnswer: question.model_answer,
+        correctOptionIds: [],
+      });
     }
     for (const option of dbRows(options.data)) {
       if (!option.is_correct || !option.question_id) continue;
@@ -77,9 +85,9 @@ export async function readQuestionKeys(ids: readonly string[]): Promise<Map<stri
 }
 
 /**
- * Adds the key and the explanation to a question the caller may read them for. Callers use it
- * only on staff/grading rows; a reader payload is never passed through here, so it keeps
- * neither field (absent, not null).
+ * Adds the key, the explanation and the model answer to a question the caller may read them for.
+ * Callers use it only on staff/grading rows; a reader payload is never passed through here, so it
+ * keeps none of the three fields (absent, not null).
  */
 export function withAnswerKey<
   O extends { id: string },
@@ -87,11 +95,16 @@ export function withAnswerKey<
 >(
   question: T,
   key: QuestionKey | undefined,
-): T & { explanation: string | null; question_answers: Array<O & { is_correct: boolean }> } {
+): T & {
+  explanation: string | null;
+  model_answer: string | null;
+  question_answers: Array<O & { is_correct: boolean }>;
+} {
   const correct = new Set(key?.correctOptionIds ?? []);
   return {
     ...question,
     explanation: key?.explanation ?? null,
+    model_answer: key?.modelAnswer ?? null,
     question_answers: (question.question_answers ?? []).map((option) => ({
       ...option,
       is_correct: correct.has(option.id),

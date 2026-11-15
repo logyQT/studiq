@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Locator, type Page } from '@playwright
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-ST-03 — Statystyki nauczyciela: „Aktywność” (`/edu/stats/activity`).
@@ -258,6 +259,7 @@ async function seedStudentActivity(
     const question = await postData<Question>(studentPage, '/api/v1/questions', {
       bankId: bank.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: QUESTION.content,
       answers: [
         { content: QUESTION.correct, isCorrect: true, orderIndex: 0 },
