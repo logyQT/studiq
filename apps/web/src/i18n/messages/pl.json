@@ -250,6 +250,9 @@
   "RegisterPage": {
     "header": "Utwórz konto",
     "sub_header": "Dołącz do StudiQ i rozpocznij naukę",
+    "aside_eyebrow": "Plan darmowy",
+    "aside_title": "Twoje materiały stają się ćwiczeniami",
+    "aside_lede": "Ucz się z tego, co dostajesz na zajęciach, a nie z gotowej talii dla wszystkich. Zacznij od planu darmowego.",
     "success_header": "Konto zostało utworzone",
     "success_description": "Prawie gotowe! Brakuje jeszcze tylko jednego kroku.",
     "name_label": "Imię i Nazwisko",
@@ -257,6 +260,7 @@
     "email_label": "Adres e-mail",
     "email_placeholder": "twoj@email.com",
     "password_label": "Hasło",
+    "password_hint": "Co najmniej 8 znaków, jedna wielka litera i jedna cyfra.",
     "register_button": "Zarejestruj się",
     "have_account": "Masz już konto?",
     "login_link": "Zaloguj się",

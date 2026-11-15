@@ -53,9 +53,10 @@ identity; the two accounts are created by the spec through `/register`:
 - `/register` is public for an anonymous visitor and titled „Utwórz konto”; the
   account-type control is a combobox labelled „Jestem” with exactly three options:
   „Uczniem”, „Nauczycielem”, „Menedżerem”.
-- Submitting returns `202` (`SUCCESS_ACTIVATION_LINK_SENT`) and swaps the card to
-  „Konto zostało utworzone” with „Link aktywacyjny został wysłany…” — no session is
-  created yet, the account waits for the mailed link.
+- Submitting returns `202` (`SUCCESS_ACTIVATION_LINK_SENT`) and replaces the form
+  with the success state: heading „Konto zostało utworzone” and
+  „Link aktywacyjny został wysłany…” — no session is created yet, the account waits
+  for the mailed link.
 - The confirmation mail points at `{{ .SiteURL }}/auth/callback?token_hash=…&type=signup&next=/login`
   (`http://localhost:3010`), and opening it verifies the address and signs the new
   user in.

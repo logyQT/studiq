@@ -52,10 +52,11 @@ The suite version uses the case's own tenant and never the legacy accounts.
   `ring-ring/50` ring; the two links fall back to the browser's 1 px `auto` outline.
 - Enter in the password field posts `/api/v1/auth/login` (200) and lands on the student
   dashboard — the form is submitted, not just a client-side validation pass.
-- `/register` tab order: name → e-mail → account type → password → „Zarejestruj się” →
-  „Zaloguj się”. The account type is a Radix listbox: Space opens it and focus lands on the
-  first option, Esc closes it without selecting and returns focus to the trigger, Space +
-  ArrowDown + Enter selects „Nauczycielem” (form value `educator`) and returns focus.
+- `/register` tab order: the panel's „StudiQ” wordmark → „Zaloguj się” → name → e-mail →
+  account type → password → „Zarejestruj się”. The account type is a Radix listbox: Space
+  opens it and focus lands on the first option, Esc closes it without selecting and returns
+  focus to the trigger, Space + ArrowDown + Enter selects „Nauczycielem” (form value
+  `educator`) and returns focus.
 - Enter in the register form submits it: with empty required fields the three validation
   messages (name, e-mail, password) render and the user stays on `/register` — no account is
   created.
@@ -72,9 +73,5 @@ The suite version uses the case's own tenant and never the legacy accounts.
     (`tabIndex={-1}`), so a keyboard-only user cannot reach the password-reset flow. The
     spec's order helper tolerates one extra tab stop, so it does not encode either the
     presence or the absence of that link.
-  - `FormControl` applies `aria-invalid` / `aria-describedby` to the wrapper `<div>` around
-    the input (the `<label for>` still points at the input itself), so the field's error is
-    not programmatically associated with the input. Screen-reader association, outside this
-    case's keyboard steps.
   - The dialog close button's accessible name is a hardcoded English „Close” (sr-only) in
     every locale; it is product chrome, not translated copy.

@@ -51,7 +51,7 @@ bookkeeping that gives the run a deterministic, isolated identity:
 
 ## Observed during the suite walk (qa-env-6, shared app 3010 / DB 54421)
 
-- `/register` is public and renders the Polish form by default: card title
+- `/register` is public and renders the Polish form by default: the page heading
   „Utwórz konto”, subtitle „Dołącz do StudiQ i rozpocznij naukę”, fields
   „Imię i Nazwisko”, „Adres e-mail”, „Jestem” (select: „Uczniem”,
   „Nauczycielem”, „Menedżerem”), „Hasło”, button „Zarejestruj się”.

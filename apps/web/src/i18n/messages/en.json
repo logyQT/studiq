@@ -209,6 +209,9 @@
   "RegisterPage": {
     "header": "Create an account",
     "sub_header": "Join StudiQ and start learning",
+    "aside_eyebrow": "Free plan",
+    "aside_title": "Your material becomes practice",
+    "aside_lede": "Study from what you are given in class, not from a ready-made deck built for everyone. Start on the free plan.",
     "success_header": "Account created",
     "success_description": "Almost there! Just one more step.",
     "name_label": "Full Name",
@@ -216,6 +219,7 @@
     "email_label": "Email address",
     "email_placeholder": "your@email.com",
     "password_label": "Password",
+    "password_hint": "At least 8 characters, one uppercase letter and one digit.",
     "register_button": "Sign up",
     "have_account": "Already have an account?",
     "login_link": "Log in",
