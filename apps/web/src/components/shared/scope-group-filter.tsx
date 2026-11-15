@@ -47,7 +47,13 @@ function FilterItem({
   onHover?: () => void;
 }) {
   return (
-    <CommandItem value={label} onSelect={onSelect} onMouseEnter={onHover} onFocus={onHover}>
+    <CommandItem
+      value={label}
+      onSelect={onSelect}
+      onMouseEnter={onHover}
+      onFocus={onHover}
+      className="rounded-none px-3 py-2"
+    >
       <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
       <span className="truncate">{label}</span>
     </CommandItem>
@@ -72,7 +78,7 @@ function SideItem({
       type="button"
       aria-pressed={checked}
       onClick={onSelect}
-      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
     >
       <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
       <span className="truncate">{label}</span>
@@ -163,12 +169,13 @@ export function ScopeGroupFilter({
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="w-56 p-0">
+      {/* `overflow-hidden` keeps the full-bleed row highlight inside the rounded corners. */}
+      <PopoverContent align="start" className="w-56 overflow-hidden p-0">
         <Command shouldFilter>
           <CommandInput value={search} onValueChange={setSearch} placeholder={t('filter_search')} />
           <CommandList>
             <CommandEmpty>{t('filter_empty')}</CommandEmpty>
-            <CommandGroup>
+            <CommandGroup className="p-0">
               <FilterItem
                 label={t('owner_mine')}
                 checked={mineActive}
@@ -200,7 +207,8 @@ export function ScopeGroupFilter({
                   <HoverCardContent
                     side="right"
                     align="start"
-                    className="max-h-72 w-48 overflow-y-auto p-1"
+                    sideOffset={6}
+                    className="max-h-72 w-48 overflow-y-auto p-0"
                   >
                     {visibleGroups.length === 0 ? (
                       <p className="px-2 py-1.5 text-sm text-muted-foreground">
