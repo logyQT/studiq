@@ -3063,6 +3063,8 @@
     "title": "Grade Question",
     "need_grading": "{count} student(s) need grading",
     "graded_points": "Graded: {points} pts",
+    "student_answer": "Student answer: {text}",
+    "no_answer": "No answer",
     "view_image": "View image",
     "points": "Points",
     "feedback": "Feedback",

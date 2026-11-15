@@ -765,13 +765,21 @@ export class TeacherAssignmentService {
     return success(null);
   }
 
+  /**
+   * The results list feeds two surfaces: the table, and the per-question grading
+   * view (`/edu/assignments/:id/results/question/:qId`), which grades every
+   * student's answer for one question. The answer rows therefore travel with the
+   * attempt, in the same shape `getStudentAnswers` returns (#1230).
+   */
   async getResults(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
     const { data: attempts, error } = await supabase
       .from('quiz_attempts')
-      .select('*, user:user_id(id, email, full_name)')
+      .select(
+        '*, user:user_id(id, email, full_name), quiz_answers:student_answers(*), assignment_answer_images(*)',
+      )
       .eq('assignment_id', id)
       .order('started_at', { ascending: false });
 

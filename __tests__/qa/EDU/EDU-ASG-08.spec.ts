@@ -64,6 +64,13 @@ const COPY = {
   pointsTooBig: 'Punkty nie mogą przekraczać 1',
   feedbackLabel: 'Informacja zwrotna',
   save: 'Zapisz ocenę',
+  /** The per-question surface (`/results/question/:qId`), reached by deep link. */
+  perQuestionTitle: 'Oceń pytanie',
+  perQuestionPoints: 'Punkty',
+  perQuestionGraded: 'Ocenione: 1 pkt',
+  perQuestionPending: '0 uczniów oczekuje na ocenę',
+  gradeFailed: 'Błąd oceniania',
+  errorBoundary: 'Oops! Something went wrong',
 } as const;
 
 /** 1×1 PNG — the smallest file the image bucket accepts (signature-sniffed). */
@@ -484,6 +491,82 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
       1,
     );
     expect(unchanged.score, 'the score is untouched by refused grades').toBe(2);
+
+    // ── Adjacent surface: the per-question deep link (#1230) ─────────────────
+    // One question across the class. The route has no in-app link, so it is
+    // reached by URL; it used to hit the error boundary because the results
+    // list it reads carried no answer rows at all.
+    const perQuestionPath = `/edu/assignments/${assignment.id}/results/question/${openQuestion.id}`;
+    await page.goto(perQuestionPath);
+    await expect(page).toHaveURL(new RegExp(`${perQuestionPath}$`));
+
+    await expect(
+      page.getByRole('heading', { name: COPY.perQuestionTitle, exact: true }),
+      'the grading form renders instead of the error screen',
+    ).toBeVisible();
+    await expect(page.getByText(COPY.errorBoundary, { exact: false })).toHaveCount(0);
+
+    const perQuestionCard = content(page).locator('div.rounded-lg.border');
+    await expect(perQuestionCard, 'one card per submitted attempt').toHaveCount(1);
+    await expect(
+      perQuestionCard.getByText(`${COPY.studentAnswer} ${openAnswerText}`, { exact: true }),
+      'the card carries the answer it grades',
+    ).toBeVisible();
+    await expect(
+      perQuestionCard.getByText(COPY.perQuestionGraded, { exact: true }),
+      'the card shows the grade stored by the per-attempt page',
+    ).toBeVisible();
+    await expect(perQuestionCard.getByText(COPY.perQuestionPoints, { exact: true })).toBeVisible();
+    await expect(perQuestionCard.getByText(COPY.feedbackLabel, { exact: true })).toBeVisible();
+    await expect(
+      content(page).getByText(COPY.perQuestionPending, { exact: true }),
+      'the header counts the graded attempt as done',
+    ).toBeVisible();
+    const backLink = page.getByRole('link', { name: COPY.backToResults });
+    await expect(backLink).toHaveAttribute('href', `/edu/assignments/${assignment.id}/results`);
+
+    // ── A failed save answers with the „Błąd oceniania” toast (#924/#1229) ───
+    const perQuestionPoints = perQuestionCard.locator('input[type="number"]');
+    const perQuestionFeedback = perQuestionCard.locator('textarea');
+    const perQuestionSave = perQuestionCard.getByRole('button', { name: COPY.save, exact: true });
+    const retryFeedback = `Poprawiona informacja zwrotna ${runTag}`;
+
+    await perQuestionPoints.fill('1');
+    await perQuestionFeedback.fill(retryFeedback);
+
+    let failNextSave = true;
+    await page.route(`**${gradingPath}`, async (route) => {
+      if (failNextSave && route.request().method() === 'PUT') {
+        failNextSave = false;
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, error: 'INTERNAL_SERVER' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await perQuestionSave.click();
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: COPY.gradeFailed }),
+      'a save the server refused is reported, not swallowed',
+    ).toBeVisible();
+
+    // The retry goes through and the stored feedback follows.
+    const retried = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' && new URL(response.url()).pathname === gradingPath,
+    );
+    await perQuestionSave.click();
+    expect((await retried).status(), 'the retried save').toBe(200);
+
+    const afterRetry = await getData<StudentAnswersPayload>(page, gradingPath);
+    expect(
+      afterRetry.quiz_answers.find((a) => a.question_id === openQuestion.id)?.teacher_feedback,
+      'the successful retry persists',
+    ).toBe(retryFeedback);
 
     expect(pageErrors, 'uncaught page errors in the teacher session').toEqual([]);
   });
