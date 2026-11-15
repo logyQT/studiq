@@ -15,6 +15,7 @@ import {
   audienceFromParam,
   type PricingAudience,
 } from '@/app/(frontend)/pricing/_components/pricing-audience';
+import { PricingFaq } from '@/app/(frontend)/pricing/_components/pricing-faq';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
@@ -29,6 +30,7 @@ export function PricingPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const { activeOrg } = useOrgs();
 
   /*
    * The URL is the audience. A local copy would keep rendering the ladder the
@@ -37,7 +39,6 @@ export function PricingPageClient() {
    * address without clicking the switch.
    */
   const audience = audienceFromParam(searchParams.get('audience'));
-  const { activeOrg } = useOrgs();
 
   // One request: the catalogue is a flat list and `sort_order` spans all three
   // ladders, so the page splits it rather than asking per audience.
@@ -102,12 +103,7 @@ export function PricingPageClient() {
       <section className="border-b border-primary pt-12 pb-12 md:pt-28 md:pb-20">
         <div className="mx-auto grid max-w-content gap-y-8 px-content lg:grid-cols-12 lg:gap-x-8 lg:gap-y-0">
           <div className="lg:col-span-7">
-            <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase">
-              {t('eyebrow')}
-            </p>
-            <h1 className="mt-3 font-display text-display font-semibold text-balance">
-              {t('title')}
-            </h1>
+            <h1 className="font-display text-display font-semibold text-balance">{t('title')}</h1>
             <p className="mt-4 max-w-xl text-lede text-muted-foreground text-pretty md:mt-6">
               {t('subtitle')}
             </p>
@@ -120,19 +116,20 @@ export function PricingPageClient() {
       </section>
 
       <div id={PLANS_REGION_ID}>
-        {isLoading ? (
-          <div className="mx-auto flex max-w-content justify-center px-content py-16 md:py-20">
-            <Loader2 aria-hidden className="size-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          sections.map((section) =>
-            section.plans.length > 0 ? (
-              <section key={section.kind} className="py-16 md:py-20">
-                <div className="mx-auto max-w-content px-content">
-                  <h2 className="font-display text-h2 font-semibold text-balance">
-                    {section.title}
-                  </h2>
-                  <p className="mt-3 max-w-xl text-sm text-muted-foreground">{section.lede}</p>
+        {sections.map((section) => (
+          <section key={section.kind} className="py-16 md:py-20">
+            <div className="mx-auto max-w-content px-content">
+              <h2 className="font-display text-h2 font-semibold text-balance">{section.title}</h2>
+              <p className="mt-3 max-w-xl text-sm text-muted-foreground">{section.lede}</p>
+
+              {isLoading ? (
+                // The ladder is named before its prices arrive, so the reader
+                // knows which list is loading rather than facing a bare hero.
+                <div className="mt-8 flex border-t border-border pt-8">
+                  <Loader2 aria-hidden className="size-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
                   <ul className="mt-8 border-t border-border">
                     {section.plans.map((plan) => (
                       <PlanRow
@@ -144,24 +141,33 @@ export function PricingPageClient() {
                       />
                     ))}
                   </ul>
-                  <ComparisonTable plans={section.plans} kind={section.kind} />
-                </div>
-              </section>
-            ) : null,
-          )
-        )}
+                  {section.plans.length > 1 ? (
+                    <ComparisonTable plans={section.plans} kind={section.kind} />
+                  ) : null}
+                </>
+              )}
+            </div>
+          </section>
+        ))}
+
+        <PricingFaq audience={audience} />
       </div>
 
-      <section className="border-t border-border py-16 md:py-20">
-        <div className="mx-auto flex max-w-content flex-col gap-6 px-content md:flex-row md:items-end md:justify-between md:gap-16">
-          <h2 className="max-w-xl font-display text-h2 font-semibold text-balance">
-            {organization ? t('close_org_line') : t('close_individual_line')}
-          </h2>
-          <CtaButton href={organization ? '/contact' : '/register'} tone="signal">
-            {organization ? t('close_org_cta') : t('cta_free')}
-          </CtaButton>
-        </div>
-      </section>
+      {user ? null : (
+        // A signed-in reader's action is the checkout in the row they want; a
+        // second call to sign up is a dead end. The band stays quiet so the
+        // recommended row keeps the page's one `signal` fill.
+        <section className="border-t border-border py-16 md:py-20">
+          <div className="mx-auto flex max-w-content flex-col gap-6 px-content md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="max-w-xl font-display text-h2 font-semibold text-balance">
+              {organization ? t('close_org_line') : t('close_individual_line')}
+            </h2>
+            <CtaButton href={organization ? '/contact' : '/register'} tone="quiet">
+              {organization ? t('close_org_cta') : t('cta_free')}
+            </CtaButton>
+          </div>
+        </section>
+      )}
     </>
   );
 }
