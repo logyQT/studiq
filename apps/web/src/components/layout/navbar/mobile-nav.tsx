@@ -65,8 +65,8 @@ const PANEL_ID = 'mobile-nav-panel';
  * they are and stay interactive for as long as the menu is open, because they
  * are how a visitor acts without navigating and how they leave. So the panel
  * owns only what belongs to the menu — the destinations, the preference row and,
- * signed out, the one primary action — and draws no chrome of its own. One
- * control closes it: this burger, which morphs into an X in place.
+ * signed out and below `sm`, the one primary action — and draws no chrome of its
+ * own. One control closes it: this burger, which morphs into an X in place.
  *
  * Signed in, the panel is the list plus the preference row: the account surface
  * (who you are, plan, account, payments, logout) is the header account mark's
@@ -151,8 +151,13 @@ export function MobileNav({ items, isActive, isLoggedIn, open, onOpenChange }: M
           </ul>
         </nav>
 
+        {/* Signed out, the header carries the auth pair from `sm` and this band
+            carries the same action below it. Hiding it at `sm` (band included,
+            not just the button) keeps one register action on screen: the header's
+            cobalt button from 640 up, this full-width one under that, where the
+            header has only the account mark and the burger. */}
         {isLoggedIn ? null : (
-          <div className="shrink-0 border-t border-input px-4 py-6">
+          <div className="shrink-0 border-t border-input px-4 py-6 sm:hidden">
             <CtaButton href="/register" size="lg" fullWidth onClick={close}>
               {t('register')}
             </CtaButton>
