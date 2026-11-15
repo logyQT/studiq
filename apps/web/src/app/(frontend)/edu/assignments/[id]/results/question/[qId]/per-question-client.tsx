@@ -18,14 +18,17 @@ interface ResultsData {
     id: string;
     full_name: string | null;
   } | null;
-  quiz_answers: Array<{
+  /**
+   * Optional on purpose: this is a wire payload, and an answer embed that stops
+   * arriving must leave an empty card, never crash the page (#1230).
+   */
+  quiz_answers?: Array<{
     question_id: string;
-    selected_answer_id: string | null;
-    is_correct: boolean;
+    text_answer: string | null;
     teacher_points: number | null;
     teacher_feedback: string | null;
   }>;
-  assignment_answer_images: Array<{
+  assignment_answer_images?: Array<{
     question_id: string;
     image_url: string;
   }>;
@@ -41,8 +44,12 @@ export default function PerQuestionGradingClient() {
     gradeMutation,
   } = usePerQuestionGrading<ResultsData[]>(id, t('grade_failed'));
 
-  const getSavedGrade = (studentId: string) =>
-    results?.find((r) => r.user_id === studentId)?.quiz_answers.find((a) => a.question_id === qId);
+  const attemptOf = (studentId: string) => results?.find((r) => r.user_id === studentId);
+
+  const answerOf = (attempt: ResultsData | undefined) =>
+    attempt?.quiz_answers?.find((a) => a.question_id === qId);
+
+  const getSavedGrade = (studentId: string) => answerOf(attemptOf(studentId));
 
   const getGrade = (studentId: string) =>
     resolveGradeDraft(getSavedGrade(studentId), grades[studentId]);
@@ -51,7 +58,7 @@ export default function PerQuestionGradingClient() {
     const g = getGrade(studentId);
     const points = parseGradePoints(g.points);
     // The grading route addresses an attempt; this view has no attempt dimension.
-    const attemptId = results?.find((r) => r.user_id === studentId)?.id;
+    const attemptId = attemptOf(studentId)?.id;
     if (points === null || !attemptId) return;
     try {
       await gradeMutation.mutateAsync({
@@ -65,12 +72,16 @@ export default function PerQuestionGradingClient() {
     }
   };
 
-  const getStudentAnswer = (studentId: string) => {
-    const attempt = results?.find((r) => r.user_id === studentId);
-    if (!attempt) return null;
-    const answer = attempt.quiz_answers.find((a) => a.question_id === qId);
-    const images = attempt.assignment_answer_images.filter((img) => img.question_id === qId);
-    return { answer, images, userName: attempt.user?.full_name ?? t('unknown') };
+  const getStudentAnswer = (attempt: ResultsData) => ({
+    answer: answerOf(attempt),
+    images: (attempt.assignment_answer_images ?? []).filter((img) => img.question_id === qId),
+    userName: attempt.user?.full_name ?? t('unknown'),
+  });
+
+  /** An attempt whose answer for this question is missing or still ungraded. */
+  const needsGrading = (attempt: ResultsData) => {
+    const points = answerOf(attempt)?.teacher_points;
+    return points === null || points === undefined;
   };
 
   if (isLoading) {
@@ -84,10 +95,7 @@ export default function PerQuestionGradingClient() {
     );
   }
 
-  const studentsWithOpen =
-    results?.filter((r) =>
-      r.quiz_answers.some((a) => a.question_id === qId && a.teacher_points === null),
-    ) ?? [];
+  const pending = results?.filter(needsGrading) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -104,27 +112,35 @@ export default function PerQuestionGradingClient() {
       <div className="sticky top-0 bg-background z-10 pb-4 border-b">
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">
-          {t('need_grading', { count: studentsWithOpen.length })}
+          {t('need_grading', { count: pending.length })}
         </p>
       </div>
 
       <div className="space-y-4">
         {results?.map((attempt) => {
-          const studentData = getStudentAnswer(attempt.user_id);
-          if (!studentData?.answer) return null;
+          const studentData = getStudentAnswer(attempt);
           const grade = getGrade(attempt.user_id);
           const isValidPoints = parseGradePoints(grade.points) !== null;
+          const gradedPoints = studentData.answer?.teacher_points ?? null;
 
           return (
             <div key={attempt.user_id} className="rounded-lg border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-sm">{studentData.userName}</p>
-                {studentData.answer.teacher_points !== null && (
+                {gradedPoints !== null && (
                   <span className="text-xs text-green-600 font-medium">
-                    {t('graded_points', { points: studentData.answer.teacher_points })}
+                    {t('graded_points', { points: gradedPoints })}
                   </span>
                 )}
               </div>
+
+              {studentData.answer?.text_answer ? (
+                <p className="text-sm">
+                  {t('student_answer', { text: studentData.answer.text_answer })}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('no_answer')}</p>
+              )}
 
               {studentData.images.length > 0 && (
                 <div className="flex flex-wrap gap-2">
