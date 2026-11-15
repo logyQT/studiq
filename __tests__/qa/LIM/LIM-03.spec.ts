@@ -22,7 +22,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * Walked on the shared app (pl) before writing this test:
  * - at the Base cap a further deck answers 429 `USAGE_LIMIT_EXCEEDED`, the
  *   create dialog stays open with an error toast (never a blank screen);
- * - buying Spark from `/pricing/student` ends on `/billing/success` and then
+ * - buying Spark from the student ladder of `/pricing` ends on `/billing/success` and then
  *   `/app`; `/api/v1/me/personal-plan` reports Spark with `max_decks: 50`,
  *   `/app/billing` shows „Maks. talie 50”, and the deck that was just refused is
  *   created without an error.
@@ -44,7 +44,7 @@ const CASE = 'LIM-03';
 const UI = {
   billingTitle: 'Rozliczenia',
   currentPlan: 'Aktualny plan',
-  pricingTitle: 'Wybierz Swój Plan',
+  pricingTitle: 'Wybierz swój plan',
   sparkName: 'StudiQ Spark',
   sparkCta: 'Przejdź na Spark',
   summary: 'Podsumowanie zamówienia',
@@ -222,12 +222,12 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
       'the refused deck is not in the list',
     ).toBe(false);
 
-    // --- Step 1 (BIL-03): buy Spark from /pricing/student ------------------
-    await page.goto('/pricing/student');
+    // --- Step 1 (BIL-03): buy Spark from the /pricing student ladder -------
+    await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
-    const sparkCard = page.locator('[data-slot="card"]').filter({ hasText: UI.sparkName });
-    await expect(sparkCard, 'one Spark plan card').toHaveCount(1);
-    await sparkCard.getByRole('button', { name: UI.sparkCta, exact: true }).click();
+    const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
+    await expect(sparkRow, 'one Spark plan row').toHaveCount(1);
+    await sparkRow.getByRole('button', { name: UI.sparkCta, exact: true }).click();
 
     await expect(page).toHaveURL(/\/checkout\?.*plan_id=spark/, { timeout: 20_000 });
     const summary = page.locator('[data-slot="card"]').filter({ hasText: UI.summary });
