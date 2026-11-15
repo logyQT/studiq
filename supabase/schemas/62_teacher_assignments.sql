@@ -62,6 +62,9 @@ CREATE TABLE public.assignment_questions (
   snapshot         jsonb,
   snapshot_key     jsonb,
   snapshot_version int,
+  -- Keep this item's key back from the cohort review until the teacher releases it (R10).
+  withhold_from_review boolean NOT NULL DEFAULT false,
+  released_at          timestamptz,
   UNIQUE (assignment_id, question_id)
 );
 

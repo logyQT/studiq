@@ -23,7 +23,8 @@ GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
   ON public.question_options TO authenticated;
 
 REVOKE SELECT ON public.assignment_questions FROM authenticated, anon;
-GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version)
+GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version,
+                withhold_from_review, released_at)
   ON public.assignment_questions TO authenticated;
 
 -- Read-only tables: written by the admin app (service role) and seeds (postgres).

@@ -121,6 +121,15 @@ export const PublishAssignmentSchema = registry.register(
 );
 export type PublishAssignmentInput = z.infer<typeof PublishAssignmentSchema>;
 
+export const WithholdItemSchema = registry.register(
+  'WithholdItemRequest',
+  z.object({
+    /** `true` holds the item back from the cohort review; `false` takes the hold off again. */
+    withheld: z.boolean({ error: ValidationErrorCode.BOOL }),
+  }),
+);
+export type WithholdItemInput = z.infer<typeof WithholdItemSchema>;
+
 /**
  * The publish preconditions, validated against the **stored** assessment plus the request's window.
  * Not registered: this is not a request contract, it is a server-side configuration check. Issues

@@ -367,12 +367,9 @@ export class TeacherAssignmentService {
    * close. Reopening is impossible by design; the repair path is a new assessment.
    */
   async close(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
-    if (!supabase) return failure('NOT_FOUND');
-
-    const loaded = await this.loadCloseWindow(supabase, id);
+    const loaded = await this.loadOwnedCloseWindow(id, ctx);
     if (isFailure(loaded)) return loaded;
-    const assignment = loaded.data;
+    const { supabase, run: assignment } = loaded.data;
 
     if (assignment.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
     if (assignment.closed_at) return failure('ASSESSMENT_CLOSED');
@@ -400,6 +397,70 @@ export class TeacherAssignmentService {
     if (isFailure(expired)) return expired;
 
     return success({ ...updated, expired_attempts: expired.data });
+  }
+
+  /**
+   * Holds one item back from the cohort review (R10). The decision belongs to the live window: after
+   * the close the cohort has already read the key, so hiding an item then would be an un-reveal
+   * (R20) — the only action left is `releaseItem`.
+   */
+  async setReviewHold(
+    id: string,
+    questionId: string,
+    withheld: boolean,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const loaded = await this.loadOwnedCloseWindow(id, ctx);
+    if (isFailure(loaded)) return loaded;
+    const { supabase, run } = loaded.data;
+
+    if (run.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
+    if (isAssessmentClosed(run)) return failure('ASSESSMENT_CLOSED');
+
+    const { data, error } = await supabase
+      .from('assignment_questions')
+      .update({ withhold_from_review: withheld, released_at: null })
+      .eq('assignment_id', id)
+      .eq('question_id', questionId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    return success({ withhold_from_review: withheld });
+  }
+
+  /**
+   * Releases a held-back item: it becomes visible in the review and practiceable again (R10).
+   * Releasing something that was never held back is a refusal, not a silent success.
+   */
+  async releaseItem(
+    id: string,
+    questionId: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
+
+    const { data: link, error } = await supabase
+      .from('assignment_questions')
+      .select('id, withhold_from_review, released_at')
+      .eq('assignment_id', id)
+      .eq('question_id', questionId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!link) return failure('NOT_FOUND');
+    if (!link.withhold_from_review || link.released_at) return failure('RELEASE_NOT_WITHHELD');
+
+    const releasedAt = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from('assignment_questions')
+      .update({ released_at: releasedAt })
+      .eq('id', link.id);
+
+    if (updateError) return toDbFailure(updateError);
+    return success({ released_at: releasedAt });
   }
 
   /**
@@ -1385,6 +1446,33 @@ export class TeacherAssignmentService {
     const supabase = await this.clientFactory();
     if (!(await this.verifyOwnership(id, ctx))) return null;
     return supabase;
+  }
+
+  /**
+   * The client and the window fields for an assessment the caller may write. Ownership is proved
+   * first (a foreign or missing id is `NOT_FOUND`), then the row the action decides on is read.
+   */
+  private async loadOwnedCloseWindow(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<
+    ServiceResult<{
+      supabase: SupabaseClient<Database>;
+      run: {
+        id: string;
+        status: string;
+        start_time: string | null;
+        deadline: string | null;
+        closed_at: string | null;
+      };
+    }>
+  > {
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
+
+    const loaded = await this.loadCloseWindow(supabase, id);
+    if (isFailure(loaded)) return loaded;
+    return success({ supabase, run: loaded.data });
   }
 
   /**

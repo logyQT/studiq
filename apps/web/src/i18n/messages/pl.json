@@ -34,7 +34,8 @@
     "ERROR_ASSESSMENT_CLOSED": "Ta kartkówka jest już zakończona.",
     "ERROR_ASSESSMENT_NOT_LIVE": "Zamknąć można tylko uruchomioną kartkówkę.",
     "ERROR_ASSESSMENT_NOT_PUBLISHED": "Ta kartkówka nie została jeszcze opublikowana.",
-    "ERROR_REVIEW_LOCKED": "Podsumowanie otwiera się po zakończeniu kartkówki."
+    "ERROR_REVIEW_LOCKED": "Podsumowanie otwiera się po zakończeniu kartkówki.",
+    "ERROR_RELEASE_NOT_WITHHELD": "To pytanie nie było wstrzymane przed podsumowaniem."
   },
   "EmptyStates": {
     "load_error": "Nie udało się wczytać listy",
@@ -2867,7 +2868,11 @@
     "closing": "Zamykanie...",
     "close_confirm_title": "Zakończyć tę kartkówkę teraz?",
     "close_confirm_desc": "Trwające próby zakończą się i nie będzie można ich wysłać, a odpowiedzi zostaną ujawnione całej klasie. Tej operacji nie można cofnąć.",
-    "close_failed": "Nie udało się zakończyć"
+    "close_failed": "Nie udało się zakończyć",
+    "held_back": "Wstrzymane przed podsumowaniem",
+    "hold_from_review": "Wstrzymaj przed podsumowaniem",
+    "released_to_review": "Udostępnione w podsumowaniu",
+    "release": "Udostępnij"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",

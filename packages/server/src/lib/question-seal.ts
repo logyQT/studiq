@@ -123,29 +123,39 @@ export async function sealedItemsFor(
   if (assignments.error) return mapSupabaseError(assignments.error);
 
   const windows = dbRows(assignments.data);
+  const started = (row: { start_time?: string | null }) =>
+    !row.start_time || now.getTime() >= new Date(row.start_time).getTime();
   const live = windows.filter((row) => isWindowOpen(row, now));
-  if (live.length === 0) return success(emptySeal());
+  // A run that has not opened yet holds nothing: withholding only keeps an item past its close.
+  const ended = windows.filter((row) => started(row) && !isWindowOpen(row, now));
+  if (live.length === 0 && ended.length === 0) return success(emptySeal());
 
   const links = await supabase
     .from('assignment_questions')
-    .select('assignment_id, question_id')
+    .select('assignment_id, question_id, withhold_from_review, released_at')
     .in(
       'assignment_id',
       windows.map((row) => row.id),
     );
   if (links.error) return mapSupabaseError(links.error);
 
+  const liveIds = new Set(live.map((row) => row.id));
   const closeByAssignment = new Map(live.map((row) => [row.id, effectiveCloseAt(row)]));
   const seal = emptySeal();
   for (const link of dbRows(links.data)) {
     if (!link.question_id || !link.assignment_id) continue;
+    const isLive = liveIds.has(link.assignment_id);
+    // A closed window no longer holds its items, except the ones held back from its review: those
+    // stay sealed until the teacher releases them, and then they have no date ("until released").
+    const heldBack = link.withhold_from_review && !link.released_at;
+    if (!isLive && !heldBack) continue;
 
     seal.ids.add(link.question_id);
     seal.closesAt.set(
       link.question_id,
       mergeClose(
         seal.closesAt.get(link.question_id),
-        closeByAssignment.get(link.assignment_id) ?? null,
+        isLive ? (closeByAssignment.get(link.assignment_id) ?? null) : null,
       ),
     );
   }
