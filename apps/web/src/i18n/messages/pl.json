@@ -3098,7 +3098,7 @@
     "attempts_left": "Pozostało prób: {left}/{total}",
     "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})",
     "results_hidden": "Podsumowanie niedostępne",
-    "attempt_expired": "Your attempt ended when the assessment closed and was not submitted.",
+    "attempt_expired": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
     "review_locked": "Podsumowanie otwiera się po zakończeniu kartkówki.",
     "review_available": "Kartkówka jest zakończona — możesz przejrzeć odpowiedzi."
   },
