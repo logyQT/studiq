@@ -42,9 +42,10 @@ export function PricingFaq({ audience }: { audience: PricingAudience }) {
         {/*
          * `forceMount` keeps every answer in the document, so the text is in the
          * server HTML for search engines and a reader without JavaScript. Radix
-         * then leaves the panel visible, which is why the row's own `data-state`
-         * closes it here: the item is the `group`, and a collapsed panel is
-         * `display: none` rather than unmounted.
+         * then leaves the panel mounted, which is why the panel's own
+         * `data-state` closes it here: a collapsed answer is `display: none`, so
+         * it leaves the layout and the accessibility tree (no four empty `region`
+         * landmarks) while its text stays in the HTML.
          */}
         <Accordion type="single" collapsible className="mt-6 border-t border-border">
           {QUESTIONS[audience].map(([question, answer], index) => {
@@ -54,13 +55,15 @@ export function PricingFaq({ audience }: { audience: PricingAudience }) {
             const panelId = `faq-panel-${audience}-${index}`;
 
             return (
-              <AccordionItem key={question} value={question} className="group border-border">
+              <AccordionItem key={question} value={question} className="border-border">
                 <AccordionTrigger
                   aria-controls={panelId}
                   className={cn(
                     // The question is the row: the primitive's header element is the
                     // `h3`, so the outline stays h2 → h3 without nesting a second one.
-                    'items-center gap-6 rounded-control py-5 text-left text-h3 font-semibold hover:no-underline',
+                    // `py-3.5` keeps the row above the 44px touch floor while the five
+                    // collapsed questions fit one phone screen (N-01, N-06).
+                    'items-center gap-6 rounded-control py-3.5 text-left text-h3 font-semibold hover:no-underline',
                     FOCUS_RING,
                   )}
                 >
@@ -69,7 +72,7 @@ export function PricingFaq({ audience }: { audience: PricingAudience }) {
                 <AccordionContent
                   id={panelId}
                   forceMount
-                  className="max-w-xl text-sm text-muted-foreground group-data-[state=closed]:hidden"
+                  className="max-w-xl text-sm text-muted-foreground data-[state=closed]:hidden"
                 >
                   {t(answer)}
                 </AccordionContent>
