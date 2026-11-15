@@ -6,6 +6,14 @@ import { useTranslations } from 'next-intl';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { LanguageSwitcher } from '@/components/shared/language-switcher/language-switcher';
 
+/**
+ * 44px tall on a phone, where a footer link measured 18px (#635's touch density
+ * applies to the footer too); from md the pointer is a mouse, so the column keeps
+ * the footer's compact rhythm and the `li` gap alone still governs the spacing.
+ */
+const FOOTER_LINK =
+  'inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground transition md:min-h-0';
+
 export function Footer() {
   const t = useTranslations('Footer');
 
@@ -29,18 +37,12 @@ export function Footer() {
             <h3 className="text-sm font-semibold mb-3">{t('product')}</h3>
             <ul className="space-y-2">
               <li>
-                <Link
-                  href="/features"
-                  className="text-sm text-muted-foreground hover:text-foreground transition"
-                >
+                <Link href="/features" className={FOOTER_LINK}>
                   {t('features')}
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/pricing"
-                  className="text-sm text-muted-foreground hover:text-foreground transition"
-                >
+                <Link href="/pricing" className={FOOTER_LINK}>
                   {t('pricing')}
                 </Link>
               </li>
@@ -52,10 +54,7 @@ export function Footer() {
             <h3 className="text-sm font-semibold mb-3">{t('company')}</h3>
             <ul className="space-y-2">
               <li>
-                <Link
-                  href="/contact"
-                  className="text-sm text-muted-foreground hover:text-foreground transition"
-                >
+                <Link href="/contact" className={FOOTER_LINK}>
                   {t('contact')}
                 </Link>
               </li>
@@ -67,18 +66,12 @@ export function Footer() {
             <h3 className="text-sm font-semibold mb-3">{t('legal')}</h3>
             <ul className="space-y-2">
               <li>
-                <Link
-                  href="/privacy"
-                  className="text-sm text-muted-foreground hover:text-foreground transition"
-                >
+                <Link href="/privacy" className={FOOTER_LINK}>
                   {t('privacy')}
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/terms"
-                  className="text-sm text-muted-foreground hover:text-foreground transition"
-                >
+                <Link href="/terms" className={FOOTER_LINK}>
                   {t('terms')}
                 </Link>
               </li>

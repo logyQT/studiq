@@ -3298,6 +3298,7 @@
     "label": "Motyw",
     "light": "Jasny",
     "system": "System",
+    "system_name": "Motyw: system",
     "dark": "Ciemny",
     "system_resolved": "System ({theme})",
     "resolved_light": "jasny",

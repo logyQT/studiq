@@ -12,6 +12,7 @@ import {
   PREFERENCE_GEOMETRY,
   SEGMENT_WIDTH,
 } from '@/components/shared/preference-controls';
+import { FOCUS_RING_WITHIN } from '@/components/shared/focus-ring';
 import { cn } from '@/lib/utils';
 
 const CHOICES = ['light', 'system', 'dark'] as const;
@@ -98,9 +99,11 @@ export function ThemeSwitch({ size = 'sm', className }: ThemeSwitchProps) {
     );
   }, [index]);
 
-  // `resolvedTheme` is unknown on the server — keep labels neutral until mounted (hydration-safe).
-  const label = (c: ThemeChoice) =>
-    c === 'system' && mounted ? t('system_resolved', { theme: t(`resolved_${resolved}`) }) : t(c);
+  // The accessible name must not follow the OS: "System (dark)" would rename
+  // itself when the visitor's system flips, and a name that changes under the
+  // thumb is unusable for anything that refers back to it. The resolved state is
+  // the thumb glyph plus the hint below.
+  const label = (c: ThemeChoice) => (c === 'system' ? t('system_name') : t(c));
 
   // The hint is written after the theme has resolved, so "System" names the real result.
   useEffect(() => {
@@ -171,7 +174,7 @@ export function ThemeSwitch({ size = 'sm', className }: ThemeSwitchProps) {
           // per-cell ring would sit on top of its neighbours. Selection and focus
           // coincide (roving tabindex), so the group ring is unambiguous — and
           // `has-[:focus-visible]` keeps it off after a pointer click.
-          'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background',
+          FOCUS_RING_WITHIN,
         )}
       >
         {index !== null && (
