@@ -4,7 +4,7 @@ import type { Flashcard } from '@studiq/server/models/flashcard.model';
 import type { Topic } from '@studiq/server/models/topic.model';
 import { Button } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { CheckCheck, CheckSquare, Plus, SquarePen, Tags } from 'lucide-react';
+import { CheckSquare, Plus, SquarePen, Tags } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { TopicCard } from '@/components/flashcards/cards/topic-card';
 import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialog';
 import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialog';
 import { CollectionScreen, useCollectionScreen } from '@/components/shared/collection-screen';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 import { CollectionCardSkeleton } from '@/components/shared/page-grid';
 import { apiGet } from '@/lib/api';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
@@ -37,7 +38,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     persistKey: 'topics_filters',
     queryKey: (filters, orgId) => topicKeys.paginated(filters, orgId),
     invalidateKeys: [topicKeys.all],
-    limit: 50,
   });
   const { create, update, selection, items } = screen;
 
@@ -98,36 +98,16 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     <CollectionScreen<Topic>
       t={t}
       screen={screen}
-      top={
-        selection.isSelecting &&
-        items.length > 0 && (
-          <div className="flex items-center gap-2 py-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={
-                selection.selectedIds.size === items.length
-                  ? selection.handleDeselectAll
-                  : () => selection.handleSelectAll(items.map((topic) => topic.id))
-              }
-            >
-              <CheckCheck className="mr-1.5 h-4 w-4" />
-              {selection.selectedIds.size === items.length ? t('deselect_all') : t('select_all')}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {t('n_selected', { count: selection.selectedIds.size })}
-            </span>
-          </div>
-        )
-      }
       actions={
         <Button className="justify-start" onClick={screen.openCreate}>
           <Plus className="h-4 w-4" /> {t('new_topic')}
         </Button>
       }
       searchPlaceholder={t('search_topics')}
-      skeleton={<CollectionCardSkeleton description={false} />}
-      skeletonCount={8}
+      countLabel={(total) => t('topics_count', { count: total })}
+      hint={<FirstVisitHint id="topics" />}
+      skeleton={<CollectionCardSkeleton />}
+      skeletonCount={12}
       emptyIcon={<Tags className="h-10 w-10 text-muted-foreground" />}
       emptyTitle={t('no_topics')}
       emptyAction={
@@ -135,7 +115,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
         </Button>
       }
-      onClearFilters={screen.clearFilters}
+      noResultsSubject={t('no_results_subject')}
       deleteLabels={{ title: t('delete_dialog_title'), description: t('delete_dialog_desc') }}
       deletedMessage={t('topic_deleted')}
       speedDialItems={[
@@ -152,6 +132,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           isSelected={selection.selectedIds.has(topic.id)}
           isSelecting={selection.isSelecting}
           onToggleSelect={() => selection.toggleSelect(topic.id)}
+          onSelect={() => selection.setIsSelecting(true)}
           onView={() => setViewTopicId(topic.id)}
           onEdit={() => openEdit(topic)}
           onDelete={() => screen.setDeleteId(topic.id)}

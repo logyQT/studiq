@@ -2,7 +2,7 @@
 
 import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import { Button } from '@studiq/ui';
-import { CheckSquare, Database, Plus, SearchX, SquarePen } from 'lucide-react';
+import { CheckSquare, Database, Plus, SquarePen } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { QuestionBankCard } from '@/components/questions/cards/question-bank-card';
@@ -75,9 +75,6 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     }
   }
 
-  // A filtered-empty grid names the filter and offers the reset, not "create your first bank".
-  const noResults = screen.emptyView.kind === 'no-results';
-
   return (
     <CollectionScreen<QuestionBank>
       t={t}
@@ -87,33 +84,17 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
           <Plus className="h-4 w-4" /> {t('new_bank')}
         </Button>
       }
+      countLabel={(total) => t('banks_count', { count: total })}
       hint={<FirstVisitHint id="question_banks" />}
       skeleton={<CollectionCardSkeleton />}
       skeletonCount={12}
-      emptyIcon={
-        noResults ? (
-          <SearchX className="h-10 w-10 text-muted-foreground" />
-        ) : (
-          <Database className="h-10 w-10 text-muted-foreground" />
-        )
-      }
-      emptyTitle={
-        noResults
-          ? screen.emptyView.kind === 'no-results' && screen.emptyView.query
-            ? t('no_banks_match', { query: screen.emptyView.query })
-            : t('no_banks_match_filters')
-          : t('no_banks')
-      }
+      noResultsSubject={t('no_results_subject')}
+      emptyIcon={<Database className="h-10 w-10 text-muted-foreground" />}
+      emptyTitle={t('no_banks')}
       emptyAction={
-        noResults ? (
-          <Button variant="outline" size="sm" onClick={screen.clearFilters}>
-            {t('clear_filters')}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={screen.openCreate}>
-            <Plus className="mr-1.5 h-4 w-4" /> {t('new_bank')}
-          </Button>
-        )
+        <Button variant="outline" size="sm" onClick={screen.openCreate}>
+          <Plus className="mr-1.5 h-4 w-4" /> {t('new_bank')}
+        </Button>
       }
       deleteLabels={{ title: t('delete_title'), description: t('delete_desc') }}
       deletedMessage={t('bank_deleted')}

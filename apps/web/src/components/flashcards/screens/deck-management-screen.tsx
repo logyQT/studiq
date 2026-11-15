@@ -184,7 +184,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
         </Button>
       }
-      onClearFilters={screen.clearFilters}
+      noResultsSubject={t('no_results_subject')}
       deleteLabels={{ title: t('delete_dialog_title'), description: t('delete_dialog_desc') }}
       deletedMessage={t('deck_deleted')}
       bulkActions={

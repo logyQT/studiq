@@ -18,10 +18,12 @@ import type {
 } from '@studiq/server/models/question-bank.model';
 import {
   applyAccessFilter,
+  EMPTY_PAGE,
+  listFilters,
   pageParams,
   pageQuery,
   pickDefined,
-  readPage,
+  readPageWithTotal,
 } from '@studiq/server/lib/query-list';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
@@ -97,38 +99,36 @@ export class QuestionBankService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
-    let query = applyAccessFilter(
-      supabase.from('question_banks').select('*, bank_groups(group_id)'),
-      filter,
-    );
-
-    if (queryParams?.owner === 'mine') {
-      query = query.eq('created_by', ctx.userId);
-    }
-
     // Explicit group filter (#595): an extra AND after RBAC, so an unknown/foreign group id
     // can only narrow the result — never widen it.
+    let groupBankIds: string[] | undefined;
     if (queryParams?.groups?.length) {
-      const groupBankIds = await resolveGroupResourceIds('question_bank', queryParams.groups);
-      if (groupBankIds.length === 0)
-        return success({ items: [], nextCursor: null, hasMore: false });
-      query = query.in('id', groupBankIds);
+      groupBankIds = await resolveGroupResourceIds('question_bank', queryParams.groups);
+      if (groupBankIds.length === 0) return success(EMPTY_PAGE);
     }
 
-    if (queryParams?.q) {
-      query = query.ilike('name', `%${queryParams.q}%`);
-    }
+    const applyFilters = listFilters(filter, {
+      userId: ctx.userId,
+      params: queryParams,
+      groupIds: groupBankIds,
+      searchColumns: ['name'],
+    });
 
     const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 24 });
-    query = pageQuery(query, paging);
-
-    const page = await readPage(query, {
-      ...paging,
-      map: (item) => ({
-        ...item,
-        groupIds: dbRows(item.bank_groups).map((g) => g.group_id),
-      }),
-    });
+    const page = await readPageWithTotal(
+      pageQuery(
+        applyFilters(supabase.from('question_banks').select('*, bank_groups(group_id)')),
+        paging,
+      ),
+      applyFilters(supabase.from('question_banks').select('id', { count: 'exact', head: true })),
+      {
+        ...paging,
+        map: (item) => ({
+          ...item,
+          groupIds: dbRows(item.bank_groups).map((g) => g.group_id),
+        }),
+      },
+    );
     if (isFailure(page)) return page;
 
     const counts = await this.questionCounts(page.data.items.map((item) => item.id));

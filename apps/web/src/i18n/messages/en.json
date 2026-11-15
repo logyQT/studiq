@@ -41,14 +41,15 @@
     "load_error": "The list could not be loaded",
     "load_error_desc": "Check your connection and try again.",
     "retry": "Try again",
-    "no_results_query": "No results for \"{query}\"",
-    "no_results_filters": "Nothing matches the current filters",
+    "no_results_query": "No {subject} found for \"{query}\"",
+    "no_results_filters": "No {subject} found for the selected filters",
     "clear_filters": "Clear filters",
     "hint_dismiss": "Dismiss the tip",
     "hint_decks": "A deck is a set of flashcards on one subject. Create a deck, add flashcards to it, then come back to them under Study on the review schedule.",
     "hint_question_banks": "A question bank groups the questions for quizzes and tests. Create a bank, add questions, then use them in a quiz.",
     "hint_edu_assignments": "An assignment is a test for chosen groups with a deadline and a time limit. Build it from bank questions, publish it, and the results show up here.",
-    "hint_app_assignments": "Quizzes and tests from your teachers show up here. Start them before the deadline: after it they can no longer be submitted."
+    "hint_app_assignments": "Quizzes and tests from your teachers show up here. Start them before the deadline: after it they can no longer be submitted.",
+    "hint_topics": "A topic groups flashcards and questions about one subject. Create a topic, assign material to it, then filter your lists by topic."
   },
   "A11y": {
     "remove_row": "Remove row {number}",
@@ -886,7 +887,8 @@
     "import_failed": "Import failed",
     "csv_map_required": "Please map both Front and Back columns",
     "csv_row": "Row",
-    "csv_error": "Error"
+    "csv_error": "Error",
+    "no_results_subject": "decks"
   },
   "EduDeckViewPage": {
     "back": "Back to Decks",
@@ -1108,7 +1110,9 @@
     "cancel_selection": "Cancel Selection",
     "select_all": "Select All",
     "deselect_all": "Deselect All",
-    "n_selected": "{count} selected"
+    "n_selected": "{count} selected",
+    "topics_count": "{count, plural, one {# topic} other {# topics}}",
+    "no_results_subject": "topics"
   },
   "EduStatsPage": {
     "title": "Statistics",
@@ -1209,7 +1213,8 @@
     "manage_groups": "Manage groups",
     "manage_groups_title": "Manage groups: {name}",
     "group_membership_updated": "Group memberships updated",
-    "group_membership_failed": "Failed to update group memberships"
+    "group_membership_failed": "Failed to update group memberships",
+    "no_results_subject": "members"
   },
   "ManageInvitationsPage": {
     "title": "Invitations",
@@ -1249,7 +1254,8 @@
     "no_invitations": "No invitations sent yet",
     "row_error_missing_email": "Row {row}: enter an email address.",
     "row_error_missing_role": "Row {row}: choose a role.",
-    "incomplete_rows": "Complete the rows: {rows}."
+    "incomplete_rows": "Complete the rows: {rows}.",
+    "no_results_subject": "invites"
   },
   "ManageGroupsPage": {
     "title": "Groups",
@@ -1695,7 +1701,9 @@
     "select_all": "Select All",
     "deselect_all": "Deselect All",
     "n_selected": "{count} selected",
-    "select_cards": "Select Cards"
+    "select_cards": "Select Cards",
+    "topics_count": "{count, plural, one {# topic} other {# topics}}",
+    "no_results_subject": "topics"
   },
   "StudyGoal": {
     "title": "Daily study goal",
@@ -2414,7 +2422,8 @@
     "groups_empty": "No groups found",
     "groups_required": "Select at least one group",
     "csv_parse_error": "Could not parse CSV file",
-    "csv_map_required": "Please map both Front and Back columns"
+    "csv_map_required": "Please map both Front and Back columns",
+    "no_results_subject": "decks"
   },
   "AiChatPage": {
     "title": "AI Assistant",
@@ -2608,7 +2617,12 @@
     "visibility_personal": "Only me",
     "visibility_group": "Groups",
     "groups_placeholder": "Select groups...",
-    "groups_empty": "No groups found"
+    "groups_empty": "No groups found",
+    "banks_count": "{count, plural, one {# bank} other {# banks}}",
+    "no_results_subject": "banks",
+    "select_all": "Select all",
+    "deselect_all": "Deselect all",
+    "n_selected": "{count} selected"
   },
   "QuestionTransfer": {
     "export_note": "Exporting saves the whole bank, answer key and explanations included, and is available to teaching staff only.",

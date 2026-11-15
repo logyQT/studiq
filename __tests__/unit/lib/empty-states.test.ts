@@ -26,6 +26,7 @@ const LISTS_WITH_EMPTY_STATE = [
 /** The screens that show a first-visit tip, and the tip each one shows. */
 const HINT_SCREENS: Array<[string, string]> = [
   ['components/flashcards/screens/deck-management-screen.tsx', 'decks'],
+  ['components/flashcards/screens/topic-management-screen.tsx', 'topics'],
   ['components/questions/screens/question-bank-management-screen.tsx', 'question_banks'],
   ['app/(frontend)/edu/assignments/assignments-client.tsx', 'edu_assignments'],
   ['app/(frontend)/app/assignments/page.tsx', 'app_assignments'],

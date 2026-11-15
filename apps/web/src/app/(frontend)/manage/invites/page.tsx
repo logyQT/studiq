@@ -437,7 +437,12 @@ export default function InvitationsPage() {
             <ErrorState compact onRetry={fetchInvitations} />
           ) : filteredInvitations.length === 0 ? (
             emptyView.kind === 'no-results' ? (
-              <NoResultsState compact query={emptyView.query} onClear={() => setSearchQuery('')} />
+              <NoResultsState
+                compact
+                query={emptyView.query}
+                subject={t('no_results_subject')}
+                onClear={() => setSearchQuery('')}
+              />
             ) : (
               <EmptyState compact icon={Mail} title={t('no_invitations')} />
             )

@@ -10,6 +10,7 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { ContentListToolbar } from '@/components/shared/content-list-toolbar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
+import { SelectAllRow } from '@/components/shared/select-all-row';
 import { SpeedDial, type SpeedDialItem } from '@/components/shared/speed-dial';
 import { isRecord, readString } from '@studiq/server/lib/record';
 import { useApiMutation } from '@/hooks/use-api';
@@ -387,8 +388,6 @@ interface CollectionScreenProps<T extends { id: string }> {
   searchPlaceholder?: string;
   /** Sort orders the collection supports; defaults to the shared content set. */
   sortOptions?: SortOption[];
-  /** Rendered above the toolbar, e.g. the "select all" row while selecting. */
-  top?: ReactNode;
   /** Total line above the grid; omit for collections that do not show one. */
   countLabel?: (total: number) => string;
   hint?: ReactNode;
@@ -397,8 +396,8 @@ interface CollectionScreenProps<T extends { id: string }> {
   emptyIcon: ReactNode;
   emptyTitle: string;
   emptyAction?: ReactNode;
-  /** Enables the shared "no results" state for a filtered-empty grid. */
-  onClearFilters?: () => void;
+  /** Plural noun for the collection, e.g. "talii" / "decks". */
+  noResultsSubject: string;
   renderCard: (item: T) => ReactNode;
   /** Copy for the delete confirmation, whose dialog the frame renders. */
   deleteLabels: { title: string; description: string };
@@ -425,7 +424,6 @@ export function CollectionScreen<T extends { id: string }>({
   toolbarExtra,
   searchPlaceholder,
   sortOptions,
-  top,
   countLabel,
   hint,
   skeleton,
@@ -433,7 +431,7 @@ export function CollectionScreen<T extends { id: string }>({
   emptyIcon,
   emptyTitle,
   emptyAction,
-  onClearFilters,
+  noResultsSubject,
   renderCard,
   deleteLabels,
   deletedMessage,
@@ -469,7 +467,15 @@ export function CollectionScreen<T extends { id: string }>({
 
   return (
     <div className="space-y-6">
-      {top}
+      {selection.isSelecting && screen.items.length > 0 && (
+        <SelectAllRow
+          t={t}
+          selectedCount={selection.selectedIds.size}
+          total={screen.items.length}
+          onSelectAll={() => selection.handleSelectAll(screen.items.map((item) => item.id))}
+          onDeselectAll={selection.handleDeselectAll}
+        />
+      )}
 
       <ContentListToolbar
         searchInput={screen.searchInput}
@@ -509,7 +515,8 @@ export function CollectionScreen<T extends { id: string }>({
         isError={screen.isError}
         onRetry={() => screen.refetch()}
         emptyView={screen.emptyView}
-        onClearFilters={onClearFilters}
+        onClearFilters={screen.clearFilters}
+        noResultsSubject={noResultsSubject}
         emptyIcon={emptyIcon}
         emptyTitle={emptyTitle}
         emptyAction={emptyAction}
