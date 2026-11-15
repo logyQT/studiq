@@ -72,11 +72,27 @@ function exportedHandlers(source: string): Handler[] {
   }));
 }
 
-/** The exported handlers of `source` that show no `withAuth(` of their own. */
+/** The exported handlers of `source` that show no gate of their own. */
 function ungatedHandlers(source: string): string[] {
   return exportedHandlers(source)
-    .filter((handler) => !handler.body.includes('withAuth('))
+    .filter((handler) => !isGated(handler.body))
     .map((handler) => handler.name);
+}
+
+/**
+ * Route helpers that call `withAuth()` themselves, mapped to the module that
+ * implements them. A handler built from one is gated even though the route file
+ * never names `withAuth`; the last test proves each entry really gates.
+ */
+const GATED_FACTORIES: Record<string, string> = {
+  batchActionRoute: 'packages/server/src/lib/batch-action-route.ts',
+};
+
+function isGated(body: string): boolean {
+  return (
+    body.includes('withAuth(') ||
+    Object.keys(GATED_FACTORIES).some((factory) => body.includes(`${factory}(`))
+  );
 }
 
 /** Every unprotected handler on a route outside `PUBLIC_API`, as `file (url) HANDLER`. */
@@ -127,6 +143,14 @@ describe('API auth inventory', () => {
       'Remove the rule: apps/web/src/proxy.ts returns before routeRules for /api/*, so it can never run.',
     ).toEqual([]);
   });
+
+  it('every gated factory really calls withAuth() in its own module', () => {
+    for (const [factory, file] of Object.entries(GATED_FACTORIES)) {
+      const source = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+      expect(source, `${file} is listed as a gated factory`).toContain(`function ${factory}(`);
+      expect(source, `${file} must wrap its handler in withAuth()`).toContain('withAuth(');
+    }
+  });
 });
 
 const GATED_PAIR = `
@@ -159,6 +183,18 @@ export async function GET() {
 }
 `;
 
+const FACTORY_GATED_ROUTE = `
+import { batchActionRoute } from '@studiq/server/lib/batch-action-route';
+
+export const POST = batchActionRoute({ delete: (body, ctx) => topics.batchDelete(body, ctx) });
+`;
+
+const UNKNOWN_FACTORY_ROUTE = `
+import { publicRoute } from '@studiq/server/lib/somewhere';
+
+export const GET = publicRoute({ list: () => [] });
+`;
+
 describe('ungatedHandlers()', () => {
   it('passes a file whose two handlers are both gated', () => {
     expect(ungatedHandlers(GATED_PAIR)).toEqual([]);
@@ -170,6 +206,14 @@ describe('ungatedHandlers()', () => {
 
   it('reports every handler of an ungated file', () => {
     expect(ungatedHandlers(UNGATED_ROUTE)).toEqual(['GET']);
+  });
+
+  it('treats a handler built from a declared gated factory as gated', () => {
+    expect(ungatedHandlers(FACTORY_GATED_ROUTE)).toEqual([]);
+  });
+
+  it('reports a handler built from a factory that is not known to gate', () => {
+    expect(ungatedHandlers(UNKNOWN_FACTORY_ROUTE)).toEqual(['GET']);
   });
 
   it('leaves a declared-public route alone', () => {
