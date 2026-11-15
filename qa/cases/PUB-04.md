@@ -48,8 +48,8 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 - Ceny zgodne z konfiguracją: Base 0 zł; Spark 9,99 zł; Ace 19,99 zł; Pro 39,99 zł /miesiąc (wartości wyświetlane z groszy: 999 → 9,99).
 - Funkcje: Base – Fiszki, Testy; Ace/Pro – dodatkowo Asystent AI i Zaawansowane Statystyki.
 - Limity wyświetlane czytelnie, „Bez ograniczeń” dla wartości -1.
-- CTA różni się per plan (np. „Zacznij za Darmo”, „Przejdź na Spark”, „Wybierz Ace”, „Wybierz Pro”).
-- Plan „Ace”/„Pro” ma wyróżnienie „Najpopularniejszy” (jeśli skonfigurowane).
+- CTA różni się per plan (np. „Zacznij za Darmo”, „Wybierz Spark”, „Wybierz Ace”, „Wybierz Pro”).
+- Plan „Ace”/„Pro” ma wyróżnienie „Zalecany” (jeśli skonfigurowane).
 
 ## Notatka z przejścia (QA-suite, 2026-10-28)
 
@@ -57,7 +57,7 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
   kartami (wiersze: Maks. fiszki, Maks. talie, Maks. pytania, Maks. banki pytań,
   Próby dziennie, Tokeny AI / dzień). Dla planu studenckiego tabela nie pokazuje limitów
   organizacyjnych (Maks. studentów, Maks. grup), bo nie dotyczą planu osobistego.
-- „Najpopularniejszy” ma zawsze plan Ace (stała per typ konta, nie pole w katalogu planów).
+- „Zalecany” ma zawsze plan Ace (stała per typ konta, nie pole w katalogu planów).
 - Ceny i funkcje są globalną konfiguracją planów, więc spec nie wpisuje ich na sztywno:
   pobiera katalog przez `GET /api/v1/subscription-plans?for=student` i sprawdza, że karty,
   tabela limitów i CTA renderują dokładnie tę konfigurację (grosze → zł, -1 → „Bez

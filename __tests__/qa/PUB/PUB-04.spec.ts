@@ -11,7 +11,7 @@ import { createTranslator } from 'next-intl';
  * audience of `/pricing` now prints the student ladder as a price list (one `<li>`
  * per plan with its `h3#<key>` handle), one differences-only comparison table below
  * it, and the FAQ. The case ID and its acceptance intent — every configured student
- * plan, its price, its limits and its CTA, with „Najpopularniejszy” on one plan —
+ * plan, its price, its limits and its CTA, with „Zalecany” on one plan —
  * are unchanged.
  *
  * Prerequisite "Brak sesji": the pricing page is public, so the spec runs with an
@@ -48,8 +48,8 @@ interface PlanInfo {
 /** The student ladder the public pricing page documents (`base` … `pro`). */
 const STUDENT_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
-/** The student plan highlighted as the popular one. */
-const POPULAR_PLAN = 'ace';
+/** The student plan the page recommends to this ladder. */
+const RECOMMENDED_PLAN = 'ace';
 
 /** The individual FAQ, in the order the page asks it. */
 const FAQ_PAIRS = [
@@ -269,10 +269,10 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
       await expect(cta).toHaveAttribute('href', '/register');
     }
 
-    // „Najpopularniejszy” marks exactly the documented popular plan, once.
-    await expect(ladder.getByText(copy('most_popular'), { exact: true })).toHaveCount(1);
+    // „Zalecany” marks exactly the documented recommended plan, once.
+    await expect(ladder.getByText(copy('recommended_badge'), { exact: true })).toHaveCount(1);
     await expect(
-      planRow(page, POPULAR_PLAN).getByText(copy('most_popular'), { exact: true }),
+      planRow(page, RECOMMENDED_PLAN).getByText(copy('recommended_badge'), { exact: true }),
     ).toBeVisible();
 
     // Step 3 — the differences-only comparison table for this ladder.
