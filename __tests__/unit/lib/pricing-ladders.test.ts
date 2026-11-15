@@ -122,6 +122,20 @@ describe('splitFeatureRows', () => {
   it('claims nothing as common when there are no plans', () => {
     expect(splitFeatureRows([])).toEqual({ common: [], differing: [] });
   });
+
+  it('leaves the org-admin role marker out of the comparison', () => {
+    // The seed maps `org.manage` to the free Launch plan only; printing it would
+    // make every paid organization plan look worse than the free one.
+    const ladder = [
+      plan('launch', 'manager', 1, { features: ['flashcards', 'org.manage'] }),
+      plan('team', 'manager', 2, { features: ['flashcards', 'documents'] }),
+    ];
+
+    const rows = splitFeatureRows(ladder);
+
+    expect(rows.common).toEqual(['flashcards']);
+    expect(rows.differing).toEqual(['documents']);
+  });
 });
 
 describe('splitLimitRows', () => {
