@@ -113,21 +113,37 @@ export async function resolveDbUrl(root: string): Promise<string | undefined> {
   const fromEnv = process.env.SUPABASE_DB_URL;
   if (fromEnv) return fromEnv;
 
-  const proc = Bun.spawn(['bunx', 'supabase', 'status', '--env'], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const out = await new Response(proc.stdout).text();
-  const code = await proc.exited;
-  if (code === 0) {
-    const url = parseStatusEnv(out);
-    if (url) return url;
-  }
+  const discovered = await statusDbUrl(root);
+  if (discovered) return discovered;
 
   try {
     return envFromValuesFile(root, 'SUPABASE_DB_URL');
   } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `DB_URL` from `bunx supabase status --env`, or `undefined` when the stack is
+ * down, the CLI reports nothing usable, or the launch itself fails.
+ *
+ * A launch failure is a real case, not a theoretical one: `Bun.spawn` throws
+ * synchronously when the executable is not on `PATH` (a script run without the
+ * repo's toolchain), and letting that reject would skip the caller's fallback
+ * entirely — `undefined` is the documented "discover nothing" answer.
+ */
+async function statusDbUrl(root: string): Promise<string | undefined> {
+  try {
+    const proc = Bun.spawn(['bunx', 'supabase', 'status', '--env'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const out = await new Response(proc.stdout).text();
+    const code = await proc.exited;
+    return code === 0 ? parseStatusEnv(out) : undefined;
+  } catch {
+    // Spawn failed (missing `bunx`, unreadable cwd) — fall through to the file.
     return undefined;
   }
 }

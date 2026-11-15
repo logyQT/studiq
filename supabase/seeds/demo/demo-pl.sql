@@ -9,7 +9,7 @@
 --
 -- What it creates: one self-contained demo tenant that looks like a real
 -- university using StudiQ — 11 accounts (1 manager, 2 educators, 8 students),
--- 2 groups, 3 topics, 5 decks (220 cards), 3 question banks (132 questions),
+-- 2 groups, 3 topics, 5 decks (200 cards), 3 question banks (132 questions),
 -- 4 quizzes, 3 published assignments, seat pools, and eight weeks of study
 -- history (reviews, sessions, quiz attempts) for the student the marketing
 -- screenshots log in as.
@@ -267,7 +267,7 @@ VALUES
 -- 3. Decks and flashcards
 --
 -- 80 curated cards (40 pharmacology, 40 physiology) distributed over five
--- decks of 44. Decks of one topic overlap deliberately — the same card can be
+-- decks of 40. Decks of one topic overlap deliberately — the same card can be
 -- taught in two pharmacology modules — while every deck is internally distinct.
 -- ----------------------------------------------------------
 CREATE TEMP TABLE demo_card_pool (genre text, ord int, front text, back text) ON COMMIT DROP;
@@ -402,7 +402,9 @@ FROM (VALUES
   ('e0000000-0000-4000-8006-000000000004'::uuid, 'phys',  0,  'e0000000-0000-4000-8001-000000000003'::uuid),
   ('e0000000-0000-4000-8006-000000000005'::uuid, 'phys',  14, 'e0000000-0000-4000-8001-000000000003'::uuid)
 ) AS d(deck_id, genre, win_start, author)
-CROSS JOIN LATERAL generate_series(1, 44) AS g(n)
+-- One slot per pool entry: 40 slots against the 40-card genre pool. A longer
+-- series would wrap the modulus and repeat a card inside the same deck.
+CROSS JOIN LATERAL generate_series(1, 40) AS g(n)
 JOIN demo_card_pool p
   ON p.genre = d.genre
  AND p.ord = ((d.win_start + g.n - 1) % 40) + 1;
@@ -1136,11 +1138,40 @@ VALUES (
   'e0000000-0000-4000-8000-000000000001'
 );
 
+-- The window starts past both pharmacology assignments' item ranges (slots
+-- 1–10 and 12–19): an open published run seals its items from students, so an
+-- attempt drawn from there would lose them and resume with almost no questions.
 INSERT INTO public.quiz_attempt_questions (attempt_id, question_id, order_index)
 SELECT 'e0000000-0000-4000-800b-000000000001', m.question_id, row_number() OVER (ORDER BY m.slot) - 1
 FROM demo_q_map m
 JOIN public.questions q ON q.id = m.question_id AND q.type <> 'open'
 WHERE m.bank_id = 'e0000000-0000-4000-8020-000000000001'
-  AND m.slot BETWEEN 5 AND 13;
+  AND m.slot BETWEEN 24 AND 32;
+
+-- The draft is written after the questions because it is read off them: the
+-- resume path keys `draft_answers` by question id and takes the option id from
+-- the same map, so a hand-written pair would be free to name a question this
+-- attempt does not ask, or an option another question owns.
+UPDATE public.quiz_attempts a
+SET draft_answers = COALESCE((
+  SELECT jsonb_object_agg(
+           q.question_id::text,
+           jsonb_build_object('selected_answer_id', q.option_id::text, 'text_answer', NULL::text)
+         )
+  FROM (
+    SELECT aq.question_id, o.id AS option_id
+    FROM public.quiz_attempt_questions aq
+    CROSS JOIN LATERAL (
+      SELECT id FROM public.question_options
+      WHERE question_id = aq.question_id
+      ORDER BY order_index
+      LIMIT 1
+    ) o
+    WHERE aq.attempt_id = a.id
+    ORDER BY aq.order_index
+    LIMIT 2
+  ) q
+), '{}'::jsonb)
+WHERE a.id = 'e0000000-0000-4000-800b-000000000001';
 
 COMMIT;
