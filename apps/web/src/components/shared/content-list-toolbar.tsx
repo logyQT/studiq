@@ -18,7 +18,6 @@ interface ContentListToolbarProps {
   groupIds: string[];
   onGroupIdsChange: (value: string[]) => void;
   groupOptions: GroupOption[];
-  myGroupIds: string[];
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
@@ -42,7 +41,6 @@ export function ContentListToolbar({
   groupIds,
   onGroupIdsChange,
   groupOptions,
-  myGroupIds,
   sortBy,
   sortOrder,
   onSortChange,
@@ -66,7 +64,6 @@ export function ContentListToolbar({
         groupIds={groupIds}
         onGroupIdsChange={onGroupIdsChange}
         options={groupOptions}
-        myGroupIds={myGroupIds}
         t={t}
       />
       <SortSelect
