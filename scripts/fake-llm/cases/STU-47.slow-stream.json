@@ -1,7 +1,7 @@
 {
   "key": "STU-47:slow-stream",
   "case": "STU-47",
-  "match": { "firstUserContains": "Opowiedz powoli o układzie krążenia", "hasTools": true },
+  "match": { "lastUserContains": "Opowiedz powoli o układzie krążenia", "hasTools": true },
   "turns": [
     {
       "content": [

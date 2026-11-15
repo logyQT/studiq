@@ -1,7 +1,7 @@
 {
   "key": "STU-48:disconnect",
   "case": "STU-48",
-  "match": { "firstUserContains": "Fiszki o planetach, zerwane połączenie", "hasTools": true },
+  "match": { "lastUserContains": "Fiszki o planetach, zerwane połączenie", "hasTools": true },
   "turns": [
     {
       "content": ["Zaczynam przygotowywać fiszki o ", "planetach Układu Słonecznego"],

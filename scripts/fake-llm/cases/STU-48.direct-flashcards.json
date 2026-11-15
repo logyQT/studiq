@@ -1,7 +1,7 @@
 {
   "key": "STU-48:direct-flashcards",
   "case": "STU-48",
-  "match": { "firstUserContains": "Stwórz 5 fiszek o układzie słonecznym", "hasTools": true },
+  "match": { "lastUserContains": "Stwórz 5 fiszek o układzie słonecznym", "hasTools": true },
   "turns": [
     {
       "toolCalls": [

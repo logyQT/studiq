@@ -1,7 +1,7 @@
 {
   "key": "STU-48:provider-error",
   "case": "STU-48",
-  "match": { "firstUserContains": "Fiszki o planetach, awaria dostawcy", "hasTools": true },
+  "match": { "lastUserContains": "Fiszki o planetach, awaria dostawcy", "hasTools": true },
   "turns": [
     {
       "http": {

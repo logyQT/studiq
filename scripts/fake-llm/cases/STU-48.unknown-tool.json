@@ -1,7 +1,7 @@
 {
   "key": "STU-48:unknown-tool",
   "case": "STU-48",
-  "match": { "firstUserContains": "Fiszki o planetach, nieznane narzędzie", "hasTools": true },
+  "match": { "lastUserContains": "Fiszki o planetach, nieznane narzędzie", "hasTools": true },
   "turns": [
     {
       "toolCalls": [

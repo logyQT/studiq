@@ -1,7 +1,7 @@
 {
   "key": "STU-48:truncated-args",
   "case": "STU-48",
-  "match": { "firstUserContains": "Fiszki o planetach, ucięte argumenty", "hasTools": true },
+  "match": { "lastUserContains": "Fiszki o planetach, ucięte argumenty", "hasTools": true },
   "turns": [
     {
       "toolCalls": [

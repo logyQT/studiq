@@ -2,7 +2,7 @@
   "key": "STU-48:mid-stream-error",
   "case": "STU-48",
   "match": {
-    "firstUserContains": "Fiszki o planetach, błąd w trakcie strumienia",
+    "lastUserContains": "Fiszki o planetach, błąd w trakcie strumienia",
     "hasTools": true
   },
   "turns": [
