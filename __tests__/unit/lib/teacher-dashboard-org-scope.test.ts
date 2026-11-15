@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(path, 'utf8');
 const stamp = read('supabase/migrations/20261028100000_activity_organization.sql');
 const rpcs = read('supabase/migrations/20261028100100_teacher_dashboard_rpcs.sql');
-const schema = read('supabase/schemas/99_rpc_functions.sql');
 
 describe('organization stamp of learner activity', () => {
   it('adds a nullable, indexed organization to attempts and reviews', () => {
@@ -46,36 +45,23 @@ describe('organization stamp of learner activity', () => {
   });
 
   it('recomputes the practice stamp and clears it when the snapshot is mixed', () => {
-    for (const copy of [stamp, read('supabase/schemas/68_activity_organization.sql')]) {
-      expect(copy).toContain('THEN MIN(q.organization_id::text)::uuid');
-      expect(copy).toContain('ELSE NULL');
-    }
+    expect(stamp).toContain('THEN MIN(q.organization_id::text)::uuid');
+    expect(stamp).toContain('ELSE NULL');
   });
 
   it('restamps when the owning resource changes and recomputes on every snapshot write', () => {
-    for (const copy of [stamp, read('supabase/schemas/68_activity_organization.sql')]) {
-      expect(copy).toContain('assignment_id IS DISTINCT FROM OLD.assignment_id');
-      expect(copy).toContain('flashcard_id IS DISTINCT FROM OLD.flashcard_id');
-      expect(copy).toContain('UPDATE OF organization_id, assignment_id');
-      expect(copy).toContain('UPDATE OF organization_id, flashcard_id');
-      for (const trigger of [
-        'quiz_attempt_questions_stamp_organization',
-        'quiz_attempt_questions_stamp_organization_update',
-        'quiz_attempt_questions_stamp_organization_delete',
-      ]) {
-        expect(copy).toContain(`CREATE TRIGGER ${trigger}`);
-      }
-      expect(copy).toContain('unnest(v_attempts)');
+    expect(stamp).toContain('assignment_id IS DISTINCT FROM OLD.assignment_id');
+    expect(stamp).toContain('flashcard_id IS DISTINCT FROM OLD.flashcard_id');
+    expect(stamp).toContain('UPDATE OF organization_id, assignment_id');
+    expect(stamp).toContain('UPDATE OF organization_id, flashcard_id');
+    for (const trigger of [
+      'quiz_attempt_questions_stamp_organization',
+      'quiz_attempt_questions_stamp_organization_update',
+      'quiz_attempt_questions_stamp_organization_delete',
+    ]) {
+      expect(stamp).toContain(`CREATE TRIGGER ${trigger}`);
     }
-  });
-
-  it('the declarative schema has the columns and the stamping functions', () => {
-    expect(read('supabase/schemas/39_quiz_attempts.sql')).toContain('organization_id');
-    expect(read('supabase/schemas/45_flashcard_practice.sql')).toContain('organization_id');
-    const functions = read('supabase/schemas/68_activity_organization.sql');
-    expect(functions).toContain('stamp_quiz_attempt_organization');
-    expect(functions).toContain('stamp_practice_attempt_organization');
-    expect(functions).toContain('stamp_flashcard_practice_organization');
+    expect(stamp).toContain('unnest(v_attempts)');
   });
 });
 
@@ -98,47 +84,30 @@ describe('dashboard aggregates', () => {
   });
 
   it('wait for a mark when an open answer or an open assignment question does', () => {
-    for (const copy of [rpcs, schema]) {
-      expect(copy).toContain('FROM public.assignment_questions aq');
-      expect(copy).toContain("CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END");
-      expect(copy).not.toContain('open_answers AS (');
-      // The assignment's open questions only count for THIS organization.
-      expect(copy.match(/JOIN public\.teacher_assignments assignment_org/g)).toHaveLength(2);
-      expect(copy.match(/AND assignment_org\.organization_id = p_organization_id/g)).toHaveLength(
-        2,
-      );
-    }
+    expect(rpcs).toContain('FROM public.assignment_questions aq');
+    expect(rpcs).toContain("CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END");
+    expect(rpcs).not.toContain('open_answers AS (');
+    // The assignment's open questions only count for THIS organization.
+    expect(rpcs.match(/JOIN public\.teacher_assignments assignment_org/g)).toHaveLength(2);
+    expect(rpcs.match(/AND assignment_org\.organization_id = p_organization_id/g)).toHaveLength(2);
   });
 
   it('only answers for an educator or manager, never a student', () => {
-    for (const copy of [rpcs, schema]) {
-      expect(copy).toContain("auth.jwt() -> 'app_metadata' ->> 'account_type'");
-      expect(copy).toContain("'educator', 'manager'");
-    }
-  });
-
-  it('the declarative copy is the same function text', () => {
-    expect(schema).toContain('AVG(ar.pct) FILTER (WHERE NOT ar.awaiting)');
-    expect(schema).toContain('qa.organization_id = p_organization_id');
-    expect(schema).not.toMatch(/^\$;$/m);
-    expect(schema).not.toMatch(/^AS \$$/m);
+    expect(rpcs).toContain("auth.jwt() -> 'app_metadata' ->> 'account_type'");
+    expect(rpcs).toContain("'educator', 'manager'");
   });
 
   it('never excerpts a reported question outside the reader scope', () => {
     // #654 review: `question_reports` RLS lets any member report a known question id, so the
     // SECURITY DEFINER feed must not read the excerpt of a question the caller cannot read.
-    for (const copy of [rpcs, schema]) {
-      expect(copy).toContain(
-        'AND (q.created_by = p_user_id OR q.organization_id = p_organization_id)',
-      );
-      expect(copy).not.toContain('LEFT JOIN public.questions q ON q.id = qr.question_id');
-      // ... nor surface a client-chosen reporter id as a foreign user's name.
-      expect(copy).toContain("auth.role() = 'service_role'");
-      expect(copy).toContain(
-        'OR p.id IN (SELECT c.user_id FROM public.rls_caller_org_user_ids() c)',
-      );
-      expect(copy).not.toContain('LEFT JOIN public.profiles p ON p.id = n.person_id');
-    }
+    expect(rpcs).toContain(
+      'AND (q.created_by = p_user_id OR q.organization_id = p_organization_id)',
+    );
+    expect(rpcs).not.toContain('LEFT JOIN public.questions q ON q.id = qr.question_id');
+    // ... nor surface a client-chosen reporter id as a foreign user's name.
+    expect(rpcs).toContain("auth.role() = 'service_role'");
+    expect(rpcs).toContain('OR p.id IN (SELECT c.user_id FROM public.rls_caller_org_user_ids() c)');
+    expect(rpcs).not.toContain('LEFT JOIN public.profiles p ON p.id = n.person_id');
   });
 });
 
@@ -211,15 +180,6 @@ describe('review round 2 (#654)', () => {
 
   it('names a practice quiz after its bank', () => {
     expect(rpcs).toContain("COALESCE(ta.title, qa.config->>'title', qb.name) AS title");
-  });
-
-  it('the declarative copies follow', () => {
-    expect(schema).toContain(
-      'ON ta.id = qa.assignment_id AND ta.organization_id = p_organization_id',
-    );
-    const functions = read('supabase/schemas/68_activity_organization.sql');
-    expect(functions).toContain('activity_stamp_client_write');
-    expect(functions).toContain('BEFORE INSERT OR UPDATE OF organization_id');
   });
 
   it('a question answered fewer than three times is no question to review', () => {

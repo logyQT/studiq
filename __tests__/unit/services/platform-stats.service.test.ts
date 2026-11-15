@@ -202,7 +202,7 @@ describe('stats review round (#663)', () => {
     );
   });
 
-  it('indexes what every page load scans, in the migration and the declarative schema', () => {
+  it('indexes what every page load scans', () => {
     const sql = read('supabase/migrations/20261027120000_admin_platform_stats.sql');
     for (const index of [
       'idx_user_daily_activity_date',
@@ -211,27 +211,12 @@ describe('stats review round (#663)', () => {
     ]) {
       expect(sql).toContain(index);
     }
-    expect(read('supabase/schemas/52_user_daily_activity.sql')).toContain(
-      'idx_user_daily_activity_date',
-    );
-    expect(read('supabase/schemas/39_quiz_attempts.sql')).toContain(
-      'idx_quiz_attempts_completed_at',
-    );
-    expect(read('supabase/schemas/47_flashcard_study_sessions.sql')).toContain(
-      'idx_flashcard_study_sessions_completed_at',
-    );
   });
 
   it('guards the storage size cast', () => {
     expect(read('supabase/migrations/20261027120000_admin_platform_stats.sql')).toContain(
       "metadata->>'size' ~ '^[0-9]{1,15}$'",
     );
-  });
-
-  it('keeps the declarative schema function bodies delimited', () => {
-    const schema = read('supabase/schemas/99_rpc_functions.sql');
-    expect(schema).not.toMatch(/^\$;$/m);
-    expect(schema).not.toMatch(/^AS \$$/m);
   });
 
   it('answers both aggregate routes with no-store', () => {

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The database is a PostgreSQL 17 instance managed by Supabase. Schema changes are versioned through SQL migration files, logical schema files are organized by domain in `supabase/schemas/`, and seed data lives in `supabase/seeds/`.
+The database is a PostgreSQL 17 instance managed by Supabase. Schema changes are versioned through SQL migration files in `supabase/migrations/`, and seed data lives in `supabase/seeds/`.
 
 ## Migration Workflow
 
@@ -75,40 +75,17 @@ the `DB_URL` extraction above with
 
 ## Schema Organization
 
-Migrations are timestamped SQL files containing incremental DDL changes. In addition, `supabase/schemas/` contains logically-organized schema files by domain:
+Migrations are the only definition of the schema. Every table, enum, function, trigger and policy lives in `supabase/migrations/`, which is what `supabase start`, `db reset`, `db push` and CI apply — there is no second copy to keep in step.
 
 ```
 supabase/
-├── migrations/              # Incremental, ordered by timestamp
-│   ├── 20260601064040_mig.sql
-│   ├── 20260601105712_univ_id_questions.sql
-│   ├── 20260603060842_flashcards_sm2.sql
-│   ├── 20260608063709_spaces-to-decks-rename.sql
-│   ├── 20260609065731_rbac_updated.sql
-│   ├── 20260610053450_orphan_flashcards_cleanup_function.sql
-│   └── z_realtime.sql
-└── schemas/                 # Logical groupings (selected domains)
-    ├── 00_enums.sql
-    ├── 01_config.sql
-    ├── 03_organizations.sql
-    ├── 04_profiles.sql
-    ├── 05_org_members.sql
-    ├── 07_invitations.sql
-    ├── 24_questions.sql
-    ├── 27_question_options.sql
-    ├── 30_flashcards.sql
-    ├── 31_topics.sql
-    ├── 34_flashcard_decks.sql
-    ├── 39_quiz_attempts.sql
-    ├── 42_student_answers.sql
-    ├── 45_flashcard_practice.sql
-    ├── 46_flashcard_review_state.sql
-    ├── 55_rbac_permissions.sql
-    ├── 56_org_roles.sql
-    ├── 65_payments.sql
-    ├── 66_billing.sql
-    └── 68_activity_organization.sql
+├── migrations/        # Timestamped DDL and data changes, applied in order
+├── seeds/             # Local seed data (plans, tenants, permissions, dev grants)
+├── templates/         # Auth e-mail templates
+└── config.toml        # Stack configuration
 ```
+
+A schema change is a migration. `config.toml` keeps `[db.migrations] schema_paths = []`, so no schema file is generated, ordered or diffed from a second source.
 
 ## Seed Data
 
@@ -154,24 +131,22 @@ repositories). Do not add a browser-side Supabase client for billing.
 
 ### Learning System
 
-| Table                         | Description                                  |
-| ----------------------------- | -------------------------------------------- |
-| `subjects`                    | Course subjects owned by users               |
-| `questions`                   | Questions with type, difficulty, and content |
-| `question_answers`            | Multiple choice answers for questions        |
-| `flashcards`                  | Flashcard content (front/back)               |
-| `flashcard_topics`            | Topic groupings for flashcards               |
-| `flashcard_decks`             | User-defined flashcard collections           |
-| `flashcard_topic_assignments` | Flashcard-to-topic relationships             |
-| `flashcard_deck_assignments`  | Flashcard-to-deck relationships              |
+| Table                         | Description                                       |
+| ----------------------------- | ------------------------------------------------- |
+| `topics`                      | Topic groupings for flashcards and question banks |
+| `questions`                   | Questions with type and content                   |
+| `question_options`            | Options (and match pairs) belonging to a question |
+| `flashcards`                  | Flashcard content (front/back)                    |
+| `flashcard_decks`             | User-defined flashcard collections                |
+| `flashcard_topic_assignments` | Flashcard-to-topic relationships                  |
 
 ### Quiz System
 
-| Table                    | Description                              |
-| ------------------------ | ---------------------------------------- |
-| `quiz_attempts`          | User quiz sessions                       |
-| `quiz_attempt_questions` | Questions within a quiz attempt          |
-| `quiz_answers`           | User's selected answers with correctness |
+| Table                    | Description                                   |
+| ------------------------ | --------------------------------------------- |
+| `quiz_attempts`          | User quiz sessions                            |
+| `quiz_attempt_questions` | Questions within a quiz attempt               |
+| `student_answers`        | The student's selected option and correctness |
 
 ### Practice Tracking
 
@@ -182,10 +157,10 @@ repositories). Do not add a browser-side Supabase client for billing.
 
 ### RBAC (Role-Based Access Control)
 
-| Table              | Description                                                        |
-| ------------------ | ------------------------------------------------------------------ |
-| `permissions`      | Static list of permission names (e.g. `flashcard.read`)            |
-| `role_permissions` | Maps roles to permissions with scopes (`own`, `university`, `any`) |
+| Table                  | Description                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `permissions`          | Static list of permission names (e.g. `flashcard.read`)                                      |
+| `org_role_permissions` | Maps an organization role to permissions with scopes (`own`, `group`, `organization`, `any`) |
 
 ## Database Access
 
