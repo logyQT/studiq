@@ -114,7 +114,7 @@ describe('QuizAttemptController', () => {
 
       const response = await controller.submit(
         {
-          answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001' }],
+          answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001', skipped: true }],
         },
         '550e8400-e29b-41d4-a716-446655440000',
         mockCtx,

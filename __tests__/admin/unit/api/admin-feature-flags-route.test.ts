@@ -20,7 +20,7 @@ const { DELETE, GET, PUT } = await import('@admin/app/(backend)/api/v1/feature-f
 
 const FLAG_ID = '334d8da1-1a77-4722-8d56-39d52f104ca4';
 
-function context(params: Record<string, string>) {
+function context(params: { id: string }) {
   return { params: Promise.resolve(params) };
 }
 

@@ -37,7 +37,7 @@ export class ActivityService {
       .eq('org_roles.name', 'member');
 
     if (memberError) return toDbFailure(memberError);
-    const studentIds = (studentMembers || []).map((m: { user_id: string }) => m.user_id);
+    const studentIds = studentMembers.map((m: { user_id: string }) => m.user_id);
     if (studentIds.length === 0) {
       return success({
         summary: this.emptySummary(),
@@ -48,16 +48,15 @@ export class ActivityService {
 
     const studentIdSet = studentIds;
 
-    const { data: profiles } = await supabase
+    const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .in('id', studentIds);
 
+    if (profilesError) return toDbFailure(profilesError);
+
     const profileMap = new Map(
-      (profiles || []).map((p: { id: string; email: string; full_name: string | null }) => [
-        p.id,
-        p,
-      ]),
+      profiles.map((p: { id: string; email: string; full_name: string | null }) => [p.id, p]),
     );
 
     const { data: activity } = await supabase
@@ -66,8 +65,8 @@ export class ActivityService {
         'user_id, date, reviews_count, reviews_correct, quizzes_count, quizzes_score, quizzes_total',
       )
       .in('user_id', studentIds)
-      .gte('date', prevRangeStart.toISOString().split('T')[0])
-      .lte('date', now.toISOString().split('T')[0]);
+      .gte('date', prevRangeStart.toISOString().slice(0, 10))
+      .lte('date', now.toISOString().slice(0, 10));
 
     const rows = (activity || []) as Array<{
       user_id: string;
@@ -168,7 +167,7 @@ export class ActivityService {
 
     const result: DailyActivityPoint[] = [];
     for (let i = rangeDays - 1; i >= 0; i--) {
-      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const entry = byDate.get(date);
       result.push({
         date,

@@ -10,6 +10,8 @@ CREATE TABLE public.questions (
   type            question_type NOT NULL DEFAULT 'mcq',
   content         text NOT NULL,
   explanation     text,
+  status          question_status NOT NULL DEFAULT 'open',
+  version         int NOT NULL DEFAULT 1,
   visibility      visibility_type NOT NULL DEFAULT 'personal',
   search_vector   tsvector
                   GENERATED ALWAYS AS (

@@ -19,6 +19,3 @@ export const RemoveMemberSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
   }),
 );
-
-export type ChangeRoleInput = z.infer<typeof ChangeRoleSchema>;
-export type RemoveMemberInput = z.infer<typeof RemoveMemberSchema>;

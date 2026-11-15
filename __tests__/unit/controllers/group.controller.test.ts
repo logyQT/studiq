@@ -91,8 +91,8 @@ describe('GroupController', () => {
       expect(response.statusCode).toBe(422);
       if (!response.success) {
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].path).toEqual(['name']);
-        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+        expect(response.details?.[0]?.path).toEqual(['name']);
+        expect(response.details?.[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       }
       expect(mockService.createGroup).not.toHaveBeenCalled();
     });
@@ -179,8 +179,8 @@ describe('GroupController', () => {
       expect(response.statusCode).toBe(422);
       if (!response.success) {
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].path).toEqual(['name']);
-        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+        expect(response.details?.[0]?.path).toEqual(['name']);
+        expect(response.details?.[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       }
       expect(mockService.updateGroup).not.toHaveBeenCalled();
     });

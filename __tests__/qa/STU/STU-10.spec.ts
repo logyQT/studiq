@@ -238,8 +238,6 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
       tenant.runSuffix,
       'seed with --fresh: every independent run owns a new tenant',
     ).toBeTruthy();
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
     expect(tenant.org, 'the student under test belongs to the tenant organization').toBeTruthy();
 
     // ── Precondition: a student on /app with no quiz of its own yet ─────────
@@ -264,9 +262,13 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
       QUESTION_COUNT,
     );
 
-    const firstSeed = seedFor(attempt.questions[0].content);
-    const secondSeed = seedFor(attempt.questions[1].content);
-    const thirdSeed = seedFor(attempt.questions[2].content);
+    const [firstQuestion, secondQuestion, thirdQuestion] = attempt.questions;
+    if (!firstQuestion || !secondQuestion || !thirdQuestion) {
+      throw new Error(`${CASE} the generated quiz served fewer than ${QUESTION_COUNT} questions`);
+    }
+    const firstSeed = seedFor(firstQuestion.content);
+    const secondSeed = seedFor(secondQuestion.content);
+    const thirdSeed = seedFor(thirdQuestion.content);
 
     await expect(page.getByText(`Pytanie 1 z ${QUESTION_COUNT}`, { exact: true })).toBeVisible();
     await expect(page.locator('[data-slot="card-title"]')).toHaveText(firstSeed.content);
@@ -284,11 +286,11 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
 
     // Both picks are autosaved to the attempt draft before leaving.
     const drafted = await getAttempt(page, attemptId);
-    expect(drafted.answers[attempt.questions[0].id]?.selected_answer_id).toBe(
-      attempt.questions[0].question_answers.find((option) => option.content === firstPick)!.id,
+    expect(drafted.answers[firstQuestion.id]?.selected_answer_id).toBe(
+      firstQuestion.question_answers.find((option) => option.content === firstPick)!.id,
     );
-    expect(drafted.answers[attempt.questions[1].id]?.selected_answer_id).toBe(
-      attempt.questions[1].question_answers.find((option) => option.content === secondPick)!.id,
+    expect(drafted.answers[secondQuestion.id]?.selected_answer_id).toBe(
+      secondQuestion.question_answers.find((option) => option.content === secondPick)!.id,
     );
 
     // ── Step 1–2: leave the quiz and read the banner ───────────────────────
@@ -335,8 +337,8 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
     await expect(banner, 'the unfinished quiz is still offered').toHaveCount(1);
     const stillOpen = await getAttempt(page, attemptId);
     expect(stillOpen.completed_at, '„Anuluj” leaves the attempt open').toBeNull();
-    expect(stillOpen.answers[attempt.questions[0].id]?.selected_answer_id).toBe(
-      drafted.answers[attempt.questions[0].id]?.selected_answer_id,
+    expect(stillOpen.answers[firstQuestion.id]?.selected_answer_id).toBe(
+      drafted.answers[firstQuestion.id]?.selected_answer_id,
     );
 
     // ── Adjacent regression: a submitted quiz no longer looks unfinished ───

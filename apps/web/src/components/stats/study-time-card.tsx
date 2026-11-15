@@ -41,6 +41,7 @@ export function StudyTimeCard() {
     minutes: Math.round(ms / 60000),
   }));
   const busiest = time ? busiestWeekday(time.byWeekday) : null;
+  const busiestDay = busiest === null ? null : (longNames[busiest] ?? null);
 
   return (
     <Card>
@@ -118,9 +119,9 @@ export function StudyTimeCard() {
                 </BarChart>
               </ChartContainer>
               <p className="text-xs text-muted-foreground">{t('study_time_note')}</p>
-              {busiest !== null && (
+              {busiestDay !== null && (
                 <p className="text-sm text-muted-foreground">
-                  {t('busiest_day', { day: longNames[busiest] })}
+                  {t('busiest_day', { day: busiestDay })}
                 </p>
               )}
             </div>

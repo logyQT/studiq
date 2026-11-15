@@ -6,6 +6,7 @@ import {
 } from '@studiq/server/models/question-transfer.model';
 import { parse } from 'papaparse';
 import { describe, expect, it } from 'vitest';
+import { firstRecorded } from '#test/mocks/recorded';
 
 // #652: a bank is exported as CSV or JSON and imported back. The CSV <-> question mapping is a
 // pure module shared by the server (export) and the browser (reading a file), and
@@ -53,7 +54,7 @@ describe('questionsToCsv', () => {
   });
 
   it('writes the 1-based numbers of the right answers', () => {
-    const [, row] = questionsToCsv([mcq]).split('\n');
+    const row = firstRecorded(questionsToCsv([mcq]).split('\n').slice(1), 'the question row');
     expect(row).toContain(',Kraków,Warszawa,Gdańsk,');
     expect(row.endsWith(',2')).toBe(true);
   });
@@ -89,7 +90,7 @@ describe('csvRecordsToQuestions', () => {
     expect(csv).toContain("''=SUM(A1)");
 
     const { questions } = readCsv(csv);
-    expect(questions[0].content).toBe("'=SUM(A1)");
+    expect(questions[0]?.content).toBe("'=SUM(A1)");
   });
 
   it('round-trips an export, including topics, explanation and formulas', () => {
@@ -121,8 +122,8 @@ describe('csvRecordsToQuestions', () => {
     const { questions } = csvRecordsToQuestions([
       { type: 'MCQ', content: 'Q', answer_1: 'A', answer_2: '', answer_3: 'C', correct: '3' },
     ]);
-    expect(questions[0].type).toBe('mcq');
-    expect(questions[0].answers).toEqual([
+    expect(questions[0]?.type).toBe('mcq');
+    expect(questions[0]?.answers).toEqual([
       { content: 'A', isCorrect: false },
       { content: 'C', isCorrect: true },
     ]);
@@ -132,7 +133,7 @@ describe('csvRecordsToQuestions', () => {
     const { questions } = csvRecordsToQuestions([
       { type: 'mcq', content: 'Q', answer_1: 'A', answer_2: 'B', answer_3: 'C', correct: '1; 3' },
     ]);
-    expect(questions[0].answers.map((a) => a.isCorrect)).toEqual([true, false, true]);
+    expect(questions[0]?.answers.map((a) => a.isCorrect)).toEqual([true, false, true]);
   });
 
   it.each([
@@ -162,14 +163,14 @@ describe('csvRecordsToQuestions', () => {
 
     const { questions, issues } = readCsv(csv);
     expect(issues).toEqual([]);
-    expect(questions[0].topics).toEqual(['Geo;grafia', 'C:\\temp', 'A']);
+    expect(questions[0]?.topics).toEqual(['Geo;grafia', 'C:\\temp', 'A']);
   });
 
   it('splits topics on ; and drops blanks and surrounding spaces', () => {
     const { questions } = csvRecordsToQuestions([
       { type: 'open', content: 'Q', topics: ' A ;; B;' },
     ]);
-    expect(questions[0].topics).toEqual(['A', 'B']);
+    expect(questions[0]?.topics).toEqual(['A', 'B']);
   });
 });
 
@@ -233,6 +234,6 @@ describe('ImportQuestionsSchema', () => {
       questions: [open, { ...mcq, answers: [] }],
     });
     expect(result.success).toBe(false);
-    expect(!result.success && result.error.issues[0].path).toEqual(['questions', 1, 'answers']);
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['questions', 1, 'answers']);
   });
 });

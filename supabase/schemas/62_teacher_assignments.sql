@@ -18,6 +18,8 @@ CREATE TABLE public.teacher_assignments (
   shuffle_answers   boolean NOT NULL DEFAULT true,
   show_results      boolean NOT NULL DEFAULT false,
   max_attempts      int NOT NULL DEFAULT 1,
+  -- Seal every item for the whole organisation, not only the targeted classes (R3).
+  seal_org_wide     boolean NOT NULL DEFAULT false,
   passing_score     int,
   question_count    int NOT NULL DEFAULT 0,
   total_points      int NOT NULL DEFAULT 0,
@@ -34,6 +36,11 @@ CREATE TABLE public.assignment_questions (
   question_id    uuid REFERENCES public.questions(id) ON DELETE CASCADE,
   order_index    int,
   points         int NOT NULL DEFAULT 1,
+  -- Frozen at publish: reader-safe content, key material (never granted to `authenticated`),
+  -- and the item version the assessment is serving. `snapshot_key` is read with the service role.
+  snapshot         jsonb,
+  snapshot_key     jsonb,
+  snapshot_version int,
   UNIQUE (assignment_id, question_id)
 );
 

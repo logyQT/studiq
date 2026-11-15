@@ -63,7 +63,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
       .eq('organization_id', fixture.orgId!)
       .eq('name', 'admin')
       .single();
-    if (error || !role) throw new Error(`admin role lookup failed: ${error?.message}`);
+    if (error) throw new Error(`admin role lookup failed: ${error.message}`);
     adminRoleId = role.id;
 
     // Org the fixture user is NOT a member of: used to prove the membership
@@ -74,8 +74,8 @@ describe(`Limits resolve live from organizations.plan`, () => {
       .insert({ name: `limits-foreign-${suiteId}-${Date.now()}` })
       .select('id')
       .single();
-    if (foreignError || !foreign) {
-      throw new Error(`foreign org create failed: ${foreignError?.message}`);
+    if (foreignError) {
+      throw new Error(`foreign org create failed: ${foreignError.message}`);
     }
     foreignOrgId = foreign.id;
   });
@@ -88,7 +88,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
   });
 
   afterAll(async () => {
-    if (fixture?.orgId) {
+    if (fixture.orgId) {
       await cleanupOrganizationDeep(fixture.orgId);
     }
     if (foreignOrgId) {

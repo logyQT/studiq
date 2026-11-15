@@ -18,7 +18,7 @@ CREATE TABLE public.flashcard_review_state (
   learning_state    text NOT NULL DEFAULT 'review'
                     CHECK (learning_state IN ('new', 'learning', 'review', 'relearning')),
   learning_step     integer NOT NULL DEFAULT 0,
-  lapse_count       integer NOT NULL DEFAULT 0,
+  sm2_lapse_count   integer NOT NULL DEFAULT 0,
   is_leech          boolean NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, flashcard_id)
 );
@@ -27,7 +27,7 @@ COMMENT ON COLUMN public.flashcard_review_state.interval_days IS 'Interval magni
 COMMENT ON COLUMN public.flashcard_review_state.interval_unit IS 'Unit of interval_days: minutes (learning steps) or days (review intervals)';
 COMMENT ON COLUMN public.flashcard_review_state.learning_state IS 'new|learning|review|relearning — learning lifecycle phase';
 COMMENT ON COLUMN public.flashcard_review_state.learning_step IS '0-based index into user_study_settings.learning_steps[] (minute durations)';
-COMMENT ON COLUMN public.flashcard_review_state.lapse_count IS 'Total wrong answers ever — used for leech detection';
+COMMENT ON COLUMN public.flashcard_review_state.sm2_lapse_count IS 'SM-2 lapses: rating-1 (Again) answers on a graduated card only. Internal scheduling/leech signal, never a UI mistake count (see flashcard_practice.was_correct).';
 COMMENT ON COLUMN public.flashcard_review_state.is_leech IS 'Flagged as leech — requires user action to un-suspend';
 
 CREATE INDEX idx_flashcard_review_state_next_review

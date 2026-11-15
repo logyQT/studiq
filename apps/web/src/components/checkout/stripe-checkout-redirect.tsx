@@ -100,7 +100,7 @@ export function StripeCheckoutRedirect({ planKey, orgId, canceled }: StripeCheck
   }
 
   const backPath = orgId ? '/pricing/org' : '/pricing';
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const billingHref = `${dashboardPathForAccountType(rawAccountType)}/billing`;
   const canRetry = status === 'canceled' || (status === 'failed' && failure?.retryable === true);
 

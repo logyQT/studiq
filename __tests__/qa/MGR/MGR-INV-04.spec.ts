@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-INV-04 — accepting an invitation as an **existing** user.
@@ -115,8 +115,8 @@ declare global {
 async function resetCaseState(tenant: QaTenant): Promise<void> {
   const org = tenant.org;
   const group = tenant.group;
-  const invitee = tenant.users.invitee1;
-  if (!org || !group || !invitee) {
+  const invitee = tenantUser(tenant, 'invitee1');
+  if (!org || !group) {
     throw new Error(`${CASE} fixture incomplete: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``);
   }
   const db = createQaSupabase();
@@ -229,9 +229,8 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
     expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
     const org = tenant.org;
     const group = tenant.group;
-    const manager = tenant.users.manager;
-    const invitee = tenant.users.invitee1;
-    if (!org || !group || !manager || !invitee) {
+    const invitee = tenantUser(tenant, 'invitee1');
+    if (!org || !group) {
       throw new Error(
         `${CASE} fixture incomplete: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``,
       );
@@ -279,7 +278,8 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
     expect(bulkBody.success).toBe(true);
     expect(bulkBody.data.results).toHaveLength(1);
 
-    const created = bulkBody.data.results[0];
+    const [created] = bulkBody.data.results;
+    if (!created) throw new Error(`${CASE} the bulk invite returned no result`);
     expect(created.email).toBe(invitee.email);
     expect(created.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
     const inviteLink = new URL(created.data.inviteLink);
@@ -420,9 +420,11 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
     const members = await getData<MemberRow[]>(page, '/api/v1/organization/members');
     const inviteeRows = members.filter((member) => member.id === invitee.id);
     expect(inviteeRows, 'exactly one membership row after the rejected replay').toHaveLength(1);
-    expect(inviteeRows[0].email).toBe(invitee.email);
-    expect(inviteeRows[0].orgRoleName).toBe(INVITE_ROLE_NAME);
-    expect(inviteeRows[0].groups.map((row) => row.id)).toEqual([group.id]);
+    const [inviteeRow] = inviteeRows;
+    if (!inviteeRow) throw new Error(`${CASE} the invitee has no membership row`);
+    expect(inviteeRow.email).toBe(invitee.email);
+    expect(inviteeRow.orgRoleName).toBe(INVITE_ROLE_NAME);
+    expect(inviteeRow.groups.map((row) => row.id)).toEqual([group.id]);
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });

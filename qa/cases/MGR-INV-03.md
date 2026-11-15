@@ -62,10 +62,8 @@ seeded tenant instead:
   answers **404**, the join screen shows the toast „Nieprawidłowy lub wygasły kod
   zaproszenia” and redirects to `/register`, where the only form is the plain registration
   page (no invitation prefill) — i.e. the invalid-token behaviour ONB-09 describes.
-- Out of scope, noticed during the walk: when `/manage/invites` is the **first** page
-  loaded right after a login that has no active-organization cookie yet, the roles and
-  invitations requests fire before the shell's org switch and get `403`; the page then
-  renders an empty list even though a pending invitation exists, until it is reloaded.
-  The spec therefore enters the page the way a user does (login → `/manage` dashboard →
-  „Zaproszenia” in the sidebar), which settles the active org first. The deep-link race is
-  a separate concern for MGR-INV-01 triage, not part of this case.
+- The deep-link race (#1125) is fixed: when `/manage/invites` is the **first** page
+  loaded right after a login, the roles and invitations requests now wait for the active
+  organization instead of firing before the shell's org switch and answering `403`, so a
+  pending invitation renders on the first load. The spec still enters the page the way a
+  user does (login → `/manage` dashboard → „Zaproszenia” in the sidebar).

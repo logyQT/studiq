@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-MEM-04 — removing a member from the organization (/manage/members).
@@ -141,9 +141,9 @@ async function openMembers(page: Page, tenant: QaTenant): Promise<void> {
 test('removes a member and the removed user loses access to the organization', async ({ page }) => {
   const tenant = loadTenant(CASE);
   const org = tenant.org;
-  const student = tenant.users.student;
+  const student = tenantUser(tenant, 'student');
   const group = tenant.group;
-  if (!org || !student || !group) {
+  if (!org || !group) {
     throw new Error(`${CASE} needs the content tenant profile (org + student + group)`);
   }
 
@@ -223,8 +223,8 @@ test('removes a member and the removed user loses access to the organization', a
     after.map((member) => member.id),
     'members after removal',
   ).not.toContain(student.id);
-  expect(after.map((member) => member.id)).toContain(tenant.users.manager.id);
-  expect(after.map((member) => member.id)).toContain(tenant.users.teacher.id);
+  expect(after.map((member) => member.id)).toContain(tenantUser(tenant, 'manager').id);
+  expect(after.map((member) => member.id)).toContain(tenantUser(tenant, 'teacher').id);
 
   // --- Step 3: the removed user no longer reaches the organization's data --
   await page.context().clearCookies();
@@ -262,8 +262,8 @@ test('removes a member and the removed user loses access to the organization', a
 
 test('cancelling the confirmation removes nobody and sends no request', async ({ page }) => {
   const tenant = loadTenant(CASE);
-  const teacher = tenant.users.teacher;
-  if (!tenant.org || !teacher) {
+  const teacher = tenantUser(tenant, 'teacher');
+  if (!tenant.org) {
     throw new Error(`${CASE} needs the content tenant profile (org + teacher)`);
   }
 
@@ -295,8 +295,8 @@ test('cancelling the confirmation removes nobody and sends no request', async ({
 
 test('the manager cannot remove their own membership', async ({ page }) => {
   const tenant = loadTenant(CASE);
-  const manager = tenant.users.manager;
-  if (!tenant.org || !manager) {
+  const manager = tenantUser(tenant, 'manager');
+  if (!tenant.org) {
     throw new Error(`${CASE} needs the content tenant profile (org + manager)`);
   }
 

@@ -71,8 +71,8 @@ describe('QuizTeacherController', () => {
       if (!response.success) {
         expect(response.statusCode).toBe(422);
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].path).toEqual(['name']);
-        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+        expect(response.details?.[0]?.path).toEqual(['name']);
+        expect(response.details?.[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       }
       expect(mockService.create).not.toHaveBeenCalled();
     });
@@ -171,7 +171,7 @@ describe('QuizTeacherController', () => {
       if (!response.success) {
         expect(response.statusCode).toBe(422);
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+        expect(response.details?.[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       }
       expect(mockService.bulkSave).not.toHaveBeenCalled();
     });

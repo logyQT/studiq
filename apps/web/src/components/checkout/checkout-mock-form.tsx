@@ -26,18 +26,8 @@ import { useApiQuery } from '@/hooks/use-api';
 import { apiPost, ApiError } from '@/lib/api';
 import { resolveCheckoutOrg, type CheckoutOrg, type OrgsStatus } from '@/lib/checkout-org';
 import { getHighlightedFeatures, sortFeaturesByPriority } from '@/lib/pricing-benefits';
-import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
-
-const SORTED_LIMIT_KEYS = [
-  'max_flashcards',
-  'max_decks',
-  'max_questions',
-  'max_question_banks',
-  'max_quiz_attempts_per_day',
-  'max_ai_tokens_per_day',
-  'max_students',
-  'max_groups',
-];
+import { getFeatureLabel } from '@/lib/pricing-features';
+import { getLimitLabel, SORTED_LIMIT_KEYS } from '@/lib/pricing-limits';
 
 const HIGHLIGHTED_FEATURES = 5;
 
@@ -184,16 +174,10 @@ export function CheckoutMockForm() {
   });
   const displayPrice = formatter.format(plan.priceMonthly / 100);
 
-  function getFeatureLabel(key: string): string {
-    return getFeatureLabelShared(key, pt);
-  }
-
-  function getLimitLabel(key: string): string {
-    const label = pt(`limit_${key}`);
-    return label.startsWith('limit_') ? key : label;
-  }
-
-  const visibleLimits = SORTED_LIMIT_KEYS.filter((k) => k in plan.limits);
+  const visibleLimits = SORTED_LIMIT_KEYS.flatMap((key) => {
+    const value = plan.limits[key];
+    return value === undefined ? [] : [{ key, value }];
+  });
   const featuredFeatures = getHighlightedFeatures(plan.features, HIGHLIGHTED_FEATURES);
   const allFeatures = sortFeaturesByPriority(plan.features);
   const visibleFeatures = showAllBenefits ? allFeatures : featuredFeatures;
@@ -289,7 +273,7 @@ export function CheckoutMockForm() {
                     {visibleFeatures.map((feature) => (
                       <li key={feature} className="flex items-center gap-2 text-sm">
                         <Check className="size-3.5 shrink-0 text-green-500" />
-                        <span>{getFeatureLabel(feature)}</span>
+                        <span>{getFeatureLabel(feature, pt)}</span>
                       </li>
                     ))}
                   </ul>
@@ -314,11 +298,10 @@ export function CheckoutMockForm() {
               <>
                 <Separator />
                 <div className="space-y-1.5">
-                  {visibleLimits.map((key) => {
-                    const value = plan.limits[key];
+                  {visibleLimits.map(({ key, value }) => {
                     return (
                       <div key={key} className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">{getLimitLabel(key)}</span>
+                        <span className="text-muted-foreground">{getLimitLabel(key, pt)}</span>
                         <span className="font-medium tabular-nums">
                           {value === -1 ? (
                             <span className="flex items-center gap-1">

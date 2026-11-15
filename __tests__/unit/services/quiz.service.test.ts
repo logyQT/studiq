@@ -6,6 +6,7 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
@@ -16,6 +17,15 @@ vi.mock('@studiq/server/lib/authz', () => ({
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+}));
+
+/** Practice never draws a held item; these tests state the set to subtract. */
+const sealState = vi.hoisted(() => ({
+  seal: { ids: new Set<string>(), bankId: new Map<string, string | null>(), closesAt: new Map() },
+}));
+vi.mock('@studiq/server/lib/question-seal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-seal')>()),
+  sealFor: vi.fn(() => Promise.resolve({ success: true, data: sealState.seal })),
 }));
 
 type ChainMock = ReturnType<typeof vi.fn>;
@@ -214,7 +224,7 @@ describe('QuizService', () => {
       const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 1 }, ctx);
 
       expect(result.success).toBe(true);
-      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
+      const projection = stringArg(firstCall(questionsBuilder.select)[0]);
       expect(projection).not.toContain('*');
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');

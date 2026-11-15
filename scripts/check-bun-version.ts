@@ -22,7 +22,7 @@ function fail(message: string): never {
 }
 
 function parseVersion(raw: string): [number, number, number] {
-  const [core] = raw.split('-');
+  const [core = ''] = raw.split('-');
   const [major = 0, minor = 0, patch = 0] = core.split('.').map(Number);
   return [major, minor, patch];
 }

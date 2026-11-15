@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateOrgRoleInput,
@@ -48,9 +49,9 @@ export class OrgRoleService {
     if (error) return toDbFailure(error);
 
     return success(
-      (data ?? []).map((r) => {
-        const memberCount = r.org_members?.[0]?.count ?? 0;
-        const permissionCount = r.org_role_permissions?.[0]?.count ?? 0;
+      dbRows(data).map((r) => {
+        const memberCount = dbCount(r.org_members);
+        const permissionCount = dbCount(r.org_role_permissions);
         return {
           id: r.id,
           name: r.name,
@@ -105,11 +106,10 @@ export class OrgRoleService {
       description: data.description,
       // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
       isSystem: data.is_system ?? false,
-      permissions:
-        data.org_role_permissions?.map((p) => ({
-          permissionName: p.permission_name,
-          scope: p.scope,
-        })) ?? [],
+      permissions: dbRows(data.org_role_permissions).map((p) => ({
+        permissionName: p.permission_name,
+        scope: p.scope,
+      })),
     });
   }
 

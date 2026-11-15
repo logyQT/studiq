@@ -15,8 +15,8 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['name']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.path).toEqual(['name']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 
@@ -25,7 +25,7 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 
@@ -49,7 +49,7 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_LONG);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.TOO_LONG);
     }
   });
 
@@ -89,7 +89,7 @@ describe('GenerateQuizSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
     }
   });
 

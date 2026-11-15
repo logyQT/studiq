@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-DECK-04 — Fiszki w talii nauczyciela (/edu/flashcards/<deckId>).
@@ -137,8 +137,8 @@ async function listDecks(page: Page): Promise<DeckRow[]> {
  */
 async function ensureEducatorLeadsGroup(page: Page, tenant: QaTenant): Promise<void> {
   const groupId = tenant.group?.id;
-  const educator = tenant.users.teacher;
-  if (!groupId || !educator) {
+  const educator = tenantUser(tenant, 'teacher');
+  if (!groupId) {
     throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
   }
 
@@ -218,7 +218,7 @@ function editorTextareas(page: Page) {
 }
 
 /** Open the card's „…” menu and pick an item (the trigger only shows on hover). */
-async function openCardMenu(page: Page, card: Locator): Promise<void> {
+async function openCardMenu(card: Locator): Promise<void> {
   await card.hover();
   await card.getByRole('button', { name: COPY.moreActions }).click();
 }
@@ -296,7 +296,7 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     await expectCardsCount(page, 1);
 
     const [created] = await listCards(page, deck.id);
-    expect(created, 'the card is stored in the teacher deck').toBeTruthy();
+    if (!created) throw new Error(`${CASE} the card is not stored in the teacher deck`);
     expect({ front: created.front, back: created.back }).toEqual(CARD);
 
     const card = cardById(page, created.id);
@@ -305,7 +305,7 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     await expect(card).toContainText(CARD.back);
 
     // ── Step 2a: edit it ────────────────────────────────────────────────────
-    await openCardMenu(page, card);
+    await openCardMenu(card);
     await page.getByRole('menuitem', { name: COPY.menuEdit }).click();
 
     await expect(dialog(page).getByRole('heading', { name: COPY.editTitle })).toBeVisible();
@@ -323,11 +323,12 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     await expect(card).toContainText(EDITED.back);
 
     const [updated] = await listCards(page, deck.id);
+    if (!updated) throw new Error(`${CASE} the edited card is not stored`);
     expect(updated.id, 'the edit keeps the same card').toBe(created.id);
     expect({ front: updated.front, back: updated.back }).toEqual(EDITED);
 
     // ── Step 2b: delete it ─────────────────────────────────────────────────
-    await openCardMenu(page, card);
+    await openCardMenu(card);
     await page.getByRole('menuitem', { name: COPY.menuDelete }).click();
 
     await expect(dialog(page).getByRole('heading', { name: COPY.deleteTitle })).toBeVisible();
@@ -367,6 +368,7 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     await expectCardsCount(page, 1);
 
     const [tagged] = await listCards(page, deck.id);
+    if (!tagged) throw new Error(`${CASE} the topic-tagged card is not stored`);
     expect(
       tagged.flashcard_topic_assignments.map((assignment) => assignment.topic_id),
       'the topic is assigned to the card',

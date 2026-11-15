@@ -7,6 +7,7 @@ import {
 } from '@studiq/server/services/invitation.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asSupabaseClient } from '#test/helpers/supabase-double';
+import { firstCall } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: {
@@ -132,7 +133,7 @@ describe('InvitationService e-mail delivery', () => {
 
     expect(result.success && result.data.inviteLink).toBe(`${SITE}/join?token=${TOKEN}`);
     expect(sendInvitation).toHaveBeenCalledOnce();
-    const mail = sendInvitation.mock.calls[0][0];
+    const mail = firstCall(sendInvitation)[0];
     expect(mail).toMatchObject({
       to: 'ola@example.com',
       orgName: 'WSB Merito',
@@ -149,7 +150,7 @@ describe('InvitationService e-mail delivery', () => {
       email: 'ola@example.com',
       targetOrgRoleId: 'member',
     });
-    expect(sendInvitation.mock.calls[0][0].locale).toBe('pl');
+    expect(firstCall(sendInvitation)[0].locale).toBe('pl');
   });
 
   it('keeps the invitation and its link when the provider fails, and logs no address', async () => {

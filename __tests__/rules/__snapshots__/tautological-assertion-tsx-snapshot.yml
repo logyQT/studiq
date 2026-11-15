@@ -1,0 +1,14 @@
+id: tautological-assertion-tsx
+snapshots:
+  "expect(<Panel />).toStrictEqual(<Panel />);\n":
+    labels:
+      - source: expect(<Panel />).toStrictEqual(<Panel />)
+        style: primary
+        start: 0
+        end: 42
+  "expect(f(x)).toBe(f(x));\n":
+    labels:
+      - source: expect(f(x)).toBe(f(x))
+        style: primary
+        start: 0
+        end: 23

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-REP-02 — replying to a student's question report („Odpowiedź na zgłoszenie”).
@@ -194,11 +194,8 @@ test.describe('@case:EDU-REP-02 @area:EDU @prio:P2 reply to a question report', 
 
     const tenant: QaTenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
-    const educator = tenant.users.teacher;
-    const student = tenant.users.student;
-    if (!educator || !student) {
-      throw new Error(`${CASE} needs the content tenant profile (educator, student)`);
-    }
+    const educator = tenantUser(tenant, 'teacher');
+    const student = tenantUser(tenant, 'student');
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -309,7 +306,9 @@ test.describe('@case:EDU-REP-02 @area:EDU @prio:P2 reply to a question report', 
     // The thread is server state: the answer is stored between the two messages.
     const detail = await getData<ReportDetail>(page, `${REPORTS_URL}/${report.id}`);
     expect(detail.messages.map((message) => message.body)).toEqual([REPORT_MESSAGE, REPLY]);
-    expect(detail.messages[1].sender_id).toBe(educator.id);
+    const [, answer] = detail.messages;
+    if (!answer) throw new Error(`${CASE} the thread stored no answer`);
+    expect(answer.sender_id).toBe(educator.id);
     expect(detail.report.status, 'answering an open report keeps it open').toBe('open');
 
     // ── Step 2: the reporting student sees the answer and the unread badge ──

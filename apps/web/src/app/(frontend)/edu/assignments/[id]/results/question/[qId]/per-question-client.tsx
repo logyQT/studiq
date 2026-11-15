@@ -18,8 +18,8 @@ interface ResultsData {
   total_questions: number;
   user: {
     id: string;
-    full_name: string;
-  };
+    full_name: string | null;
+  } | null;
   quiz_answers: Array<{
     question_id: string;
     selected_answer_id: string | null;
@@ -54,15 +54,15 @@ export default function PerQuestionGradingClient() {
 
   const gradeMutation = useApiMutation({
     mutationFn: async ({
-      studentId,
+      attemptId,
       points,
       feedback,
     }: {
-      studentId: string;
+      attemptId: string;
       points: number;
       feedback: string;
     }) => {
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${studentId}`, {
+      const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${attemptId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questionId: qId, points, feedback }),
@@ -73,7 +73,7 @@ export default function PerQuestionGradingClient() {
   });
 
   const getSavedGrade = (studentId: string) =>
-    results?.find((r) => r.user_id === studentId)?.quiz_answers?.find((a) => a.question_id === qId);
+    results?.find((r) => r.user_id === studentId)?.quiz_answers.find((a) => a.question_id === qId);
 
   const getGrade = (studentId: string) =>
     resolveGradeDraft(getSavedGrade(studentId), grades[studentId]);
@@ -81,15 +81,17 @@ export default function PerQuestionGradingClient() {
   const handleGrade = async (studentId: string) => {
     const g = getGrade(studentId);
     const points = parseGradePoints(g.points);
-    if (points === null) return;
-    await gradeMutation.mutateAsync({ studentId, points, feedback: g.feedback });
+    // The grading route addresses an attempt; this view has no attempt dimension.
+    const attemptId = results?.find((r) => r.user_id === studentId)?.id;
+    if (points === null || !attemptId) return;
+    await gradeMutation.mutateAsync({ attemptId, points, feedback: g.feedback });
   };
 
   const getStudentAnswer = (studentId: string) => {
     const attempt = results?.find((r) => r.user_id === studentId);
     if (!attempt) return null;
-    const answer = attempt.quiz_answers?.find((a) => a.question_id === qId);
-    const images = attempt.assignment_answer_images?.filter((img) => img.question_id === qId) ?? [];
+    const answer = attempt.quiz_answers.find((a) => a.question_id === qId);
+    const images = attempt.assignment_answer_images.filter((img) => img.question_id === qId);
     return { answer, images, userName: attempt.user?.full_name ?? t('unknown') };
   };
 
@@ -106,7 +108,7 @@ export default function PerQuestionGradingClient() {
 
   const studentsWithOpen =
     results?.filter((r) =>
-      r.quiz_answers?.some((a) => a.question_id === qId && a.teacher_points === null),
+      r.quiz_answers.some((a) => a.question_id === qId && a.teacher_points === null),
     ) ?? [];
 
   return (

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { useRealSupabase, cleanupOrganizationDeep, mockUser } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { GET as listOrgsGet } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST } from '@/app/(backend)/api/v1/organization/route';
 
@@ -120,7 +121,7 @@ describe(`POST /api/v1/organization`, () => {
       .eq('user_id', educator.id);
 
     expect(members?.length).toBe(1);
-    expect(members?.[0].org_roles.name).toBe('admin');
+    expect(requiredAt(dbRows(members), 0, 'org member').org_roles.name).toBe('admin');
   });
 
   it('returns 201 with cookie, role ids and default group', async () => {

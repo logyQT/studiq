@@ -1,6 +1,7 @@
 import { StorageService } from '@studiq/server/services/storage.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 const logErrorMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/lib/log', () => ({
@@ -123,7 +124,7 @@ describe('StorageService', () => {
       expect(storage.from).toHaveBeenCalledWith('flashcard-media');
       expect(storage.upload).toHaveBeenCalledTimes(1);
 
-      const [path, , options] = storage.upload.mock.calls[0];
+      const [path, , options] = firstCall(storage.upload);
       expect(path).toMatch(/^user-1\/[0-9a-f-]{36}\.png$/);
       expect(options).toEqual({ contentType: 'image/png', upsert: false });
       expect(result).toEqual({ url: `https://storage.test/${path}` });
@@ -250,7 +251,7 @@ describe('StorageService', () => {
 
       expect(storage.from).toHaveBeenCalledWith('org-logos');
 
-      const [path, , options] = storage.upload.mock.calls[0];
+      const [path, , options] = firstCall(storage.upload);
       expect(path).toMatch(/^org-1\/[0-9a-f-]{36}\.png$/);
       expect(options).toEqual({ contentType: 'image/png', upsert: false });
       expect(result).toEqual({ url: `https://storage.test/${path}` });

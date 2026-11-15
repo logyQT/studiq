@@ -26,9 +26,10 @@ const flag = (name: string): string | undefined => {
 const title = flag('title');
 const bodyFile = flag('body-file');
 const extraSearch = flag('search');
-const attachments = args.flatMap((a, i) =>
-  a === '--attach' && args[i + 1] && !args[i + 1].startsWith('--') ? [args[i + 1]] : [],
-);
+const attachments = args.flatMap((a, i) => {
+  const next = args[i + 1];
+  return a === '--attach' && next !== undefined && !next.startsWith('--') ? [next] : [];
+});
 
 if (!caseId || !title || !bodyFile) {
   console.error(

@@ -1,5 +1,7 @@
-import { runSupabase, type StackEnv } from './stack';
+import { runSupabase, type SpawnResult, type StackEnv } from './stack';
+import { OTEL_ENDPOINT } from './observability';
 import { redactSecrets } from './output';
+import { currentBranchName, sanitizeProjectId } from './repo';
 import type { Capability } from '../profiles';
 import type { RuntimeChoice } from '../atoms';
 
@@ -56,6 +58,60 @@ export function stopStack(stackName: string | null, timeoutMs = 120_000): StackA
   };
 }
 
+export interface ResetDatabaseResult {
+  ok: boolean;
+  timedOut: boolean;
+  exitCode: number | null;
+}
+
+function withSslModeDisabled(url: string): string {
+  if (url.includes('sslmode=')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}sslmode=disable`;
+}
+
+/**
+ * `supabase db reset` for this checkout's stack. A named stack is addressed by
+ * its remote DB URL (database commands accept no `--stack`), and the port
+ * overrides inherited from the parent shell are cleared so the CLI treats the
+ * URL as remote instead of demanding a local stack.
+ */
+export function resetDatabase(options: {
+  stackName: string | null;
+  dbUrl: string | null;
+  timeoutMs?: number;
+}): ResetDatabaseResult {
+  const args = ['db', 'reset', '--yes'];
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of PORT_VARIABLES) delete env[name];
+  if (options.stackName) {
+    if (!options.dbUrl) return { ok: false, timedOut: false, exitCode: null };
+    args.push(`--remote=${withSslModeDisabled(options.dbUrl)}`);
+  }
+  const result = runSupabase(args, { env, timeoutMs: options.timeoutMs ?? 300_000 });
+  return { ok: result.status === 0, timedOut: result.timedOut, exitCode: result.status };
+}
+
+/** `supabase stack logs --tail <n>` for this checkout's stack. */
+export function stackLogs(stackName: string | null, tail = 50): SpawnResult {
+  const args = ['stack', 'logs', '--tail', String(tail)];
+  if (stackName) args.push('--stack', stackName);
+  return runSupabase(args, { timeoutMs: 60_000 });
+}
+
+/**
+ * The per-checkout `service.name` for the machine-wide collector. A branch is
+ * the natural discriminator (`studiq-feat-x`); a detached HEAD falls back to
+ * the stack id. An explicit `OTEL_SERVICE_NAME` in `.env.local` still wins.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityServiceName(branch: string, stackId?: string): string {
+  const branchSlug = sanitizeProjectId(branch);
+  if (branchSlug && branchSlug !== 'detached') return `studiq-${branchSlug}`;
+  const stackSlug = sanitizeProjectId(stackId ?? '');
+  return stackSlug ? `studiq-stack-${stackSlug.slice(0, 12)}` : 'studiq';
+}
+
 /** Relay discovered values to build/serve children; never log them. */
 export function applyStackEnv(
   env: StackEnv,
@@ -63,6 +119,11 @@ export function applyStackEnv(
 ): void {
   process.env.APP_URL = extras.appUrl;
   process.env.APP_ENV = extras.appEnv;
+  // One collector per machine: every checkout ships to the same OTLP intake,
+  // but gets its own service name so Tempo/Loki/Prometheus can tell worktrees
+  // apart. Never start a second observability stack from a worktree.
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||= OTEL_ENDPOINT;
+  process.env.OTEL_SERVICE_NAME ||= observabilityServiceName(currentBranchName(), extras.stackId);
   process.env.SUPABASE_URL = env.apiUrl;
   process.env.NEXT_PUBLIC_SUPABASE_URL = env.apiUrl;
   if (env.anonKey) {

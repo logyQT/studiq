@@ -116,16 +116,17 @@ let STUDENT_IN: TenantUser;
 let STUDENT_OUT: TenantUser;
 
 /** The default group `G1` (`O1G1`) and the empty second group `G2`. */
-let GROUP_1_ID: string | undefined;
+let GROUP_1_ID: string;
 let GROUP_2_ID: string;
 
 function resolveTenant(): void {
   TEACHER = user('teacher');
   STUDENT_IN = user('studentIn');
   STUDENT_OUT = user('studentOut');
-  GROUP_1_ID = TENANT.group?.id;
+  const defaultGroupId = TENANT.group?.id;
+  if (!defaultGroupId) throw new Error(`${CASE} tenant has no seeded default group`);
+  GROUP_1_ID = defaultGroupId;
   GROUP_2_ID = tenantId(TENANT.key, 'group:2');
-  if (!GROUP_1_ID) throw new Error(`${CASE} tenant has no seeded default group`);
 }
 
 interface BankListItem {

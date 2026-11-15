@@ -30,8 +30,13 @@ import { flashcardKeys } from '@/lib/query-keys';
 const NEW_DECK_VALUE = '__new__';
 
 function deriveBack(question: Question): string {
-  const correct = question.question_answers?.filter((a) => a.is_correct).map((a) => a.content);
-  if (correct && correct.length > 0) return correct.join(', ');
+  // The dialog can open on a question whose list payload omitted the embed, so the
+  // empty fallback is real even though the row type says the array is always there.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- embed may be missing
+  const correct = (question.question_answers ?? [])
+    .filter((a) => a.is_correct)
+    .map((a) => a.content);
+  if (correct.length > 0) return correct.join(', ');
   return question.explanation ?? '';
 }
 

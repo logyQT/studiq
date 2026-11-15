@@ -9,7 +9,7 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
@@ -74,7 +74,7 @@ describe(`Quizzes Integration`, () => {
       expect(body.data.questions.length).toBeLessThanOrEqual(3);
 
       // #331: the generated quiz must not carry the answer key.
-      const [question] = body.data.questions;
+      const question = requiredAt(body.data.questions, 0, 'generated question');
       expect(question).not.toHaveProperty('explanation');
       expect(question).not.toHaveProperty('search_vector');
       expect(question.question_answers.length).toBeGreaterThan(0);
@@ -121,7 +121,7 @@ describe(`Quizzes Integration`, () => {
       // question PUT route scopes its update to `organization_id = activeOrgId`,
       // which never matches a personal (org-less) question, so the assignment is
       // made through the service-role client like the other integration fixtures.
-      const [taggedQuestionId] = student.created.questions;
+      const taggedQuestionId = requiredAt(student.created.questions, 0, 'seeded question');
       const { error: tagError } = await createServiceClient()
         .from('question_topic_assignments')
         .insert({ question_id: taggedQuestionId, topic_id: topicId });

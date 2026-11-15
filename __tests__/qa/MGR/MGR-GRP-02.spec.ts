@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-GRP-02 — member assignment in the manager's group table (`/manage/groups`).
@@ -134,11 +134,9 @@ test('assigns a student and a teacher to Grupa C and shows the group’s own cou
   const tenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
 
-  const teacher = tenant.users.teacher2;
-  const student = tenant.users.student;
+  const teacher = tenantUser(tenant, 'teacher2');
+  const student = tenantUser(tenant, 'student');
   const defaultGroup = tenant.group;
-  expect(teacher, `${CASE} needs the seeded T2 account`).toBeTruthy();
-  expect(student, `${CASE} needs the seeded S1 account`).toBeTruthy();
   expect(defaultGroup, `${CASE} needs the seeded org and its default group`).toBeTruthy();
 
   const pageErrors: string[] = [];

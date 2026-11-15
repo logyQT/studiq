@@ -45,28 +45,52 @@ CREATE TRIGGER trg_reviews
 
 -- ==========================================
 -- TRIGGER: increment_quizzes
--- Fires on quiz_attempts INSERT and bumps
--- daily activity counters atomically.
--- Uses started_at (not completed_at) because
--- completed_at is null on initial insert.
+-- Books an attempt into daily activity when it is completed, not when it starts:
+-- a quiz counts once its `completed_at` is set, on that date, with the score the
+-- attempt finished with. A later score write is a regrade, so only the delta is
+-- applied to the already-booked row.
+-- SECURITY DEFINER: a teacher regrades a student's attempt, and the write to
+-- `user_daily_activity` must not be filtered by the caller's row-level policy.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.increment_quizzes()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
 AS $$
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- A started attempt is not a completed quiz.
+    IF NEW.completed_at IS NULL THEN
+      RETURN NEW;
+    END IF;
+  ELSIF OLD.completed_at IS NOT NULL THEN
+    -- Already completed: only a changed score moves the counter, by the delta.
+    IF NEW.completed_at IS NOT NULL AND NEW.score <> OLD.score THEN
+      UPDATE public.user_daily_activity
+      SET quizzes_score = GREATEST(quizzes_score + (NEW.score - OLD.score), 0)
+      WHERE user_id = NEW.user_id
+        AND date = NEW.completed_at::date;
+    END IF;
+    RETURN NEW;
+  ELSIF NEW.completed_at IS NULL THEN
+    -- Still running, or completed_at was cleared: nothing to book.
+    RETURN NEW;
+  END IF;
+
+  -- Completion transition (or an attempt inserted already completed).
   INSERT INTO public.user_daily_activity (user_id, date, quizzes_count, quizzes_score, quizzes_total)
-  VALUES (NEW.user_id, NEW.started_at::date, 1, NEW.score, NEW.total_questions)
+  VALUES (NEW.user_id, NEW.completed_at::date, 1, NEW.score, NEW.total_questions)
   ON CONFLICT (user_id, date) DO UPDATE SET
     quizzes_count = public.user_daily_activity.quizzes_count + 1,
-    quizzes_score = public.user_daily_activity.quizzes_score + NEW.score,
-    quizzes_total = public.user_daily_activity.quizzes_total + NEW.total_questions;
+    quizzes_score = public.user_daily_activity.quizzes_score + EXCLUDED.quizzes_score,
+    quizzes_total = public.user_daily_activity.quizzes_total + EXCLUDED.quizzes_total;
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER trg_quizzes
-  AFTER INSERT ON public.quiz_attempts
+  AFTER INSERT OR UPDATE OF score, completed_at ON public.quiz_attempts
   FOR EACH ROW
   EXECUTE FUNCTION public.increment_quizzes();

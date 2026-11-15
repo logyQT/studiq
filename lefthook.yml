@@ -22,6 +22,14 @@ pre-commit:
       run: bun run lint
     knip:
       run: bun run knip
+    # New clones only: compares the working tree with HEAD, so existing
+    # duplication is tolerated (see .jscpd.json and docs/ci.md → Duplication).
+    # `--changed` reads `git status`, which is why this runs after the fixer.
+    dup:
+      glob:
+        - '{apps/web/src,packages,scripts}/**/*.{ts,tsx,js,jsx,mjs,cjs,css}'
+        - '{apps/web/src,packages,scripts}/*.{ts,tsx,js,jsx,mjs,cjs,css}'
+      run: bun run dup:changed
     typecheck:
       run: bun run typecheck:all
 
@@ -50,6 +58,21 @@ pre-push:
       run: bun run lint
     knip:
       run: bun run knip
+    # Same gate as the CI PR step: new clones vs the base branch (the
+    # merge-conflict command above already fetched origin/main). `--silent`
+    # keeps the push log to one line; the failure path names the command that
+    # prints the blocks.
+    dup:
+      run: |
+        if ! bun run dup:base --reporters silent; then
+          echo ''
+          echo '  X Push blocked -- new duplicate block(s) vs origin/main.'
+          echo ''
+          echo '  Run `bun run dup:base` to list them (or `bun run dup:changed`'
+          echo '  for the ones that touch your edits).'
+          echo ''
+          exit 1
+        fi
     typecheck:
       run: bun run typecheck:all
     test:

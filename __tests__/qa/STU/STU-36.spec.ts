@@ -2,6 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * STU-36 — „Kartkówka – maks. liczba prób” (student `/app/assignments`).
  *
@@ -194,7 +197,7 @@ async function prepareFixture(page: Page, tenant: QaTenant): Promise<Fixture> {
   const published = await postData<AssignmentRow>(
     page,
     `/api/v1/teacher/assignments/${assignment.id}/publish`,
-    {},
+    { deadline: PUBLISH_DEADLINE },
   );
 
   return { assignment: published, question };

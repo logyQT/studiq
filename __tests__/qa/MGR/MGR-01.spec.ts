@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-01 — the manager dashboard (`/manage`): member counters, quick actions and
@@ -214,7 +214,7 @@ test('counts members by org role and links the quick actions and the recent list
 
   // The admin appears in the list (and in the total) with the admin role, but
   // never inflates the teacher/student counters asserted above.
-  const adminRow = rows.filter({ hasText: tenant.users.manager.email });
+  const adminRow = rows.filter({ hasText: tenantUser(tenant, 'manager').email });
   await expect(adminRow).toHaveCount(1);
   await expect(adminRow.locator('span')).toHaveText('admin');
 

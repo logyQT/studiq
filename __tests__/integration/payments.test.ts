@@ -1,11 +1,12 @@
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { mockUser } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { GET as paymentsGet } from '@/app/(backend)/api/v1/me/payments/route';
 import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route';
 
@@ -88,17 +89,9 @@ describe('payment history (#392)', () => {
   });
 
   afterAll(async () => {
-    if (buyer?.id || other?.id) {
-      await service
-        .from('payments')
-        .delete()
-        .in(
-          'user_id',
-          [buyer?.id, other?.id].filter((id): id is string => Boolean(id)),
-        );
-    }
+    await service.from('payments').delete().in('user_id', [buyer.id, other.id]);
     for (const user of [buyer, other]) {
-      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 
@@ -115,8 +108,9 @@ describe('payment history (#392)', () => {
       amount: 999,
       currency: 'PLN',
     });
-    expect(typeof body.data[0].id).toBe('string');
-    expect(Number.isNaN(new Date(body.data[0].paidAt).getTime())).toBe(false);
+    const payment = requiredAt(body.data, 0, 'payment');
+    expect(typeof payment.id).toBe('string');
+    expect(Number.isNaN(new Date(payment.paidAt).getTime())).toBe(false);
   });
 
   it('is idempotent for a replayed session id', async () => {
@@ -173,8 +167,10 @@ describe('payment history (#392)', () => {
       .from('payments')
       .select('id, user_id, amount');
     expect(readError).toBeNull();
-    expect(own).toHaveLength(1);
-    expect(own?.[0].user_id).toBe(buyer.id);
+    const ownPayments = dbRows(own);
+    expect(ownPayments).toHaveLength(1);
+    const ownPayment = requiredAt(ownPayments, 0, 'own payment');
+    expect(ownPayment.user_id).toBe(buyer.id);
 
     const { data: foreign } = await otherSession.from('payments').select('id');
     expect(foreign).toEqual([]);
@@ -188,10 +184,13 @@ describe('payment history (#392)', () => {
     });
     expect(insert.error?.code).toBe('42501');
 
-    const update = await buyerSession.from('payments').update({ amount: 1 }).eq('id', own![0].id);
+    const update = await buyerSession
+      .from('payments')
+      .update({ amount: 1 })
+      .eq('id', ownPayment.id);
     expect(update.error?.code).toBe('42501');
 
-    const remove = await buyerSession.from('payments').delete().eq('id', own![0].id);
+    const remove = await buyerSession.from('payments').delete().eq('id', ownPayment.id);
     expect(remove.error?.code).toBe('42501');
   });
 });

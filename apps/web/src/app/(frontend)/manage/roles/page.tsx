@@ -26,12 +26,13 @@ import {
 import { Lock, Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { isArrayOf } from '@/lib/unknown-value';
 
@@ -110,9 +111,7 @@ export default function RolesPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useOrgScopedLoad(load);
 
   async function handleSave(role: { name: string; description?: string | null }, id?: string) {
     try {

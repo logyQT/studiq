@@ -13,6 +13,7 @@ import {
   stripeWebhookRepository,
 } from '@studiq/server/lib/payment/stripe-webhook.repository';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   type EntitlementApplyOutcome,
   type EntitlementFence,
@@ -92,7 +93,7 @@ function periodDates(subscription: Stripe.Subscription): {
   start: string | null;
   end: string | null;
 } {
-  const items = subscription.items?.data ?? [];
+  const items = dbRows(subscription.items.data);
   const starts = items
     .map((item) => item.current_period_start)
     .filter((value): value is number => typeof value === 'number');
@@ -107,7 +108,7 @@ function periodDates(subscription: Stripe.Subscription): {
 }
 
 function firstPriceId(subscription: Stripe.Subscription): string | null {
-  return subscription.items?.data?.[0]?.price?.id ?? null;
+  return dbRows(subscription.items.data).at(0)?.price.id ?? null;
 }
 
 /** `invoice.parent.subscription_details` replaced top-level `invoice.subscription`. */
@@ -116,7 +117,7 @@ function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
   const parentId = objectId(fromParent);
   if (parentId) return parentId;
 
-  for (const line of invoice.lines?.data ?? []) {
+  for (const line of dbRows(invoice.lines.data)) {
     const subscriptionId = line.parent?.subscription_item_details?.subscription;
     if (subscriptionId) return subscriptionId;
   }
@@ -591,7 +592,7 @@ export class StripeWebhookService {
       status,
       currentPeriodStart: period.start,
       currentPeriodEnd: period.end,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
       cancelAt: secondsToIso(subscription.cancel_at),
       canceledAt: secondsToIso(subscription.canceled_at),
       lastEventCreated: Math.max(input.mirror?.lastEventCreated ?? 0, input.eventCreated),
@@ -827,7 +828,7 @@ export class StripeWebhookService {
       stripeCheckoutSessionId: checkoutSessionId,
       hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
       invoicePdfUrl: invoice.invoice_pdf ?? null,
-      paidAt: secondsToIso(invoice.status_transitions?.paid_at) ?? this.now().toISOString(),
+      paidAt: secondsToIso(invoice.status_transitions.paid_at) ?? this.now().toISOString(),
     });
 
     if (isFailure(payment)) throw new Error('payment history write failed');
@@ -1095,7 +1096,7 @@ export class StripeWebhookService {
   private async planKeyFromPriceMetadata(priceId: string): Promise<string | null> {
     try {
       const price = await this.client.prices.retrieve(priceId);
-      return price?.metadata?.[METADATA_PLAN_KEY] ?? null;
+      return price.metadata[METADATA_PLAN_KEY] ?? null;
     } catch (error) {
       if (isRecord(error) && readString(error, 'code') === 'resource_missing') return null;
       throw error;

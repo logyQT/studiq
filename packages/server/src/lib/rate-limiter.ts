@@ -36,7 +36,7 @@ export function createRateLimiter(windowMs: number, maxRequests: number) {
 
       if (recent.length >= maxRequests) {
         requestLog.set(key, recent);
-        return { allowed: false, retryAfterMs: windowMs - (now - recent[0]) };
+        return { allowed: false, retryAfterMs: windowMs - (now - (recent[0] ?? now)) };
       }
 
       recent.push(now);

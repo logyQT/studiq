@@ -85,6 +85,10 @@ export interface QuestionBank {
   name: string;
   description: string | null;
   question_count: number;
+  /** Items an open assessment holds from this reader (R14); never their ids. */
+  heldCount?: number;
+  /** The latest close among the windows holding them; `null` = held until released. */
+  heldUntil?: string | null;
   created_by: string;
   organization_id: string | null;
   created_at: string;

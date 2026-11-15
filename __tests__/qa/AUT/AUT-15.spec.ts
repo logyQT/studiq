@@ -101,7 +101,7 @@ test.describe('AUT-15 — anonymous visitor on protected routes', () => {
       expect(response.status(), `GET ${path} must redirect, not render`).toBeLessThan(400);
 
       const location = response.headers().location;
-      expect(location, `Location header for GET ${path}`).toBeTruthy();
+      if (!location) throw new Error(`${CASE} GET ${path} carries no Location header`);
       const target = new URL(location, APP_URL);
       expect(target.origin, `GET ${path} must stay on this origin`).toBe(new URL(APP_URL).origin);
       expect(target.pathname, `GET ${path} must target the login page`).toBe('/login');

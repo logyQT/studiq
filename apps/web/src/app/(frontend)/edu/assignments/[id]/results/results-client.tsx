@@ -20,8 +20,8 @@ interface Attempt {
   user: {
     id: string;
     email: string;
-    full_name: string;
-  };
+    full_name: string | null;
+  } | null;
 }
 
 export default function ResultsClient() {
@@ -133,7 +133,7 @@ export default function ResultsClient() {
                   </td>
                   <td className="p-3 text-right">
                     <Link
-                      href={`/edu/assignments/${id}/results/${attempt.user_id}`}
+                      href={`/edu/assignments/${id}/results/${attempt.id}`}
                       className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                     >
                       {t('grade')} <ExternalLink className="w-3 h-3" />

@@ -35,9 +35,10 @@ import {
 } from '@studiq/ui';
 import { Search, Shield, UserMinus, Users } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { apiDelete, apiGet, apiPut } from '@/lib/api';
 import { isArrayOf } from '@/lib/unknown-value';
 import { formatDate } from '@/lib/datetime';
@@ -79,6 +80,9 @@ interface GroupMember {
   role: string;
 }
 
+/** A group the member is not assigned to yet; the same defaults `openManageDialog` writes. */
+const UNASSIGNED_GROUP = { checked: false, role: 'member' } as const;
+
 export default function MembersPage() {
   const t = useTranslations('ManageMembersPage');
   const locale = useLocale();
@@ -117,9 +121,7 @@ export default function MembersPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useOrgScopedLoad(load);
 
   const filtered = members.filter((m) => {
     const matchesSearch =
@@ -434,7 +436,7 @@ export default function MembersPage() {
                     onCheckedChange={(c) =>
                       setGroupAssignments((prev) => ({
                         ...prev,
-                        [group.id]: { ...prev[group.id], checked: !!c },
+                        [group.id]: { ...(prev[group.id] ?? UNASSIGNED_GROUP), checked: !!c },
                       }))
                     }
                   />
@@ -445,7 +447,7 @@ export default function MembersPage() {
                       onValueChange={(v) =>
                         setGroupAssignments((prev) => ({
                           ...prev,
-                          [group.id]: { ...prev[group.id], role: v },
+                          [group.id]: { ...(prev[group.id] ?? UNASSIGNED_GROUP), role: v },
                         }))
                       }
                     >

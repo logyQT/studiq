@@ -11,8 +11,8 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['name']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.path).toEqual(['name']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       expect(result.error.issues.map((issue) => issue.message)).toContain(
         ValidationErrorCode.TOO_SHORT,
       );
@@ -24,7 +24,7 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 
@@ -42,7 +42,7 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.TOO_SHORT);
     }
   });
 
@@ -57,7 +57,7 @@ describe.each([
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_LONG);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.TOO_LONG);
     }
   });
 

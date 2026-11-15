@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { firstRecorded, requiredValue } from '#test/mocks/recorded';
 
 const PASSWORD = 'pass';
 
@@ -32,12 +33,17 @@ test.describe('Teacher organization switch', () => {
     // Whichever org the teacher landed on, derive it from the switcher itself
     // instead of relying on seed ordering.
     const switcherText = await switcher.innerText();
-    const activeOrg = Object.keys(ORG_DECK).find((name) => switcherText.includes(name));
-    expect(activeOrg).toBeDefined();
-    const otherOrg = Object.keys(ORG_DECK).find((name) => name !== activeOrg)!;
+    const activeOrg = firstRecorded(
+      Object.keys(ORG_DECK).filter((name) => switcherText.includes(name)),
+      'the organisation the teacher landed on',
+    );
+    const otherOrg = firstRecorded(
+      Object.keys(ORG_DECK).filter((name) => name !== activeOrg),
+      'a second organisation to switch to',
+    );
 
-    const activeDeck = ORG_DECK[activeOrg!];
-    const otherDeck = ORG_DECK[otherOrg];
+    const activeDeck = requiredValue(ORG_DECK[activeOrg], activeOrg);
+    const otherDeck = requiredValue(ORG_DECK[otherOrg], otherOrg);
 
     // Full load: warms the deck query cache for the org we landed on.
     // `DeckCard` renders a mobile and a desktop variant, so match the visible one.
@@ -74,8 +80,8 @@ test.describe('Teacher organization switch', () => {
     // previous entry is still cached (staleTime: Infinity), so this transition
     // is a pure cache re-read — only the content must match the active org.
     await switcher.click();
-    await page.getByRole('menuitem', { name: new RegExp(activeOrg!) }).click();
-    await expect(switcher).toContainText(activeOrg!);
+    await page.getByRole('menuitem', { name: new RegExp(activeOrg) }).click();
+    await expect(switcher).toContainText(activeOrg);
     await page.waitForURL(/\/edu$/);
 
     await page.getByRole('link', { name: t('DashboardLayout.flashcard_decks') }).click();

@@ -91,7 +91,7 @@ describe('OrgService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].name).toBe('Test Org');
+      expect(expectSuccess(result)[0]?.name).toBe('Test Org');
     });
 
     it('surfaces org branding fields for the navbar (issue #108)', async () => {
@@ -116,8 +116,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result)[0].logo_url).toBe('https://cdn.example.com/logo.png');
-      expect(expectSuccess(result)[0].brand_color).toBe('#FF6600');
+      expect(expectSuccess(result)[0]?.logo_url).toBe('https://cdn.example.com/logo.png');
+      expect(expectSuccess(result)[0]?.brand_color).toBe('#FF6600');
     });
 
     it('defaults branding fields to null when the org has none set', async () => {
@@ -135,8 +135,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result)[0].logo_url).toBeNull();
-      expect(expectSuccess(result)[0].brand_color).toBeNull();
+      expect(expectSuccess(result)[0]?.logo_url).toBeNull();
+      expect(expectSuccess(result)[0]?.brand_color).toBeNull();
     });
 
     it('returns empty when no memberships', async () => {

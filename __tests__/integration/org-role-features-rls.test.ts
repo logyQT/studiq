@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FeatureResolver } from '@studiq/server/services/feature.resolver';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import type { Database } from '@studiq/server/types/database';
@@ -59,7 +59,7 @@ describe(`org_role_features RLS`, () => {
       .insert({ name })
       .select('id')
       .single();
-    if (error || !data) throw new Error(`org create failed: ${error?.message}`);
+    if (error) throw new Error(`org create failed: ${error.message}`);
     return data.id;
   }
 
@@ -70,7 +70,7 @@ describe(`org_role_features RLS`, () => {
       .eq('organization_id', orgId)
       .eq('name', roleName)
       .single();
-    if (error || !data) throw new Error(`role ${roleName} not found: ${error?.message}`);
+    if (error) throw new Error(`role ${roleName} not found: ${error.message}`);
     return data.id;
   }
 
@@ -84,7 +84,7 @@ describe(`org_role_features RLS`, () => {
       // register route stores for real signups.
       user_metadata: { name: email.split('@')[0], account_type: 'student' },
     });
-    if (error || !data.user) throw new Error(`createUser failed: ${error?.message}`);
+    if (error) throw new Error(`createUser failed: ${error.message}`);
     return data.user.id;
   }
 
@@ -172,7 +172,7 @@ describe(`org_role_features RLS`, () => {
     const ctx: RequestContext = {
       traceId: `rls-${suiteId}`,
       userId: memberId,
-      accountType: 'STUDENT',
+      accountType: AccountType.STUDENT,
       orgRoleId: org1MemberRole,
       activeOrgId: org1,
       url: '/api/v1/features/me',
@@ -196,7 +196,7 @@ describe(`org_role_features RLS`, () => {
     const ctx: RequestContext = {
       traceId: `rls-limits-${suiteId}`,
       userId: memberId,
-      accountType: 'STUDENT',
+      accountType: AccountType.STUDENT,
       orgRoleId: hubMemberRole,
       activeOrgId: hubOrg,
       url: '/api/v1/decks',
@@ -216,7 +216,7 @@ describe(`org_role_features RLS`, () => {
     const ctx: RequestContext = {
       traceId: `rls-limits-outsider-${suiteId}`,
       userId: outsiderId,
-      accountType: 'STUDENT',
+      accountType: AccountType.STUDENT,
       orgRoleId: null,
       activeOrgId: hubOrg,
       url: '/api/v1/decks',

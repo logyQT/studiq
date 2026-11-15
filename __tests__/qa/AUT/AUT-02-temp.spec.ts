@@ -160,10 +160,13 @@ async function tokenClaims(context: BrowserContext): Promise<{
   const session = asJson<{ access_token?: string }>(
     JSON.parse(Buffer.from(raw, 'base64').toString('utf8')),
   );
-  expect(session.access_token, 'access token in the session cookie').toBeTruthy();
+  const token = session.access_token;
+  if (!token) throw new Error(`${CASE} session cookie carries no access token`);
+  const [, encodedPayload] = token.split('.');
+  if (!encodedPayload) throw new Error(`${CASE} access token is not a JWT`);
 
   const payload = asJson<{ email?: string; app_metadata?: { account_type?: string } }>(
-    JSON.parse(Buffer.from(session.access_token!.split('.')[1], 'base64url').toString('utf8')),
+    JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')),
   );
   return { email: payload.email, accountType: payload.app_metadata?.account_type };
 }

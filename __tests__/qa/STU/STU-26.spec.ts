@@ -293,7 +293,8 @@ test.describe('@case:STU-26 @area:STU @prio:P2 flashcard copy', () => {
     // The copy is persisted in deck B with the original's content, as a new card.
     const firstCopyCards = await listCards(page, deckB.id);
     expect(firstCopyCards, 'deck B holds exactly the one copy').toHaveLength(1);
-    const firstCopy = firstCopyCards[0];
+    const [firstCopy] = firstCopyCards;
+    if (!firstCopy) throw new Error(`${CASE} deck B holds no copy`);
     expect(firstCopy.id, 'the copy is a separate card').not.toBe(original.id);
     expect(firstCopy.deck_id, 'the copy lives in deck B').toBe(deckB.id);
     expect(firstCopy.front, 'the copy keeps the original front').toBe(CARD.original.front);
@@ -374,21 +375,21 @@ test.describe('@case:STU-26 @area:STU @prio:P2 flashcard copy', () => {
     const secondRound = await listCards(page, deckB.id);
     expect(secondRound, 'deck B holds the copy and the second copy').toHaveLength(2);
     const secondCopy = secondRound.find((card) => card.id !== firstCopy.id);
-    expect(secondCopy, 'the second copy is a new card').toBeTruthy();
-    expect(secondCopy!.front, 'the second copy uses the original’s current front').toBe(
+    if (!secondCopy) throw new Error(`${CASE} the second copy is not stored in deck B`);
+    expect(secondCopy.front, 'the second copy uses the original’s current front').toBe(
       CARD.originalEdit.front,
     );
-    expect(secondCopy!.back, 'the second copy uses the original’s current back').toBe(
+    expect(secondCopy.back, 'the second copy uses the original’s current back').toBe(
       CARD.originalEdit.back,
     );
 
     // The source deck is untouched by either copy.
     const sourceCards = await listCards(page, deckA.id);
     expect(sourceCards, 'deck A still holds only its own card').toHaveLength(1);
-    expect(sourceCards[0].id, 'deck A still holds the original').toBe(original.id);
-    expect(sourceCards[0].front, 'the original keeps its own content').toBe(
-      CARD.originalEdit.front,
-    );
+    const [sourceCard] = sourceCards;
+    if (!sourceCard) throw new Error(`${CASE} deck A lost its card`);
+    expect(sourceCard.id, 'deck A still holds the original').toBe(original.id);
+    expect(sourceCard.front, 'the original keeps its own content').toBe(CARD.originalEdit.front);
 
     expect(failedCopyRequests, 'no copy request was rejected by the API').toEqual([]);
     expect(pageErrors, 'uncaught page errors during the copy flow').toEqual([]);

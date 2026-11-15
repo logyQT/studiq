@@ -87,8 +87,6 @@ export type TransferQuestion = z.infer<typeof TransferQuestionSchema>;
  */
 export type RawTransferQuestion = Omit<TransferQuestion, 'type'> & { type: string };
 
-export type ImportQuestionsInput = z.infer<typeof ImportQuestionsSchema>;
-
 export interface ImportQuestionsResult {
   imported: number;
 }

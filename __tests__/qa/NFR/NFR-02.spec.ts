@@ -460,7 +460,7 @@ test.describe('NFR-02 — language switch PL ⇄ EN', () => {
     await page.locator('input[name=email]').fill(student.email);
     await page.locator('input[name=password]').fill(student.password);
     await page.getByRole('button', { name: LOGIN_COPY.en.submit, exact: true }).click();
-    await expect(page).toHaveURL(/\/app$/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/app$/);
 
     await expectDashboardLocale(page, 'en');
     await expectLocaleCookie(page, 'en');

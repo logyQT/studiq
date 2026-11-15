@@ -28,6 +28,8 @@ interface PlanInfo {
   limits: Record<string, number>;
 }
 
+const CASE = 'PUB-04';
+
 /** The student ladder the public pricing page documents (`base` … `pro`). */
 const STUDENT_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
@@ -70,6 +72,13 @@ function featureLabel(key: string): string {
   if (label) return label;
   const humanized = key.replace(/[.\s-]+/g, ' ').trim();
   return humanized.charAt(0).toUpperCase() + humanized.slice(1);
+}
+
+/** Copy for a key the spec names explicitly — a gap here is a spec bug, not a render bug. */
+function labelFor(labels: Record<string, string>, key: string): string {
+  const label = labels[key];
+  if (!label) throw new Error(`${CASE} has no copy for ${key}`);
+  return label;
 }
 
 /** Comparison-table order and labels (`apps/web/src/lib/pricing-limits.ts`). */
@@ -234,8 +243,9 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
         .trim();
       const priceMatch = /^(?<amount>[\d\s.,]+zł)(?<period>\/miesiąc)?$/.exec(priceLine);
       expect(priceMatch, `${plan.key} price line "${priceLine}"`).not.toBeNull();
-      const amount = priceMatch!.groups!.amount;
-      const period = priceMatch!.groups!.period;
+      const amount = priceMatch?.groups?.amount;
+      if (!amount) throw new Error(`${CASE} ${plan.key} price line has no amount: "${priceLine}"`);
+      const period = priceMatch.groups?.period;
 
       expect(moneyValue(amount), `${plan.key} price from grosze`).toBe(plan.priceMonthly / 100);
       if (plan.priceMonthly > 0) {
@@ -264,7 +274,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
       // visitor at registration.
       const cta = card.locator('[data-slot="card-content"] a');
       await expect(cta, `${plan.key} CTA`).toHaveCount(1);
-      await expect(cta).toHaveText(PLAN_CTA[plan.key]);
+      await expect(cta).toHaveText(labelFor(PLAN_CTA, plan.key));
       await expect(cta).toHaveAttribute('href', '/register');
     }
 
@@ -291,7 +301,9 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     const headers = (await table.locator('thead th').allTextContents()).map((header) =>
       header.trim(),
     );
-    expect(headers[0].length, 'the first column is labelled').toBeGreaterThan(0);
+    const [firstHeader] = headers;
+    if (!firstHeader) throw new Error(`${CASE} the comparison table has no header`);
+    expect(firstHeader.length, 'the first column is labelled').toBeGreaterThan(0);
     expect(headers.slice(1), 'comparison columns follow the card order').toEqual(
       plans.map((plan) => plan.name),
     );
@@ -308,7 +320,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
       featureKeys.map(featureLabel),
     );
     expect(rowLabels.slice(featureKeys.length), 'limit rows').toEqual(
-      limitKeys.map((key) => LIMIT_LABELS[key]),
+      limitKeys.map((key) => labelFor(LIMIT_LABELS, key)),
     );
 
     for (const [rowIndex, feature] of featureKeys.entries()) {
@@ -327,7 +339,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
 
     for (const [offset, key] of limitKeys.entries()) {
       const row = rows.nth(featureKeys.length + offset);
-      await expect(row.locator('td').first()).toHaveText(LIMIT_LABELS[key]);
+      await expect(row.locator('td').first()).toHaveText(labelFor(LIMIT_LABELS, key));
       for (const [planIndex, plan] of plans.entries()) {
         const configured = plan.limits[key];
         const cellText = (

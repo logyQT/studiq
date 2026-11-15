@@ -7,6 +7,7 @@ import {
   pollBillingActivation,
 } from '@/lib/billing-success';
 import { describe, expect, it, vi, type Mock } from 'vitest';
+import { firstRecorded } from '#test/mocks/recorded';
 
 function view(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscriptionView {
   return {
@@ -67,8 +68,8 @@ describe('pollBillingActivation', () => {
     await pollBillingActivation(d);
 
     expect(d.reconcile).toHaveBeenCalledTimes(1);
-    expect(d.reconcile.mock.invocationCallOrder[0]).toBeLessThan(
-      d.readSubscription.mock.invocationCallOrder[0],
+    expect(firstRecorded(d.reconcile.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(d.readSubscription.mock.invocationCallOrder),
     );
   });
 

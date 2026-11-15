@@ -7,7 +7,7 @@ import {
   cleanupOrganizationDeep,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { GET as getTeacherStats } from '@/app/(backend)/api/v1/flashcards/stats/teacher/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
@@ -50,7 +50,7 @@ describe(`Flashcard Stats Org Scope`, () => {
 
     if (!educator.orgId || !orgB.orgId) throw new Error('[setup] org not created');
     orgA = educator;
-    emptyDeckId = orgA.created.decks[1];
+    emptyDeckId = requiredAt(orgA.created.decks, 1, 'seeded deck');
     if (!emptyDeckId) throw new Error('[setup] second deck not created');
     mockUser(educator.user);
   });
@@ -89,7 +89,7 @@ describe(`Flashcard Stats Org Scope`, () => {
     // Pre-fix this is 3 — the educator's decks in *both* orgs.
     expect(stats.summary.totalDecks).toBe(1);
     expect(stats.byDeck).toHaveLength(1);
-    expect(stats.byDeck[0].deckId).toBe(orgA.created.decks[0]);
+    expect(requiredAt(stats.byDeck, 0, 'by-deck row').deckId).toBe(orgA.created.decks[0]);
     expect(stats.summary.totalDecks).toBe(stats.byDeck.length);
   });
 
@@ -98,7 +98,7 @@ describe(`Flashcard Stats Org Scope`, () => {
 
     expect(stats.summary.totalDecks).toBe(1);
     expect(stats.byDeck).toHaveLength(1);
-    expect(stats.byDeck[0].deckId).toBe(orgB.created.decks[0]);
+    expect(requiredAt(stats.byDeck, 0, 'by-deck row').deckId).toBe(orgB.created.decks[0]);
     expect(stats.summary.totalDecks).toBe(stats.byDeck.length);
   });
 

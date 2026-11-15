@@ -218,7 +218,7 @@ export function QuestionTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell>{q.question_answers?.length ?? 0}</TableCell>
+                <TableCell>{q.question_answers.length}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     {onCreateFlashcard && (

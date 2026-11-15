@@ -14,18 +14,16 @@ async function loginAndOpenRoles(page: Page) {
   // A fresh session has no active-org cookie yet, so useOrgs() auto-selects the
   // first membership and pushes /manage. Wait for the switcher to render the org
   // so no later redirect interrupts the roles page.
-  await page.waitForURL(/\/manage\/?$/, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible({ timeout: 30_000 });
+  await page.waitForURL(/\/manage\/?$/);
+  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 
   await page.goto('/manage/roles');
-  await page.waitForURL(/\/manage\/roles$/, { timeout: 30_000 });
+  await page.waitForURL(/\/manage\/roles$/);
   await expect(
     page.getByRole('heading', { level: 1, name: t('ManageRolesPage.title') }),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible();
   // The list is ungated on every plan, so a seeded system role must always render.
-  await expect(page.locator('tbody tr').filter({ hasText: 'admin' }).first()).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.locator('tbody tr').filter({ hasText: 'admin' }).first()).toBeVisible();
 }
 
 /** Live entitlement, so the spec documents both states without hardcoding a seed. */

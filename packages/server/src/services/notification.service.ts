@@ -4,6 +4,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -145,7 +146,7 @@ export class NotificationService implements Notifier {
     if (unread.error) return toDbFailure(unread.error);
 
     return success({
-      items: (list.data ?? []).map(toItem),
+      items: dbRows(list.data).map(toItem),
       unreadCount: unread.count ?? 0,
     });
   }
@@ -203,8 +204,9 @@ export class NotificationService implements Notifier {
           .order('id', { ascending: true })
           .range(from, from + READ_PAGE - 1);
         if (error) throw error;
-        targets.push(...(page ?? []));
-        if ((page ?? []).length < READ_PAGE) break;
+        const pageRows = dbRows(page);
+        targets.push(...pageRows);
+        if (pageRows.length < READ_PAGE) break;
       }
 
       const recipients = new Set<string>();
@@ -229,10 +231,11 @@ export class NotificationService implements Notifier {
             .order('id', { ascending: true })
             .range(from, from + READ_PAGE - 1);
           if (membersError) throw membersError;
-          for (const member of members ?? []) {
+          const memberRows = dbRows(members);
+          for (const member of memberRows) {
             if (member.user_id) recipients.add(member.user_id);
           }
-          if ((members ?? []).length < READ_PAGE) break;
+          if (memberRows.length < READ_PAGE) break;
         }
       }
 
@@ -249,7 +252,7 @@ export class NotificationService implements Notifier {
             .eq('organization_id', assignment.organizationId)
             .in('user_id', ids.slice(i, i + IN_CHUNK));
           if (orgError) throw orgError;
-          for (const member of orgMembers ?? []) inOrg.add(member.user_id);
+          for (const member of dbRows(orgMembers)) inOrg.add(member.user_id);
         }
         for (const id of ids) if (!inOrg.has(id)) recipients.delete(id);
       }

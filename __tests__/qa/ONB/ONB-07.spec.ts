@@ -297,7 +297,9 @@ async function ensureOrgContent(page: Page, side: Side): Promise<OrgContent> {
     expect(found, `group "${name}" is listed in ${org.name}`).toBeTruthy();
     return found!;
   });
-  const team = orgGroups[0].id;
+  const [firstGroup] = orgGroups;
+  if (!firstGroup) throw new Error(`${CASE} ${org.name} lists no group`);
+  const team = firstGroup.id;
 
   const banks: Entity[] = [];
   for (const n of [1, 2]) {

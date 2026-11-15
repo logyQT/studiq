@@ -3,11 +3,11 @@
 import type { PaginatedQuestions, Question } from '@studiq/server/models/question.model';
 import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import type { Topic } from '@studiq/server/models/topic.model';
-import { Button } from '@studiq/ui';
+import { Button, Card, CardContent, Skeleton } from '@studiq/ui';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Eye, Plus } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Eye, Lock, Plus } from 'lucide-react';
 import Link from 'next/link';
-import type { useTranslations } from 'next-intl';
+import { useLocale, type useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create-from-question-dialog';
@@ -15,6 +15,7 @@ import { QuestionFormDialog } from '@/components/questions/shared/question-form-
 import { QuestionTable } from '@/components/questions/shared/question-table';
 import { QuestionBankTransfer } from '@/components/questions/shared/question-transfer';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -22,6 +23,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { bankAccess } from '@/lib/bank-access';
+import { bankDetailState } from '@/lib/bank-detail-state';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
 import { type LoadedQuestionTotal, questionPagerTotal } from '@/lib/question-list-state';
 import { SrLabel } from '@/components/shared/sr-label';
@@ -43,6 +45,7 @@ export function QuestionBankDetailScreen({
 }: QuestionBankDetailScreenProps) {
   const queryClient = useQueryClient();
   const permission = usePermission();
+  const locale = useLocale();
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -54,10 +57,22 @@ export function QuestionBankDetailScreen({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [flashcardSourceQuestion, setFlashcardSourceQuestion] = useState<Question | null>(null);
 
-  const { data: bank } = useQuery({
+  const {
+    data: bank,
+    isLoading: bankLoading,
+    isError: bankError,
+    error: bankErrorCause,
+    refetch: refetchBank,
+  } = useQuery({
     queryKey: questionKeys.banks.detail(bankId),
     queryFn: () => apiGet<QuestionBank>(`/api/v1/questions/banks/${bankId}`),
     staleTime: Infinity,
+  });
+  const bankState = bankDetailState({
+    isLoading: bankLoading,
+    isError: bankError,
+    error: bankErrorCause,
+    hasData: bank !== undefined,
   });
 
   const access = bankAccess(
@@ -185,6 +200,49 @@ export function QuestionBankDetailScreen({
     setDialogOpen(true);
   }
 
+  if (bankState === 'loading') {
+    return (
+      <div className="space-y-6" aria-busy="true">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-9 w-9 rounded-md" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (bankState === 'not-found') {
+    return (
+      <div className="space-y-6">
+        <EntityNotFound
+          titleKey="bank_not_found"
+          descriptionKey="bank_not_found_desc"
+          fallback={{ href: basePath, label: t('back_to_banks') }}
+        />
+      </div>
+    );
+  }
+
+  if (bankState === 'error') {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent role="alert" className="flex flex-col items-center gap-4 py-12 text-center">
+            <AlertCircle className="h-12 w-12 text-destructive/60" aria-hidden="true" />
+            <p className="text-muted-foreground">{t('bank_load_error')}</p>
+            <Button variant="outline" size="sm" onClick={() => void refetchBank()}>
+              {t('retry')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -207,6 +265,23 @@ export function QuestionBankDetailScreen({
           </Button>
         )}
       </div>
+
+      {bank && (bank.heldCount ?? 0) > 0 && (
+        <p
+          role="note"
+          data-testid="held-notice"
+          className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {/* No date means a held item waiting for release, never a past date (R14). */}
+          {bank.heldUntil
+            ? t('held_notice_until', {
+                count: bank.heldCount ?? 0,
+                date: new Date(bank.heldUntil).toLocaleDateString(locale),
+              })
+            : t('held_notice_released', { count: bank.heldCount ?? 0 })}
+        </p>
+      )}
 
       {access.readOnly && (
         <p

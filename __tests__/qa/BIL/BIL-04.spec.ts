@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * BIL-04 — a manager buys the organization plan from `/pricing/org`.
@@ -146,8 +146,6 @@ test.describe('BIL-04 — organization plan purchase', () => {
       tenant.runSuffix,
       'seed with --fresh: every independent run owns a new tenant',
     ).toBeTruthy();
-    const manager = tenant.users.manager;
-    expect(manager, `${CASE} seeds the manager under test`).toBeTruthy();
     const orgId = tenant.org!.id;
 
     // --- Precondition: the manager administers the tenant's organization ---
@@ -337,8 +335,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     const tenant = loadTenant(CASE);
     expect(tenant.org, `${CASE} needs the tenant's own organization`).toBeTruthy();
     const orgId = tenant.org!.id;
-    const teacher = tenant.users.teacher;
-    expect(teacher, `${CASE} seeds the teacher`).toBeTruthy();
+    const teacher = tenantUser(tenant, 'teacher');
 
     await loginAs(page, tenant, 'teacher', { locale: 'pl' });
     await expect(page).toHaveURL(/\/(edu|app|manage)/, { timeout: 20_000 });

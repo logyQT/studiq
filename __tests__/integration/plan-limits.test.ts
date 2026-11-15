@@ -33,7 +33,7 @@ describe(`Plan limit fixes`, () => {
   });
 
   afterAll(async () => {
-    if (fixture?.orgId) {
+    if (fixture.orgId) {
       await cleanupOrganizationDeep(fixture.orgId);
     }
   });

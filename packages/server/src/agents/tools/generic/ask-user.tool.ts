@@ -24,7 +24,7 @@ export const askUserTool = tool({
       agentName: 'general',
       eventType: 'tool_call',
       label: 'ask_user',
-      data: { question: question?.slice(0, 100), hasOptions: !!options?.length },
+      data: { question: question.slice(0, 100), hasOptions: !!options?.length },
     });
     return {
       type: 'question' as const,

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
 
 // Issue #177: apply_org_plan() changes organizations.plan and re-syncs the
@@ -20,7 +21,9 @@ describe('apply_org_plan()', () => {
       .eq('org_roles.name', roleName)
       .overrideTypes<{ feature_key: string }[], { merge: false }>();
     if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => r.feature_key).toSorted();
+    return dbRows(data)
+      .map((r) => r.feature_key)
+      .toSorted();
   }
 
   async function plan(): Promise<string | undefined> {
@@ -41,7 +44,7 @@ describe('apply_org_plan()', () => {
       .select('id')
       .single()
       .overrideTypes<{ id: string }, { merge: false }>();
-    if (error || !data) throw new Error(`org create failed: ${error?.message}`);
+    if (error) throw new Error(`org create failed: ${error.message}`);
     orgId = data.id;
   });
 

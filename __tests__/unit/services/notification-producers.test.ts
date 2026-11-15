@@ -99,7 +99,7 @@ describe('TeacherAssignmentService notifies students', () => {
   function gradeWith(attempt: Record<string, unknown>) {
     mock.from
       .mockReturnValueOnce(owned())
-      .mockReturnValueOnce(chain(attempt))
+      .mockReturnValueOnce(chain({ user_id: 'student-1', ...attempt }))
       .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }])) // max points
       .mockReturnValueOnce(chain({ id: 'answer-1' }))
       .mockReturnValueOnce(chain(null)) // answer update
@@ -111,15 +111,27 @@ describe('TeacherAssignmentService notifies students', () => {
   function publishWith(previousStatus: string) {
     mock.from
       .mockReturnValueOnce(owned())
-      .mockReturnValueOnce(chain(null, 1)) // targets
-      .mockReturnValueOnce(chain({ status: previousStatus })) // status before
+      .mockReturnValueOnce(
+        chain({
+          status: previousStatus,
+          start_time: null,
+          deadline: '2999-01-01T00:00:00.000Z',
+          max_attempts: 1,
+          organization_id: 'org-1',
+        }),
+      ) // status before
+      .mockReturnValueOnce(chain([{ group_id: 'g1', student_id: null }])) // targets
+      .mockReturnValueOnce(chain([{ question_id: 'q1' }])) // items
+      .mockReturnValueOnce(chain([])) // snapshot links (a draft is frozen on publish)
       .mockReturnValueOnce(chain({ id: 'a1', status: 'published' })); // update
   }
 
   it('tells the students when a draft is published', async () => {
     publishWith('draft');
 
-    const result = await service.publish('a1', undefined, undefined, ctx);
+    // Sealing for the whole organisation skips the cross-class forecast, which these tests do not
+    // mock; the notification is what they cover.
+    const result = await service.publish('a1', { sealOrgWide: true }, ctx);
 
     expect(result.success).toBe(true);
     expect(notifier.assignmentPublished).toHaveBeenCalledOnce();
@@ -132,33 +144,31 @@ describe('TeacherAssignmentService notifies students', () => {
   it('does not tell them again when an already published assignment is saved again', async () => {
     publishWith('published');
 
-    await service.publish('a1', '2026-12-01T00:00:00.000Z', undefined, ctx);
+    await service.publish('a1', { deadline: '2026-12-01T00:00:00.000Z', sealOrgWide: true }, ctx);
 
     expect(notifier.assignmentPublished).not.toHaveBeenCalled();
   });
 
-  it('tells nobody when the previous status cannot be read', async () => {
+  it('aborts instead of publishing when the previous status cannot be read', async () => {
     const statusRead = chain(null);
     const failure = { data: null, error: { code: 'PGRST116', message: 'no rows' } };
     const failedRead = Promise.resolve(failure);
     statusRead.single = vi.fn().mockResolvedValue(failure);
     statusRead.then = failedRead.then.bind(failedRead);
-    mock.from
-      .mockReturnValueOnce(owned())
-      .mockReturnValueOnce(chain(null, 1)) // targets
-      .mockReturnValueOnce(statusRead) // status before, unreadable
-      .mockReturnValueOnce(chain({ id: 'a1', status: 'published' })); // update
+    mock.from.mockReturnValueOnce(owned()).mockReturnValueOnce(statusRead); // status before, unreadable
 
-    const result = await service.publish('a1', undefined, undefined, ctx);
+    const result = await service.publish('a1', { sealOrgWide: true }, ctx);
 
-    expect(result.success).toBe(true);
+    // The status decides whether this publish freezes the snapshot, so an unreadable status
+    // must not fall through to a live assignment without one.
+    expect(result.success).toBe(false);
     expect(notifier.assignmentPublished).not.toHaveBeenCalled();
   });
 
   it('tells nobody when publishing fails', async () => {
     mock.from.mockReturnValueOnce(chain(null)); // not the owner
 
-    const result = await service.publish('a1', undefined, undefined, ctx);
+    const result = await service.publish('a1', { sealOrgWide: true }, ctx);
 
     expect(result.success).toBe(false);
     expect(notifier.assignmentPublished).not.toHaveBeenCalled();
@@ -170,7 +180,7 @@ describe('TeacherAssignmentService notifies students', () => {
 
       const result = await service.gradeAnswer(
         'a1',
-        'student-1',
+        'attempt-1',
         { questionId: 'q1', points: 2, feedback: 'ok' },
         ctx,
       );
@@ -188,7 +198,7 @@ describe('TeacherAssignmentService notifies students', () => {
 
       await service.gradeAnswer(
         'a1',
-        'student-1',
+        'attempt-1',
         { questionId: 'q1', points: 2, feedback: 'ok' },
         ctx,
       );
@@ -204,7 +214,7 @@ describe('TeacherAssignmentService notifies students', () => {
 
       const result = await service.gradeAnswer(
         'a1',
-        'student-1',
+        'attempt-1',
         { questionId: 'q1', points: 9, feedback: '' },
         ctx,
       );

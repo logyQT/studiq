@@ -47,7 +47,7 @@ bun scripts/qa-tenant.ts SEC-10 --fresh
   pytaniem otwartym. Wszystkie treści mają widoczność `group` dla `G1`.
 - Kartkówka: nauczyciel tworzy assignment z pytaniem otwartym, ustawia cel `G1` i
   publikuje; student odpowiada tekstem `<script>alert(1)</script>`, a nauczyciel
-  ogląda odpowiedź na `/edu/assignments/<id>/results/<studentId>`.
+  ogląda odpowiedź na `/edu/assignments/<id>/results/<attemptId>`.
 - Zgłoszenie: student tworzy zgłoszenie pytania z wiadomością
   `<img src=x onerror=alert(1)>`; nauczyciel ogląda wątek na `/edu/reports/<id>`.
 - Żaden globalny wiersz (ustawienia admina, flagi funkcji, plany, statystyki, singletony)

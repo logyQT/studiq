@@ -30,14 +30,6 @@ export const NotificationIdParamsSchema = registry.register(
 
 export type NotificationListQuery = z.infer<typeof NotificationListQuerySchema>;
 
-/** What each type carries; the client renders the text from it in the reader's language. */
-export interface NotificationPayloads {
-  assignment_published: { assignmentId: string; title: string };
-  assignment_graded: { assignmentId: string; title: string };
-  report_message: { reportId: string; senderName: string | null };
-  invitation_accepted: { memberName: string | null };
-}
-
 export interface NotificationItem {
   id: string;
   type: NotificationType;

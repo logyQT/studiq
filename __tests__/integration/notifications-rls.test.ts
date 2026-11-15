@@ -37,7 +37,7 @@ describe('notifications access (#664)', () => {
       .select('id')
       .single()
       .overrideTypes<{ id: string }, { merge: false }>();
-    if (error || !data) throw error ?? new Error('[setup] notification not created');
+    if (error) throw error;
     notificationId = data.id;
   });
 

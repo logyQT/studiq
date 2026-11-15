@@ -181,7 +181,7 @@ test.describe('Login deep link (#458)', () => {
     await page.getByLabel(passwordLabel).fill(PASSWORD);
     await page.getByRole('button', { name: submitButton }).click();
 
-    await page.waitForURL(new RegExp(`${DEEP_LINK_PATH}$`), { timeout: 30_000 });
+    await page.waitForURL(new RegExp(`${DEEP_LINK_PATH}$`));
 
     // `/auth/login` does not set `active_org_id`; the auto-select must settle
     // WITHOUT pushing `/app` over the deep link (that bounce was #458's cause 1b).
@@ -212,7 +212,7 @@ test.describe('Login deep link (#458)', () => {
     await expect(openOnly).toHaveAttribute('aria-checked', 'true');
 
     const generate = page.getByRole('button', { name: t('AppFlashcardStudyPage.generate_quiz') });
-    await expect(generate).toBeEnabled({ timeout: 30_000 });
+    await expect(generate).toBeEnabled();
     await expect(page.getByRole('button', { name: /^Upgrade$/ })).toHaveCount(0);
 
     // Re-opening the login deep link as a signed-in user keeps the target

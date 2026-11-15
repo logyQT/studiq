@@ -86,7 +86,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
       .select('id')
       .single()
       .overrideTypes<{ id: string }, { merge: false }>();
-    if (error || !report) throw new Error(`[setup] report: ${error?.message}`);
+    if (error) throw new Error(`[setup] report: ${error.message}`);
 
     const { error: messageError } = await service.from('question_report_messages').insert({
       report_id: report.id,
@@ -132,7 +132,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
       .select('id')
       .single()
       .overrideTypes<{ id: string }, { merge: false }>();
-    if (bankError || !bank) throw new Error(`[setup] bank: ${bankError?.message}`);
+    if (bankError) throw new Error(`[setup] bank: ${bankError.message}`);
 
     const { data: question, error: questionError } = await service
       .from('questions')
@@ -147,7 +147,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
       .select('id')
       .single()
       .overrideTypes<{ id: string }, { merge: false }>();
-    if (questionError || !question) throw new Error(`[setup] question: ${questionError?.message}`);
+    if (questionError) throw new Error(`[setup] question: ${questionError.message}`);
 
     // The issue scenario: a student reports the teacher's question.
     questionReportId = await seedReport({

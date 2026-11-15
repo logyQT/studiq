@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FeatureResolver } from '@studiq/server/services/feature.resolver';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -39,7 +39,7 @@ describe('User feature override expiry', () => {
     return {
       traceId: 'override-expiry',
       userId,
-      accountType: 'STUDENT',
+      accountType: AccountType.STUDENT,
       activeOrgId: null,
       orgRoleId: null,
       url: '/api/v1/features/me',
@@ -125,6 +125,7 @@ describe('User feature override expiry', () => {
 
     const result = await resolver.requireFeature(ctx(), 'ai.chat');
     expect(result.success).toBe(false);
+    if (result.success) return;
     expect(result.error).toBe('FORBIDDEN');
   });
 });

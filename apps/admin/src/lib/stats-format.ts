@@ -23,15 +23,23 @@ export function formatCount(value: number, locale: string): string {
   return new Intl.NumberFormat(locale).format(value);
 }
 
+/** Tallest value in a series, the denominator for `barHeight`. */
+export function maxValue(values: readonly number[]): number {
+  return Math.max(0, ...values);
+}
+
 /**
- * Bar heights, as a percentage of the tallest bar, for a small chart of daily counts. A day with
- * any activity is never drawn at less than `floor` percent, so a single event next to a huge
- * day does not vanish; a day with none is 0.
+ * One bar's height, as a percentage of `max`. A day with any activity is never drawn at less
+ * than `floor` percent, so a single event next to a huge day does not vanish; a day with none is 0.
  */
+export function barHeight(value: number, max: number, floor = 4): number {
+  return max === 0 || value <= 0 ? 0 : Math.max(floor, Math.round((value / max) * 100));
+}
+
+/** Bar heights for a whole series, as a percentage of the tallest bar. */
 export function barHeights(values: readonly number[], floor = 4): number[] {
-  const max = Math.max(0, ...values);
-  if (max === 0) return values.map(() => 0);
-  return values.map((value) => (value <= 0 ? 0 : Math.max(floor, Math.round((value / max) * 100))));
+  const max = maxValue(values);
+  return values.map((value) => barHeight(value, max, floor));
 }
 
 /** Sum of a series, for the chart caption. */

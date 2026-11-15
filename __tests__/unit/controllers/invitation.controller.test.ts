@@ -260,12 +260,12 @@ describe('InvitationController', () => {
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect(bulkData(response).results.length).toBe(2);
-      expect(bulkData(response).results[0].data.invitationId).toBe('inv-1');
+      expect(bulkData(response).results[0]?.data.invitationId).toBe('inv-1');
       // #313: the controller passes the copyable link through unchanged.
-      expect(bulkData(response).results[0].data.inviteLink).toBe(
+      expect(bulkData(response).results[0]?.data.inviteLink).toBe(
         'http://localhost:3000/join?token=token-1',
       );
-      expect(bulkData(response).results[1].data.inviteLink).toBe(
+      expect(bulkData(response).results[1]?.data.inviteLink).toBe(
         'http://localhost:3000/join?token=token-2',
       );
       // MGR-INV-02: every row is attributable to the address that was submitted.

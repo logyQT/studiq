@@ -8,10 +8,6 @@ export function dbToDatetimeLocal(isoString: string): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-export function datetimeLocalToUTC(localValue: string): string {
-  return new Date(localValue).toISOString();
-}
-
 /**
  * Date-only text in the app locale (pl → 22.10.2026, en → 10/22/2026).
  * Pass the locale from `useLocale()` — never rely on the runtime default,

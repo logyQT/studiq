@@ -2,6 +2,9 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-Q-04 — pytanie otwarte („Otwarta odpowiedź”) w banku „Fizyka”.
  *
@@ -184,7 +187,9 @@ async function createPublishedAssignment(page: Page, questionId: string, student
   await api(page.request, 'PUT', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/targets`, {
     studentIds: [studentId],
   });
-  await api(page.request, 'POST', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/publish`, {});
+  await api(page.request, 'POST', `${TEACHER_ASSIGNMENTS_URL}/${assignment.id}/publish`, {
+    deadline: PUBLISH_DEADLINE,
+  });
 
   const detail = await api<AssignmentDetail>(
     page.request,
@@ -314,6 +319,8 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
 
       await studentPage.getByRole('button', { name: COPY.startQuiz }).click();
       await expect(studentPage).toHaveURL(/\/take\?attemptId=/);
+      const attemptId = new URL(studentPage.url()).searchParams.get('attemptId');
+      if (!attemptId) throw new Error(`${CASE} the take URL carries no attemptId`);
 
       await expect(
         studentPage.getByText(QUESTION_CONTENT, { exact: true }),
@@ -340,7 +347,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       const answers = await api<StudentAnswers>(
         page.request,
         'GET',
-        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
+        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${attemptId}`,
       );
       const answer = answers.quiz_answers.find(
         (answerRow) =>
@@ -351,7 +358,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       expect(answers.graded_at, 'the answer still waits for the teacher').toBeNull();
 
       // The teacher grades the submitted text by hand.
-      await page.goto(`/edu/assignments/${assignmentId}/results/${student.id}`);
+      await page.goto(`/edu/assignments/${assignmentId}/results/${attemptId}`);
       await expect(
         page.getByRole('heading', { name: COPY.gradingTitle, exact: true }),
       ).toBeVisible();
@@ -377,7 +384,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
       const graded = await api<StudentAnswers>(
         page.request,
         'GET',
-        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
+        `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${attemptId}`,
       );
       const gradedAnswer = graded.quiz_answers.find(
         (answerRow) => answerRow.question_id === created!.id,

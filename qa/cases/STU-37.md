@@ -36,7 +36,7 @@ bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   `.../questions`, `PUT .../targets`, `.../publish`). Student odpowiada na obie
   (`POST /api/v1/assignments/<id>/start`, `POST /api/v1/quiz/<attemptId>`), a edukator
   ocenia odpowiedź otwartą z informacją zwrotną (`PUT
-/api/v1/teacher/assignments/<id>/results/<studentId>`).
+/api/v1/teacher/assignments/<id>/results/<attemptId>`).
 - Każde wykonanie nadaje treściom i tytułom własny tag (`<run>-<timestamp>`), a
   `maxAttempts: 1` trzyma kartkówki w sekcji „Ukończone”; CI zasiewa tenant **raz**
   i używa go ponownie w każdym retry, więc ponowny przebieg dokłada tylko nowe

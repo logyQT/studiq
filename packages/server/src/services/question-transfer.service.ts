@@ -1,10 +1,12 @@
 import type { RequestContext } from '@studiq/authz';
+import { AccountType } from '@studiq/authz';
 import { can, check, Permission } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
@@ -37,10 +39,13 @@ export class QuestionTransferService {
   /**
    * Every question of a bank the caller may read, in the shape both file formats use.
    *
-   * Export follows read: reading a bank means having all of it, answer key included, so the bank
-   * is listed by its id rather than through the narrower `question.read` scope. A bank above
-   * `EXPORT_MAX_QUESTIONS` is refused (422) instead of being cut off. `notReimportable`
-   * counts the questions the importer would reject (the data is exported as it is).
+   * Export follows read **and** the staff key permission (R15): reading a bank means having all
+   * of it, answer key included, so the bank is listed by its id rather than through the narrower
+   * `question.read` scope. A student never exports a key, and a caller without
+   * `question_bank.update` on this bank is refused with `EXPORT_FORBIDDEN` rather than silently
+   * losing the key column. A bank above `EXPORT_MAX_QUESTIONS` is refused (422) instead of being
+   * cut off. `notReimportable` counts the questions the importer would reject (the data is
+   * exported as it is).
    */
   async exportBank(
     ctx: RequestContext,
@@ -48,10 +53,22 @@ export class QuestionTransferService {
   ): Promise<
     ServiceResult<{ bankName: string; questions: RawTransferQuestion[]; notReimportable: number }>
   > {
+    if (ctx.accountType === AccountType.STUDENT) return failure('EXPORT_FORBIDDEN');
+
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
-    // From here the whole bank is readable (decision B, #678).
     const bank = await questionBankService.getById(bankId, ctx);
     if (!bank.success) return failure(bank.error);
+
+    const bankRow = isRecord(bank.data) ? bank.data : null;
+    const staffExport =
+      bankRow !== null &&
+      (await can(ctx, Permission.QUESTION_BANK_UPDATE, {
+        id: bankId,
+        created_by: typeof bankRow.created_by === 'string' ? bankRow.created_by : null,
+        organization_id:
+          typeof bankRow.organization_id === 'string' ? bankRow.organization_id : null,
+      }));
+    if (!staffExport) return failure('EXPORT_FORBIDDEN');
 
     const listed = await questionService.listBankQuestions(bankId);
     if (!listed.success) return failure(listed.error);
@@ -65,14 +82,14 @@ export class QuestionTransferService {
     if (rows.length < total) return failure('INTERNAL_SERVER');
 
     const questions = rows.map((row): RawTransferQuestion => {
-      const answers = [...(row.question_answers ?? [])].toSorted(
-        (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
+      const answers = dbRows(row.question_answers).toSorted(
+        (a, b) => a.order_index - b.order_index,
       );
       return {
         type: row.type,
         content: row.content,
         ...(row.explanation ? { explanation: row.explanation } : {}),
-        topics: (row.topics ?? []).map((topic) => topic.name),
+        topics: row.topics.map((topic) => topic.name),
         answers: answers.map((a) => ({ content: a.content, isCorrect: a.is_correct })),
       };
     });
@@ -123,7 +140,8 @@ export class QuestionTransferService {
     let owned = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
     owned = organizationId
       ? owned.eq('organization_id', organizationId)
       : owned.is('organization_id', null);
@@ -140,34 +158,34 @@ export class QuestionTransferService {
 
     // Ids are chosen here, so options and topic links never depend on the order a
     // multi-row INSERT returns its rows in.
-    const ids = questions.map(() => crypto.randomUUID());
+    const prepared = questions.map((question) => ({ id: crypto.randomUUID(), question }));
 
     const { error: questionError } = await supabase.from('questions').insert(
-      questions.map((q, i) => ({
-        id: ids[i],
-        type: q.type,
-        content: q.content,
-        explanation: q.explanation ?? null,
+      prepared.map(({ id, question }) => ({
+        id,
+        type: question.type,
+        content: question.content,
+        explanation: question.explanation ?? null,
         created_by: ctx.userId,
         organization_id: organizationId,
-        visibility: bank.visibility ?? 'personal',
+        visibility: bank.visibility,
         bank_id: bankId,
       })),
     );
     if (questionError) return toDbFailure(questionError);
 
-    const options = questions.flatMap((q, i) =>
-      q.answers.map((a, order) => ({
-        question_id: ids[i],
+    const options = prepared.flatMap(({ id, question }) =>
+      question.answers.map((a, order) => ({
+        question_id: id,
         content: a.content,
         is_correct: a.isCorrect,
         order_index: order,
       })),
     );
-    const links = questions.flatMap((q, i) =>
-      [...new Set(q.topics.map((name) => topicIds.data.get(name.toLowerCase())))]
-        .filter((id): id is string => !!id)
-        .map((topic_id) => ({ question_id: ids[i], topic_id })),
+    const links = prepared.flatMap(({ id, question }) =>
+      [...new Set(question.topics.map((name) => topicIds.data.get(name.toLowerCase())))]
+        .filter((topicId): topicId is string => !!topicId)
+        .map((topic_id) => ({ question_id: id, topic_id })),
     );
 
     const writes = [
@@ -178,7 +196,10 @@ export class QuestionTransferService {
       const failed = write ? (await write).error : null;
       if (failed) {
         // Cascades remove the options and topic links of the questions created above.
-        const cleanup = await this.removeCreated(supabase, ids);
+        const cleanup = await this.removeCreated(
+          supabase,
+          prepared.map((entry) => entry.id),
+        );
         if (cleanup.error) {
           // The leftovers are recorded here, but the response still describes the failure the
           // caller hit: a cleanup error is not an authorization verdict (`42501` would turn a
@@ -186,7 +207,7 @@ export class QuestionTransferService {
           // cause, not the rollback.
           logError('question-transfer.rollback_failed', {
             bankId,
-            total: ids.length,
+            total: prepared.length,
             remaining: cleanup.remaining,
             originalError: `${failed.code}: ${failed.message}`,
             cleanupError: `${cleanup.error.code}: ${cleanup.error.message}`,
@@ -240,7 +261,7 @@ export class QuestionTransferService {
       : existing.is('organization_id', null);
     const { data: own, error } = await existing;
     if (error) return toDbFailure(error);
-    for (const topic of own ?? []) byName.set(topic.name.toLowerCase(), topic.id);
+    for (const topic of dbRows(own)) byName.set(topic.name.toLowerCase(), topic.id);
 
     const missing = [...wanted].filter(([key]) => !byName.has(key)).map(([, name]) => name);
     if (missing.length > 0) {
@@ -256,7 +277,7 @@ export class QuestionTransferService {
         )
         .select('id, name');
       if (createError) return toDbFailure(createError);
-      for (const topic of created ?? []) byName.set(topic.name.toLowerCase(), topic.id);
+      for (const topic of dbRows(created)) byName.set(topic.name.toLowerCase(), topic.id);
     }
 
     return success(byName);

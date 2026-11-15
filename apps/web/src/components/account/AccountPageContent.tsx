@@ -32,7 +32,7 @@ export function AccountPageContent() {
   // without overwriting what has been typed.
   const [draftName, setDraftName] = useState<string | null>(null);
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
-  const rawStoredName: unknown = user?.user_metadata?.name;
+  const rawStoredName: unknown = user?.user_metadata.name;
   const storedName = typeof rawStoredName === 'string' ? rawStoredName : undefined;
   const name = draftName ?? storedName ?? '';
   const [currentPassword, setCurrentPassword] = useState('');
@@ -43,7 +43,7 @@ export function AccountPageContent() {
 
   const userName = storedName || user?.email?.split('@')[0] || '';
   // `account_type` is part of the untyped Supabase map too; only a string is renderable.
-  const rawRole: unknown = activeOrg?.orgRoleName ?? user?.app_metadata?.account_type;
+  const rawRole: unknown = activeOrg?.orgRoleName ?? user?.app_metadata.account_type;
   const role = typeof rawRole === 'string' ? rawRole : '';
   const createdAt = user?.created_at ? formatDate(user.created_at, locale) : '';
 

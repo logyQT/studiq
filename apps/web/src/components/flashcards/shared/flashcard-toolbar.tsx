@@ -6,6 +6,7 @@ import { Plus, Sparkles } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { PageToolbar } from '@/components/shared/page-toolbar';
+import { SortSelect } from '@/components/shared/sort-select';
 import { useFeature } from '@/hooks/use-feature';
 import { usePermission } from '@/hooks/use-permission';
 
@@ -84,23 +85,18 @@ export function FlashcardToolbar({
           </SelectContent>
         </Select>
       )}
-      <Select
-        value={`${sortBy}:${sortOrder}`}
-        onValueChange={(v) => {
-          const [sb, so] = v.split(':');
-          onSortChange(sb, so);
-        }}
-      >
-        <SelectTrigger className="w-40 truncate">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
-          <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
-          <SelectItem value="front:asc">{t('sort_name_asc')}</SelectItem>
-          <SelectItem value="front:desc">{t('sort_name_desc')}</SelectItem>
-        </SelectContent>
-      </Select>
+      <SortSelect
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onChange={onSortChange}
+        triggerClassName="w-40 truncate"
+        options={[
+          { value: 'created_at:desc', label: t('sort_newest') },
+          { value: 'created_at:asc', label: t('sort_oldest') },
+          { value: 'front:asc', label: t('sort_name_asc') },
+          { value: 'front:desc', label: t('sort_name_desc') },
+        ]}
+      />
     </PageToolbar>
   );
 }

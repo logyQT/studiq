@@ -242,9 +242,9 @@ describe('portalParams', () => {
   it('keeps tax-id collection out and plan switching off', () => {
     const params = portalParams(false, 'https://studiq.test');
 
-    expect(params.features?.customer_update?.allowed_updates).toEqual(['email', 'address', 'name']);
-    expect(params.features?.customer_update?.allowed_updates).not.toContain('tax_id');
-    expect(params.features?.subscription_update).toBeUndefined();
+    expect(params.features.customer_update?.allowed_updates).toEqual(['email', 'address', 'name']);
+    expect(params.features.customer_update?.allowed_updates).not.toContain('tax_id');
+    expect(params.features.subscription_update).toBeUndefined();
     expect(params.default_return_url).toBe('https://studiq.test/app/billing');
     expect(params.metadata?.studiq_livemode).toBe('false');
   });

@@ -13,7 +13,11 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import {
   DELETE as deleteFn,
   GET as getById,
@@ -260,7 +264,7 @@ describe(`Flashcard Decks Integration`, () => {
     });
 
     it('returns 201 and persists the group link for a group the caller teaches', async () => {
-      const taughtGroup = teacher.groups[0];
+      const taughtGroup = requiredAt(teacher.groups, 0, 'seeded group');
 
       const { response, body } = await postDeck({
         name: `deck-140-allowed-${suiteId}`,
@@ -297,7 +301,7 @@ describe(`Flashcard Decks Integration`, () => {
 
   describe('PUT /api/v1/flashcards/decks/:id — group sharing authorization (#140)', () => {
     it('returns 403 and keeps the existing links when adding an untaught group', async () => {
-      const taughtGroup = teacher.groups[0];
+      const taughtGroup = requiredAt(teacher.groups, 0, 'seeded group');
       const untaughtGroup = teacher.groups[1];
 
       mockUser(teacher.user);
@@ -383,7 +387,7 @@ describe(`Flashcard Decks Integration`, () => {
 
   describe('PUT /api/v1/flashcards/decks/:id — cross-org group guard (#140)', () => {
     it('returns 403 and keeps the org-A links when switching to a group the caller teaches in another org', async () => {
-      const taughtGroup = teacher.groups[0];
+      const taughtGroup = requiredAt(teacher.groups, 0, 'seeded group');
       const deckId = await createGroupDeck(`deck-140-cross-put-${suiteId}`, taughtGroup);
 
       const updateRes = await putGroupIds(deckId, [crossOrgGroupId], crossOrgId);
@@ -423,9 +427,9 @@ describe(`Flashcard Decks Integration`, () => {
       const body = await json<DeckListPayload>(response);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(body.data?.items)).toBe(true);
-      expect(body.data?.items?.length).toBeGreaterThanOrEqual(5);
-      expect(body.data?.total).toBeGreaterThanOrEqual(body.data?.items?.length);
+      expect(Array.isArray(body.data.items)).toBe(true);
+      expect(body.data.items.length).toBeGreaterThanOrEqual(5);
+      expect(body.data.total).toBeGreaterThanOrEqual(body.data.items.length);
     });
 
     it('keeps total stable across pages (cursor does not shrink it)', async () => {
@@ -462,7 +466,7 @@ describe(`Flashcard Decks Integration`, () => {
     it('returns deck when found', async () => {
       mockUser(teacher.user);
 
-      const deckId = teacher.created.decks[0];
+      const deckId = requiredAt(teacher.created.decks, 0, 'seeded deck');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
         { id: deckId },
@@ -478,7 +482,7 @@ describe(`Flashcard Decks Integration`, () => {
     it('returns 404 for another user deck', async () => {
       mockUser(other);
 
-      const deckId = teacher.created.decks[3];
+      const deckId = requiredAt(teacher.created.decks, 3, 'seeded deck');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
         { id: deckId },
@@ -495,7 +499,7 @@ describe(`Flashcard Decks Integration`, () => {
     it('updates own deck and returns 200', async () => {
       mockUser(teacher.user);
 
-      const deckId = teacher.created.decks[1];
+      const deckId = requiredAt(teacher.created.decks, 1, 'seeded deck');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
         { id: deckId },
@@ -515,7 +519,7 @@ describe(`Flashcard Decks Integration`, () => {
     it('returns 403 when updating another user deck', async () => {
       mockUser(other);
 
-      const deckId = teacher.created.decks[0];
+      const deckId = requiredAt(teacher.created.decks, 0, 'seeded deck');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
         { id: deckId },
@@ -537,7 +541,7 @@ describe(`Flashcard Decks Integration`, () => {
     it('deletes own deck and returns 200', async () => {
       mockUser(teacher.user);
 
-      const deckId = teacher.created.decks[2];
+      const deckId = requiredAt(teacher.created.decks, 2, 'seeded deck');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
         { id: deckId },
@@ -553,7 +557,7 @@ describe(`Flashcard Decks Integration`, () => {
     it('returns 403 when deleting another user deck', async () => {
       mockUser(other);
 
-      const deckId = teacher.created.decks[4];
+      const deckId = requiredAt(teacher.created.decks, 4, 'seeded deck');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
         { id: deckId },

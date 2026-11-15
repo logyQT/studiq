@@ -17,6 +17,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { SQL } from 'bun';
 import { randomBytes } from 'node:crypto';
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { shortHash, uuidv5 } from '#test/e2e/fixtures/ids';
 
 export type SeedAccountRole = 'student' | 'educator' | 'manager';
@@ -152,7 +153,7 @@ export async function ensureAccounts(
       accounts.map((account) => account.email),
     );
   if (error) throw new Error(`seed accounts: profiles lookup ${error.message}`);
-  const byEmail = new Map((data ?? []).map((row) => [row.email, row.id]));
+  const byEmail = new Map(dbRows(data).map((row) => [row.email, row.id]));
 
   return accounts.map((account) => {
     const id = byEmail.get(account.email);
@@ -194,7 +195,11 @@ export function createSqlAccountWriter(sql: SQL): AccountWriter {
     let pending = hashes.get(password);
     if (!pending) {
       pending = sql<{ hash: string }[]>`SELECT crypt(${password}, gen_salt('bf', 10)) AS hash`
-        .then(([row]) => row.hash)
+        .then((rows) => {
+          const row = rows[0];
+          if (!row) throw new Error('SQL account seeding: crypt() returned no row');
+          return row.hash;
+        })
         .catch((error: unknown) => {
           // A rejected query is not a result — the next tenant should retry it.
           hashes.delete(password);
@@ -300,9 +305,13 @@ export async function seedTenantGraph(
   spec: TenantGraphSpec,
   write?: AccountWriter,
 ): Promise<SeededTenantGraph> {
-  const [owner, ...members] = await ensureAccounts(db, [spec.owner, ...spec.members], write);
+  const accounts = await ensureAccounts(db, [spec.owner, ...spec.members], write);
+  const owner = accounts[0];
+  if (!owner) throw new Error(`seed ${spec.key}: the account writer returned no owner`);
+  const members = accounts.slice(1);
 
-  if (!spec.org) {
+  const org = spec.org;
+  if (!org) {
     return {
       orgId: null,
       defaultGroupId: null,
@@ -315,21 +324,27 @@ export async function seedTenantGraph(
 
   const { error: orgError } = await db
     .from('organizations')
-    .upsert({ id: spec.org.id, name: spec.org.name }, { onConflict: 'id' });
+    .upsert({ id: org.id, name: org.name }, { onConflict: 'id' });
   if (orgError) throw new Error(`seed ${spec.key}: org ${orgError.message}`);
 
-  const roles =
-    (await db.from('org_roles').select('id,name').eq('organization_id', spec.org.id)).data ?? [];
+  const roles = dbRows(
+    (await db.from('org_roles').select('id,name').eq('organization_id', org.id)).data,
+  );
   const roleIds: SeededTenantGraph['roleIds'] = {};
   for (const role of roles) {
     if (role.name === 'admin' || role.name === 'teacher' || role.name === 'member') {
       roleIds[role.name] = role.id;
     }
   }
-  for (const name of ['admin', 'teacher', 'member'] as const) {
-    if (!roleIds[name]) {
+  const roleIdFor = (name: 'admin' | 'teacher' | 'member'): string => {
+    const id = roleIds[name];
+    if (!id) {
       throw new Error(`seed ${spec.key}: organization trigger did not create the ${name} role`);
     }
+    return id;
+  };
+  for (const name of ['admin', 'teacher', 'member'] as const) {
+    roleIdFor(name);
   }
 
   const now = new Date().toISOString();
@@ -337,16 +352,16 @@ export async function seedTenantGraph(
     [
       {
         id: tenantId(spec.key, 'member:owner'),
-        organization_id: spec.org.id,
+        organization_id: org.id,
         user_id: owner.id,
-        org_role_id: roleIds[spec.ownerOrgRole]!,
+        org_role_id: roleIdFor(spec.ownerOrgRole),
         joined_at: now,
       },
       ...members.map((member, index) => ({
         id: tenantId(spec.key, `member:${index}`),
-        organization_id: spec.org!.id,
+        organization_id: org.id,
         user_id: member.id,
-        org_role_id: roleIds[member.orgRole ?? 'member']!,
+        org_role_id: roleIdFor(member.orgRole ?? 'member'),
         joined_at: now,
       })),
     ],
@@ -358,7 +373,7 @@ export async function seedTenantGraph(
   const { error: groupError } = await db.from('groups').upsert(
     groups.map((group) => ({
       id: group.id,
-      organization_id: spec.org!.id,
+      organization_id: org.id,
       name: group.name,
       created_by: owner.id,
       is_default: group.isDefault,
@@ -391,7 +406,7 @@ export async function seedTenantGraph(
   }
 
   return {
-    orgId: spec.org.id,
+    orgId: org.id,
     defaultGroupId: spec.defaultGroup?.id ?? null,
     groups,
     owner,

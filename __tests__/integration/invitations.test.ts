@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   type BeforeResult,
   before,
@@ -197,7 +198,7 @@ describe(`Invitations Integration`, () => {
     if (foreignOrgId) {
       await cleanupOrganizationDeep(foreignOrgId);
     }
-    if (controlOrg?.org.id) {
+    if (controlOrg.org.id) {
       await cleanupOrganizationDeep(controlOrg.org.id);
     }
   });
@@ -501,7 +502,7 @@ describe(`Invitations Integration`, () => {
         })
         .select()
         .single();
-      if (error || !invitation) throw new Error(`Failed to insert invitation: ${error?.message}`);
+      if (error) throw new Error(`Failed to insert invitation: ${error.message}`);
 
       const req = createNextRequest(
         `http://localhost/api/v1/organization/invites?token=${invitation.token}`,
@@ -723,7 +724,7 @@ describe(`Invitations Integration`, () => {
         .select('email, token')
         .in('email', emails);
       if (error) throw new Error(`Failed to read invitation tokens: ${error.message}`);
-      const tokenByEmail = new Map((rows ?? []).map((row) => [row.email, row.token] as const));
+      const tokenByEmail = new Map(dbRows(rows).map((row) => [row.email, row.token] as const));
 
       for (const result of body.data.results) {
         expect(typeof result.data.inviteLink).toBe('string');
@@ -906,7 +907,7 @@ describe(`Invitations Integration`, () => {
       })
       .select('id')
       .single();
-    if (error || !data) throw new Error(`Failed to insert invitation: ${error?.message}`);
+    if (error) throw new Error(`Failed to insert invitation: ${error.message}`);
     return data.id;
   }
 

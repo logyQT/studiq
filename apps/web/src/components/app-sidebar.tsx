@@ -33,7 +33,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { questionReportKeys } from '@/lib/query-keys';
 
-const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
+const NAV_ITEMS: Record<'/edu' | '/manage' | '/app', { label: string; items: NavItem[] }[]> = {
   '/edu': [
     {
       label: 'sidebar_main',

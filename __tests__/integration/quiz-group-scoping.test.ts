@@ -13,7 +13,7 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
 import { POST as generateQuiz } from '@/app/(backend)/api/v1/quiz/new/route';
@@ -43,8 +43,8 @@ describe(`Quiz Group Scoping`, () => {
     });
     const orgId = teacher.orgId;
     if (!orgId) throw new Error('[setup] org not created');
-    const groupA = teacher.groups[1];
-    const groupB = teacher.groups[2];
+    const groupA = requiredAt(teacher.groups, 1, 'seeded group');
+    const groupB = requiredAt(teacher.groups, 2, 'seeded group');
 
     const service = createServiceClient();
     // The API creates a group without enrolling its creator, so make the

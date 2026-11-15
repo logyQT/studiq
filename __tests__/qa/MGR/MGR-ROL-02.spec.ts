@@ -173,9 +173,11 @@ test('creates „Asystent”, renames it with a description and keeps the custom
   const afterCreate = await listRoles(page);
   const created = afterCreate.filter((role) => role.name === ROLE_NAME);
   expect(created, 'the API exposes exactly one „Asystent” role').toHaveLength(1);
-  expect(created[0].isSystem, '„Asystent” is not a system role').toBe(false);
-  expect(created[0].description).toBeNull();
-  expect(created[0].memberCount, 'a brand-new role has no members').toBe(0);
+  const [createdRole] = created;
+  if (!createdRole) throw new Error(`${CASE} the API exposes no „${ROLE_NAME}” role`);
+  expect(createdRole.isSystem, '„Asystent” is not a system role').toBe(false);
+  expect(createdRole.description).toBeNull();
+  expect(createdRole.memberCount, 'a brand-new role has no members').toBe(0);
 
   // --- Step 2: edit its name and description ------------------------------
   const editButton = createdRow.getByRole('button', {
@@ -219,7 +221,7 @@ test('creates „Asystent”, renames it with a description and keeps the custom
   // `display_name` is what member/invite pickers show; the rename must keep it
   // equal to `name` (#260), not leave the old label behind.
   const afterUpdate = await listRoles(page);
-  const renamed = afterUpdate.filter((role) => role.id === created[0].id);
+  const renamed = afterUpdate.filter((role) => role.id === createdRole.id);
   expect(renamed, 'the role kept its id').toHaveLength(1);
   expect(renamed[0]).toMatchObject({
     name: ROLE_NAME_EDITED,

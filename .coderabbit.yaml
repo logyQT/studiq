@@ -12,6 +12,10 @@
 #   3. Teach the reviewer this repo's non-obvious rules (4-layer backend,
 #      alias-only imports, service-role admin app, tenant-per-test e2e) so it
 #      doesn't re-derive them — or get them wrong — on every PR.
+#   4. Review on demand, not on every push. Deterministic checks live in
+#      `bun run lint` and verify.yml; CodeRabbit runs only when a maintainer
+#      comments `@coderabbitai review`. See
+#      docs/decisions/0012-pr-size-budget.md.
 
 language: 'en-US'
 early_access: false
@@ -39,7 +43,10 @@ reviews:
   high_level_summary: true
   high_level_summary_in_walkthrough: false
   changed_files_summary: true
-  review_status: true
+  # Off: the status comment ("Auto reviews are disabled…", "Run configuration")
+  # is posted on every PR and is noise now that reviews are requested by hand.
+  # Turning it off suppresses the whole status block.
+  review_status: false
   collapse_walkthrough: true
   poem: false
   in_progress_fortune: false
@@ -72,7 +79,11 @@ reviews:
     - '!**/coverage/**'
 
   auto_review:
-    enabled: true
+    # Manual only: nothing triggers a review automatically — not a push, not a
+    # label. A maintainer starts one with `@coderabbitai review`. This keeps the
+    # mechanical findings in CI and reserves the LLM pass for PRs where it
+    # earns its keep.
+    enabled: false
     # Drafts are a work-in-progress signal in this repo (several open at once).
     # Reviewing them burns tokens on code that is still moving.
     drafts: false
@@ -85,7 +96,10 @@ reviews:
       # QA-suite integration branch. PRs are normally tagged [QA-SUITE] below
       # and skipped; keeping the branch listed makes the intent explicit.
       - 'qa-suite'
-    auto_incremental_review: true
+    # Manual reviews only: a later push must not silently start another review.
+    # `enabled: false` above disables automatic reviews; this disables
+    # re-reviews of a PR whose review was requested by hand.
+    auto_incremental_review: false
     # Substring, case-insensitive: a bare 'WIP' would also skip 'swipe' and
     # 'wipe' titles, so bracket it. Drafts are excluded already by `drafts`.
     ignore_title_keywords:
@@ -344,6 +358,8 @@ reviews:
         Do not comment on Markdown formatting; `bun fmt` owns it. Flag stale
         cross-links and commands that no longer exist.
 
+  # These checks run as part of a review, so they apply only when a review is
+  # requested by hand. The hard gates are in verify.yml.
   pre_merge_checks:
     title:
       mode: 'warning'

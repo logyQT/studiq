@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -84,7 +85,7 @@ export class FlashcardImportService {
 
         if (error) return toDbFailure(error);
 
-        for (const t of newTopics ?? []) {
+        for (const t of dbRows(newTopics)) {
           topicNameToId.set(t.name.toLowerCase(), t.id);
         }
       }
@@ -121,7 +122,7 @@ export class FlashcardImportService {
 
         if (error) return toDbFailure(error);
 
-        for (const d of newDecks ?? []) {
+        for (const d of dbRows(newDecks)) {
           deckNameToId.set(d.name.toLowerCase(), d.id);
         }
       }
@@ -158,15 +159,16 @@ export class FlashcardImportService {
 
     const errors: { row: number; error: string }[] = [];
 
-    if (!flashcards || flashcards.length === 0) {
+    const inserted = dbRows(flashcards);
+    if (inserted.length === 0) {
       return failure('INTERNAL_SERVER');
     }
 
     const topicAssignments: { flashcard_id: string; topic_id: string }[] = [];
 
     for (let i = 0; i < data.cards.length; i++) {
-      const card = data.cards[i];
-      const flashcardId = flashcards[i]?.id;
+      const card = data.cards[i]!;
+      const flashcardId = inserted[i]?.id;
 
       if (!flashcardId) {
         errors.push({ row: i + 1, error: 'Failed to create flashcard' });

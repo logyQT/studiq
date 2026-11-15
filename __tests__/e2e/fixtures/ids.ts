@@ -6,8 +6,14 @@ const NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 export function uuidv5(name: string): string {
   const ns = Buffer.from(NAMESPACE.replace(/-/g, ''), 'hex');
   const hash = createHash('sha1').update(ns).update(Buffer.from(name, 'utf8')).digest();
-  hash[6] = (hash[6] & 0x0f) | 0x50;
-  hash[8] = (hash[8] & 0x3f) | 0x80;
+  // RFC 4122 fixes the version at byte 6 and the variant at byte 8 of the digest.
+  const version = hash[6];
+  const variant = hash[8];
+  if (version === undefined || variant === undefined) {
+    throw new Error('SHA-1 digest is too short for a v5 UUID');
+  }
+  hash[6] = (version & 0x0f) | 0x50;
+  hash[8] = (variant & 0x3f) | 0x80;
   const hex = hash.subarray(0, 16).toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

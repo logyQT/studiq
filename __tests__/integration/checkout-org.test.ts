@@ -1,5 +1,6 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
@@ -28,13 +29,13 @@ const BASE_URL = 'http://localhost';
 
 interface Session {
   user: TestUserFixture;
-  build: () => SupabaseClient;
+  build: () => SupabaseClient<Database>;
 }
 
 async function signIn(email: string, user: TestUserFixture): Promise<Session> {
   const jar = new Map<string, string>();
   const build = () =>
-    createServerClient(
+    createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -54,7 +55,7 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 }
 
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(() => session.build());
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
 }
 
 function checkoutRequest(body: unknown, cookies?: Record<string, string>) {
@@ -90,7 +91,7 @@ describe('org checkout resolves the target organization (#225)', () => {
       .eq('organization_id', orgId)
       .eq('name', 'teacher')
       .single();
-    if (roleError || !teacherRole) throw new Error('[setup] teacher org role missing');
+    if (roleError) throw new Error('[setup] teacher org role missing');
 
     // Same account type as the buyer (manager) but a non-admin org role: this is
     // the only way to prove the org-admin gate, because a teacher-account-type
@@ -113,7 +114,7 @@ describe('org checkout resolves the target organization (#225)', () => {
   afterAll(async () => {
     if (orgId) await cleanupOrganizationDeep(orgId);
     for (const user of testUsers) {
-      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 

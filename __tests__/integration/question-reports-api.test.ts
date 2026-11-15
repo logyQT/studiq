@@ -6,7 +6,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
 import { json } from '#test/helpers/json';
 import { cleanupOrganizationDeep, seedOrgMembership } from '#test/integration/helpers';
-import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createTypedServiceClient,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { POST as createGroupReport } from '@/app/(backend)/api/v1/organization/groups/[id]/reports/route';
 import { POST as postMessage } from '@/app/(backend)/api/v1/question-reports/[id]/messages/route';
 import { POST as markReportRead } from '@/app/(backend)/api/v1/question-reports/[id]/read/route';
@@ -160,7 +164,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       })
       .select('id')
       .single();
-    if (bankError || !bank) throw new Error(`[setup] bank: ${bankError?.message}`);
+    if (bankError) throw new Error(`[setup] bank: ${bankError.message}`);
 
     const { data: question, error: questionError } = await service
       .from('questions')
@@ -174,7 +178,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       })
       .select('id')
       .single();
-    if (questionError || !question) throw new Error(`[setup] question: ${questionError?.message}`);
+    if (questionError) throw new Error(`[setup] question: ${questionError.message}`);
     questionId = question.id;
 
     // A report that belongs to another organisation and to which our manager is
@@ -192,8 +196,8 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       })
       .select('id')
       .single();
-    if (foreignError || !foreignReport) {
-      throw new Error(`[setup] foreign report: ${foreignError?.message}`);
+    if (foreignError) {
+      throw new Error(`[setup] foreign report: ${foreignError.message}`);
     }
     foreignReportId = foreignReport.id;
 
@@ -219,7 +223,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     }
     if (foreignOrgId) await cleanupOrganizationDeep(foreignOrgId);
     for (const session of [manager, teacher, student]) {
-      if (session?.user.id) await service.auth.admin.deleteUser(session.user.id).catch(() => {});
+      await service.auth.admin.deleteUser(session.user.id).catch(() => {});
     }
   });
 
@@ -479,8 +483,8 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     }>(secondRes);
     expect(secondBody.data.items).toHaveLength(1);
 
-    const firstId = firstBody.data.items[0].id;
-    const secondId = secondBody.data.items[0].id;
+    const firstId = requiredAt(firstBody.data.items, 0, 'report').id;
+    const secondId = requiredAt(secondBody.data.items, 0, 'report').id;
     expect(secondId).not.toBe(firstId);
     expect(new Set([firstId, secondId])).toEqual(new Set([questionReportId, groupReportId]));
   });

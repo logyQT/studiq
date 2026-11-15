@@ -84,7 +84,7 @@ export function QuestionFormDialog({
       setError(null);
       tfDraftRef.current = null;
       if (initialValues) {
-        const storedAnswers = (initialValues.question_answers ?? []).map((a) => ({
+        const storedAnswers = initialValues.question_answers.map((a) => ({
           content: a.content,
           isCorrect: a.is_correct,
         }));

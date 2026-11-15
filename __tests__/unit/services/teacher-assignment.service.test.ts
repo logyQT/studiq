@@ -3,6 +3,40 @@ import { TeacherAssignmentService } from '@studiq/server/services/teacher-assign
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall, firstRecorded } from '#test/mocks/recorded';
+
+// The assignment pages render the key through the service-role reader (#1170); these tests
+// cover the ownership/shape logic, so the reader answers an empty map.
+vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
+  readQuestionKeys: vi.fn(() => Promise.resolve(new Map())),
+}));
+
+// The frozen snapshot's key column is service-role only (#1171); the ownership/shape tests never
+// need its value. Slice 2 moved the link rows and the reader snapshots behind the same service-role
+// seam, so each test declares the links it serves here.
+type AssignmentLink = import('@studiq/server/lib/assignment-snapshot').AssignmentLink;
+type QuestionSnapshot = import('@studiq/server/lib/assignment-snapshot').QuestionSnapshot;
+
+const linkRows = vi.hoisted(() => ({ rows: [] as AssignmentLink[] }));
+const resumedQuestions = vi.hoisted(() => ({ rows: [] as QuestionSnapshot[] }));
+vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/assignment-snapshot')>()),
+  readAssignmentSnapshotKeys: vi.fn(() => Promise.resolve(new Map())),
+  readAssignmentSnapshots: vi.fn(() => Promise.resolve({ success: true, data: new Map() })),
+  readAssignmentLinks: vi.fn(() => Promise.resolve({ success: true, data: linkRows.rows })),
+  // Resume serves the attempt's own frozen items; each test states them here.
+  readAttemptQuestions: vi.fn(() =>
+    Promise.resolve({ success: true, data: resumedQuestions.rows }),
+  ),
+  writeAssignmentSnapshots: vi.fn(() => Promise.resolve({ success: true, data: 1 })),
+}));
+
+/** Cross-class exposure is derived from the database in production; these tests state the count. */
+const exposureState = vi.hoisted(() => ({ openItemCount: 0, outsideStudentCount: 0 }));
+vi.mock('@studiq/server/lib/assignment-exposure', () => ({
+  assessExposure: vi.fn(() => Promise.resolve({ success: true, data: exposureState })),
+}));
 
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
@@ -48,6 +82,37 @@ function chain(result: unknown, count?: number) {
   return c;
 }
 
+/**
+ * `quiz_attempts` stub with PostgREST cardinality: equality filters that match
+ * more than one row make `.single()`/`.maybeSingle()` fail with PGRST116, which
+ * is what a student's second attempt does to a read filtered by
+ * `(assignment_id, user_id)` (#1062).
+ */
+function attemptRowsChain(rows: Array<Record<string, unknown>>) {
+  const c = chain(rows);
+  const filters: Array<[string, unknown]> = [];
+  c.eq = vi.fn((column: string, value: unknown) => {
+    filters.push([column, value]);
+    return c;
+  });
+  const resolve = () => {
+    const found = rows.filter((row) => filters.every(([column, value]) => row[column] === value));
+    if (found.length > 1) {
+      return Promise.resolve({
+        data: null,
+        error: {
+          code: 'PGRST116',
+          message: 'JSON object requested, multiple (or no) rows returned',
+        },
+      });
+    }
+    return Promise.resolve({ data: found[0] ?? null, error: null });
+  };
+  c.single = vi.fn(resolve);
+  c.maybeSingle = c.single;
+  return c;
+}
+
 /** A chain whose every terminal (await, `.single()`, `.maybeSingle()`) fails. */
 function failingChain(failure: { code: string; message: string }) {
   const c = chain(null);
@@ -62,7 +127,43 @@ function failingChain(failure: { code: string; message: string }) {
 /** `expect.any` is typed `any`; hoisted to `unknown` so expected objects stay typed. */
 const anyTimestamp: unknown = expect.any(String);
 
+/** A frozen snapshot row as `assignment_questions` stores it (#1171). */
+function frozen(id: string, content = 'What?') {
+  return { id, content, type: 'mcq', question_answers: [] };
+}
+
+/** The `assignment_questions` rows `readAssignmentSnapshots` reads for a set of ids. */
+function snapshotRows(ids: string[]) {
+  return chain(ids.map((id) => ({ question_id: id, snapshot: frozen(id), snapshot_version: 1 })));
+}
+
+/** Any future close: the publish gate only needs the window to be well-formed. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 86_400_000).toISOString();
+
 const userId = 'owner-user-id';
+
+/** ownedClient → the stored row → targets → items → (the update). */
+function publishFixture(
+  mock: ReturnType<typeof mockSupabaseClient>,
+  stored: Record<string, unknown> = {},
+) {
+  const before = {
+    status: 'draft',
+    start_time: null,
+    deadline: PUBLISH_DEADLINE,
+    max_attempts: 1,
+    organization_id: orgId,
+    ...stored,
+  };
+  const update = chain({ id: assignmentId, status: 'published' });
+  mock.from
+    .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+    .mockReturnValueOnce(chain(before))
+    .mockReturnValueOnce(chain([{ group_id: 'g-1', student_id: null }]))
+    .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
+    .mockReturnValueOnce(update);
+  return update;
+}
 const orgId = '00000000-0000-4000-8000-000000000001';
 const assignmentId = 'assignment-1';
 
@@ -158,6 +259,7 @@ describe('TeacherAssignmentService', () => {
       title: 'Quiz 1',
       created_by: userId,
       organization_id: orgId,
+      status: 'draft',
       assignment_questions: [],
     };
 
@@ -167,7 +269,12 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getById(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual(assignment);
+      // A draft also carries the composer's cross-class forecast (R3); it is counts only.
+      if (result.success)
+        expect(result.data).toEqual({
+          ...assignment,
+          exposure: { openItemCount: 0, outsideStudentCount: 0 },
+        });
     });
 
     it('returns assignment for org scope', async () => {
@@ -177,7 +284,11 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getById(assignmentId, withOrgScope());
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual(otherUserAssignment);
+      if (result.success)
+        expect(result.data).toEqual({
+          ...otherUserAssignment,
+          exposure: { openItemCount: 0, outsideStudentCount: 0 },
+        });
     });
 
     it('returns NOT_FOUND when no assignment', async () => {
@@ -212,11 +323,10 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns INTERNAL_SERVER on DB error', async () => {
+      const dbError = vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } });
       mock.from.mockReturnValue({
         select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          })),
+          eq: vi.fn(() => ({ single: dbError, maybeSingle: dbError })),
         })),
       });
 
@@ -363,62 +473,80 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('publish', () => {
-    it('publishes assignment with deadline', async () => {
-      const published = { id: assignmentId, status: 'published' };
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(chain(published));
+    beforeEach(() => {
+      exposureState.openItemCount = 0;
+      exposureState.outsideStudentCount = 0;
+    });
+
+    it('publishes a complete run and records the seal scope', async () => {
+      const update = publishFixture(mock);
 
       const result = await service.publish(
         assignmentId,
-        '2026-07-20T00:00:00.000Z',
-        undefined,
+        { acknowledgeExposure: true, sealOrgWide: false },
         ctx,
       );
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.status).toBe('published');
-    });
-
-    it('publishes assignment without deadline', async () => {
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(chain({ id: assignmentId, status: 'published' }));
-
-      const result = await service.publish(assignmentId, undefined, undefined, ctx);
-
-      expect(result.success).toBe(true);
-      if (result.success) expect(result.data.status).toBe('published');
-    });
-
-    it('publishes assignment with startTime', async () => {
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(
-          chain({ id: assignmentId, status: 'published', start_time: '2026-09-01T08:00:00.000Z' }),
-        );
-
-      const result = await service.publish(
-        assignmentId,
-        undefined,
-        '2026-09-01T08:00:00.000Z',
-        ctx,
+      expect(update.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'published', seal_org_wide: false }),
       );
+    });
+
+    it('refuses a run with no items, naming the field', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          chain({ status: 'draft', start_time: null, deadline: PUBLISH_DEADLINE, max_attempts: 1 }),
+        )
+        .mockReturnValueOnce(chain([{ group_id: 'g-1', student_id: null }]))
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.publish(assignmentId, { acknowledgeExposure: true }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(result.details?.map((issue) => issue.path.join('.'))).toContain('items');
+      }
+    });
+
+    it('refuses a second publish of an already published run', async () => {
+      publishFixture(mock, { status: 'published' });
+
+      const result = await service.publish(assignmentId, { acknowledgeExposure: true }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_ALREADY_PUBLISHED');
+    });
+
+    it('requires the acknowledgement for cross-class exposure', async () => {
+      exposureState.openItemCount = 2;
+      exposureState.outsideStudentCount = 5;
+      publishFixture(mock);
+
+      const refused = await service.publish(assignmentId, {}, ctx);
+
+      expect(refused.success).toBe(false);
+      if (!refused.success) expect(refused.error).toBe('EXPOSURE_ACK_REQUIRED');
+    });
+
+    it('publishes an exposed run once it is sealed for the whole organisation', async () => {
+      exposureState.openItemCount = 2;
+      const update = publishFixture(mock);
+
+      const result = await service.publish(assignmentId, { sealOrgWide: true }, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.start_time).toBe('2026-09-01T08:00:00.000Z');
+      expect(update.update).toHaveBeenCalledWith(expect.objectContaining({ seal_org_wide: true }));
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.publish(assignmentId, undefined, undefined, ctx);
+      const result = await service.publish(assignmentId, {}, ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
@@ -426,19 +554,34 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('unpublish', () => {
-    it('unpublishes a published assignment', async () => {
+    it('withdraws a scheduled run to draft', async () => {
       const draft = { id: assignmentId, status: 'draft' };
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
-        .mockReturnValueOnce(chain({ id: assignmentId, status: 'published' }))
+        .mockReturnValueOnce(chain({ status: 'published', start_time: '2999-01-01T00:00:00.000Z' }))
         .mockReturnValue(chain(draft));
 
       const result = await service.unpublish(assignmentId, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.status).toBe('draft');
+    });
+
+    it('refuses to withdraw a live run', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          chain({ status: 'published', start_time: '2026-01-01T00:00:00.000Z' }),
+        );
+
+      const result = await service.unpublish(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
     });
 
     it('returns BAD_REQUEST when assignment is already draft', async () => {
@@ -470,7 +613,9 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValue(chain(null));
 
@@ -485,7 +630,9 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
+        .mockReturnValueOnce(chain([{ id: 'q-2' }]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
         .mockReturnValue(chain(null));
 
@@ -500,12 +647,28 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]));
 
       const result = await service.addQuestions(assignmentId, { questionIds: ['q-1'] }, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 0 });
+    });
+
+    it('refuses to change a published assignment (#1171 R13)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'published' }));
+
+      const result = await service.addQuestions(assignmentId, { questionIds: ['q-1'] }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      // Ownership + status only: nothing is written.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -524,11 +687,26 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValue(chain(null));
 
       const result = await service.removeQuestion(assignmentId, 'q-1', ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses to remove an item from a published assignment (#1171 R13)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'published' }));
+
+      const result = await service.removeQuestion(assignmentId, 'q-1', ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -546,6 +724,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
@@ -566,6 +745,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
@@ -575,6 +755,20 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 0 });
+    });
+
+    it('refuses to randomize into a published assignment (#1171 R13)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'published' }));
+
+      const result = await service.randomize(assignmentId, { source: 'all', count: 5 }, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -591,6 +785,7 @@ describe('TeacherAssignmentService', () => {
 
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(questionsChain)
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
@@ -616,6 +811,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
         .mockReturnValueOnce(questionsChain)
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
@@ -635,6 +831,7 @@ describe('TeacherAssignmentService', () => {
     it('sets group and student targets', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId })) // the assignment's organisation
         .mockReturnValueOnce(chain(null, 1)) // the group is in it
         .mockReturnValueOnce(chain(null, 1)) // and so is the student
@@ -652,6 +849,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a group of another organisation and writes nothing (#235)', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 0)) // no group of this organisation matches
         .mockReturnValue(chain(null));
@@ -666,6 +864,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a student who is not in the assignment organisation', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 1)) // only one of the two is a member
         .mockReturnValue(chain(null));
@@ -682,6 +881,7 @@ describe('TeacherAssignmentService', () => {
     it('accepts a direct student target on a personal assignment (no organisation)', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValue(chain(null));
 
@@ -695,6 +895,7 @@ describe('TeacherAssignmentService', () => {
     it("accepts a group target on a personal assignment when it is one of the caller's groups", async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValueOnce(chain([{ organization_id: orgId }])) // the caller's organisations
         .mockReturnValueOnce(chain(null, 1)) // the group is in one of them
@@ -708,6 +909,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses a group of another organisation on a personal assignment', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: null }))
         .mockReturnValueOnce(chain([{ organization_id: orgId }]))
         .mockReturnValueOnce(chain(null, 0))
@@ -724,6 +926,7 @@ describe('TeacherAssignmentService', () => {
       const studentIds = Array.from({ length: 250 }, (_, i) => `s${i}`);
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null, 200))
         .mockReturnValueOnce(chain(null, 50))
@@ -738,6 +941,7 @@ describe('TeacherAssignmentService', () => {
     it('refuses targets when the assignment read fails instead of treating it as personal', async () => {
       mock.from
         .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValueOnce(failingChain({ code: 'PGRST116', message: 'no rows' }))
         .mockReturnValue(chain(null));
 
@@ -753,11 +957,27 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(assignmentId, {}, ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses every target change once the run is published (#1171, R20)', async () => {
+      const statusChain = chain({ status: 'published' });
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(statusChain)
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { groupIds: [] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'ASSESSMENT_LIVE' });
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).not.toContain('assignment_targets');
+      expect(statusChain.update, 'the status is never touched').not.toHaveBeenCalled();
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -834,12 +1054,65 @@ describe('TeacherAssignmentService', () => {
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
         .mockReturnValueOnce(chain(attempt))
+        .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(asJson<{ id: string }>(result.data).id).toBe('attempt-1');
+    });
+
+    it('loads the requested attempt when the student has two attempts (#1062)', async () => {
+      const attempts = attemptRowsChain([
+        {
+          ...attempt,
+          id: 'attempt-1',
+          quiz_answers: [{ id: 'answer-1', question_id: 'q-open' }],
+        },
+        {
+          ...attempt,
+          id: 'attempt-2',
+          quiz_answers: [{ id: 'answer-2', question_id: 'q-open' }],
+        },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(attempts)
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-2', ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const loaded = asJson<{ id: string; quiz_answers: Array<{ id: string }> }>(result.data);
+        expect(loaded.id).toBe('attempt-2');
+        expect(loaded.quiz_answers.map((answer) => answer.id)).toEqual(['answer-2']);
+      }
+      // The attempt id alone must not resolve: `assignment_id` is the IDOR guard.
+      expect(attempts.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+    });
+
+    it('returns NOT_FOUND for an attempt of another assignment (#1062)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(
+          attemptRowsChain([
+            { ...attempt, id: 'attempt-foreign', assignment_id: 'assignment-other' },
+          ]),
+        )
+        .mockReturnValue(chain([]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-foreign', ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
 
     it('attaches the per-question maximum and null for a removed question (#169)', async () => {
@@ -856,9 +1129,10 @@ describe('TeacherAssignmentService', () => {
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
         .mockReturnValueOnce(chain(gradedAttempt))
-        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
+        .mockReturnValueOnce(chain([]));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -876,7 +1150,7 @@ describe('TeacherAssignmentService', () => {
         )
         .mockReturnValue(chain(null));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
@@ -885,7 +1159,7 @@ describe('TeacherAssignmentService', () => {
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
@@ -898,8 +1172,89 @@ describe('TeacherAssignmentService', () => {
   };
 
   describe('gradeAnswer', () => {
+    it('grades only the requested attempt when the student has two attempts (#1062)', async () => {
+      const attemptUpdate = chain(null);
+      const attempts = attemptRowsChain([
+        { id: 'attempt-1', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
+        { id: 'attempt-2', assignment_id: assignmentId, user_id: 'student-1', graded_at: null },
+      ]);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(attempts)
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
+        .mockReturnValueOnce(chain({ id: 'answer-2' }))
+        .mockReturnValueOnce(chain(null)) // student_answers update
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
+        .mockReturnValueOnce(
+          chain([{ question_id: 'q-open', is_correct: false, teacher_points: 2 }]),
+        )
+        .mockReturnValueOnce(attemptUpdate);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-2',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(attemptUpdate.update).toHaveBeenCalledWith({
+        score: 2,
+        graded_at: anyTimestamp,
+      });
+      expect(attemptUpdate.eq).toHaveBeenCalledWith('id', 'attempt-2');
+      // The attempt id alone must not resolve: `assignment_id` is the IDOR guard.
+      expect(attempts.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+    });
+
+    it('does not grade an attempt of another assignment (#1062)', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(
+          attemptRowsChain([
+            {
+              id: 'attempt-foreign',
+              assignment_id: 'assignment-other',
+              user_id: 'student-1',
+              graded_at: null,
+            },
+          ]),
+        )
+        .mockReturnValue(chain([]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-foreign',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // Ownership + the attempt read only: nothing was graded or scored.
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('maps an attempt-read failure instead of reporting NOT_FOUND', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(failingChain({ code: 'XX000', message: 'connection reset' }))
+        .mockReturnValue(chain([]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-1',
+        { questionId: 'q-open', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
     it('updates existing answer grade and recomputes the attempt score', async () => {
-      const attemptChain = chain({ id: 'attempt-1' });
+      const attemptChain = chain({ id: 'attempt-1', user_id: 'student-1' });
       const questionsChain = chain([
         { question_id: 'q-mcq', points: 1 },
         { question_id: 'q-open', points: 2 },
@@ -922,7 +1277,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-open', points: 2, feedback: 'Good' },
         ctx,
       );
@@ -938,12 +1293,12 @@ describe('TeacherAssignmentService', () => {
     it('rejects points above the question maximum (#169)', async () => {
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-open', points: 5 },
         ctx,
       );
@@ -955,7 +1310,7 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('accepts points equal to the question maximum (#169)', async () => {
-      const attemptChain = chain({ id: 'attempt-1' });
+      const attemptChain = chain({ id: 'attempt-1', user_id: 'student-1' });
       const questionsChain = chain([{ question_id: 'q-open', points: 2 }]);
       const answersChain = chain([{ question_id: 'q-open', is_correct: false, teacher_points: 2 }]);
       const updateChain = chain(null);
@@ -972,7 +1327,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-open', points: 2 },
         ctx,
       );
@@ -987,12 +1342,12 @@ describe('TeacherAssignmentService', () => {
     it('rejects a question that is not part of the assignment (#169)', async () => {
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-forged', points: 1 },
         ctx,
       );
@@ -1007,7 +1362,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(
           chain([
             { question_id: 'q-open', points: 2 },
@@ -1033,7 +1388,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-other', points: 1 },
         ctx,
       );
@@ -1051,7 +1406,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-mcq', points: 1 }]))
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
@@ -1061,7 +1416,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-mcq', points: 0 },
         ctx,
       );
@@ -1078,7 +1433,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 1 }]))
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
@@ -1093,7 +1448,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 1 },
         ctx,
       );
@@ -1110,7 +1465,7 @@ describe('TeacherAssignmentService', () => {
 
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
         .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 5 }]))
         .mockReturnValueOnce(chain(null)) // no existing answer
         .mockReturnValueOnce(chain(null)) // student_answers insert
@@ -1120,7 +1475,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 5 },
         ctx,
       );
@@ -1138,7 +1493,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 3 },
         ctx,
       );
@@ -1152,7 +1507,7 @@ describe('TeacherAssignmentService', () => {
 
       const result = await service.gradeAnswer(
         assignmentId,
-        'student-1',
+        'attempt-1',
         { questionId: 'q-1', points: 3 },
         ctx,
       );
@@ -1196,7 +1551,7 @@ describe('TeacherAssignmentService', () => {
       if (result.success) {
         const rows = asJson<Array<{ attempt: unknown }>>(result.data);
         expect(rows).toHaveLength(1);
-        expect(rows[0].attempt).toBeDefined();
+        expect(rows[0]?.attempt).toBeDefined();
       }
     });
 
@@ -1234,14 +1589,16 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = asJson<
-          Array<{
-            max_attempts: number;
-            attempts_used: number;
-            attempt: { id: string };
-            last_completed_attempt: { id: string };
-          }>
-        >(result.data);
+        const row = firstRecorded(
+          asJson<
+            Array<{
+              max_attempts: number;
+              attempts_used: number;
+              attempt: { id: string };
+              last_completed_attempt: { id: string };
+            }>
+          >(result.data),
+        );
         expect(row.attempts_used).toBe(1);
         expect(row.attempt.id).toBe('attempt-1');
         expect(row.last_completed_attempt.id).toBe('attempt-1');
@@ -1293,13 +1650,15 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = asJson<
-          Array<{
-            attempts_used: number;
-            attempt: { id: string; completed_at: string | null };
-            last_completed_attempt: { id: string };
-          }>
-        >(result.data);
+        const row = firstRecorded(
+          asJson<
+            Array<{
+              attempts_used: number;
+              attempt: { id: string; completed_at: string | null };
+              last_completed_attempt: { id: string };
+            }>
+          >(result.data),
+        );
         expect(row.attempts_used).toBe(1);
         expect(row.attempt.id).toBe('attempt-2');
         expect(row.attempt.completed_at).toBeNull();
@@ -1346,13 +1705,15 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = asJson<
-          Array<{
-            attempts_used: number;
-            attempt: { id: string };
-            last_completed_attempt: { id: string };
-          }>
-        >(result.data);
+        const row = firstRecorded(
+          asJson<
+            Array<{
+              attempts_used: number;
+              attempt: { id: string };
+              last_completed_attempt: { id: string };
+            }>
+          >(result.data),
+        );
         expect(row.attempts_used).toBe(2);
         expect(row.attempt.id).toBe('attempt-2');
         expect(row.last_completed_attempt.id).toBe('attempt-2');
@@ -1404,7 +1765,10 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = asJson<Array<{ attempt: { id: string } }>>(result.data);
+        const row = firstRecorded(
+          asJson<Array<{ attempt: { id: string } }>>(result.data),
+          'the student attempt row',
+        );
         expect(row.attempt.id).toBe('attempt-newest');
       }
     });
@@ -1541,13 +1905,15 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = asJson<
-          Array<{
-            attempts_used: number;
-            attempt: { id: string; score: number | null };
-            last_completed_attempt: { id: string; score: number | null; completed_at: string };
-          }>
-        >(result.data);
+        const row = firstRecorded(
+          asJson<
+            Array<{
+              attempts_used: number;
+              attempt: { id: string; score: number | null };
+              last_completed_attempt: { id: string; score: number | null; completed_at: string };
+            }>
+          >(result.data),
+        );
         expect(row.attempt.score).toBeNull();
         expect(row.last_completed_attempt.score).toBeNull();
         expect(row.last_completed_attempt.id).toBe('attempt-1');
@@ -1591,11 +1957,13 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = asJson<
-          Array<{
-            last_completed_attempt: { score: number | null };
-          }>
-        >(result.data);
+        const row = firstRecorded(
+          asJson<
+            Array<{
+              last_completed_attempt: { score: number | null };
+            }>
+          >(result.data),
+        );
         expect(row.last_completed_attempt.score).toBe(3);
       }
     });
@@ -1802,12 +2170,11 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns INTERNAL_SERVER on DB error', async () => {
+      const dbError = vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } });
       mock.from.mockReturnValue({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-            })),
+            eq: vi.fn(() => ({ single: dbError, maybeSingle: dbError })),
           })),
         })),
       });
@@ -1881,16 +2248,26 @@ describe('TeacherAssignmentService', () => {
       max_attempts: 1,
       shuffle_questions: false,
       shuffle_answers: false,
-      assignment_questions: [{ question_id: 'q-1', order_index: 0 }],
+      assignment_questions: [
+        {
+          question_id: 'q-1',
+          order_index: 0,
+          points: 1,
+          snapshot: frozen('q-1'),
+          snapshot_version: 1,
+        },
+      ],
       assignment_targets: [{ group_id: null, student_id: userId }],
     };
-
+    // The service reads the item set through the service-role seam; the fixture above is the
+    // default set every test in this block starts from.
+    beforeEach(() => {
+      linkRows.rows = assignment.assignment_questions;
+    });
     it('starts a new attempt successfully', async () => {
-      const fullQuestion = { id: 'q-1', content: 'What?', question_answers: [] };
       mock.from
         .mockReturnValueOnce(chain(assignment))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(chain([fullQuestion]))
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
@@ -1903,28 +2280,29 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
-    it('never exposes the answer key in the started attempt payload (#331)', async () => {
-      const fullQuestion = { id: 'q-1', content: 'What?', question_answers: [] };
-      const questionsChain = chain([fullQuestion]);
+    it('serves the frozen snapshot, never the live item or its key (#1171)', async () => {
+      const assignmentChain = chain(assignment);
       mock.from
-        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(assignmentChain)
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(questionsChain)
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
       const result = await service.startAttempt(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      const projection = questionsChain.select.mock.calls[0][0];
-      expect(projection).not.toContain('*');
-      expect(projection).not.toContain('is_correct');
-      expect(projection).not.toContain('explanation');
-      expect(projection).not.toContain('search_vector');
+      const projection = firstCall(assignmentChain.select)[0];
+      expect(projection).not.toContain('snapshot_key');
+      if (result.success) {
+        const payload = JSON.stringify(result.data.questions);
+        expect(payload).not.toContain('is_correct');
+        expect(payload).not.toContain('explanation');
+        // The published version travels with the payload so a mismatch is visible.
+        expect(payload).toContain('"snapshot_version":1');
+      }
     });
 
     it('starts an attempt for a student targeted through a group', async () => {
-      const fullQuestion = { id: 'q-1', content: 'What?', question_answers: [] };
       mock.from
         .mockReturnValueOnce(
           chain({
@@ -1934,7 +2312,6 @@ describe('TeacherAssignmentService', () => {
         )
         .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(chain([fullQuestion]))
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
@@ -1946,21 +2323,40 @@ describe('TeacherAssignmentService', () => {
     it('snapshots the assignment total points on the attempt (#167)', async () => {
       const attemptChain = chain({ id: 'attempt-1' });
       const questions = [
-        { question_id: 'q-1', order_index: 0, points: 1 },
-        { question_id: 'q-2', order_index: 1, points: 1 },
-        { question_id: 'q-3', order_index: 2, points: 1 },
-        { question_id: 'q-4', order_index: 3, points: 2 },
+        {
+          question_id: 'q-1',
+          order_index: 0,
+          points: 1,
+          snapshot: frozen('q-1'),
+          snapshot_version: 1,
+        },
+        {
+          question_id: 'q-2',
+          order_index: 1,
+          points: 1,
+          snapshot: frozen('q-2'),
+          snapshot_version: 1,
+        },
+        {
+          question_id: 'q-3',
+          order_index: 2,
+          points: 1,
+          snapshot: frozen('q-3'),
+          snapshot_version: 1,
+        },
+        {
+          question_id: 'q-4',
+          order_index: 3,
+          points: 2,
+          snapshot: frozen('q-4'),
+          snapshot_version: 1,
+        },
       ];
-      const fullQuestions = questions.map((q) => ({
-        id: q.question_id,
-        content: 'What?',
-        question_answers: [],
-      }));
 
+      linkRows.rows = questions;
       mock.from
-        .mockReturnValueOnce(chain({ ...assignment, assignment_questions: questions }))
+        .mockReturnValueOnce(chain(assignment))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(chain(fullQuestions))
         .mockReturnValueOnce(attemptChain)
         .mockReturnValue(chain(null));
 
@@ -2006,9 +2402,8 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns NOT_FOUND when no questions', async () => {
-      mock.from
-        .mockReturnValueOnce(chain({ ...assignment, assignment_questions: [] }))
-        .mockReturnValueOnce(chain([]));
+      linkRows.rows = [];
+      mock.from.mockReturnValueOnce(chain(assignment)).mockReturnValueOnce(chain([]));
 
       const result = await service.startAttempt(assignmentId, ctx);
 
@@ -2049,19 +2444,26 @@ describe('TeacherAssignmentService', () => {
         ...assignment,
         shuffle_questions: true,
         assignment_questions: [
-          { question_id: 'q-1', order_index: 0 },
-          { question_id: 'q-2', order_index: 1 },
+          {
+            question_id: 'q-1',
+            order_index: 0,
+            points: 1,
+            snapshot: frozen('q-1', 'Q1'),
+            snapshot_version: 1,
+          },
+          {
+            question_id: 'q-2',
+            order_index: 1,
+            points: 1,
+            snapshot: frozen('q-2', 'Q2'),
+            snapshot_version: 1,
+          },
         ],
       };
+      linkRows.rows = shuffleAssignment.assignment_questions;
       mock.from
         .mockReturnValueOnce(chain(shuffleAssignment))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(
-          chain([
-            { id: 'q-1', content: 'Q1', question_answers: [] },
-            { id: 'q-2', content: 'Q2', question_answers: [] },
-          ]),
-        )
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
@@ -2080,14 +2482,8 @@ describe('TeacherAssignmentService', () => {
         started_at: '2026-10-23T13:13:26Z',
       };
       const attemptsChain = chain([openAttempt]);
-      const resumeQuestionsChain = chain([
-        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1', content: 'What?' } },
-        { order_index: 1, question_id: 'q-2', questions: { id: 'q-2', content: 'Why?' } },
-      ]);
-      mock.from
-        .mockReturnValueOnce(chain(assignment))
-        .mockReturnValueOnce(attemptsChain)
-        .mockReturnValueOnce(resumeQuestionsChain);
+      resumedQuestions.rows = [frozen('q-1'), frozen('q-2')];
+      mock.from.mockReturnValueOnce(chain(assignment)).mockReturnValueOnce(attemptsChain);
 
       const result = await service.startAttempt(assignmentId, ctx);
 
@@ -2096,21 +2492,15 @@ describe('TeacherAssignmentService', () => {
         expect(result.data.id).toBe('attempt-open');
         expect(result.data.questions).toHaveLength(2);
       }
-      // Read from the attempt's own snapshot, not the assignment's questions.
-      expect(resumeQuestionsChain.eq).toHaveBeenCalledWith('attempt_id', 'attempt-open');
-      // Only: assignment lookup + attempt lookup + snapshot read. No insert.
-      expect(mock.from).toHaveBeenCalledTimes(3);
+      // Only: assignment lookup + attempt lookup. No insert.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('resumes the open attempt even when max_attempts is already used up (#369)', async () => {
+      resumedQuestions.rows = [frozen('q-1')];
       mock.from
         .mockReturnValueOnce(chain({ ...assignment, max_attempts: 1 }))
-        .mockReturnValueOnce(
-          chain([{ id: 'attempt-open', completed_at: null, started_at: '2026-10-23T13:13:26Z' }]),
-        )
-        .mockReturnValueOnce(
-          chain([{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }]),
-        );
+        .mockReturnValueOnce(chain([{ id: 'attempt-open', completed_at: null }]));
 
       const result = await service.startAttempt(assignmentId, ctx);
 
@@ -2119,12 +2509,11 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('resumes an open attempt even when the assignment questions were emptied (#369)', async () => {
+      linkRows.rows = [];
+      resumedQuestions.rows = [frozen('q-1')];
       mock.from
-        .mockReturnValueOnce(chain({ ...assignment, assignment_questions: [] }))
-        .mockReturnValueOnce(chain([{ id: 'attempt-open', completed_at: null }]))
-        .mockReturnValueOnce(
-          chain([{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }]),
-        );
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(chain([{ id: 'attempt-open', completed_at: null }]));
 
       const result = await service.startAttempt(assignmentId, ctx);
 
@@ -2133,21 +2522,17 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('never ships the draft column or the answer key when resuming (#331, #349)', async () => {
-      const resumeQuestionsChain = chain([
-        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1', content: 'What?' } },
-      ]);
-      mock.from
-        .mockReturnValueOnce(chain(assignment))
-        .mockReturnValueOnce(
-          chain([
-            {
-              id: 'attempt-open',
-              completed_at: null,
-              draft_answers: { 'q-1': { selected_answer_id: 'opt-1', text_answer: null } },
-            },
-          ]),
-        )
-        .mockReturnValueOnce(resumeQuestionsChain);
+      resumedQuestions.rows = [frozen('q-1')];
+      mock.from.mockReturnValueOnce(chain(assignment)).mockReturnValueOnce(
+        chain([
+          {
+            id: 'attempt-open',
+            assignment_id: assignmentId,
+            completed_at: null,
+            draft_answers: { 'q-1': { selected_answer_id: 'opt-1', text_answer: null } },
+          },
+        ]),
+      );
 
       const result = await service.startAttempt(assignmentId, ctx);
 
@@ -2156,10 +2541,10 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).not.toHaveProperty('draft_answers');
         expect(JSON.stringify(result.data)).not.toContain('opt-1');
       }
-      const projection = resumeQuestionsChain.select.mock.calls[0][0];
-      expect(projection).not.toContain('is_correct');
-      expect(projection).not.toContain('explanation');
-      expect(projection).not.toContain('search_vector');
+      // The reader payload itself carries no key material; the service-role projection that
+      // feeds it is covered by the integration suite.
+      expect(JSON.stringify(result.data)).not.toContain('is_correct');
+      expect(JSON.stringify(result.data)).not.toContain('snapshot_key');
     });
 
     it('still starts a new attempt when every previous attempt is completed (#369)', async () => {
@@ -2167,7 +2552,6 @@ describe('TeacherAssignmentService', () => {
       mock.from
         .mockReturnValueOnce(chain({ ...assignment, max_attempts: 2 }))
         .mockReturnValueOnce(chain([{ id: 'attempt-1', completed_at: '2026-10-23T12:00:00Z' }]))
-        .mockReturnValueOnce(chain([{ id: 'q-1', content: 'What?', question_answers: [] }]))
         .mockReturnValueOnce(attemptChain)
         .mockReturnValue(chain(null));
 
@@ -2179,16 +2563,18 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('falls back to the open attempt when a concurrent start wins the insert race (#369)', async () => {
-      const racedAttempt = { id: 'attempt-raced', completed_at: null };
+      const racedAttempt = {
+        id: 'attempt-raced',
+        assignment_id: assignmentId,
+        completed_at: null,
+      };
       mock.from
         .mockReturnValueOnce(chain(assignment))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(chain([{ id: 'q-1', content: 'What?', question_answers: [] }]))
         .mockReturnValueOnce(failingChain({ code: '23505', message: 'duplicate key value' }))
         .mockReturnValueOnce(chain(racedAttempt))
-        .mockReturnValueOnce(
-          chain([{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }]),
-        );
+        .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
+        .mockReturnValueOnce(snapshotRows(['q-1']));
 
       const result = await service.startAttempt(assignmentId, ctx);
 

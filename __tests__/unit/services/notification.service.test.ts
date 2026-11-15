@@ -11,6 +11,7 @@ import { NotificationService, noopNotifier } from '@studiq/server/services/notif
 import { isRecord } from '@studiq/server/lib/record';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstRecorded, recordedAt, requiredValue } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
@@ -287,7 +288,7 @@ describe('NotificationService: producers', () => {
       type: 'assignment_published',
       payload: { assignmentId: 'a1', title: 'Kartkówka z fizyki' },
     });
-    expect(admin.calls.group_members[0].eq).toHaveBeenCalledWith('role', 'member');
+    expect(firstRecorded(admin.calls.group_members).eq).toHaveBeenCalledWith('role', 'member');
   });
 
   it("resolves group members through the assignment's organisation, never from the raw id", async () => {
@@ -303,7 +304,7 @@ describe('NotificationService: producers', () => {
 
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
-    const members = admin.calls.group_members[0];
+    const members = firstRecorded(admin.calls.group_members);
     expect(members.select).toHaveBeenCalledWith('user_id, groups!inner(organization_id)');
     expect(members.eq).toHaveBeenCalledWith('groups.organization_id', 'org-1');
     expect(insert.insert).not.toHaveBeenCalled();
@@ -331,7 +332,10 @@ describe('NotificationService: producers', () => {
 
     const rows = insertedRows(insert.insert);
     expect(rows.map((r) => r.user_id)).toEqual(['a']);
-    expect(admin.calls.org_members[0].eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    expect(firstRecorded(admin.calls.org_members).eq).toHaveBeenCalledWith(
+      'organization_id',
+      'org-1',
+    );
   });
 
   it('sends nothing when there are no recipients', async () => {
@@ -372,7 +376,7 @@ describe('NotificationService: producers', () => {
     expect(inserts.map((b) => insertedRows(b.insert).length)).toEqual([500, 500, 200]);
     expect(admin.calls.group_members).toHaveLength(3);
     expect(admin.calls.org_members).toHaveLength(6);
-    for (const chunk of admin.calls.org_members) {
+    for (const chunk of requiredValue(admin.calls.org_members, 'org_members calls')) {
       const ids = insertedIds(chunk.in, 1);
       expect(ids.length).toBeLessThanOrEqual(200);
     }
@@ -395,8 +399,10 @@ describe('NotificationService: producers', () => {
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
     expect(admin.calls.group_members).toHaveLength(2);
-    expect(insertedIds(admin.calls.group_members[0].in, 1)).toHaveLength(200);
-    expect(insertedIds(admin.calls.group_members[1].in, 1)).toHaveLength(50);
+    expect(insertedIds(firstRecorded(admin.calls.group_members).in, 1)).toHaveLength(200);
+    expect(
+      insertedIds(recordedAt(admin.calls.group_members, 1, 'the second group_members query').in, 1),
+    ).toHaveLength(50);
     expect(insert.insert).toHaveBeenCalledOnce();
   });
 

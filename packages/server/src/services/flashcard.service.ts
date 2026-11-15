@@ -1,11 +1,11 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import { applyAccessFilter, pageParams, pageQuery, readPage } from '@studiq/server/lib/query-list';
 import type { FilterableBuilderWithExtra } from '@studiq/server/lib/postgrest';
-import { readColumn } from '@studiq/server/lib/record';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -50,14 +50,9 @@ export class FlashcardService {
 
     let deckVisibility: Database['public']['Enums']['visibility_type'] | undefined;
     if (data.deckId) {
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .select('*')
-        .eq('id', data.deckId)
-        .single();
-      if (!deck) return failure('NOT_FOUND');
-      await check(ctx, Permission.DECK_UPDATE, deck);
-      deckVisibility = deck.visibility;
+      const deck = await this.loadTargetDeck(supabase, data.deckId, ctx);
+      if (isFailure(deck)) return deck;
+      deckVisibility = deck.data.visibility;
     }
 
     const { data: flashcard, error } = await supabase
@@ -68,14 +63,13 @@ export class FlashcardService {
         created_by: ctx.userId,
         organization_id: ctx.activeOrgId,
         visibility: deckVisibility,
-        deck_id: data.deckId ?? null,
+        deck_id: data.deckId,
         question_id: data.questionId ?? null,
       })
       .select()
       .single();
 
     if (error) return toDbFailure(error);
-    if (!flashcard) return failure('NOT_FOUND');
 
     if (data.topicIds && data.topicIds.length > 0) {
       const assignments = data.topicIds.map((topicId) => ({
@@ -133,14 +127,11 @@ export class FlashcardService {
     filters?: Partial<FlashcardListQueryInput>,
   ): Promise<ServiceResult<FlashcardListPage>> {
     const supabase = await this.clientFactory();
-    const pageSize = Math.min(filters?.limit ?? 50, 100);
+    const paging = pageParams(filters, { sortBy: 'created_at', limit: 50 });
 
     const hasDeckFilter = !!(filters?.deckIds && filters.deckIds.length > 0);
     const hasTopicFilter = !!(filters?.topicIds && filters.topicIds.length > 0);
     const hasSearch = !!filters?.q;
-
-    const sortCol = filters?.sortBy || 'created_at';
-    const sortAsc = (filters?.sortOrder || 'desc') === 'asc';
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
@@ -148,15 +139,11 @@ export class FlashcardService {
     // Both projections are literal constants: PostgREST only infers the row type
     // from a literal, and `!inner` is required for the topic filter to narrow rows.
     const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
-      let query = q;
-
-      if (filter.or) query = query.or(filter.or);
-      if (filter.created_by) query = query.eq('created_by', filter.created_by);
-      if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+      let query = applyAccessFilter(q, filter);
 
       if (hasTopicFilter) {
         if (filters.topicIds!.length === 1) {
-          query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters.topicIds![0]);
+          query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters.topicIds![0]!);
         } else {
           query = query.filter(
             'flashcard_topic_assignments.topic_id',
@@ -168,7 +155,7 @@ export class FlashcardService {
 
       if (hasDeckFilter) {
         if (filters.deckIds!.length === 1) {
-          query = query.filter('deck_id', 'eq', filters.deckIds![0]);
+          query = query.filter('deck_id', 'eq', filters.deckIds![0]!);
         } else {
           query = query.filter('deck_id', 'in', `(${filters.deckIds!.join(',')})`);
         }
@@ -187,28 +174,9 @@ export class FlashcardService {
         .select(hasTopicFilter ? FLASHCARD_SELECT_BY_TOPIC : FLASHCARD_SELECT),
     );
 
-    query = query.order(sortCol, { ascending: sortAsc }).order('id');
+    query = pageQuery(query, paging);
 
-    query = query.limit(pageSize + 1);
-
-    if (filters?.cursor) {
-      const { v: cursorVal, id: cursorId } = decodeCursor(filters.cursor);
-      const op = sortAsc ? 'gt' : 'lt';
-      query = query.or(
-        `${sortCol}.${op}.${cursorVal},and(${sortCol}.eq.${cursorVal},id.gt.${cursorId})`,
-      );
-    }
-
-    const { data, error } = await query;
-    if (error) return toDbFailure(error);
-
-    const rows = data ?? [];
-    const hasMore = rows.length > pageSize;
-    const items = hasMore ? rows.slice(0, pageSize) : rows;
-    const lastRow = items[items.length - 1];
-    const nextCursor = hasMore ? encodeCursor(readColumn(lastRow, sortCol), lastRow.id) : null;
-
-    return success({ items, nextCursor, hasMore });
+    return readPage(query, { ...paging, map: (row) => row });
   }
 
   async listByDeck(deckIds: string[], ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -217,13 +185,10 @@ export class FlashcardService {
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (isImpossibleFilter(filter)) return success([]);
 
-    let query = supabase
-      .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), deck_id');
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+    let query = applyAccessFilter(
+      supabase.from('flashcards').select('*, flashcard_topic_assignments(topic_id), deck_id'),
+      filter,
+    );
 
     if (deckIds.length > 0) {
       if (deckIds.length === 1) {
@@ -235,29 +200,12 @@ export class FlashcardService {
 
     const { data, error } = await query;
     if (error) return toDbFailure(error);
-    return success(data ?? []);
+    return success(dbRows(data));
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
-
-    let query = supabase
-      .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), deck_id')
-      .eq('id', id);
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    const { data, error } = await query.single();
-
-    if (error || !data) return failure('NOT_FOUND');
-
-    return success(data);
+    const card = await this.loadVisible(id, ctx);
+    return card ? success(card) : failure('NOT_FOUND');
   }
 
   async update(
@@ -267,14 +215,8 @@ export class FlashcardService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.FLASHCARD_UPDATE, existing);
+    const denied = await this.assertCardWritable(supabase, id, ctx, Permission.FLASHCARD_UPDATE);
+    if (denied) return denied;
 
     const updateFields: Database['public']['Tables']['flashcards']['Update'] = {};
     if (data.front) updateFields.front = data.front;
@@ -322,14 +264,8 @@ export class FlashcardService {
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
     const supabase = await this.clientFactory();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.FLASHCARD_DELETE, existing);
+    const denied = await this.assertCardWritable(supabase, id, ctx, Permission.FLASHCARD_DELETE);
+    if (denied) return denied;
 
     const { error } = await supabase.from('flashcards').delete().eq('id', id);
 
@@ -349,19 +285,13 @@ export class FlashcardService {
       .from('flashcards')
       .select()
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !original) return failure('NOT_FOUND');
     await check(ctx, Permission.FLASHCARD_READ, original);
 
-    const { data: deck, error: deckError } = await supabase
-      .from('flashcard_decks')
-      .select()
-      .eq('id', data.targetDeckId)
-      .single();
-
-    if (deckError || !deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
+    const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
+    if (isFailure(deck)) return deck;
 
     const { data: newFlashcard, error: insertError } = await supabase
       .from('flashcards')
@@ -370,14 +300,13 @@ export class FlashcardService {
         back: original.back,
         created_by: ctx.userId,
         organization_id: ctx.activeOrgId,
-        visibility: deck.visibility ?? 'personal',
+        visibility: deck.data.visibility,
         deck_id: data.targetDeckId,
       })
       .select()
       .single();
 
     if (insertError) return toDbFailure(insertError);
-    if (!newFlashcard) return failure('NOT_FOUND');
 
     const { data: topicAssignments, error: topicFetchError } = await supabase
       .from('flashcard_topic_assignments')
@@ -386,8 +315,8 @@ export class FlashcardService {
 
     if (topicFetchError) return toDbFailure(topicFetchError);
 
-    if (topicAssignments && topicAssignments.length > 0) {
-      const newTopicAssignments = topicAssignments.map((a) => ({
+    if (dbRows(topicAssignments).length > 0) {
+      const newTopicAssignments = dbRows(topicAssignments).map((a) => ({
         flashcard_id: newFlashcard.id,
         topic_id: a.topic_id,
       }));
@@ -407,17 +336,8 @@ export class FlashcardService {
   async batchDelete(data: BatchDeleteInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: flashcards, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('*')
-      .in('id', data.ids);
-
-    if (fetchError) return toDbFailure(fetchError);
-    if (!flashcards || flashcards.length === 0) return failure('NOT_FOUND');
-
-    for (const fc of flashcards) {
-      await check(ctx, Permission.FLASHCARD_DELETE, fc);
-    }
+    const loaded = await this.loadBatchFor(supabase, data.ids, ctx, Permission.FLASHCARD_DELETE);
+    if (isFailure(loaded)) return loaded;
 
     const { error } = await supabase.from('flashcards').delete().in('id', data.ids);
 
@@ -429,20 +349,11 @@ export class FlashcardService {
   async batchTopics(data: BatchTopicsInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: flashcards, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('*')
-      .in('id', data.ids);
-
-    if (fetchError) return toDbFailure(fetchError);
-    if (!flashcards || flashcards.length === 0) return failure('NOT_FOUND');
-
-    for (const fc of flashcards) {
-      await check(ctx, Permission.FLASHCARD_UPDATE, fc);
-    }
-
-    const op = data.operation ?? 'set';
+    const op = data.operation;
     const topicIds = data.topicIds ?? [];
+
+    const loaded = await this.loadBatchFor(supabase, data.ids, ctx, Permission.FLASHCARD_UPDATE);
+    if (isFailure(loaded)) return loaded;
 
     if (op === 'add' && topicIds.length > 0) {
       const existing = await supabase
@@ -491,26 +402,11 @@ export class FlashcardService {
   async batchMove(data: BatchMoveInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: flashcards, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('*')
-      .in('id', data.ids);
+    const loaded = await this.loadBatchFor(supabase, data.ids, ctx, Permission.FLASHCARD_UPDATE);
+    if (isFailure(loaded)) return loaded;
 
-    if (fetchError) return toDbFailure(fetchError);
-    if (!flashcards || flashcards.length === 0) return failure('NOT_FOUND');
-
-    for (const fc of flashcards) {
-      await check(ctx, Permission.FLASHCARD_UPDATE, fc);
-    }
-
-    const { data: deck } = await supabase
-      .from('flashcard_decks')
-      .select('*')
-      .eq('id', data.targetDeckId)
-      .single();
-
-    if (!deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
+    const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
+    if (isFailure(deck)) return deck;
 
     const { error: updateError } = await supabase
       .from('flashcards')
@@ -524,33 +420,19 @@ export class FlashcardService {
   async batchCopy(data: BatchCopyInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: originals, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('*')
-      .in('id', data.ids);
+    const loaded = await this.loadBatchFor(supabase, data.ids, ctx, Permission.FLASHCARD_READ);
+    if (isFailure(loaded)) return loaded;
+    const originalRows = loaded.data;
 
-    if (fetchError) return toDbFailure(fetchError);
-    if (!originals || originals.length === 0) return failure('NOT_FOUND');
+    const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
+    if (isFailure(deck)) return deck;
 
-    for (const fc of originals) {
-      await check(ctx, Permission.FLASHCARD_READ, fc);
-    }
-
-    const { data: deck } = await supabase
-      .from('flashcard_decks')
-      .select('*')
-      .eq('id', data.targetDeckId)
-      .single();
-
-    if (!deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
-
-    const cardsToInsert = originals.map((fc) => ({
+    const cardsToInsert = originalRows.map((fc) => ({
       front: fc.front,
       back: fc.back,
       created_by: ctx.userId,
       organization_id: ctx.activeOrgId,
-      visibility: deck.visibility ?? 'personal',
+      visibility: deck.data.visibility,
       deck_id: data.targetDeckId,
     }));
 
@@ -560,7 +442,8 @@ export class FlashcardService {
       .select();
 
     if (insertError) return toDbFailure(insertError);
-    if (!newFlashcards || newFlashcards.length === 0) return failure('NOT_FOUND');
+    const inserted = dbRows(newFlashcards);
+    if (inserted.length === 0) return failure('NOT_FOUND');
 
     const { data: topicAssignments } = await supabase
       .from('flashcard_topic_assignments')
@@ -568,7 +451,12 @@ export class FlashcardService {
       .in('flashcard_id', data.ids);
 
     if (topicAssignments && topicAssignments.length > 0) {
-      const oldToNew = new Map(originals.map((fc, i) => [fc.id, newFlashcards[i].id]));
+      const oldToNew = new Map(
+        originalRows.flatMap((fc, i) => {
+          const copy = inserted[i];
+          return copy ? [[fc.id, copy.id] as const] : [];
+        }),
+      );
       const newAssignments = topicAssignments
         .map((a) => ({
           flashcard_id: oldToNew.get(a.flashcard_id),
@@ -583,7 +471,92 @@ export class FlashcardService {
 
     // deck_id is already set on each new flashcard in the insert above
 
-    return success({ copied: data.ids.length, flashcards: newFlashcards });
+    return success({ copied: data.ids.length, flashcards: inserted });
+  }
+
+  /**
+   * One readable card in the list projection. The RBAC scope decides
+   * visibility, so a card the caller may not read is indistinguishable from a
+   * missing one.
+   */
+  private async loadVisible(id: string, ctx: RequestContext): Promise<FlashcardListRow | null> {
+    const supabase = await this.clientFactory();
+
+    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (isImpossibleFilter(filter)) return null;
+
+    const { data } = await applyAccessFilter(
+      supabase.from('flashcards').select(FLASHCARD_SELECT).eq('id', id),
+      filter,
+    ).maybeSingle();
+
+    return data;
+  }
+
+  /**
+   * Guards a single-row write: the card has to exist and the caller has to hold
+   * `permission` on it. A missing id answers `NOT_FOUND` (never `FORBIDDEN`),
+   * so the response does not confirm that an unreadable card exists.
+   */
+  private async assertCardWritable(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    ctx: RequestContext,
+    permission: string,
+  ): Promise<ServiceResult<never> | null> {
+    const { data: existing, error } = await supabase
+      .from('flashcards')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !existing) return failure('NOT_FOUND');
+    await check(ctx, permission, existing);
+    return null;
+  }
+
+  /**
+   * Loads every requested card and enforces one permission on each: a batch
+   * write either applies to all of them or to none. A batch whose cards are all
+   * missing or unreadable is `NOT_FOUND`, not a silent no-op.
+   */
+  private async loadBatchFor(
+    supabase: SupabaseClient<Database>,
+    ids: string[],
+    ctx: RequestContext,
+    permission: string,
+  ): Promise<ServiceResult<Database['public']['Tables']['flashcards']['Row'][]>> {
+    const { data: flashcards, error } = await supabase.from('flashcards').select('*').in('id', ids);
+
+    if (error) return toDbFailure(error);
+    const cards = dbRows(flashcards);
+    if (cards.length === 0) return failure('NOT_FOUND');
+
+    for (const card of cards) {
+      await check(ctx, permission, card);
+    }
+    return success(cards);
+  }
+
+  /**
+   * The deck a card is being moved or copied into. That lands the card in the
+   * deck's scope, so it takes `deck.update`, not merely read access.
+   */
+  private async loadTargetDeck(
+    supabase: SupabaseClient<Database>,
+    deckId: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<Database['public']['Tables']['flashcard_decks']['Row']>> {
+    const { data: deck, error } = await supabase
+      .from('flashcard_decks')
+      .select('*')
+      .eq('id', deckId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!deck) return failure('NOT_FOUND');
+    await check(ctx, Permission.DECK_UPDATE, deck);
+    return success(deck);
   }
 
   /**

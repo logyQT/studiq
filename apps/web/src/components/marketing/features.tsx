@@ -34,7 +34,7 @@ export function Features() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section className="py-16 sm:py-24">
+    <section id="features" className="py-16 sm:py-24">
       <div className="mx-auto max-w-5xl">
         <div className="text-center mb-12">
           <Badge variant="secondary" className="mb-4">

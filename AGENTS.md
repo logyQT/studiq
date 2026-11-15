@@ -38,11 +38,15 @@ studiq/
 │   └── tsconfig/  # Shared tsconfig base (`base.json`)
 ├── __tests__/     # Root-level tests: unit/, integration/, e2e/, helpers/, mocks/, setup.ts
 ├── supabase/      # migrations/, schemas/, seeds/, templates/, config.toml
+├── rules/         # ast-grep tautology rules for `bun run review:static` (sgconfig.yml)
 ├── scripts/       # Dev workflow scripts (spin, pr, import + migration guards)
-└── docs/          # Project documentation
+├── docs/          # Project documentation
+├── PRODUCT.md     # Buyers, claim allowlist, landing brief — read before design work
+└── DESIGN.md      # Visual system: palette, type, layout, motion, anti-patterns
 ```
 
 - Main app code: `apps/web/src/…` — shared backend code: `packages/server/src/…`
+- Review rules live in `rules/` (one YAML per shape), configured by `sgconfig.yml`, with `valid`/`invalid` samples in `__tests__/rules/`; `bun run review:static` runs both.
 - Each workspace has its **own** `tsconfig.json` and `package.json` scripts; typecheck each workspace with its own script (see Commands).
 - Cross-package imports always go through workspace names (`@studiq/server`, `@studiq/authz`, `@studiq/ui`) or the `@admin/*` alias — never deep relative paths.
 
@@ -58,7 +62,8 @@ studiq/
 - **PR to main**: Open a PR from `feat/<short-name>` → `main`. Merge via GitHub (squash or merge commit — your call per PR).
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
-- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch.
+- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR `size/*`. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
+- **Review**: when asked to review a PR, load `.agents/skills/studiq-review/SKILL.md`. It verifies the PR's claims in code, docs and the running app, and delegates the click-through to `.agents/skills/studiq-qa/SKILL.md`. For a `size/XL` or sensitive PR, also request a manual CodeRabbit pass with `@coderabbitai review` (auto-review is off).
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -96,73 +101,100 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 `package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
 
-| Command                           | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dev`                     | Web dev server (`next dev`) on `APP_PORT` (default 3000) — **agents use `dev:build` + `dev:serve` instead**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `bun run dev:up`                  | **One-command local stack** — this branch's Supabase stack (if needed) + web dev; values are exported to the child processes, never written to a per-app file; never installs/builds/resets. `--prod` = build (if missing) + `next start`                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `bun run dev:serve`               | `next start` for this checkout on `APP_PORT` (production server, no dev server)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `bun run dev:status`              | Web/Supabase health, PIDs, stack id/endpoints (`--json` = stable machine shape)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `bun run dev:down`                | Stop this checkout's web server; `bun dev:down --all` also stops **this branch's** Supabase stack (data kept)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `bun run dev:reset-db`            | Explicit, destructive `supabase db reset` for **this branch's** stack (never called by `dev:up`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `bun run dev:build`               | Explicit production build of `@studiq/web` (serialized by a registry-level build lock)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `bun run dev:doctor`              | Explain missing / owned / colliding state (exit 1 on a real conflict)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `bun run dev:ports`               | Print a free `APP_PORT` (`--suggest` default, `--json`); Supabase ports are assigned per stack                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `bun run dev:logs`                | Follow `.dev/web.log` + this stack's logs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `bun run dev:prepull`             | Download stack images without starting the stack (VM templates)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `bun run dev:admin`               | Admin dev server (port 4000) — **not** part of `dev:up`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `bun run lint`                    | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard + hardcoded-local-URL guard + suppression-ledger guard + env-inventory guard (`.env.schema` vs `process.env.*`, no stray values files). **Contains no typecheck step.** Does not include `apps/admin/src` (use `lint:admin`). |
-| `bun run lint:all`                | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `bun run knip`                    | `knip --treat-config-hints-as-errors --no-progress` — dead-code / unused-dependency gate (documented policy suppressions in `knip.ts`, each with a reason). Also runs in both lefthook hooks and the `checks` CI job. **Not** part of `bun run lint`.                                                                                                                                                                                                                                                                                                                                                                                         |
-| `bun run knip:report`             | `knip --reporter compact` — human-readable report (one line per file); `knip:files` / `knip:deps` / `knip:exports` filter to one issue group                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `bun run typecheck`               | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `bun run typecheck:all`           | `bun check` at the repo root (covers `scripts/`, which no workspace does) + `typecheck` + `typecheck:packages` — everything the hooks run. `apps/admin` is checked manually with `typecheck:admin`.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `bun run format`                  | `bun fmt .` (whole repo — writes formatting for JS/TS/JSON/CSS **and** Markdown/YAML/TOML/HTML)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `bun run format:check`            | `bun fmt --check .` (whole repo, check only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `bun run clean`                   | Remove `.next`, `coverage`, cache                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `bun run test`                    | `vitest run __tests__/unit/ __tests__/integration` — all product tests (admin tests are separate; see `test:admin`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `bun run test:unit`               | `vitest run __tests__/unit/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `bun run test:integration`        | `vitest run __tests__/integration` (needs a local Supabase instance)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `bun run test:admin`              | `vitest run __tests__/admin` — admin-only tests, never part of the product gate (integration needs Supabase)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `bun run test:watch`              | `vitest` (watch mode)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `bun run test:coverage`           | `vitest run --coverage`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `bun run test:e2e`                | `playwright test` — runs `__tests__/e2e/` specs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Command                            | What it does                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run env:ensure --profile web` | **The blessed path** — idempotent stack + build + serve (production); `--json` is the agent contract. Other profiles: `db`, `api`, `mail`, `full`, `qa`, `e2e` |
+| `bun run env:serve`                | Serve an existing production build (refuses a stale/missing build)                                                                                             |
+| `bun run env:dev`                  | **Human-only** web HMR (`next dev`) through the tool. Agents never run this; they build + serve (`dev:web` is the raw shortcut)                                |
+| `bun run dev:web`                  | Raw `@studiq/web` dev server (no env handling); human-only, same server as `env:dev`                                                                           |
+| `bun run dev:admin`                | Raw `@studiq/admin` HMR on `127.0.0.1:4000` (varlock-injected); `env` has no admin equivalent                                                                  |
+| `bun run env:build`                | Explicit production build of `@studiq/web` (serialized by a registry-level build lock)                                                                         |
+| `bun run env:status`               | Web/Supabase health, PIDs, stack id/endpoints (`--json` = stable machine shape)                                                                                |
+| `bun run env:down`                 | Stop this checkout's web server; `env:down --all` also stops **this branch's** Supabase stack (data kept)                                                      |
+| `bun run env:reset-db`             | Destructive `supabase db reset` for **this branch's** stack (`--yes`)                                                                                          |
+| `bun run env:doctor`               | Explain missing / owned / colliding state (exit 1 on a real conflict)                                                                                          |
+| `bun run env:observability`        | `status`/`ensure` `[--force]`: validate or mint the Grafana MCP token (read-only by default)                                                                   |
+| `bun run env:ports`                | Print a free `APP_PORT` (`--json`); Supabase ports are assigned per stack                                                                                      |
+| `bun run env:logs`                 | Follow `.dev/web.log` + this stack's logs (`--no-follow` for the last 100)                                                                                     |
+
+| `bun run env:setup` | **Human-only**, idempotent scaffold of `.env.local` (mode 600); `--vault` scaffolds the optional primary-checkout ref file; never a value |
+| `bun run env:verify` | Read-only, agent-safe schema/values check (key **names** only); `--full` adds vault refs + provider status |
+
+| `bun run env:supa` | `bunx supabase …` with `APP_URL` exported (guarded passthrough) |
+| `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
+| `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-adr-numbering.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard + ADR-numbering guard (four-digit `NNNN-slug.md`, unique, gapless, title matches number, intra-directory links resolve) + hardcoded-local-URL guard + suppression-ledger guard + env-inventory guard (`.env.schema` vs `process.env.*`, no stray values files). **Contains no typecheck step.** Does not include `apps/admin/src` (use `lint:admin`). |
+| `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
+| `bun run review:static` | `bun scripts/review-static.ts` — the deterministic review gate: oxlint over app/package/test scopes plus the ast-grep tautology rules in `sgconfig.yml` and their `__tests__/rules/` tests. `-- --changed origin/main` scopes **oxlint** to the diff (what `studiq-review` runs); the ast-grep rules always scan the whole tree. A bare `--changed` is a usage error. |
+| `bun run knip` | `knip --treat-config-hints-as-errors --no-progress` — dead-code / unused-dependency gate (documented policy suppressions in `knip.ts`, each with a reason). Also runs in both lefthook hooks and the `checks` CI job. **Not** part of `bun run lint`. |
+| `bun run check:lockfile-age` | `bun scripts/check-lockfile-age.ts` — fails a `bun.lock` diff that adds a package version published less than 7 days ago. Runs in the `checks` CI job on PRs, **before** `bun install`; deliberately not part of `lint` (it needs the network and the hooks must work offline). Backstops Dependabot's `cooldown`, which cannot see transitive resolutions. |
+| `bun run knip:report` | `knip --reporter compact` — human-readable report (one line per file); `knip:files` / `knip:deps` / `knip:exports` filter to one issue group |
+| `bun run dup` | `jscpd` over `apps/web/src`, `packages` and `scripts` using `.jscpd.json` (config lives at the repo root; its `path`/`ignore` resolve relative to it). Full-tree console report — the scanning command behind the other two. **Not** part of `bun run lint`. |
+| `bun run dup:changed` | `jscpd --changed` — new clones in the working tree vs `HEAD` (baseline in Git-ignored `.tmp/jscpd-baseline.json`); the pre-commit hook. |
+| `bun run dup:base` | `jscpd --baseline-from-ref origin/main` — new clones vs the base branch; the pre-push hook and the PR gate. Duplication config/policy: [docs/ci.md](docs/ci.md#duplication). |
+| `bun run typecheck` | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`) |
+| `bun run typecheck:all` | `bun check` at the repo root (covers `scripts/`, which no workspace does) + `typecheck` + `typecheck:packages` — everything the hooks run. `apps/admin` is checked manually with `typecheck:admin`. |
+| `bun run format` | `bun fmt .` (whole repo — writes formatting for JS/TS/JSON/CSS **and** Markdown/YAML/TOML/HTML) |
+| `bun run format:check` | `bun fmt --check .` (whole repo, check only) |
+| `bun run clean` | Remove `.next`, `coverage`, cache |
+| `bun run test` | `vitest run __tests__/unit/ __tests__/integration` — all product tests (admin tests are separate; see `test:admin`) |
+| `bun run test:unit` | `vitest run __tests__/unit/` |
+| `bun run test:integration` | `vitest run __tests__/integration` (needs a local Supabase instance) |
+| `bun run test:admin` | `vitest run __tests__/admin` — admin-only tests, never part of the product gate (integration needs Supabase) |
+| `bun run test:watch` | `vitest` (watch mode) |
+| `bun run test:coverage` | `vitest run --coverage` |
+| `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
+| `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count (committed changes only) vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
-Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `knip`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers.
+Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run dup:changed` + `bun run typecheck:all`; **pre-push** runs the merge-conflict check, `format:check`, `lint`, `knip`, `dup:base`, `typecheck:all`, `test:unit`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers. `dup:changed` compares the working tree with `HEAD` and `dup:base` compares new clones with `origin/main`; both tolerate the ~6% duplication that already exists, so they never ask you to fix old code. Hooks are local feedback, not the gate: CI runs the same comparison, so a `--no-verify` push is still caught.
+
+CI workflow configuration, repository variables and required checks: **[docs/ci.md](docs/ci.md)**.
 
 ### Local dev (one command)
 
 ```bash
-bun install            # once per checkout — dev:up never installs
-bun dev:up             # this branch's Supabase stack (if needed) + web server on APP_PORT
-bun dev:status         # health/stack id/endpoints; `--json` for scripts and agents
-bun dev:down           # stop this checkout's web; `--all` also stops this branch's Supabase stack
+bun install                                # once per worktree — scripts/spin does it; env:ensure never installs
+bun run env:ensure --profile web           # this branch's stack + build + serve (idempotent)
+bun run env:status --json                  # health/stack id/endpoints; stable agent contract
+bun run env:down                           # stop this checkout's web; `--all` also stops the stack
 ```
 
 > **One values file: root `.env.local`.** It is the only hand-edited env file
 > (Git-ignored; never commit it) and it is optional for a single checkout —
 > everything falls back to derived defaults. [`.env.schema`](.env.schema) is the
 > value-free inventory of every key; `varlock` reads it to validate/inject env
-> for the `bun run …` scripts. `scripts/dev` reads `.env.local`, resolves this
-> checkout's contract (`APP_PORT`, `APP_URL`, stack endpoints/keys from
-> `supabase status`) and **exports** the result to every Supabase/Next child
-> process. No `apps/web/.env`, `apps/admin/.env` or `supabase/.env` is generated
-> or read.
+> for the `bun run …` scripts. The `env` tool resolves this checkout's contract
+> (`APP_PORT`, `APP_URL`, stack endpoints/keys from `supabase stack status`) and
+> **exports** the result to every Supabase/Next child process. No
+> `apps/web/.env`, `apps/admin/.env` or `supabase/.env` is generated or read.
 
 > **Supabase is per git worktree + branch.** Local mode uses the experimental
 > `supabase stack` backend (`[experimental] stack = true`): the CLI assigns ports
 > (20000-32767) and keeps a separate database per project root, branch and
 > optional `SUPABASE_STACK` name. Only `APP_PORT` can collide between checkouts —
-> set it in `.env.local` (`bun dev:ports` prints a free one). A branch switch
+> set it in `.env.local` (`bun run env:ports` prints a free one). A branch switch
 > creates/resumes its own stack; moving/renaming the checkout creates a new one.
-> `bun dev:down --all` stops the stack and keeps its data;
-> `bunx supabase stack destroy` deletes it; add `--stack "$SUPABASE_STACK"` for a named stack.
+> `bun run env:down --all` stops the stack and keeps its data; add
+> `--stack "$SUPABASE_STACK"` for a named stack. Deleting a stack is a manual
+> operation (`bunx supabase stack destroy --stack <name>`, ownership checked
+> first) — there is no v1 command for it.
+>
+> **One environment per checkout.** One stack and one web server: a second
+> `ensure`/`serve` for a different stack or profile, or on the same app port, is
+> refused (exit 6) with the remedy. Run a second environment in its own
+> worktree, never in the same checkout.
 > Never run `supabase stop --all` (it stops
 > every stack on the machine), and never stop/reset a stack you did not start.
-> Agents must use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`),
-> not `next dev`.
+> Agents must use `bun run env:build` + `bun run env:serve` (or
+> `bun run env:ensure --profile web`), not `next dev`; `env:dev` is human-only.
+>
+> **What the cutover deleted:** `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`,
+> `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`).
+> `dev:web` and `dev:admin` never called `scripts/dev`; they stay as human-only conveniences. Acceptance is
+> the live surface, not this paragraph: the grep excludes Markdown, so it cannot match this line or the
+> historical names above, and it must return nothing —
+> `rg -n 'scripts/dev|dev:(up|serve|status|down|reset-db|build|logs|doctor|ports|prepull)' package.json scripts apps packages supabase .github -g '!*.md'`.
 
 - **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
   real value, never a default that carries a secret. The vendored Varlock skill's schema checklist and
@@ -172,40 +204,42 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
   first two characters of every sensitive value, and a value shorter than three characters in full, so
   never paste its output) or ask the human to run `bunx varlock reveal`.
 
-- **`scripts/dev` is the implementation** (Bash); the `dev:*` package scripts are thin aliases. Local defaults: web `APP_PORT=3000`; Supabase ports are assigned by the CLI and discovered from `supabase status --output-format json` (no port math). In **stack mode**, `scripts/dev` synthesizes `SUPABASE_PROJECT_ID=stack-<short id>` only as a display label for `dev:status`; it is not used for stack identity or port allocation, and no path-derived id is used there. In **shared/non-stack mode** (`SUPABASE_SHARED=1` or CI), `SUPABASE_PROJECT_ID` is still derived from the checkout path when unset (or accepted from root `.env.local` / the CI environment) and exported for `supabase/config.toml`'s `project_id`.
-- **Stack identity is the CLI's**: project root + current git branch + `SUPABASE_STACK` name (blank = the branch's default stack). `scratch`/test stacks can run side by side with `SUPABASE_STACK=test bun dev:up`.
-- **`bun run dev:status --json`** reports `stackId`, `branch`, endpoints and the app/web health. Bare `bunx supabase ...` targets the branch's **default** stack. For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and pass `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`. Database commands do not accept `--stack`; read the URL first: `DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\(.*\)'$/\1/p")`, then use `--remote="$DB_URL" --yes`.
-- **Direct CLI commands** use the passthrough `bash scripts/dev supa <args…>`: it exports `APP_URL` (so `supabase/config.toml`'s `env(APP_URL)` resolves) and `exec`s `bunx supabase "$@"` from the repo root. Values come from the process environment or root `.env.local`; the CLI reads no directory-level values file.
-- **CI is deliberately non-stack**: `verify.yml` sets `SUPABASE_EXPERIMENTAL_STACK=0` and supplies the fixed `SUPABASE_*_PORT` variables. Runners are already isolated, so the experimental surface stays out of the gate. The shared QA stack likewise keeps its fixed ports until the dashboard can discover stack ports.
-- **⚠️ TEMPORARY — auth e-mail template workaround (do not build on this)**: stack projects in CLI 3.x cannot serve `content_path` templates. `supabase/config.toml` therefore keeps `content_path = ""` (stack boots and uses Supabase defaults), and the non-stack CI QA job injects the branded files through `SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH` / `...CONFIRMATION_CONTENT_PATH`. This keeps **one config gated by env**; it is a workaround, not a design. Remove it when stack can serve templates. If the stack backend is deprecated first, restore the literal `content_path` values and go back to manual local provisioning. `AUT-01/02/06/12` depend on the branded `/auth/callback?token_hash=…` links; locally run those against the non-stack/shared stack, not a stack-mode project.
-- **Ownership/build lock**: the runtime registry outside the repo (`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`, override `STUDIQ_DEV_REGISTRY`) now holds the cross-checkout build lock (and shared-mode ownership only). The directory must be private and owned by you: `scripts/dev` refuses a symlink or an existing directory it does not own, forces mode `700`, and ignores untrusted entries on read. `supabase stop --all`, `pkill` and unscoped `docker rm` are never used.
-- **`SUPABASE_SHARED=1`** runs the app/tests against a stack another checkout owns (shared QA). `dev:up` never starts Supabase, and `dev:down --all` / `dev:reset-db` / `supabase stop` are refused. `.env.local` (or the process environment) must provide `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
-- **Root `.env.local` is the only hand-edited values file.** `dev:up` reads it, resolves `APP_PORT`/`APP_URL` and discovers the stack's URLs/keys with `supabase status`, then exports them to the web/Supabase child processes. A user-provided key (in `.env.local` or already exported in the process environment) is never overwritten, and no generated values file is written into the checkout. Schema: [`.env.schema`](.env.schema); validator/injector: `varlock` (`bun run env:check`, `bun run env:scan`).
-- **`dev:up` is fast and idempotent**: no `bun install`, no `next build`, no `supabase db reset`, no seeds or manual migrations. Cold time is dominated by the first `supabase start` (image pull). Supabase starts **lean** with `supabase start --eager -x realtime,functions,analytics,pooler` (capability names, not the old container names); set `SUPABASE_START_EXCLUDE=` in `.env.local` for the full stack. `dev:up --prod` builds once (held by the registry build lock, `DEV_BUILD_MEMORY_MB=4096`) and then serves.
-- **Destructive/explicit steps are separate**: `bun dev:reset-db` (drops and re-seeds **this branch's** DB) and `bun dev:build` (production build; stop the web server first). `bun dev:prepull` runs `supabase stack install` for VM templates.
-- **The shared QA stack is protected**: `dev:up` refuses `APP_URL`/`SUPABASE_URL` on `:3010` / `:54421` unless `DEV_ALLOW_SHARED=1` (or the checkout is in `SUPABASE_SHARED=1` mode).
-- **`apps/admin` is out of scope** for `dev:up`: it reads the same root `.env.local` (injected by `varlock` for `bun dev:admin` / `build:admin` / `start:admin`) and has no app-specific env file.
+- **`scripts/env` is the implementation** (`cli.ts` + `commands/` + `lib/`); the `env:*` package scripts are thin wrappers. Local defaults: web `APP_PORT=3000`; Supabase ports are assigned by the CLI and discovered from `supabase stack status --output-format json` (no port math). `env:status --json` reports the stack's `projectId` as a display label (`stack-<id>`), never as stack identity.
+- **Stack identity is the CLI's**: project root + current git branch + `SUPABASE_STACK` name (blank = the branch's default stack). `scratch`/test stacks can run side by side with `SUPABASE_STACK=test bun run env:ensure --profile api`.
+- **`bun run env:status --json`** reports `stackId`, `branch`, endpoints and the app/web health. Bare `bunx supabase ...` targets the branch's **default** stack. For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and pass `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`. Database commands do not accept `--stack`; read the URL first: `DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\(.*\)'$/\1/p")`, then use `--remote="$DB_URL" --yes` (or use `bun run env:reset-db`, which does this).
+- **Direct CLI commands** use the passthrough `bun run env:supa <args…>`: it exports `APP_URL` (so `supabase/config.toml`'s `env(APP_URL)` resolves), guards destructive/stop-capable subcommands, and runs `bunx supabase` from the repo root. Values come from the process environment or root `.env.local`; the CLI reads no directory-level values file.
+- **CI is stack mode**: `verify.yml` sets `SUPABASE_EXPERIMENTAL_STACK=1`, `SUPABASE_RUNTIME=native` and the CLI assigns ports per runner (no fixed `SUPABASE_*_PORT` contract). CI keeps calling `supabase stack` directly and does not depend on the `env` tool.
+- **⚠️ TEMPORARY — auth e-mail template workaround (do not build on this)**: stack projects in CLI 3.x cannot serve `content_path` templates. `supabase/config.toml` therefore keeps `content_path = ""` (stack boots and uses Supabase defaults), and the CI QA job injects the branded files through `SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH` / `...CONFIRMATION_CONTENT_PATH`. This keeps **one config gated by env**; it is a workaround, not a design. Remove it when stack can serve templates. If the stack backend is deprecated first, restore the literal `content_path` values and go back to manual local provisioning. `AUT-01/02/06/12` depend on the branded `/auth/callback?token_hash=…` links; locally run those against a non-stack/shared stack, not a stack-mode project.
+- **Ownership/build lock**: the runtime registry outside the repo (`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`, override `STUDIQ_DEV_REGISTRY`) holds the cross-checkout build lock, the app-port lease and shared-mode ownership. The directory must be private and owned by you: the tool refuses a symlink or an existing directory it does not own, forces mode `700`, and ignores untrusted entries on read. `supabase stop --all`, `pkill` and unscoped `docker rm` are never used.
+- **`SUPABASE_SHARED=1`** runs the app/tests against a stack another checkout owns (shared QA). `env:ensure` never starts/stops/destroys/reseeds, and `env:down --all` / `env:reset-db` / `--seed` are refused. `.env.local` (or the process environment) must provide `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
+- **Root `.env.local` is the only required hand-edited values file.** The value-consuming `env:*` commands run under `varlock run --inject vars --`, which resolves `APP_PORT`/`APP_URL` and the stack's URLs/keys from `.env.local`/the optional vault/`supabase stack status`, then exports them to the web/Supabase child processes; `status`/`ports`/`doctor`/`setup`/`verify` are unwrapped by design. A user-provided key is never overwritten, and no generated values file is written into the checkout. Schema: [`.env.schema`](.env.schema); validator/injector: `varlock` (`bun run env:check`, `bun run env:scan`); `env:verify` never prints a value (help is a CLI subcommand, not an `env:*` wrapper).
+- **`.env.vault` is opt-in, not required.** A fresh checkout runs from `.env.local` alone. The vault is only for provider refs that cannot come from the local stack: **LLM inference** (`LLM_API_KEY`, optionally `LLM_BASE_URL`/`LLM_PROVIDER`) and **Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` only for webhook testing). Everything else stays in `.env.local` or is discovered from the stack. A human creates it with `bun run env:setup --vault` (comments/empty refs, mode 600) and fills the refs; refs are varlock resolver calls (`op(...)`, `bwp(...)`, `infisical(...)`). It lives in the **primary checkout**, Git-ignored, resolved through `STUDIQ_ENV_VAULT` (default `<primary>/.env.vault`), and is passed with `varlock run --path` **only when present**. Wording: `.env.local` is the only _values_ file; `.env.vault` is the optional _vault pointer_.
+- **`env:ensure` is fast and idempotent**: no `bun install`, no unconditional `next build`, no `supabase db reset`, and no unconditional tenant seeds — the profile decides (`qa`/`e2e` seed by default, the rest do not; `--no-seed` opts out). Cold time is dominated by the first `supabase stack start` (artifact pull). Supabase starts **lean** with `supabase stack start --eager -x studio,realtime,functions,analytics,pooler` (capability names); a profile's table is the source of truth. Builds are held by the registry build lock (`DEV_BUILD_MEMORY_MB=4096`).
+- **Destructive/explicit steps are separate**: `bun run env:reset-db --yes` (drops and re-seeds **this branch's** DB) and `bun run env:build` (production build; stop the web server first). Tenant seeding is `env:ensure --profile qa|e2e` (profile default) or an explicit `--seed`; there are no seed markers or run ids in v1.
+- **The shared QA stack is protected**: the tool never leases or suggests the shared QA app port (`:3010`, excluded from the app-port candidates), and shared mode is opt-in via `SUPABASE_SHARED=1` (see above), where it never mutates the shared stack.
+- **`apps/admin` is out of scope** for the `env` tool: use the standalone `bun run dev:admin` shortcut (or the workspace's own `bun run --filter @studiq/admin dev`) plus `build:admin`/`start:admin`. An `env` admin command is deferred; admin binds loopback only and has no app-specific env file.
 
-| Variable                        | Source                                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `APP_PORT`                      | root `.env.local` (default `3000`)                                                                                       |
-| `APP_URL`                       | root `.env.local` (defaults to `http://localhost:$APP_PORT`)                                                             |
-| `APP_ENV`                       | root `.env.local` (default `development` in `scripts/dev`; the app defaults to `production`)                             |
-| `NEXT_PUBLIC_SITE_URL`          | root `.env.local` (defaults to `APP_URL`)                                                                                |
-| `SUPABASE_STACK`                | root `.env.local`; named stack in this checkout (blank = branch default)                                                 |
-| `SUPABASE_START_EXCLUDE`        | root `.env.local`; `supabase stack start -x` capabilities (default skips unused; empty = full)                           |
-| `NEXT_PUBLIC_SUPABASE_URL`      | discovered from `supabase status` (explicit only for shared/remote)                                                      |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env.local` (shared mode) or `supabase status` (local stack)                                                       |
-| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env.local` (shared mode) or `supabase status` (local stack)                                                       |
-| `SUPABASE_SHARED`               | root `.env.local` (`0`/`1`; shared mode refuses destructive commands)                                                    |
-| `STUDIQ_DEV_REGISTRY`           | root `.env.local`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`                                     |
-| `STUDIQ_STACK_MODE`             | exported `1` by `scripts/dev` in stack mode (never in shared mode); marks this checkout's own stack for one-shot scripts |
-| `DEV_BUILD_MEMORY_MB`           | root `.env.local` (default `4096`) — `dev:build` heap cap                                                                |
-| `OTEL_*`                        | root `.env.local` (exported to the app by `scripts/dev` / injected by `varlock`)                                         |
+| Variable                        | Source                                                                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `APP_PORT`                      | root `.env.local` (default `3000`)                                                                                        |
+| `APP_URL`                       | root `.env.local` (defaults to `http://localhost:$APP_PORT`)                                                              |
+| `APP_ENV`                       | root `.env.local` (default `development` in the `env` tool; the app defaults to `production`)                             |
+| `NEXT_PUBLIC_SITE_URL`          | root `.env.local` (defaults to `APP_URL`)                                                                                 |
+| `SUPABASE_STACK`                | root `.env.local`; named stack in this checkout (blank = branch default)                                                  |
+| `NEXT_PUBLIC_SUPABASE_URL`      | discovered from `supabase status` (explicit only for shared/remote)                                                       |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env.local` (shared mode) or `supabase status` (local stack)                                                        |
+| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env.local` (shared mode) or `supabase status` (local stack)                                                        |
+| `SUPABASE_SHARED`               | root `.env.local` (`0`/`1`; shared mode refuses destructive commands)                                                     |
+| `STUDIQ_DEV_REGISTRY`           | root `.env.local`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`                                      |
+| `STUDIQ_STACK_MODE`             | exported `1` by the `env` tool in stack mode (never in shared mode); marks this checkout's own stack for one-shot scripts |
+| `DEV_BUILD_MEMORY_MB`           | root `.env.local` (default `4096`) — `env:build` heap cap                                                                 |
+| `OTEL_*`                        | root `.env.local` (injected / exported by `varlock` and the `env` tool)                                                   |
 
 ### Formatting scope & blame
 
-`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (vendored skill content, checksummed in `skills-lock.json`) and `eslint-suppressions.json` (the ledger `bun lint` generates).
+`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (skill content; third-party skills are checksummed in `skills-lock.json`, repo-owned `studiq-*` skills are not) and `eslint-suppressions.json` (the ledger `bun lint` generates).
+
+**Skills:** repo-owned skills (`.agents/skills/studiq-*`) are edited like normal repo files and are **not** listed in `skills-lock.json`. Third-party vendored skills are checksummed there; do not hand-edit them — update them through their installer.
 
 Repo-wide formatting passes are listed in **`.git-blame-ignore-revs`** so `git blame` blames the last real change instead of the reformat. Enable it once per clone (git does not read the file automatically — GitHub does):
 
@@ -258,7 +292,7 @@ scripts/pr
 scripts/spin feat/quiz-ui --clean
 ```
 
-Each worktree gets its own branch and working directory. Agents must not run `bun run dev` (`next dev` OOMs); to check the app in a browser, use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created beside the repo, preserving the branch hierarchy: `feat/quiz-ui` → `../studiq-worktrees/feat/quiz-ui`.
+Each worktree gets its own branch and working directory. Agents must not run `next dev` (`env:dev` is human-only and OOMs under agents); to check the app in a browser, use `bun run env:build` + `bun run env:serve` (or `bun run env:ensure --profile web`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created beside the repo, preserving the branch hierarchy: `feat/quiz-ui` → `../studiq-worktrees/feat/quiz-ui`.
 
 ### Running a single test
 
@@ -362,6 +396,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 - Create the Supabase client inside each method: `const supabase = await createClient()` from `@studiq/server/lib/supabase/server`
 - Return a `ServiceResult` — `success(data)` / `failure(code)` from `@studiq/server/lib/service-result` — or `throw new AppError(code)` for hard failures (code only, no message)
 - Map DB errors: `toDbFailure(error)` (→ `ServiceResult`) or `mapSupabaseError(error)` (→ throws `AppError`) from `@studiq/server/lib/supabase-errors`
+- Read PostgREST results through `@studiq/server/lib/supabase/rows`: `dbRows(data)` for a list or embed, `dbCount(row.child)` for a `select('child(count)')` aggregate, `dbNested(value)` for a single-object embed. A raw `data ?? []` is exactly what `typescript/no-unnecessary-condition` reports as dead, so the fallback lives in the helper and not at the call site. Use `.maybeSingle()` whenever "no row" is a domain answer; `.single()` stays for insert/update `.select().single()`, where zero rows is a server fault. Third-party result objects follow the same rule through `@studiq/server/lib/partial-result`
 - Permission checks (all from `@studiq/server/lib/authz`):
   - `await check(ctx, Permission.XXX, resource)` — throws `AppError('FORBIDDEN')` on mismatch
   - `await accessibleFilter(ctx, Permission.XXX, resourceType)` / `buildQueryFilter(ctx, Permission.XXX)` — RLS-safe filters for list queries
@@ -389,7 +424,33 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 Telemetry is OpenTelemetry-only. Traces/metrics/logs all ship via OTLP to the
 OTel Collector (`docker compose up`), which fans out to Tempo (traces),
-Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
+Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
+
+> **One observability stack per machine, owned by the primary checkout.** It is
+> not per checkout or worktree. Never start `docker compose` from a worktree:
+> the fixed Compose project (`studiq-observability`) and fixed host ports mean a
+> second start conflicts or mutates the same stack. If Grafana/Tempo/Loki are
+> down, start it once from the primary checkout (`git worktree list` first entry;
+> `/workspaces/studiq` on this VM): `cd <primary> && docker compose up -d`.
+> `bun run env:doctor` prints the health and the exact start command.
+> `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
+> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318`, so one collector can tell
+> worktrees apart; an explicit value in `.env.local` still wins.
+> The agent MCP token is provisioned, not pasted: `bun run env:observability ensure`
+> mints a Viewer service-account token into
+> `~/.config/studiq/observability/grafana-mcp-token` (0600) and revokes the
+> credential it supersedes; `env:ensure` does it best-effort, and
+> `opencode.jsonc` reads it with `{file:...}`. `env:doctor` reports
+> `observability.auth`; after a re-mint, run `opencode service restart`
+> (a config reload does not respawn an already-running MCP server).
+> The Grafana admin password is a local-only `admin` default: override it in the
+> `docker compose` process environment or with `--env-file .env.local`, never a
+> root `.env` (`.env.local` is the only values file and `bun run lint` rejects
+> the former).
+> If the stack or MCP is down, agents must not substitute a local correlation id
+> for a trace id or file a server-side root cause without the span/log. Run
+> `bun run env:doctor` and `bun run env:observability ensure`; if you do not own
+> the primary checkout, stop and report `BLOCKED/env` for the coordinator to start it.
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
   exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a
@@ -517,6 +578,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 - **Mock**: `vi.mock('@studiq/server/lib/supabase/server')` is registered in `__tests__/setup.ts` — unit tests override via the `mockSupabaseClient()` helper
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
+- **Playwright wait budgets** come from `playwright/base.ts` (`defineSuiteConfig`), merged into both the e2e and QA runners: 3 s per action and per `expect`, 6 s per navigation (a document load through the proxy's session refresh plus the dashboard redirect, measured at p99 2.2 s under load; CI's 4-vCPU runner exceeded 3 s). The per-test `timeout` (Playwright's 30 s in e2e, 90 s in QA) is a whole-flow budget, not a wait budget — a step that genuinely needs longer (a 5 s autosave debounce, a poll across several API round trips) overrides that single call with `{ timeout: … }` and a comment.
 - Tests run sequentially within files (`sequence.concurrent: false`); file-level parallelism is on (`fileParallelism: true`)
 - Coverage targets `packages/server/src/**/*.ts` (excludes `routes.config.ts`)
 - **Load testing**: `scripts/load-test/` — `seed.ts` provisions accounts via the Supabase Admin API; `bots.ts` drives concurrent role-based journeys (`--shards` spreads them over CPU cores). See `scripts/load-test/README.md`
@@ -548,6 +610,8 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
+- **CodeRabbit is manual only** — `.coderabbit.yaml` keeps `auto_review.enabled: false` and no label trigger, so nothing reviews a PR automatically. Request a pass with `@coderabbitai review` for a `size/XL` or sensitive PR; normal PRs use `.agents/skills/studiq-review/SKILL.md`.
+- **Fresh worktree = `bun install` first** — dependencies are per checkout, not shared. Without them, `bun run lint` reports missing-module noise and `typecheck:all` fails with `Cannot find type definition file for 'bun'`. `scripts/spin` runs `bun install --frozen-lockfile` for you (`--no-install` opts out); a manual `git worktree add` still needs the command.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.
@@ -565,34 +629,17 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ---
 
-## Code Review Checklist
+## Tautology Is Harmful
 
-When reviewing PRs (especially stacked PRs), follow this process to avoid false positives:
+A tautology is anything that restates something already true instead of adding information: a comment that repeats the code, a label that repeats the value, a test that asserts itself, a component that re-wraps a component. **If deleting it loses no information, delete it.** Tautologies are not neutral filler — they inflate diffs, rot into lies, and bury the real signal in review.
 
-### Setup
+- **Comments explain _why_, never _what_.** `// increment counter` above `counter++`, `// fetch the user` above `getUser()`, `// return result` above `return result` — noise. The same goes for diff narration: `// removed the old path`, `// was handled upstream`, `// now uses X` describe a commit, not the code, and go stale the moment someone reads the file without the diff in front of them. Git history is the changelog; the file should read as if it had always been this way. A comment earns its place only by recording a constraint, workaround or trade-off a reader cannot infer from the code.
+- **Tests assert behaviour, not themselves.** `expect(1).toBe(1)`, `expect(v).toBe(v)`, a test whose only assertion is that a mock was called, a test whose only content is its name — none of these can fail for the reason they claim to guard. A test must pin an outcome the _production_ code could plausibly break: an observable result, an error code, a persisted row, a rendered state. Ask "what real change would turn this red?" — if the answer is "nothing", delete it. A purity check is legitimate, but bind the first result (`const first = f(x); expect(f(x)).toBe(first)`), do not compare two identical calls.
+- **Labels and UI copy carry meaning or they go.** A field label identical to its placeholder, a "Status: Active" badge beside text that already says Active, a "Saved" toast on a save with no failure mode, a heading restated in the paragraph under it — redundant chrome, not clarity. Label only when it distinguishes (unit, scope, consequence), and let each fact appear once.
+- **Components compose, they do not re-name.** A wrapper that only forwards props, a `<Card>` that renders another `<Card>`, a "Layout" that adds one matching `<div>`, an "EmptyState" that is just its own title — each adds an indirection layer, a file, an import and a future migration for zero behaviour. Introduce a component when it owns behaviour, layout or accessibility semantics reused in more than one place; otherwise inline it.
 
-1. **Check out the top PR's branch** (not `main`) to see the full cumulative state:
-   ```bash
-   gh pr checkout <top-pr-number> --repo logyQT/studiq
-   ```
-2. **For stacked PRs**, identify the stack order from the `stack` field in the GitHub API response, or from each PR's base branch.
+Enforced where it is decidable, not by reviewer memory:
 
-### For each PR in the stack
-
-1. **Fetch the diff** — `gh pr diff <number> --repo logyQT/studiq`
-2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show _changes relative to the PR's base_, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
-3. **Check what the PR claims to change** against what the diff actually changes. If a PR says "adds X" but the diff only shows X being modified (not added), the feature likely already existed.
-4. **Run the test suite** if touching business logic — `bun run test:unit`
-5. **Run the linter** — `bun run lint`
-
-### Common false-positive patterns in stacked PR diffs
-
-| Diff shows                                               | Looks like           | Actually is                                             |
-| -------------------------------------------------------- | -------------------- | ------------------------------------------------------- |
-| `+` line that also appears in an earlier PR in the stack | "PR adds this"       | Earlier PR added it; this PR just touched the same area |
-| No diff for a file the PR description mentions           | "PR forgot the file" | Change is in a different file (e.g. model vs service)   |
-| `+/-` on the same line                                   | "PR broke something" | Formatting-only change (formatter)                      |
-
-### Rule of thumb
-
-> **Diffs tell you what changed. Files tell you what exists. Always check both.**
+- `bun run review:static` — oxlint (`no-self-compare`, `vitest/expect-expect`) plus the ast-grep rules in `sgconfig.yml` (self-asserting `expect`, label == placeholder, comment narrates a diff with `//` or a single-line `/* */`). Runs in `verify.yml`; `studiq-review` runs it with `-- --changed origin/main` and cites the rule id.
+- `bun run lint` — the rest of the shape-level redundancies (`no-dupe-else-if`, `no-unnecessary-boolean-literal-compare`, `jsx-a11y/no-redundant-roles`).
+- Still human/agent judgement: comments that restate code in different words, redundant labels that differ by a word, single-use wrapper components. Two existing gates cover the mechanical part: `bun run knip` finds unused components, and jscpd (`.jscpd.json`, `docs/ci.md → Duplication`) fails a PR that adds a copy-pasted block. The rest is a review finding, not a style nit.

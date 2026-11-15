@@ -1,6 +1,6 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-18 — a manager on the routes of the other roles.
@@ -71,7 +71,7 @@ const ORG_SETUP = {
  */
 function redirectPath(response: APIResponse): string {
   const location = response.headers()['location'];
-  expect(location, 'a redirect must carry a Location header').toBeTruthy();
+  if (!location) throw new Error(`${CASE} redirect carries no Location header`);
   return new URL(location, APP_URL).pathname;
 }
 
@@ -97,8 +97,7 @@ test.describe('AUT-18 — a manager on the routes of the other roles', () => {
     expect(tenant.profile, `${CASE} runs on the content tenant profile`).toBe('content');
     expect(tenant.org, 'the content tenant owns its organization').not.toBeNull();
 
-    const manager = tenant.users.manager;
-    expect(manager, `${CASE} seeds a manager`).toBeTruthy();
+    const manager = tenantUser(tenant, 'manager');
 
     await loginAs(page, tenant, 'manager', {
       locale: 'pl',
@@ -154,8 +153,6 @@ test.describe('AUT-18 — a manager on the routes of the other roles', () => {
 
   test('an educator is still bounced from /setup/org while /setup stays open', async ({ page }) => {
     const tenant = loadTenant(CASE);
-    const teacher = tenant.users.teacher;
-    expect(teacher, `${CASE} seeds an educator`).toBeTruthy();
 
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu$/ });
 

@@ -227,7 +227,8 @@ async function readQuestion(card: Locator): Promise<string | null> {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => /^STU-08 pytanie [A-D]$/.test(line));
-    return lines.length === 1 ? lines[0] : null;
+    const [question] = lines;
+    return lines.length === 1 && question ? question : null;
   } catch {
     // The card can be detached for a frame between the exit and entry of the
     // animated card; the poll retries until the next card settles.
@@ -286,8 +287,6 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} runs on the content tenant profile`).toBe('content');
     expect(tenant.org, `${CASE} needs an organization`).not.toBeNull();
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));

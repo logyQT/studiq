@@ -9,6 +9,7 @@ import { FlashcardPracticeService } from '@studiq/server/services/flashcard-prac
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asService } from '#test/helpers/service-double';
 import { asSupabaseClient } from '#test/helpers/supabase-double';
+import { requiredValue } from '#test/mocks/recorded';
 import { GOAL_PRESETS, goalProgress, MAX_GOAL, parseGoalInput } from '@/lib/goal-progress';
 
 // #656: the daily review goal. The column and the chart line existed; nothing could set the
@@ -136,8 +137,12 @@ describe('FlashcardPracticeService settings', () => {
       dailyReviewGoal: 30,
       reviewedToday: 12,
     });
-    expect(tables.user_daily_activity.eq).toHaveBeenCalledWith('user_id', 'student-1');
-    expect(tables.user_daily_activity.eq).toHaveBeenCalledWith('date', today);
+    expect(
+      requiredValue(tables.user_daily_activity, 'user_daily_activity').eq,
+    ).toHaveBeenCalledWith('user_id', 'student-1');
+    expect(
+      requiredValue(tables.user_daily_activity, 'user_daily_activity').eq,
+    ).toHaveBeenCalledWith('date', today);
   });
 
   it('reports 0 reviews when nothing was reviewed today', async () => {
@@ -151,7 +156,7 @@ describe('FlashcardPracticeService settings', () => {
   it('stores the goal for the caller only and answers the fresh settings', async () => {
     const result = await service.updateSettings(ctx, { dailyReviewGoal: 40 });
 
-    const settings = tables.user_study_settings;
+    const settings = requiredValue(tables.user_study_settings, 'user_study_settings');
     expect(settings.update).toHaveBeenCalledWith({ daily_review_goal: 40 });
     expect(settings.eq).toHaveBeenCalledWith('user_id', 'student-1');
     expect(result.success && result.data).toMatchObject({ reviewedToday: 12 });

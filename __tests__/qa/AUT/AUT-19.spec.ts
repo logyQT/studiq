@@ -1,7 +1,7 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { asJson } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-19 — API without a session and with the wrong role.
@@ -110,12 +110,9 @@ test.describe('AUT-19 — API route protection matrix', () => {
     page,
   }) => {
     const tenant = loadTenant(CASE);
-    const student = tenant.users.student;
-    const teacher = tenant.users.teacher;
-    const manager = tenant.users.manager;
-    expect(student, `${CASE} tenant must seed a student`).toBeTruthy();
-    expect(teacher, `${CASE} tenant must seed a teacher`).toBeTruthy();
-    expect(manager, `${CASE} tenant must seed a manager`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
+    const teacher = tenantUser(tenant, 'teacher');
+    const manager = tenantUser(tenant, 'manager');
 
     await loginAs(page, tenant, 'student');
 
@@ -154,8 +151,7 @@ test.describe('AUT-19 — API route protection matrix', () => {
 
   test('the same routes answer an authorized teacher in the same tenant', async ({ page }) => {
     const tenant = loadTenant(CASE);
-    const student = tenant.users.student;
-    expect(student, `${CASE} tenant must seed a student`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     await loginAs(page, tenant, 'teacher');
 

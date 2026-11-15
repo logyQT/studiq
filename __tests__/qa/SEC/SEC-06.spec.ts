@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-06 — a student and a teacher do not manage the organization.
@@ -191,8 +191,8 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
 
     const tenant = loadCaseTenant();
     const org = tenant.org!;
-    const teacher = tenant.users.teacher;
-    const student = tenant.users.student;
+    const teacher = tenantUser(tenant, 'teacher');
+    const student = tenantUser(tenant, 'student');
     const run = tenant.runSuffix ?? tenant.key.slice(-8);
 
     const pageErrors: string[] = [];
@@ -416,15 +416,18 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       JSON.parse(teacherInvite.body),
     );
     expect(teacherInviteBody.success).toBe(true);
-    expect(teacherInviteBody.data?.results).toHaveLength(1);
-    expect(teacherInviteBody.data?.results[0]).toMatchObject({
+    const teacherInviteResults = teacherInviteBody.data?.results ?? [];
+    expect(teacherInviteResults).toHaveLength(1);
+    const [teacherInviteResult] = teacherInviteResults;
+    if (!teacherInviteResult) throw new Error(`${CASE} the teacher invite returned no result`);
+    expect(teacherInviteResult).toMatchObject({
       email: teacherAllowedEmail,
       success: true,
     });
 
     expect(await invitationsFor([teacherAllowedEmail])).toEqual([
       {
-        id: teacherInviteBody.data!.results[0].data.invitationId,
+        id: teacherInviteResult.data.invitationId,
         email: teacherAllowedEmail,
         target_org_role_id: memberRoleId,
         inviter_id: teacher.id,

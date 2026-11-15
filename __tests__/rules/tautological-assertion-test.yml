@@ -1,0 +1,20 @@
+id: tautological-assertion
+valid:
+  # The expected value is a different expression.
+  - |
+    expect(load()).toBe(expected);
+  # A purity check that binds the first result.
+  - |
+    const first = f(x);
+    expect(f(x)).toBe(first);
+invalid:
+  # Same literal on both sides.
+  - |
+    expect(1).toBe(1);
+  # Same call on both sides.
+  - |
+    expect(f(x)).toBe(f(x));
+  - |
+    expect(a.b).toEqual(a.b);
+  - |
+    expect(a.b).toStrictEqual(a.b);

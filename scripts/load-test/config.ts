@@ -92,7 +92,8 @@ function valuesValue(name: string): string | null {
 
 /**
  * `STUDIQ_STACK_MODE=1` marks the target as this checkout's own stack. It comes
- * from the process environment (exported by `scripts/dev`) or root `.env.local`.
+ * from the process environment (CI exports it in `verify.yml`) or root
+ * `.env.local`; the `env` tool does not persist it into the checkout.
  */
 function isStackMarked(): boolean {
   if (process.env.STUDIQ_STACK_MODE?.trim() === '1') return true;
@@ -302,7 +303,7 @@ export type Args = Map<string, string | boolean>;
 export function parseArgs(argv = process.argv.slice(2)): Args {
   const args: Args = new Map();
   for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
+    const token = argv[i]!;
     if (!token.startsWith('--')) continue;
     const body = token.slice(2);
     if (body.startsWith('no-')) {
@@ -310,10 +311,11 @@ export function parseArgs(argv = process.argv.slice(2)): Args {
       continue;
     }
     const eq = body.indexOf('=');
+    const next = argv[i + 1];
     if (eq >= 0) {
       args.set(body.slice(0, eq), body.slice(eq + 1));
-    } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
-      args.set(body, argv[i + 1]);
+    } else if (next !== undefined && !next.startsWith('--')) {
+      args.set(body, next);
       i++;
     } else {
       args.set(body, true);
@@ -358,7 +360,8 @@ export async function mapLimit<T, R>(
     while (true) {
       const index = next++;
       if (index >= items.length) return;
-      results[index] = await fn(items[index], index);
+      // Checked just above: `index` is a valid position in `items`.
+      results[index] = await fn(items[index]!, index);
     }
   });
   await Promise.all(workers);
@@ -417,7 +420,7 @@ export class AppClient {
     const setCookies =
       typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
     for (const cookie of setCookies) {
-      const [pair] = cookie.split(';');
+      const [pair = ''] = cookie.split(';');
       const eq = pair.indexOf('=');
       if (eq < 0) continue;
       const name = pair.slice(0, eq).trim();
@@ -571,6 +574,7 @@ export class Stats {
     if (this.latencies.length === 0) return 0;
     const sorted = [...this.latencies].toSorted((a, b) => a - b);
     const index = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
-    return sorted[index];
+    // The clamp keeps `index` inside `sorted`.
+    return sorted[index]!;
   }
 }

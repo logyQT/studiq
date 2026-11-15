@@ -264,7 +264,7 @@ describe('problem questions floor (#654 review)', () => {
             Promise.resolve({ data: [], error: null }).then(onfulfilled),
           ),
         };
-        for (const m of ['select', 'eq', 'in', 'or', 'order', 'limit', 'is']) {
+        for (const m of ['select', 'eq', 'neq', 'in', 'or', 'order', 'limit', 'is', 'range']) {
           c[m] = vi.fn(() => c);
         }
         return c;

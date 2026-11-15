@@ -4,6 +4,7 @@ import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway'
 import type { BillingService } from '@studiq/server/services/billing.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asService } from '#test/helpers/service-double';
+import { firstCall } from '#test/mocks/recorded';
 
 function createMockGateway() {
   return {
@@ -146,7 +147,7 @@ describe('StripeController', () => {
     it('never forwards the body user_id to the gateway (#227)', async () => {
       gateway.handleWebhook.mockResolvedValueOnce({ success: true, data: { received: true } });
       await controller.handleWebhook(mockCtx, validEvent);
-      expect(gateway.handleWebhook.mock.calls[0][0].event).not.toHaveProperty('user_id');
+      expect(firstCall(gateway.handleWebhook)[0].event).not.toHaveProperty('user_id');
     });
 
     it('passes org_id through when present', async () => {
@@ -155,7 +156,7 @@ describe('StripeController', () => {
         ...validEvent,
         org_id: '00000000-0000-4000-8000-000000000001',
       });
-      expect(gateway.handleWebhook.mock.calls[0][0].event).toMatchObject({
+      expect(firstCall(gateway.handleWebhook)[0].event).toMatchObject({
         org_id: '00000000-0000-4000-8000-000000000001',
       });
     });

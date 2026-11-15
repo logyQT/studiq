@@ -2,20 +2,11 @@
 
 import type { Flashcard } from '@studiq/server/models/flashcard.model';
 import type { Topic } from '@studiq/server/models/topic.model';
-import {
-  Button,
-  Card,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Skeleton,
-} from '@studiq/ui';
+import { Button, Card, Skeleton } from '@studiq/ui';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCheck, CheckSquare, Plus, SquarePen, Tags, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { TopicCard } from '@/components/flashcards/cards/topic-card';
 import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialog';
@@ -25,10 +16,12 @@ import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { PageToolbar } from '@/components/shared/page-toolbar';
 import { ScopeGroupFilter } from '@/components/shared/scope-group-filter';
+import { SortSelect } from '@/components/shared/sort-select';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import { useApiMutation } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useGroupOptions } from '@/hooks/use-group-options';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
@@ -94,24 +87,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   const topics = topicsData?.pages.flatMap((page) => page.items) ?? [];
 
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        void fetchNextPage();
-      }
-    },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
-  );
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el) return undefined;
-    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver]);
+  const loadMoreRef = useInfiniteScroll({ hasNextPage, isFetchingNextPage, fetchNextPage });
 
   const createTopic = useApiMutation({
     mutationFn: (data: { name: string; visibility?: string; groupIds?: string[] }) =>
@@ -172,8 +148,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     groupIds?: string[];
   }>({ name: '', visibility: 'personal', groupIds: [] });
   const selection = useSelection();
-  const canCreateTopic = true;
-  const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
 
   const { data: topicFlashcardsData } = useInfiniteQuery({
     queryKey: [
@@ -193,19 +167,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   const viewFlashcards = topicFlashcardsData?.pages.flatMap((page) => page.items) ?? [];
 
-  const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
-
-  useEffect(() => {
-    if (!selectionIsActive) return undefined;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        selectionClear();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectionIsActive, selectionClear]);
+  const viewTopic = topics.find((tp) => tp.id === viewTopicId);
 
   function resetForm() {
     setFormData({ name: '', visibility: 'personal', groupIds: [] });
@@ -271,7 +233,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   }
 
   function handleSelectAll() {
-    if (!topics) return;
     selection.handleSelectAll(topics.map((topic) => topic.id));
   }
 
@@ -297,7 +258,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   return (
     <div className="space-y-6">
-      {selection.isSelecting && topics && topics.length > 0 && (
+      {selection.isSelecting && topics.length > 0 && (
         <div className="flex items-center gap-2 py-1">
           <Button
             variant="outline"
@@ -319,11 +280,9 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <PageToolbar
           search={{ value: searchInput, onChange: setSearchInput, placeholder: t('search_topics') }}
           actions={
-            canCreateTopic && (
-              <Button onClick={openCreate}>
-                <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
-              </Button>
-            )
+            <Button onClick={openCreate}>
+              <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+            </Button>
           }
         >
           <ScopeGroupFilter
@@ -336,24 +295,20 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
             t={t}
           />
 
-          <Select
-            value={`${sortBy}:${sortOrder}`}
-            onValueChange={(v) => {
-              const [sb, so] = v.split(':');
+          <SortSelect
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onChange={(sb, so) => {
               setSortBy(sb);
               setSortOrder(so);
             }}
-          >
-            <SelectTrigger className="w-37.5 truncate">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
-              <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
-              <SelectItem value="name:asc">{t('sort_name_asc')}</SelectItem>
-              <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
-            </SelectContent>
-          </Select>
+            options={[
+              { value: 'created_at:desc', label: t('sort_newest') },
+              { value: 'created_at:asc', label: t('sort_oldest') },
+              { value: 'name:asc', label: t('sort_name_asc') },
+              { value: 'name:desc', label: t('sort_name_desc') },
+            ]}
+          />
         </PageToolbar>
       )}
 
@@ -403,11 +358,9 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         emptyIcon={<Tags className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_topics')}
         emptyAction={
-          canCreateTopic && (
-            <Button variant="outline" size="sm" onClick={openCreate}>
-              <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
-            </Button>
-          )
+          <Button variant="outline" size="sm" onClick={openCreate}>
+            <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+          </Button>
         }
       >
         {topics.map((topic) => (
@@ -471,15 +424,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              ...(canCreateTopic
-                ? [
-                    {
-                      icon: SquarePen,
-                      label: t('new_topic'),
-                      onClick: openCreate,
-                    },
-                  ]
-                : []),
+              {
+                icon: SquarePen,
+                label: t('new_topic'),
+                onClick: openCreate,
+              },
               {
                 icon: CheckSquare,
                 label: t('select_topics'),

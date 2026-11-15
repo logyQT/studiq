@@ -1,5 +1,13 @@
-/** Profile -> capability table for phase 2 (`api`, `web`). */
-export const PROFILE_NAMES = ['api', 'web'] as const;
+/**
+ * Profile -> capability table (spec §3), the single source of truth for the
+ * `supabase stack start -x` exclude list.
+ *
+ * A profile is the contract; atoms only add capabilities to it. `database` is
+ * always on and is never passed to `-x`. `db` keeps `auth` and `storage`
+ * because this repo's migrations need `storage.buckets` and its seeds need
+ * `auth.users.email_confirmed_at` (settled in phase 0).
+ */
+export const PROFILE_NAMES = ['db', 'api', 'mail', 'full', 'web', 'qa', 'e2e'] as const;
 export type ProfileName = (typeof PROFILE_NAMES)[number];
 export type Capability =
   | 'database'
@@ -12,6 +20,7 @@ export type Capability =
   | 'functions'
   | 'analytics'
   | 'pooler';
+/** Capability atoms use the CLI's names (`--db` maps to `database`). */
 export const CAPABILITY_ATOMS = [
   'db',
   'rest',
@@ -39,15 +48,27 @@ const ATOM_CAPABILITY: Record<CapabilityAtom, Capability> = {
 
 export interface ProfileSpec {
   capabilities: readonly Capability[];
+  /** Tenant seeding: only `qa`/`e2e` enable it by default. */
+  seed: boolean;
   build: boolean;
   serve: boolean;
 }
 
-const API = ['database', 'auth', 'storage', 'rest'] as const;
+const DB = ['database', 'auth', 'storage'] as const;
+const API = [...DB, 'rest'] as const;
+const MAIL = [...API, 'mail'] as const;
+const FULL = [...MAIL] as const;
+
 export const PROFILES: Record<ProfileName, ProfileSpec> = {
-  api: { capabilities: API, build: false, serve: false },
-  web: { capabilities: [...API, 'mail'], build: true, serve: true },
+  db: { capabilities: DB, seed: false, build: false, serve: false },
+  api: { capabilities: API, seed: false, build: false, serve: false },
+  mail: { capabilities: MAIL, seed: false, build: false, serve: false },
+  full: { capabilities: FULL, seed: false, build: false, serve: false },
+  web: { capabilities: FULL, seed: false, build: true, serve: true },
+  qa: { capabilities: FULL, seed: true, build: true, serve: true },
+  e2e: { capabilities: FULL, seed: true, build: true, serve: true },
 };
+
 // The lean stack never starts realtime/functions/analytics/pooler; they stay in
 // the capability union so `-x` always excludes them unless an atom requests one
 // (`--realtime`/`--functions`/`--analytics`).
@@ -68,12 +89,25 @@ export function isCapabilityAtom(value: string): value is CapabilityAtom {
   return (CAPABILITY_ATOMS as ReadonlyArray<string>).includes(value);
 }
 
+export class ProfileError extends Error {}
+
+/**
+ * The requested capability set: the profile's set plus every capability atom.
+ * `studio` without `rest` is rejected here, at parse time, instead of letting
+ * the CLI fail later ("Studio cannot be started without the REST API
+ * capability").
+ */
 export function buildCapabilities(
   profile: ProfileName,
   atoms: readonly CapabilityAtom[],
 ): Set<Capability> {
   const capabilities = new Set<Capability>(PROFILES[profile].capabilities);
   for (const atom of atoms) capabilities.add(ATOM_CAPABILITY[atom]);
+  if (capabilities.has('studio') && !capabilities.has('rest')) {
+    throw new ProfileError(
+      "'--studio' requires '--rest' (Studio cannot start without the REST API)",
+    );
+  }
   return capabilities;
 }
 
@@ -91,5 +125,11 @@ export function excludesFor(capabilities: Iterable<Capability>): Capability[] {
 }
 
 export function profileRequiresServe(profile: string | null | undefined): boolean {
-  return Boolean(profile && isProfileName(profile) && PROFILES[profile].serve);
+  if (!profile || !isProfileName(profile)) return false;
+  return PROFILES[profile].serve;
+}
+
+export function profileSeeds(profile: string | null | undefined): boolean {
+  if (!profile || !isProfileName(profile)) return false;
+  return PROFILES[profile].seed;
 }

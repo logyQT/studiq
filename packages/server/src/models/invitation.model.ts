@@ -1,5 +1,6 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
+import { OptionalLocaleSchema } from './locale.model';
 
 export const CreateInviteSchema = registry.register(
   'CreateInviteRequest',
@@ -14,7 +15,7 @@ export const CreateInviteSchema = registry.register(
     organizationId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     // Language of the invitation e-mail (#604). The invitee has no account yet, so the
     // inviter's UI language is the best signal; omitted means Polish.
-    locale: z.enum(['pl', 'en'], { error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    locale: OptionalLocaleSchema,
   }),
 );
 
@@ -53,7 +54,4 @@ export const AcceptInviteSchema = registry.register(
 );
 
 export type CreateInviteInput = z.infer<typeof CreateInviteSchema>;
-export type BulkInviteInput = z.infer<typeof BulkInviteSchema>;
 export type InvitationListQuery = z.infer<typeof InvitationListQuerySchema>;
-export type UpdateInviteInput = z.infer<typeof UpdateInviteSchema>;
-export type AcceptInviteInput = z.infer<typeof AcceptInviteSchema>;

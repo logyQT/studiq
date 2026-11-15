@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
+import { recordedAt } from '#test/mocks/recorded';
 
 const email = 'teacher-classroom@dev.local';
 const password = 'pass';
@@ -78,10 +79,14 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
       await expect(footer(page)).toHaveText('1 pytanie · Suma punktów: 1');
 
       // Persist explicitly (autosave is debounced by 5 s) and prove it survives a reload.
+      // The explicit save is sometimes coalesced into that debounce instead of firing
+      // immediately, so this one network wait can legitimately take ~5 s — it outlives
+      // the 3 s per-action budget on purpose.
       const saved = page.waitForResponse(
         (response) =>
           response.url().includes(`/api/v1/teacher/quizzes/${quizId}/bulk`) &&
           response.request().method() === 'PUT',
+        { timeout: 10_000 },
       );
       await page.getByRole('button', { name: t('EduQuizEditPage.save') }).click();
       expect((await saved).status()).toBe(200);
@@ -113,7 +118,13 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
         data: {
           name: `QA160 non-empty ${Date.now()}`,
           description: null,
-          questions: [{ question_id: bank[1].id, order_index: 0, points: 1 }],
+          questions: [
+            {
+              question_id: recordedAt(bank, 1, 'the second bank question').id,
+              order_index: 0,
+              points: 1,
+            },
+          ],
         },
       });
       expect(seeded.status()).toBe(200);

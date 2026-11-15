@@ -6,13 +6,13 @@ import { profileRequiresServe } from '../profiles';
 /**
  * The stable `--json` contract (spec §9).
  *
- * It is a superset of `dev:status --json`: every legacy camelCase field keeps
+ * It is a superset of `env:status --json`: every legacy camelCase field keeps
  * its name, discovered-but-absent values are `null` (never omitted), stopped
  * service ports are `0`, and nothing secret is ever included. Timing is not part
  * of the machine contract, so there is no `warmMs`.
  */
 export interface StatusPorts {
-  // Legacy order from `dev:status --json`.
+  // Legacy order from `env:status --json`.
   app: number;
   api: number;
   db: number;
@@ -99,7 +99,7 @@ export interface StatusInputs {
   warnings: string[];
 }
 
-/** `200-399` for the web app and a healthy Supabase, exactly like `dev:status`. */
+/** `200-399` for the web app and a healthy Supabase, exactly like `env:status`. */
 function isReady(webHttp: number, supabaseHttp: number): boolean {
   return webHttp >= 200 && webHttp < 400 && supabaseHttp === 200;
 }

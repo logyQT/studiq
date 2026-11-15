@@ -70,6 +70,9 @@ export type Database = {
           order_index: number | null;
           points: number;
           question_id: string | null;
+          snapshot: Json | null;
+          snapshot_key: Json | null;
+          snapshot_version: number | null;
         };
         ComputedFields: never;
         Insert: {
@@ -78,6 +81,9 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          snapshot?: Json | null;
+          snapshot_key?: Json | null;
+          snapshot_version?: number | null;
         };
         Update: {
           assignment_id?: string | null;
@@ -85,6 +91,9 @@ export type Database = {
           order_index?: number | null;
           points?: number;
           question_id?: string | null;
+          snapshot?: Json | null;
+          snapshot_key?: Json | null;
+          snapshot_version?: number | null;
         };
         Relationships: [
           {
@@ -471,13 +480,13 @@ export type Database = {
           interval_days: number;
           interval_unit: string;
           is_leech: boolean;
-          lapse_count: number;
           last_quality: number | null;
           last_reviewed_at: string | null;
           learning_state: string;
           learning_step: number;
           next_review_at: string;
           repetitions: number;
+          sm2_lapse_count: number;
           user_id: string;
         };
         ComputedFields: never;
@@ -487,13 +496,13 @@ export type Database = {
           interval_days?: number;
           interval_unit?: string;
           is_leech?: boolean;
-          lapse_count?: number;
           last_quality?: number | null;
           last_reviewed_at?: string | null;
           learning_state?: string;
           learning_step?: number;
           next_review_at?: string;
           repetitions?: number;
+          sm2_lapse_count?: number;
           user_id: string;
         };
         Update: {
@@ -502,13 +511,13 @@ export type Database = {
           interval_days?: number;
           interval_unit?: string;
           is_leech?: boolean;
-          lapse_count?: number;
           last_quality?: number | null;
           last_reviewed_at?: string | null;
           learning_state?: string;
           learning_step?: number;
           next_review_at?: string;
           repetitions?: number;
+          sm2_lapse_count?: number;
           user_id?: string;
         };
         Relationships: [
@@ -1596,8 +1605,10 @@ export type Database = {
           id: string;
           organization_id: string | null;
           search_vector: unknown;
+          status: Database['public']['Enums']['question_status'];
           type: Database['public']['Enums']['question_type'];
           updated_at: string | null;
+          version: number;
           visibility: Database['public']['Enums']['visibility_type'];
         };
         ComputedFields: never;
@@ -1610,8 +1621,10 @@ export type Database = {
           id?: string;
           organization_id?: string | null;
           search_vector?: never;
+          status?: Database['public']['Enums']['question_status'];
           type?: Database['public']['Enums']['question_type'];
           updated_at?: string | null;
+          version?: number;
           visibility?: Database['public']['Enums']['visibility_type'];
         };
         Update: {
@@ -1623,8 +1636,10 @@ export type Database = {
           id?: string;
           organization_id?: string | null;
           search_vector?: never;
+          status?: Database['public']['Enums']['question_status'];
           type?: Database['public']['Enums']['question_type'];
           updated_at?: string | null;
+          version?: number;
           visibility?: Database['public']['Enums']['visibility_type'];
         };
         Relationships: [
@@ -1956,6 +1971,7 @@ export type Database = {
         Row: {
           ai_graded: boolean;
           attempt_id: string | null;
+          created_at: string;
           id: string;
           is_correct: boolean;
           match_pair_id: string | null;
@@ -1972,6 +1988,7 @@ export type Database = {
         Insert: {
           ai_graded?: boolean;
           attempt_id?: string | null;
+          created_at?: string;
           id?: string;
           is_correct?: boolean;
           match_pair_id?: string | null;
@@ -1987,6 +2004,7 @@ export type Database = {
         Update: {
           ai_graded?: boolean;
           attempt_id?: string | null;
+          created_at?: string;
           id?: string;
           is_correct?: boolean;
           match_pair_id?: string | null;
@@ -2012,13 +2030,6 @@ export type Database = {
             columns: ['question_id'];
             isOneToOne: false;
             referencedRelation: 'questions';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'student_answers_selected_option_id_fkey';
-            columns: ['selected_option_id'];
-            isOneToOne: false;
-            referencedRelation: 'question_options';
             referencedColumns: ['id'];
           },
         ];
@@ -2115,6 +2126,7 @@ export type Database = {
           passing_score: number | null;
           question_count: number;
           quiz_id: string | null;
+          seal_org_wide: boolean;
           show_results: boolean;
           shuffle_answers: boolean;
           shuffle_questions: boolean;
@@ -2137,6 +2149,7 @@ export type Database = {
           passing_score?: number | null;
           question_count?: number;
           quiz_id?: string | null;
+          seal_org_wide?: boolean;
           show_results?: boolean;
           shuffle_answers?: boolean;
           shuffle_questions?: boolean;
@@ -2158,6 +2171,7 @@ export type Database = {
           passing_score?: number | null;
           question_count?: number;
           quiz_id?: string | null;
+          seal_org_wide?: boolean;
           show_results?: boolean;
           shuffle_answers?: boolean;
           shuffle_questions?: boolean;
@@ -2414,6 +2428,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      accept_org_invitation: {
+        Args: { p_token: string; p_user_id: string };
+        Returns: { organization_id: string; organization_name: string; org_role_id: string }[];
+      };
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
       apply_entitlement_fenced: {
@@ -2624,6 +2642,13 @@ export type Database = {
         Returns: boolean;
       };
       is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
+      question_bank_counts: {
+        Args: { p_bank_ids: string[] };
+        Returns: {
+          bank_id: string;
+          question_count: number;
+        }[];
+      };
       rls_audit: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -2669,10 +2694,15 @@ export type Database = {
           rank: number;
         }[];
       };
+      submit_quiz_attempt: {
+        Args: { p_answers: Json; p_attempt_id: string; p_score: number; p_user_id: string };
+        Returns: { completed_attempt_id: string }[];
+      };
     };
     Enums: {
       account_type: 'student' | 'educator' | 'manager';
       assignment_status: 'draft' | 'published';
+      question_status: 'open' | 'retired' | 'deleted';
       question_type:
         'mcq' | 'true_false' | 'open' | 'multi_select' | 'matching' | 'ordering' | 'fill_in_blank';
       report_status: 'open' | 'resolved';
@@ -2794,6 +2824,7 @@ export const Constants = {
     Enums: {
       account_type: ['student', 'educator', 'manager'],
       assignment_status: ['draft', 'published'],
+      question_status: ['open', 'retired', 'deleted'],
       question_type: [
         'mcq',
         'true_false',

@@ -7,16 +7,6 @@ const MEMBERS_URL = '/api/v1/organization/members';
 const MEMBER_EMAIL = 'student1@dev.local';
 
 async function loginAndOpenMembers(page: Page) {
-  // Register before navigation so the members page's own fetches can't be missed.
-  const membersLoaded = page.waitForResponse(
-    (res) => res.url().includes(MEMBERS_URL) && res.request().method() === 'GET' && res.ok(),
-    { timeout: 30_000 },
-  );
-  const rolesLoaded = page.waitForResponse(
-    (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
-    { timeout: 30_000 },
-  );
-
   await page.goto('/login');
   await page.getByLabel(t('LoginPage.email_label')).fill('manager@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
@@ -25,11 +15,24 @@ async function loginAndOpenMembers(page: Page) {
   // A fresh session has no active-org cookie yet, so useOrgs() auto-selects the
   // first membership and pushes /manage. Wait for that arrival *and* for the
   // switcher to render the active org, so no later redirect interrupts us.
-  await page.waitForURL(/\/manage\/?$/, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible({ timeout: 30_000 });
+  await page.waitForURL(/\/manage\/?$/);
+  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 
+  // Registered right before the navigation that triggers them: the login above
+  // is the flow's slow part, and a response wait spanning it would be a
+  // per-action budget in name only. Each wait covers the page mount plus one API
+  // round trip, so it gets a request budget: Firefox on CI's 4-vCPU runner
+  // exceeded the 3 s action budget here (run 43449364966).
+  const membersLoaded = page.waitForResponse(
+    (res) => res.url().includes(MEMBERS_URL) && res.request().method() === 'GET' && res.ok(),
+    { timeout: 10_000 },
+  );
+  const rolesLoaded = page.waitForResponse(
+    (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
+    { timeout: 10_000 },
+  );
   await page.goto('/manage/members');
-  await page.waitForURL(/\/manage\/members$/, { timeout: 30_000 });
+  await page.waitForURL(/\/manage\/members$/);
 
   await Promise.all([membersLoaded, rolesLoaded]);
   await expect(memberRow(page)).toBeVisible();

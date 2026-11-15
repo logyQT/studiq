@@ -3,6 +3,7 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 /** Narrows a service result to its data, failing the test when the call failed. */
 function expectSuccess<T>(result: ServiceResult<T>): T {
@@ -103,8 +104,8 @@ describe('GroupService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].memberCount).toBe(5);
-      expect(expectSuccess(result)[0].teacherCount).toBe(2);
+      expect(expectSuccess(result)[0]?.memberCount).toBe(5);
+      expect(expectSuccess(result)[0]?.teacherCount).toBe(2);
     });
 
     it('returns error on DB failure', async () => {
@@ -280,7 +281,7 @@ describe('GroupService', () => {
       await service.updateGroup(ctx, 'g-1', { name: 'New' });
 
       expect(builder.update).toHaveBeenCalledWith({ name: 'New' });
-      expect(builder.update.mock.calls[0][0]).not.toHaveProperty('description');
+      expect(firstCall(builder.update)[0]).not.toHaveProperty('description');
     });
 
     it('returns NOT_FOUND when group not found', async () => {
@@ -310,11 +311,31 @@ describe('GroupService', () => {
     });
 
     it('deletes a group', async () => {
-      mock.from.mockReturnValueOnce(qb(undefined));
+      const deleteBuilder = qb([{ id: 'g-1' }]);
+      mock.from.mockReturnValueOnce(deleteBuilder);
 
       const result = await service.deleteGroup(ctx, 'g-1');
 
       expect(result.success).toBe(true);
+      expect(deleteBuilder.select).toHaveBeenCalledWith('id');
+    });
+
+    it('returns NOT_FOUND when the group belongs to another org', async () => {
+      // The org filter matches zero rows: PostgREST reports no error, so an
+      // un-projected delete looks identical to a successful one (#1124).
+      const deleteBuilder = qb([]);
+      mock.from.mockReturnValueOnce(deleteBuilder);
+
+      // A manager belongs to both orgs, so RLS alone permits deleting the
+      // foreign row: the active-org filter is the only cross-org guard.
+      const result = await service.deleteGroup(
+        { ...ctx, activeOrgId: 'org-2' },
+        'group-of-another-org',
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(deleteBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-2');
     });
 
     it('returns error on DB failure', async () => {
@@ -360,7 +381,7 @@ describe('GroupService', () => {
 
     it('lets an educator delete a group they created', async () => {
       mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' }));
-      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb([{ id: 'g-1' }]));
 
       const result = await service.deleteGroup(educatorCtx, 'g-1');
 
@@ -734,7 +755,7 @@ describe('GroupService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].id).toBe('g-1');
+      expect(expectSuccess(result)[0]?.id).toBe('g-1');
     });
 
     it('returns [] when the caller has no org memberships (#249)', async () => {

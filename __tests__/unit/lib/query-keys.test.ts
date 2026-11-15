@@ -86,48 +86,48 @@ describe('org-scoped query keys (#135)', () => {
 
 /**
  * The results table (`results-client.tsx`) reads `assignmentKeys.results(id)`
- * while the grading screen reads `assignmentKeys.studentResults(id, studentId)`.
- * A grading mutation that invalidates only the per-student key leaves the table
+ * while the grading screen reads `assignmentKeys.attemptResults(id, attemptId)`.
+ * A grading mutation that invalidates only the per-attempt key leaves the table
  * cached, and `useApiQuery` defaults to `staleTime: Infinity` — so the row keeps
  * saying „Przesłane" until a full reload (#168).
  */
 describe('assignment results grading invalidation (#168)', () => {
   const assignmentId = 'assignment-1';
-  const studentId = 'student-1';
+  const attemptId = 'attempt-1';
   const listKey = assignmentKeys.results(assignmentId);
-  const studentKey = assignmentKeys.studentResults(assignmentId, studentId);
+  const attemptKey = assignmentKeys.attemptResults(assignmentId, attemptId);
 
   it('invalidates the results list prefix', () => {
     expect(assignmentKeys.gradingInvalidations(assignmentId)).toEqual([listKey]);
   });
 
-  it('nests the per-student key under the list prefix', () => {
-    expect(studentKey.slice(0, listKey.length)).toEqual([...listKey]);
+  it('nests the per-attempt key under the list prefix', () => {
+    expect(attemptKey.slice(0, listKey.length)).toEqual([...listKey]);
   });
 
-  it('marks the results list and the per-student query invalidated', () => {
+  it('marks the results list and the per-attempt query invalidated', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(listKey, [{ id: 'attempt-1' }]);
-    queryClient.setQueryData(studentKey, { id: 'attempt-1', graded_at: null });
+    queryClient.setQueryData(attemptKey, { id: 'attempt-1', graded_at: null });
 
     for (const key of assignmentKeys.gradingInvalidations(assignmentId)) {
       void queryClient.invalidateQueries({ queryKey: key });
     }
 
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(studentKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(attemptKey)?.isInvalidated).toBe(true);
   });
 
-  it('leaves the results list cached when only the per-student key is invalidated', () => {
+  it('leaves the results list cached when only the per-attempt key is invalidated', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(listKey, [{ id: 'attempt-1' }]);
-    queryClient.setQueryData(studentKey, { id: 'attempt-1', graded_at: null });
+    queryClient.setQueryData(attemptKey, { id: 'attempt-1', graded_at: null });
 
     // The pre-fix behaviour — this is the control that proves the test would
-    // catch a regression back to the per-student-only key.
-    void queryClient.invalidateQueries({ queryKey: studentKey });
+    // catch a regression back to the per-attempt-only key.
+    void queryClient.invalidateQueries({ queryKey: attemptKey });
 
-    expect(queryClient.getQueryState(studentKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(attemptKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
   });
 });

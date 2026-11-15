@@ -176,7 +176,7 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
     const headerCells = page.locator('table thead th');
     await expect(headerCells.first()).toBeVisible();
     const headers = await headerCells.evaluateAll((cells) =>
-      cells.map((cell) => (cell.textContent ?? '').trim()),
+      cells.map((cell) => cell.textContent.trim()),
     );
     expect(new Set(headers), 'the table has exactly the five documented columns').toEqual(
       new Set(HEADERS),

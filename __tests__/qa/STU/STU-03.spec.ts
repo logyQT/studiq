@@ -161,7 +161,9 @@ test.describe('@case:STU-03 @area:STU @prio:P2 student sidebar', () => {
 
     // 2 (premise). This tenant resolves no `ai.chat`, which is what hides
     //    „Asystent Q”; the assertion below is about the gate, not about copy.
-    const featuresResponse = await page.request.get('/api/v1/features/me');
+    // One API round trip, not a UI step: CI's 4-vCPU runner put this call at the
+    // 3 s action budget in both full runs (43445896876, 43447812598).
+    const featuresResponse = await page.request.get('/api/v1/features/me', { timeout: 10_000 });
     expect(featuresResponse.status(), 'GET /api/v1/features/me').toBe(200);
     const enabled = (await json<{ data: { features: string[] } }>(featuresResponse)).data.features;
     expect(enabled, 'the Base-plan student is not entitled to ai.chat').not.toContain('ai.chat');

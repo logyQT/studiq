@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -27,7 +27,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
     return {
       traceId: `rename-display-name-${suiteId}`,
       userId: `user-${suiteId}`,
-      accountType: 'MANAGER',
+      accountType: AccountType.MANAGER,
       activeOrgId: orgId,
       orgRoleId: null,
       url: '/api/v1/organization/roles',
@@ -43,7 +43,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
       .select('name, display_name')
       .eq('id', roleId)
       .single();
-    if (error || !data) throw new Error(`role read failed: ${error?.message}`);
+    if (error) throw new Error(`role read failed: ${error.message}`);
     return data;
   }
 
@@ -55,7 +55,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
       .insert({ name: `rename-display-${tag}` })
       .select('id')
       .single();
-    if (orgError || !org) throw new Error(`org create failed: ${orgError?.message}`);
+    if (orgError) throw new Error(`org create failed: ${orgError.message}`);
     orgId = org.id;
 
     // Custom roles start with display_name = name (createRole() behaviour).
@@ -70,7 +70,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
       })
       .select('id')
       .single();
-    if (roleError || !role) throw new Error(`custom role create failed: ${roleError?.message}`);
+    if (roleError) throw new Error(`custom role create failed: ${roleError.message}`);
     customRoleId = role.id;
   });
 

@@ -178,11 +178,13 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
       //    column offers edit/delete instead of the read-only lock.
       const stored = (await listGroups(page)).filter((group) => group.name === GROUP_NAME);
       expect(stored, 'exactly one „Grupa testowa” in the API').toHaveLength(1);
-      createdId = stored[0].id;
-      expect(stored[0].description, 'description stored by the API').toBe(GROUP_DESCRIPTION);
-      expect(stored[0].memberCount).toBe(0);
-      expect(stored[0].teacherCount).toBe(0);
-      expect(stored[0].canManage, 'the educator owns the group').toBe(true);
+      const [storedGroup] = stored;
+      if (!storedGroup) throw new Error(`${CASE} the created group is not in the API list`);
+      createdId = storedGroup.id;
+      expect(storedGroup.description, 'description stored by the API').toBe(GROUP_DESCRIPTION);
+      expect(storedGroup.memberCount).toBe(0);
+      expect(storedGroup.teacherCount).toBe(0);
+      expect(storedGroup.canManage, 'the educator owns the group').toBe(true);
 
       await expect(
         created.getByRole('button', { name: `Edytuj grupę ${GROUP_NAME}` }),

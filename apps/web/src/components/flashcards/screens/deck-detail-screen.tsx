@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
@@ -72,6 +72,7 @@ import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { isAllSelected, useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
@@ -124,7 +125,7 @@ export function DeckDetailScreen({
     hasNextPage,
     isFetchingNextPage,
   } = useCursorPagination<Flashcard>({
-    queryKey: ['flashcards', deckId, debouncedSearch ?? '', topicFilter, sortBy, sortOrder],
+    queryKey: ['flashcards', deckId, debouncedSearch, topicFilter, sortBy, sortOrder],
     url: '/api/v1/flashcards',
     filters: {
       deckIds: deckId,
@@ -176,24 +177,7 @@ export function DeckDetailScreen({
   const allDecks = (allDecksData?.items ?? []).filter((d) => d.id !== deckId);
   const flashcardQueryKey: QueryKey = ['flashcards', deckId];
 
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
-  );
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el) return undefined;
-    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver]);
+  const loadMoreRef = useInfiniteScroll({ hasNextPage, isFetchingNextPage, fetchNextPage });
 
   const deleteFlashcard = useApiMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`),

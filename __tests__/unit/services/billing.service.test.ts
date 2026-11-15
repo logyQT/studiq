@@ -12,6 +12,7 @@ import type {
 } from '@studiq/server/lib/payment/stripe-repository';
 import { success } from '@studiq/server/lib/service-result';
 import { asJson } from '#test/helpers/json';
+import { firstCall } from '#test/mocks/recorded';
 import { BillingService, billingService } from '@studiq/server/services/billing.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -270,7 +271,7 @@ describe('BillingService.startCheckout', () => {
       idempotencyKey: anyUserCheckoutKey,
     });
 
-    const input = vi.mocked(gateway.createCheckoutSession).mock.calls[0][0];
+    const input = firstCall(vi.mocked(gateway.createCheckoutSession))[0];
     const bucket = Number(input.idempotencyKey.split(':').pop());
     expect(input.expiresAt).toBe(((bucket + 2) * CHECKOUT_BUCKET_MS) / 1000 + 60);
   });

@@ -121,11 +121,14 @@ export function ThemeSwitch({ size = 'md', className }: ThemeSwitchProps) {
       Home: 0,
       End: 2,
     };
-    if (!(event.key in map)) return;
+    const nextIndex = map[event.key];
+    if (nextIndex === undefined) return;
+    const next = CHOICES[nextIndex];
+    if (!next) return;
     event.preventDefault();
     // Keep the surrounding menu from treating the arrow as item navigation.
     event.stopPropagation();
-    select(CHOICES[map[event.key]], true);
+    select(next, true);
   }
 
   const ThumbIcon = resolved === 'dark' ? Moon : Sun;

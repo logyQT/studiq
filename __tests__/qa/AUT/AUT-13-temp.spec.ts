@@ -2,7 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForDefaultAuthPath } from '#test/helpers/mailpit';
-import { loadTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, tenantUser } from '#test/qa/fixtures/tenant';
 
 // Temporary variant: only meaningful against a stack-mode Supabase.
 test.skip(process.env.STUDIQ_STACK_MODE !== '1', 'temporary stack-mode variant');
@@ -188,14 +188,14 @@ async function setNewPassword(page: Page, newPassword: string, mismatch: string)
   // and the API answers in a few seconds on the shared box.
   const [response] = await Promise.all([
     responsePromise,
-    expect(toast, 'success toast after the password change').toBeVisible({ timeout: 30_000 }),
+    expect(toast, 'success toast after the password change').toBeVisible(),
   ]);
   expect(response.status(), `POST ${UPDATE_PASSWORD_PATH}`).toBe(200);
   expect(response.headers()['x-error-code'], 'no error code on success').toBeUndefined();
   expect(await response.json()).toMatchObject({ success: true });
 
   // Expected result: redirect to the panel (a standalone student: /app).
-  await expect(page).toHaveURL(/\/app$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Cześć');
   const body = await page.locator('body').innerText();
   expect(body, 'no raw translation key or error code on screen').not.toMatch(
@@ -240,8 +240,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
       'seed with --fresh: the account password must still be the seeded one',
     ).toBeTruthy();
 
-    const student = tenant.users.student;
-    expect(student, `${CASE} must seed the bare student`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
     expect(student.password, 'the seeded password under test').toBe(SEEDED_PASSWORD);
 
     const email = student.email;
@@ -272,7 +271,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
     // --- Step 4a: the new password logs in -------------------------------
     const accepted = await logoutAndLogin(page, email, newPassword);
     expect(accepted.response.status(), 'POST /api/v1/auth/login with the new password').toBe(200);
-    await expect(page).toHaveURL(/\/app$/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/app$/);
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Cześć');
     await expect(accepted.toast).toHaveCount(0);
 

@@ -48,6 +48,7 @@ export function ReportsToolbar({
         value={sort}
         onValueChange={(value) => {
           const [sortBy, sortOrder] = value.split(':');
+          if (!sortBy || !sortOrder) return;
           onSortChange(sortBy, sortOrder);
         }}
       >

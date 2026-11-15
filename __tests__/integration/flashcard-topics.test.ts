@@ -7,7 +7,11 @@ import {
 } from '#test/helpers/test-user';
 import { useRealSupabase, cleanupFlashcardTopics, mockUser } from '#test/integration/helpers';
 import { json } from '#test/helpers/json';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import {
   DELETE as deleteFn,
   GET as getById,
@@ -142,8 +146,8 @@ describe(`Flashcard Topics Integration`, () => {
       const body = await json<TopicListPayload>(response);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(body.data?.items)).toBe(true);
-      expect(body.data?.items?.length).toBeGreaterThanOrEqual(4);
+      expect(Array.isArray(body.data.items)).toBe(true);
+      expect(body.data.items.length).toBeGreaterThanOrEqual(4);
     });
 
     it('returns 401 when not authenticated', async () => {
@@ -162,7 +166,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns topic when found', async () => {
       mockUser(teacher.user);
 
-      const topicId = teacher.created.topics[0];
+      const topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/topics/${topicId}`,
         { id: topicId },
@@ -195,7 +199,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('updates own topic and returns 200', async () => {
       mockUser(teacher.user);
 
-      const topicId = teacher.created.topics[1];
+      const topicId = requiredAt(teacher.created.topics, 1, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/topics/${topicId}`,
         { id: topicId },
@@ -216,7 +220,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 422 when updating with a whitespace-only name', async () => {
       mockUser(teacher.user);
 
-      const topicId = teacher.created.topics[0];
+      const topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/topics/${topicId}`,
         { id: topicId },
@@ -236,7 +240,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 403 when updating another user topic', async () => {
       mockUser(other);
 
-      const topicId = teacher.created.topics[0];
+      const topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/topics/${topicId}`,
         { id: topicId },
@@ -258,7 +262,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('deletes own topic and returns 200', async () => {
       mockUser(teacher.user);
 
-      const topicId = teacher.created.topics[2];
+      const topicId = requiredAt(teacher.created.topics, 2, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/topics/${topicId}`,
         { id: topicId },
@@ -274,7 +278,7 @@ describe(`Flashcard Topics Integration`, () => {
     it('returns 403 when deleting another user topic', async () => {
       mockUser(other);
 
-      const topicId = teacher.created.topics[3];
+      const topicId = requiredAt(teacher.created.topics, 3, 'seeded topic');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/topics/${topicId}`,
         { id: topicId },

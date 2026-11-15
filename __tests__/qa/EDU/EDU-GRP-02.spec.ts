@@ -209,7 +209,7 @@ async function ensureGroupDeck(page: Page, groupId: string): Promise<DeckListIte
   const existing = (await listDecks(page)).items.find((deck) => deck.name === DECK_NAME);
 
   if (existing) {
-    if (existing.groupIds?.includes(groupId)) return existing;
+    if (existing.groupIds.includes(groupId)) return existing;
     const res = await page.request.put(`${DECKS_URL}/${existing.id}`, {
       data: { visibility: 'group', groupIds: [groupId] },
     });

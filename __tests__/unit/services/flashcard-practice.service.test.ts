@@ -3,6 +3,7 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({}),
@@ -434,7 +435,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, undefined, 3);
 
       expect(result.success).toBe(true);
-      const payload = upsertMock.mock.calls[0][0];
+      const payload = firstCall(upsertMock)[0];
       expect(payload.learning_state).toBe('learning');
       expect(payload.learning_step).toBe(1);
       expect(payload.interval_days).toBe(10);
@@ -458,7 +459,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', false, ctx, undefined, 1);
 
       expect(result.success).toBe(true);
-      const payload = upsertMock.mock.calls[0][0];
+      const payload = firstCall(upsertMock)[0];
       expect(payload.learning_state).toBe('learning');
       expect(payload.learning_step).toBe(0);
       expect(payload.interval_days).toBe(1);
@@ -482,7 +483,7 @@ describe('FlashcardPracticeService', () => {
         repetitions: 1,
         learning_state: 'review',
         learning_step: 0,
-        lapse_count: 0,
+        sm2_lapse_count: 0,
         is_leech: false,
       };
 
@@ -532,7 +533,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, undefined, 4);
 
       expect(result.success).toBe(true);
-      const payload = upsertMock.mock.calls[0][0];
+      const payload = firstCall(upsertMock)[0];
       expect(payload.learning_state).toBe('review');
       expect(payload.interval_unit).toBe('days');
       expect(payload.interval_days).toBeGreaterThanOrEqual(6);
@@ -1049,6 +1050,68 @@ describe('FlashcardPracticeService', () => {
         intervalUnit: null,
       });
       expect(items.every((i) => !('intervalDays' in i))).toBe(true);
+    });
+
+    it('reports Pomyłki from the practice log for every state, not lapse_count (#809)', async () => {
+      await mockAccessibleFilter({ created_by: 'test-user-id' });
+
+      const cards = [
+        { id: 'fc-learning', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'fc-review', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' },
+      ];
+      const suspended = chain({ data: [], error: null });
+      const cardQuery = chain({ data: cards, error: null });
+      const states = chain({
+        data: [
+          {
+            flashcard_id: 'fc-learning',
+            learning_state: 'learning',
+            sm2_lapse_count: 0,
+            is_leech: false,
+          },
+          {
+            flashcard_id: 'fc-review',
+            learning_state: 'review',
+            sm2_lapse_count: 2,
+            is_leech: false,
+          },
+        ],
+        error: null,
+      });
+      const practice = chain({
+        data: [
+          {
+            flashcard_id: 'fc-learning',
+            was_correct: false,
+            practiced_at: '2026-01-02T00:00:00Z',
+          },
+          {
+            flashcard_id: 'fc-review',
+            was_correct: false,
+            practiced_at: '2026-01-02T00:00:00Z',
+          },
+          {
+            flashcard_id: 'fc-review',
+            was_correct: true,
+            practiced_at: '2026-01-03T00:00:00Z',
+          },
+        ],
+        error: null,
+      });
+      mock.from
+        .mockReturnValueOnce(suspended)
+        .mockReturnValueOnce(cardQuery)
+        .mockReturnValueOnce(states)
+        .mockReturnValueOnce(practice);
+
+      const result = await service.getAllCardStats(ctx, { limit: 100 });
+
+      const items = cardPage(result).items;
+      const byId = new Map(items.map((i) => [i.id, i]));
+      expect(byId.get('fc-learning')).toMatchObject({ mistakeCount: 1 });
+      // Log-based: the SM-2 counter (2) is not the „Pomyłki” value.
+      expect(byId.get('fc-review')).toMatchObject({ mistakeCount: 1 });
+      expect(items.every((i) => !('lapseCount' in i))).toBe(true);
     });
   });
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { firstCall } from '#test/mocks/recorded';
 
 describe('log.ts console fallback', () => {
   const original = process.env.OTEL_SDK_DISABLED;
@@ -21,7 +22,7 @@ describe('log.ts console fallback', () => {
     error('boom', { 'error.code': 'INTERNAL_SERVER' });
 
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(String(spy.mock.calls[0][0])).toContain('boom');
+    expect(String(firstCall(spy)[0])).toContain('boom');
   });
 
   it('stays quiet once the pipeline is active', async () => {

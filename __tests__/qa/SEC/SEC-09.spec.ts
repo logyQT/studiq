@@ -9,6 +9,9 @@ import {
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * SEC-09 — a student and a teacher from another organization cannot read the
  * classroom's quiz, another student's attempt or the teacher's results.
@@ -431,7 +434,9 @@ async function ensurePublishedQuiz(
   expect(targets.status, `PUT ${ASSIGNMENTS_URL}/<id>/targets → ${targets.body}`).toBe(200);
 
   if (assignment.status !== 'published') {
-    const published = await call(page, 'POST', `${ASSIGNMENTS_URL}/${assignment.id}/publish`, {});
+    const published = await call(page, 'POST', `${ASSIGNMENTS_URL}/${assignment.id}/publish`, {
+      deadline: PUBLISH_DEADLINE,
+    });
     expect(published.status, `POST ${ASSIGNMENTS_URL}/<id>/publish → ${published.body}`).toBe(200);
   }
 
@@ -589,6 +594,11 @@ test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results
       'the result row carries the classroom student’s e-mail',
     ).toBe(classroomStudent.email);
 
+    expect(
+      await getData<ResultRow>(page, `${quizUrl}/results/${attemptId}`),
+      'the classroom teacher reads the attempt’s answers',
+    ).toMatchObject({ id: attemptId, user_id: classroomStudent.id });
+
     await page.goto(`/edu/assignments/${assignment.id}/results`);
     await expect(page.locator('h1')).toHaveText(COPY.resultsTitle);
     await expect(
@@ -666,8 +676,8 @@ test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results
     // and the answers export.
     expectRejected(await call(page, 'GET', quizUrl), 'T1 GET /teacher/assignments/<quiz>');
     expectRejected(
-      await call(page, 'GET', `${quizUrl}/results/${classroomStudent.id}`),
-      'T1 GET /teacher/assignments/<quiz>/results/<SC>',
+      await call(page, 'GET', `${quizUrl}/results/${attemptId}`),
+      'T1 GET /teacher/assignments/<quiz>/results/<attemptId SC>',
     );
     expectRejected(
       await call(page, 'GET', `${quizUrl}/export-answers`),

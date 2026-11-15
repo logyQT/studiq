@@ -268,7 +268,8 @@ test.describe('@case:EDU-Q-03 @area:EDU @prio:P2 true/false question', () => {
       (question) => question.content === QUESTION_CONTENT,
     );
     expect(matches, 'exactly one question carries the case content').toHaveLength(1);
-    const saved = matches[0];
+    const [saved] = matches;
+    if (!saved) throw new Error(`${CASE} the created question is not stored`);
     expect(saved.type, 'the saved type is P/F').toBe('true_false');
     expect(saved.bank_id, 'the question belongs to „Fizyka”').toBe(bank.id);
 

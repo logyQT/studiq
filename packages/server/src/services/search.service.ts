@@ -4,6 +4,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SearchResult } from '@studiq/server/models/search.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -40,8 +41,8 @@ export class SearchService {
 
     if (error) return toDbFailure(error);
 
-    const rows = data;
-    if (!rows || rows.length === 0) return success([]);
+    const rows = dbRows(data);
+    if (rows.length === 0) return success([]);
 
     const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';
 
@@ -54,7 +55,7 @@ export class SearchService {
         if (row.deck_id && !existing.decks.some((d) => d.id === row.deck_id)) {
           existing.decks.push({
             id: row.deck_id,
-            name: row.deck_name ?? '',
+            name: row.deck_name,
             href: `${basePath}/flashcards/${row.deck_id}/${row.id}`,
           });
         }
@@ -69,7 +70,7 @@ export class SearchService {
             ? [
                 {
                   id: row.deck_id,
-                  name: row.deck_name ?? '',
+                  name: row.deck_name,
                   href: `${basePath}/flashcards/${row.deck_id}/${row.id}`,
                 },
               ]

@@ -365,7 +365,7 @@ describe('lock primitives', () => {
         detached: true,
       });
       let stderr = '';
-      child.stderr?.on('data', (chunk: Buffer | string) => {
+      child.stderr.on('data', (chunk: Buffer | string) => {
         stderr += String(chunk);
       });
       const closed = new Promise<{ code: number | null; stderr: string }>((resolve) => {

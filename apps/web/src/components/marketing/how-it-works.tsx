@@ -19,7 +19,7 @@ export function HowItWorks() {
   const t = useTranslations('LandingPage');
 
   return (
-    <section className="py-16 sm:py-24">
+    <section id="how-it-works" className="py-16 sm:py-24">
       <div className="mx-auto max-w-5xl">
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">

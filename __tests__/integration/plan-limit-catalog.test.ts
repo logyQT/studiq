@@ -1,4 +1,5 @@
 import { isLimitKey, ORG_LIMIT_KEYS, USER_LIMIT_KEYS } from '@studiq/server/services/limit.catalog';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createServiceClient } from '#test/integration/helpers';
@@ -30,13 +31,13 @@ describe('plan limit catalog (#233)', () => {
       .select('key, for_account_type')
       .eq('is_active', true);
     if (plansError) throw new Error(`[catalog] plan lookup failed: ${plansError.message}`);
-    activePlans = plans ?? [];
+    activePlans = dbRows(plans);
 
     const { data: limits, error: limitsError } = await service
       .from('plan_limits')
       .select('plan_key, limit_key');
     if (limitsError) throw new Error(`[catalog] plan_limits lookup failed: ${limitsError.message}`);
-    planLimits = limits ?? [];
+    planLimits = dbRows(limits);
   });
 
   function keysFor(planKey: string): Set<string> {

@@ -128,7 +128,7 @@ describe('RLS tenant isolation (#191)', () => {
       email_confirm: true,
       user_metadata: { name: label, account_type: accountType },
     });
-    if (error || !data.user) throw new Error(`createUser ${label} failed: ${error?.message}`);
+    if (error) throw new Error(`createUser ${label} failed: ${error.message}`);
     return data.user.id;
   }
 
@@ -152,7 +152,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (bankError || !bank) throw new Error(`bank: ${bankError?.message}`);
+    if (bankError) throw new Error(`bank: ${bankError.message}`);
 
     const { data: question, error: questionError } = await service
       .from('questions')
@@ -166,7 +166,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (questionError || !question) throw new Error(`question: ${questionError?.message}`);
+    if (questionError) throw new Error(`question: ${questionError.message}`);
 
     const { data: quiz, error: quizError } = await service
       .from('quizzes')
@@ -177,7 +177,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (quizError || !quiz) throw new Error(`quiz: ${quizError?.message}`);
+    if (quizError) throw new Error(`quiz: ${quizError.message}`);
 
     const { data: assignment, error: assignmentError } = await service
       .from('teacher_assignments')
@@ -191,7 +191,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (assignmentError || !assignment) throw new Error(`assignment: ${assignmentError?.message}`);
+    if (assignmentError) throw new Error(`assignment: ${assignmentError.message}`);
 
     await service.from('assignment_questions').insert({
       assignment_id: assignment.id,
@@ -205,7 +205,7 @@ describe('RLS tenant isolation (#191)', () => {
       .insert({ user_id: data.studentId, score: 1, total_questions: 1 })
       .select('id')
       .single();
-    if (attemptError || !attempt) throw new Error(`attempt: ${attemptError?.message}`);
+    if (attemptError) throw new Error(`attempt: ${attemptError.message}`);
 
     await service.from('quiz_attempt_questions').insert({
       attempt_id: attempt.id,
@@ -235,7 +235,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (deckError || !deck) throw new Error(`deck: ${deckError?.message}`);
+    if (deckError) throw new Error(`deck: ${deckError.message}`);
 
     const { data: flashcard, error: flashcardError } = await service
       .from('flashcards')
@@ -249,7 +249,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (flashcardError || !flashcard) throw new Error(`flashcard: ${flashcardError?.message}`);
+    if (flashcardError) throw new Error(`flashcard: ${flashcardError.message}`);
 
     await service.from('flashcard_practice').insert({
       user_id: data.studentId,
@@ -267,7 +267,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('id')
       .single();
-    if (reportError || !report) throw new Error(`report: ${reportError?.message}`);
+    if (reportError) throw new Error(`report: ${reportError.message}`);
 
     await service.from('question_report_messages').insert({
       report_id: report.id,
@@ -290,8 +290,8 @@ describe('RLS tenant isolation (#191)', () => {
         })
         .select('id')
         .single();
-      if (peerReportError || !peerReport) {
-        throw new Error(`peer report: ${peerReportError?.message}`);
+      if (peerReportError) {
+        throw new Error(`peer report: ${peerReportError.message}`);
       }
       peerReportId = peerReport.id;
     }
@@ -307,7 +307,7 @@ describe('RLS tenant isolation (#191)', () => {
       })
       .select('token')
       .single();
-    if (invitationError || !invitation) throw new Error(`invitation: ${invitationError?.message}`);
+    if (invitationError) throw new Error(`invitation: ${invitationError.message}`);
 
     return {
       orgId: seeded.org.id,
@@ -839,6 +839,7 @@ describe('RLS tenant isolation (#191)', () => {
       invite!.token,
     );
     expect(reaccepted.success).toBe(false);
+    if (reaccepted.success) return;
     expect(reaccepted.error).toBe('GONE');
 
     ({ data: membership } = await service
@@ -873,6 +874,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     const result = await invitationService.acceptInvitation(acceptCtx(invitee2Id), invite!.token);
     expect(result.success).toBe(false);
+    if (result.success) return;
     expect(result.error).toBe('GONE');
 
     const { data: membership } = await service

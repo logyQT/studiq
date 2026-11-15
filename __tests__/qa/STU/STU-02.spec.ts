@@ -379,7 +379,7 @@ test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', (
     await page.locator('input[type="number"]').fill('1');
 
     const generate = page.getByRole('button', { name: 'Generuj quiz' });
-    await expect(generate).toBeEnabled({ timeout: 30_000 });
+    await expect(generate).toBeEnabled();
     await generate.click();
     await page.waitForURL(
       /\/app\/study\/session\/quiz\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
@@ -394,9 +394,7 @@ test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', (
     await expect(correctAnswer).toHaveCount(1);
     await correctAnswer.click();
     await page.getByRole('button', { name: 'Zakończ test' }).click();
-    await page.waitForURL(/\/app\/study\/session\/quiz\/[0-9a-f-]{36}\/review$/, {
-      timeout: 30_000,
-    });
+    await page.waitForURL(/\/app\/study\/session\/quiz\/[0-9a-f-]{36}\/review$/);
     await expect(page.getByText('Wynik: 100%')).toBeVisible();
     await expect(page.getByText('1 z 1 poprawnych')).toBeVisible();
 
@@ -420,7 +418,7 @@ test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', (
     await page.goto('/app/study/learn');
     await expect(page).toHaveURL(/\/app\/study\/learn$/);
     await page.getByRole('button', { name: 'Rozpocznij naukę' }).click();
-    await page.waitForURL(/\/app\/study\/session\/[a-z]+/, { timeout: 30_000 });
+    await page.waitForURL(/\/app\/study\/session\/[a-z]+/);
 
     const sessionFront = page.getByText(CARD_FRONT, { exact: true }).filter({ visible: true });
     await expect(sessionFront, 'the session shows this run’s card').toHaveCount(1);
@@ -434,7 +432,7 @@ test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', (
       'the revealed card shows its answer',
     ).toHaveCount(1);
     await page.getByRole('button', { name: 'Dobrze (dalej)' }).click();
-    await expect(page.getByText('Sesja zakończona!')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('Sesja zakończona!')).toBeVisible();
 
     await page.goto('/app');
     await expect(page).toHaveURL(/\/app$/);

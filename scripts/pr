@@ -110,6 +110,37 @@ else
   BODY=$(git log --pretty=format:"- %s (%h)" -5)
 fi
 
+# ── Triage: size label ─────────────────────────────────────────
+# Same script as .github/workflows/pr-triage.yml so the label matches what the
+# workflow would apply.
+SIZE_LABEL=""
+LIMIT_LINES="${PR_SIZE_LIMIT:-400}"
+
+git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+TRIAGE_BASE="origin/$BASE_BRANCH"
+git rev-parse --verify --quiet "$TRIAGE_BASE" >/dev/null || TRIAGE_BASE="$BASE_BRANCH"
+
+if command -v jq >/dev/null 2>&1 \
+  && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --limit "$LIMIT_LINES" --json 2>/dev/null); then
+  SIZE_LABEL=$(jq -r '.label.name' <<<"$TRIAGE_JSON")
+  SIZE_COLOR=$(jq -r '.label.color' <<<"$TRIAGE_JSON")
+  SIZE_DESCRIPTION=$(jq -r '.label.description' <<<"$TRIAGE_JSON")
+  TOTAL_LINES=$(jq -r '.total' <<<"$TRIAGE_JSON")
+  LIMIT_LINES=$(jq -r '.limit' <<<"$TRIAGE_JSON")
+  printf "  ${CYAN}Size:${NC}   %s/%s reviewable lines (%s)\n" \
+    "$TOTAL_LINES" "$LIMIT_LINES" "$SIZE_LABEL"
+else
+  warn "Could not compute PR size; skipping the size label"
+fi
+
+ensure_label() {
+  gh label create "$1" --color "$2" --description "$3" --force >/dev/null 2>&1 || true
+}
+
+if [ -n "$SIZE_LABEL" ]; then
+  ensure_label "$SIZE_LABEL" "$SIZE_COLOR" "$SIZE_DESCRIPTION"
+fi
+
 # ── Create PR ──────────────────────────────────────────────────
 DRAFT_FLAG=""
 $DRAFT && DRAFT_FLAG="--draft"
@@ -129,4 +160,11 @@ PR_URL=$(gh pr create \
   2>&1) || fail "Failed to create PR: $PR_URL"
 
 info "PR created: $PR_URL"
+
+# Best-effort: the label is informational, so a permission failure must not
+# make a successfully created PR look like a failed command.
+if [ -n "$SIZE_LABEL" ]; then
+  gh pr edit "$PR_URL" --add-label "$SIZE_LABEL" \
+    || warn "Could not add $SIZE_LABEL to the PR"
+fi
 echo ""

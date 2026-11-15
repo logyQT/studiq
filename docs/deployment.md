@@ -1,5 +1,7 @@
 # Deployment
 
+> Local development uses the [`env` tool](./plans/env-tool.md); hosted staging is specified in [`staging-environment.md`](./plans/staging-environment.md).
+
 ## Hosting
 
 ### Recommended Setup
@@ -39,7 +41,9 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
 
 # OpenTelemetry (optional) — OTLP trace/metric/log export.
-# Exports to OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).
+# Exports to OTEL_EXPORTER_OTLP_ENDPOINT. The SDK default is
+# http://localhost:4318; the local env tool sets http://localhost:7318, which
+# is where docker-compose.yml publishes the machine-wide collector.
 # Leave OTEL_SDK_DISABLED unset to keep telemetry on; set it to "true" to disable.
 # OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com:4318
 # OTEL_SDK_DISABLED=true
@@ -89,7 +93,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
 ```
 
-`bun run start` (and `bun dev:serve`) runs `scripts/payment-preflight.ts`
+`bun run start` (and `bun run env:serve`) runs `scripts/payment-preflight.ts`
 **before the port binds**, because `next start` does not exit on an
 instrumentation rejection. `next build` needs no Stripe secret: the gateway is
 constructed lazily on the first request, not at module import.
@@ -176,6 +180,9 @@ reset / period-end schedule).
 Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
 
 #### Team access and secrets
+
+GitHub Actions repository variables, required checks and CI secrets are
+documented in [CI](ci.md).
 
 **Environment model**
 
@@ -471,6 +478,74 @@ deployment still needs a shared counter for a hard quota.
    - Redirect URLs
    - Email templates
 
+## Billing endpoints
+
+Every route below is wrapped in `withAuth()` (the proxy skips `/api/*`).
+`POST /api/v1/stripe/webhook` is the only public one, and only in `stripe` mode,
+where the `stripe-signature` header is verified over the raw body; in `mock` mode
+it authenticates the caller and acts on that caller's own account only.
+
+The billing **owner is the authenticated user** (`ctx.userId`) for personal plans
+and the **active organization** (`ctx.activeOrgId`) for organization plans — with
+one exception: `create-checkout-session` accepts an `orgId`, because a manager can
+buy for a non-active organization. That id is only a hint; the server re-checks
+`org_members` and the `admin` role before using it. The client never supplies a
+customer id, subscription id, price id or amount.
+
+| Method | Endpoint                                 | Body                           | Notes                                                                                                                                                          |
+| ------ | ---------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/billing/subscription`           | —                              | Shared read model: effective plan, billed plan, status, period, cancel/pending flags, portal/change/cancel capability, invoice URL                             |
+| `POST` | `/api/v1/stripe/create-checkout-session` | `{ planKey, orgId?, locale? }` | Returns `{ url }`: hosted Stripe Checkout, or the local mock form. `orgId` is required for manager plans and must be a uuid                                    |
+| `GET`  | `/api/v1/stripe/portal?locale=pl\|en`    | —                              | Returns `{ url }` for the hosted Billing Portal; `404` when the owner has no Stripe customer mapping                                                           |
+| `POST` | `/api/v1/billing/change-plan`            | `{ planKey }`                  | Upgrade applies now (anchor reset + unused-time credit); downgrade schedules at the period boundary. No entitlement write                                      |
+| `POST` | `/api/v1/billing/cancel`                 | `{ cancel: boolean }`          | `true` = cancel at period end, `false` = reactivate. No entitlement write                                                                                      |
+| `POST` | `/api/v1/billing/release-scheduled-plan` | —                              | “Keep current plan”: releases a scheduled downgrade and clears the display marker. No entitlement write; returns `{ released: false }` when no schedule exists |
+| `POST` | `/api/v1/billing/reconcile`              | `{ sessionId }`                | Success-page reconcile: verifies session ownership, reuses the idempotent activation path, activate-only                                                       |
+| `POST` | `/api/v1/stripe/webhook`                 | raw Stripe event               | `stripe` mode: public + signature-verified. `mock` mode: `withAuth`, caller's own account only                                                                 |
+
+### Billing read model
+
+```jsonc
+{
+  "provider": "mock | stripe",
+  "planKey": "spark", // effective entitlement (/me/plan); may be a seat plan
+  "planName": "StudiQ Spark",
+  "billedPlanKey": "spark", // what Stripe actually bills
+  "billedPlanName": "StudiQ Spark",
+  "entitlementAppliedPlanKey": "spark", // written by the fenced webhook; null until it runs
+  "status": "active | trialing | past_due | unpaid | canceled | incomplete | incomplete_expired | paused | free | none",
+  "currentPeriodEnd": "2026-12-01T00:00:00.000Z",
+  "cancelAtPeriodEnd": false,
+  "pendingPlanKey": null, // display-only marker for a scheduled downgrade
+  "priceMonthly": 999, // minor units
+  "currency": "PLN",
+  "canManagePortal": true,
+  "canChangePlan": true,
+  "canCancel": true,
+  "hostedInvoiceUrl": "https://invoice.stripe.com/…", // owner-scoped, signed
+}
+```
+
+The response is `Cache-Control: private, no-store` because the invoice URL is
+signed.
+
+### Billing errors
+
+| Code                   | When                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `BAD_REQUEST`          | Free plan, unknown plan/cadence, missing org id, change to the current plan                                  |
+| `UNAUTHORIZED`         | No session (every route except the Stripe webhook)                                                           |
+| `FORBIDDEN`            | Wrong plan family, non-admin org caller, foreign checkout session                                            |
+| `NOT_FOUND`            | No active subscription/customer mapping (mock driver returns this for provider actions)                      |
+| `CONFLICT`             | Owner already has an active subscription, or the live Stripe price no longer matches the mirror              |
+| `UNPROCESSABLE_ENTITY` | Invalid body (e.g. missing `planKey`, non-uuid `orgId`)                                                      |
+| `RATE_LIMITED`         | Stripe rate-limited a provider call (429)                                                                    |
+| `SERVICE_UNAVAILABLE`  | Checkout kill switch, Managed Payments misconfiguration, missing/mismatched `stripe_prices`, provider outage |
+
+Entitlements (`organizations.plan`, `profiles.personal_plan_key`) are written
+**only** by `EntitlementService`, on the fenced path used by webhook activation
+and `POST /api/v1/billing/reconcile`.
+
 ## Production Considerations
 
 - **HTTPS** — Vercel provides automatic HTTPS
@@ -483,7 +558,8 @@ deployment still needs a shared counter for a hard quota.
 ## Observability
 
 The app exports OTLP (traces + metrics + logs) from `apps/web/src/instrumentation.ts`
-to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4318`). The local
+to `OTEL_EXPORTER_OTLP_ENDPOINT` (SDK default `http://localhost:4318`; the local
+env tool sets `http://localhost:7318`). The local
 Collector/Tempo/Loki/Prometheus/Grafana stack in `docker-compose.yml` is for
 development only — in production point the endpoint at your own collector or a
 managed backend (e.g. Grafana Cloud), or leave it unset and telemetry is simply

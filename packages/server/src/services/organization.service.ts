@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -83,9 +84,10 @@ export class OrganizationService {
       return failure('INTERNAL_SERVER');
     }
 
-    const adminRole = roles?.find((r) => r.name === 'admin');
-    const teacherRole = roles?.find((r) => r.name === 'teacher');
-    const memberRole = roles?.find((r) => r.name === 'member');
+    const systemRoles = dbRows(roles);
+    const adminRole = systemRoles.find((r) => r.name === 'admin');
+    const teacherRole = systemRoles.find((r) => r.name === 'teacher');
+    const memberRole = systemRoles.find((r) => r.name === 'member');
 
     if (!adminRole || !teacherRole || !memberRole) {
       await supabase.from('organizations').delete().eq('id', org.id);
@@ -171,13 +173,10 @@ export class OrganizationService {
       .from('organizations')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (error || !organization) {
-      if (error?.code === 'PGRST116') return failure('NOT_FOUND');
-      if (error) return toDbFailure(error);
-      return failure('NOT_FOUND');
-    }
+    if (error) return toDbFailure(error);
+    if (!organization) return failure('NOT_FOUND');
 
     return success(organization);
   }
@@ -189,13 +188,10 @@ export class OrganizationService {
       .from('organizations')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (error || !org) {
-      if (error?.code === 'PGRST116') return failure('NOT_FOUND');
-      if (error) return toDbFailure(error);
-      return failure('NOT_FOUND');
-    }
+    if (error) return toDbFailure(error);
+    if (!org) return failure('NOT_FOUND');
 
     const [membersResult, groupsResult, rolesResult] = await Promise.all([
       supabase

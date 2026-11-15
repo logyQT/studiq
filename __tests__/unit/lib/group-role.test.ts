@@ -6,6 +6,7 @@ import {
   type GroupMemberRole,
   toGroupMemberOptions,
 } from '@/lib/group-role';
+import { firstRecorded } from '#test/mocks/recorded';
 
 const members: AddableOrgMember[] = [
   {
@@ -64,7 +65,7 @@ describe('toGroupMemberOptions', () => {
   });
 
   it('drops nothing but the fields the select does not need', () => {
-    const [teacherOption] = toGroupMemberOptions(members);
+    const teacherOption = firstRecorded(toGroupMemberOptions(members));
     // Regression guard: dropping `orgRoleName` here made every teacher a member.
     expect(teacherOption.orgRoleName).toBe('teacher');
     expect(teacherOption.value).toBe('t2');

@@ -140,6 +140,12 @@ async function listTests(): Promise<Array<{ file: string; title: string; project
   return found;
 }
 
+/** `--only <file>::<title>::<project>`: the single test a seed run is scoped to. */
+function onlyTestSpec(only: string): { file: string; title: string; project: string } {
+  const [file = '', title = '', project = 'chromium'] = only.split('::');
+  return { file, title, project };
+}
+
 /* ------------------------------------------------------------------- tenants */
 
 function buildTenant(file: string, title: string, project: string): Tenant {
@@ -419,15 +425,7 @@ export async function runE2eSeed(): Promise<void> {
 
   const wipe = resetRequested(args);
 
-  const tests = only
-    ? [
-        {
-          file: only.split('::')[0],
-          title: only.split('::')[1] ?? '',
-          project: only.split('::')[2] ?? 'chromium',
-        },
-      ]
-    : await listTests();
+  const tests = only ? [onlyTestSpec(only)] : await listTests();
 
   const scoped = project ? tests.filter((test) => test.project === project) : tests;
   if (project && scoped.length === 0) {

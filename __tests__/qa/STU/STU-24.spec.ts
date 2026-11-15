@@ -207,7 +207,9 @@ async function listCards(page: Page, deckId: string): Promise<FlashcardRow[]> {
 async function assignedTopicIds(page: Page, deckId: string): Promise<string[]> {
   const cards = await listCards(page, deckId);
   expect(cards, 'the deck holds exactly the case’s card').toHaveLength(1);
-  return (cards[0].flashcard_topic_assignments ?? []).map((a) => a.topic_id).toSorted();
+  const [card] = cards;
+  if (!card) throw new Error(`${CASE} the deck holds no card`);
+  return (card.flashcard_topic_assignments ?? []).map((a) => a.topic_id).toSorted();
 }
 
 /**

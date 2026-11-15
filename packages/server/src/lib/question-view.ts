@@ -1,17 +1,17 @@
 /**
- * Column projections for question payloads served to students.
+ * Column projections for question payloads served by the app.
  *
- * While an attempt is still in progress the browser may only receive the
- * question content and the option texts. The answer key
- * (`question_options.is_correct`, `questions.explanation`) and the generated
- * `questions.search_vector` (which indexes the explanation) must never leave
- * the database before submission (#331).
+ * The answer key (`question_options.is_correct`) and `questions.explanation` never leave the
+ * server for a reader: the database grants neither to `authenticated`
+ * (`20261114120000_question_option_key_boundary.sql`). Staff paths add them back through
+ * `readQuestionKeys` (service role, ids from the query they just ran).
  *
  * Always project explicit columns here; never `*`.
  */
-export const IN_PROGRESS_QUESTION_SELECT =
-  'id, content, type, question_answers:question_options(id, content)';
 
-/** Same payload plus the answer key — only for a completed attempt. */
-export const REVIEW_QUESTION_SELECT =
-  'id, content, type, explanation, question_answers:question_options(id, content, is_correct)';
+/** The option columns any reader may select. */
+export const OPTION_READER_COLUMNS = 'id, content, order_index, match_group, match_side';
+
+/** One question with its options and no key — the take, review and list shape. */
+export const QUESTION_PAYLOAD_SELECT =
+  `id, content, type, question_answers:question_options(${OPTION_READER_COLUMNS})` as const;

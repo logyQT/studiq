@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   type BeforeResult,
   before,
@@ -15,20 +16,26 @@ import {
   mockUser,
   seedOrgMembership,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { asJson, json } from '#test/helpers/json';
 import { GET as assignmentGet } from '@/app/(backend)/api/v1/assignments/[id]/route';
 import { POST as assignmentStart } from '@/app/(backend)/api/v1/assignments/[id]/start/route';
 import { GET as assignmentsList } from '@/app/(backend)/api/v1/assignments/route';
+import { PUT as attemptAnswersPut } from '@/app/(backend)/api/v1/quiz/[attemptId]/answers/route';
 import {
   GET as attemptGet,
   POST as attemptPost,
 } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
 import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { GET as studentStatsGet } from '@/app/(backend)/api/v1/stats/student/route';
-import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
+import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
+import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 
 /** One attempt as the assignment/quiz payloads summarise it. */
 type AttemptSummary = { id: string; completed_at: string | null; score: number | null };
@@ -90,6 +97,9 @@ type StudentStats = {
   attemptsOverTime: Array<Record<string, unknown>>;
 };
 
+/** A published run must be able to close (publish gate, R2/R5); the fixtures publish as-is. */
+const DEADLINE = new Date(Date.now() + 2 * 86_400_000).toISOString();
+
 describe(`Assignment Attempts Integration`, () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
@@ -119,7 +129,7 @@ describe(`Assignment Attempts Integration`, () => {
       .eq('user_id', userId)
       .is('completed_at', null);
     if (error) throw new Error(`Failed to count open attempts: ${error.message}`);
-    return (data ?? []).length;
+    return dbRows(data).length;
   }
 
   async function setMaxAttempts(maxAttempts: number): Promise<void> {
@@ -142,7 +152,7 @@ describe(`Assignment Attempts Integration`, () => {
 
   async function submitAttempt(attemptBody: StartBody): Promise<SubmitBody> {
     const attemptId = attemptBody.data.id;
-    const [firstQuestion] = attemptBody.data.questions;
+    const firstQuestion = requiredAt(attemptBody.data.questions, 0, 'attempt question');
 
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
@@ -283,7 +293,7 @@ describe(`Assignment Attempts Integration`, () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ deadline: DEADLINE, acknowledgeExposure: true }),
       },
     );
     const publishRes = await publishPost(publishReq, { params: publishParams });
@@ -323,24 +333,35 @@ describe(`Assignment Attempts Integration`, () => {
 
   it('refuses a target outside the assignment organisation and keeps the existing ones (#235)', async () => {
     mockUser(teacher.user);
-    const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
-      { id: assignmentId },
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: [student.user.id, other.id] }),
-      },
-    );
-    const response = await targetsPut(request, { params });
+    // A published run refuses every target change before validation (R20, covered by the publish
+    // gate suite), so the foreign-target rule is exercised on a draft.
+    const service = createServiceClient();
+    await service.from('teacher_assignments').update({ status: 'draft' }).eq('id', assignmentId);
+    try {
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
+        { id: assignmentId },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentIds: [student.user.id, other.id] }),
+        },
+      );
+      const response = await targetsPut(request, { params });
 
-    expect(response.status).toBe(400);
-    const { data: targets } = await createServiceClient()
-      .from('assignment_targets')
-      .select('student_id')
-      .eq('assignment_id', assignmentId)
-      .overrideTypes<{ student_id: string }[], { merge: false }>();
-    expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
+      expect(response.status).toBe(400);
+      const { data: targets } = await service
+        .from('assignment_targets')
+        .select('student_id')
+        .eq('assignment_id', assignmentId)
+        .overrideTypes<{ student_id: string }[], { merge: false }>();
+      expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
+    } finally {
+      await service
+        .from('teacher_assignments')
+        .update({ status: 'published' })
+        .eq('id', assignmentId);
+    }
   });
 
   it('two rapid starts resume one unfinished attempt (#369)', async () => {
@@ -394,14 +415,14 @@ describe(`Assignment Attempts Integration`, () => {
     const body = await json<DetailBody>(response);
 
     expect(response.status).toBe(200);
-    expect(body.data.attempt?.id).toBe(started.body.data.id);
-    expect(body.data.attempt?.completed_at).toBeNull();
+    expect(body.data.attempt.id).toBe(started.body.data.id);
+    expect(body.data.attempt.completed_at).toBeNull();
   });
 
   it('a submitted attempt cannot start again when max_attempts is 1 (#369)', async () => {
     const started = await startAs(student.user);
     const attemptId = started.body.data.id;
-    const [firstQuestion] = started.body.data.questions;
+    const firstQuestion = requiredAt(started.body.data.questions, 0, 'attempt question');
 
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
@@ -620,5 +641,176 @@ describe(`Assignment Attempts Integration`, () => {
     const stats = await studentStats();
     expect(stats.totalQuizzes).toBe(1);
     expect(stats.attemptsOverTime).toHaveLength(1);
+  });
+
+  /**
+   * Nothing caps an assignment's question list, so the answer sheet is bounded
+   * by the attempt itself, not by a fixed 100 (#1065).
+   */
+  it('drafts and submits an assignment with more than 100 questions (#1065)', async () => {
+    const supabase = createServiceClient();
+
+    // Clone a seeded question so bank, org and visibility match what the
+    // assignment start path reads back as the student.
+    const { data: template, error: templateError } = await supabase
+      .from('questions')
+      .select('bank_id, created_by, organization_id, visibility')
+      .eq('id', requiredAt(teacher.created.questions, 0, 'seed question'))
+      .single();
+    if (templateError) {
+      throw new Error(`Failed to load the seed question: ${templateError.message}`);
+    }
+
+    const { data: createdQuestions, error: questionsError } = await supabase
+      .from('questions')
+      .insert(
+        Array.from({ length: 101 }, (_, index) => ({
+          ...template,
+          type: 'mcq' as const,
+          content: `seed-question-large-1065-${index}`,
+        })),
+      )
+      .select('id');
+    if (questionsError) {
+      throw new Error(`Failed to seed the large questions: ${questionsError.message}`);
+    }
+    const questionIds = dbRows(createdQuestions).map((question) => question.id);
+    expect(questionIds).toHaveLength(101);
+
+    const { error: optionsError } = await supabase.from('question_options').insert(
+      questionIds.flatMap((questionId) => [
+        { question_id: questionId, content: 'Tak', is_correct: true, order_index: 0 },
+        { question_id: questionId, content: 'Nie', is_correct: false, order_index: 1 },
+      ]),
+    );
+    if (optionsError) throw new Error(`Failed to seed the large options: ${optionsError.message}`);
+
+    // Create → add questions → target the student → publish, through the API.
+    mockUser(teacher.user);
+    const orgCookie = { active_org_id: teacher.orgId ?? '' };
+    const createRes = await createAssignmentPost(
+      createNextRequest(
+        'http://localhost/api/v1/teacher/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'seed-assignment-large-1065' }),
+        },
+        orgCookie,
+      ),
+    );
+    if (!createRes.ok)
+      throw new Error(`Failed to create the assignment: ${await createRes.text()}`);
+    const largeAssignmentId = (await json<{ data: { id: string } }>(createRes)).data.id;
+
+    const addCall = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${largeAssignmentId}/questions`,
+      { id: largeAssignmentId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionIds }),
+      },
+    );
+    const addRes = await addQuestionsPost(addCall.request, { params: addCall.params });
+    if (!addRes.ok) throw new Error(`Failed to add questions: ${await addRes.text()}`);
+
+    const targetsCall = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${largeAssignmentId}/targets`,
+      { id: largeAssignmentId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: [student.user.id] }),
+      },
+    );
+    const targetsRes = await targetsPut(targetsCall.request, { params: targetsCall.params });
+    if (!targetsRes.ok) throw new Error(`Failed to set targets: ${await targetsRes.text()}`);
+
+    const publishCall = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${largeAssignmentId}/publish`,
+      { id: largeAssignmentId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deadline: DEADLINE, acknowledgeExposure: true }),
+      },
+    );
+    const publishRes = await publishPost(publishCall.request, { params: publishCall.params });
+    if (!publishRes.ok) throw new Error(`Failed to publish: ${await publishRes.text()}`);
+
+    const { error: revealError } = await supabase
+      .from('teacher_assignments')
+      .update({ show_results: true })
+      .eq('id', largeAssignmentId);
+    if (revealError) throw new Error(`Failed to reveal results: ${revealError.message}`);
+
+    // The seeded correct option per question; the attempt shuffles its answers,
+    // so this cannot be read off the start payload's first option.
+    const { data: correctOptions, error: correctError } = await supabase
+      .from('question_options')
+      .select('id, question_id')
+      .in('question_id', questionIds)
+      .eq('is_correct', true);
+    if (correctError) {
+      throw new Error(`Failed to load the correct options: ${correctError.message}`);
+    }
+    const correctByQuestion = new Map(
+      dbRows(correctOptions).map((option) => [option.question_id, option.id]),
+    );
+    const fullSheet = questionIds.map((questionId) => {
+      const selectedAnswerId = correctByQuestion.get(questionId);
+      if (!selectedAnswerId) throw new Error(`Correct option missing for ${questionId}`);
+      return { questionId, selectedAnswerId };
+    });
+
+    mockUser(student.user);
+    const startCall = createNextRequestWithParams(
+      `http://localhost/api/v1/assignments/${largeAssignmentId}/start`,
+      { id: largeAssignmentId },
+      { method: 'POST' },
+    );
+    const startRes = await assignmentStart(startCall.request, { params: startCall.params });
+    expect(startRes.status).toBe(200);
+    const started = await json<StartBody>(startRes);
+    expect(started.data.questions).toHaveLength(101);
+    const attemptId = started.data.id;
+
+    const draftCall = createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attemptId}/answers`,
+      { attemptId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: fullSheet }),
+      },
+    );
+    const draftRes = await attemptAnswersPut(draftCall.request, { params: draftCall.params });
+    expect(draftRes.status).toBe(200);
+    expect((await json<{ data: { saved: number } }>(draftRes)).data.saved).toBe(101);
+
+    const submitCall = createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attemptId}`,
+      { attemptId },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: fullSheet }),
+      },
+    );
+    const submitRes = await attemptPost(submitCall.request, { params: submitCall.params });
+    expect(submitRes.status).toBe(200);
+    const submitted = await json<{ data: { score: number | null; totalQuestions: number } }>(
+      submitRes,
+    );
+    // 101 questions × the default 1 point, all answered correctly.
+    expect(submitted.data.score).toBe(101);
+    expect(submitted.data.totalQuestions).toBe(101);
+
+    const { data: stored } = await supabase
+      .from('student_answers')
+      .select('id')
+      .eq('attempt_id', attemptId);
+    expect(stored).toHaveLength(101);
   });
 });

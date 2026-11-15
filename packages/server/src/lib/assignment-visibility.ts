@@ -1,4 +1,5 @@
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -38,7 +39,7 @@ export async function hiddenResultAssignmentIds(
   if (error) return toDbFailure(error);
 
   const visible = new Set(
-    (data ?? [])
+    dbRows(data)
       .filter((assignment) => !resultsHidden(assignment))
       .map((assignment) => assignment.id),
   );

@@ -2,6 +2,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * STU-37 — student summary of a completed, graded quiz (`/app/assignments`).
  *
@@ -124,7 +127,9 @@ async function createQuiz(
   await api<unknown>(page, 'PUT', `/api/v1/teacher/assignments/${assignment.id}/targets`, {
     studentIds: [student.id],
   });
-  await api<unknown>(page, 'POST', `/api/v1/teacher/assignments/${assignment.id}/publish`, {});
+  await api<unknown>(page, 'POST', `/api/v1/teacher/assignments/${assignment.id}/publish`, {
+    deadline: PUBLISH_DEADLINE,
+  });
 
   return assignment;
 }
@@ -281,11 +286,10 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       ).toBeNull();
 
       // ── Teacher grades the open answer of the visible quiz ─────────────────
-      const student = tenant.users.student;
       await api<unknown>(
         page,
         'PUT',
-        `/api/v1/teacher/assignments/${visible.id}/results/${student.id}`,
+        `/api/v1/teacher/assignments/${visible.id}/results/${visibleAttempt.attemptId}`,
         { questionId: open.id, points: 1, feedback },
       );
 
@@ -417,11 +421,10 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       }>(studentPage, 'GET', `/api/v1/quiz/${visibleAttempt.attemptId}`);
       expect(visibleStored.score, 'the stored score includes the graded answer').toBe(2);
       expect(visibleStored.total_points, 'the total is the assignment points').toBe(3);
-      expect(
-        visibleStored.answers[open.id].teacher_points,
-        'the stored open answer is graded',
-      ).toBe(1);
-      expect(visibleStored.answers[open.id].teacher_feedback, 'the stored feedback').toBe(feedback);
+      const storedOpenAnswer = visibleStored.answers[open.id];
+      if (!storedOpenAnswer) throw new Error(`${CASE} the attempt stores no answer for ${open.id}`);
+      expect(storedOpenAnswer.teacher_points, 'the stored open answer is graded').toBe(1);
+      expect(storedOpenAnswer.teacher_feedback, 'the stored feedback').toBe(feedback);
 
       const visibleAssignment = await api<StudentAssignment>(
         studentPage,

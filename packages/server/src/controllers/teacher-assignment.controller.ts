@@ -86,8 +86,10 @@ export class TeacherAssignmentController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.service.publish(id, parsed.data.deadline, parsed.data.startTime, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    const result = await this.service.publish(id, parsed.data, ctx);
+    // A publish refusal carries the field paths that make it invalid (422), so the composer can
+    // point at the control instead of showing a generic failure.
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.success(result.data);
   }
 
@@ -173,17 +175,17 @@ export class TeacherAssignmentController {
 
   async getStudentAnswers(
     id: string,
-    studentId: string,
+    attemptId: string,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    const result = await this.service.getStudentAnswers(id, studentId, ctx);
+    const result = await this.service.getStudentAnswers(id, attemptId, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async gradeAnswer(
     id: string,
-    studentId: string,
+    attemptId: string,
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
@@ -196,7 +198,7 @@ export class TeacherAssignmentController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.service.gradeAnswer(id, studentId, parsed.data, ctx);
+    const result = await this.service.gradeAnswer(id, attemptId, parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

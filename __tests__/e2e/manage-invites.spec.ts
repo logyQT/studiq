@@ -1,17 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { asJson, json } from '#test/helpers/json';
+import { firstRecorded, recordedAt } from '#test/mocks/recorded';
 
 const PASSWORD = 'pass';
 const BULK_INVITES_URL = '/api/v1/organization/invites/bulk';
 
 async function loginAndOpenInvites(page: import('@playwright/test').Page) {
-  // Register before navigation so the invites page's own roles fetch can't be missed.
-  const rolesLoaded = page.waitForResponse(
-    (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
-    { timeout: 30_000 },
-  );
-
   await page.goto('/login');
   await page.getByLabel(t('LoginPage.email_label')).fill('manager@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
@@ -23,13 +18,21 @@ async function loginAndOpenInvites(page: import('@playwright/test').Page) {
   // POST resolved and the orgs query refetched, so no later redirect can
   // interrupt the navigation below. Navigating straight to `?next=/manage/invites`
   // is not deterministic here: that push races the auto-select redirect.
-  await page.waitForURL(/\/manage\/?$/, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible({ timeout: 30_000 });
+  await page.waitForURL(/\/manage\/?$/);
+  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 
+  // Registered right before the navigation that triggers it: the login above is
+  // the flow's slow part, and a response wait spanning it would be a per-action
+  // budget in name only. The wait covers the page mount plus one API round trip,
+  // so it gets a request budget rather than the 3 s action budget.
+  const rolesLoaded = page.waitForResponse(
+    (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
+    { timeout: 10_000 },
+  );
   await page.goto('/manage/invites');
 
   // Deterministic arrival: URL + form ready, then the role options.
-  await page.waitForURL(/\/manage\/invites$/, { timeout: 30_000 });
+  await page.waitForURL(/\/manage\/invites$/);
   await expect(page.locator('#email-0')).toBeVisible();
   await rolesLoaded;
 }
@@ -140,8 +143,8 @@ test.describe('Manage invitations — role defaults (#241)', () => {
 
     expect(postedBodies).toHaveLength(1);
     // The payload also carries the sender's locale; assert only this test's fields.
-    expect(postedBodies[0].invitations).toHaveLength(1);
-    expect(postedBodies[0].invitations[0]).toMatchObject({
+    expect(firstRecorded(postedBodies).invitations).toHaveLength(1);
+    expect(firstRecorded(firstRecorded(postedBodies).invitations)).toMatchObject({
       email: 'qa-role-reset@example.com',
       targetOrgRoleId: memberRoleId,
     });
@@ -216,8 +219,10 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     }
 
     // Rows keep the submitted order, so address ↔ result is unambiguous.
-    const firstEmail = await page.getByText(emails[0], { exact: true }).boundingBox();
-    const secondEmail = await page.getByText(emails[1], { exact: true }).boundingBox();
+    const firstEmail = await page.getByText(firstRecorded(emails), { exact: true }).boundingBox();
+    const secondEmail = await page
+      .getByText(recordedAt(emails, 1, 'the second address'), { exact: true })
+      .boundingBox();
     expect(firstEmail!.y).toBeLessThan(secondEmail!.y);
   });
 });

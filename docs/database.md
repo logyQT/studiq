@@ -28,15 +28,22 @@ This generates a SQL file in `supabase/migrations/` with the schema diff.
 
 ### Applying Migrations
 
-`bun dev:up` does **not** apply pending migrations when this checkout's stack is
+`bun run env:ensure --profile web` does **not** apply pending migrations when this checkout's stack is
 already running (a healthy stack is reused as-is). After a `git pull` that adds
 migrations:
 
 ```bash
 # Apply migrations to the selected stack (default or SUPABASE_STACK)
-STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"")}
 if [ -n "$STACK" ]; then
   DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  # The local Postgres is plaintext, so `--remote` needs sslmode=disable (the
+  # same rule as `env:reset-db`); keep the URL's existing query params.
+  case "$DB_URL" in
+    *sslmode=*) ;;
+    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+    *) DB_URL="$DB_URL?sslmode=disable" ;;
+  esac
   bunx supabase db push --remote="$DB_URL" --yes
 else
   bunx supabase db push
@@ -45,23 +52,24 @@ fi
 
 In CLI v3 a bare `db push` targets the local **default** stack; database commands
 cannot take `--stack`. The conditional above reads `SUPABASE_STACK` from the
-shell or root `.env`, resolves that stack's `DB_URL`, and passes it as
-`--remote`, so it cannot silently migrate the default database.
+shell or root `.env.local`, resolves that stack's `DB_URL`, appends
+`sslmode=disable` (preserving any query params the URL already carries), and
+passes it as `--remote`, so it cannot silently migrate the default database.
 
 A fresh `supabase start` (new volume) applies migrations during initialization;
-use `bun dev:reset-db` to drop, recreate and re-seed this branch's database.
+use `bun run env:reset-db --yes` to drop, recreate and re-seed this branch's database.
 
 ### Resetting Database
 
 ```bash
-bun dev:reset-db
+bun run env:reset-db --yes
 ```
 
 This drops and recreates **this branch's selected stack**, applying all
-migrations and loading seed data. `dev:reset-db` uses the named stack's DB URL
+migrations and loading seed data. `env:reset-db` uses the named stack's DB URL
 when `SUPABASE_STACK` is set, refuses in shared mode, and never touches another
 checkout's stack. Plain `bunx supabase db reset` targets the branch's **default**
-stack; for a named stack prefer `SUPABASE_STACK=test bun dev:reset-db`, or use
+stack; for a named stack prefer `SUPABASE_STACK=test bun run env:reset-db --yes`, or use
 the `DB_URL` extraction above with
 `bunx supabase db reset --remote="$DB_URL" --yes`.
 

@@ -61,7 +61,7 @@ fresh suffix into the key, so a re-run never sees a previous run's assignment.
   (the tenant student's profile name), their e-mail, `1/1`, „Przesłane” (completed,
   `graded_at` still null), the completion date formatted for the UI locale
   (`dd.MM.yyyy` in `pl`) and the „Oceń” action.
-- „Oceń” opens `/edu/assignments/<id>/results/<studentId>` — the per-student grading
+- „Oceń” opens `/edu/assignments/<id>/results/<attemptId>` — the attempt's grading
   page headed „Oceń ucznia”, with „Wynik: 1/1”, the question and the student's answer.
 - Status vocabulary: „Przesłane” is the state the case's prerequisite creates.
   „Ocenione” needs a graded open answer and „W trakcie” a running attempt, which the

@@ -114,8 +114,8 @@ describe('AuthController', () => {
       if (!response.success) {
         expect(response.statusCode).toBe(422);
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].path).toEqual(['name']);
-        expect(response.details?.[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+        expect(response.details?.[0]?.path).toEqual(['name']);
+        expect(response.details?.[0]?.message).toBe(ValidationErrorCode.NAME_REQUIRED);
       }
       expect(mockService.register).not.toHaveBeenCalled();
     });
@@ -146,8 +146,8 @@ describe('AuthController', () => {
       if (!response.success) {
         expect(response.statusCode).toBe(422);
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].path).toEqual(['name']);
-        expect(response.details?.[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+        expect(response.details?.[0]?.path).toEqual(['name']);
+        expect(response.details?.[0]?.message).toBe(ValidationErrorCode.NAME_REQUIRED);
       }
       expect(mockService.updateProfile).not.toHaveBeenCalled();
     });

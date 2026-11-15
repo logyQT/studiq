@@ -190,7 +190,7 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     }
     for (const [key, label] of Object.entries(LIMIT_LABELS)) {
       const value = plan.limits[key];
-      expect(value, `the plan carries ${key}`).toBeDefined();
+      if (value === undefined) throw new Error(`${CASE} the plan carries no ${key} limit`);
       const row = limitRow(card, label);
       await expect(row, `limit row ${label}`).toHaveCount(1);
       // The row's second span is the value (the label comes first).

@@ -3,7 +3,7 @@ import { entryForPort, type RegistryEntry } from './registry';
 
 const PORT_SCAN_START = 3000;
 const PORT_SCAN_END = 3999;
-/** :3010 is the shared QA app; `scripts/dev` refuses to serve it. */
+/** :3010 is the shared QA app; the legacy dev script refuses to serve it. */
 const RESERVED_APP_PORTS = new Set([3010]);
 
 export type PortBindState = 'free' | 'in-use' | 'unavailable';
@@ -89,7 +89,7 @@ export function portAcceptsConnections(
 }
 
 /**
- * The first free app port in `3000-3999`, mirroring `scripts/dev`'s
+ * The first free app port in `3000-3999`, mirroring the legacy dev script's
  * `suggest_free_app_port`: skip the reserved QA port, ports this checkout
  * cannot bind, and ports another checkout has claimed in the registry.
  * Read-only: no lease is written (that is phase 2/4).

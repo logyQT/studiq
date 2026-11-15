@@ -18,6 +18,25 @@ export function createTypedServiceClient(): SupabaseClient<Database> {
   );
 }
 
+/**
+ * The element a test requires at `index`: a seeded fixture, or a response the
+ * test has just created. A miss means the setup or the endpoint dropped a row,
+ * so fail here with the name of the missing item instead of letting a later
+ * `undefined` surface as a confusing TypeError.
+ */
+export function requiredAt<T>(items: readonly T[], index: number, what: string): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`expected ${what} at index ${index}`);
+  return item;
+}
+
+/** The entry a test requires at `key` in a response keyed by id. */
+export function requiredEntry<T>(record: Record<string, T>, key: string, what: string): T {
+  const value = record[key];
+  if (value === undefined) throw new Error(`expected ${what} for "${key}"`);
+  return value;
+}
+
 function mockCookies(cookieMap?: Record<string, string>) {
   const entries = Object.entries(cookieMap ?? {});
   return {

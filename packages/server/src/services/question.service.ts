@@ -1,10 +1,20 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { applyAccessFilter } from '@studiq/server/lib/query-list';
 import type { FilterableBuilderWithExtra } from '@studiq/server/lib/postgrest';
+import {
+  canReadQuestionKey,
+  readQuestionKeys,
+  type QuestionKeyResource,
+  withAnswerKey,
+} from '@studiq/server/lib/question-keys';
+import { OPTION_READER_COLUMNS } from '@studiq/server/lib/question-view';
+import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateQuestionInput,
@@ -21,9 +31,14 @@ type QuestionTopicLink = {
   topics: { id: string; name: string } | null;
 };
 
-/** A question with its answers and flattened readable topics — the list/export shape. */
-export type QuestionWithAnswers = Database['public']['Tables']['questions']['Row'] & {
-  question_answers: Database['public']['Tables']['question_options']['Row'][];
+/** A question with its answers and flattened readable topics — the staff export shape. */
+export type QuestionWithAnswers = Omit<
+  Database['public']['Tables']['questions']['Row'],
+  'search_vector'
+> & {
+  question_answers: Array<
+    Omit<Database['public']['Tables']['question_options']['Row'], 'question_id'>
+  >;
   topics: Array<{ id: string; name: string }>;
 };
 
@@ -44,14 +59,37 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
 }
 
 /**
- * Question read projection. `!inner` is required when filtering by topic, so
- * the embed narrows parent rows instead of only filtering the nested array.
- * Both are literal constants: PostgREST only infers the row type from a literal.
+ * The question columns every reader may see. `explanation` and `search_vector` are left out:
+ * the explanation is part of the key the staff reader adds back, and the search vector indexes
+ * it, so a reader payload cannot carry either.
+ */
+const QUESTION_COLUMNS =
+  'id, type, content, visibility, status, version, created_by, organization_id, bank_id, created_at, updated_at';
+
+/**
+ * Reader-safe read projection. `!inner` is required when filtering by topic, so the embed
+ * narrows parent rows instead of only filtering the nested array. Staff rows gain
+ * `explanation` and `is_correct` afterwards, from the service-role key reader.
  */
 const QUESTION_SELECT =
-  `*, question_answers:question_options(*), question_topic_assignments(topic_id, topics(id, name))` as const;
+  `${QUESTION_COLUMNS}, question_answers:question_options(${OPTION_READER_COLUMNS}), question_topic_assignments(topic_id, topics(id, name))` as const;
 const QUESTION_SELECT_BY_TOPIC =
-  `*, question_answers:question_options(*), question_topic_assignments!inner(topic_id, topics(id, name))` as const;
+  `${QUESTION_COLUMNS}, question_answers:question_options(${OPTION_READER_COLUMNS}), question_topic_assignments!inner(topic_id, topics(id, name))` as const;
+
+/**
+ * Adds the answer key and the explanation to the rows the caller may read them for. Every
+ * other row is returned untouched, so a reader payload carries no `is_correct` and no
+ * `explanation` at all (absent, not null) — R4.
+ */
+async function withKeys<
+  T extends { id: string; question_answers: readonly { id: string }[] } & QuestionKeyResource,
+>(rows: T[], ctx: RequestContext): Promise<T[]> {
+  const keyedIds = new Set(rows.filter((row) => canReadQuestionKey(ctx, row)).map((row) => row.id));
+  if (keyedIds.size === 0) return rows;
+
+  const keys = await readQuestionKeys([...keyedIds]);
+  return rows.map((row) => (keyedIds.has(row.id) ? withAnswerKey(row, keys.get(row.id)) : row));
+}
 
 /**
  * `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. PostgREST
@@ -99,14 +137,13 @@ export class QuestionService {
       .single();
 
     if (qError) return toDbFailure(qError);
-    if (!question) return failure('NOT_FOUND');
 
     if (data.answers.length > 0) {
-      const answersToInsert = data.answers.map((a, i) => ({
+      const answersToInsert = data.answers.map((a) => ({
         question_id: question.id,
         content: a.content,
         is_correct: a.isCorrect,
-        order_index: a.orderIndex ?? i,
+        order_index: a.orderIndex,
       }));
 
       const { error: aError } = await supabase.from('question_options').insert(answersToInsert);
@@ -145,14 +182,17 @@ export class QuestionService {
     const hasTopicFilter = topicIds.length > 0;
     const columns = hasTopicFilter ? QUESTION_SELECT_BY_TOPIC : QUESTION_SELECT;
 
+    // Items an open assessment holds are absent, not locked (R14): the row filter and the pager
+    // total are narrowed together, so a student can never page into a held item.
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+    const sealedIn = sealedIdFilter(seal.data);
+
     // One place applies the filter chain, so the rows of a page and the total that drives the
     // pager can never be scoped differently.
     const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
-      let query = q;
-
-      if (filter.or) query = query.or(filter.or);
-      if (filter.created_by) query = query.eq('created_by', filter.created_by);
-      if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+      let query = applyAccessFilter(q, filter).neq('status', 'deleted');
+      if (sealedIn) query = query.not('id', 'in', sealedIn);
 
       if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
       // The topic embed must be `!inner` for the filter to narrow the parent rows —
@@ -195,8 +235,11 @@ export class QuestionService {
       return success({ items: [], total: total ?? 0, page, limit });
     }
     if (error) return toDbFailure(error);
-    const rows = data ?? [];
-    const items = rows.map((row) => withTopics(row));
+    const rows = dbRows(data);
+    const items = await withKeys(
+      rows.map((row) => withTopics(row)),
+      ctx,
+    );
     return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
 
@@ -204,11 +247,12 @@ export class QuestionService {
    * Every question of one bank, in the full shape an export needs, **without** the
    * `question.read` scope filter, plus the exact number of rows the query matched.
    *
-   * The caller must already have checked `question_bank.read` on this bank: reading a bank means
-   * reading the whole bank, answer key included (decision B, #678). Reading the questions through
-   * `list` instead would apply a second, narrower scope — a role that may read the bank at
-   * `organization` scope but questions only at `own` would get a partial file. RLS still bounds
-   * the rows to the caller's own or same-organisation questions.
+   * The caller must already have checked `question_bank.read` **and** the staff key
+   * permission on this bank: reading a bank means reading the whole bank, answer key included
+   * (decision B, #678), so the rows are returned with their key through the service-role
+   * reader. Reading the questions through `list` instead would apply a second, narrower scope —
+   * a role that may read the bank at `organization` scope but questions only at `own` would get
+   * a partial file. RLS still bounds the rows to the caller's own or same-organisation questions.
    *
    * `total` is the `count` of the same query, so it stays right when PostgREST clamps the rows at
    * its `max_rows`: `rows.length < total` means the result was cut, not that the bank is smaller.
@@ -221,28 +265,47 @@ export class QuestionService {
     const { data, error, count } = await supabase
       .from('questions')
       .select(QUESTION_SELECT, { count: 'exact' })
-      .eq('bank_id', bankId);
+      .eq('bank_id', bankId)
+      .neq('status', 'deleted');
     if (error) return toDbFailure(error);
 
-    const rows = data ?? [];
-    return success({ questions: rows.map((row) => withTopics(row)), total: count ?? rows.length });
+    const rows = dbRows(data);
+    const keys = await readQuestionKeys(rows.map((row) => row.id));
+    const questions: QuestionWithAnswers[] = rows.map((row) => {
+      const key = keys.get(row.id);
+      const question = withTopics(row);
+      return {
+        ...question,
+        explanation: key?.explanation ?? null,
+        question_answers: question.question_answers.map((option) => ({
+          ...option,
+          is_correct: key?.correctOptionIds.includes(option.id) ?? false,
+        })),
+      };
+    });
+    return success({ questions, total: count ?? rows.length });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
+    // A sealed item answers `404` — identical to an item that does not exist, so the refusal is
+    // not an oracle for "this item is on your assessment" (R14/R19).
+    const seal = await sealFor(ctx);
+    if (isFailure(seal)) return seal;
+    if (seal.data.ids.has(id)) return failure('NOT_FOUND');
+
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
-    let query = supabase.from('questions').select(QUESTION_SELECT).eq('id', id);
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    const { data: question, error } = await query.single();
+    const { data: question, error } = await applyAccessFilter(
+      supabase.from('questions').select(QUESTION_SELECT).eq('id', id).neq('status', 'deleted'),
+      filter,
+    ).maybeSingle();
     if (error || !question) return failure('NOT_FOUND');
-    return success(withTopics(question));
+
+    const [item] = await withKeys([withTopics(question)], ctx);
+    return success(item);
   }
 
   async update(
@@ -262,7 +325,8 @@ export class QuestionService {
       .from('questions')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', ctx.userId);
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
 
     // questions.organization_id is nullable (personal questions). Mirror `accessibleFilter`'s
     // `own` scope: apply the tenant filter only while an org is active. A bare
@@ -274,15 +338,14 @@ export class QuestionService {
     if (qError && qError.code !== 'PGRST116') return toDbFailure(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
       return failure('FORBIDDEN');
-
     if (data.answers) {
       await supabase.from('question_options').delete().eq('question_id', id);
       if (data.answers.length > 0) {
-        const answersToInsert = data.answers.map((a, i) => ({
+        const answersToInsert = data.answers.map((a) => ({
           question_id: id,
           content: a.content,
           is_correct: a.isCorrect,
-          order_index: a.orderIndex ?? i,
+          order_index: a.orderIndex,
         }));
         await supabase.from('question_options').insert(answersToInsert);
       }
@@ -311,15 +374,21 @@ export class QuestionService {
     return this.getById(id, ctx);
   }
 
+  /**
+   * Soft delete (#1171): an item bound to an assessment is never destroyed. The row keeps its
+   * version and options, so a published snapshot stays coherent; every read path filters
+   * `status = 'deleted'`, which is what hides it from authoring and practice.
+   */
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
     const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('questions')
-      .delete()
+      .update({ status: 'deleted' })
       .eq('id', id)
       .eq('created_by', ctx.userId)
-      .select()
+      .neq('status', 'deleted')
+      .select('id')
       .single();
 
     if (error && error.code !== 'PGRST116') return toDbFailure(error);
@@ -340,7 +409,8 @@ export class QuestionService {
     let query = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
+      .eq('created_by', ctx.userId)
+      .neq('status', 'deleted');
 
     if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
 

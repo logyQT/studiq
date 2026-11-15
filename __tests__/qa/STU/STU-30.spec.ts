@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-30 — the student's topics (`/app/topics`): create „Matematyka”, rename it,
@@ -158,8 +158,8 @@ test.describe('@case:STU-30 @area:STU @prio:P2 student topics CRUD', () => {
 
     const tenant: QaTenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
-    const student = tenant.users.student;
-    if (!tenant.org || !student) {
+    const student = tenantUser(tenant, 'student');
+    if (!tenant.org) {
       throw new Error(`${CASE} needs the content tenant profile (org and student account)`);
     }
 
@@ -206,9 +206,11 @@ test.describe('@case:STU-30 @area:STU @prio:P2 student topics CRUD', () => {
 
     const created = (await listTopics(page)).filter((topic) => topic.name === TOPIC);
     expect(created, 'exactly one „Matematyka” in the API').toHaveLength(1);
-    expect(created[0].created_by, 'the signed-in student owns the topic').toBe(student.id);
-    expect(created[0].flashcard_count).toBe(0);
-    const topicId = created[0].id;
+    const [createdTopic] = created;
+    if (!createdTopic) throw new Error(`${CASE} the created topic is not stored`);
+    expect(createdTopic.created_by, 'the signed-in student owns the topic').toBe(student.id);
+    expect(createdTopic.flashcard_count).toBe(0);
+    const topicId = createdTopic.id;
 
     // ── Step 2: rename to „Matematyka 2” ────────────────────────────────────
     await moreActions(page, TOPIC).click();
@@ -228,8 +230,10 @@ test.describe('@case:STU-30 @area:STU @prio:P2 student topics CRUD', () => {
 
     const renamed = (await listTopics(page)).filter((topic) => topic.name === RENAMED);
     expect(renamed, 'the API stores the renamed topic').toHaveLength(1);
-    expect(renamed[0].id, 'the rename keeps the same topic').toBe(topicId);
-    expect(renamed[0].flashcard_count, 'the rename keeps the flashcard count').toBe(0);
+    const [renamedTopic] = renamed;
+    if (!renamedTopic) throw new Error(`${CASE} the renamed topic is not stored`);
+    expect(renamedTopic.id, 'the rename keeps the same topic').toBe(topicId);
+    expect(renamedTopic.flashcard_count, 'the rename keeps the flashcard count').toBe(0);
 
     // ── Step 3: delete „Matematyka 2” ───────────────────────────────────────
     await moreActions(page, RENAMED).click();

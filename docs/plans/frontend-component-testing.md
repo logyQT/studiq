@@ -1,8 +1,8 @@
 # Frontend Component Testing — Discussion Document
 
-> Status: DECISIONS LOCKED (Q1-Q7 resolved). Do not implement until `docs/plans/foundation-agentic-testing.md` Phase C (monorepo restructure) is complete.
+> Status: DECISIONS LOCKED (Q1-Q7 resolved). Phase C (monorepo restructure) is complete, so implementation is unblocked.
 >
-> Created: 2026-09-16 | Last updated: 2026-09-16
+> Created: 2026-09-16 | Last updated: 2026-11-12
 
 ---
 
@@ -51,27 +51,27 @@ await page.getByLabelText(/email/i).fill('user@example.com');
 
 ---
 
-## Why now (and why not yet)
+## Why now
 
-The project has 116 server-side tests (unit + integration) and 10 E2E specs, but **zero** frontend component or hook tests. Every frontend bug found so far (markdown streaming status, flashcard readOnly/skeleton, plan step tracking) was caught in production or manually, then patched without a regression safety net.
+The project has 257 unit test files, 60 integration test files and 36 E2E specs, but **zero** frontend component or hook tests. Every frontend bug found so far (markdown streaming status, flashcard readOnly/skeleton, plan step tracking) was caught in production or manually, then patched without a regression safety net.
 
 The `flashcard-testing-pipeline.md` doc already scoped a focused test effort for the AI chat components — this document zooms out to the full frontend testing story.
 
-**Blocker:** Phase C of the foundation plan moves UI primitives into `packages/ui` and splits the app into `apps/web` + `apps/admin`. Any component test infrastructure built now would need to be reworked when that lands. The discussion below is intentionally written **pre-restructure** — we decide the strategy now, build it on the stable foundation.
+**Phase C is complete:** UI primitives live in `packages/ui` and the app is split into `apps/web` + `apps/admin`. Build the component test infrastructure on that final structure.
 
 ---
 
 ## Current state summary
 
-| What exists                                              | What's missing                                      |
-| -------------------------------------------------------- | --------------------------------------------------- |
-| Vitest with `node` environment                           | No browser mode config for component tests          |
-| 116 server tests (services, controllers, models, guards) | Zero `.test.tsx` files                              |
-| 100+ app components (`src/components/`)                  | No `vitest-browser-react` or rendering helpers      |
-| 30+ UI primitives (`packages/ui/src/components/ui/`)     | No provider wrappers (QueryClient, next-intl, etc.) |
-| `@/` and `#test/` aliases in Vitest + tsconfig           | No component test setup                             |
-| 10 Playwright E2E specs (`__tests__/e2e/`)               | No component-level interaction tests                |
-| `flashcard-testing-pipeline.md` scoped for AI chat       | Not yet executed                                    |
+| What exists                                          | What's missing                                      |
+| ---------------------------------------------------- | --------------------------------------------------- |
+| Vitest with `node` environment                       | No browser mode config for component tests          |
+| 257 unit + 60 integration test files                 | Zero `.test.tsx` files                              |
+| 100+ app components (`apps/web/src/components/`)     | No `vitest-browser-react` or rendering helpers      |
+| 60+ UI primitives (`packages/ui/src/components/ui/`) | No provider wrappers (QueryClient, next-intl, etc.) |
+| `@/` and `#test/` aliases in Vitest + tsconfig       | No component test setup                             |
+| 36 Playwright E2E specs (`__tests__/e2e/`)           | No component-level interaction tests                |
+| `flashcard-testing-pipeline.md` scoped for AI chat   | Not yet executed                                    |
 
 ---
 
@@ -103,23 +103,23 @@ This eliminates the jsdom/happy-dom trade-off entirely. Radix portals, focus man
 
 ### Q3: Where do component tests live? — STILL OPEN (browser mode doesn't change this)
 
-Browser mode doesn't affect file locations — this remains a monorepo structure question for Phase C.
+Browser mode doesn't affect file locations — this remains a monorepo structure question.
 
-Currently server tests live under `__tests__/`. After Phase C, the monorepo has `packages/ui/` and `apps/web/` (plus `apps/admin/`). Several options:
+Server tests live under `__tests__/`. The monorepo has `packages/ui/` and `apps/web/` (plus `apps/admin/`). Several options:
 
-| Option                                                            | Structure                                                                           | Pros                                                         | Cons                                                                                   |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| **A. Keep in `__tests__/`**                                       | `__tests__/components/*.test.tsx` next to existing `__tests__/unit/`                | Consistent with current structure; single test runner config | Mixes server + client tests; doesn't follow monorepo boundaries                        |
-| **B. Colocate in `packages/ui/`**                                 | `packages/ui/src/components/ui/__tests__/*.test.tsx` or `packages/ui/__tests__/`    | UI primitive tests live with the code; natural after Phase C | Only covers `packages/ui` — app-level components (`src/components/`) still need a home |
-| **C. Colocate everywhere**                                        | `src/components/flashcards/__tests__/deck-card.test.tsx`                            | Tests next to the code they cover                            | Breaks the `__tests__/` convention; lots of scattered `__tests__/` dirs                |
-| **D. Hybrid: `packages/ui/__tests__/` + `__tests__/components/`** | UI primitives tested in the package; app components tested in the root `__tests__/` | Follows monorepo boundaries; app tests stay centralized      | Two locations to maintain; slightly inconsistent                                       |
-| **E. Per-app `__tests__/`**                                       | `apps/web/__tests__/components/`                                                    | Clean monorepo structure                                     | Requires moving the existing `__tests__/` dir into `apps/web/` — big migration         |
+| Option                                                            | Structure                                                                           | Pros                                                           | Cons                                                                                   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **A. Keep in `__tests__/`**                                       | `__tests__/components/*.test.tsx` next to existing `__tests__/unit/`                | Consistent with current structure; single test runner config   | Mixes server + client tests; doesn't follow monorepo boundaries                        |
+| **B. Colocate in `packages/ui/`**                                 | `packages/ui/src/components/ui/__tests__/*.test.tsx` or `packages/ui/__tests__/`    | UI primitive tests live with the code; natural in the monorepo | Only covers `packages/ui` — app-level components (`src/components/`) still need a home |
+| **C. Colocate everywhere**                                        | `src/components/flashcards/__tests__/deck-card.test.tsx`                            | Tests next to the code they cover                              | Breaks the `__tests__/` convention; lots of scattered `__tests__/` dirs                |
+| **D. Hybrid: `packages/ui/__tests__/` + `__tests__/components/`** | UI primitives tested in the package; app components tested in the root `__tests__/` | Follows monorepo boundaries; app tests stay centralized        | Two locations to maintain; slightly inconsistent                                       |
+| **E. Per-app `__tests__/`**                                       | `apps/web/__tests__/components/`                                                    | Clean monorepo structure                                       | Requires moving the existing `__tests__/` dir into `apps/web/` — big migration         |
 
 **Questions for discussion:**
 
-- After Phase C, should `apps/web/` absorb the current `src/` and `__tests__/` entirely?
+- Should `apps/web/` absorb the current `src/` and `__tests__/` entirely?
 - Do we want component tests discoverable via `bun test:components` from root, or per-workspace `bun --filter @studiq/web test:components`?
-- What does the Vitest workspace config look like post-restructure?
+- What does the Vitest workspace config look like in the monorepo?
 
 ### Q4: Vitest project/workspace configuration
 
@@ -131,19 +131,19 @@ vitest.config.ts  (root)
 │   └── __tests__/unit/**/*.test.ts + __tests__/integration/**/*.test.ts
 ├── project "components" → environment: 'happy-dom' (or 'jsdom')
 │   └── __tests__/components/**/*.test.tsx
-└── (post Phase C, possibly more projects for packages/ui, apps/web, apps/admin)
+└── (possibly more projects for packages/ui, apps/web, apps/admin)
 ```
 
 **Options:**
 
-| Approach                                    | How                                                             | When to use                                               |
-| ------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
-| **Vitest `projects` (inline)**              | Multiple config objects in root `vitest.config.ts`              | Simple, keeps one config file                             |
-| **Vitest workspace file**                   | `vitest.workspace.ts` pointing to per-package configs           | Post Phase C, when packages have their own vitest configs |
-| **Per-file `@vitest-environment` docblock** | `// @vitest-environment happy-dom` at top of each `.test.tsx`   | Quick start, no config changes; doesn't scale             |
-| **Per-directory env override**              | `environment: { 'src/**/*.tsx': 'happy-dom' }` in vitest config | Middle ground — one line per directory pattern            |
+| Approach                                    | How                                                             | When to use                                    |
+| ------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------- |
+| **Vitest `projects` (inline)**              | Multiple config objects in root `vitest.config.ts`              | Simple, keeps one config file                  |
+| **Vitest workspace file**                   | `vitest.workspace.ts` pointing to per-package configs           | When packages have their own vitest configs    |
+| **Per-file `@vitest-environment` docblock** | `// @vitest-environment happy-dom` at top of each `.test.tsx`   | Quick start, no config changes; doesn't scale  |
+| **Per-directory env override**              | `environment: { 'src/**/*.tsx': 'happy-dom' }` in vitest config | Middle ground — one line per directory pattern |
 
-**Question:** Do we want to do the minimal thing now (per-file docblock or per-directory env) and fully clean up during Phase C, or do we go straight to the multi-project config?
+**Question:** Do we want to do the minimal thing now (per-file docblock or per-directory env) and clean up later, or go straight to the multi-project config?
 
 ### Q5: Provider mocking strategy
 
@@ -223,8 +223,8 @@ The testing pyramid for frontend:
 foundation-agentic-testing.md
 ├── Phase A ✅ (test foundation — complete)
 ├── Phase B ✅ (flags/perms/limits — complete)
-├── Phase B.5 ⬜ (seat licensing cleanup — not started)
-├── Phase C  ⬜ (monorepo restructure — BLOCKS component testing)
+├── Phase B.5 ✅ (seat licensing cleanup — complete)
+├── Phase C  ✅ (monorepo restructure — complete; C8 deferred)
 │   ├── C1: Bun workspace scaffold
 │   ├── C2: Move pure logic → packages/authz, UI primitives → packages/ui
 │   ├── C3-C7: Admin panel detach
@@ -232,20 +232,20 @@ foundation-agentic-testing.md
 └── Phase D  ⬜ (agentic testing — runs on stable foundation)
 
 frontend-component-testing (THIS DOCUMENT)
-└── Depends on: Phase C complete
+└── Depends on: Phase C complete ✅
     ├── packages/ui/ exists and is stable
     ├── vitest workspace config reflects monorepo structure
     ├── Clear boundary: what lives in packages/ui vs apps/web
     └── Then: install deps, configure environment, build helpers, write tests
 ```
 
-**Key dependency:** Phase C moves UI primitives into `packages/ui`. Component tests for those primitives should live in (or alongside) `packages/ui`, not in the root `__tests__/`. Building the test infrastructure before knowing the final package structure means rework.
+**Key dependency:** UI primitives live in `packages/ui`. Component tests for those primitives should live in (or alongside) `packages/ui`, not in the root `__tests__/`.
 
-**However:** The `flashcard-testing-pipeline.md` scope (AI chat hooks + components in `src/components/ai/`) is less affected by Phase C — those components stay in the main app. If we want to start sooner, we could begin with that narrowly-scoped effort.
+**Start narrow if needed:** The `flashcard-testing-pipeline.md` scope (AI chat hooks + components in `apps/web/src/components/ai/`) is a good first slice before the full component harness.
 
 ---
 
-## Proposed execution order (after Phase C)
+## Proposed execution order
 
 This is **not a plan** — it's a sequence of decisions to make and work to do, roughly ordered.
 
@@ -253,7 +253,7 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 
 1. ~~**Lock DOM environment:** jsdom or happy-dom (Q1)~~ → ✅ Vitest Browser Mode
 2. ~~**Lock test library stack:** Testing Library + jest-dom + user-event, or alternatives (Q2)~~ → ✅ `vitest-browser-react` + built-in `page`/`userEvent`
-3. **Lock test file locations:** Where do component tests live post-monorepo (Q3) — still open, depends on Phase C
+3. **Lock test file locations:** Where do component tests live in the monorepo (Q3) — still open
 4. **Lock Vitest config approach:** Multi-project vs workspace vs docblock (Q4) — browser mode uses `browser.enabled` config, not environment strings
 5. **Lock provider mocking default:** next-intl strategy especially (Q5) — still open
 6. **Lock testing scope:** Tiers 0-2 only, or deeper (Q6) — still open
@@ -298,17 +298,15 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 
 ## Risks
 
-| Risk                                                     | Impact                            | Mitigation                                                                                                                  |
-| -------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Phase C takes longer than expected                       | Component testing delayed further | Start with `flashcard-testing-pipeline.md` scope (AI chat) as a narrow proof of concept that's less affected by restructure |
-| Provider mocking becomes a maintenance burden            | Tests break when providers change | Keep the wrapper thin; prefer real providers over mocks where possible (QueryClient is real, not mocked)                    |
-| Team adoption: writing tests is slower than writing code | Feature velocity concern          | Start with Tier 0-1 (fast, obvious value); make it easy to run (`bun test:components`); demonstrate bug-catching ROI early  |
+| Risk                                                     | Impact                            | Mitigation                                                                                                                 |
+| -------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Provider mocking becomes a maintenance burden            | Tests break when providers change | Keep the wrapper thin; prefer real providers over mocks where possible (QueryClient is real, not mocked)                   |
+| Team adoption: writing tests is slower than writing code | Feature velocity concern          | Start with Tier 0-1 (fast, obvious value); make it easy to run (`bun test:components`); demonstrate bug-catching ROI early |
 
 ---
 
 ## Related docs
 
-- `docs/plans/foundation-agentic-testing.md` — the restructure plan that must land first
+- `docs/plans/foundation-agentic-testing.md` — the restructure plan (complete)
 - `docs/plans/flashcard-testing-pipeline.md` — scoped AI chat testing effort (hooks + components + backend)
-- `docs/plans/coverage-improvement-handoff.md` — server-side coverage improvement (parallel effort)
 - `AGENTS.md` — testing conventions, import aliases, Vitest config

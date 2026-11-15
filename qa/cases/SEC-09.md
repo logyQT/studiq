@@ -116,13 +116,13 @@ organizacja klasy `SEC-09 Classroom rmvtgbff18c4b`.
   `GET /api/v1/me/orgs` = tylko organizacja tenanta, bez organizacji klasy):
   `GET /api/v1/teacher/assignments/<id>/results` → **404 `NOT_FOUND`**;
   ścieżki sąsiednie tego samego ekranu: `GET .../teacher/assignments/<id>` → **404**,
-  `GET .../results/<SC>` → **404**, `GET .../export-answers` → **404**,
+  `GET .../results/<attemptId SC>` → **404**, `GET .../export-answers` → **404**,
   `GET /api/v1/teacher/assignments` → **200** z pustą listą `[]`.
   Strona `/edu/assignments/<id>/results` renderuje nagłówek „Wyniki” z **pustą** tabelą —
   brak wiersza i adresu e-mail SC w DOM.
 - Kontrola pozytywna (ten sam tenant, ta sama organizacja klasy): TC czyta
   `GET /api/v1/teacher/assignments/<id>/results` → **200** z wierszem próby SC
-  (`user.email` SC), `.../results/<SC>` → **200**, `.../export-answers` → **200** (CSV z
+  (`user.email` SC), `.../results/<attemptId SC>` → **200**, `.../export-answers` → **200** (CSV z
   wierszem SC); strona `/edu/assignments/<id>/results` pokazuje „Wyniki” i wiersz
   `QA invitee 1` z adresem SC i statusem „W trakcie”. Trasy są sprawne — 404 to granica
   organizacji/własności zasobu, nie awaria endpointu.

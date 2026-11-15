@@ -112,7 +112,7 @@ interface Deck {
 class ConsoleNetworkMonitor {
   private readonly counts = new Map<string, number>();
 
-  constructor(private readonly page: Page) {
+  constructor(page: Page) {
     page.on('pageerror', (error) => {
       this.record(`uncaught exception: ${error.message}`);
     });

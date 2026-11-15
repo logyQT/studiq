@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateGroupInput,
@@ -64,8 +65,8 @@ export class GroupService {
 
     return success(
       data.map((g) => {
-        const total = g.group_members?.[0]?.count ?? 0;
-        const teachers = g.group_members_teachers?.[0]?.count ?? 0;
+        const total = dbCount(g.group_members);
+        const teachers = dbCount(g.group_members_teachers);
         return {
           id: g.id,
           name: g.name,
@@ -136,6 +137,25 @@ export class GroupService {
     return success(undefined);
   }
 
+  /**
+   * Scoped client for a group the caller may modify. Returns the failure that
+   * answers the request instead of the scope: FORBIDDEN outside an active org or
+   * for a group they do not manage, NOT_FOUND when the id is not in the active
+   * org. `orgId` is passed back so callers can filter without re-narrowing ctx.
+   */
+  private async managedGroupScope(
+    ctx: RequestContext,
+    id: string,
+  ): Promise<ServiceResult<{ supabase: SupabaseClient<Database>; orgId: string }>> {
+    const orgId = ctx.activeOrgId;
+    if (!orgId) return failure('FORBIDDEN');
+
+    const authCheck = await this.assertCanManage(ctx, id);
+    if (isFailure(authCheck)) return authCheck;
+
+    return success({ supabase: await this.clientFactory(), orgId });
+  }
+
   async updateGroup(
     ctx: RequestContext,
     id: string,
@@ -148,20 +168,15 @@ export class GroupService {
       created_at: string | null;
     }>
   > {
-    const supabase = await this.clientFactory();
-
-    if (!ctx.activeOrgId) {
-      return failure('FORBIDDEN');
-    }
-
-    const authCheck = await this.assertCanManage(ctx, id);
-    if (isFailure(authCheck)) return authCheck;
+    const prepared = await this.managedGroupScope(ctx, id);
+    if (isFailure(prepared)) return prepared;
+    const { supabase, orgId } = prepared.data;
 
     const { data: group, error } = await supabase
       .from('groups')
       .update(normalizeDescription(data))
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId)
+      .eq('organization_id', orgId)
       .select('id, name, description, created_at')
       .single();
 
@@ -174,22 +189,23 @@ export class GroupService {
   }
 
   async deleteGroup(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    const supabase = await this.clientFactory();
+    const prepared = await this.managedGroupScope(ctx, id);
+    if (isFailure(prepared)) return prepared;
+    const { supabase, orgId } = prepared.data;
 
-    if (!ctx.activeOrgId) {
-      return failure('FORBIDDEN');
-    }
-
-    const authCheck = await this.assertCanManage(ctx, id);
-    if (isFailure(authCheck)) return authCheck;
-
-    const { error } = await supabase
+    const { data: deleted, error } = await supabase
       .from('groups')
       .delete()
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId);
+      .eq('organization_id', orgId)
+      .select('id');
 
     if (error) return toDbFailure(error);
+
+    // The org filter can match zero rows (id from another org); PostgREST
+    // reports that as an empty projection, not an error, so project the id to
+    // tell "deleted" apart from "not here" (#1124).
+    if (dbRows(deleted).length === 0) return failure('NOT_FOUND');
 
     return success(undefined);
   }
@@ -325,7 +341,7 @@ export class GroupService {
       p_org_id: ctx.activeOrgId,
     });
     if (error) return toDbFailure(error);
-    return success(data?.map((r) => r.group_id) ?? []);
+    return success(dbRows(data).map((r) => r.group_id));
   }
 
   async isTeacherInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
@@ -375,7 +391,7 @@ export class GroupService {
 
     if (error) return toDbFailure(error);
 
-    const taught = new Set((data ?? []).map((row) => row.group_id));
+    const taught = new Set(dbRows(data).map((row) => row.group_id));
     return success(unique.every((id) => taught.has(id)));
   }
 
@@ -415,7 +431,7 @@ export class GroupService {
 
     if (orgError) return toDbFailure(orgError);
 
-    const orgIds = (orgRows ?? []).map((r) => r.organization_id);
+    const orgIds = dbRows(orgRows).map((r) => r.organization_id);
     if (orgIds.length === 0) return success([]);
 
     const { data, error } = await supabase

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-Q-06 — creating a flashcard from a question („Utwórz fiszkę z pytania”).
@@ -203,8 +203,8 @@ async function listCards(page: Page, deckId: string): Promise<FlashcardItem[]> {
  */
 async function ensureEducatorLeadsGroup(page: Page, tenant: QaTenant): Promise<void> {
   const groupId = tenant.group?.id;
-  const educator = tenant.users.teacher;
-  if (!groupId || !educator) {
+  const educator = tenantUser(tenant, 'teacher');
+  if (!groupId) {
     throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
   }
 
@@ -344,9 +344,9 @@ test.describe('@case:EDU-Q-06 @area:EDU @prio:P2 flashcard from a question', () 
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
     const org = tenant.org;
     const group = tenant.group;
-    const educator = tenant.users.teacher;
-    const student = tenant.users.student;
-    if (!org || !group || !educator || !student) {
+    const educator = tenantUser(tenant, 'teacher');
+    const student = tenantUser(tenant, 'student');
+    if (!org || !group) {
       throw new Error(`${CASE} needs the content tenant profile (org, group, educator, student)`);
     }
 
@@ -395,15 +395,17 @@ test.describe('@case:EDU-Q-06 @area:EDU @prio:P2 flashcard from a question', () 
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     const newDeck = (await listDecks(page)).find((deck) => deck.name === DECK.newDeck);
-    expect(newDeck, '„Nowa talia” created the named deck').toBeTruthy();
-    expect(newDeck!.created_by, 'the new deck belongs to the educator').toBe(educator.id);
-    expect(newDeck!.visibility, 'a deck created here is personal').toBe('personal');
+    if (!newDeck) throw new Error(`${CASE} „${DECK.newDeck}” was not created`);
+    expect(newDeck.created_by, 'the new deck belongs to the educator').toBe(educator.id);
+    expect(newDeck.visibility, 'a deck created here is personal').toBe('personal');
 
-    const newDeckCards = await listCards(page, newDeck!.id);
+    const newDeckCards = await listCards(page, newDeck.id);
     expect(newDeckCards, 'the new deck holds exactly the created card').toHaveLength(1);
-    expect(newDeckCards[0].front, 'stored front = question content').toBe(QUESTION_CONTENT);
-    expect(newDeckCards[0].back, 'stored back = correct answer').toBe(CORRECT_ANSWER);
-    expect(newDeckCards[0].question_id, 'the card is linked to the question').toBe(question.id);
+    const [newDeckCard] = newDeckCards;
+    if (!newDeckCard) throw new Error(`${CASE} the new deck holds no card`);
+    expect(newDeckCard.front, 'stored front = question content').toBe(QUESTION_CONTENT);
+    expect(newDeckCard.back, 'stored back = correct answer').toBe(CORRECT_ANSWER);
+    expect(newDeckCard.question_id, 'the card is linked to the question').toBe(question.id);
 
     // ── Step 2b: pick an existing (group-shared) deck ──────────────────────
     await questionRow.getByRole('button', { name: COPY.createFlashcard, exact: true }).click();
@@ -418,7 +420,8 @@ test.describe('@case:EDU-Q-06 @area:EDU @prio:P2 flashcard from a question', () 
 
     const groupCards = await listCards(page, groupDeck.id);
     expect(groupCards, 'the group deck holds exactly the created card').toHaveLength(1);
-    const linkedCard = groupCards[0];
+    const [linkedCard] = groupCards;
+    if (!linkedCard) throw new Error(`${CASE} the group deck holds no card`);
     expect(linkedCard.front, 'stored front = question content').toBe(QUESTION_CONTENT);
     expect(linkedCard.back, 'stored back = correct answer').toBe(CORRECT_ANSWER);
     expect(linkedCard.question_id, 'the card is linked to the question').toBe(question.id);

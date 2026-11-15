@@ -1,14 +1,16 @@
-import { mkdirSync, symlinkSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  appPortBase,
   createHarness,
   findConflictPort,
   firstBindablePort,
   nonLoopbackIPv4,
   parseJsonObject,
   stackStatusFixture,
+  startGrafanaServer,
   startHttpServer,
   startTcpListener,
   stoppedStackFixture,
@@ -17,6 +19,15 @@ import {
 } from '#test/unit/env/support';
 
 const harnesses: Harness[] = [];
+
+/**
+ * Doctor bind-checks a live `APP_PORT`, so this file must own a port that no
+ * other [parallel] unit file can bind. The shared 3000-3999 range is exactly
+ * where the other env files used to collide, and a host may permanently hold
+ * one of those ports (a docker proxy, say), hence a per-file base outside it
+ * and below the ephemeral range.
+ */
+const APP_PORT_BASE = appPortBase();
 
 // CI-safe: the other-interface case is skipped when the host has none.
 const NON_LOOPBACK = nonLoopbackIPv4();
@@ -44,7 +55,7 @@ function bindErrorCode(port: number): Promise<string | null> {
 
 describe('env:doctor', () => {
   it('exits 0 when nothing is wrong (no stack for this branch)', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     // A stopped stack answers `stack status` cleanly (exit 0, no API URL).
     harness.setStatusFixture(stoppedStackFixture());
@@ -59,8 +70,119 @@ describe('env:doctor', () => {
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
   });
 
+  it('reports the machine-wide observability stack and its primary start command', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.project', 'studiq-observability');
+    expect(report).toHaveProperty('observability.primary');
+    expect(report).toHaveProperty('observability.primaryReady');
+    expect(report).toHaveProperty('observability.up');
+    expect(JSON.stringify(report.observability)).toContain('docker compose up -d');
+  });
+
+  it('reports Grafana auth ok when the MCP token validates', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer({ token: 'glsa_valid' });
+    harness.track(() => fixture.close());
+    const dir = join(harness.dir, '.config', 'studiq', 'observability');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'grafana-mcp-token'), 'glsa_valid\n', { mode: 0o600 });
+    writeFileSync(
+      join(dir, 'grafana-mcp.json'),
+      JSON.stringify({
+        serviceAccountId: 1,
+        serviceAccountName: 'studiq-mcp',
+        role: 'Viewer',
+        tokenId: 7,
+        tokenName: 'mcp-test',
+        mintedAt: new Date().toISOString(),
+        url: fixture.url,
+      }),
+      { mode: 0o600 },
+    );
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'ok');
+    expect(report).toHaveProperty('observability.serviceAccount', 'studiq-mcp');
+    expect(report).toHaveProperty('observability.tokenFile', join(dir, 'grafana-mcp-token'));
+  });
+
+  it('reports a missing Grafana MCP token without failing doctor', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer();
+    harness.track(() => fixture.close());
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'no-token');
+    expect(report.ok).toBe(true);
+    expect(report.problems).toEqual([]);
+
+    // The remediation must name the command that mints: `status` (the default
+    // mode) prints the same line but never creates a token.
+    const text = await harness.run(['doctor'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+    expect(text.stdout).toContain('bun run env:observability ensure');
+  });
+
+  it('reports a stale token when the token file cannot be read', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer({ token: 'glsa_valid' });
+    harness.track(() => fixture.close());
+    const dir = join(harness.dir, '.config', 'studiq', 'observability');
+    // A directory at the token path reproduces EISDIR deterministically; chmod
+    // 000 is not reliable under root, where CI may run.
+    mkdirSync(join(dir, 'grafana-mcp-token'), { recursive: true });
+    writeFileSync(
+      join(dir, 'grafana-mcp.json'),
+      JSON.stringify({
+        serviceAccountId: 1,
+        serviceAccountName: 'studiq-mcp',
+        role: 'Viewer',
+        tokenId: 7,
+        tokenName: 'mcp-test',
+        mintedAt: new Date().toISOString(),
+        url: fixture.url,
+      }),
+      { mode: 0o600 },
+    );
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'stale-token');
+  });
+
   it('does not warn about a missing registry directory', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());
     const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
@@ -72,7 +194,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when an existing registry directory is untrusted', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());
     mkdirSync(join(harness.dir, 'real-registry'), { recursive: true });
@@ -87,7 +209,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when the stack status lookup fails but stays exit 0', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     // No fixture: the fake CLI exits non-zero (a failed lookup, not a stopped stack).
     const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
@@ -99,7 +221,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when stack status returns non-JSON output', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     harness.setRawStatus('Warning: banner\nnot-json');
 
@@ -112,7 +234,7 @@ describe('env:doctor', () => {
   });
 
   it('checks the default stack when SUPABASE_STACK is unset', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());
     const result = await harness.run(['doctor', '--json'], {
@@ -126,7 +248,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when the Supabase CLI cannot be spawned', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     // No `bunx` on PATH: status/list spawn with ENOENT.
     const result = await harness.run(['doctor', '--json'], {
@@ -157,7 +279,9 @@ describe('env:doctor', () => {
 
   it.skipIf(!NON_LOOPBACK)('flags an app port bound on a non-loopback interface', async () => {
     if (!NON_LOOPBACK) throw new Error('no non-loopback IPv4 address');
-    const port = await findConflictPort(NON_LOOPBACK);
+    // Any app port works here: the conflict is on a non-loopback interface, not
+    // in the product's suggestion range, so this file's own slice is used.
+    const port = await findConflictPort(NON_LOOPBACK, APP_PORT_BASE, APP_PORT_BASE + 19);
     const harness = newHarness();
     const listener = await startTcpListener(port, NON_LOOPBACK);
     harness.track(() => listener.close());
@@ -192,7 +316,7 @@ describe('env:doctor', () => {
 
   it('reports the stack runtime it observes and warns about a Docker stack', async () => {
     const server = await startHttpServer(200);
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     harness.track(() => server.close());
     harness.setStatusFixture(
@@ -223,7 +347,7 @@ describe('env:doctor', () => {
   });
 
   it('never probes docker/podman and ignores SUPABASE_RUNTIME', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
 
     for (const runtime of ['', 'auto', 'docker', 'native', 'podman']) {
@@ -246,7 +370,7 @@ describe('env:doctor', () => {
   });
 
   it('warns but does not fail when shared-mode values are not exported', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     const result = await harness.run(['doctor', '--json'], {
       APP_PORT: String(appPort),
@@ -260,7 +384,7 @@ describe('env:doctor', () => {
   });
 
   it('renders human sections on stdout', async () => {
-    const appPort = await firstBindablePort(3900);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
     const result = await harness.run(['doctor'], { APP_PORT: String(appPort) });
 

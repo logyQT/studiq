@@ -92,8 +92,8 @@ describe('OrgRoleService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].memberCount).toBe(3);
-      expect(expectSuccess(result)[0].permissionCount).toBe(5);
+      expect(expectSuccess(result)[0]?.memberCount).toBe(3);
+      expect(expectSuccess(result)[0]?.permissionCount).toBe(5);
     });
 
     it('returns error on DB failure', async () => {

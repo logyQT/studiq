@@ -9,7 +9,7 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { GET as getDecks, POST as createDeck } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import {
   GET as getTopicsScreen,
@@ -72,7 +72,7 @@ describe(`Content list filters (#595)`, () => {
       topics: 2,
     });
     // groups[0] is the org default group, where the creator is a teacher.
-    groupId = teacher.groups[0];
+    groupId = requiredAt(teacher.groups, 0, 'seeded group');
     cookie = { active_org_id: teacher.orgId! };
 
     linkedDeckId = await post(createDeck, '/api/v1/flashcards/decks', {

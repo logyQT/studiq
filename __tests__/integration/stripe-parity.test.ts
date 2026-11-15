@@ -12,6 +12,7 @@ import { EntitlementService } from '@studiq/server/services/entitlement.service'
 import { ORG_LIMIT_KEYS, USER_LIMIT_KEYS } from '@studiq/server/services/limit.catalog';
 import { MockStripeService } from '@studiq/server/services/mock-stripe.service';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -401,7 +402,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
     if (filter.sessionId) query = query.eq('session_id', filter.sessionId);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return dbRows(data);
   }
 
   async function subscriptionMirrors(filter: { userId?: string; organizationId?: string }) {
@@ -410,7 +411,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
     if (filter.organizationId) query = query.eq('organization_id', filter.organizationId);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return dbRows(data);
   }
 
   let mockStudent: TestUserFixture;
@@ -594,7 +595,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
     await service.from('subscription_plans').delete().in('key', planKeys);
 
     for (const user of createdUsers) {
-      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 

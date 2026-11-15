@@ -18,7 +18,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
 import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
-import { getVisibleLimitKeys } from '@/lib/pricing-limits';
+import { getLimitLabel as getLimitLabelShared, getVisibleLimitKeys } from '@/lib/pricing-limits';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { invoiceHistoryPath } from '@/lib/billing-subscription';
@@ -31,7 +31,7 @@ export default function AppBillingPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType =
     (typeof rawAccountType === 'string' ? rawAccountType : undefined) ?? 'student';
   const { data: plan, isLoading } = useApiQuery<PlanInfo>({
@@ -74,8 +74,7 @@ export default function AppBillingPage() {
   }
 
   function getLimitLabel(key: string): string {
-    const label = pt(`limit_${key}`);
-    return label.startsWith('limit_') ? key : label;
+    return getLimitLabelShared(key, pt);
   }
 
   const visibleLimits = getVisibleLimitKeys([plan], accountType);
@@ -126,6 +125,7 @@ export default function AppBillingPage() {
               <div className="space-y-1.5">
                 {visibleLimits.map((key) => {
                   const value = plan.limits[key];
+                  if (value === undefined) return null;
                   return (
                     <div key={key} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">{getLimitLabel(key)}</span>

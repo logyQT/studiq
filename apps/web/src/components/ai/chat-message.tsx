@@ -190,7 +190,7 @@ export const ChatMessage = memo(
       a.toolName === b.toolName &&
       a.label === b.label &&
       a.error === b.error &&
-      a.thinkingTraces?.length === b.thinkingTraces?.length
+      a.thinkingTraces.length === b.thinkingTraces.length
     );
   },
 );

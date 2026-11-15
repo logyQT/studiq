@@ -255,7 +255,8 @@ test.describe('@case:STU-32 @area:STU @prio:P2 own question bank and questions',
     const banks = await listBanks(page);
     const createdBanks = banks.filter((bank) => bank.name === BANK_NAME);
     expect(createdBanks, 'exactly one „Mój bank” exists').toHaveLength(1);
-    const bank = createdBanks[0];
+    const [bank] = createdBanks;
+    if (!bank) throw new Error(`${CASE} the created bank is not stored`);
     expect(bank.created_by, 'the bank belongs to the signed-in student').toBe(student.id);
     expect(bank.visibility, 'a student bank is personal').toBe('personal');
     expect(bank.question_count, 'the fresh bank is empty').toBe(0);
@@ -283,10 +284,10 @@ test.describe('@case:STU-32 @area:STU @prio:P2 own question bank and questions',
     await form.locator('input[placeholder="Odpowiedź 1"]').fill(QUESTIONS.mcq.answers[0].text);
 
     for (let index = 1; index < QUESTIONS.mcq.answers.length; index += 1) {
+      const answer = QUESTIONS.mcq.answers[index];
+      if (!answer) throw new Error(`${CASE} the case question has no answer at index ${index}`);
       await form.getByRole('button', { name: COPY.addAnswer }).click();
-      await form
-        .locator(`input[placeholder="Odpowiedź ${index + 1}"]`)
-        .fill(QUESTIONS.mcq.answers[index].text);
+      await form.locator(`input[placeholder="Odpowiedź ${index + 1}"]`).fill(answer.text);
     }
 
     // Exactly one correct answer: the first radio.

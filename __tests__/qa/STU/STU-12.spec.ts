@@ -219,8 +219,9 @@ test.describe('@case:STU-12 @area:STU @prio:P2 student quiz history', () => {
       questionTypes: ['mcq'],
       questionCount: 1,
     });
-    const completedQuestion = completed.questions[0];
-    expect(completedQuestion?.id, 'generated attempt question').toBeTruthy();
+    const [completedQuestion] = completed.questions;
+    if (!completedQuestion) throw new Error(`${CASE} the generated attempt served no question`);
+    expect(completedQuestion.id, 'generated attempt question').toBeTruthy();
     await callApi(page, 'post', `/api/v1/quiz/${completed.id}`, {
       answers: [
         {

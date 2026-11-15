@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-TOP-01 — the educator's topics (`/edu/topics`): CRUD, flashcard counter and
@@ -242,8 +242,8 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     const tenant: QaTenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
     const group = tenant.group;
-    const educator = tenant.users.teacher;
-    if (!group || !educator) {
+    const educator = tenantUser(tenant, 'teacher');
+    if (!group) {
       throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
     }
 
@@ -318,8 +318,10 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
 
     const stored = (await listTopics(page)).filter((topic) => topic.name === TOPIC);
     expect(stored, 'exactly one „Algebra” in the API').toHaveLength(1);
-    expect(stored[0].created_by, 'the educator owns the topic').toBe(educator.id);
-    expect(stored[0].flashcard_count).toBe(0);
+    const [storedTopic] = stored;
+    if (!storedTopic) throw new Error(`${CASE} the created topic is not stored`);
+    expect(storedTopic.created_by, 'the educator owns the topic').toBe(educator.id);
+    expect(storedTopic.flashcard_count).toBe(0);
 
     // ── Acceptance: the flashcard counter ───────────────────────────────────
     for (const [index, front] of CARD_FRONTS.entries()) {
@@ -327,7 +329,7 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
         deckId: deck.id,
         front,
         back: `Odpowiedź ${index + 1}`,
-        topicIds: [stored[0].id],
+        topicIds: [storedTopic.id],
       });
     }
 
@@ -372,8 +374,10 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
 
     const renamed = (await listTopics(page)).filter((topic) => topic.name === RENAMED);
     expect(renamed, 'the API stores the renamed topic').toHaveLength(1);
-    expect(renamed[0].id).toBe(stored[0].id);
-    expect(renamed[0].flashcard_count, 'the rename keeps the flashcards').toBe(2);
+    const [renamedTopic] = renamed;
+    if (!renamedTopic) throw new Error(`${CASE} the renamed topic is not stored`);
+    expect(renamedTopic.id).toBe(storedTopic.id);
+    expect(renamedTopic.flashcard_count, 'the rename keeps the flashcards').toBe(2);
 
     // ── Step 3b: delete ─────────────────────────────────────────────────────
     await moreActions(page, RENAMED).click();

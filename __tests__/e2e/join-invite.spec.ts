@@ -18,8 +18,8 @@ async function loginAsManager(page: Page) {
   await page.getByLabel(t('LoginPage.password_label')).fill(MANAGER_PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
 
-  await page.waitForURL(/\/manage\/?$/, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible({ timeout: 30_000 });
+  await page.waitForURL(/\/manage\/?$/);
+  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 }
 
 async function getMemberRoleId(page: Page) {
@@ -79,9 +79,7 @@ test.describe('Join an organization — invitee supplies their name (#309)', () 
 
     // Regression: these three keys used to be missing from RegisterPage in both
     // locales, so the page rendered raw `RegisterPage.*` text.
-    await expect(page.getByText(t('RegisterPage.join_title')).first()).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(page.getByText(t('RegisterPage.join_title')).first()).toBeVisible();
     await expect(page.getByText(t('RegisterPage.join_desc')).first()).toBeVisible();
 
     const emailInput = page.getByLabel(t('RegisterPage.email_label'));
@@ -98,7 +96,6 @@ test.describe('Join an organization — invitee supplies their name (#309)', () 
 
     const registerResponse = page.waitForResponse(
       (res) => res.url().includes('/api/v1/auth/register') && res.request().method() === 'POST',
-      { timeout: 30_000 },
     );
 
     await page.getByRole('button', { name: t('RegisterPage.activate_account') }).click();
@@ -107,6 +104,6 @@ test.describe('Join an organization — invitee supplies their name (#309)', () 
     // was ever sent and the form showed "Imię i nazwisko jest wymagane.".
     expect((await registerResponse).status()).toBe(202);
 
-    await page.waitForURL(/\/login$/, { timeout: 30_000 });
+    await page.waitForURL(/\/login$/);
   });
 });

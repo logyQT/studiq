@@ -2,9 +2,12 @@ import type { Page } from '@playwright/test';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 const getNested = (obj: Record<string, unknown>, keyPath: string): unknown =>
   keyPath.split('.').reduce<unknown>((prev, curr) => {
-    if (typeof prev !== 'object' || prev === null || !(curr in prev)) return undefined;
+    if (!isRecord(prev) || !(curr in prev)) return undefined;
     return prev[curr];
   }, obj);
 

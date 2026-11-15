@@ -10,6 +10,7 @@ import {
 } from '#test/integration/helpers';
 import { asJson } from '#test/helpers/json';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
+import { requiredAt } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -40,7 +41,11 @@ interface SeededOrganization {
 async function getAccessibleQuestions(
   params: AccessibleQuestionsParams,
 ): Promise<AccessibleQuestion[]> {
-  const response = await createServiceClient().rpc('get_accessible_questions', params);
+  const response = await createServiceClient().rpc('get_accessible_questions', {
+    ...params,
+    // PostgREST omits `undefined` args, so the SQL default (NULL = every org) applies.
+    p_org_id: params.p_org_id ?? undefined,
+  });
   return asJson<AccessibleQuestion[]>(response.data ?? []);
 }
 
@@ -331,12 +336,14 @@ describe(`get_accessible_questions RPC`, () => {
       expect(response.error).toBeNull();
       const data = asJson<AccessibleQuestion[]>(response.data ?? []);
       expect(data).toHaveLength(1);
-      expect(data[0].id).toBe(q1Id);
-      expect(data[0].question_options).toBeDefined();
-      expect(Array.isArray(data[0].question_options)).toBe(true);
-      expect(data[0].question_options).toHaveLength(2);
-      expect(data[0].question_options[0].content).toBe('Ans 1');
-      expect(data[0].question_options[0].is_correct).toBe(true);
+      const question = requiredAt(data, 0, 'accessible question');
+      expect(question.id).toBe(q1Id);
+      expect(question.question_options).toBeDefined();
+      expect(Array.isArray(question.question_options)).toBe(true);
+      expect(question.question_options).toHaveLength(2);
+      const option = requiredAt(question.question_options, 0, 'answer option');
+      expect(option.content).toBe('Ans 1');
+      expect(option.is_correct).toBe(true);
     });
 
     it('returns empty when question is not accessible', async () => {

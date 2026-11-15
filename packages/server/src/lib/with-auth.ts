@@ -38,7 +38,7 @@ export async function withAuth(
 
     // Every account is stamped with its type at signup; without a valid claim
     // nothing can be authorized, so the request fails closed.
-    const rawAccountType: unknown = user.app_metadata?.account_type;
+    const rawAccountType: unknown = user.app_metadata.account_type;
     if (!isAccountType(rawAccountType)) {
       return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
     }
@@ -66,7 +66,7 @@ export async function withAuth(
 
       if (membershipResult.data) {
         activeOrgId = cookieOrgId;
-        orgRoleId = membershipResult.data.org_role_id ?? null;
+        orgRoleId = membershipResult.data.org_role_id;
       }
       groupIds = (groupsResult.data ?? []).map((r) => r.group_id);
 

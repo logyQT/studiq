@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import { asJson } from '#test/helpers/json';
+import { requiredAt } from '#test/integration/test-utils';
 
 /** One row of `get_teacher_activity_feed()`. */
 type ActivityFeedItem = {
@@ -282,7 +283,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     await service
       .from('flashcard_practice')
       .update({ organization_id: FOREIGN_ORG })
-      .eq('id', reviews[0].id);
+      .eq('id', requiredAt(reviews, 0, 'seeded review').id);
   });
 
   afterAll(async () => {
@@ -829,6 +830,8 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       .select('id');
     expect(questionsError).toBeNull();
     stampQuestionIds = asJson<Array<{ id: string }>>(questions).map((question) => question.id);
+    const stampOrgQuestionId = requiredAt(stampQuestionIds, 0, 'org stamp question');
+    const stampPersonalQuestionId = requiredAt(stampQuestionIds, 1, 'personal stamp question');
 
     const { data: attempt, error: attemptError } = await service
       .from('quiz_attempts')
@@ -847,7 +850,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     // The first snapshot is one group-visible question of this organization: it stamps the attempt.
     const { error: firstError } = await service.from('quiz_attempt_questions').insert({
       attempt_id: attempt!.id,
-      question_id: stampQuestionIds[0],
+      question_id: stampOrgQuestionId,
     });
     expect(firstError).toBeNull();
     const { data: stamped } = await service
@@ -862,7 +865,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     // A later personal question makes the whole snapshot ineligible: the old stamp must go.
     const { error: secondError } = await service.from('quiz_attempt_questions').insert({
       attempt_id: attempt!.id,
-      question_id: stampQuestionIds[1],
+      question_id: stampPersonalQuestionId,
     });
     expect(secondError).toBeNull();
     const { data: cleared } = await service
@@ -879,25 +882,25 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       .from('quiz_attempt_questions')
       .delete()
       .eq('attempt_id', attempt!.id)
-      .eq('question_id', stampQuestionIds[1]);
+      .eq('question_id', stampPersonalQuestionId);
     expect(deletePersonalError).toBeNull();
     expect(await stampOf(attempt!.id)).toBe(ORG);
 
     // Pointing the remaining row at the personal question clears it again (UPDATE).
     const { error: toPersonalError } = await service
       .from('quiz_attempt_questions')
-      .update({ question_id: stampQuestionIds[1] })
+      .update({ question_id: stampPersonalQuestionId })
       .eq('attempt_id', attempt!.id)
-      .eq('question_id', stampQuestionIds[0]);
+      .eq('question_id', stampOrgQuestionId);
     expect(toPersonalError).toBeNull();
     expect(await stampOf(attempt!.id)).toBeNull();
 
     // Back to the organization's question: eligible again.
     const { error: backError } = await service
       .from('quiz_attempt_questions')
-      .update({ question_id: stampQuestionIds[0] })
+      .update({ question_id: stampOrgQuestionId })
       .eq('attempt_id', attempt!.id)
-      .eq('question_id', stampQuestionIds[1]);
+      .eq('question_id', stampPersonalQuestionId);
     expect(backError).toBeNull();
     expect(await stampOf(attempt!.id)).toBe(ORG);
 

@@ -99,9 +99,8 @@ test.describe('@case:EDU-ASG-01 @area:EDU @prio:P1 create an assignment from the
   }) => {
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
-    const educator = tenant.users.teacher;
-    if (!tenant.org || !educator) {
-      throw new Error(`${CASE} needs the content tenant profile (org and educator)`);
+    if (!tenant.org) {
+      throw new Error(`${CASE} needs the content tenant profile (org)`);
     }
 
     const pageErrors: string[] = [];
@@ -153,7 +152,8 @@ test.describe('@case:EDU-ASG-01 @area:EDU @prio:P1 create an assignment from the
     // --- Step 3: save → the assignment detail in „Szkic” --------------------
     await submit.click();
     await page.waitForURL(ASSIGNMENT_ID);
-    const id = page.url().match(ASSIGNMENT_ID)![1];
+    const [, id] = page.url().match(ASSIGNMENT_ID) ?? [];
+    if (!id) throw new Error(`${CASE} the create flow landed on no assignment url`);
 
     await expect(page.locator('h1')).toHaveText(FORM.title);
     await expect(page.getByText(COPY.draft, { exact: true })).toBeVisible();

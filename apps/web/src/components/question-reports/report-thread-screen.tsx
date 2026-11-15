@@ -56,7 +56,7 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
 
   // Report threads are keyed by id; label the crumb with the reported question
   // excerpt (or the target group) instead of the raw UUID.
-  const questionExcerpt = data?.report.question?.content?.slice(0, 40);
+  const questionExcerpt = data?.report.question?.content.slice(0, 40);
   useBreadcrumbLabel(reportId, questionExcerpt ?? data?.report.group?.name);
 
   const send = useApiMutation<Message, string>({

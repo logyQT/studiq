@@ -6,15 +6,17 @@ This guide walks new team members through setting up the local development envir
 
 ## Prerequisites
 
-- **Docker Desktop** — must be installed and running before any steps
-  [Download Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- **Native Supabase runtime** — the default on Linux x86_64/arm64 and macOS
+  arm64 (glibc ≥ 2.35, `tar`, non-root). Docker Desktop is **optional**: use it
+  only on an unsupported platform or by explicit opt-in
+  (`bun run env:ensure --profile web --runtime docker`).
 - **Node.js 20+** — runtime for the Next.js application
 - **Bun** — package manager and runtime
   ```bash
   # Install bun (if not already installed)
   powershell -c "irm bun.sh/install.ps1 | iex"
   ```
-- **Git** — version control ([Git for Noobs](./GIT-FOR-NOOBS.md))
+- **Git** — version control
 - **GitHub CLI (`gh`)** — required for agents to push branches, create PRs, and manage worktrees
   ([Install `gh`](https://cli.github.com/))
 
@@ -116,7 +118,10 @@ scripts/spin feat/my-feature
 ```
 
 This creates a new git worktree beside the repo (grouped by branch prefix)
-with its own branch off `main`. Move your agent session into it:
+with its own branch off `main`. Each worktree gets its own Supabase stack and
+its own app port (CLI-assigned): **one environment per checkout**, so a second
+stack or server for a different stack/profile in the same checkout is refused
+(exit 6) — spin another worktree instead. Move your agent session into it:
 
 ```bash
 cd ../studiq-worktrees/feat/my-feature
@@ -242,7 +247,7 @@ bun install
 ### 2. Configure the checkout
 
 ```bash
-touch .env.local        # optional for a single checkout — values are derived
+bun run env:setup       # human-only: scaffold .env.local (mode 600, no values)
 ```
 
 Root `.env.local` is the only hand-edited values file (Git-ignored; never
@@ -252,58 +257,112 @@ commit it). Its keys and their shapes are documented — value-free — in
 `supabase stack` backend, which assigns ports and keeps a separate database per
 **project root + git branch + optional `SUPABASE_STACK` name**. Only `APP_PORT`
 can collide between checkouts — set a different one per worktree
-(`bun dev:ports` prints a free port).
+(`bun run env:ports` prints a free port).
 
 ### 3. Start the stack
 
 ```bash
-bun dev:up
+bun run env:ensure --profile web
 ```
 
-> First run may take several minutes while Docker pulls images.
+> First run may take several minutes while the native stack artifacts download.
+> On a fresh machine, start the machine-wide observability stack first
+> ([step 9](#9-start-the-machine-wide-observability-stack-required-for-agent-diagnosis));
+> then this pass also mints the Grafana MCP token (step 3b).
 
-`dev:up` starts (or resumes) **this branch's** Supabase stack, discovers its
-URLs/keys with `supabase status --output-format json`, **exports** them to the
-web process, and starts the web server on `APP_PORT`. It never writes a per-app
-env file, installs, builds or resets anything.
+`env:ensure` starts (or resumes) **this branch's** Supabase stack, discovers its
+URLs/keys with `supabase stack status --output-format json`, **exports** them to
+the web process, builds if the fingerprint changed, and serves on `APP_PORT`. It
+never writes a per-app env file, installs or resets anything; the `qa`/`e2e`
+profiles seed by default (`--no-seed` skips).
 
 Agents (and anyone running several checkouts) should use the production server
 instead of `next dev`:
 
 ```bash
-bun dev:build && bun dev:serve   # or: bun dev:up --prod
+bun run env:build && bun run env:serve   # or: bun run env:ensure --profile web
 ```
+
+### 3b. Mint the agent MCP token
+
+The Grafana MCP needs the machine-wide stack (starting it is [step 9](#9-start-the-machine-wide-observability-stack-required-for-agent-diagnosis))
+and one service-account token. On a fresh machine, start that stack first so
+this run mints the token; if the stack starts later, mint explicitly with
+`bun run env:observability ensure`.
+
+```bash
+bun run env:ensure --profile web     # starts Supabase/build/serve and mints the token
+bun run env:observability            # expect: auth ok (studiq-mcp, Viewer)
+```
+
+If this OpenCode session was already running
+before the token existed, `opencode service restart` (the `{file:...}` token is
+read at config load). `mcp-grafana` must be on PATH — it is baked into the dev
+image (`which mcp-grafana`).
+
+The observability/MCP part is under two minutes warm; the Supabase native
+stack + first build is the long pole in step 3. If the stack is already up
+(`docker compose ls`), do not start a second one. If you are in a worktree and
+the stack is down, do not start it yourself: report `BLOCKED/env` with
+`bun run env:doctor` and ask the primary owner/coordinator.
 
 ### 4. Where values live
 
 There is no generated env file to edit. `.env.local` (plus the process
-environment, which wins) is the input; `scripts/dev` resolves the contract and
+environment, which wins) is the input; the `env` tool resolves the contract and
 exports it to its children. If you put a key in `.env.local`, it is never
 overwritten.
 
 If you need the stack's raw URLs/keys (e.g. shared mode, or a tool that does not
-go through `scripts/dev`):
+go through the `env` tool):
 
 ```bash
-bash scripts/dev supa status            # human-readable endpoints + service state
-bash scripts/dev supa status --env      # exportable KEY=VALUE (APP_URL exported)
+bun run env:supa status            # human-readable endpoints + service state
+bun run env:supa status --env      # exportable KEY=VALUE (APP_URL exported)
 ```
 
 For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
-add `--stack "$SUPABASE_STACK"` to `bash scripts/dev supa status|start|stop|logs`
-and to `bash scripts/dev supa stack destroy`. Database commands do not accept
-`--stack`; use the `DB_URL` + `--remote` form shown in the team workflow above.
+add `--stack "$SUPABASE_STACK"` to `bun run env:supa status|logs`. The stack
+lifecycle goes through `env:ensure` / `env:down` / `env:reset-db`, which own the
+app-port lease and the build lock; the passthrough refuses `stop --all` /
+`restart --all`, `destroy`, `db reset`, `migration down`, `storage rm`, and any
+unscoped or foreign stop/restart. Destroying a stack is a manual,
+ownership-checked `bunx supabase stack destroy --stack <name>`; v1 has no
+command for it. Database commands do
+not accept `--stack`; use the `DB_URL` + `--remote` form in the Author and Team
+member workflows (Team Collaboration) below, or `bun run env:reset-db --yes`.
 
-Studio, Mailpit and API URLs are assigned per stack; `bun dev:status` prints the
+#### The vault is optional
+
+`.env.local` is the only required hand-edited **values** file; a fresh checkout
+runs from it alone. `.env.vault` is an **opt-in** provider-ref file that a human
+creates in the **primary checkout** with:
+
+```bash
+bun run env:setup --vault   # mode 600; comments/empty refs, never a value
+```
+
+Use it only for third-party values the local stack cannot provide: **LLM
+inference** (`LLM_API_KEY`, optionally `LLM_BASE_URL`/`LLM_PROVIDER`) and
+**Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` only for webhook
+testing). Everything else lives in `.env.local` or is discovered from the stack.
+Refs are varlock resolver calls (`op(...)`, `bwp(...)`, `infisical(...)`); the
+file is Git-ignored and `STUDIQ_ENV_VAULT` points at it (default
+`<primary>/.env.vault`). `varlock run --path` is used only when the file exists,
+and `bun run env:verify --full` reports provider status without printing a value.
+
+Studio, Mailpit and API URLs are assigned per stack; `bun run env:status` prints the
 authoritative ones for this branch.
 
 Optional local e-mail delivery uses the Mailpit container (URL from
-`bun dev:status`). Without an SMTP adapter the copyable invite link is the only
+`bun run env:status`). Without an SMTP adapter the copyable invite link is the only
 delivery path.
 
 OpenTelemetry: telemetry is **on** by default. Add `OTEL_SDK_DISABLED=true` to
 `.env.local` to keep traces/metrics/logs off (tests and CI set it); remove the
-line to ship to the local collector (`docker compose up -d`).
+line to ship to the machine-wide collector. Start that stack once from the
+primary checkout (see step 9), never from a worktree. `env:ensure` sets
+`OTEL_SERVICE_NAME=studiq-<branch>` for the app it starts.
 
 ### 5. (Optional) Set up LLM / AI Provider
 
@@ -339,7 +398,7 @@ whatever you've pulled.
 ### 6. Seed the database (optional)
 
 ```bash
-bun dev:reset-db
+bun run env:reset-db --yes
 ```
 
 > `db reset` **deletes all local data** for **this checkout's** project and
@@ -354,50 +413,118 @@ bunx playwright install chromium
 
 ### 8. Start the development server
 
-`bun dev:up` already started it. Use `bun dev` only for a local manual dev
-server; parallel agents should use `bun dev:build && bun dev:serve` (or
-`bun dev:up --prod`) to avoid several `next dev` processes competing for RAM.
+`bun run env:ensure --profile web` already started it. Use `bun run env:dev` only for a local manual
+dev server (human-only `next dev`); `bun run dev:web` starts the same server as a raw shortcut without the env
+handling. Parallel agents should use `bun run env:build && bun run env:serve` (or
+`bun run env:ensure --profile web`) to avoid several `next dev` processes competing for RAM.
 
-### 9. Start the local observability stack (recommended)
+The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`, `dev:status`,
+`dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`). `dev:web` and
+`dev:admin` never called it: they stay as human-only conveniences (`dev:admin` is the `apps/admin` HMR on
+`127.0.0.1:4000`; `env` has no admin equivalent).
+
+### 9. Start the machine-wide observability stack (required for agent diagnosis)
+
+There is **one observability stack per machine**, shared by every checkout,
+worktree and agent. It belongs to the **primary checkout** — on this VM
+`/workspaces/studiq` (find it with `git worktree list`; it is the first entry).
+
+Start it once from the primary checkout, never from a worktree:
 
 ```bash
+cd /workspaces/studiq
 docker compose up -d
 ```
 
-This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
-(metrics) + Grafana** and is what `apps/web/src/instrumentation.ts` ships to by
-default (OTLP on `:4318`). No app env changes are needed — just don't set
-`OTEL_SDK_DISABLED=true`.
+The Compose project name is fixed (`studiq-observability`) and the host ports
+are fixed, so a second `docker compose up` from a worktree would conflict with
+or mutate the same stack rather than create an isolated one. `bun run env:doctor`
+prints the current health, the primary path and this exact start command.
+After it is healthy, `bun run env:observability ensure` (or re-running
+`env:ensure`) mints the agent MCP token; see step 3b.
 
-| UI                          | URL                   |
-| --------------------------- | --------------------- |
-| Grafana (`admin` / `admin`) | http://localhost:3001 |
-| Prometheus                  | http://localhost:9090 |
-| Loki                        | http://localhost:3100 |
-| Tempo                       | http://localhost:3200 |
-| OTLP intake                 | http://localhost:4318 |
+> The primary checkout must contain the fixed project name. If `env:doctor` says
+> its compose file predates it, update that checkout first
+> (`git -C /workspaces/studiq pull`) before starting the stack.
+
+This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
+(metrics) + Grafana** and is where `apps/web/src/instrumentation.ts` ships when
+the app is started through the env tool (OTLP on `:7318`; the SDK default is
+`:4318`). No app env changes are needed — just don't set
+`OTEL_SDK_DISABLED=true`. `env:ensure` sets
+`OTEL_SERVICE_NAME=studiq-<branch>` and
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318` for the app it starts, so
+traces from different worktrees are distinguishable in one collector; set
+either key in `.env.local` to override it. If you previously pinned the old
+`http://localhost:4318` there, update or remove it — an explicit value wins.
+
+| UI                                      | URL                   |
+| --------------------------------------- | --------------------- |
+| Grafana (`admin` / `admin`, local-only) | http://localhost:7001 |
+| Prometheus                              | http://localhost:7090 |
+| Loki                                    | http://localhost:7100 |
+| Tempo                                   | http://localhost:7200 |
+| OTLP intake                             | http://localhost:7318 |
+
+The Grafana admin login is `admin` / `admin` by default and is **local-only**
+(the stack publishes on `127.0.0.1`). To set a different password, run the start
+command from the primary checkout with `GRAFANA_ADMIN_PASSWORD` exported
+(`GRAFANA_ADMIN_PASSWORD='<pw>' docker compose up -d`), or run
+`docker compose --env-file .env.local up -d` there with the key in `.env.local` —
+the repo's only hand-edited values file. Never create a root `.env`: `bun run
+lint` rejects it.
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
-Stop the stack with `docker compose down`.
+Stop the stack with `docker compose down` **from the primary checkout**, only
+when you mean to take telemetry down for the whole machine.
 
 > The services use `restart: unless-stopped`, so they come back **automatically**
 > after a container/VM restart (unless you explicitly `docker compose stop`/`down`
 > them).
+>
+> If an older observability stack holds the new 7000-range host ports, identify
+> it first, then stop it from the directory that owns it before starting the
+> canonical stack:
+>
+> ```bash
+> docker compose ls
+> # the container publishing :7001 is the one to inspect:
+> docker ps --filter publish=7001
+> docker inspect <container> --format \
+>   '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.project.working_dir"}}'
+> # stop the legacy project from its owning directory BEFORE starting the canonical one:
+> cd <owning-directory>
+> docker compose -p <old-project> down
+> ```
+>
+> `compose down` removes the legacy containers/networks but keeps named volumes
+> unless you pass `-v`; do not pass `-v` unless you mean to delete its data.
+>
+> If the owning directory no longer exists, stop only the container holding the
+> port — never reach for an unscoped `docker rm` or `pkill`:
+>
+> ```bash
+> docker ps --filter publish=7001
+> docker stop <container>
+> # optional, scoped cleanup:
+> docker rm <container>
+> ```
 
 ---
 
 ## Stop Local Supabase
 
 ```bash
-bun dev:down --all
+bun run env:down --all
 ```
 
 > Stops only **this branch's** Supabase stack and keeps its data. It refuses
 > when `SUPABASE_SHARED=1` and never touches another checkout's stack. Do not use
 > `supabase stop --all` on a shared machine. To deliberately wipe this branch's
-> database, use `bun dev:reset-db`; `bash scripts/dev supa stack destroy` (add
-> `--stack "$SUPABASE_STACK"` for a named stack) also deletes the project (including data).
+> database, use `bun run env:reset-db --yes`; deleting the stack (including its
+> data) is a manual, ownership-checked `bunx supabase stack destroy --stack <name>`.
+> `env:supa stack destroy` is refused by the tool.
 
 ---
 
@@ -412,7 +539,7 @@ After modifying tables in Supabase Studio, generate a migration:
 ```bash
 # Default stack; for a named stack use the selected-stack conditional in the
 # Author workflow below.
-bash scripts/dev supa db diff -f migration_name
+bun run env:supa db diff -f migration_name
 ```
 
 Supabase compares the current database state with the last migration and writes the diff to `supabase/migrations/`. **Commit this file to git.**
@@ -424,14 +551,21 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 ### Author workflow
 
 ```bash
-# 1. Make changes in Studio (see `bun dev:status` for the current URL)
+# 1. Make changes in Studio (see `bun run env:status` for the current URL)
 # 2. Generate migration from the selected stack (default or SUPABASE_STACK)
 STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
 if [ -n "$STACK" ]; then
-  DB_URL=$(bash scripts/dev supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
-  bash scripts/dev supa db diff -f migration_name --remote="$DB_URL"
+  DB_URL=$(bun run env:supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
+  # the URL's existing query params.
+  case "$DB_URL" in
+    *sslmode=*) ;;
+    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+    *) DB_URL="$DB_URL?sslmode=disable" ;;
+  esac
+  bun run env:supa db diff -f migration_name --remote="$DB_URL"
 else
-  bash scripts/dev supa db diff -f migration_name
+  bun run env:supa db diff -f migration_name
 fi
 # 3. Update seeds if needed
 # 4. Commit and push
@@ -443,113 +577,132 @@ git commit -m "migration: migration_name"
 
 ```bash
 git pull
-bun dev:up                      # this branch's Supabase stack (+ web); does NOT migrate a running stack
+bun run env:ensure --profile web                      # this branch's Supabase stack (+ web); does NOT migrate a running stack
 
 # Apply new migrations to the selected stack (default or SUPABASE_STACK)
 STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
 if [ -n "$STACK" ]; then
-  DB_URL=$(bash scripts/dev supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
-  bash scripts/dev supa db push --remote="$DB_URL" --yes
+  DB_URL=$(bun run env:supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
+  # the URL's existing query params.
+  case "$DB_URL" in
+    *sslmode=*) ;;
+    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+    *) DB_URL="$DB_URL?sslmode=disable" ;;
+  esac
+  bun run env:supa db push --remote="$DB_URL" --yes
 else
-  bash scripts/dev supa db push
+  bun run env:supa db push
 fi
 
-bun dev:reset-db                # (optional) reloads fresh seed data, this branch only
+bun run env:reset-db --yes                # (optional) reloads fresh seed data, this branch only
 ```
 
 Every worktree/branch gets its own stack and database automatically. If another
 developer/agent already runs the app on the same `APP_PORT`, change it in this
-checkout's `.env.local` (`bun dev:ports` prints a free port). Never run
-`supabase stop --all`; `bun dev:down --all` only stops this branch's stack.
+checkout's `.env.local` (`bun run env:ports` prints a free port). Never run
+`supabase stop --all`; `bun run env:down --all` only stops this branch's stack.
 
-### Code review (CodeRabbit)
+### Code review
 
-`.coderabbit.yaml` runs `reviews.profile: 'assertive'` and reviews incrementally
-by default (`auto_incremental_review`), so each push only re-checks the changed
-hunks and deeper findings can arrive one at a time. Request a full pass over the
-whole PR with:
+Normal PRs use the repo-owned `studiq-review` skill
+(`.agents/skills/studiq-review/SKILL.md`): it turns the PR into claims, checks
+them in the code and docs, and spawns a `studiq-qa` worker to verify the
+user-visible behaviour in the running app. The 400-line PR budget and the
+`size/*` labels are described in `docs/ci.md` and ADR-0012.
+
+CodeRabbit is **manual-only**. For an over-budget (`size/XL`) or sensitive PR,
+request a pass with:
 
 ```text
-@coderabbitai full review
+@coderabbitai review
 ```
 
-`@coderabbitai review` is incremental; `@coderabbitai full review` ignores
-earlier comments and reviews the entire diff.
+Nothing starts it on push or label; `.coderabbit.yaml` keeps the repo-specific
+path instructions and review profile that make a requested pass useful.
 
-To catch findings before pushing, run a local CLI review (requires the
-[CodeRabbit CLI](https://docs.coderabbit.ai/cli) and `coderabbit auth login`):
-
-```bash
-coderabbit review --agent                  # tracked changes
-coderabbit review --agent --base main      # whole branch against main
-```
-
-Guard scripts under `scripts/check-*.ts` have a dedicated checklist in
-`.coderabbit.yaml` (errno handling, tracked-but-absent inputs, `--staged` parity,
-exit codes) so a full pass reports all error-handling issues together.
+Run the deterministic gates locally before pushing: `bun run lint`,
+`bun run typecheck:all`, `bun run test:unit`, `bun run review:static` and
+`bun run pr:size`.
 
 ---
 
 ## Useful Commands
 
-| Command                                      | Description                                                                      |
-| -------------------------------------------- | -------------------------------------------------------------------------------- |
-| `bun dev:up`                                 | Start this checkout's stack + web server                                         |
-| `bun dev:up --prod`                          | Production build (if missing) + `next start`                                     |
-| `bun dev:serve`                              | `next start` on `APP_PORT` (no dev server)                                       |
-| `bun dev:status`                             | Health, stack id/endpoints (`--json`)                                            |
-| `bun dev:down [--all]`                       | Stop this checkout's web (+ this stack with `--all`)                             |
-| `bun dev:reset-db`                           | Reset this branch's DB + load seeds                                              |
-| `bun dev:doctor`                             | Explain missing / owned / colliding state                                        |
-| `bun dev:ports`                              | Print a free `APP_PORT` (stack ports are dynamic)                                |
-| `bash scripts/dev supa status`               | This stack's URLs, keys and service state                                        |
-| `bash scripts/dev supa db diff -f <name>`    | Generate migration from current changes                                          |
-| `bash scripts/dev supa migration new <name>` | Create an empty migration manually                                               |
-| `bash scripts/dev supa db push`              | Push migrations to the **default** stack (named stack: see Team member workflow) |
-| `bun dev`                                    | Next.js dev server (agents should not use it)                                    |
-| `bun test`                                   | Bun's built-in test runner — **not** Vitest; use `bun run test`                  |
-| `bun run test`                               | Vitest: all unit + integration tests (no DB reset)                               |
-| `bun test:unit`                              | Run unit tests only                                                              |
-| `bun test:integration`                       | Run integration tests only                                                       |
-| `bun lint`                                   | Lint + import/migration/URL guards (does **not** type-check)                     |
-| `bun lint:all`                               | Type-check + lint                                                                |
-| `gh auth status`                             | Check GitHub CLI authentication                                                  |
-| `scripts/pr`                                 | Create a PR from current branch via `gh`                                         |
-| `scripts/spin <branch>`                      | Create worktree + branch for isolated work                                       |
+| Command                                 | Description                                                                      |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| `bun run env:ensure --profile web`      | Start this checkout's stack + build + serve                                      |
+| `bun run env:ensure --profile qa`       | Plus the QA tenant seed (`--no-seed` to skip)                                    |
+| `bun run env:serve`                     | `next start` on `APP_PORT` (no dev server)                                       |
+| `bun run env:status`                    | Health, stack id/endpoints (`--json`)                                            |
+| `bun run env:down [--all]`              | Stop this checkout's web (+ this stack with `--all`)                             |
+| `bun run env:reset-db --yes`            | Reset this branch's DB + load seeds                                              |
+| `bun run env:doctor`                    | Explain missing / owned / colliding state                                        |
+| `bun run env:observability`             | `status`/`ensure` `[--force]`: validate/mint the Grafana MCP token               |
+| `bun run env:ports`                     | Print a free `APP_PORT` (stack ports are dynamic)                                |
+| `bun run env:supa status`               | This stack's URLs, keys and service state                                        |
+| `bun run env:supa db diff -f <name>`    | Generate migration from current changes                                          |
+| `bun run env:supa migration new <name>` | Create an empty migration manually                                               |
+| `bun run env:supa db push`              | Push migrations to the **default** stack (named stack: see Team member workflow) |
+| `bun run env:dev`                       | Human-only web `next dev` HMR; agents use build+serve                            |
+| `bun run dev:web`                       | Raw web dev server (human-only shortcut, no env handling)                        |
+| `bun run dev:admin`                     | `apps/admin` HMR on `127.0.0.1:4000` (human-only; no `env` equivalent)           |
+| `bun test`                              | Bun's built-in test runner — **not** Vitest; use `bun run test`                  |
+| `bun run test`                          | Vitest: all unit + integration tests (no DB reset)                               |
+| `bun test:unit`                         | Run unit tests only                                                              |
+| `bun test:integration`                  | Run integration tests only                                                       |
+| `bun lint`                              | Lint + import/migration/URL guards (does **not** type-check)                     |
+| `bun lint:all`                          | Type-check + lint                                                                |
+| `bun run review:static`                 | Ast-grep tautology rules + rule tests (+ oxlint unless `--rules-only`)           |
+| `gh auth status`                        | Check GitHub CLI authentication                                                  |
+| `scripts/pr`                            | Create a PR from current branch via `gh`                                         |
+| `scripts/spin <branch>`                 | Create worktree + branch for isolated work                                       |
 
-> Plain `bash scripts/dev supa start|stop|status|db ...` targets this branch's **default**
-> stack because `supabase/config.toml` enables `[experimental] stack = true`.
+> `bun run env:supa status|list|db …` targets this branch's **default** stack
+> because `supabase/config.toml` enables `[experimental] stack = true`.
 > For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`)
-> and add `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`;
-> database commands do not take `--stack` — read the URL and pass it as a remote
-> target:
+> and add `--stack "$SUPABASE_STACK"` to `status`/`list`/`logs`, or to a
+> `start`/`stop` of a stack this checkout owns; database commands do not take
+> `--stack` — read the URL, append `sslmode=disable` (the same rule as the
+> Team member workflow above), and pass it as a remote target:
 >
 > ```bash
-> DB_URL=$(bash scripts/dev supa status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
-> bash scripts/dev supa db reset --remote="$DB_URL" --yes
+> DB_URL=$(bun run env:supa status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+> case "$DB_URL" in
+>   *sslmode=*) ;;
+>   *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+>   *) DB_URL="$DB_URL?sslmode=disable" ;;
+> esac
+> bun run env:supa db push --remote="$DB_URL" --yes
 > ```
 >
-> Prefer the `bun dev:*` commands — they add the app port checks and build lock.
+> `env:supa` is a guarded passthrough: `stop --all`/`restart --all`, `destroy`,
+> `db reset`, `migration down`, `storage rm`, and unscoped or foreign
+> stop/restart forms are refused (every stack mutation is refused under
+> `SUPABASE_SHARED=1`). Use `env:ensure` / `env:down` / `env:reset-db`; they own
+> the port lease and build lock.
 
 ---
 
 ## Local URLs
 
 Supabase stack endpoints (API, DB, Studio, Mailpit) are assigned per project
-(20000-32767) and printed by `bun dev:status`. Fixed services:
+(20000-32767) and printed by `bun run env:status`. Fixed services:
 
 | Service                 | URL                                           |
 | ----------------------- | --------------------------------------------- |
 | App                     | `http://localhost:$APP_PORT` (default `3000`) |
-| Grafana (observability) | http://localhost:3001                         |
-| Prometheus              | http://localhost:9090                         |
-| Tempo (traces API)      | http://localhost:3200                         |
-| Loki (logs API)         | http://localhost:3100                         |
-| OTLP intake (collector) | http://localhost:4318                         |
+| Grafana (observability) | http://localhost:7001                         |
+| Prometheus              | http://localhost:7090                         |
+| Tempo (traces API)      | http://localhost:7200                         |
+| Loki (logs API)         | http://localhost:7100                         |
+| OTLP intake (collector) | http://localhost:7318                         |
 
-A second worktree/branch gets its own stack automatically; only `APP_PORT` needs
-a distinct value. The shared QA stack keeps its fixed ports (`:54421` API,
-`:54424` Mailpit) until the dashboard can discover stack ports.
+A second worktree/branch gets its own **Supabase** stack automatically; only
+`APP_PORT` needs a distinct value. Observability is different: it is **one stack
+per machine**, owned by the primary checkout, with fixed ports. The shared QA
+stack keeps its fixed ports (`:54421` API, `:54424` Mailpit) until the dashboard
+can discover stack ports.
 
 ---
 
@@ -569,5 +722,7 @@ bun test:coverage     # Run with coverage report
 
 - `.env.local` is gitignored — **never commit it**
 - Each team member must complete these steps independently
-- Ensure Docker is running **before** `bun dev:up` and `docker compose up`
-- No per-app env file is generated: `scripts/dev` exports this checkout's resolved values to the processes it starts, and `varlock` injects `.env.local` into the `bun run …` scripts
+- Native is the default stack runtime; Docker is needed only for the machine-wide
+  observability stack (start `docker compose up -d` from the primary checkout, not
+  a worktree) or an explicit `--runtime docker`
+- No per-app env file is generated: the `env` tool exports this checkout's resolved values to the processes it starts, and `varlock` injects `.env.local` into the `bun run …` scripts

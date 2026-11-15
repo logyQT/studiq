@@ -97,7 +97,7 @@ export async function resetInviteeState(
     .returns<Array<{ user_id: string; joined_at: string | null }>>();
   if (error) throw new Error(`resetInviteeState: read memberships: ${error.message}`);
 
-  const userIds = (membershipRows ?? []).map((row) => row.user_id);
+  const userIds = membershipRows.map((row) => row.user_id);
   const emailById = new Map<string, string>();
   if (userIds.length > 0) {
     const { data: profiles, error: profileError } = await db
@@ -106,10 +106,10 @@ export async function resetInviteeState(
       .in('id', userIds)
       .returns<Array<{ id: string; email: string }>>();
     if (profileError) throw new Error(`resetInviteeState: read profiles: ${profileError.message}`);
-    for (const profile of profiles ?? []) emailById.set(profile.id, profile.email);
+    for (const profile of profiles) emailById.set(profile.id, profile.email);
   }
 
-  const members: Member[] = (membershipRows ?? []).map((row) => ({
+  const members: Member[] = membershipRows.map((row) => ({
     id: row.user_id,
     email: emailById.get(row.user_id) ?? '',
     joinedAt: row.joined_at,

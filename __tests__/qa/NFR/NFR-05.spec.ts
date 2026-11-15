@@ -91,7 +91,7 @@ async function tabTo(
   const active = await page.evaluate(() => {
     const element = document.activeElement;
     return element instanceof HTMLElement
-      ? `${element.tagName}${element.id ? `#${element.id}` : ''} „${(element.innerText ?? '').trim().slice(0, 30)}”`
+      ? `${element.tagName}${element.id ? `#${element.id}` : ''} „${element.innerText.trim().slice(0, 30)}”`
       : 'none';
   });
   throw new Error(`focus did not reach ${label} after ${max}× ${key} (focused: ${active})`);
@@ -130,7 +130,8 @@ function hasVisibleFocus(style: FocusStyle): boolean {
 
   const ring = style.boxShadow.split(/,(?![^(]*\))/).some((layer) => {
     const lengths = (layer.match(/-?\d*\.?\d+px/g) ?? []).map((value) => Number.parseFloat(value));
-    return lengths.length >= 4 && lengths[3] >= 2 && !isTransparent(layer);
+    const spread = lengths[3];
+    return spread !== undefined && spread >= 2 && !isTransparent(layer);
   });
 
   return outline || ring;

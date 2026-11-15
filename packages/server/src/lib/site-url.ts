@@ -21,7 +21,7 @@ export function resolveSiteUrl(env: Env = process.env): string {
 
 /**
  * Canonical public origin for generated URLs (metadata, sitemap, mock checkout
- * redirects). The default matches the fixed local dev contract (`bun dev:up`,
+ * redirects). The default matches the fixed local dev contract (`bun run env:ensure --profile web`,
  * port 3000). Production validates this value before the server starts (see
  * `assertProductionSiteUrl`).
  */

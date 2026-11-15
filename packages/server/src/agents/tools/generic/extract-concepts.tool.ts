@@ -1,4 +1,5 @@
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
+import { partialList } from '@studiq/server/lib/partial-result';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { z } from '@studiq/server/lib/zod';
 import { tool } from 'ai';
@@ -25,7 +26,7 @@ export const extractConceptsTool = tool({
       agentName: 'general',
       eventType: 'tool_call',
       label: 'extract_concepts',
-      data: { termCount: terms?.length },
+      data: { termCount: partialList(terms).length },
     });
     return { terms };
   },

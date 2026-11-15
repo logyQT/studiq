@@ -3,6 +3,7 @@ import type { PaymentDriver } from '@studiq/server/lib/payment/payment-gateway';
 import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -45,7 +46,7 @@ export class PaymentService {
     if (error) return toDbFailure(error);
 
     return success(
-      (data ?? []).map((payment) => ({
+      dbRows(data).map((payment) => ({
         id: payment.id,
         planKey: payment.plan_key,
         planName: payment.plan_name,

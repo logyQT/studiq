@@ -30,11 +30,13 @@ import {
 } from '@studiq/ui';
 import { Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { availableSeats } from '@/lib/seats';
 
 interface Pool {
   id: string;
@@ -141,9 +143,7 @@ export default function ManageSeatsPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useOrgScopedLoad(loadData);
 
   const assignedUserIds = new Set(assignments.map((a) => a.userId));
   const unassignedMembers = members.filter((m) => !assignedUserIds.has(m.id));
@@ -432,7 +432,7 @@ export default function ManageSeatsPage() {
                   </TableHeader>
                   <TableBody>
                     {pools.map((pool) => {
-                      const available = pool.total - pool.assigned;
+                      const available = availableSeats(pool.total, pool.assigned);
                       // Only flag a pool once seats have actually been assigned; a fresh
                       // single-seat pool (1/0/1) is not "low", it is simply untouched.
                       const nearFull =

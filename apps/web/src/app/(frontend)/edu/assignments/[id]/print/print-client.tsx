@@ -83,7 +83,7 @@ export default function PrintAssignmentClient() {
 
   if (!assignment) return null;
 
-  const questions = assignment.assignment_questions ?? [];
+  const questions = assignment.assignment_questions;
 
   return (
     <div className="print-container">
@@ -162,7 +162,7 @@ export default function PrintAssignmentClient() {
               )}
             </p>
 
-            {isMcq && q.question_answers && (
+            {isMcq && q.question_answers.length > 0 && (
               <div className="answer-bubbles">
                 {q.question_answers.map((ans) => (
                   <div key={ans.id} className="bubble">
@@ -173,7 +173,7 @@ export default function PrintAssignmentClient() {
               </div>
             )}
 
-            {isTf && q.question_answers && (
+            {isTf && q.question_answers.length > 0 && (
               <div className="answer-bubbles">
                 {q.question_answers.map((ans) => (
                   <div key={ans.id} className="bubble">
@@ -200,7 +200,7 @@ export default function PrintAssignmentClient() {
           <h2 className="text-lg font-bold mb-4">{t('answer_key')}</h2>
           {questions.map((aq, i) => {
             const q = aq.question;
-            const correctAnswers = q.question_answers?.filter((a) => a.is_correct) ?? [];
+            const correctAnswers = q.question_answers.filter((a) => a.is_correct);
 
             return (
               <p key={aq.id} className="mb-2">

@@ -16,12 +16,14 @@ import 'katex/dist/katex.min.css';
 const sanitizeSchema = structuredClone(defaultSchema);
 sanitizeSchema.tagNames!.push('audio');
 sanitizeSchema.attributes!.audio = ['src', 'controls'];
+// `defaultSchema` leaves `span` undeclared at runtime, so both lists need their
+// own empty fallback — the index signature is optional either way.
 sanitizeSchema.attributes!.span = [
-  ...(sanitizeSchema.attributes!.span || []),
+  ...(sanitizeSchema.attributes!.span ?? []),
   ['className', 'math', 'math-inline', 'math-display', /^hljs-/],
 ];
 sanitizeSchema.attributes!.div = [
-  ...(sanitizeSchema.attributes!.div || []),
+  ...(sanitizeSchema.attributes!.div ?? []),
   ['className', 'math', 'math-display'],
 ];
 
@@ -89,7 +91,7 @@ function MarkdownListItem({ children }: MarkdownElementProps<'li'>) {
 }
 
 function MarkdownPre({ children }: MarkdownElementProps<'pre'>) {
-  return <>{children}</>;
+  return children;
 }
 
 function MarkdownCode({ className: codeClassName, children }: MarkdownElementProps<'code'>) {

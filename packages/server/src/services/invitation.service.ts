@@ -7,6 +7,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
@@ -129,10 +130,12 @@ export class InvitationService {
       );
 
       outcomes.forEach((outcome, index) => {
+        const job = allowed[index];
+        if (!job) return;
         const attributes = {
           traceId: ctx.traceId,
           organizationId,
-          invitationId: allowed[index].invitationId,
+          invitationId: job.invitationId,
         };
         if (outcome.status === 'fulfilled') log('invitation.mail_sent', attributes);
         else
@@ -164,7 +167,7 @@ export class InvitationService {
         'email, inviter_id, is_accepted, expires_at, organization_id, target_org_role_id, organizations!inner(name), org_roles!inner(name, organization_id)',
       )
       .eq('token', token)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
 
@@ -175,9 +178,9 @@ export class InvitationService {
       expiresAt: data.expires_at,
       organizationId: data.organization_id ?? null,
       targetOrgRoleId: data.target_org_role_id,
-      organizationName: data.organizations?.name ?? '',
-      orgRoleName: data.org_roles?.name ?? '',
-      roleOrganizationId: data.org_roles?.organization_id ?? null,
+      organizationName: data.organizations.name,
+      orgRoleName: data.org_roles.name,
+      roleOrganizationId: data.org_roles.organization_id,
     };
   }
 
@@ -401,7 +404,8 @@ export class InvitationService {
       }>
     >
   > {
-    if (invitations.length === 0) return failure('BAD_REQUEST');
+    const [firstInvitation] = invitations;
+    if (!firstInvitation) return failure('BAD_REQUEST');
 
     const supabase = await this.clientFactory();
 
@@ -410,7 +414,7 @@ export class InvitationService {
     const targetOrg = await this.resolveTargetOrganization(
       supabase,
       ctx,
-      invitations[0].organizationId,
+      firstInvitation.organizationId,
     );
     if (!targetOrg.success) return targetOrg;
 
@@ -442,7 +446,7 @@ export class InvitationService {
 
     if (roleError) return toDbFailure(roleError);
 
-    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id));
+    const foundRoleIds = new Set(dbRows(orgRoles).map((role) => role.id));
     const roleIssues: ZodIssue[] = [];
     invitations.forEach((invite, index) => {
       if (!foundRoleIds.has(invite.targetOrgRoleId)) {
@@ -480,7 +484,7 @@ export class InvitationService {
       .select('id, token, email');
 
     if (insertError) return toDbFailure(insertError);
-    if (created?.length !== invitations.length) return failure('INTERNAL_SERVER');
+    if (created.length !== invitations.length) return failure('INTERNAL_SERVER');
 
     // `INSERT ... SELECT` does not promise result order, so map by e-mail back
     // to the input order the page renders. Duplicate addresses are
@@ -617,8 +621,8 @@ export class InvitationService {
     // The accepting user is not a member yet, and org_members has RLS, so a
     // user-scoped count would always see 0 rows and never hit the limit. The
     // caller is excluded: re-accepting an invitation (or a manager re-inviting
-    // an existing member) updates that member's own row via the upsert below
-    // and must not consume a second seat.
+    // an existing member) updates that member's own row inside the function's
+    // upsert and must not consume a second seat.
     const { count: otherMemberCount, error: countError } = await supabase
       .from('org_members')
       .select('*', { count: 'exact', head: true })
@@ -633,70 +637,24 @@ export class InvitationService {
       supabase,
     );
 
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .select('id, name')
-      .eq('id', organizationId)
-      .single();
+    // The seat/provisioning reads above stay in the app layer (they need
+    // `limitsResolver`). Everything that writes is one statement: the function
+    // claims the token, upserts the membership and joins the default group in a
+    // single transaction, so a failure at any step rolls the claim back and the
+    // invitation stays usable for a retry (#1067).
+    //
+    // The single-use claim is still the first write and still wins the race:
+    // `SELECT … FOR UPDATE` serialises concurrent accepts, and the loser gets
+    // zero rows -> GONE, exactly like an expired token.
+    const { data, error } = await supabase.rpc('accept_org_invitation', {
+      p_token: inviteToken,
+      p_user_id: userId,
+    });
 
-    if (orgError || !org) return failure('GONE');
+    if (error) return toDbFailure(error);
 
-    // Single-use claim: consume the token BEFORE any membership write, so two
-    // concurrent accepts cannot both pass the read check above. `IS NOT TRUE`
-    // (not `= false`) is null-safe: a legacy NULL row is claimable, and once
-    // claimed it no longer matches. Losing the claim means the token was already
-    // used (or used by the concurrent request) -> 410, exactly like expiry.
-    // Ordering matters: the seat limit above can still reject the accept without
-    // burning the token.
-    const { data: claimed, error: claimError } = await supabase
-      .from('invitations')
-      .update({ is_accepted: true })
-      .eq('token', inviteToken)
-      .not('is_accepted', 'is', true)
-      .select('id')
-      .maybeSingle();
-
-    if (claimError) return toDbFailure(claimError);
-    if (!claimed) return failure('GONE');
-
-    // Explicit composite conflict target: supabase-js defaults to the primary
-    // key (`id`), which never conflicts here, so the "upsert" degraded to a
-    // plain INSERT and a re-accept died on org_members_organization_id_user_id_key.
-    const { error: memberError } = await supabase
-      .from('org_members')
-      .upsert(
-        {
-          organization_id: organizationId,
-          user_id: userId,
-          org_role_id: invite.targetOrgRoleId,
-        },
-        { onConflict: 'organization_id,user_id' },
-      )
-      .select()
-      .single();
-
-    if (memberError) return toDbFailure(memberError);
-
-    const { data: defaultGroup } = await supabase
-      .from('groups')
-      .select('id')
-      .eq('organization_id', organizationId)
-      .eq('is_default', true)
-      .single();
-
-    if (defaultGroup) {
-      // Re-accepts must not hit UNIQUE(group_id, user_id), and must not
-      // downgrade a member who already has a different group role.
-      const { error: me } = await supabase.from('group_members').upsert(
-        {
-          group_id: defaultGroup.id,
-          user_id: userId,
-          role: 'member',
-        },
-        { onConflict: 'group_id,user_id', ignoreDuplicates: true },
-      );
-      if (me) return toDbFailure(me);
-    }
+    const [accepted] = data;
+    if (!accepted) return failure('GONE');
 
     if (invite.inviterId) {
       await this.notifier.invitationAccepted({
@@ -706,7 +664,11 @@ export class InvitationService {
       });
     }
 
-    return success({ id: org.id, name: org.name, orgRoleId: invite.targetOrgRoleId });
+    return success({
+      id: accepted.organization_id,
+      name: accepted.organization_name,
+      orgRoleId: accepted.org_role_id,
+    });
   }
 
   async listInvitations(
@@ -744,12 +706,12 @@ export class InvitationService {
     if (error) return toDbFailure(error);
 
     return success(
-      (data ?? []).map((inv) => {
+      dbRows(data).map((inv) => {
         return {
           id: inv.id,
           email: inv.email,
           targetOrgRoleId: inv.target_org_role_id,
-          orgRoleName: inv.org_roles?.name ?? '',
+          orgRoleName: inv.org_roles.name,
           isAccepted: inv.is_accepted,
           expiresAt: inv.expires_at,
           createdAt: inv.created_at,

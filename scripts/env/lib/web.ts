@@ -78,7 +78,7 @@ function recordsPid(pid: number): boolean {
  * PID of this checkout's `next start`/dev server, or null.
  *
  * The pid file alone is not proof — the PID may have been reused by an
- * unrelated process. Both startup paths (`scripts/dev` and `startWebServer`)
+ * unrelated process. Both startup paths (`startDevServer` and `startWebServer`)
  * set `STUDIQ_DEV_WORKTREE`, so this checkout's marker (and a Next-looking
  * command) is required: a command that merely mentions the checkout path is
  * not enough. Readiness additionally needs the recorded app port and listener
@@ -444,4 +444,68 @@ export async function waitForWeb(
 
 export function webLogPath(): string {
   return WEB_LOG;
+}
+
+export interface StartDevOptions {
+  appPort: number;
+  appUrl: string;
+  env: NodeJS.ProcessEnv;
+  /** Inherit the terminal (human-only HMR) instead of `.dev/web.log`. */
+  foreground: boolean;
+}
+
+export interface DevServerHandle {
+  pid: number;
+  /** Resolves with the HMR process's exit code. */
+  exit: Promise<number | null>;
+}
+
+/**
+ * Start the human-only HMR server (`next dev`). Agents never call this; they
+ * build + serve. The PID file is written in the same `pid\nport` shape as
+ * `startWebServer`, so a later `env:down`/`ensure` stops the HMR server too.
+ */
+export function startDevServer(options: StartDevOptions): DevServerHandle {
+  ensureDevDir();
+  const env = {
+    ...options.env,
+    PORT: String(options.appPort),
+    APP_URL: options.appUrl,
+    NEXT_PUBLIC_SITE_URL: options.env.NEXT_PUBLIC_SITE_URL || options.appUrl,
+    STUDIQ_DEV_WORKTREE: REPO_ROOT,
+  };
+  const command = [process.execPath, 'run', '--filter', '@studiq/web', 'dev'];
+
+  writeFileSync(
+    WEB_LOG,
+    `\n===== ${new Date().toISOString()} env:dev (hmr, port ${options.appPort}) =====\n`,
+    { flag: 'a', mode: 0o600 },
+  );
+
+  const child = options.foreground
+    ? spawn(command[0] as string, command.slice(1), {
+        cwd: REPO_ROOT,
+        env,
+        stdio: 'inherit',
+      })
+    : (() => {
+        const log = openSync(WEB_LOG, 'a', 0o600);
+        const background = spawn(command[0] as string, command.slice(1), {
+          cwd: REPO_ROOT,
+          env,
+          detached: true,
+          stdio: ['ignore', log, log],
+        });
+        closeSync(log);
+        background.unref();
+        return background;
+      })();
+
+  const pid = child.pid;
+  if (!pid) throw new Error('could not start the HMR server');
+  writeFileSync(WEB_PID_FILE, `${pid}\n${options.appPort}\n`, { mode: 0o600 });
+  const exit = new Promise<number | null>((resolve) => {
+    child.once('exit', (code) => resolve(code));
+  });
+  return { pid, exit };
 }

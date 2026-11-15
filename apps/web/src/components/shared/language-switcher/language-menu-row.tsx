@@ -61,7 +61,7 @@ export function LanguageMenuRow(props: LanguageMenuRowProps) {
   // Mobile drawer: the row drills into a dedicated language view of the same
   // drawer instead of expanding inline (an inline list shifts every row below
   // it and fights the drawer's swipe-to-close).
-  if (props.variant === 'plain' && props.onOpen) {
+  if (props.onOpen) {
     const onOpen = props.onOpen;
     return (
       <button type="button" onClick={onOpen} className={cn(PLAIN_ROW_CLASS, 'py-3')}>

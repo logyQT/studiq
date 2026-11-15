@@ -1,0 +1,9 @@
+id: tautological-assertion-tsx
+valid:
+  - |
+    expect(load()).toBe(expected);
+invalid:
+  - |
+    expect(f(x)).toBe(f(x));
+  - |
+    expect(<Panel />).toStrictEqual(<Panel />);

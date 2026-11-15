@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { firstRecorded, requiredValue } from '#test/mocks/recorded';
 
 const PASSWORD = 'pass';
 
@@ -32,11 +33,18 @@ test.describe('Manager organization switch', () => {
     // Whichever org the manager landed on, derive it from the switcher itself
     // instead of relying on seed ordering.
     const switcherText = await switcher.innerText();
-    const activeOrg = Object.keys(ORG_STUDENT).find((name) => switcherText.includes(name));
-    expect(activeOrg).toBeDefined();
-    const otherOrg = Object.keys(ORG_STUDENT).find((name) => name !== activeOrg)!;
+    const activeOrg = firstRecorded(
+      Object.keys(ORG_STUDENT).filter((name) => switcherText.includes(name)),
+      'the organisation the manager landed on',
+    );
+    const otherOrg = firstRecorded(
+      Object.keys(ORG_STUDENT).filter((name) => name !== activeOrg),
+      'a second organisation to switch to',
+    );
+    const activeName = requiredValue(ORG_STUDENT[activeOrg], activeOrg);
+    const otherName = requiredValue(ORG_STUDENT[otherOrg], otherOrg);
 
-    await expect(page.getByText(ORG_STUDENT[activeOrg!])).toBeVisible();
+    await expect(page.getByText(activeName)).toBeVisible();
 
     // Switch while already on the overview — this is the reported repro: the
     // route does not change, so nothing remounts the page.
@@ -45,15 +53,15 @@ test.describe('Manager organization switch', () => {
 
     await expect(switcher).toContainText(otherOrg);
     expect(new URL(page.url()).pathname).toBe('/manage');
-    await expect(page.getByText(ORG_STUDENT[otherOrg])).toBeVisible();
-    await expect(page.getByText(ORG_STUDENT[activeOrg!])).toHaveCount(0);
+    await expect(page.getByText(otherName)).toBeVisible();
+    await expect(page.getByText(activeName)).toHaveCount(0);
 
     // Symmetric: switch back on the same page and expect the first org again.
     await switcher.click();
-    await page.getByRole('menuitem', { name: new RegExp(activeOrg!) }).click();
+    await page.getByRole('menuitem', { name: new RegExp(activeOrg) }).click();
 
-    await expect(switcher).toContainText(activeOrg!);
-    await expect(page.getByText(ORG_STUDENT[activeOrg!])).toBeVisible();
-    await expect(page.getByText(ORG_STUDENT[otherOrg])).toHaveCount(0);
+    await expect(switcher).toContainText(activeOrg);
+    await expect(page.getByText(activeName)).toBeVisible();
+    await expect(page.getByText(otherName)).toHaveCount(0);
   });
 });

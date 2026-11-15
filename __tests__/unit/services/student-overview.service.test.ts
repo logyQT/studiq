@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { asService } from '#test/helpers/service-double';
+import { firstRecorded, requiredValue } from '#test/mocks/recorded';
 
 // #655: the data behind "continue where you left off", today's progress and the recent activity
 // timeline. Everything is the caller's own, read through the request client.
@@ -94,7 +95,7 @@ function service(tables: Tables) {
           ),
         }),
     };
-    const b = tableBuilders[table]();
+    const b = requiredValue(tableBuilders[table], table)();
     builders[table] = b;
     return b;
   });
@@ -143,7 +144,7 @@ describe('StudentOverviewService.getOverview', () => {
         },
       ],
     });
-    const open = attemptQueue[0];
+    const open = firstRecorded(attemptQueue, 'the open-attempt query');
 
     const result = await s.getOverview(ctx, NOW);
 
@@ -196,7 +197,9 @@ describe('StudentOverviewService.getOverview', () => {
     const result = await s.getOverview(ctx, NOW);
 
     expect(result.success && result.data.reviewedToday).toBe(12);
-    expect(builders.user_daily_activity.eq).toHaveBeenCalledWith('date', '2026-10-27');
+    expect(
+      requiredValue(builders.user_daily_activity, 'user_daily_activity').eq,
+    ).toHaveBeenCalledWith('date', '2026-10-27');
   });
 
   it('merges sessions and attempts into one timeline, newest first, with scores on their own scale', async () => {
@@ -260,7 +263,7 @@ describe('StudentOverviewService.getOverview', () => {
 
     const result = await s.getOverview(ctx, NOW);
 
-    expect(result.success && result.data.activity[0].scorePct).toBe(50);
+    expect(result.success && result.data.activity[0]?.scorePct).toBe(50);
   });
 
   it('leaves the percentage out when a practice quiz has no closed question', async () => {
@@ -282,7 +285,7 @@ describe('StudentOverviewService.getOverview', () => {
 
     const result = await s.getOverview(ctx, NOW);
 
-    expect(result.success && result.data.activity[0].scorePct).toBeNull();
+    expect(result.success && result.data.activity[0]?.scorePct).toBeNull();
   });
 
   it('does not leak the result of an assignment the teacher withholds', async () => {
@@ -303,7 +306,7 @@ describe('StudentOverviewService.getOverview', () => {
 
     const result = await s.getOverview(ctx, NOW);
 
-    expect(result.success && result.data.activity[0].scorePct).toBeNull();
+    expect(result.success && result.data.activity[0]?.scorePct).toBeNull();
   });
 
   it('keeps only the eight newest lines', async () => {

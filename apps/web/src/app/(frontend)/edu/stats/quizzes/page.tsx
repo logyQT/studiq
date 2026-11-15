@@ -35,7 +35,7 @@ export default function TeacherQuizStats() {
   useEffect(() => {
     apiGet<QuizData[]>('/api/v1/stats/teacher/quizzes')
       .then((data) => {
-        setQuizzes(data ?? []);
+        setQuizzes(data);
         setLoading(false);
         return undefined;
       })

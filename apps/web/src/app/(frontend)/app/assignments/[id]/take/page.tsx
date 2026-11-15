@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { ApiError, apiPost } from '@/lib/api';
+import { toSaveAnswersPayload, type SavedAnswer } from '@/lib/quiz-draft';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AttemptData {
@@ -31,12 +32,6 @@ interface AttemptData {
 interface UploadedPhoto {
   url: string;
   name: string;
-}
-
-interface SubmitAnswer {
-  questionId: string;
-  selectedAnswerId?: string;
-  textAnswer?: string;
 }
 
 /** `{ data: { imageUrl } }` from the upload route, narrowed without an assertion. */
@@ -120,7 +115,7 @@ export default function TakeAssignmentPage() {
     setAnswers(restored);
   }, [attempt]);
 
-  const submitMutation = useApiMutation<unknown, { attemptId: string; answers: SubmitAnswer[] }>({
+  const submitMutation = useApiMutation<unknown, { attemptId: string; answers: SavedAnswer[] }>({
     mutationFn: (body) =>
       apiPost<unknown>(`/api/v1/quiz/${body.attemptId}`, {
         attemptId: body.attemptId,
@@ -166,18 +161,10 @@ export default function TakeAssignmentPage() {
     if (!attempt || submitting) return;
     setSubmitting(true);
     try {
-      // `open` questions carry free text; only mcq/true_false carry an option id.
-      const typeById = new Map((attempt.questions ?? []).map((q) => [q.id, q.type]));
-      const formattedAnswers: SubmitAnswer[] = Object.entries(answers).flatMap(
-        ([questionId, value]): SubmitAnswer[] => {
-          if (!value.trim()) return [];
-          return typeById.get(questionId) === 'open'
-            ? [{ questionId, textAnswer: value.trim() }]
-            : [{ questionId, selectedAnswerId: value }];
-        },
-      );
-
-      await submitMutation.mutateAsync({ attemptId: attempt.id, answers: formattedAnswers });
+      await submitMutation.mutateAsync({
+        attemptId: attempt.id,
+        answers: toSaveAnswersPayload(attempt.questions, answers),
+      });
       router.push(`/app/assignments/${id}`);
     } finally {
       setSubmitting(false);
@@ -212,12 +199,12 @@ export default function TakeAssignmentPage() {
     );
   }
 
-  const question = attempt.questions?.[currentIndex];
+  const question = attempt.questions[currentIndex];
   if (!question) return null;
 
   const isMcq = question.type === 'mcq' || question.type === 'true_false';
   const isOpen = question.type === 'open';
-  const progress = `${currentIndex + 1} / ${attempt.questions?.length ?? 0}`;
+  const progress = `${currentIndex + 1} / ${attempt.questions.length}`;
 
   const remainingSeconds = remainingMs !== null ? Math.floor(remainingMs / 1000) : null;
   const minutesLeft = remainingSeconds !== null ? Math.floor(remainingSeconds / 60) : null;
@@ -250,7 +237,7 @@ export default function TakeAssignmentPage() {
       <div className="w-full bg-muted rounded-full h-1.5">
         <div
           className="bg-primary h-1.5 rounded-full transition-all"
-          style={{ width: `${((currentIndex + 1) / (attempt.questions?.length ?? 1)) * 100}%` }}
+          style={{ width: `${((currentIndex + 1) / attempt.questions.length) * 100}%` }}
         />
       </div>
 
@@ -352,7 +339,7 @@ export default function TakeAssignmentPage() {
           {t('previous')}
         </Button>
 
-        {currentIndex < (attempt.questions?.length ?? 1) - 1 ? (
+        {currentIndex < attempt.questions.length - 1 ? (
           <Button onClick={() => setCurrentIndex((i) => i + 1)}>{t('next')}</Button>
         ) : (
           <Button onClick={handleSubmit} disabled={submitting}>

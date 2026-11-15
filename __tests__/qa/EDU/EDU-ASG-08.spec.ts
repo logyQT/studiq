@@ -1,9 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
 
 /**
- * EDU-ASG-08 — grading a student's submission, per student (`/edu/assignments/:id/results/:studentId`).
+ * EDU-ASG-08 — grading a student's submission, per attempt (`/edu/assignments/:id/results/:attemptId`).
  *
  * Case steps: „Oceń” next to a student in the results table, grade the open
  * question (points + feedback, „Zapisz ocenę”), then try points above the maximum
@@ -202,7 +205,7 @@ async function publishAssignment(
   const published = await postJson<AssignmentDetail>(
     page,
     `/api/v1/teacher/assignments/${id}/publish`,
-    {},
+    { deadline: PUBLISH_DEADLINE },
   );
   expect(published.status, `POST /api/v1/teacher/assignments/${id}/publish`).toBe(200);
   expect(published.body.data.status, 'the assignment is published').toBe('published');
@@ -242,10 +245,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     const tenant: QaTenant = loadTenant(CASE);
-    const teacher = tenant.users.teacher;
-    const student = tenant.users.student;
-    expect(teacher, 'the tenant seeds the teacher').toBeTruthy();
-    expect(student, 'the tenant seeds the student').toBeTruthy();
+    const student = tenantUser(tenant, 'student');
     expect(tenant.group?.id, 'the tenant has the group the case targets').toBeTruthy();
 
     // A per-execution tag keeps repeated runs against the same tenant apart.
@@ -291,6 +291,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     // ── Student: submits the attempt, with a photo on the open question ──────
     const studentContext = await browser.newContext({ baseURL });
     let uploadedImageUrl: string;
+    let attemptId: string | undefined;
     try {
       const studentPage = await studentContext.newPage();
       const studentErrors: string[] = [];
@@ -300,7 +301,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
       const started = await studentPage.request.post(`/api/v1/assignments/${assignment.id}/start`);
       expect(started.status(), 'POST /api/v1/assignments/:id/start').toBe(200);
-      const attemptId = (await json<ApiEnvelope<{ id: string }>>(started)).data.id;
+      attemptId = (await json<ApiEnvelope<{ id: string }>>(started)).data.id;
 
       const uploaded = await studentPage.request.post(
         `/api/v1/assignments/${assignment.id}/upload-image`,
@@ -335,6 +336,8 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
       await studentContext.close();
     }
 
+    if (!attemptId) throw new Error(`${CASE} the student attempt was not created`);
+
     // ── Step 1: the results table offers „Oceń” for the submitted attempt ────
     await page.goto(`/edu/assignments/${assignment.id}/results`);
     await expect(page).toHaveURL(new RegExp(`/edu/assignments/${assignment.id}/results$`));
@@ -348,7 +351,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
     await row.getByRole('link', { name: COPY.grade, exact: true }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/edu/assignments/${assignment.id}/results/${student.id}$`),
+      new RegExp(`/edu/assignments/${assignment.id}/results/${attemptId}$`),
     );
 
     // ── Step 2: „Oceń ucznia” shows the answers and the uploaded photo ───────
@@ -403,7 +406,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await expect(saveButton, '„Zapisz ocenę” is inactive without points').toBeDisabled();
 
     // ── Step 3: points outside 0…max are rejected, never sent ────────────────
-    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${student.id}`;
+    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${attemptId}`;
     let gradeRequests = 0;
     page.on('request', (request) => {
       if (request.method() === 'PUT' && new URL(request.url()).pathname === gradingPath) {

@@ -27,8 +27,9 @@ The one known gap is **custom auth e-mail templates**:
   open issue [supabase/cli#7200](https://github.com/supabase/cli/issues/7200)
   (no maintainer ETA).
 
-**Recommendation: adopt native for CI; keep the non-stack Docker path for the
-six template-dependent specs until #7200 is fixed.**
+**Recommendation: native is the default runtime (local and CI); Docker is the
+explicit compatibility escape hatch. The six template-dependent specs stay on a
+non-stack/shared leg until #7200 is fixed.**
 
 ## Exact native command / config
 
@@ -36,8 +37,8 @@ No `supabase/config.toml` change is required. The existing
 `[experimental] stack = true` is what enables the runtime choice.
 
 ```dotenv
-# root .env
-SUPABASE_RUNTIME=native
+# optional: pin a non-default runtime (native is the default)
+# SUPABASE_RUNTIME=native
 # optional: a second stack in the same checkout
 # SUPABASE_STACK=native
 # optional: native state outside the checkout
@@ -45,11 +46,10 @@ SUPABASE_RUNTIME=native
 ```
 
 ```bash
-bun dev:up --prod          # or `bun dev:up` for next dev (agents use --prod)
-bun dev:status --json
-bun dev:reset-db
-bun dev:down --all
-bun dev:prepull
+bun run env:ensure --profile web          # stack + build + serve; env:dev is human-only HMR
+bun run env:status --json
+bun run env:reset-db --yes
+bun run env:down --all
 ```
 
 Underlying CLI calls (what the wrapper runs):
@@ -68,20 +68,25 @@ bunx supabase db reset --remote="$DB_URL?sslmode=disable" --yes
 # pre-download artifacts (CI-friendly; lock is committed)
 bunx supabase stack install --runtime native --frozen
 
-# stop (data kept)
-bunx supabase stop --stack "$SUPABASE_STACK"
+# stop (data kept; the tool owns the guarded path)
+bun run env:down --all --yes
 ```
 
 Runtime is persisted when the stack is created. Switching an existing stack
-requires destroying it first (data deleted):
+requires destroying it first (data deleted). A runtime conversion is a manual,
+ownership-checked operation (v1 has no recreate command):
 
 ```bash
 bunx supabase stack destroy --stack "$SUPABASE_STACK" --yes
+bun run env:ensure --profile web --runtime docker   # or --runtime native
 ```
 
-The wrapper keeps **blank** `SUPABASE_RUNTIME` = Docker (the pre-spike default).
-`auto` explicitly opts into the CLI's Docker → Podman → native probe. An existing
-stack always reuses its persisted runtime, even when it is stopped.
+**Native is the default and the only auto-selected runtime.** Every start passes
+`--runtime native` explicitly; Docker is `--runtime docker` /
+`SUPABASE_RUNTIME=docker` only, with no silent fallback. An existing stack always
+reuses its persisted runtime, even when it is stopped; converting it is the
+manual destroy-then-ensure flow above (data deleted). `auto` is rejected for the
+tool's own starts because it would let a Docker daemon change the target.
 
 ## Supported services vs missing
 
@@ -114,7 +119,7 @@ started or reset. `spike-native` was the working stack; `spike-native-2`,
 
 | #   | Check                           | Result                                                                                                                                                                                                                          |
 | --- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Start from clean state          | ✅ `bun dev:up --prod` created a new native stack; all migrations applied, seeds loaded, app booted                                                                                                                             |
+| 1   | Start from clean state          | ✅ `bun run env:ensure --profile web` created a new native stack; all migrations applied, seeds loaded, app booted                                                                                                              |
 | 2   | Migrations apply                | ✅ full migration chain applied during first start and `db reset`                                                                                                                                                               |
 | 3   | Seed loads                      | ✅ 10 seeded profiles, 5 seed files, storage placeholder uploaded                                                                                                                                                               |
 | 4   | `status --env` / JSON parseable | ✅ `stack status --output-format json` and `--env` both parse as JSON (14 env keys)                                                                                                                                             |
@@ -124,10 +129,10 @@ started or reset. `spike-native` was the working stack; `spike-native-2`,
 | 8   | Invitation/e-mail flow          | ✅ Mailpit received a GoTrue recovery e-mail (`StudiQ - Password Reset`); SMTP works. The app's own invite e-mail still depends on `MAIL_DRIVER` (default `none`, copyable link)                                                |
 | 9   | Storage upload/download         | ✅ PNG upload 200, download bytes match, public URL 200, delete 200                                                                                                                                                             |
 | 10  | QA/e2e spec                     | ✅ locally `PUB-01` 2/2; on CI native, e2e `login.spec.ts` and QA `PUB-01` passed. ❌ `AUT-01` failed waiting for the branded `/auth/callback?token_hash=` link (known stack template workaround, not native; reproduced on CI) |
-| 11  | `db reset` / reseed             | ✅ `bun dev:reset-db` in ~3 s; migrations + seeds reapplied                                                                                                                                                                     |
+| 11  | `db reset` / reseed             | ✅ `bun run env:reset-db --yes` in ~3 s; migrations + seeds reapplied                                                                                                                                                           |
 | 12  | Stop → start, data persists     | ✅ marker `profiles.full_name` survived; same ports and stack id                                                                                                                                                                |
 | 13  | Two named stacks in parallel    | ✅ `spike-native` (API 21127, DB 32430) and `spike-native-2` (API 28500, DB 25948) healthy simultaneously; marker existed only in stack 1                                                                                       |
-| 14  | Cleanup leaves no orphans       | ✅ `bun dev:down --all` → 0 processes for the stack id, 0 listening ports                                                                                                                                                       |
+| 14  | Cleanup leaves no orphans       | ✅ `bun run env:down --all` → 0 processes for the stack id, 0 listening ports                                                                                                                                                   |
 
 ### Timings (this host: WSL2, Debian 12, glibc 2.36, amd64, 20 GB RAM, Docker available)
 
@@ -138,9 +143,9 @@ started or reset. `spike-native` was the working stack; `spike-native-2`,
 | Full-ish stack (realtime + functions enabled)                            | **13 s**   |
 | All enabled capabilities (incl. analytics)                               | **26 s**   |
 | Warm restart, stack only                                                 | **5 s**    |
-| Warm `bun dev:up --prod` (build check + web)                             | **7–11 s** |
-| Clean `bun dev:up --prod` with warm cache                                | **14 s**   |
-| `bun dev:reset-db`                                                       | **3 s**    |
+| Warm `bun run env:ensure --profile web` (build check + web)              | **7–11 s** |
+| Clean `bun run env:ensure --profile web` with warm cache                 | **14 s**   |
+| `bun run env:reset-db --yes`                                             | **3 s**    |
 | `stack install --runtime native --frozen` with warm cache                | **6 s**    |
 
 ### Memory and disk
@@ -256,7 +261,7 @@ both e2e legs installed in 10–61 s. This is runner apt variance, not native.
 | File                                     | Change                                                                                                                                                                                                                                                          |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.env.example`                           | documents `SUPABASE_RUNTIME`, `SUPABASE_HOME`, `SUPABASE_NATIVE_POSTGRES_USER`, destroy caveat                                                                                                                                                                  |
-| `scripts/dev`                            | runtime selection/preflight, `--runtime` forwarding, native-aware doctor/status, `prepull` uses effective runtime, teardown no longer gated on Docker, robust stop-failure check, `SUPABASE_HOME` validation, config-drift warning, `db reset` sslmode/port fix |
+| the `env` tool                           | runtime selection/preflight, `--runtime` forwarding, native-aware doctor/status, `prepull` uses effective runtime, teardown no longer gated on Docker, robust stop-failure check, `SUPABASE_HOME` validation, config-drift warning, `db reset` sslmode/port fix |
 | `.github/workflows/verify.yml`           | existing workflow switched 1:1 to native: stack mode, native start, stack status `.env.*`, no fixed ports, `stop` without `--no-backup`                                                                                                                         |
 | `.github/workflows/cache-warm.yml`       | main-only cache refresh (bun + Playwright browsers); no tests                                                                                                                                                                                                   |
 | `qa/fixtures/stack-mode.ts`              | temporary `STUDIQ_STACK_MODE=1` skip helper for branded-template specs                                                                                                                                                                                          |
@@ -273,22 +278,22 @@ Three fresh-context subagents reviewed correctness/portability, test/CI impact,
 and security/ops. Findings that were valid were fixed in `54a90eb4`; the rest are
 recorded as known limitations.
 
-| Severity | Finding                                                                  | Resolution                                                                                                                     |
-| -------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| major    | Blank/auto silently created a native stack when Docker was unreachable   | Fixed: blank = Docker (pre-spike default); only explicit `auto` probes; existing stacks reuse persisted runtime                |
-| major    | Teardown was gated on a working runtime and swallowed stop failures      | Fixed: `dev:down --all` no longer preflights Docker/native; a failed stop checks `lifecycle: running` and fails loudly         |
-| minor    | Explicit runtime could disagree with a persisted stack                   | Fixed: early failure with `stack destroy` guidance when the stack is running; stopped stacks still rely on the CLI's own error |
-| minor    | `dev:prepull` ignored the persisted runtime                              | Fixed: uses `effective_supabase_runtime`                                                                                       |
-| minor    | No root preflight for native Postgres                                    | Fixed: warning + `SUPABASE_NATIVE_POSTGRES_USER` guidance                                                                      |
-| minor    | `SUPABASE_HOME` could point inside the checkout                          | Fixed: must be absolute and outside `REPO_ROOT`; filtered from app env                                                         |
-| minor    | `config_drift` (site URL captured at stack creation) was invisible       | Fixed: `dev:up` warns when `config_drift.status=changed`                                                                       |
-| minor    | Native support hint did not check glibc                                  | Known: CLI is authoritative; error text now names glibc ≥2.35                                                                  |
-| minor    | `dev:status` omits runtime when the stack is stopped                     | Known cosmetic; `stack list` still knows it                                                                                    |
-| minor    | `supabase stop` on an already-stopped stack reports "Stopped"            | Known cosmetic; exit code is 0 and nothing is running                                                                          |
-| minor    | `docs/database.md` named-stack `db push` snippet lacks `sslmode=disable` | Known doc gap; the spike's reset path fixes it, `db push` docs were left unchanged                                             |
-| minor    | `stack install` downloads every locked service even when excluded        | Known; CI cache should account for it                                                                                          |
-| nit      | `SUPABASE_RUNTIME` leaked into shared-mode `apps/web/.env`               | Fixed: runtime/state keys are filtered in both modes                                                                           |
-| nit      | `scripts/dev` top comment still said "images"                            | Fixed                                                                                                                          |
+| Severity | Finding                                                                  | Resolution                                                                                                                                    |
+| -------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| major    | Blank/auto silently created a native stack when Docker was unreachable   | Fixed: native is the explicit default; Docker only with `--runtime docker`/`SUPABASE_RUNTIME=docker`; existing stacks reuse persisted runtime |
+| major    | Teardown was gated on a working runtime and swallowed stop failures      | Fixed: `env:down --all` no longer preflights Docker/native; a failed stop checks `lifecycle: running` and fails loudly                        |
+| minor    | Explicit runtime could disagree with a persisted stack                   | Fixed: early failure with destroy-and-ensure guidance when the stack is running; stopped stacks still rely on the CLI's own error             |
+| minor    | Artifact pre-download ignored the persisted runtime                      | Deferred (v1 has no pre-download command); `env:ensure` downloads on demand                                                                   |
+| minor    | No root preflight for native Postgres                                    | Fixed: warning + `SUPABASE_NATIVE_POSTGRES_USER` guidance                                                                                     |
+| minor    | `SUPABASE_HOME` could point inside the checkout                          | Fixed: must be absolute and outside `REPO_ROOT`; filtered from app env                                                                        |
+| minor    | `config_drift` (site URL captured at stack creation) was invisible       | Fixed: `env:ensure` warns when `config_drift.status=changed`                                                                                  |
+| minor    | Native support hint did not check glibc                                  | Known: CLI is authoritative; error text now names glibc ≥2.35                                                                                 |
+| minor    | `env:status` omits runtime when the stack is stopped                     | Known cosmetic; `stack list` still knows it                                                                                                   |
+| minor    | `supabase stop` on an already-stopped stack reports "Stopped"            | Known cosmetic; exit code is 0 and nothing is running                                                                                         |
+| minor    | `docs/database.md` named-stack `db push` snippet lacks `sslmode=disable` | Known doc gap; the spike's reset path fixes it, `db push` docs were left unchanged                                                            |
+| minor    | `stack install` downloads every locked service even when excluded        | Known; CI cache should account for it                                                                                                         |
+| nit      | `SUPABASE_RUNTIME` leaked into shared-mode `apps/web/.env`               | Fixed: runtime/state keys are filtered in both modes                                                                                          |
+| nit      | the `env` tool top comment still said "images"                           | Fixed                                                                                                                                         |
 
 Test/CI review findings:
 
@@ -302,7 +307,7 @@ Test/CI review findings:
 
 ## Recommendation
 
-**Adopt native for CI; keep a non-stack Docker fallback for the six
+**Native for CI (done); keep a non-stack/shared leg for the six
 branded-template specs until #7200 is fixed.** The 1:1 workflow is green on
 GitHub-hosted `ubuntu-24.04`, with native stack starts at 13–18 s. The only
 functional gap is custom auth templates; everything else (integration, e2e

@@ -142,12 +142,7 @@ function rowFor(page: Page, content: string): Locator {
 /** The rendered order, read from the numbered list („1.” prefix stripped). */
 async function readOrder(page: Page): Promise<string[]> {
   const rows = await questionRows(page).allInnerTexts();
-  return rows.map((text) =>
-    text
-      .split('\n')[0]
-      .replace(/^\d+\.\s*/, '')
-      .trim(),
-  );
+  return rows.map((text) => (text.split('\n')[0] ?? '').replace(/^\d+\.\s*/, '').trim());
 }
 
 /** The sticky summary bar: „<n> pytania · Suma punktów: <sum>”. */
@@ -214,8 +209,6 @@ test.describe('@case:EDU-QZ-03 @area:EDU @prio:P2 quiz question order and points
     });
 
     const tenant: QaTenant = loadTenant(CASE);
-    const teacher = tenant.users.teacher;
-    expect(teacher, 'the tenant seeds the teacher').toBeTruthy();
 
     // Every execution builds its own quiz, so `--repeat-each` on one seeded tenant
     // never edits a previous run's content.
@@ -304,11 +297,13 @@ test.describe('@case:EDU-QZ-03 @area:EDU @prio:P2 quiz question order and points
     ).toEqual([1, 5, 1]);
 
     // ── Step 3: delete the question that holds 5 points ─────────────────────
+    // The autosave debounce is 5 s (see below), so this wait outlives the 3 s
+    // per-action budget on purpose.
     const autosave = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === `/api/v1/teacher/quizzes/${quizId}/bulk` &&
         response.request().method() === 'PUT',
-      { timeout: 30_000 },
+      { timeout: 10_000 },
     );
     await rowFor(page, first).locator('button').last().click({ timeout: 10_000 });
 

@@ -16,6 +16,16 @@ GRANT USAGE ON SCHEMA public TO authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
 
+-- The blanket GRANT above re-opens every column on every reset, so the reader columns are
+-- re-granted without `is_correct` (#1165, #1170).
+REVOKE SELECT ON public.question_options FROM authenticated, anon;
+GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
+  ON public.question_options TO authenticated;
+
+REVOKE SELECT ON public.assignment_questions FROM authenticated, anon;
+GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version)
+  ON public.assignment_questions TO authenticated;
+
 -- Read-only tables: written by the admin app (service role) and seeds (postgres).
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
   ON public.subscription_plans,
@@ -63,6 +73,7 @@ REVOKE ALL ON FUNCTION public.get_accessible_questions(uuid, uuid, text, uuid, u
 REVOKE ALL ON FUNCTION public.get_accessible_topics(uuid, uuid, uuid) FROM authenticated, anon;
 
 GRANT EXECUTE ON FUNCTION public.bulk_create_flashcards(jsonb, uuid, uuid, text, uuid[], uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.question_bank_counts(uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.count_new_cards(uuid, text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_breakdown(uuid, uuid, uuid, uuid[], uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_flashcards(uuid, text, uuid, integer, uuid[], uuid[], integer, boolean) TO authenticated;
@@ -79,6 +90,9 @@ GRANT EXECUTE ON FUNCTION public.rls_caller_org_user_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_has_org_feature(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_is_org_manager(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_can_assign_org_role(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_can_read_assignment_items(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_can_read_assignment_targets(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_is_sealed_item(uuid) TO authenticated;
 
 -- Public pricing page (unauthenticated, SELECT only).
 GRANT SELECT ON public.subscription_plans TO anon;

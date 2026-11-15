@@ -64,8 +64,8 @@ describe('TopicController', () => {
       expect(response.statusCode).toBe(422);
       if (!response.success) {
         expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(response.details?.[0].path).toEqual(['name']);
-        expect(response.details?.[0].message).toBe('VALIDATION_REQUIRED');
+        expect(response.details?.[0]?.path).toEqual(['name']);
+        expect(response.details?.[0]?.message).toBe('VALIDATION_REQUIRED');
       }
       expect(mockService.create).not.toHaveBeenCalled();
     });

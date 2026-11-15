@@ -38,12 +38,10 @@ describe(`Dev endpoints Integration`, () => {
 
   afterAll(async () => {
     vi.unstubAllEnvs();
-    if (student) {
-      await cleanupFlashcardPractice(student.user.id);
-      await cleanupFlashcardReviewState(student.user.id);
-      await cleanupFlashcards(student.user.id);
-      await cleanupFlashcardDecks(student.user.id);
-    }
+    await cleanupFlashcardPractice(student.user.id);
+    await cleanupFlashcardReviewState(student.user.id);
+    await cleanupFlashcards(student.user.id);
+    await cleanupFlashcardDecks(student.user.id);
   });
 
   it('requires a session on GET /dev/traces (#189)', async () => {

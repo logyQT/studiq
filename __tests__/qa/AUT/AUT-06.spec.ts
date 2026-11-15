@@ -2,7 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '#test/helpers/mailpit';
-import { loadTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, tenantUser } from '#test/qa/fixtures/tenant';
 import { skipBrandedAuthTemplateTest } from '#test/helpers/stack-mode';
 
 /**
@@ -215,8 +215,7 @@ test.describe('AUT-06 — an unconfirmed account cannot log in', () => {
     page,
   }) => {
     const tenant = loadTenant(CASE);
-    const student = tenant.users.student;
-    expect(student, `${CASE} must seed the confirmed bare student`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     await pinLocale(page);
     await expectNoSession(page);

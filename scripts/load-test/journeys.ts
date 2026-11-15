@@ -457,5 +457,7 @@ export function pickWeightedAction(rng: () => number, state: BotState, actions: 
     roll -= action.weight;
     if (roll <= 0) return action;
   }
-  return pool[pool.length - 1];
+  const last = pool[pool.length - 1];
+  if (!last) throw new Error('pickWeightedAction: the action pool is empty');
+  return last;
 }

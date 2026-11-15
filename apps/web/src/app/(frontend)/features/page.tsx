@@ -9,6 +9,7 @@ import {
   Building2,
   FileText,
   GraduationCap,
+  type LucideIcon,
   Mail,
   Sparkles,
   Target,
@@ -24,7 +25,16 @@ const FREE = 'free';
 const PREMIUM = 'premium';
 const UNIVERSITY = 'university';
 
-const planColors: Record<string, { bg: string; text: string }> = {
+type PlanKey = typeof FREE | typeof PREMIUM | typeof UNIVERSITY;
+
+interface FeatureEntry {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  plan: PlanKey;
+}
+
+const planColors: Record<PlanKey, { bg: string; text: string }> = {
   free: { bg: 'bg-blue-500/10', text: 'text-blue-500' },
   premium: { bg: 'bg-violet-500/10', text: 'text-violet-500' },
   university: { bg: 'bg-emerald-500/10', text: 'text-emerald-500' },
@@ -33,7 +43,7 @@ const planColors: Record<string, { bg: string; text: string }> = {
 export default function FeaturesPage() {
   const t = useTranslations('FeaturesPage');
 
-  const features = [
+  const features: FeatureEntry[] = [
     { icon: FileText, title: t('manual_questions'), desc: t('manual_questions_desc'), plan: FREE },
     { icon: Brain, title: t('flashcard_practice'), desc: t('flashcard_practice_desc'), plan: FREE },
     { icon: BookOpen, title: t('quiz_taking'), desc: t('quiz_taking_desc'), plan: FREE },

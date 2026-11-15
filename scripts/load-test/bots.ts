@@ -101,7 +101,8 @@ function selectBots(
     const copy = [...items];
     for (let i = copy.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
-      [copy[i], copy[j]] = [copy[j], copy[i]];
+      // `j` is drawn from `[0, i]`, so both indices are inside the array.
+      [copy[i], copy[j]] = [copy[j]!, copy[i]!];
     }
     return copy;
   };
@@ -297,7 +298,8 @@ function merge(reports: ShardReport[]): ShardReport {
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+  // The clamp keeps the index inside the non-empty array.
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))]!;
 }
 
 function printReport(report: ShardReport, durationSec: number): void {

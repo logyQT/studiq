@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * BIL-05 — checkout refuses a plan that does not match the account type.
@@ -101,8 +101,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
       tenant.runSuffix,
       'seed with --fresh: every independent run owns a new, still-Base student',
     ).toBeTruthy();
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
@@ -180,8 +179,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
     test.setTimeout(120_000);
 
     const tenant = loadTenant(CASE);
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });

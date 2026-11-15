@@ -63,8 +63,8 @@ const OGG = ASCII('OggS');
  */
 function isMpegAudioFrame(bytes: Uint8Array): boolean {
   if (bytes.length < 4) return false;
-  const b1 = bytes[1];
-  const b2 = bytes[2];
+  const b1 = bytes[1]!;
+  const b2 = bytes[2]!;
 
   if (bytes[0] !== 0xff || (b1 & 0xe0) !== 0xe0) return false;
 

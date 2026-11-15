@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  appPortBase,
   createHarness,
   firstFreePort,
   objectField,
@@ -24,6 +25,7 @@ import {
   type TcpListener,
 } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
+import { firstRecorded } from '#test/mocks/recorded';
 
 interface LeaseModule {
   leaseProjectId(identityKey: string): string;
@@ -127,6 +129,17 @@ interface RebuildModule {
 
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-ensure-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
+
+/**
+ * Per-file base for the runs that need a real (bind-checked) app port.
+ *
+ * These runs pin `--app-port`, and probing the shared 3000-3999 range let a
+ * parallel unit file take the port between the free check and the CLI's own
+ * probe, which surfaced as a spurious exit 6. The base is this worker's own
+ * slice outside that range and below the ephemeral range; every port is still
+ * bind-checked by `firstFreePort` before use.
+ */
+const APP_PORT_BASE = appPortBase();
 
 const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
 const stateModule = await loadEnvModule<{
@@ -761,7 +774,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(failure.cause).toBe(boom);
     const backups = readdirSync(backupDir);
     expect(backups).toHaveLength(1);
-    const kept = join(backupDir, backups[0]);
+    const kept = join(backupDir, firstRecorded(backups, 'the kept backup'));
     expect(failure.message).toContain(kept);
     expect(readFileSync(join(kept, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(starts).toBe(0);
@@ -904,7 +917,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(failure.message).toContain('7001');
     const backups = readdirSync(backupDir);
     expect(backups).toHaveLength(1);
-    const kept = join(backupDir, backups[0]);
+    const kept = join(backupDir, firstRecorded(backups, 'the kept backup'));
     expect(failure.message).toContain(kept);
     expect(readFileSync(join(kept, 'BUILD_ID'), 'utf8')).toBe('old-build');
     // No restore over the survivor and no second server.
@@ -1075,7 +1088,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('new-build');
     const backups = readdirSync(backupDir);
     expect(backups).toHaveLength(1);
-    const leftover = join(backupDir, backups[0]);
+    const leftover = join(backupDir, firstRecorded(backups, 'the leftover backup'));
     expect(result.warnings).toEqual([expect.stringContaining(leftover)]);
     expect(readFileSync(join(leftover, 'BUILD_ID'), 'utf8')).toBe('old-build');
   });
@@ -1133,7 +1146,7 @@ describe('env:ensure keeps a live stack on its derived APP_URL port', () => {
     await healthyStack(harness);
     const stackName = harnessStackName(harness);
     writeLease(harness, 3999, stackName);
-    const appPort = await firstFreePort(3900, new Set([3999]));
+    const appPort = await firstFreePort(APP_PORT_BASE, new Set([3999]));
 
     const result = await harness.run(
       ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(appPort), '--json'],
@@ -1202,7 +1215,7 @@ describe('env:ensure reclaims a foreign lease only under shared coordination', (
   }
 
   it('reclaims a stale foreign lease and releases its claim', async () => {
-    const port = await firstFreePort(3800);
+    const port = await firstFreePort(APP_PORT_BASE);
     const { projectId } = staleForeignLease(port);
 
     const reclaimed = await ensureModule.reclaimForeignLease({
@@ -1219,7 +1232,7 @@ describe('env:ensure reclaims a foreign lease only under shared coordination', (
   });
 
   it('refuses to reclaim a port whose claim a live claimant refreshed before its lease', async () => {
-    const port = await firstFreePort(3800);
+    const port = await firstFreePort(APP_PORT_BASE);
     const { projectId, lease } = staleForeignLease(port);
     // The claimant refreshed its port claim in the window before publishing its
     // lease: the claim names this live process while the lease is still the
@@ -1252,7 +1265,7 @@ describe('env:ensure reclaims a foreign lease only under shared coordination', (
   });
 
   it('keeps a foreign lease and claim that a concurrent heartbeat refreshed', async () => {
-    const port = await firstFreePort(3800);
+    const port = await firstFreePort(APP_PORT_BASE);
     const { projectId, lease } = staleForeignLease(port);
     const refreshedAt = new Date().toISOString();
     let refreshed = false;
@@ -1283,7 +1296,7 @@ describe('env:ensure restarts an unresponsive stack only when its stop is provab
     const harness = newHarness();
     await unresponsiveStack(harness);
     harness.setListFixture(liveStackFixture(harness));
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstFreePort(APP_PORT_BASE);
     writeLease(harness, appPort, harnessStackName(harness));
 
     const result = await harness.run(['ensure', '--profile', 'api', '--no-seed'], {
@@ -1304,7 +1317,7 @@ describe('env:ensure restarts an unresponsive stack only when its stop is provab
   it('cleans up and fails the cold start when the list proves the stack is gone', async () => {
     const harness = newHarness();
     await unresponsiveStack(harness);
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstFreePort(APP_PORT_BASE);
     writeLease(harness, appPort, harnessStackName(harness));
 
     const result = await harness.run(['ensure', '--profile', 'api', '--no-seed'], {
@@ -1328,7 +1341,7 @@ describe('env:ensure releases a failed start only when the stack is gone', () =>
   it('keeps the lease and claim when the failed start cannot stop the stack', async () => {
     const harness = newHarness();
     harness.setListFixture(liveStackFixture(harness));
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstFreePort(APP_PORT_BASE);
 
     const result = await harness.run(
       ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(appPort)],
@@ -1349,7 +1362,7 @@ describe('env:ensure releases a failed start only when the stack is gone', () =>
     const harness = newHarness();
     // No list fixture: the fake `stack list` reports no stacks at all, so the
     // failed stop is forgiven like `down` does.
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstFreePort(APP_PORT_BASE);
 
     const result = await harness.run(
       ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(appPort)],

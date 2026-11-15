@@ -5,12 +5,14 @@ import { createStripeClient } from '@studiq/server/lib/payment/stripe-client';
 import { SupabaseStripeWebhookRepository } from '@studiq/server/lib/payment/stripe-webhook.repository';
 import { EntitlementService } from '@studiq/server/services/entitlement.service';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { createServiceClient } from '#test/integration/helpers';
+import { requiredAt } from '#test/integration/test-utils';
 
 /**
  * Opt-in verification of the real Stripe sandbox (#662).
@@ -43,6 +45,15 @@ type PaidPlan = {
   currency: string;
 };
 
+/** The catalog read filters `price_monthly > 0`, so a paid plan always carries one. */
+function isPaidPlan(plan: {
+  key: string;
+  price_monthly: number | null;
+  currency: string;
+}): plan is PaidPlan {
+  return plan.price_monthly !== null;
+}
+
 describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   let stripe: Stripe;
   let service: ReturnType<typeof createServiceClient>;
@@ -69,7 +80,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       .gt('price_monthly', 0)
       .order('sort_order', { ascending: true });
     if (error) throw new Error(`subscription_plans: ${error.message}`);
-    plans = data ?? [];
+    plans = dbRows(data).filter(isPaidPlan);
     expect(plans.length).toBeGreaterThan(0);
 
     products = await stripe.products
@@ -94,7 +105,6 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   }, 30_000);
 
   afterAll(async () => {
-    if (!checkoutUser) return;
     await service.from('payments').delete().eq('user_id', checkoutUser.id);
     await service.from('billing_subscriptions').delete().eq('user_id', checkoutUser.id);
     await service.from('billing_customers').delete().eq('user_id', checkoutUser.id);
@@ -102,13 +112,13 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   });
 
   it('runs against a PL account that presents PLN in test mode', async () => {
-    const account = await stripe.accounts.retrieve();
+    const account = await stripe.accounts.retrieve(null);
     expect(account.country).toBe('PL');
     expect(account.default_currency).toBe('pln');
   });
 
   it('has one Product per active paid plan, all in test mode', () => {
-    const planProducts = products.filter((product) => product.metadata?.studiq_plan_key);
+    const planProducts = products.filter((product) => product.metadata.studiq_plan_key);
     const productKeys = planProducts.map((product) => product.metadata.studiq_plan_key);
 
     expect(planProducts).toHaveLength(plans.length);
@@ -134,7 +144,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   it('has one monthly PLN Price per plan with a unique lookup key', () => {
     const byPlan = new Map(
       products
-        .filter((product) => product.metadata?.studiq_plan_key)
+        .filter((product) => product.metadata.studiq_plan_key)
         .map((product) => [product.metadata.studiq_plan_key, product]),
     );
 
@@ -167,7 +177,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       .eq('active', true);
     if (error) throw new Error(`stripe_prices: ${error.message}`);
 
-    const rows = data ?? [];
+    const rows = dbRows(data);
     expect(rows.map((row) => row.plan_key).toSorted()).toEqual(
       plans.map((plan) => plan.key).toSorted(),
     );
@@ -186,20 +196,20 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
     expect(portal).toBeDefined();
     expect(portal!.active).toBe(true);
     expect(portal!.livemode).toBe(false);
-    expect(portal!.features.payment_method_update?.enabled).toBe(true);
-    expect(portal!.features.invoice_history?.enabled).toBe(true);
-    expect(portal!.features.subscription_cancel?.enabled).toBe(true);
-    expect(portal!.features.subscription_cancel?.mode).toBe('at_period_end');
+    expect(portal!.features.payment_method_update.enabled).toBe(true);
+    expect(portal!.features.invoice_history.enabled).toBe(true);
+    expect(portal!.features.subscription_cancel.enabled).toBe(true);
+    expect(portal!.features.subscription_cancel.mode).toBe('at_period_end');
     // Managed Payments is the merchant of record and owns tax IDs; the portal
     // no longer collects them.
-    expect(portal!.features.customer_update?.allowed_updates).not.toContain('tax_id');
+    expect(portal!.features.customer_update.allowed_updates).not.toContain('tax_id');
     // Plan switching is an app endpoint (#662 X5), not a portal action.
-    expect(portal!.features.subscription_update?.enabled).not.toBe(true);
+    expect(portal!.features.subscription_update.enabled).not.toBe(true);
   });
 
   it('creates a real test-mode Checkout Session for a mapped Price', async () => {
     const studentId = checkoutUser.id;
-    const plan = plans[0];
+    const plan = requiredAt(plans, 0, 'paid plan');
 
     // A crashed earlier run or a manual sandbox purchase must not turn this
     // check into a CONFLICT or reuse a deleted customer.
@@ -214,8 +224,8 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       .eq('livemode', false)
       .eq('active', true)
       .single();
-    if (priceError || !priceRow) {
-      throw new Error(`stripe_prices for ${plan.key}: ${priceError?.message ?? 'missing row'}`);
+    if (priceError) {
+      throw new Error(`stripe_prices for ${plan.key}: ${priceError.message}`);
     }
 
     const gateway = new StripePaymentGateway({
@@ -262,7 +272,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       // Managed Payments is the merchant of record and owns tax; the session
       // must not also enable automatic tax.
       expect(session.managed_payments?.enabled).toBe(true);
-      expect(session.automatic_tax?.enabled).not.toBe(true);
+      expect(session.automatic_tax.enabled).not.toBe(true);
 
       customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
       expect(customerId).toMatch(/^cus_/);
@@ -321,7 +331,7 @@ function eventSubscriptionId(event: Stripe.Event): string | null {
     if (typeof legacy === 'string') return legacy;
     if (legacy) return legacy.id;
 
-    for (const line of invoice.lines?.data ?? []) {
+    for (const line of dbRows(invoice.lines.data)) {
       const subscription = line.parent?.subscription_item_details?.subscription;
       if (typeof subscription === 'string') return subscription;
       const lineLegacy = asJson<{ subscription?: string | null }>(line).subscription;
@@ -351,6 +361,8 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
   let webhookService: StripeWebhookService;
   let gateway: StripePaymentGateway;
   let plans: LifecyclePlan[];
+  let firstPlan: LifecyclePlan;
+  let lastPlan: LifecyclePlan;
 
   beforeAll(async () => {
     const secretKey = process.env.STRIPE_SECRET_KEY!;
@@ -389,7 +401,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
     if (error) throw new Error(`subscription_plans: ${error.message}`);
 
     plans = [];
-    for (const plan of data ?? []) {
+    for (const plan of dbRows(data)) {
       const { data: price, error: priceError } = await service
         .from('stripe_prices')
         .select('stripe_price_id')
@@ -413,10 +425,11 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
         'lifecycle tests need at least two mapped student plans; run scripts/stripe-bootstrap.ts',
       );
     }
+    firstPlan = requiredAt(plans, 0, 'first mapped plan');
+    lastPlan = requiredAt(plans, plans.length - 1, 'last mapped plan');
   }, 30_000);
 
   afterAll(async () => {
-    if (!lifecycleUser) return;
     await resetBilling();
     await service.auth.admin.deleteUser(lifecycleUser.id).catch(() => {});
   });
@@ -466,7 +479,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
       .eq('user_id', userId)
       .order('paid_at', { ascending: true });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return dbRows(data);
   }
 
   async function createFixture(plan: LifecyclePlan) {
@@ -586,17 +599,17 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
   it('renewal writes a second payments row and replay stays idempotent', async () => {
     await resetBilling();
-    const fixture = await createFixture(plans[0]);
+    const fixture = await createFixture(firstPlan);
 
     try {
       await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
       await replay(fixture.subscription.id, fixture.since);
 
-      expect(await profilePlan()).toBe(plans[0].key);
+      expect(await profilePlan()).toBe(firstPlan.key);
       const firstPayment = await paymentRows();
       expect(firstPayment).toHaveLength(1);
       expect(firstPayment[0]).toMatchObject({
-        amount: plans[0].amount,
+        amount: firstPlan.amount,
         provider: 'stripe',
       });
 
@@ -633,12 +646,12 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
   it('a failing renewal card marks the mirror past_due without changing the plan', async () => {
     await resetBilling();
-    const fixture = await createFixture(plans[0]);
+    const fixture = await createFixture(firstPlan);
 
     try {
       await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
       await replay(fixture.subscription.id, fixture.since);
-      expect(await profilePlan()).toBe(plans[0].key);
+      expect(await profilePlan()).toBe(firstPlan.key);
 
       // Raw card-data APIs are disabled on the account; this Stripe test token
       // maps to 4000 0000 0000 0341 (attaches, fails the renewal charge).
@@ -655,7 +668,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
       await waitForEventType(fixture.subscription.id, fixture.since, 'invoice.payment_failed');
       await replay(fixture.subscription.id, fixture.since);
 
-      expect(await profilePlan()).toBe(plans[0].key);
+      expect(await profilePlan()).toBe(firstPlan.key);
       expect((await mirrorRow(fixture.subscription.id)).status).toBe('past_due');
       // The failed renewal never writes a payments row.
       expect(await paymentRows()).toHaveLength(1);
@@ -666,12 +679,12 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
   it('cancel at period end deletes the subscription and downgrades to free', async () => {
     await resetBilling();
-    const fixture = await createFixture(plans[0]);
+    const fixture = await createFixture(firstPlan);
 
     try {
       await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
       await replay(fixture.subscription.id, fixture.since);
-      expect(await profilePlan()).toBe(plans[0].key);
+      expect(await profilePlan()).toBe(firstPlan.key);
 
       await stripe.subscriptions.update(fixture.subscription.id, {
         cancel_at_period_end: true,
@@ -693,8 +706,8 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
   it('upgrade resets the billing anchor and applies the target plan', async () => {
     await resetBilling();
-    const from = plans[0];
-    const to = plans[plans.length - 1];
+    const from = firstPlan;
+    const to = lastPlan;
     const fixture = await createFixture(from);
 
     try {
@@ -753,8 +766,8 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
   it('downgrade applies at the period boundary, not immediately', async () => {
     await resetBilling();
-    const from = plans[plans.length - 1];
-    const to = plans[0];
+    const from = lastPlan;
+    const to = firstPlan;
     const fixture = await createFixture(from);
 
     try {

@@ -1,12 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** This checkout's root, canonicalised like `pwd -P` in `scripts/dev`. */
+/** This checkout's root, canonicalised like `pwd -P` in the legacy dev script. */
 export const REPO_ROOT = realpathSync(join(HERE, '..', '..', '..'));
 
 /** Resolve a path to its real form; unmatched paths are returned unchanged. */
@@ -56,7 +56,40 @@ export function currentBranchName(): string {
   return runGit(['branch', '--show-current']) || 'detached';
 }
 
-/** Same normalisation as `scripts/dev`'s `sanitize_project_id`. */
+/**
+ * The primary checkout's path (the first `git worktree list` entry). The
+ * machine-wide observability stack belongs to this checkout, not to whichever
+ * worktree an agent happens to be in.
+ */
+export function primaryCheckoutPath(): string {
+  const output = runGit(['worktree', 'list', '--porcelain', '-z']);
+  if (!output) return REPO_ROOT;
+  for (const record of output.split('\0')) {
+    if (record.startsWith('worktree ')) return canon(record.slice('worktree '.length));
+  }
+  return REPO_ROOT;
+}
+
+/**
+ * True when a compose file declares the project name on a non-comment line.
+ * Read errors (missing file, EACCES, a directory) are "not ready", never a
+ * diagnostic crash.
+ */
+export function composeFileNamesProject(path: string, project: string): boolean {
+  try {
+    const names = new Set([`name: ${project}`, `name: '${project}'`, `name: "${project}"`]);
+    return readFileSync(path, 'utf8')
+      .split(/\r?\n/)
+      .some((line) => {
+        const trimmed = line.trim();
+        return !trimmed.startsWith('#') && names.has(trimmed);
+      });
+  } catch {
+    return false;
+  }
+}
+
+/** Same normalisation as the legacy dev script's `sanitize_project_id`. */
 export function sanitizeProjectId(value: string): string {
   return value
     .toLowerCase()
@@ -81,7 +114,7 @@ function pathHash(root: string): string {
 }
 
 /**
- * Project id used only by the shared-stack path (borrowed from `scripts/dev`'s
+ * Project id used only by the shared-stack path (borrowed from the legacy dev script's
  * `derive_project_id`): slugged directory name plus a stable path hash.
  */
 export function deriveProjectId(): string {

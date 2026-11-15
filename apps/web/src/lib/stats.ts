@@ -55,14 +55,19 @@ export function orderedQuestionTypeEntries(byType: Record<string, number>): Arra
   count: number;
 }> {
   const known: readonly string[] = QUESTION_TYPE_ORDER;
-  const ordered = [
-    ...QUESTION_TYPE_ORDER.filter((key) => byType[key] !== undefined),
-    ...Object.keys(byType)
-      .filter((key) => !known.includes(key))
-      .toSorted((a, b) => a.localeCompare(b)),
-  ];
+  const ordered: Array<{ key: string; count: number }> = [];
 
-  return ordered.map((key) => ({ key, count: byType[key] }));
+  for (const key of [
+    ...QUESTION_TYPE_ORDER,
+    ...Object.keys(byType)
+      .filter((other) => !known.includes(other))
+      .toSorted((a, b) => a.localeCompare(b)),
+  ]) {
+    const count = byType[key];
+    if (count !== undefined) ordered.push({ key, count });
+  }
+
+  return ordered;
 }
 
 /** Payload the content-stats page needs; aliases the API contract. */

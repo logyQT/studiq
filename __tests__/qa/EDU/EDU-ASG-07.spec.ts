@@ -2,6 +2,9 @@ import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
+/** The publish gate requires a close (R2/R5): a published run must be able to end. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
 /**
  * EDU-ASG-07 — Wyniki kartkówki: lista uczniów (`/edu/assignments/<id>/results`).
  *
@@ -167,7 +170,7 @@ async function createPublishedAssignment(
 
   const published = await expectApi<{ status: string }>(
     await page.request.post(`/api/v1/teacher/assignments/${assignment.id}/publish`, {
-      data: {},
+      data: { deadline: PUBLISH_DEADLINE },
     }),
     'POST /api/v1/teacher/assignments/:id/publish',
   );
@@ -188,17 +191,18 @@ async function completeAssignment(
   );
   expect(attempt.questions.length, 'the assignment serves its one question').toBe(1);
 
-  const question = attempt.questions[0];
+  const [question] = attempt.questions;
+  if (!question) throw new Error(`${CASE} the assignment served no question`);
   expect(question.id, 'the served question is the assignment question').toBe(questionId);
   // `shuffle_answers` is on by default, so the correct option is picked by content.
   const correct = question.question_answers.find((answer) => answer.content === CORRECT_ANSWER);
-  expect(correct, `the served question has the „${CORRECT_ANSWER}” option`).toBeTruthy();
+  if (!correct) throw new Error(`${CASE} the served question has no „${CORRECT_ANSWER}” option`);
 
   const submitted = await expectApi<unknown>(
     await studentPage.request.post(`/api/v1/quiz/${attempt.id}`, {
       data: {
         attemptId: attempt.id,
-        answers: [{ questionId: question.id, selectedAnswerId: correct!.id }],
+        answers: [{ questionId: question.id, selectedAnswerId: correct.id }],
       },
     }),
     'POST /api/v1/quiz/:attemptId',
@@ -284,6 +288,7 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     const rows = await expectApi<ResultRow[]>(resultsResponse, 'GET …/results');
     expect(rows, 'exactly the one completed attempt').toHaveLength(1);
     const [attempt] = rows;
+    if (!attempt) throw new Error(`${CASE} the results table lists no attempt`);
     expect(attempt.user.email, 'the row belongs to the tenant student').toBe(student.email);
     expect(attempt.user.full_name, 'the attempt carries the student name').toBeTruthy();
     expect(attempt.completed_at, 'the attempt is completed').toBeTruthy();
@@ -306,10 +311,10 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     const gradeLink = row.getByRole('link', { name: COPY.grade, exact: true });
     await expect(gradeLink, 'Akcje').toHaveAttribute(
       'href',
-      `/edu/assignments/${assignmentId}/results/${student.id}`,
+      `/edu/assignments/${assignmentId}/results/${attempt.id}`,
     );
     await gradeLink.click();
-    await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results/${student.id}$`), {
+    await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results/${attempt.id}$`), {
       timeout: 20_000,
     });
     await expect(

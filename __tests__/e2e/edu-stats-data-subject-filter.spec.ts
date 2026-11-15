@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
+import { firstRecorded } from '#test/mocks/recorded';
 
 /**
  * E2E coverage for #200 (EDU-ST-01, step 2).
@@ -133,7 +134,7 @@ test.describe('EDU content stats — subject filter and breakdowns (#200)', () =
 
     // 4. Filter round-trip: the type card follows the filtered payload while the
     //    totals and the by-subject card stay global.
-    const firstSubject = baseline.bySubject[0];
+    const firstSubject = firstRecorded(baseline.bySubject, 'the first subject');
     const filteredResponse = await page.request.get(
       `${STATS_URL}?subjectId=${encodeURIComponent(firstSubject.subjectId)}`,
     );

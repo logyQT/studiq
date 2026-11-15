@@ -4,11 +4,12 @@ import { Badge, Button, Card, Skeleton, UserAvatar } from '@studiq/ui';
 import { MessageSquareWarning, SearchX } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ReportsToolbar } from '@/components/question-reports/reports-toolbar';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { formatDate } from '@/lib/datetime';
 import { questionReportKeys } from '@/lib/query-keys';
@@ -61,24 +62,7 @@ export function ReportsListScreen({ basePath }: { basePath: string }) {
     limit: 24,
   });
 
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
-  );
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el) return undefined;
-    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver]);
+  const loadMoreRef = useInfiniteScroll({ hasNextPage, isFetchingNextPage, fetchNextPage });
 
   const hasActiveFilters = query.length > 0 || status !== 'all';
 

@@ -66,7 +66,7 @@ BEGIN
       m.id, m.front, m.back, m.created_at,
       rs.easiness_factor, rs.interval_days, rs.interval_unit, rs.repetitions,
       rs.next_review_at, rs.last_reviewed_at, rs.last_quality,
-      rs.learning_state, rs.learning_step, rs.lapse_count, rs.is_leech
+      rs.learning_state, rs.learning_step, rs.sm2_lapse_count, rs.is_leech
     FROM matching m
     LEFT JOIN flashcard_review_state rs
       ON rs.flashcard_id = m.id AND rs.user_id = p_user_id
@@ -108,7 +108,7 @@ BEGIN
           'lastQuality', c.last_quality,
           'learningState', c.learning_state,
           'learningStep', c.learning_step,
-          'lapseCount', c.lapse_count,
+          'sm2LapseCount', c.sm2_lapse_count,
           'isLeech', c.is_leech
         )
       ELSE NULL END,
@@ -1069,9 +1069,10 @@ $$;
 -- ==========================================
 -- get_teacher_problematic_questions (#204, EDU-ST-02)
 -- Per-question accuracy for the caller's own questions, aggregated in SQL so
--- the PostgREST 1000-row cap cannot truncate the answer sample. One answer per
--- (attempt, question) via bool_or, matching the submit scoring rule; `open`
--- questions are excluded because an ungraded row is `is_correct = false`.
+-- the PostgREST 1000-row cap cannot truncate the answer sample. One row per
+-- (attempt, question) is the storage contract (#1065), so the `bool_or`
+-- grouping only matters for rows written before it; `open` questions are
+-- excluded because an ungraded row is `is_correct = false`.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_teacher_problematic_questions(
@@ -1505,3 +1506,225 @@ BEGIN
   RETURN result;
 END;
 $$;
+
+-- ==========================================
+-- accept_org_invitation(token, user) (#1067)
+-- Claim the invitation, upsert the membership and join the default group in one
+-- transaction. The token is claimed first (`SELECT … FOR UPDATE` + `UPDATE`) so
+-- concurrent accepts still produce exactly one membership, and the claim rolls
+-- back with the membership when any later step fails — otherwise a transient DB
+-- error burned the token without joining the invitee. Service role only.
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION public.accept_org_invitation(p_token text, p_user_id uuid)
+RETURNS TABLE (organization_id uuid, organization_name text, org_role_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_invite   public.invitations%ROWTYPE;
+  v_org_name text;
+  v_group_id uuid;
+BEGIN
+  SELECT i.* INTO v_invite
+  FROM public.invitations i
+  WHERE i.token = p_token
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- `IS TRUE` (not `<> false`) is null-safe: a legacy NULL row is still claimable
+  -- and a claimed one is not.
+  IF v_invite.is_accepted IS TRUE THEN
+    RETURN;
+  END IF;
+
+  IF v_invite.expires_at < now() THEN
+    RETURN;
+  END IF;
+
+  IF v_invite.organization_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- A target role from another organization would grant that tenant's scopes.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.org_roles r
+    WHERE r.id = v_invite.target_org_role_id
+      AND r.organization_id = v_invite.organization_id
+  ) THEN
+    RETURN;
+  END IF;
+
+  SELECT o.name INTO v_org_name
+  FROM public.organizations o
+  WHERE o.id = v_invite.organization_id;
+
+  IF v_org_name IS NULL THEN
+    RETURN;
+  END IF;
+
+  UPDATE public.invitations
+  SET is_accepted = true
+  WHERE id = v_invite.id;
+
+  INSERT INTO public.org_members (organization_id, user_id, org_role_id)
+  VALUES (v_invite.organization_id, p_user_id, v_invite.target_org_role_id)
+  -- Named constraint (not a column list): the OUT parameter `organization_id`
+  -- makes the bare conflict target ambiguous inside plpgsql.
+  ON CONFLICT ON CONSTRAINT org_members_organization_id_user_id_key
+  DO UPDATE SET org_role_id = EXCLUDED.org_role_id;
+
+  SELECT g.id INTO v_group_id
+  FROM public.groups g
+  WHERE g.organization_id = v_invite.organization_id
+    AND g.is_default;
+
+  IF v_group_id IS NOT NULL THEN
+    INSERT INTO public.group_members (group_id, user_id, role)
+    VALUES (v_group_id, p_user_id, 'member')
+    ON CONFLICT ON CONSTRAINT group_members_group_id_user_id_key DO NOTHING;
+  END IF;
+
+  RETURN QUERY SELECT v_invite.organization_id, v_org_name, v_invite.target_org_role_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.accept_org_invitation(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.accept_org_invitation(text, uuid) TO service_role;
+
+-- ==========================================
+-- submit_quiz_attempt(attempt, user, score, answers) (#1064)
+-- Store the answer sheet and complete the attempt in one transaction.
+--
+-- `QuizAttemptService.submit` used to issue two independent PostgREST writes:
+-- first the completion (`score`, `completed_at`, a cleared draft), then the
+-- `student_answers` insert. Nothing tied them together, so a failed insert left
+-- the attempt completed with no answer rows — and every retry was refused as a
+-- re-submit, because the gate reads `completed_at`. The submission was lost.
+--
+-- This function does both writes inside one transaction:
+--   * the attempt row is locked (`SELECT … FOR UPDATE`) and its `completed_at`
+--     read before anything is written, so the sheet is stored only for an
+--     attempt the caller owns and has not completed. Two racing submits
+--     serialise on that lock; the loser re-reads `completed_at` set, returns no
+--     rows and `submit` answers it as a re-submit, exactly like #1066;
+--   * the answer rows are inserted first and `completed_at` is stamped last; a
+--     failing row aborts the whole call, so no `completed_at` can survive a
+--     sheet that did not land;
+--   * `ON CONFLICT (attempt_id, question_id) DO NOTHING` keeps the write
+--     idempotent for a question that already has a row (#1066's unique key).
+--
+-- Scoring stays in the service; this is a writer only. Zero rows back means
+-- "not completed" (missing, foreign or already completed attempt).
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION public.submit_quiz_attempt(
+  p_attempt_id uuid,
+  p_user_id uuid,
+  p_score int,
+  p_answers jsonb
+) RETURNS TABLE (completed_attempt_id uuid)
+LANGUAGE plpgsql
+-- Invoker rights on purpose: the caller is the student's own client, and the RLS
+-- policies on `quiz_attempts` / `student_answers` stay the outer authority. The
+-- function grants no privilege the app did not already use.
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_completed_at timestamptz;
+  v_completed_id uuid;
+BEGIN
+  -- The service-role client (server-side) names the owner explicitly; an end
+  -- user may only ever name themselves, even though RLS already scopes both
+  -- writes. `auth.role()` is the same service-role test the other RPCs use.
+  IF auth.uid() IS DISTINCT FROM p_user_id
+     AND auth.role() IS DISTINCT FROM 'service_role' THEN
+    RETURN;
+  END IF;
+
+  SELECT att.completed_at INTO v_completed_at
+  FROM public.quiz_attempts att
+  WHERE att.id = p_attempt_id
+    AND att.user_id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_completed_at IS NOT NULL THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO public.student_answers (
+    attempt_id,
+    question_id,
+    question_type,
+    selected_option_id,
+    text_answer,
+    is_correct
+  )
+  SELECT
+    p_attempt_id,
+    ans.question_id,
+    ans.question_type,
+    ans.selected_option_id,
+    ans.text_answer,
+    ans.is_correct
+  FROM jsonb_to_recordset(COALESCE(p_answers, '[]'::jsonb)) AS ans(
+    question_id uuid,
+    question_type public.question_type,
+    selected_option_id uuid,
+    text_answer text,
+    is_correct boolean
+  )
+  ON CONFLICT (attempt_id, question_id) DO NOTHING;
+
+  -- Last write of the transaction: the graded rows are the record from now on,
+  -- so the draft copy goes with the completion.
+  UPDATE public.quiz_attempts AS att
+  SET score = p_score,
+      completed_at = now(),
+      draft_answers = '{}'::jsonb
+  WHERE att.id = p_attempt_id
+    AND att.user_id = p_user_id
+    AND att.completed_at IS NULL
+  RETURNING att.id INTO v_completed_id;
+
+  IF v_completed_id IS NULL THEN
+    -- Unreachable while the row lock above is held. Raising rolls the inserted
+    -- rows back instead of committing an open attempt that already has a sheet.
+    RAISE EXCEPTION 'submit_quiz_attempt: attempt % completed concurrently', p_attempt_id
+      USING ERRCODE = '40001';
+  END IF;
+
+  RETURN QUERY SELECT v_completed_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.submit_quiz_attempt(uuid, uuid, int, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_quiz_attempt(uuid, uuid, int, jsonb) TO authenticated, service_role;
+
+-- ==========================================
+-- question_bank_counts (#1171, slice 1a)
+-- A soft-deleted item keeps its row, so `questions(count)` counts items the author can no longer
+-- see. PostgREST cannot filter an embedded aggregate; the bank list/detail reads this instead.
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.question_bank_counts(p_bank_ids uuid[])
+RETURNS TABLE (bank_id uuid, question_count bigint)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT q.bank_id, count(*) AS question_count
+  FROM public.questions q
+  WHERE q.bank_id = ANY (p_bank_ids)
+    AND q.status <> 'deleted'
+  GROUP BY q.bank_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.question_bank_counts(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.question_bank_counts(uuid[]) TO authenticated, service_role;

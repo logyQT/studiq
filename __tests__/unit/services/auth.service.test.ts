@@ -4,6 +4,7 @@ import { AuthService } from '@studiq/server/services/auth.service';
 import { InvitationService } from '@studiq/server/services/invitation.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall, firstRecorded } from '#test/mocks/recorded';
 
 /** Only these two invitation methods are reached; the client factory stays unused. */
 function stubInvitationService() {
@@ -160,7 +161,7 @@ describe('AuthService', () => {
         password: 'SecurePass1',
         options: { data: { name: 'John Doe', account_type: 'student' } },
       });
-      expect(mock.auth.signUp.mock.calls[0][0].options.data).not.toHaveProperty('invite_token');
+      expect(firstCall(mock.auth.signUp)[0].options.data).not.toHaveProperty('invite_token');
     });
 
     it('stores a usable token in the sign-up metadata', async () => {
@@ -363,7 +364,7 @@ describe('AuthService', () => {
       });
       expect(mock.auth.updateUser).toHaveBeenCalledWith({ password: 'NewSecure1' });
       expect(mock.auth.signInWithPassword.mock.invocationCallOrder[0]).toBeLessThan(
-        mock.auth.updateUser.mock.invocationCallOrder[0],
+        firstRecorded(mock.auth.updateUser.mock.invocationCallOrder, 'the updateUser call order'),
       );
     });
 

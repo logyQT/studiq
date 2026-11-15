@@ -110,12 +110,12 @@ export const assignmentKeys = {
   all: ['teacher-assignments'] as const,
   detail: (id: string) => ['teacher-assignments', id] as const,
   results: (id: string) => ['teacher-assignments', id, 'results'] as const,
-  studentResults: (id: string, studentId: string) =>
-    ['teacher-assignments', id, 'results', studentId] as const,
+  attemptResults: (id: string, attemptId: string) =>
+    ['teacher-assignments', id, 'results', attemptId] as const,
   /**
    * Keys a grading mutation must invalidate (#168): the results *list* prefix.
-   * It also matches the nested `studentResults(id, studentId)` entry, so the
-   * grading header refreshes too. Invalidating only `studentResults` leaves the
+   * It also matches the nested `attemptResults(id, attemptId)` entry, so the
+   * grading header refreshes too. Invalidating only `attemptResults` leaves the
    * results table cached: `useApiQuery` defaults to `staleTime: Infinity`, so the
    * stale row survives in-app navigation and is only refetched once the list key
    * is invalidated (a full reload works because it clears the cache).

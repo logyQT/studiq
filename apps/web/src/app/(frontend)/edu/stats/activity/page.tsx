@@ -83,10 +83,7 @@ const RANGES = ['7d', '30d', '90d'] as const;
  * Parses a date-only `YYYY-MM-DD` chart key as a **local** midnight. `new Date('2026-10-22')`
  * would parse as UTC, shifting the rendered day in negative-offset time zones (#251).
  */
-const parseDay = (value: string): Date => {
-  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
-  return new Date(year, month - 1, day);
-};
+const parseDay = (value: string): Date => new Date(`${value.slice(0, 10)}T00:00:00`);
 
 export default function TeacherActivityPage() {
   const t = useTranslations('TeacherActivityPage');

@@ -48,6 +48,5 @@ export const GroupIdParamsSchema = registry.register(
 
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof UpdateGroupSchema>;
-export type GroupMemberInput = z.infer<typeof GroupMemberSchema>;
 export type SetGroupMembersInput = z.infer<typeof SetGroupMembersSchema>;
 export type GroupIdParams = z.infer<typeof GroupIdParamsSchema>;

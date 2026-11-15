@@ -46,6 +46,7 @@ import {
   TRACE_ID_HEADER,
   withPublicTracing,
 } from '@studiq/server/lib/with-public-tracing';
+import { firstCall } from '#test/mocks/recorded';
 
 function request(url = 'http://localhost/api/v1/auth/login') {
   return new NextRequest(url, { method: 'POST' });
@@ -160,7 +161,7 @@ describe('withPublicTracing — public request observability (#301)', () => {
       expect(JSON.stringify(call)).not.toContain('SUPERSECRET');
     }
 
-    const [, loggedAttributes] = logWarn.mock.calls[0];
+    const [, loggedAttributes] = firstCall(logWarn);
     expect(loggedAttributes?.['http.url']).toContain('token_hash=%5BREDACTED%5D');
     expect(JSON.stringify(logWarn.mock.calls)).not.toContain('SUPERSECRET');
 

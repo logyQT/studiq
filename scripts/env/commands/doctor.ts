@@ -1,24 +1,78 @@
+import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
+import {
+  grafanaAuthLabel,
+  grafanaBaseUrl,
+  grafanaTokenAge,
+  inspectGrafana,
+  type GrafanaAuthState,
+} from '../lib/grafana';
+import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
-import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
+import {
+  REPO_ROOT,
+  canon,
+  composeFileNamesProject,
+  currentBranchName,
+  primaryCheckoutPath,
+} from '../lib/repo';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
+
+export interface ObservabilityStatus {
+  up: boolean;
+  project: string;
+  primary: string;
+  /** The primary checkout's compose file already carries the fixed project name. */
+  primaryReady: boolean;
+  start: string;
+  grafana: number;
+  tempo: number;
+  loki: number;
+  prometheus: number;
+  otlp: number;
+  /** Whether agents can actually read Grafana (not just whether it answers). */
+  auth: GrafanaAuthState;
+  authDetail: string | null;
+  tokenFile: string;
+  tokenMintedAt: string | null;
+  serviceAccount: string | null;
+  role: string | null;
+  mcpBinary: boolean;
+}
 
 export interface DoctorReport {
   ok: boolean;
   problems: string[];
   warnings: string[];
+  observability: ObservabilityStatus;
   lines: string[];
 }
 
+const OBSERVABILITY_PROBE_MS = 750;
+
 function orDash(value: string | number | null): string {
   return value === null || value === '' ? '-' : String(value);
+}
+
+function httpLabel(value: number): string {
+  return value > 0 ? String(value) : '-';
+}
+
+/**
+ * `up`, `partial (n/total)` or `down` for the machine-wide stack.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityLabel(upCount: number, total: number): string {
+  if (upCount >= total) return 'up';
+  return upCount > 0 ? `partial (${upCount}/${total})` : 'down';
 }
 
 function isWebHealthy(code: number): boolean {
@@ -26,7 +80,8 @@ function isWebHealthy(code: number): boolean {
 }
 
 function stackLines(stack: StackStatus | null): string[] {
-  if (!stack) return ['  none for this branch — `bun dev:up` creates or resumes one'];
+  if (!stack)
+    return ['  none for this branch — `bun run env:ensure --profile web` creates or resumes one'];
   const lines = [
     `  id         ${stack.id}`,
     `  name       ${stack.name}`,
@@ -86,6 +141,51 @@ async function buildReport(): Promise<DoctorReport> {
   const sharedDbUrl = contract.shared
     ? stripDbCredentials(process.env.SUPABASE_DB_URL ?? '')
     : null;
+
+  // Observability is machine-wide and owned by the primary checkout. Probe it
+  // read-only so an agent in a worktree gets the start command that cannot
+  // create a second stack.
+  const primary = primaryCheckoutPath();
+  // `GRAFANA_URL` is what the MCP actually talks to; it defaults to the
+  // machine-wide stack. Probing the same URL keeps doctor honest for both.
+  const grafanaBase = grafanaBaseUrl();
+  const [grafana, tempo, loki, prometheus, otlp] = await Promise.all([
+    probeHttp(`${grafanaBase}/api/health`, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.tempoReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.lokiReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.prometheusReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.otlp, OBSERVABILITY_PROBE_MS),
+  ]);
+  const primaryReady = composeFileNamesProject(
+    join(primary, 'docker-compose.yml'),
+    OBSERVABILITY_PROJECT,
+  );
+  // `/api/health` is unauthenticated: it proves the container answers, not that
+  // an agent can read traces/logs. Validate the service-account token too.
+  const grafanaAuth = await inspectGrafana({
+    healthCode: grafana,
+    healthTimeoutMs: OBSERVABILITY_PROBE_MS,
+  });
+  const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
+  const observability: ObservabilityStatus = {
+    up: upCount === 5,
+    project: OBSERVABILITY_PROJECT,
+    primary,
+    primaryReady,
+    start: `cd "${primary}" && docker compose up -d`,
+    grafana,
+    tempo,
+    loki,
+    prometheus,
+    otlp,
+    auth: grafanaAuth.state,
+    authDetail: grafanaAuth.detail,
+    tokenFile: grafanaAuth.tokenFile,
+    tokenMintedAt: grafanaAuth.mintedAt,
+    serviceAccount: grafanaAuth.serviceAccount,
+    role: grafanaAuth.role,
+    mcpBinary: grafanaAuth.mcpBinary,
+  };
 
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -169,6 +269,50 @@ async function buildReport(): Promise<DoctorReport> {
     '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
+  const observabilityStatus = observabilityLabel(upCount, 5);
+  const authLabel = grafanaAuthLabel({
+    state: observability.auth,
+    serviceAccount: observability.serviceAccount,
+    role: observability.role,
+    mintedAt: observability.tokenMintedAt,
+  });
+  const tokenAge = grafanaTokenAge(observability.tokenMintedAt);
+
+  lines.push(
+    '',
+    '▸ Observability (machine-wide)',
+    `  status     ${observabilityStatus}`,
+    `  project    ${observability.project}`,
+    `  primary    ${observability.primary}${observability.primaryReady ? '' : ' (compose file predates the fixed project name; update it first)'}`,
+    `  grafana    http=${httpLabel(observability.grafana)}`,
+    `  tempo      http=${httpLabel(observability.tempo)}`,
+    `  loki       http=${httpLabel(observability.loki)}`,
+    `  prometheus http=${httpLabel(observability.prometheus)}`,
+    `  otlp       http=${httpLabel(observability.otlp)}`,
+    `  auth       ${authLabel}`,
+    `  token      ${observability.tokenFile}${tokenAge ? ` (minted ${tokenAge})` : ''}`,
+    `  mcp        ${observability.mcpBinary ? 'mcp-grafana on PATH' : 'mcp-grafana NOT on PATH'}`,
+    `  start      ${observability.start}`,
+  );
+  if (!observability.up) {
+    lines.push('  note       start it once from the primary checkout, never from a worktree');
+    lines.push(
+      '  note       traces/logs are not readable by agents; do not substitute a local trace id',
+    );
+    if (!observability.primaryReady) {
+      lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
+    }
+    if (upCount > 0) {
+      lines.push(
+        '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
+      );
+    }
+  } else if (observability.auth !== 'ok') {
+    lines.push(
+      '  note       the MCP token is not valid — run `bun run env:observability ensure`; do not substitute a local trace id',
+    );
+  }
+
   lines.push('', '▸ Ports');
   if (appPortProbe.state === 'unavailable') {
     lines.push(
@@ -222,18 +366,23 @@ async function buildReport(): Promise<DoctorReport> {
     lines.push('', '▸ Next steps');
     for (const problem of problems) lines.push(`  ✘ ${problem}`);
     lines.push('  Pick a free APP_PORT: bun run env:ports');
-    lines.push('  Start/repair:         bun dev:up');
+    lines.push('  Start/repair:         bun run env:ensure --profile web');
   } else {
     lines.push('', '✔ No ownership or port conflicts for this checkout.');
   }
 
-  return { ok: problems.length === 0, problems, warnings, lines };
+  return { ok: problems.length === 0, problems, warnings, observability, lines };
 }
 
 export async function runDoctor(parsed: ParsedCommand): Promise<number> {
   const report = await buildReport();
   if (parsed.json) {
-    printJson({ ok: report.ok, problems: report.problems, warnings: report.warnings });
+    printJson({
+      ok: report.ok,
+      problems: report.problems,
+      warnings: report.warnings,
+      observability: report.observability,
+    });
   } else {
     for (const line of report.lines) writeLine(line);
   }

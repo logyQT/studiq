@@ -269,7 +269,7 @@ describe('FlashcardDeckController', () => {
       expect(dataOf(response)).toEqual({ success: true });
     });
 
-    it('returns error when service returns failure', async () => {
+    it('returns 403 when service fails with FORBIDDEN', async () => {
       mockService.delete.mockResolvedValueOnce(failure('FORBIDDEN'));
 
       const response = await controller.delete('d-1', mockCtx);
@@ -279,7 +279,7 @@ describe('FlashcardDeckController', () => {
       expect(failureOf(response)?.error).toBe('FORBIDDEN');
     });
 
-    it('returns error when service returns failure', async () => {
+    it('returns 500 when service fails with INTERNAL_SERVER', async () => {
       mockService.delete.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.delete('d-1', mockCtx);

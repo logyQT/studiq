@@ -1,18 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "autofix": {
-      "source": "coderabbitai/skills",
-      "sourceType": "github",
-      "skillPath": "skills/autofix/SKILL.md",
-      "computedHash": "7984cfc633ca8a628900bbcb874d48f65504cb38d6db1f150a009895e0a234c1"
-    },
-    "code-review": {
-      "source": "coderabbitai/skills",
-      "sourceType": "github",
-      "skillPath": "skills/code-review/SKILL.md",
-      "computedHash": "cbd81bd717b7c6a3009a1bb98cdcae8d632f416d2a4e3ac5e9ac091f1da865a4"
-    },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",

@@ -1,4 +1,5 @@
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -62,7 +63,7 @@ export async function gradableQuestionCounts(
 
       if (error) return toDbFailure(error);
 
-      const rows = data ?? [];
+      const rows = dbRows(data);
       for (const row of rows) {
         // PostgREST returns a to-one embed as an object; a missing/RLS-hidden
         // question is null and must not count as gradable.

@@ -11,7 +11,10 @@ export interface FlashcardItem {
 function toText(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value == null) return '';
-  return JSON.stringify(value) ?? '';
+  // `JSON.stringify` returns undefined for values with no JSON form (a bare
+  // function/symbol), which the lib types do not admit.
+  const json: unknown = JSON.stringify(value);
+  return typeof json === 'string' ? json : '';
 }
 
 export function parseFlashcards(raw: unknown): FlashcardItem[] {

@@ -58,9 +58,10 @@ bun scripts/qa-tenant.ts EDU-GRP-04 --fresh
 ## Observed during the suite walk (qa-env-7, shared app 3010 / DB 54421, pl)
 
 - `/edu/groups` otwiera się z sidebara `/edu` („Grupy”, widoczne tylko gdy rola
-  organizacyjna ma `group.manage`). Pierwsze wejście deep-linkiem tuż po logowaniu przez
-  API potrafi odpowiedzieć `403` zanim aktywna organizacja się ustali, dlatego spec wchodzi
-  przez `/edu` i klika „Grupy”.
+  organizacyjna ma `group.manage`). Wyścig deep-linku (#1125) jest naprawiony: pierwsze
+  wejście deep-linkiem tuż po logowaniu przez API czeka na aktywną organizację, więc lista
+  grup wczytuje się od razu, zamiast odpowiedzieć `403` i pokazać pusty stan. Spec nadal
+  wchodzi przez `/edu` i klika „Grupy”, czyli ścieżką użytkownika opisaną w przypadku.
 - Strona pokazuje nagłówek/kartę „Grupy”, przycisk „Nowa grupa” i tabelę z kolumnami
   **Nazwa / Członkowie / Nauczyciele / Akcje**. Seedowana `G1` renderuje 4 / 1; grupy
   utworzone przez nauczyciela renderują 0 / 0 i mają akcje edycji/usunięcia (są jego

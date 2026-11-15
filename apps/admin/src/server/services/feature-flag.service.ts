@@ -41,9 +41,9 @@ export class FeatureFlagService {
       .insert({
         key: input.key,
         name: input.name,
-        description: input.description ?? null,
-        is_enabled: input.isEnabled ?? true,
-        rollout_percentage: input.rolloutPercentage ?? 100,
+        description: input.description,
+        is_enabled: input.isEnabled,
+        rollout_percentage: input.rolloutPercentage,
       })
       .select()
       .single();

@@ -211,6 +211,9 @@ export function createHarness(): Harness {
     LC_ALL: process.env.LC_ALL,
     STUDIQ_DEV_REGISTRY: registryDir,
     STUDIQ_ENV_STATE_DIR: stateDir,
+    // Hermetic by default: the ensure hook must never mint against a real stack
+    // that happens to be running on the host. Tests that need Grafana override it.
+    GRAFANA_URL: 'http://127.0.0.1:1',
     // Isolate the per-stack `.dev` state: every harness gets its own identity.
     SUPABASE_STACK: `env-unit-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
     FAKE_BUNX_LOG: bunxLog,
@@ -356,6 +359,120 @@ export async function startHttpServer(status = 200): Promise<HttpServer> {
   };
 }
 
+export interface GrafanaFixtureOptions {
+  /** A pre-existing valid token, for the "already minted" path. */
+  token?: string;
+  /** Override the admin password the fixture accepts. */
+  adminPassword?: string;
+  /** Make token minting fail (a reachable stack that refuses the call). */
+  failMint?: boolean;
+  /** Make token revocation fail while minting keeps working. */
+  failRevoke?: boolean;
+}
+
+export interface GrafanaFixture {
+  url: string;
+  port: number;
+  validTokens: Set<string>;
+  serviceAccounts: Array<{ id: number; name: string; role: string }>;
+  mintCount: number;
+  /** Token ids the fixture actually revoked, in order. */
+  revokedTokenIds: number[];
+  close(): Promise<void>;
+}
+
+/**
+ * A minimal Grafana 11 service-account API. Only the endpoints `lib/grafana.ts`
+ * uses are implemented; datasource reads accept a bearer token, admin calls
+ * require basic auth, and everything else is a 404.
+ */
+export async function startGrafanaServer(
+  options: GrafanaFixtureOptions = {},
+): Promise<GrafanaFixture> {
+  const admin = `Basic ${Buffer.from(`admin:${options.adminPassword ?? 'admin'}`).toString('base64')}`;
+  const validTokens = new Set<string>(options.token ? [options.token] : []);
+  const serviceAccounts: GrafanaFixture['serviceAccounts'] = [];
+  /** Minted token id → key, so DELETE can invalidate the right credential. */
+  const mintedTokenKeys = new Map<number, string>();
+  const revokedTokenIds: number[] = [];
+  let nextAccountId = 1;
+  let nextTokenId = 1;
+  const fixture: GrafanaFixture = {
+    url: '',
+    port: 0,
+    validTokens,
+    serviceAccounts,
+    mintCount: 0,
+    revokedTokenIds,
+    close: async () => {
+      await new Promise<void>((done) => {
+        server.close(() => done());
+      });
+    },
+  };
+
+  const server = createHttpServer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const send = (status: number, body?: unknown): void => {
+      response.statusCode = status;
+      response.setHeader('content-type', 'application/json');
+      response.end(body === undefined ? '' : JSON.stringify(body));
+    };
+    const bearer = request.headers.authorization?.replace(/^Bearer /, '');
+    const isAdmin = request.headers.authorization === admin;
+
+    if (url.pathname === '/api/health') return send(200, { database: 'ok', version: '11.2.0' });
+    if (url.pathname === '/api/datasources' && request.method === 'GET') {
+      return bearer && validTokens.has(bearer)
+        ? send(200, [])
+        : send(401, { message: 'Unauthorized' });
+    }
+    if (url.pathname === '/api/user' && request.method === 'GET') {
+      return bearer && validTokens.has(bearer)
+        ? send(200, { id: 1, login: 'studiq-mcp' })
+        : send(401, { message: 'Unauthorized' });
+    }
+    if (url.pathname === '/api/serviceaccounts/search' && request.method === 'GET') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      return send(200, { serviceAccounts, totalCount: serviceAccounts.length });
+    }
+    if (url.pathname === '/api/serviceaccounts' && request.method === 'POST') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      const account = { id: nextAccountId++, name: 'studiq-mcp', role: 'Viewer' };
+      serviceAccounts.push(account);
+      return send(201, account);
+    }
+    if (/^\/api\/serviceaccounts\/\d+\/tokens$/.test(url.pathname) && request.method === 'POST') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      if (options.failMint) return send(500, { message: 'mint failed' });
+      const id = nextTokenId++;
+      const key = `glsa_test_${id}`;
+      validTokens.add(key);
+      mintedTokenKeys.set(id, key);
+      fixture.mintCount += 1;
+      return send(201, { id, name: `mcp-test-${id}`, key });
+    }
+    const revoke = /^\/api\/serviceaccounts\/(\d+)\/tokens\/(\d+)$/.exec(url.pathname);
+    if (revoke && request.method === 'DELETE') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      if (options.failRevoke) return send(500, { message: 'revoke failed' });
+      const id = Number(revoke[2]);
+      const key = mintedTokenKeys.get(id);
+      if (key === undefined) return send(404, { message: 'token not found' });
+      mintedTokenKeys.delete(id);
+      validTokens.delete(key);
+      revokedTokenIds.push(id);
+      return send(200, { message: 'Token deleted' });
+    }
+    return send(404, { message: 'not found' });
+  });
+
+  const port = await listen(server, 0, '127.0.0.1');
+  fixture.port = port;
+  fixture.url = `http://127.0.0.1:${port}`;
+  return fixture;
+}
+
 export interface TcpListener {
   port: number;
   close(): Promise<void>;
@@ -374,8 +491,11 @@ export async function startTcpListener(port = 0, host?: string): Promise<TcpList
   };
 }
 
-/** First port this checkout can bind on the wildcard address (doctor parity). */
-export async function firstBindablePort(from = 3900): Promise<number> {
+/**
+ * First port this checkout can bind on the wildcard address (doctor parity).
+ * Defaults to this worker's per-file base, never the shared 3000-3999 scan.
+ */
+export async function firstBindablePort(from = appPortBase()): Promise<number> {
   return firstFreePort(from, new Set(), '0.0.0.0');
 }
 
@@ -395,6 +515,35 @@ export async function firstFreePort(
   throw new Error(`no free port found from ${from}`);
 }
 
+/**
+ * Per-worker base port for tests that need a real, bind-checked app port.
+ *
+ * Unit files run in parallel in separate workers, so a fixed low base — the
+ * product's 3000-3999 suggestion range — makes files race for the same handful
+ * of ports, and a host may permanently own one of them (e.g. a docker proxy).
+ * The worker pid picks a 20-port slice, so files in different workers
+ * never overlap (a same-slice pair needs pids exactly 1000 apart, unlike the
+ * 400-wide version two workers a few hundred pids apart would share). The whole
+ * slice range stays below the ephemeral range, so an allocation cannot collide
+ * with an outgoing connection's source port. This is still only a *candidate*:
+ * every port is bind-checked by {@link firstFreePort} before a test uses it.
+ */
+export function appPortBase(): number {
+  return 10_000 + (process.pid % 1000) * 20;
+}
+
+/**
+ * `count` distinct bind-checked ports at or above `from` (default: this
+ * worker's base). Nothing is reserved: callers still bind/probe before use.
+ */
+export async function allocateAppPorts(count = 1, from = appPortBase()): Promise<number[]> {
+  const ports: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    ports.push(await firstFreePort(from, new Set(ports)));
+  }
+  return ports;
+}
+
 /** The first non-loopback IPv4 address, or null when the host has none. */
 export function nonLoopbackIPv4(): string | null {
   for (const entries of Object.values(networkInterfaces())) {
@@ -405,9 +554,13 @@ export function nonLoopbackIPv4(): string | null {
   return null;
 }
 
-/** A port free both on `address` and on loopback (so the conflict is provable). */
-export async function findConflictPort(address: string): Promise<number> {
-  for (let port = 3000; port <= 3999; port += 1) {
+/**
+ * A port free both on `address` and on loopback (so the conflict is provable).
+ * Defaults to the product's 3000-3999 app range; callers that only need *a*
+ * wildcard-conflicting port pass their per-file base instead.
+ */
+export async function findConflictPort(address: string, from = 3000, to = 3999): Promise<number> {
+  for (let port = from; port <= to; port += 1) {
     if (port === 3010) continue;
     const onAddress = await startTcpListener(port, address).catch(() => null);
     if (!onAddress) continue;

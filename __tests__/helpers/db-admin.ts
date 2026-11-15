@@ -1,3 +1,4 @@
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
@@ -128,7 +129,7 @@ export async function resetFirstRunTenant(userId: string, createdBefore?: Date):
   if (error) throw new Error(`resetFirstRunTenant: read memberships: ${error.message}`);
 
   const cutoff = createdBefore?.getTime();
-  for (const membership of memberships ?? []) {
+  for (const membership of dbRows(memberships)) {
     if (cutoff !== undefined) {
       if (!membership.joined_at) continue;
       if (new Date(membership.joined_at).getTime() >= cutoff) continue;

@@ -73,7 +73,6 @@ function isTwoOrgTenant(value: QaTenant): value is TwoOrgTenant {
   return (
     'orgA' in value &&
     'orgB' in value &&
-    !!value.users &&
     'teacherA' in value.users &&
     'studentA' in value.users &&
     'studentB' in value.users &&

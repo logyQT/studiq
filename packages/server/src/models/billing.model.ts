@@ -1,4 +1,5 @@
 import { registry, z } from '@studiq/server/lib/zod';
+import { OptionalLocaleSchema } from './locale.model';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 
 /**
@@ -9,7 +10,7 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 export const BillingPortalQuerySchema = registry.register(
   'BillingPortalQuery',
   z.object({
-    locale: z.enum(['pl', 'en'], { error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    locale: OptionalLocaleSchema,
   }),
 );
 
@@ -30,8 +31,6 @@ export const ChangePlanSchema = registry.register(
   }),
 );
 
-export type ChangePlanBody = z.infer<typeof ChangePlanSchema>;
-
 /**
  * `POST /api/v1/billing/cancel` body (#662 §7.3): `cancel: true` schedules
  * cancellation at period end, `false` reactivates before it takes effect.
@@ -42,8 +41,6 @@ export const CancelSubscriptionSchema = registry.register(
     cancel: z.boolean({ error: ValidationErrorCode.REQUIRED }),
   }),
 );
-
-export type CancelSubscriptionBody = z.infer<typeof CancelSubscriptionSchema>;
 
 /**
  * `POST /api/v1/billing/reconcile` body (#662 X6). The Checkout Session id from
@@ -58,5 +55,3 @@ export const ReconcileCheckoutSchema = registry.register(
       .max(255, { error: ValidationErrorCode.TOO_LONG }),
   }),
 );
-
-export type ReconcileCheckoutBody = z.infer<typeof ReconcileCheckoutSchema>;

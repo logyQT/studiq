@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-05 — a student cannot perform a teacher action through the API.
@@ -186,8 +186,8 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const tenant = loadCaseTenant();
     const org = tenant.org!;
-    const teacher = tenant.users.teacher;
-    const student = tenant.users.student;
+    const teacher = tenantUser(tenant, 'teacher');
+    const student = tenantUser(tenant, 'student');
     const run = tenant.runSuffix ?? tenant.key.slice(-8);
     const db = createQaSupabase();
 

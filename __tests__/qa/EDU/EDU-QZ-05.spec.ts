@@ -307,7 +307,8 @@ test.describe('@case:EDU-QZ-05 @area:EDU @prio:P2 create an assignment from a qu
     await submit.click();
 
     await page.waitForURL(ASSIGNMENT_ID);
-    const assignmentId = page.url().match(ASSIGNMENT_ID)![1];
+    const [, assignmentId] = page.url().match(ASSIGNMENT_ID) ?? [];
+    if (!assignmentId) throw new Error(`${CASE} the create flow landed on no assignment url`);
 
     // --- Expected result: the draft carries the quiz's questions -------------
     await expect(page.locator('h1'), 'the assignment is titled after the quiz').toHaveText(
@@ -333,7 +334,9 @@ test.describe('@case:EDU-QZ-05 @area:EDU @prio:P2 create an assignment from a qu
     const listText = await listCard.innerText();
     const positions = QUESTION_CONTENTS.map((content) => listText.indexOf(content));
     for (const [index, position] of positions.entries()) {
-      expect(position, `„${QUESTION_CONTENTS[index]}” is listed`).toBeGreaterThanOrEqual(0);
+      const content = QUESTION_CONTENTS[index];
+      if (!content) throw new Error(`${CASE} the case has no question at index ${index}`);
+      expect(position, `„${content}” is listed`).toBeGreaterThanOrEqual(0);
     }
     expect(positions, 'the questions keep the quiz order').toEqual(
       [...positions].toSorted((a, b) => a - b),

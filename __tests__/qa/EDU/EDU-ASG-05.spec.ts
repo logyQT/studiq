@@ -44,6 +44,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 const CASE = 'EDU-ASG-05';
 
 /** Polish copy from `EduAssignmentsPage` / `EduAssignmentDetailPage` / `AppAssignmentsPage`. */
+/** Publishing needs a close; the case withdraws a **scheduled** run, so it also needs an open in the future. */
+const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+const SCHEDULED_START = new Date(Date.now() + 2 * 86_400_000).toISOString();
+
 const COPY = {
   published: 'Opublikowane',
   draft: 'Szkic',
@@ -169,7 +173,12 @@ async function preparePublishedAssignment(page: Page, studentId: string): Promis
     studentIds: [studentId],
   });
   if (assignment.status !== 'published') {
-    await api(page.request, 'POST', `${ASSIGNMENTS_URL}/${assignment.id}/publish`, {});
+    // Publish-once applies from live (R12): only a scheduled run can be withdrawn, so the case's
+    // prerequisite is a run that has not opened yet.
+    await api(page.request, 'POST', `${ASSIGNMENTS_URL}/${assignment.id}/publish`, {
+      deadline: PUBLISH_DEADLINE,
+      startTime: SCHEDULED_START,
+    });
   }
 
   const published = await api<AssignmentDetail>(
