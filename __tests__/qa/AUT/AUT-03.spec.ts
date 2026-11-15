@@ -66,7 +66,9 @@ async function openRegister(page: Page): Promise<void> {
   const host = new URL(test.info().project.use.baseURL ?? 'http://localhost:3010').hostname;
   await page.context().addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: host, path: '/' }]);
   await page.goto('/register');
-  await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.header);
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.header, exact: true }),
+  ).toBeVisible();
 }
 
 /** Step 1: correct name, e-mail and account type (student). */
@@ -110,7 +112,9 @@ test('rejects every password that breaks a rule and never calls the register API
 
     // Rejection happens in the form: the URL stays and no account is attempted.
     await expect(page).toHaveURL(/\/register$/);
-    await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.header);
+    await expect(
+      page.getByRole('heading', { level: 2, name: COPY.header, exact: true }),
+    ).toBeVisible();
     expect(
       registerRequests,
       `no registration request for an invalid password (${password.length} chars)`,
@@ -142,7 +146,9 @@ test('accepts the 8-character minimum when it has an uppercase letter and a digi
   const [body] = bodies;
   if (!body) throw new Error(`${CASE} registration request body`);
   expect(asJson<{ password: string }>(JSON.parse(body)).password).toBe(MIN_LENGTH_VALID);
-  await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.successHeader);
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.successHeader, exact: true }),
+  ).toBeVisible();
   await expect(passwordMessage(page)).toHaveCount(0);
 });
 
@@ -166,6 +172,8 @@ test('accepts the 128-character maximum', async ({ page }) => {
   const [body] = bodies;
   if (!body) throw new Error(`${CASE} registration request body`);
   expect(asJson<{ password: string }>(JSON.parse(body)).password).toBe(MAX_LENGTH_VALID);
-  await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.successHeader);
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.successHeader, exact: true }),
+  ).toBeVisible();
   await expect(passwordMessage(page)).toHaveCount(0);
 });

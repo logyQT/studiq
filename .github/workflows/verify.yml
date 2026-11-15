@@ -87,6 +87,7 @@ jobs:
     outputs:
       app: ${{ steps.diff.outputs.app }}
       qa_shards: ${{ steps.diff.outputs.qa_shards }}
+      ai_suite: ${{ steps.diff.outputs.ai_suite }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -160,17 +161,49 @@ jobs:
               },
           ]
 
+          # The AI suite (`ai-suite` job) runs `__tests__/qa/AI` against the fake
+          # inference server, which no shard has. Two lists: the files that belong to
+          # it alone (they must not read as "an area the shard list does not know",
+          # which starts every shard), and the files that can change what it proves.
+          # The two case documents are own files too: an edit to one is an edit to
+          # what the suite asserts, and the STU shard has neither case.
+          AI_OWN = (
+              "__tests__/qa/AI/", "scripts/fake-llm/",
+              "__tests__/qa/profiles/STU-47.json", "__tests__/qa/profiles/STU-48.json",
+              "qa/cases/STU-47.md", "qa/cases/STU-48.md",
+          )
+          # The surface includes the two pages the specs drive, the error/reset
+          # helpers the chat is made of and the usage controller behind the counter
+          # STU-47 and STU-48 assert — without them a regression there runs four
+          # shards that hold no AI case and skips `ai-suite`.
+          AI_SURFACE = AI_OWN + (
+              "apps/web/src/app/(frontend)/app/ai/", "apps/web/src/app/(frontend)/edu/ai/",
+              "apps/web/src/components/ai/", "apps/web/src/hooks/use-ai-chat.ts",
+              "apps/web/src/lib/ai-chat-", "apps/web/src/app/(backend)/api/v1/ai/",
+              "apps/web/src/i18n/",
+              "packages/server/src/agents/", "packages/server/src/ai/",
+              "packages/server/src/controllers/ai-",
+              "packages/server/src/lib/conversation-context.ts",
+              "packages/server/src/services/ai-", "packages/server/src/services/limits",
+              "__tests__/qa/fixtures/", "__tests__/qa/playwright.qa.config.ts",
+              "scripts/qa-tenant.ts", "scripts/seed/", "supabase/",
+              "package.json", "bun.lock", ".github/workflows/verify.yml",
+          )
+
           # No base ref = nightly schedule / manual dispatch: run the whole suite.
           base = sys.argv[1] if len(sys.argv) > 1 else ""
           if not base:
               selected = shards
+              ai_suite = True
           else:
               # --no-renames: same reason as the shell diff above — a moved file
               # must not collapse to a single path before area attribution.
-              changed = subprocess.run(
+              all_changed = subprocess.run(
                   ["git", "diff", "--no-renames", "--name-only", f"origin/{base}...HEAD"],
                   capture_output=True, text=True, check=True,
               ).stdout.split()
+              ai_suite = any(f.startswith(AI_SURFACE) for f in all_changed)
+              changed = [f for f in all_changed if not f.startswith(AI_OWN)]
               # Shared QA files, anything outside the QA test tree, or a QA PR
               # that touches no spec at all can change every area -> run all
               # shards. Only a PR that pins a *known* area narrows (see
@@ -242,11 +275,12 @@ jobs:
                   )
               )
               touched = [s for s in shards if set(s["areas"]) & areas]
-              if no_test_surface or admin_only:
+              if no_test_surface or admin_only or (all_changed and not changed):
                   selected = []
               else:
                   selected = shards if force_all or not touched else touched
           print("qa_shards=" + json.dumps(selected))
+          print("ai_suite=" + ("true" if ai_suite else "false"))
           PY
 
   # The required check that no test job waits on any more: a lint/type failure
@@ -689,6 +723,170 @@ jobs:
           path: |
             playwright-report
             test-results
+          if-no-files-found: ignore
+
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop || true
+
+  # The AI suite: the QA cases that need a model (`__tests__/qa/AI`), run against
+  # the fake inference server (`scripts/fake-llm`, design in
+  # docs/ai/fake-inference-server.md). No job ever calls a provider, so bad model
+  # output (truncated tool calls, a dropped stream, a provider that is down) is a
+  # deterministic input instead of something to wait for.
+  #
+  # Its own job, not a `qa-suite` shard: the app process needs `LLM_BASE_URL`
+  # pointed at the fake server, and the server must answer `/healthz` before the
+  # app starts, or the first model call retries three times and fails with a
+  # generic message. `scope` starts it for the AI files and for the code the chat
+  # is made of (`scope.ai_suite`); the nightly schedule and a manual dispatch
+  # always run it.
+  #
+  # One worker: `fakeLlm.reset()` and the journal belong to the whole server, so
+  # two specs at once would erase each other's turn counters. The suite is about
+  # a minute of tests, so there is nothing to win by running them in parallel.
+  ai-suite:
+    needs: [scope]
+    if: needs.scope.outputs.ai_suite == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      QA_APP_URL: http://localhost:3010
+      APP_ENV: qa
+      PAYMENT_DRIVER: mock
+      QA_WORKERS: '1'
+      # The app talks to the fake server, never to a provider. All four keys are
+      # declared in `.env.schema`; the key is a placeholder, not a secret.
+      LLM_PROVIDER: fake
+      LLM_API_KEY: qa-fake-key
+      LLM_MODEL_NAME: qa-fake
+      LLM_BASE_URL: http://127.0.0.1:4321/v1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+
+      - name: Start the fake inference server
+        # Before the app, and only once it answers: `model.ts` reads the base URL
+        # at import, and a call that finds nothing listening is retried before it
+        # fails.
+        run: |
+          (bun scripts/fake-llm/server.ts > /tmp/fake-llm.log 2>&1 &)
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null http://127.0.0.1:4321/healthz && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:4321/healthz
+
+      - name: Start Supabase (native)
+        env:
+          # See the `qa-suite` job: `auth.site_url` resolves from `env(APP_URL)`.
+          APP_URL: http://localhost:3010
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
+
+      - name: Export env
+        # Same contract as `qa-suite`: the build and the plain Bun processes (the
+        # seeder, the specs) read these from the job environment.
+        run: |
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
+            echo "SUPABASE_DB_URL=$DB_URL"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
+            echo "OTEL_SDK_DISABLED=true"
+            echo "QA_APP_URL=http://localhost:3010"
+          } >> "$GITHUB_ENV"
+
+      # Restore-only, like every job but the one writer of each cache (`qa-suite`'s
+      # `edu` shard): the key and the browser are the ones `qa-suite` uses.
+      - name: Restore Playwright browsers (exact)
+        id: pw-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-chromium-shell-${{ hashFiles('bun.lock') }}
+      - name: Restore Playwright browsers (fallback)
+        id: pw-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-chromium-shell-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            playwright-ubuntu-24.04-chromium-shell-
+
+      - name: Install Chromium
+        # The headless shell only, no `--with-deps`: see the `qa-suite` job.
+        run: bunx playwright install --only-shell chromium
+
+      - name: Assert the browser runtime is complete
+        run: bash scripts/check-playwright-runtime.sh chromium
+
+      - name: Restore Next build cache (exact)
+        id: next-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore Next build cache (fallback)
+        id: next-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            next-ubuntu-24.04-
+
+      - name: Build and start the app
+        # `--keepAliveTimeout` must stay in sync with `apps/web`'s `start` script
+        # (see the `qa-suite` job). The job-level `LLM_*` variables are in the
+        # environment of both the build and `next start`.
+        run: |
+          bun run build
+          (cd apps/web && bunx next start -p 3010 --keepAliveTimeout 55000 > /tmp/qa-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3010/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3010/login
+          curl -sf -o /dev/null http://localhost:3010/api/v1/health
+
+      - name: Seed the AI tenants
+        # The area is the directory name: `--areas AI` seeds every spec under
+        # `__tests__/qa/AI`, each case on its own tenant (and one per retry).
+        run: bun scripts/qa-tenant.ts --all --areas AI --run "ci${{ github.run_id }}"
+
+      - name: Run the AI suite
+        run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line __tests__/qa/AI
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ai-suite-report
+          path: |
+            playwright-report
+            test-results
+            /tmp/fake-llm.log
+            /tmp/qa-app.log
           if-no-files-found: ignore
 
       - name: Stop Supabase
