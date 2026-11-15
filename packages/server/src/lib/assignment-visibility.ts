@@ -48,19 +48,27 @@ export async function hiddenResultAssignmentIds(
 }
 
 /**
- * Whether a review exists at all and whether it may be read now (#1171, R5).
+ * Whether a review exists at all and whether it may be read now (#1171, R5; #1174, R12).
  *
- * `hidden` — the teacher never enabled results, so there is no review at any time (not a lock).
+ * `hidden` — the teacher never enabled results, so there is no review at any time (not a lock) — or
+ * the run was cancelled, which has no reveal at all: cancelling ends the run without handing the
+ * cohort the key.
  * `locked` — results are on, but the assessment has not closed yet: the key is not out.
  * `open`   — the assessment closed; the whole cohort may read the review.
  */
 export function reviewState(
   assignment:
-    | { show_results?: boolean | null; closed_at?: string | null; deadline?: string | null }
+    | {
+        status?: string | null;
+        show_results?: boolean | null;
+        closed_at?: string | null;
+        deadline?: string | null;
+      }
     | null
     | undefined,
   now: Date = new Date(),
 ): 'hidden' | 'locked' | 'open' {
   if (!assignment || resultsHidden(assignment)) return 'hidden';
+  if (assignment.status === 'cancelled') return 'hidden';
   return isAssessmentClosed(assignment, now) ? 'open' : 'locked';
 }

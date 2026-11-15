@@ -2772,7 +2772,7 @@ export type Database = {
     };
     Enums: {
       account_type: 'student' | 'educator' | 'manager';
-      assignment_status: 'draft' | 'published';
+      assignment_status: 'draft' | 'published' | 'cancelled';
       question_status: 'open' | 'retired' | 'deleted';
       question_type:
         'mcq' | 'true_false' | 'open' | 'multi_select' | 'matching' | 'ordering' | 'fill_in_blank';
@@ -2894,7 +2894,7 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ['student', 'educator', 'manager'],
-      assignment_status: ['draft', 'published'],
+      assignment_status: ['draft', 'published', 'cancelled'],
       question_status: ['open', 'retired', 'deleted'],
       question_type: [
         'mcq',
