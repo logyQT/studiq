@@ -1,7 +1,8 @@
 'use client';
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
-import { Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { AudienceSwitch } from '@/app/(frontend)/pricing/_components/audience-switch';
@@ -18,9 +19,11 @@ import {
 import { PricingFaq } from '@/app/(frontend)/pricing/_components/pricing-faq';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
 import { getPlanLadders } from '@/lib/pricing-ladders';
+import { cn } from '@/lib/utils';
 
 /** The region the audience radios swap; the switch's `aria-controls` points here. */
 const PLANS_REGION_ID = 'pricing-plans';
@@ -42,7 +45,11 @@ export function PricingPageClient() {
 
   // One request: the catalogue is a flat list and `sort_order` spans all three
   // ladders, so the page splits it rather than asking per audience.
-  const { data: plans, isLoading } = useApiQuery<PlanInfo[]>({
+  const {
+    data: plans,
+    isLoading,
+    isError,
+  } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active'],
     url: '/api/v1/subscription-plans',
   });
@@ -116,39 +123,61 @@ export function PricingPageClient() {
       </section>
 
       <div id={PLANS_REGION_ID}>
-        {sections.map((section) => (
-          <section key={section.kind} className="py-16 md:py-20">
+        {isError ? (
+          // A failed catalogue has no prices to print, and inventing one is worse
+          // than saying so. One line replaces the ladders; the action is real.
+          <section className="py-16 md:py-20">
             <div className="mx-auto max-w-content px-content">
-              <h2 className="font-display text-h2 font-semibold text-balance">{section.title}</h2>
-              <p className="mt-3 max-w-xl text-sm text-muted-foreground">{section.lede}</p>
-
-              {isLoading ? (
-                // The ladder is named before its prices arrive, so the reader
-                // knows which list is loading rather than facing a bare hero.
-                <div className="mt-8 flex border-t border-border pt-8">
-                  <Loader2 aria-hidden className="size-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <>
-                  <ul className="mt-8 border-t border-border">
-                    {section.plans.map((plan) => (
-                      <PlanRow
-                        key={plan.key}
-                        plan={plan}
-                        isCurrent={currentPlan?.key === plan.key}
-                        signedIn={!!user}
-                        orgId={activeOrg?.id}
-                      />
-                    ))}
-                  </ul>
-                  {section.plans.length > 1 ? (
-                    <ComparisonTable plans={section.plans} kind={section.kind} />
-                  ) : null}
-                </>
-              )}
+              <p className="max-w-xl text-sm text-muted-foreground">
+                {t('catalogue_unavailable')}{' '}
+                <Link
+                  href="/contact"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-control font-semibold text-primary underline-offset-4 hover:underline',
+                    FOCUS_RING,
+                  )}
+                >
+                  {t('cta_contact')}
+                  <ArrowRight aria-hidden="true" className="size-4" />
+                </Link>
+              </p>
             </div>
           </section>
-        ))}
+        ) : (
+          sections.map((section) => (
+            <section key={section.kind} className="py-16 md:py-20">
+              <div className="mx-auto max-w-content px-content">
+                <h2 className="font-display text-h2 font-semibold text-balance">{section.title}</h2>
+                <p className="mt-3 max-w-xl text-sm text-muted-foreground">{section.lede}</p>
+
+                {isLoading ? (
+                  // The ladder is named before its prices arrive, so the reader
+                  // knows which list is loading rather than facing a bare hero.
+                  <div className="mt-8 flex border-t border-border pt-8">
+                    <Loader2 aria-hidden className="size-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    <ul className="mt-8 border-t border-border">
+                      {section.plans.map((plan) => (
+                        <PlanRow
+                          key={plan.key}
+                          plan={plan}
+                          isCurrent={currentPlan?.key === plan.key}
+                          signedIn={!!user}
+                          orgId={activeOrg?.id}
+                        />
+                      ))}
+                    </ul>
+                    {section.plans.length > 1 ? (
+                      <ComparisonTable plans={section.plans} kind={section.kind} />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </section>
+          ))
+        )}
 
         <PricingFaq audience={audience} />
       </div>
