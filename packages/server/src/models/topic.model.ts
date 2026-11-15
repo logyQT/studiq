@@ -39,7 +39,7 @@ export const BatchDeleteTopicSchema = registry.register(
 export const TopicListQuerySchema = registry.register(
   'TopicListQuery',
   createListQuerySchema({
-    sortColumns: ['created_at', 'name'] as const,
+    sortColumns: ['created_at', 'updated_at', 'name'] as const,
     maxLimit: 500,
     defaultLimit: 50,
   }).extend({

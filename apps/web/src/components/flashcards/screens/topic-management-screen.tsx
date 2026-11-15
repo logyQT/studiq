@@ -125,6 +125,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           <Plus className="h-4 w-4" /> {t('new_topic')}
         </Button>
       }
+      searchPlaceholder={t('search_topics')}
       skeleton={<CollectionCardSkeleton description={false} />}
       skeletonCount={8}
       emptyIcon={<Tags className="h-10 w-10 text-muted-foreground" />}

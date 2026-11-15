@@ -11,6 +11,8 @@ import type { SortOption } from '@/lib/content-sort-options';
 interface ContentListToolbarProps {
   searchInput: string;
   onSearchChange: (value: string) => void;
+  /** Placeholder copy; defaults to the list's `search_placeholder` message. */
+  searchPlaceholder?: string;
   owner: string;
   onOwnerChange: (value: string) => void;
   groupIds: string[];
@@ -34,6 +36,7 @@ interface ContentListToolbarProps {
 export function ContentListToolbar({
   searchInput,
   onSearchChange,
+  searchPlaceholder,
   owner,
   onOwnerChange,
   groupIds,
@@ -53,7 +56,7 @@ export function ContentListToolbar({
       search={{
         value: searchInput,
         onChange: onSearchChange,
-        placeholder: t('search_placeholder'),
+        placeholder: searchPlaceholder ?? t('search_placeholder'),
       }}
       actions={actions}
     >

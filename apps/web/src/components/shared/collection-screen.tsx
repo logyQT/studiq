@@ -20,7 +20,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
-import { contentSortOptions } from '@/lib/content-sort-options';
+import { contentSortOptions, type SortOption } from '@/lib/content-sort-options';
 import { type ListEmptyView, resolveListEmptyView } from '@/lib/list-empty-view';
 
 /**
@@ -383,6 +383,10 @@ interface CollectionScreenProps<T extends { id: string }> {
   actions?: ReactNode;
   /** List-specific toolbar control after the sort select, e.g. the deck suspend toggle. */
   toolbarExtra?: ReactNode;
+  /** Placeholder copy for the search input; defaults to `search_placeholder`. */
+  searchPlaceholder?: string;
+  /** Sort orders the collection supports; defaults to the shared content set. */
+  sortOptions?: SortOption[];
   /** Rendered above the toolbar, e.g. the "select all" row while selecting. */
   top?: ReactNode;
   /** Total line above the grid; omit for collections that do not show one. */
@@ -419,6 +423,8 @@ export function CollectionScreen<T extends { id: string }>({
   screen,
   actions,
   toolbarExtra,
+  searchPlaceholder,
+  sortOptions,
   top,
   countLabel,
   hint,
@@ -468,6 +474,7 @@ export function CollectionScreen<T extends { id: string }>({
       <ContentListToolbar
         searchInput={screen.searchInput}
         onSearchChange={screen.setSearchInput}
+        searchPlaceholder={searchPlaceholder}
         owner={screen.owner}
         onOwnerChange={screen.setOwner}
         groupIds={screen.effectiveGroupIds}
@@ -477,7 +484,7 @@ export function CollectionScreen<T extends { id: string }>({
         sortBy={screen.sortBy}
         sortOrder={screen.sortOrder}
         onSortChange={screen.setSort}
-        sortOptions={contentSortOptions(t)}
+        sortOptions={sortOptions ?? contentSortOptions(t)}
         actions={actions}
         t={t}
       >
