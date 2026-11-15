@@ -212,8 +212,8 @@ automated cases below are green.
 | STU-43      | STU  | P2   | e2e    |                                                                      |
 | STU-44      | STU  | P2   | e2e    |                                                                      |
 | STU-45      | STU  | P2   | e2e    |                                                                      |
-| STU-47      | STU  | P2   | e2e    |                                                                      |
-| STU-48      | STU  | P2   | e2e    |                                                                      |
+| STU-47      | STU  | P2   | e2e    | ai-suite: fake inference server                                      |
+| STU-48      | STU  | P2   | e2e    | ai-suite: fake inference server                                      |
 | STU-49      | STU  | P2   | e2e    |                                                                      |
 | STU-50      | STU  | P2   | e2e    |                                                                      |
 | STU-51      | STU  | P2   | e2e    |                                                                      |
