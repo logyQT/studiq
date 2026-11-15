@@ -32,6 +32,17 @@ vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => ({
   writeAssignmentSnapshots: vi.fn(() => Promise.resolve({ success: true, data: 1 })),
 }));
 
+// The retake sample reads the exposure ledger and the student's attempts with the service role
+// (#1174); these tests state the history instead, so no test reaches a real database.
+const attemptHistoryState = vi.hoisted(() => ({
+  served: new Set<string>(),
+  seen: new Set<string>(),
+}));
+vi.mock('@studiq/server/lib/attempt-sample', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/attempt-sample')>()),
+  attemptHistory: vi.fn(() => Promise.resolve({ success: true, data: attemptHistoryState })),
+}));
+
 /** Cross-class exposure is derived from the database in production; these tests state the count. */
 const exposureState = vi.hoisted(() => ({ openItemCount: 0, outsideStudentCount: 0 }));
 vi.mock('@studiq/server/lib/assignment-exposure', () => ({
@@ -2490,7 +2501,7 @@ describe('TeacherAssignmentService', () => {
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('returns RATE_LIMITED when max attempts reached', async () => {
+    it('returns NO_ATTEMPTS_LEFT when the budget is spent (#1174)', async () => {
       mock.from
         .mockReturnValueOnce(chain(assignment))
         .mockReturnValueOnce(chain([{ id: 'a-1', completed_at: '2026-07-13T00:00:00Z' }]));
@@ -2498,7 +2509,7 @@ describe('TeacherAssignmentService', () => {
       const result = await service.startAttempt(assignmentId, ctx);
 
       expect(result.success).toBe(false);
-      if (!result.success) expect(result.error).toBe('RATE_LIMITED');
+      if (!result.success) expect(result.error).toBe('NO_ATTEMPTS_LEFT');
     });
 
     it('returns NOT_FOUND when no questions', async () => {

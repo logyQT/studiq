@@ -2187,6 +2187,8 @@ export type Database = {
           deadline: string | null;
           description: string | null;
           id: string;
+          allow_same_item_retake: boolean;
+          attempt_item_count: number | null;
           max_attempts: number;
           organization_id: string | null;
           passing_score: number | null;
@@ -2211,6 +2213,8 @@ export type Database = {
           deadline?: string | null;
           description?: string | null;
           id?: string;
+          allow_same_item_retake?: boolean;
+          attempt_item_count?: number | null;
           max_attempts?: number;
           organization_id?: string | null;
           passing_score?: number | null;
@@ -2234,6 +2238,8 @@ export type Database = {
           deadline?: string | null;
           description?: string | null;
           id?: string;
+          allow_same_item_retake?: boolean;
+          attempt_item_count?: number | null;
           max_attempts?: number;
           organization_id?: string | null;
           passing_score?: number | null;

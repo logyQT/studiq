@@ -35,6 +35,15 @@ const teacherAssignmentFields = z.object({
     .min(0, { error: ValidationErrorCode.TOO_SMALL })
     .max(100, { error: ValidationErrorCode.TOO_BIG })
     .optional(),
+  /** R6: serve the same items on a retake instead of a fresh sample. Off by default. */
+  allowSameItemRetake: z.boolean({ error: ValidationErrorCode.BOOL }),
+  /** R7: how many items one attempt serves out of the pool. Omitted = the whole pool. */
+  attemptItemCount: z
+    .number({ error: ValidationErrorCode.NUMBER })
+    .int({ error: ValidationErrorCode.INTEGER })
+    .min(1, { error: ValidationErrorCode.TOO_SMALL })
+    .max(100, { error: ValidationErrorCode.TOO_BIG })
+    .optional(),
 });
 
 export const CreateTeacherAssignmentSchema = registry.register(
@@ -44,6 +53,7 @@ export const CreateTeacherAssignmentSchema = registry.register(
     shuffleAnswers: teacherAssignmentFields.shape.shuffleAnswers.default(true),
     showResults: teacherAssignmentFields.shape.showResults.default(false),
     maxAttempts: teacherAssignmentFields.shape.maxAttempts.default(1),
+    allowSameItemRetake: teacherAssignmentFields.shape.allowSameItemRetake.default(false),
   }),
 );
 export type CreateTeacherAssignmentInput = z.infer<typeof CreateTeacherAssignmentSchema>;
