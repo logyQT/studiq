@@ -52,9 +52,9 @@ keeps the case's steps and expected copy, and maps them onto the case's own tena
 
 ## Observed during the suite walk (qa-env-6, shared app 3010 / DB 54421)
 
-- `/login` renders in Polish without a session: card title „Witaj ponownie”, fields
-  „Adres e-mail” and „Hasło”, button „Zaloguj się”. The page stays `/login` on every
-  failed attempt.
+- `/login` renders in Polish without a session: the „StudiQ” wordmark, the heading
+  „Witaj ponownie”, fields „Adres e-mail” and „Hasło”, button „Zaloguj się”. The page
+  stays `/login` on every failed attempt.
 - Wrong password for an existing account („zlehaslo”) → red toast
   „Nieprawidłowy adres e-mail lub hasło.” (`[data-sonner-toast][data-type="error"]`),
   API `POST /api/v1/auth/login` → `401` `{"success":false,"error":"UNAUTHORIZED"}`,

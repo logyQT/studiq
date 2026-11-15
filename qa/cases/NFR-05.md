@@ -39,17 +39,18 @@ The suite version uses the case's own tenant and never the legacy accounts.
 - Step 2 needs one dialog on an authenticated page: the tenant `student` opens
   `/app/flashcards` and uses the „Nowa talia” dialog. The dialog is opened and closed without
   saving, so the tenant's data is untouched.
-- Step 3 measures the focus cue on the elements the steps reach: the two form fields and the
-  submit button on `/login`, the account-type trigger on `/register`, and the dialog's close
-  button and trigger.
+- Step 3 measures the focus cue on the elements the steps reach: the „StudiQ” wordmark,
+  the two form fields and the submit button on `/login`, the account-type trigger on
+  `/register`, and the dialog's close button and trigger.
 - Not used: no other tenant, no global admin setting, feature flag, plan row/catalogue,
   platform stat or singleton row. Every test is re-runnable against an already-seeded tenant.
 
 ## Walk observations (shared app, worker qa-env-7, Polish UI)
 
-- `/login` tab order: e-mail → password → „Zaloguj się” → „Zarejestruj się” (then the
-  document body). Shift+Tab walks it backwards. Every stop draws the 3 px
-  `ring-ring/50` ring; the two links fall back to the browser's 1 px `auto` outline.
+- `/login` tab order: „StudiQ” wordmark → e-mail → password → „Zaloguj się” →
+  „Zarejestruj się” (then the document body). Shift+Tab walks it backwards. Every stop
+  draws a ring: the solid 2 px `--ring` at a 2 px offset on the wordmark, the button and
+  the „Zarejestruj się” link, and the kit's 3 px `ring-ring/50` on the fields.
 - Enter in the password field posts `/api/v1/auth/login` (200) and lands on the student
   dashboard — the form is submitted, not just a client-side validation pass.
 - `/register` tab order: the panel's „StudiQ” wordmark → „Zaloguj się” → name → e-mail →
