@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
 const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -171,6 +172,7 @@ async function prepareFixture(page: Page, tenant: QaTenant): Promise<Fixture> {
   const question = await postData<QuestionRow>(page, '/api/v1/questions', {
     bankId: bank.id,
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content: QUESTION_CONTENT,
     answers: [
       { content: CORRECT_ANSWER, isCorrect: true, orderIndex: 0 },

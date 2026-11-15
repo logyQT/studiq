@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * EDU-QZ-05 — Utworzenie kartkówki z quizu (`/edu/quizzes/:id`).
@@ -174,6 +175,7 @@ async function ensureQuestions(api: APIRequestContext, bankId: string): Promise<
           bankId,
           type: 'mcq',
           content,
+          explanation: FIXTURE_EXPLANATION,
           answers: MCQ_ANSWERS,
         })),
     );

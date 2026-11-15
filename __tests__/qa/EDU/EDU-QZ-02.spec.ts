@@ -1,6 +1,7 @@
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * EDU-QZ-02 — Dodawanie pytań do quizu (/edu/quizzes/<id>/edit).
@@ -160,7 +161,7 @@ async function ensureQuestions(page: Page, bankId: string): Promise<StoredQuesti
     questions.push(
       await expectApi<StoredQuestion>(
         await page.request.post('/api/v1/questions', {
-          data: { bankId, type: 'open', content },
+          data: { bankId, type: 'open', content, modelAnswer: FIXTURE_MODEL_ANSWER },
         }),
         `POST /api/v1/questions (${content})`,
       ),

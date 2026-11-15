@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * EDU-ASG-10 — printing an assignment („kartkówka”) and its answer key.
@@ -171,6 +172,7 @@ async function createAssignmentWithQuestions(page: Page, label: string): Promise
   for (const question of [
     {
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: mcq.content,
       answers: mcq.answers.map((content, index) => ({
         content,
@@ -180,6 +182,7 @@ async function createAssignmentWithQuestions(page: Page, label: string): Promise
     },
     {
       type: 'true_false',
+      explanation: FIXTURE_EXPLANATION,
       content: trueFalse.content,
       answers: trueFalse.answers.map((content, index) => ({
         content,
@@ -187,7 +190,12 @@ async function createAssignmentWithQuestions(page: Page, label: string): Promise
         orderIndex: index,
       })),
     },
-    { type: 'open', content: open.content, answers: [] },
+    {
+      type: 'open',
+      content: open.content,
+      modelAnswer: FIXTURE_MODEL_ANSWER,
+      answers: [],
+    },
   ]) {
     const existing = existingQuestions.find((row) => row.content === question.content);
     const created =

@@ -8,6 +8,7 @@ import {
   type QaRole,
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * STU-29 — a student opens an educator's deck read-only and cannot modify its
@@ -266,6 +267,7 @@ async function ensureQuestion(page: Page, tenant: QaTenant): Promise<Question> {
     data: {
       bankId: bank.id,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: QUESTION_CONTENT,
       answers: [
         { content: '4', isCorrect: true, orderIndex: 0 },

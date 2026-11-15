@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
+import { FIXTURE_MODEL_ANSWER, fixtureExplanation } from '#test/helpers/question-text';
 import {
   type BeforeResult,
   before,
@@ -123,6 +124,7 @@ describe(`Questions Integration`, () => {
           bankId,
           type: opts.type ?? 'mcq',
           content: prefixedContent,
+          explanation: fixtureExplanation(content),
           answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
           ...(opts.topicIds ? { topicIds: opts.topicIds } : {}),
         }),
@@ -179,6 +181,7 @@ describe(`Questions Integration`, () => {
             bankId: bankBody.data.id,
             type: 'mcq',
             content: `copy-${suiteId}-What is 2+2?`,
+            explanation: fixtureExplanation('2+2'),
             answers: [
               { content: '4', isCorrect: true, orderIndex: 0 },
               { content: '5', isCorrect: false, orderIndex: 1 },
@@ -209,6 +212,7 @@ describe(`Questions Integration`, () => {
             bankId: '00000000-0000-4000-8000-000000000099',
             type: 'mcq',
             content: '',
+            explanation: fixtureExplanation('empty-content'),
             answers: [{ content: 'Answer', isCorrect: true }],
           }),
         },
@@ -234,6 +238,7 @@ describe(`Questions Integration`, () => {
             bankId: '00000000-0000-4000-8000-000000000099',
             type: 'mcq',
             content: 'Question',
+            explanation: fixtureExplanation('empty-answers'),
             answers: [],
           }),
         },
@@ -260,7 +265,7 @@ describe(`Questions Integration`, () => {
             bankId,
             type: 'open',
             content: `copy-${suiteId}-Opisz drugą zasadę dynamiki Newtona.`,
-            explanation: 'F = m * a',
+            modelAnswer: FIXTURE_MODEL_ANSWER,
             answers: [],
           }),
         },
@@ -304,6 +309,7 @@ describe(`Questions Integration`, () => {
             bankId,
             type: 'mcq',
             content: `copy-${suiteId}-Topic question`,
+            explanation: fixtureExplanation('topic'),
             topicIds: [topicId],
             answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
           }),
@@ -376,6 +382,7 @@ describe(`Questions Integration`, () => {
           bankId: '00000000-0000-4000-8000-000000000099',
           type: 'mcq',
           content: 'Question',
+          explanation: fixtureExplanation('anonymous'),
           answers: [{ content: 'Answer', isCorrect: true }],
         }),
       });
@@ -401,6 +408,7 @@ describe(`Questions Integration`, () => {
           body: JSON.stringify({
             type: 'mcq',
             content: 'Question',
+            explanation: fixtureExplanation('foreign-bank'),
             bankId,
             answers: [{ content: 'Answer', isCorrect: true }],
           }),
@@ -426,6 +434,7 @@ describe(`Questions Integration`, () => {
           body: JSON.stringify({
             type: 'mcq',
             content: 'Question',
+            explanation: fixtureExplanation('missing-bank'),
             bankId: '00000000-0000-4000-8000-000000000099',
             answers: [{ content: 'Answer', isCorrect: true }],
           }),
@@ -559,7 +568,7 @@ describe(`Questions Integration`, () => {
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'open', answers: [] }),
+          body: JSON.stringify({ type: 'open', answers: [], modelAnswer: FIXTURE_MODEL_ANSWER }),
         },
         orgCookies(),
       );

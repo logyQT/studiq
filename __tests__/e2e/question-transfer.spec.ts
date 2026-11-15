@@ -3,6 +3,7 @@ import type { Download, Page } from '@playwright/test';
 import { expect, test } from '#test/e2e/fixtures/tenant';
 import { sidebarLink, t } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * Question bank import / export (#652). The promises this file guards:
@@ -42,7 +43,9 @@ const TOPIC = 'Geografia';
 const MCQ = {
   type: 'mcq' as const,
   content: 'Które miasto jest stolicą Polski?',
-  explanation: 'Warszawa jest stolicą Polski od 1596 roku.',
+  // R16/R17: a teaching-length explanation that does not quote an option.
+  explanation:
+    'Stolica została przeniesiona z Krakowa pod koniec XVI wieku i od tego czasu pozostaje w tym samym mieście, więc wybór wynika z historii.',
   answers: [
     { content: 'Kraków', isCorrect: false },
     { content: 'Gdańsk', isCorrect: false },
@@ -52,6 +55,8 @@ const MCQ = {
 const TF = {
   type: 'true_false' as const,
   content: 'Wisła wpada do Morza Bałtyckiego.',
+  explanation:
+    'Wisła uchodzi do Bałtyku deltą pod Gdańskiem, dlatego zdanie opisuje rzeczywisty bieg rzeki, a nie jej dopływ.',
   answers: [
     { content: 'Prawda', isCorrect: true },
     { content: 'Fałsz', isCorrect: false },
@@ -60,6 +65,9 @@ const TF = {
 const OPEN = {
   type: 'open' as const,
   content: 'Opisz, czym jest fotosynteza.',
+  // R16: an open item's artefact is a model answer.
+  modelAnswer:
+    'Fotosynteza to proces, w którym roślina ze światła, wody i dwutlenku węgla wytwarza cukry i uwalnia tlen, a zachodzi w chloroplastach.',
   answers: [],
 };
 /** The three questions both round-trip tests seed, in export order. */
@@ -147,6 +155,7 @@ interface CsvQuestion {
   type: string;
   content: string;
   explanation?: string;
+  modelAnswer?: string;
   topics?: string[];
   answers?: Array<{ content: string; isCorrect?: boolean }>;
   /** Raw `correct` cell, used to build a file whose pointer is wrong. */
@@ -163,6 +172,7 @@ function csvBody(questions: CsvQuestion[]) {
     'type',
     'content',
     'explanation',
+    'model_answer',
     'topics',
     ...Array.from({ length: ANSWER_COLUMNS }, (_, i) => `answer_${i + 1}`),
     'correct',
@@ -182,6 +192,7 @@ function csvBody(questions: CsvQuestion[]) {
       question.type,
       question.content,
       question.explanation ?? '',
+      question.modelAnswer ?? '',
       (question.topics ?? []).join(';'),
       ...answers,
       correct,
@@ -240,6 +251,7 @@ interface SeedQuestion {
   type: 'mcq' | 'true_false' | 'open';
   content: string;
   explanation?: string;
+  modelAnswer?: string;
   answers?: Array<{ content: string; isCorrect: boolean }>;
   topicIds?: string[];
 }
@@ -264,6 +276,7 @@ async function seedQuestions(page: Page, bankId: string, questions: SeedQuestion
         type: question.type,
         content: question.content,
         ...(question.explanation ? { explanation: question.explanation } : {}),
+        ...(question.modelAnswer ? { modelAnswer: question.modelAnswer } : {}),
         topicIds: question.topicIds ?? [],
         answers: (question.answers ?? []).map((answer, orderIndex) => ({
           ...answer,
@@ -297,7 +310,10 @@ test.describe('Question bank transfer', () => {
     const name = `QA669 Ćwiczenia Łódź ${stamp()}`;
     const stampInName = name.split(' ').pop()!;
     const content = 'Ćwiczenia z języka polskiego – zażółć gęślą jaźń?';
-    const explanation = 'Wyjaśnienie z ą, ć, ę, ł, ń, ó, ś, ź, ż.';
+    // R16: a choice item's explanation has to teach, so the Polish-diacritics fixture is a
+    // sentence rather than a label (the round trip still proves the encoding).
+    const explanation =
+      'Wyjaśnienie z ą, ć, ę, ł, ń, ó, ś, ź, ż: ta odpowiedź jest poprawna, bo wynika z lektury, a pozostałe brzmią podobnie, ale dotyczą innego tekstu.';
 
     await loginAs('teacher');
     await openBanksPage(page);
@@ -488,10 +504,12 @@ test.describe('Question bank transfer', () => {
         {
           type: 'mcq',
           content: validContent,
+          explanation: FIXTURE_EXPLANATION,
           answers: [{ content: 'A' }, { content: 'B', isCorrect: true }],
         },
         {
           type: 'mcq',
+          explanation: FIXTURE_EXPLANATION,
           content: brokenContent,
           answers: [{ content: 'A' }, { content: 'B' }, { content: 'C' }],
           // Answer column 4 is empty: the importer must report it instead of guessing.
@@ -531,6 +549,7 @@ test.describe('Question bank transfer', () => {
     await seedQuestions(page, bankId, [
       {
         type: 'mcq',
+        explanation: FIXTURE_EXPLANATION,
         content: 'Pytanie z jedenastoma odpowiedziami.',
         answers: Array.from({ length: ANSWER_COLUMNS + 1 }, (_, i) => ({
           content: `Opcja ${i + 1}`,
@@ -585,6 +604,7 @@ test.describe('Question bank transfer', () => {
         questions: [
           {
             type: 'mcq',
+            explanation: FIXTURE_EXPLANATION,
             content,
             topics: [],
             answers: [

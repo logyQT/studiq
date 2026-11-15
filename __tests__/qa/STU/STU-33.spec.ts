@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
  * STU-33 — edit and delete a question, then edit and delete its bank
@@ -223,6 +224,7 @@ async function createQuestion(
     data: {
       bankId,
       type: 'mcq',
+      explanation: FIXTURE_EXPLANATION,
       content: seed.content,
       answers: seed.answers.map((answer, index) => ({
         content: answer.text,

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * EDU-REP-02 — replying to a student's question report („Odpowiedź na zgłoszenie”).
@@ -156,6 +157,7 @@ async function ensureQuestion(page: Page, bankId: string): Promise<QuestionItem>
   return sendData<QuestionItem>(page, 'post', QUESTIONS_URL, 201, {
     bankId,
     type: 'open',
+    modelAnswer: FIXTURE_MODEL_ANSWER,
     content: QUESTION_CONTENT,
     answers: [],
   });

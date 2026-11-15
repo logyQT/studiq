@@ -166,6 +166,24 @@ describe('QuestionService', () => {
       expect(mock.from).toHaveBeenCalledWith('questions');
     });
 
+    it('never asks PostgREST for `*` on questions (#1173)', async () => {
+      // `select()` after an insert is `*`, and `*` needs SELECT on the revoked `model_answer`:
+      // the write would answer 403 instead of creating the item.
+      const countChain = chain([], 0);
+      const insertChain = chain({ id: 'q-1' });
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValueOnce(insertChain);
+      mock.from.mockReturnValueOnce(chain(null));
+
+      await service.create({ type: 'open', content: 'Q1', answers: [] }, ctx);
+
+      expect(countChain.select).toHaveBeenCalledWith(
+        'id',
+        expect.objectContaining({ count: 'exact' }),
+      );
+      expect(insertChain.select).toHaveBeenCalledWith('id');
+    });
+
     it('counts only the caller content in the active org (#233)', async () => {
       const mockQuestion = { id: 'q-1', type: 'open', content: 'Q1' };
       const countChain = chain([], 0);
@@ -295,6 +313,8 @@ describe('QuestionService', () => {
             content: 'Q1',
             question_answers: [],
             explanation: 'explanation-q-1',
+            // The staff export shape carries the open item's artefact too (#1173).
+            model_answer: null,
             topics: [],
           },
         ],
@@ -607,6 +627,8 @@ describe('QuestionService', () => {
         id: 'q-1',
         content: 'Q1',
         explanation: 'explanation-q-1',
+        // The key reader carries the open item's artefact too (#1173); this fixture has none.
+        model_answer: null,
         question_answers: [
           { id: 'ans-1', content: 'A', order_index: 0, is_correct: false },
           { id: 'ans-2', content: 'B', order_index: 1, is_correct: true },

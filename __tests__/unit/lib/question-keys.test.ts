@@ -92,9 +92,11 @@ describe('readQuestionKeys', () => {
     vi.clearAllMocks();
   });
 
-  it('maps the correct option ids and the explanation of the ids it was asked for', async () => {
+  it('maps the correct option ids and the answer artefacts of the ids it was asked for', async () => {
     const idsSeen: string[][] = [];
-    client.from.mockReturnValueOnce(table([{ id: 'q-1', explanation: 'because' }], idsSeen));
+    client.from.mockReturnValueOnce(
+      table([{ id: 'q-1', explanation: 'because', model_answer: 'a model answer' }], idsSeen),
+    );
     client.from.mockReturnValueOnce(
       table(
         [
@@ -109,7 +111,9 @@ describe('readQuestionKeys', () => {
 
     const keys = await readQuestionKeys(['q-1', 'q-1']);
 
-    expect([...keys]).toEqual([['q-1', { explanation: 'because', correctOptionIds: ['o-1'] }]]);
+    expect([...keys]).toEqual([
+      ['q-1', { explanation: 'because', modelAnswer: 'a model answer', correctOptionIds: ['o-1'] }],
+    ]);
     // The same ids reach both tables, deduplicated, and nothing else is asked for.
     expect(idsSeen).toEqual([['q-1'], ['q-1']]);
     expect(client.from).toHaveBeenNthCalledWith(1, 'questions');
@@ -135,7 +139,7 @@ describe('readQuestionKeys', () => {
 });
 
 describe('withAnswerKey', () => {
-  it('adds is_correct to every option and keeps the explanation', () => {
+  it('adds is_correct to every option and keeps the explanation and model answer', () => {
     const keyed = withAnswerKey(
       {
         id: 'q-1',
@@ -144,12 +148,13 @@ describe('withAnswerKey', () => {
           { id: 'o-2', content: 'B' },
         ],
       },
-      { explanation: 'because', correctOptionIds: ['o-2'] },
+      { explanation: 'because', modelAnswer: 'a model answer', correctOptionIds: ['o-2'] },
     );
 
     expect(keyed).toEqual({
       id: 'q-1',
       explanation: 'because',
+      model_answer: 'a model answer',
       question_answers: [
         { id: 'o-1', content: 'A', is_correct: false },
         { id: 'o-2', content: 'B', is_correct: true },

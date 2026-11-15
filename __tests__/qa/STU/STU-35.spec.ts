@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * STU-35 — solving a quiz from „Rozpocznij kartkówkę” to „Wyślij”.
@@ -40,8 +41,9 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   „Prześlij zdjęcie”, the in-flight label „Przesyłanie...”, the toast
  *   „Dodano zdjęcie: <name>” and the thumbnail under „Dodane zdjęcia”.
  * - „Wyślij” submits and returns to `/app/assignments/<id>`, which shows
- *   „Ukończono” and (results on) „Wynik: 2/3” + „Zobacz podsumowanie”; the list
- *   then shows the quiz under „UKOŃCZONE (n)” with „2/3” and „Ukończono: <date>”.
+ *   „Ukończono” and (results on) „Wynik: 2/2” + „Zobacz podsumowanie” — the open
+ *   question is ungraded and outside the denominator (#1173); the list then shows the
+ *   quiz under „UKOŃCZONE (n)” with „2/2” and „Ukończono: <date>”.
  * - API: the completed attempt returns the three saved answers (two selected
  *   options and the open text), and `GET /api/v1/assignments` reports
  *   `attempts_used: 1` with the completed attempt.
@@ -196,6 +198,10 @@ async function ensureQuestion(
     bankId,
     type: spec.type,
     content: spec.content,
+    // R16/R17: the authoring artefacts the fixture needs to be a valid item.
+    ...(spec.type === 'open'
+      ? { modelAnswer: FIXTURE_MODEL_ANSWER }
+      : { explanation: FIXTURE_EXPLANATION }),
     answers,
   });
 }
@@ -507,8 +513,10 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
       page.getByRole('heading', { level: 1, name: assignment.title, exact: true }),
     ).toBeVisible();
     await expect(page.getByText(COPY.completed, { exact: true })).toBeVisible();
+    // The open question is ungraded and outside the denominator (#1173, R16): the two closed
+    // questions are auto-graded, so the sheet is out of two.
     await expect(
-      page.getByText('Wynik: 2/3', { exact: true }),
+      page.getByText('Wynik: 2/2', { exact: true }),
       'the two closed questions are auto-graded',
     ).toBeVisible();
     // Results are on, but the key is not out yet: the review opens at the close (R5).
@@ -568,7 +576,9 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     await expect(page).toHaveURL(
       new RegExp(`/app/assignments/${assignment.id}/review\\?attemptId=${attemptId}$`),
     );
-    await expect(page.getByRole('heading', { level: 1, name: '2 / 3' })).toBeVisible();
+    // The open question is ungraded, so the review's denominator is the two closed questions
+    // (#1173, R16); the review still shows the open answer and its pending state below.
+    await expect(page.getByRole('heading', { level: 1, name: '2 / 2' })).toBeVisible();
     await expect(page.getByText(OPEN_ANSWER, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.pendingReview, { exact: true })).toBeVisible();
 
@@ -580,7 +590,7 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     const completedCard = completedSection.locator(`a[href="/app/assignments/${assignment.id}"]`);
     await expect(completedCard, 'the quiz is listed under „Ukończone”').toBeVisible();
     await expect(completedCard).toContainText(assignment.title);
-    await expect(completedCard).toContainText('2/3');
+    await expect(completedCard).toContainText('2/2');
     // `toLocaleDateString('pl')` drops the leading zero on single-digit days
     // and months (e.g. „Ukończono: 1.11.2026”), so allow one or two digits.
     await expect(completedCard).toContainText(/Ukończono: \d{1,2}\.\d{1,2}\.\d{4}/);

@@ -14,6 +14,8 @@ export interface QuizReviewQuestion {
   content: string;
   type: string;
   explanation?: string | null;
+  /** The open item's teaching artefact (#1173); absent from a reader payload. */
+  model_answer?: string | null;
   question_answers: readonly QuizReviewAnswer[];
 }
 
@@ -35,6 +37,8 @@ export interface QuizQuestionReviewLabels {
   yourAnswer: string;
   noAnswer: string;
   explanation: string;
+  modelAnswer: string;
+  modelAnswerNotCaptured: string;
 }
 
 export interface QuizQuestionReviewProps {
@@ -151,11 +155,18 @@ export function QuizQuestionReview({
             </span>
           </div>
         )}
-        {question.explanation && (
+        {question.type === 'open' ? (
           <div className="rounded-lg border bg-blue-50 p-3 text-sm dark:bg-blue-950/30">
-            <span className="font-medium">{labels.explanation}: </span>
-            {question.explanation}
+            <span className="font-medium">{labels.modelAnswer}: </span>
+            {question.model_answer ?? labels.modelAnswerNotCaptured}
           </div>
+        ) : (
+          question.explanation && (
+            <div className="rounded-lg border bg-blue-50 p-3 text-sm dark:bg-blue-950/30">
+              <span className="font-medium">{labels.explanation}: </span>
+              {question.explanation}
+            </div>
+          )
         )}
       </CardContent>
     </Card>

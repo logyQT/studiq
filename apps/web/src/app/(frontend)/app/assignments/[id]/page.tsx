@@ -226,11 +226,15 @@ export default function StudentAssignmentDetailPage() {
           <CardContent className="space-y-3">
             {assignment.show_results ? (
               <>
+                {/* Open items are ungraded and outside the denominator (R16), so a sheet of
+                    them has `total_points: 0` — that is "not graded yet", not a ratio of 0. */}
                 <p className="text-lg font-bold">
-                  {t('score', {
-                    earned: lastCompleted.score ?? 0,
-                    total: lastCompleted.total_points || lastCompleted.total_questions,
-                  })}
+                  {lastCompleted.total_points === 0
+                    ? t('ungraded')
+                    : t('score', {
+                        earned: lastCompleted.score ?? 0,
+                        total: lastCompleted.total_points ?? lastCompleted.total_questions,
+                      })}
                 </p>
                 {assignment.review_unlocked ? (
                   <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>

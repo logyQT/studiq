@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * STU-41 — unread counter for question reports („Licznik nieprzeczytanych zgłoszeń”).
@@ -155,6 +156,7 @@ async function ensureQuestion(
   return postData<QuestionItem>(page, QUESTIONS_URL, 201, {
     bankId,
     type: 'open',
+    modelAnswer: FIXTURE_MODEL_ANSWER,
     content: questionContent,
     answers: [],
   });

@@ -8,6 +8,7 @@ import {
   type QaRole,
   type QaTenant,
 } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
 const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -390,6 +391,7 @@ async function ensureQuestion(page: Page, bankId: string, content: string): Prom
   const created = await call(page, 'POST', QUESTIONS_URL, {
     bankId,
     type: 'mcq',
+    explanation: FIXTURE_EXPLANATION,
     content,
     answers: [
       { content: 'Odpowiedź A', isCorrect: true, orderIndex: 0 },

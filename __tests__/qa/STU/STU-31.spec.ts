@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_EXPLANATION, FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * STU-31 — the student's question-bank list (`/app/questions`).
@@ -169,7 +170,16 @@ async function createQuestion(
           ];
 
   const response = await page.request.post('/api/v1/questions', {
-    data: { bankId, type, content, answers },
+    // R16/R17: the artefact the item's type requires.
+    data: {
+      bankId,
+      type,
+      content,
+      ...(type === 'open'
+        ? { modelAnswer: FIXTURE_MODEL_ANSWER }
+        : { explanation: FIXTURE_EXPLANATION }),
+      answers,
+    },
   });
   const text = await response.text();
   expect(response.status(), `POST /api/v1/questions (${content}) → ${text}`).toBe(201);

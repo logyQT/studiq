@@ -170,7 +170,9 @@ describe('Assignment review: locked before close, revealed at close (#1171)', ()
     }
 
     const ids = teacher.created.questions.slice(0, 2);
-    const explanation = `review-explanation-${Date.now()}`;
+    // R16: a choice item's explanation has to teach, so a fixture the API will re-save needs a
+    // teaching-length text.
+    const explanation = `Wyjaśnienie ${Date.now()}: poprawne jest rozwiązanie zgodne z kluczem, a dystraktor mylony najczęściej wynika z nieuwagi.`;
     const content = `review-content-${Date.now()}`;
     await service
       .from('questions')
@@ -331,7 +333,7 @@ describe('Assignment review: locked before close, revealed at close (#1171)', ()
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: `edited-after-publish-${Date.now()}`,
-          explanation: `edited-explanation-${Date.now()}`,
+          explanation: `Po edycji ${Date.now()}: poprawne jest rozwiązanie zgodne z kluczem, a dystraktor mylony najczęściej wynika z nieuwagi.`,
           type: 'mcq',
           answers: [
             { content: 'edited-a', isCorrect: true, orderIndex: 0 },

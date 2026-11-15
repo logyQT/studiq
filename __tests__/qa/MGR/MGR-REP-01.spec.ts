@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
+import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
 
 /**
  * MGR-REP-01 — reports in the organization (`/manage/reports`).
@@ -224,7 +225,13 @@ async function recreateQuestion(
   }
 
   const created = await page.request.post(QUESTIONS_URL, {
-    data: { bankId, type: 'open', content: questionContent, answers: [] },
+    data: {
+      bankId,
+      type: 'open',
+      content: questionContent,
+      modelAnswer: FIXTURE_MODEL_ANSWER,
+      answers: [],
+    },
   });
   expect(created.status(), `POST ${QUESTIONS_URL}`).toBe(201);
   return (await json<{ data: { id: string } }>(created)).data.id;
