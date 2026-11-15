@@ -77,6 +77,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     queryKey: (filters, orgId) => flashcardKeys.decks.paginated(filters, orgId),
     invalidateKeys: [flashcardKeys.decks.all],
     extraFilters: { includeSuspended: includeSuspended ? 'true' : undefined },
+    // The student's „Zawieszone” row is a filter like any other, so an empty list
+    // under it is a no-results state, not an empty collection.
+    extraActiveFilters: includeSuspended ? 1 : 0,
   });
   const { create, update, batchDelete, selection } = screen;
 
@@ -173,6 +176,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
               label: t('show_suspended'),
               checked: includeSuspended,
               onToggle: () => setIncludeSuspended((previous) => !previous),
+              onClear: () => setIncludeSuspended(false),
             }
           : undefined
       }

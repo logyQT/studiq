@@ -64,6 +64,8 @@ interface CollectionScreenOptions {
   persistKey: string;
   /** Extra request params that are not part of the shared filter set. */
   extraFilters?: Record<string, string | undefined>;
+  /** How many list-specific filters `filterExtra` shows as active, for the empty view. */
+  extraActiveFilters?: number;
   limit?: number;
   legacyMine?: LegacyMine;
 }
@@ -125,6 +127,7 @@ export function useCollectionScreen<T extends { id: string }>({
   invalidateKeys,
   persistKey,
   extraFilters,
+  extraActiveFilters = 0,
   limit = 24,
   legacyMine,
 }: CollectionScreenOptions): CollectionScreenState<T> {
@@ -302,7 +305,7 @@ export function useCollectionScreen<T extends { id: string }>({
     emptyView: resolveListEmptyView({
       visibleCount: pagination.items.length,
       query: debouncedSearch,
-      activeFilters: (owner !== 'all' ? 1 : 0) + effectiveGroupIds.length,
+      activeFilters: (owner !== 'all' ? 1 : 0) + effectiveGroupIds.length + extraActiveFilters,
     }),
     selection,
     dialogOpen,
@@ -379,7 +382,7 @@ interface CollectionScreenProps<T extends { id: string }> {
   /** List-specific toolbar control after the sort select. */
   toolbarExtra?: ReactNode;
   /** List-specific row inside the filter list, e.g. the deck "show suspended" toggle. */
-  filterExtra?: { label: string; checked: boolean; onToggle: () => void };
+  filterExtra?: { label: string; checked: boolean; onToggle: () => void; onClear: () => void };
   /** Placeholder copy for the search input; defaults to `search_placeholder`. */
   searchPlaceholder?: string;
   /** Sort orders the collection supports; defaults to the shared content set. */
@@ -513,7 +516,12 @@ export function CollectionScreen<T extends { id: string }>({
         isError={screen.isError}
         onRetry={() => screen.refetch()}
         emptyView={screen.emptyView}
-        onClearFilters={screen.clearFilters}
+        onClearFilters={() => {
+          screen.clearFilters();
+          // The list's own row lives outside the hook's state, so the reset has to
+          // reach it through the prop that renders it.
+          filterExtra?.onClear();
+        }}
         noResultsSubject={noResultsSubject}
         emptyIcon={emptyIcon}
         emptyTitle={emptyTitle}
