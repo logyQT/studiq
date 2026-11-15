@@ -45,15 +45,18 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
        * list's first and third columns.
        */}
       <div className="flex items-baseline justify-between gap-4 md:contents">
-        <div className="md:col-span-4 md:col-start-1 md:row-start-1">
-          <h3 id={plan.key} className="text-h3 font-semibold">
-            {shortPlanName(plan.name)}
-          </h3>
-          {label ? (
-            <p className="mt-1 font-mono text-xs tracking-[0.08em] text-primary uppercase">
-              {label}
-            </p>
-          ) : null}
+        <div className="min-w-0 md:col-span-4 md:col-start-1 md:row-start-1">
+          {/* The label shares the name's baseline, like the landing's columns. */}
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h3 id={plan.key} className="scroll-mt-header text-h3 font-semibold">
+              {shortPlanName(plan.name)}
+            </h3>
+            {label ? (
+              <span className="font-mono text-xs tracking-[0.08em] text-primary uppercase">
+                {label}
+              </span>
+            ) : null}
+          </div>
         </div>
         <p className="text-right md:col-span-2 md:col-start-9 md:row-start-1 md:justify-self-end">
           <span className="font-mono text-base tabular-nums md:text-h3">
@@ -79,8 +82,11 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
               variant={recommended ? 'default' : 'outline'}
               className={cn(
                 'h-11 w-full rounded-control px-6 text-sm font-semibold',
-                recommended &&
-                  'border-transparent bg-signal text-signal-foreground hover:bg-signal/90',
+                // The kit's outline edge is the decorative `--border` (1.32:1); a
+                // button identified by its edge needs `--input` (3.23:1).
+                recommended
+                  ? 'border-transparent bg-signal text-signal-foreground hover:bg-signal/90'
+                  : 'border-input',
               )}
             >
               {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
