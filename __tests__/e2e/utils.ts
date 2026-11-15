@@ -57,3 +57,29 @@ export async function mockAiChatEntitled(page: Page) {
     }),
   );
 }
+
+/**
+ * Answers the chat endpoint with the given UI-message stream frames, so a spec decides what the
+ * assistant "said" (text, a tool call and its output) without a model. Returns the request
+ * bodies the page sent, in order.
+ */
+export async function stubAiChat(page: Page, frames: readonly object[]): Promise<unknown[]> {
+  const bodies: unknown[] = [];
+  const stream = [
+    ...frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`),
+    'data: [DONE]\n\n',
+  ];
+  await page.route('**/api/v1/ai/chat', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'x-vercel-ai-ui-message-stream': 'v1',
+        'cache-control': 'no-cache',
+      },
+      body: stream.join(''),
+    });
+  });
+  return bodies;
+}
