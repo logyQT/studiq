@@ -40,9 +40,17 @@ describe('CreateTeacherAssignmentSchema', () => {
     }
   });
 
-  it('passes with full input', () => {
+  it('keeps the flags the request sent instead of its defaults', () => {
     const result = CreateTeacherAssignmentSchema.safeParse(full);
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        shuffleQuestions: true,
+        shuffleAnswers: false,
+        showResults: true,
+        maxAttempts: 3,
+      });
+    }
   });
 
   it('fails when title is empty', () => {
@@ -113,6 +121,23 @@ describe('UpdateTeacherAssignmentSchema', () => {
   it('fails when title is empty string', () => {
     const result = UpdateTeacherAssignmentSchema.safeParse({ title: '' });
     expect(result.success).toBe(false);
+  });
+
+  // #1222: an omitted field must stay absent. Zod keeps `.default()` through `.partial()`, so a
+  // defaulted schema here rewrites showResults/maxAttempts/shuffle* on every partial update.
+  it('injects no create defaults for an empty body', () => {
+    expect(UpdateTeacherAssignmentSchema.parse({})).toEqual({});
+  });
+
+  it('keeps only the keys the request sent', () => {
+    const deadline = '2026-07-20T00:00:00.000Z';
+    expect(UpdateTeacherAssignmentSchema.parse({ deadline })).toEqual({ deadline });
+  });
+
+  it('keeps an explicit value that matches a create default', () => {
+    expect(UpdateTeacherAssignmentSchema.parse({ showResults: false })).toEqual({
+      showResults: false,
+    });
   });
 });
 
