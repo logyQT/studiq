@@ -328,7 +328,8 @@ export async function runDemoSeed(): Promise<void> {
   const stray = args.filter(
     (arg, index) =>
       !['--reset', '--json', '--help', '--yes', '--dry-run'].includes(arg) &&
-      !arg.startsWith('--locale') &&
+      arg !== '--locale' &&
+      !arg.startsWith('--locale=') &&
       args[index - 1] !== '--locale',
   );
   if (stray.length > 0) {

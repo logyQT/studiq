@@ -16,7 +16,7 @@
 --
 -- Apply it (idempotent — re-running drops the demo tenant first):
 --
---   bun scripts/demo-seed.ts --locale en --yes   # this tenant
+--   bun scripts/demo-seed.ts --locale pl --yes   # this tenant
 --   bun scripts/demo-seed.ts --yes               # both locales
 --   bun scripts/demo-seed.ts --reset --yes       # remove both demo tenants
 --
@@ -676,6 +676,55 @@ JOIN (VALUES
   ('e0000000-0000-4000-8008-000000000003'::uuid, 'e0000000-0000-4000-8007-000000000003'::uuid)
 ) AS a(assignment_id, quiz_id) ON a.quiz_id = qq.quiz_id;
 
+-- ----------------------------------------------------------
+-- 5a. Publikacja zadań.
+--
+-- Aplikacja zapisuje te trzy kolumny w jednym przebiegu przy przejściu
+-- draft → published (`writeAssignmentSnapshots` w
+-- `packages/server/src/lib/assignment-snapshot.ts`): treść bezpieczną dla
+-- czytelnika, materiał klucza i wersję pytania. Bez nich
+-- `readAttemptQuestions` pomija każde powiązanie, więc zasiane podejście nie
+-- odczytałoby żadnego pytania, a `readAssignmentSnapshotKeys` nie miałoby klucza.
+-- ----------------------------------------------------------
+UPDATE public.assignment_questions aq
+SET snapshot = jsonb_build_object(
+      'id', q.id,
+      'content', q.content,
+      'type', q.type,
+      'question_answers', (
+        SELECT COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'id', o.id,
+              'content', o.content,
+              'order_index', o.order_index,
+              'match_group', o.match_group,
+              'match_side', o.match_side
+            ) ORDER BY o.order_index
+          ),
+          '[]'::jsonb
+        )
+        FROM public.question_options o
+        WHERE o.question_id = q.id
+      )
+    ),
+    snapshot_key = jsonb_build_object(
+      'explanation', q.explanation,
+      'correctOptionIds', (
+        SELECT COALESCE(jsonb_agg(o.id), '[]'::jsonb)
+        FROM public.question_options o
+        WHERE o.question_id = q.id AND o.is_correct
+      )
+    ),
+    snapshot_version = q.version
+FROM public.questions q
+WHERE q.id = aq.question_id
+  AND aq.assignment_id IN (
+    'e0000000-0000-4000-8008-000000000001',
+    'e0000000-0000-4000-8008-000000000002',
+    'e0000000-0000-4000-8008-000000000003'
+  );
+
 INSERT INTO public.assignment_targets (id, assignment_id, group_id, assigned_at)
 VALUES
   (pg_temp.demo_uuid('demo-pl:target:1'), 'e0000000-0000-4000-8008-000000000001', 'e0000000-0000-4000-8003-000000000001', now() - interval '12 days'),
@@ -983,6 +1032,8 @@ DECLARE
   v_attempt uuid;
   v_started timestamptz;
   v_total int;
+  v_closed int;
+  v_awarded int;
   v_qids uuid[];
   v_qid uuid;
   v_idx int;
@@ -1010,12 +1061,21 @@ BEGIN
 
     v_total := array_length(v_qids, 1);
 
+    -- Pytanie otwarte ocenia nauczyciel i nigdy nie jest punktowane automatycznie
+    -- (#329), więc zasiane podejście odpowiada tylko na pytania zamknięte: wiersz
+    -- odpowiedzi (ani wynik) nie może twierdzić `is_correct = true` dla eseju,
+    -- którego nikt nie ocenił.
+    SELECT count(*) INTO v_closed
+    FROM public.questions
+    WHERE id = ANY (v_qids) AND type <> 'open';
+    v_awarded := 0;
+
     INSERT INTO public.quiz_attempts (
       id, user_id, score, total_questions, total_points, config,
       started_at, completed_at, assignment_id, graded_at, organization_id
     )
     VALUES (
-      v_attempt, r.user_id, r.points, v_total, v_total,
+      v_attempt, r.user_id, LEAST(r.points, v_closed), v_total, v_total,
       jsonb_build_object('questionCount', v_total),
       v_started, v_started + interval '22 minutes',
       r.assignment_id, v_started + interval '1 day',
@@ -1029,23 +1089,27 @@ BEGIN
       INSERT INTO public.quiz_attempt_questions (attempt_id, question_id, order_index)
       VALUES (v_attempt, v_qid, v_idx - 1);
 
-      IF v_idx <= r.points THEN
-        SELECT id INTO v_opt FROM public.question_options WHERE question_id = v_qid AND is_correct LIMIT 1;
-      ELSE
-        SELECT id INTO v_opt FROM public.question_options WHERE question_id = v_qid AND NOT is_correct LIMIT 1;
-      END IF;
+      IF v_type <> 'open' THEN
+        v_awarded := v_awarded + 1;
 
-      INSERT INTO public.student_answers (
-        id, attempt_id, question_id, question_type, selected_option_id,
-        is_correct, points_earned, created_at
-      )
-      VALUES (
-        pg_temp.demo_uuid('demo-pl:asg-answer:' || v_attempt::text || ':' || v_qid::text),
-        v_attempt, v_qid, v_type, v_opt,
-        v_idx <= r.points,
-        CASE WHEN v_idx <= r.points THEN 1 ELSE 0 END,
-        v_started + (v_idx || ' minutes')::interval
-      );
+        IF v_awarded <= r.points THEN
+          SELECT id INTO v_opt FROM public.question_options WHERE question_id = v_qid AND is_correct LIMIT 1;
+        ELSE
+          SELECT id INTO v_opt FROM public.question_options WHERE question_id = v_qid AND NOT is_correct LIMIT 1;
+        END IF;
+
+        INSERT INTO public.student_answers (
+          id, attempt_id, question_id, question_type, selected_option_id,
+          is_correct, points_earned, created_at
+        )
+        VALUES (
+          pg_temp.demo_uuid('demo-pl:asg-answer:' || v_attempt::text || ':' || v_qid::text),
+          v_attempt, v_qid, v_type, v_opt,
+          v_awarded <= r.points,
+          CASE WHEN v_awarded <= r.points THEN 1 ELSE 0 END,
+          v_started + (v_idx || ' minutes')::interval
+        );
+      END IF;
     END LOOP;
   END LOOP;
 END $$;
