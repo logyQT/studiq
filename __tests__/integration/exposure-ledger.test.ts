@@ -308,6 +308,15 @@ describe('Exposure ledger (#1171)', () => {
     expect(await events(student.user.id)).toHaveLength(2);
   });
 
+  it('records nothing for a staff preview of the cohort review', async () => {
+    // The author can read the cohort artefact (the targeting rule allows the author); that read
+    // renders the key to a teacher, not to a learner, so it is not an exposure event.
+    as(teacher.user);
+    const preview = await review(teacher.user);
+    expect(preview.status).toBe(200);
+    expect(await events(teacher.user.id)).toEqual([]);
+  });
+
   it('does not burn an item the review holds back, and burns it once released (R10)', async () => {
     // Hold the second item back, release it, and check the ledger follows what was rendered.
     await service
