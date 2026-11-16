@@ -22,7 +22,13 @@ INSERT INTO public.permissions (name) VALUES
   ('question_bank.read'),
   ('question_bank.create'),
   ('question_bank.update'),
-  ('question_bank.delete')
+  ('question_bank.delete'),
+  ('assignment.create'),
+  ('assignment.read'),
+  ('assignment.update'),
+  ('assignment.delete'),
+  ('assignment.publish'),
+  ('assignment.grade')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================
@@ -34,6 +40,8 @@ ON CONFLICT DO NOTHING;
 -- ==========================================
 
 -- member: read=group, create/update/delete=own
+-- (no `assignment.*` — writing an assessment is staff-only; DEFAULT_ROLE_PERMISSIONS
+--  declares the family for `teacher` and `admin` only)
 INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
 SELECT r.id, p.name,
   CASE
@@ -61,7 +69,9 @@ WHERE r.name = 'teacher'
     'topic.read', 'topic.create', 'topic.update', 'topic.delete',
     'deck.read', 'deck.create', 'deck.update', 'deck.delete',
     'question.read', 'question.create', 'question.update', 'question.delete',
-    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete'
+    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
+    'assignment.create', 'assignment.read', 'assignment.update', 'assignment.delete',
+    'assignment.publish', 'assignment.grade'
   )
 ON CONFLICT DO NOTHING;
 
@@ -75,6 +85,8 @@ WHERE r.name = 'admin'
     'topic.read', 'topic.create', 'topic.update', 'topic.delete',
     'deck.read', 'deck.create', 'deck.update', 'deck.delete',
     'question.read', 'question.create', 'question.update', 'question.delete',
-    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete'
+    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
+    'assignment.create', 'assignment.read', 'assignment.update', 'assignment.delete',
+    'assignment.publish', 'assignment.grade'
   )
 ON CONFLICT DO NOTHING;
