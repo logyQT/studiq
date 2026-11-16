@@ -59,6 +59,7 @@ type QueryChain = {
   eq: Mock<(...args: unknown[]) => QueryChain>;
   in: Mock<(...args: unknown[]) => QueryChain>;
   or: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
   filter: Mock<(...args: unknown[]) => QueryChain>;
   is: Mock<(...args: unknown[]) => QueryChain>;
@@ -82,6 +83,7 @@ function chain(result: unknown, count?: number) {
     eq: vi.fn(() => c),
     in: vi.fn(() => c),
     or: vi.fn(() => c),
+    not: vi.fn(() => c),
     order: vi.fn(() => c),
     filter: vi.fn(() => c),
     is: vi.fn(() => c),
@@ -313,7 +315,6 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).toEqual({
           ...otherUserAssignment,
           exposure: { openItemCount: 0, outsideStudentCount: 0 },
-          // R8: the draft's per-class pre-exposure warning; empty when nothing is burnt.
           preExposure: [],
         });
     });
@@ -1030,6 +1031,7 @@ describe('TeacherAssignmentService', () => {
     ];
 
     it('returns attempts for assignment', async () => {
+      linkRows.rows = [];
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
@@ -1039,10 +1041,19 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getResults(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toHaveLength(1);
+      if (result.success) {
+        const data = asJson<{
+          attempts: unknown[];
+          fairness: { respondents: number; minRespondents: number; items: unknown[] };
+        }>(result.data);
+        expect(data.attempts).toHaveLength(1);
+        // R9: the fairness block counts the cohort, and no bound item means no cells.
+        expect(data.fairness).toMatchObject({ respondents: 1, minRespondents: 5, items: [] });
+      }
     });
 
     it('returns empty array when no attempts', async () => {
+      linkRows.rows = [];
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
@@ -1052,7 +1063,9 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getResults(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual([]);
+      if (result.success) {
+        expect(asJson<{ attempts: unknown[] }>(result.data).attempts).toEqual([]);
+      }
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {

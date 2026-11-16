@@ -362,7 +362,7 @@ test.describe('@case:EDU-ASG-09 @area:EDU @prio:P2 export quiz answers', () => {
       };
       // Cross-check the view against the teacher API payload, so the baseline is
       // both what a teacher reads and what the export is built from.
-      const results = await api<ResultRow[]>(
+      const { attempts: results } = await api<{ attempts: ResultRow[] }>(
         page.request,
         'GET',
         `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results`,

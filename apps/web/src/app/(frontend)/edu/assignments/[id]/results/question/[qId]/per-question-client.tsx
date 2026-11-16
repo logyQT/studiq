@@ -40,11 +40,12 @@ export default function PerQuestionGradingClient() {
   const [grades, setGrades] = React.useState<Record<string, Partial<GradeDraft>>>({});
 
   const {
-    resultsQuery: { data: results, isLoading },
+    resultsQuery: { isLoading },
+    attempts,
     gradeMutation,
-  } = usePerQuestionGrading<ResultsData[]>(id, t('grade_failed'));
+  } = usePerQuestionGrading<ResultsData>(id, t('grade_failed'));
 
-  const attemptOf = (studentId: string) => results?.find((r) => r.user_id === studentId);
+  const attemptOf = (studentId: string) => attempts?.find((r) => r.user_id === studentId);
 
   const answerOf = (attempt: ResultsData | undefined) =>
     attempt?.quiz_answers?.find((a) => a.question_id === qId);
@@ -95,7 +96,7 @@ export default function PerQuestionGradingClient() {
     );
   }
 
-  const pending = results?.filter(needsGrading) ?? [];
+  const pending = attempts?.filter(needsGrading) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -117,7 +118,7 @@ export default function PerQuestionGradingClient() {
       </div>
 
       <div className="space-y-4">
-        {results?.map((attempt) => {
+        {attempts?.map((attempt) => {
           const studentData = getStudentAnswer(attempt);
           const grade = getGrade(attempt.user_id);
           const isValidPoints = parseGradePoints(grade.points) !== null;

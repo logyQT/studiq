@@ -287,7 +287,11 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     const resultsResponse = await page.request.get(
       `/api/v1/teacher/assignments/${assignmentId}/results`,
     );
-    const rows = await expectApi<ResultRow[]>(resultsResponse, 'GET …/results');
+    // #1172 folded the fairness block into the same payload: the list is `attempts`.
+    const { attempts: rows } = await expectApi<{ attempts: ResultRow[] }>(
+      resultsResponse,
+      'GET …/results',
+    );
     expect(rows, 'exactly the one completed attempt').toHaveLength(1);
     const [attempt] = rows;
     if (!attempt) throw new Error(`${CASE} the results table lists no attempt`);

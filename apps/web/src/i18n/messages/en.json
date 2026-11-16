@@ -3055,6 +3055,14 @@
     "open_question": "(open question)"
   },
   "EduAssignmentResultsPage": {
+    "fairness_title": "Fairness by item",
+    "fairness_hint": "Counts only, never option-level. Cells with fewer than {min} respondents are hidden.",
+    "item": "Item",
+    "served": "Served",
+    "correct": "Correct",
+    "ungraded": "Ungraded",
+    "taught_excluded": "Taught in class — excluded from fairness",
+    "suppressed": "Too few respondents",
     "back": "Back to Assignment",
     "title": "Results",
     "subtitle": "Student scores and completion status",

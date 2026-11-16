@@ -586,7 +586,10 @@ test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results
       organization_id: classroomOrgId,
     });
 
-    const ownResults = await getData<ResultRow[]>(page, `${quizUrl}/results`);
+    const { attempts: ownResults } = await getData<{ attempts: ResultRow[] }>(
+      page,
+      `${quizUrl}/results`,
+    );
     expect(
       ownResults.find((row) => row.id === attemptId),
       'the classroom teacher sees the classroom student’s attempt',

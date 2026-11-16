@@ -72,7 +72,7 @@ describe('Teacher assignment results payload (#1230)', () => {
     );
     const response = await resultsGet(request, { params });
     expect(response.status, await response.clone().text()).toBe(200);
-    return (await json<{ data: ResultsRow[] }>(response)).data;
+    return (await json<{ data: { attempts: ResultsRow[] } }>(response)).data.attempts;
   }
 
   async function start(user: BeforeResult): Promise<StartedAttempt> {
