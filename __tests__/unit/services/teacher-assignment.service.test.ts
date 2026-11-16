@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { readAssignmentSnapshots } from '@studiq/server/lib/assignment-snapshot';
 import { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
@@ -49,12 +50,17 @@ vi.mock('@studiq/server/lib/assignment-exposure', () => ({
   assessExposure: vi.fn(() => Promise.resolve({ success: true, data: exposureState })),
 }));
 
+vi.mock('@studiq/server/lib/assignment-preexposure', () => ({
+  assessPreExposure: vi.fn(() => Promise.resolve({ success: true, data: [] })),
+}));
+
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
   select: Mock<(columns: string) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
   in: Mock<(...args: unknown[]) => QueryChain>;
   or: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
   filter: Mock<(...args: unknown[]) => QueryChain>;
   is: Mock<(...args: unknown[]) => QueryChain>;
@@ -78,6 +84,7 @@ function chain(result: unknown, count?: number) {
     eq: vi.fn(() => c),
     in: vi.fn(() => c),
     or: vi.fn(() => c),
+    not: vi.fn(() => c),
     order: vi.fn(() => c),
     filter: vi.fn(() => c),
     is: vi.fn(() => c),
@@ -293,6 +300,8 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).toEqual({
           ...assignment,
           exposure: { openItemCount: 0, outsideStudentCount: 0 },
+          // R8: the draft's per-class pre-exposure warning; empty when nothing is burnt.
+          preExposure: [],
         });
     });
 
@@ -307,6 +316,7 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).toEqual({
           ...otherUserAssignment,
           exposure: { openItemCount: 0, outsideStudentCount: 0 },
+          preExposure: [],
         });
     });
 
@@ -1022,6 +1032,7 @@ describe('TeacherAssignmentService', () => {
     ];
 
     it('returns attempts for assignment', async () => {
+      linkRows.rows = [];
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
@@ -1031,10 +1042,19 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getResults(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toHaveLength(1);
+      if (result.success) {
+        const data = asJson<{
+          attempts: unknown[];
+          fairness: { respondents: number; minRespondents: number; items: unknown[] };
+        }>(result.data);
+        expect(data.attempts).toHaveLength(1);
+        // R9: the fairness block counts the cohort, and no bound item means no cells.
+        expect(data.fairness).toMatchObject({ respondents: 1, minRespondents: 5, items: [] });
+      }
     });
 
     it('returns empty array when no attempts', async () => {
+      linkRows.rows = [];
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
@@ -1044,7 +1064,70 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getResults(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual([]);
+      if (result.success) {
+        expect(asJson<{ attempts: unknown[] }>(result.data).attempts).toEqual([]);
+      }
+    });
+
+    it('resolves a choice answer to its published option text (#1238)', async () => {
+      const attempt = {
+        ...attempts[0],
+        quiz_answers: [
+          {
+            question_id: 'q-1',
+            selected_option_id: 'option-a',
+            text_answer: null,
+            teacher_points: null,
+            teacher_feedback: null,
+          },
+          {
+            question_id: 'q-2',
+            selected_option_id: null,
+            text_answer: null,
+            teacher_points: null,
+            teacher_feedback: null,
+          },
+        ],
+      };
+      vi.mocked(readAssignmentSnapshots).mockResolvedValueOnce({
+        success: true,
+        data: new Map([
+          [
+            'q-1',
+            {
+              id: 'q-1',
+              content: 'Which planet is closest?',
+              type: 'mcq',
+              question_answers: [
+                {
+                  id: 'option-a',
+                  content: 'Merkury',
+                  order_index: 0,
+                  match_group: null,
+                  match_side: null,
+                },
+              ],
+            },
+          ],
+        ]),
+      });
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(chain([attempt]));
+
+      const result = await service.getResults(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      const [row] = asJson<{
+        attempts: Array<{ quiz_answers: Array<{ selected_option_content: string | null }> }>;
+      }>(result.data).attempts;
+      expect(row?.quiz_answers[0]?.selected_option_content).toBe('Merkury');
+      expect(row?.quiz_answers[1]?.selected_option_content, 'a skipped answer has no option').toBe(
+        null,
+      );
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {

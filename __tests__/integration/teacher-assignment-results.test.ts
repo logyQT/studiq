@@ -35,7 +35,10 @@ const DEADLINE = new Date(Date.now() + 2 * 86_400_000).toISOString();
 
 interface StartedAttempt {
   id: string;
-  questions: Array<{ id: string; question_answers?: Array<{ id: string }> }>;
+  questions: Array<{
+    id: string;
+    question_answers?: Array<{ id: string; content: string }>;
+  }>;
 }
 
 /** A row of `GET /api/v1/teacher/assignments/:id/results`. */
@@ -45,10 +48,38 @@ interface ResultsRow {
   score: number | null;
   quiz_answers: Array<{
     question_id: string;
+    selected_option_id: string | null;
+    /** The published option's text, resolved from the frozen snapshot (#1238). */
+    selected_option_content: string | null;
     teacher_points: number | null;
     teacher_feedback: string | null;
   }>;
   assignment_answer_images: Array<{ question_id: string; image_url: string }>;
+}
+
+/**
+ * Edits the live item the way the author editor does — a new stem and a fresh option set. The
+ * published snapshot must keep serving the option the student picked (#1238).
+ */
+async function editLiveQuestion(id: string): Promise<void> {
+  const service = createServiceClient();
+  const { error: stemError } = await service
+    .from('questions')
+    .update({ content: `seed-question-edited-${Date.now()}` })
+    .eq('id', id);
+  if (stemError) throw new Error(stemError.message);
+
+  const { error: dropError } = await service
+    .from('question_options')
+    .delete()
+    .eq('question_id', id);
+  if (dropError) throw new Error(dropError.message);
+
+  const { error } = await service.from('question_options').insert([
+    { question_id: id, content: 'edited-after-publish-a', is_correct: true, order_index: 0 },
+    { question_id: id, content: 'edited-after-publish-b', is_correct: false, order_index: 1 },
+  ]);
+  if (error) throw new Error(error.message);
 }
 
 describe('Teacher assignment results payload (#1230)', () => {
@@ -57,6 +88,8 @@ describe('Teacher assignment results payload (#1230)', () => {
   let silent!: BeforeResult;
   let assignmentId!: string;
   let questionId!: string;
+  /** The option text the student picked, as published (the live item is edited after publish). */
+  let publishedOptionContent!: string;
   let answeringAttemptId!: string;
   let silentAttemptId!: string;
 
@@ -72,7 +105,7 @@ describe('Teacher assignment results payload (#1230)', () => {
     );
     const response = await resultsGet(request, { params });
     expect(response.status, await response.clone().text()).toBe(200);
-    return (await json<{ data: ResultsRow[] }>(response)).data;
+    return (await json<{ data: { attempts: ResultsRow[] } }>(response)).data.attempts;
   }
 
   async function start(user: BeforeResult): Promise<StartedAttempt> {
@@ -122,6 +155,7 @@ describe('Teacher assignment results payload (#1230)', () => {
     );
     return (await gradePut(request, { params })).status;
   }
+
   beforeAll(async () => {
     teacher = await before({ role: 'educator', org: true, questions: 2 });
     answering = await before({ role: 'student' });
@@ -214,14 +248,16 @@ describe('Teacher assignment results payload (#1230)', () => {
       0,
       'the graded question in the attempt',
     );
+    const chosenOption = requiredAt(
+      gradedQuestion.question_answers ?? [],
+      0,
+      'the first answer option',
+    );
+    publishedOptionContent = chosenOption.content;
     await submit(answering, answered, [
       {
         questionId: gradedQuestion.id,
-        selectedAnswerId: requiredAt(
-          gradedQuestion.question_answers ?? [],
-          0,
-          'the first answer option',
-        ).id,
+        selectedAnswerId: chosenOption.id,
       },
     ]);
 
@@ -258,6 +294,42 @@ describe('Teacher assignment results payload (#1230)', () => {
 
     expect(row?.quiz_answers, 'no answers is an empty list, never a missing key').toEqual([]);
     expect(row?.assignment_answer_images).toEqual([]);
+  });
+
+  it('resolves a choice answer to the option text published with the run (#1238)', async () => {
+    const row = (await results()).find((r) => r.id === answeringAttemptId);
+    const answer = row?.quiz_answers.find((a) => a.question_id === questionId);
+    expect(answer?.selected_option_id, 'the row carries the chosen option id').toBeTruthy();
+    expect(answer?.selected_option_content, 'the card prints the option, not its id').toBe(
+      publishedOptionContent,
+    );
+
+    await editLiveQuestion(questionId);
+    const afterEdit = (await results()).find((r) => r.id === answeringAttemptId);
+    expect(
+      afterEdit?.quiz_answers.find((a) => a.question_id === questionId)?.selected_option_content,
+      'a post-publish edit never rewrites what the student answered',
+    ).toBe(publishedOptionContent);
+  });
+
+  it('leaves a skipped answer without an option text (#1238)', async () => {
+    const service = createServiceClient();
+    // The page treats a missing answer row and a row with no selection the same way; pin the row
+    // case so a defaulted option can never leak into the card.
+    const { error } = await service.from('student_answers').insert({
+      attempt_id: silentAttemptId,
+      question_id: questionId,
+      selected_option_id: null,
+      text_answer: null,
+      is_correct: false,
+      teacher_points: null,
+    });
+    if (error) throw new Error(error.message);
+
+    const row = (await results()).find((r) => r.id === silentAttemptId);
+    const answer = row?.quiz_answers.find((a) => a.question_id === questionId);
+    expect(answer, 'the skipped answer is listed').toBeDefined();
+    expect(answer?.selected_option_content, 'no selection, no option text').toBeNull();
   });
 
   it('shows a grade written through the per-attempt route on the next read', async () => {

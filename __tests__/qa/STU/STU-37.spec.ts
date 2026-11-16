@@ -214,34 +214,44 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       name: `${CASE} bank ${tag}`,
     });
 
-    const mcq1 = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
-      bankId: bank.id,
-      type: 'mcq',
-      explanation: FIXTURE_EXPLANATION,
-      content: `${CASE} pytanie poprawne ${tag}`,
-      answers: [
-        { content: ANSWERS.mcqCorrect, isCorrect: true, orderIndex: 0 },
-        { content: ANSWERS.mcqWrong, isCorrect: false, orderIndex: 1 },
-      ],
-    });
-    const mcq2 = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
-      bankId: bank.id,
-      type: 'mcq',
-      explanation: FIXTURE_EXPLANATION,
-      content: `${CASE} pytanie błędne ${tag}`,
-      answers: [
-        { content: 'Gamma', isCorrect: true, orderIndex: 0 },
-        { content: ANSWERS.mcqWrongChosen, isCorrect: false, orderIndex: 1 },
-      ],
-    });
-    const open = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
-      bankId: bank.id,
-      type: 'open',
-      modelAnswer: FIXTURE_MODEL_ANSWER,
-      content: `${CASE} pytanie otwarte ${tag}`,
-      answers: [],
-    });
+    /**
+     * One triple: a right mcq, a wrong mcq and an open item. #1172 does not serve an item the
+     * student has already answered, and the same student sits both quizzes, so each quiz needs
+     * its own items.
+     */
+    async function createTriple(suffix: string) {
+      const mcq1 = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
+        bankId: bank.id,
+        type: 'mcq',
+        explanation: FIXTURE_EXPLANATION,
+        content: `${CASE} pytanie poprawne ${suffix}`,
+        answers: [
+          { content: ANSWERS.mcqCorrect, isCorrect: true, orderIndex: 0 },
+          { content: ANSWERS.mcqWrong, isCorrect: false, orderIndex: 1 },
+        ],
+      });
+      const mcq2 = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
+        bankId: bank.id,
+        type: 'mcq',
+        explanation: FIXTURE_EXPLANATION,
+        content: `${CASE} pytanie błędne ${suffix}`,
+        answers: [
+          { content: 'Gamma', isCorrect: true, orderIndex: 0 },
+          { content: ANSWERS.mcqWrongChosen, isCorrect: false, orderIndex: 1 },
+        ],
+      });
+      const open = await api<CreatedQuestion>(page, 'POST', '/api/v1/questions', {
+        bankId: bank.id,
+        type: 'open',
+        modelAnswer: FIXTURE_MODEL_ANSWER,
+        content: `${CASE} pytanie otwarte ${suffix}`,
+        answers: [],
+      });
+      return { mcq1, mcq2, open };
+    }
 
+    const { mcq1, mcq2, open } = await createTriple(tag);
+    const hiddenItems = await createTriple(`${tag}-h`);
     const questions = [mcq1.id, mcq2.id, open.id];
     const visible = await createQuiz(page, tenant, {
       title: visibleTitle,
@@ -251,7 +261,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
     const hidden = await createQuiz(page, tenant, {
       title: hiddenTitle,
       showResults: false,
-      questionIds: questions,
+      questionIds: [hiddenItems.mcq1.id, hiddenItems.mcq2.id, hiddenItems.open.id],
     });
 
     // ── Student: sits both quizzes, one attempt each ─────────────────────────
@@ -278,12 +288,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       // 1 of 3 points before the open answer is graded.
       expect(visibleAttempt.score, 'the auto-graded score is reported to the student').toBe(1);
 
-      const hiddenAttempt = await submitAttempt(
-        studentPage,
-        hidden.id,
-        { mcq1, mcq2, open },
-        openAnswer,
-      );
+      const hiddenAttempt = await submitAttempt(studentPage, hidden.id, hiddenItems, openAnswer);
       expect(
         hiddenAttempt.score,
         'a hidden result is never returned by the submit call',

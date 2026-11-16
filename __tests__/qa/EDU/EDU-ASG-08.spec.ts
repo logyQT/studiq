@@ -44,6 +44,9 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * 4. „Zapisz ocenę” with valid points + feedback marks the attempt „(ocenione)”,
  *    keeps the inputs, and the results table row flips to „Ocenione” with the
  *    updated score.
+ * 5. The per-question deep link prints the chosen option's text for a choice
+ *    question (#1238) and still says „Brak odpowiedzi” for a question the
+ *    student skipped.
  */
 
 const CASE = 'EDU-ASG-08';
@@ -60,6 +63,7 @@ const COPY = {
   selectedAnswer: 'Wybrana odpowiedź:',
   correctAnswer: 'Poprawna odpowiedź:',
   studentAnswer: 'Odpowiedź ucznia:',
+  noAnswer: 'Brak odpowiedzi',
   viewImage: 'Zobacz przesłane zdjęcie',
   pointsLabel: 'Punkty (0–1)',
   pointsTooBig: 'Punkty nie mogą przekraczać 1',
@@ -264,6 +268,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     const closedCorrectContent = `EDU-ASG-08 zamknięte poprawne ${runTag}`;
     const closedWrongContent = `EDU-ASG-08 zamknięte błędne ${runTag}`;
     const openContent = `EDU-ASG-08 otwarte ${runTag}`;
+    const skippedContent = `EDU-ASG-08 pominięte ${runTag}`;
     const openAnswerText = `Odpowiedź ucznia na pytanie otwarte ${runTag}`;
     const feedbackText = `Dobra odpowiedź, uzasadnienie trafne ${runTag}`;
 
@@ -287,11 +292,14 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
       'Odpowiedź błędna',
     );
     const openQuestion = await createOpenQuestion(page, bankId, openContent);
+    // Never answered: the per-question card has to say „Brak odpowiedzi” for it. An open item
+    // stays outside the denominator until a teacher grades it (R16), so the scores below hold.
+    const skippedQuestion = await createOpenQuestion(page, bankId, skippedContent);
 
     const assignment = await publishAssignment(
       page,
       assignmentTitle,
-      [closedCorrect.id, closedWrong.id, openQuestion.id],
+      [closedCorrect.id, closedWrong.id, openQuestion.id, skippedQuestion.id],
       tenant.group!.id,
     );
 
@@ -574,6 +582,37 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
       afterRetry.quiz_answers.find((a) => a.question_id === openQuestion.id)?.teacher_feedback,
       'the successful retry persists',
     ).toBe(retryFeedback);
+
+    // ── Adjacent surface: a choice answer prints its option text (#1238) ─────
+    // The card used to print `text_answer` only, so every answered choice question read
+    // „Brak odpowiedzi” while its row carried the selected option id.
+    const choicePath = `/edu/assignments/${assignment.id}/results/question/${closedCorrect.id}`;
+    await page.goto(choicePath);
+    await expect(page).toHaveURL(new RegExp(`${choicePath}$`));
+
+    const choiceCard = content(page).locator('div.rounded-lg.border');
+    await expect(choiceCard, 'one card per submitted attempt').toHaveCount(1);
+    await expect(
+      choiceCard.getByText(`${COPY.studentAnswer} Odpowiedź poprawna`, { exact: true }),
+      'the card prints the option the student picked',
+    ).toBeVisible();
+    await expect(choiceCard.getByText(COPY.noAnswer, { exact: true })).toHaveCount(0);
+    await expect(content(page), 'the card prints the option text, never its id').not.toContainText(
+      correctOptionId,
+    );
+
+    // ── A question the student skipped still says „Brak odpowiedzi” ──────────
+    const skippedPath = `/edu/assignments/${assignment.id}/results/question/${skippedQuestion.id}`;
+    await page.goto(skippedPath);
+    await expect(page).toHaveURL(new RegExp(`${skippedPath}$`));
+
+    const skippedCard = content(page).locator('div.rounded-lg.border');
+    await expect(skippedCard, 'one card per submitted attempt').toHaveCount(1);
+    await expect(skippedCard.getByText(COPY.noAnswer, { exact: true })).toBeVisible();
+    await expect(
+      skippedCard.getByText(COPY.studentAnswer, { exact: false }),
+      'a skipped question has no answer to print',
+    ).toHaveCount(0);
 
     expect(pageErrors, 'uncaught page errors in the teacher session').toEqual([]);
   });

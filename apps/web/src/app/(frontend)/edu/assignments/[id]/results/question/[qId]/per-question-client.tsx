@@ -25,6 +25,8 @@ interface ResultsData {
   quiz_answers?: Array<{
     question_id: string;
     text_answer: string | null;
+    /** The published option's text; the answer row itself carries only `selected_option_id`. */
+    selected_option_content?: string | null;
     teacher_points: number | null;
     teacher_feedback: string | null;
   }>;
@@ -40,11 +42,12 @@ export default function PerQuestionGradingClient() {
   const [grades, setGrades] = React.useState<Record<string, Partial<GradeDraft>>>({});
 
   const {
-    resultsQuery: { data: results, isLoading },
+    resultsQuery: { isLoading },
+    attempts,
     gradeMutation,
-  } = usePerQuestionGrading<ResultsData[]>(id, t('grade_failed'));
+  } = usePerQuestionGrading<ResultsData>(id, t('grade_failed'));
 
-  const attemptOf = (studentId: string) => results?.find((r) => r.user_id === studentId);
+  const attemptOf = (studentId: string) => attempts?.find((r) => r.user_id === studentId);
 
   const answerOf = (attempt: ResultsData | undefined) =>
     attempt?.quiz_answers?.find((a) => a.question_id === qId);
@@ -72,11 +75,17 @@ export default function PerQuestionGradingClient() {
     }
   };
 
-  const getStudentAnswer = (attempt: ResultsData) => ({
-    answer: answerOf(attempt),
-    images: (attempt.assignment_answer_images ?? []).filter((img) => img.question_id === qId),
-    userName: attempt.user?.full_name ?? t('unknown'),
-  });
+  const getStudentAnswer = (attempt: ResultsData) => {
+    const answer = answerOf(attempt);
+    return {
+      answer,
+      // A choice answer prints its option's text; an open one its written answer. A skipped
+      // question has neither, so the card says so (#1238).
+      answerText: answer?.selected_option_content || answer?.text_answer || null,
+      images: (attempt.assignment_answer_images ?? []).filter((img) => img.question_id === qId),
+      userName: attempt.user?.full_name ?? t('unknown'),
+    };
+  };
 
   /** An attempt whose answer for this question is missing or still ungraded. */
   const needsGrading = (attempt: ResultsData) => {
@@ -95,7 +104,7 @@ export default function PerQuestionGradingClient() {
     );
   }
 
-  const pending = results?.filter(needsGrading) ?? [];
+  const pending = attempts?.filter(needsGrading) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -117,7 +126,7 @@ export default function PerQuestionGradingClient() {
       </div>
 
       <div className="space-y-4">
-        {results?.map((attempt) => {
+        {attempts?.map((attempt) => {
           const studentData = getStudentAnswer(attempt);
           const grade = getGrade(attempt.user_id);
           const isValidPoints = parseGradePoints(grade.points) !== null;
@@ -134,10 +143,8 @@ export default function PerQuestionGradingClient() {
                 )}
               </div>
 
-              {studentData.answer?.text_answer ? (
-                <p className="text-sm">
-                  {t('student_answer', { text: studentData.answer.text_answer })}
-                </p>
+              {studentData.answerText ? (
+                <p className="text-sm">{t('student_answer', { text: studentData.answerText })}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">{t('no_answer')}</p>
               )}

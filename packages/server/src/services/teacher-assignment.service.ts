@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import {
   type AssignmentLink,
   ASSIGNMENT_QUESTION_COLUMNS,
+  type QuestionSnapshot,
   readAssignmentLinks,
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
@@ -13,10 +14,16 @@ import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import {
   attemptHistory,
   drawSample,
+  sampleEligible,
   sampleServed,
-  sampleUnseen,
 } from '@studiq/server/lib/attempt-sample';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
+import { assessPreExposure } from '@studiq/server/lib/assignment-preexposure';
+import {
+  FAIRNESS_MIN_RESPONDENTS,
+  type FairnessItem,
+  fairnessItem,
+} from '@studiq/server/lib/fairness';
 import {
   ensureClosed,
   expireInProgressAttempts,
@@ -132,6 +139,36 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 function isLiveRun(run: { status?: string; start_time?: string | null }, now: Date): boolean {
   if (run.status !== 'published') return false;
   return !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
+}
+
+/** The fairness block of the results payload (R9): counts only, taught items excluded. */
+export interface FairnessReport {
+  respondents: number;
+  minRespondents: number;
+  items: FairnessItem[];
+}
+
+/** Adds `student` to `index[questionId]`, creating the set on first use. */
+function addToIndex(index: Map<string, Set<string>>, questionId: string, student: string): void {
+  const set = index.get(questionId) ?? new Set<string>();
+  set.add(student);
+  index.set(questionId, set);
+}
+
+/**
+ * The published option's text for one answer row. A skipped answer and an open answer both have no
+ * selected option, so they resolve to `null` and the caller renders „Brak odpowiedzi”.
+ */
+function selectedOptionContent(
+  snapshots: Map<string, QuestionSnapshot>,
+  answer: { question_id: string | null; selected_option_id: string | null },
+): string | null {
+  if (!answer.question_id || !answer.selected_option_id) return null;
+  const frozen = snapshots.get(answer.question_id);
+  return (
+    frozen?.question_answers.find((option) => option.id === answer.selected_option_id)?.content ??
+    null
+  );
 }
 
 export class TeacherAssignmentService {
@@ -287,10 +324,19 @@ export class TeacherAssignmentService {
       : await assessExposure(id, dbRows(assignment.assignment_targets));
     if (exposure && isFailure(exposure)) return exposure;
 
+    // R8: publishing is the last moment a teacher can declare an item taught, so the draft carries
+    // what each targeted class has already seen. Information, not a refusal — R3 owns the blocking
+    // decision.
+    const preExposure = isPublished
+      ? null
+      : await assessPreExposure(id, dbRows(assignment.assignment_targets));
+    if (preExposure && isFailure(preExposure)) return preExposure;
+
     return success({
       ...assignment,
       assignment_questions: assignmentQuestions,
       ...(exposure?.success ? { exposure: exposure.data } : {}),
+      ...(preExposure?.success ? { preExposure: preExposure.data } : {}),
     });
   }
 
@@ -542,17 +588,136 @@ export class TeacherAssignmentService {
     if (run.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
     if (isAssessmentClosed(run)) return failure('ASSESSMENT_CLOSED');
 
+    const written = await this.writeItemFlag(supabase, id, questionId, {
+      withhold_from_review: withheld,
+      released_at: null,
+    });
+    if (isFailure(written)) return written;
+    if (!written.data) return failure('NOT_FOUND');
+    return success({ withhold_from_review: withheld });
+  }
+
+  /**
+   * The cohort's counts per item (R9): who was served it, who got it right, what had no automatic
+   * verdict. Taught items are labelled and excluded, cells under five respondents are suppressed,
+   * and nothing is option-level — a distribution would be the key.
+   */
+  private async fairness(
+    id: string,
+    supabase: SupabaseClient<Database>,
+  ): Promise<ServiceResult<FairnessReport>> {
+    const links = await readAssignmentLinks(id);
+    if (isFailure(links)) return links;
+
+    const { data: attempts, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, user_id')
+      .eq('assignment_id', id)
+      .not('completed_at', 'is', null);
+    if (error) return toDbFailure(error);
+
+    const attemptRows = dbRows(attempts);
+    const studentOf = new Map(
+      attemptRows.flatMap((attempt) => (attempt.user_id ? [[attempt.id, attempt.user_id]] : [])),
+    );
+    const respondents = new Set(studentOf.values());
+
+    // Distinct students, so a retake never counts twice in one cell.
+    const servedBy = new Map<string, Set<string>>();
+    const correctBy = new Map<string, Set<string>>();
+    if (attemptRows.length > 0) {
+      const attemptIds = attemptRows.map((attempt) => attempt.id);
+      const [servedRows, answerRows] = await Promise.all([
+        supabase
+          .from('quiz_attempt_questions')
+          .select('attempt_id, question_id')
+          .in('attempt_id', attemptIds),
+        supabase
+          .from('student_answers')
+          .select('attempt_id, question_id, is_correct')
+          .in('attempt_id', attemptIds),
+      ]);
+      if (servedRows.error) return toDbFailure(servedRows.error);
+      if (answerRows.error) return toDbFailure(answerRows.error);
+
+      for (const row of dbRows(servedRows.data)) {
+        const student = row.attempt_id ? studentOf.get(row.attempt_id) : undefined;
+        if (row.question_id && student) addToIndex(servedBy, row.question_id, student);
+      }
+      for (const row of dbRows(answerRows.data)) {
+        const student = row.attempt_id ? studentOf.get(row.attempt_id) : undefined;
+        if (row.question_id && student && row.is_correct) {
+          addToIndex(correctBy, row.question_id, student);
+        }
+      }
+    }
+
+    const items = links.data.flatMap((link) => {
+      if (!link.question_id) return [];
+      const served = servedBy.get(link.question_id)?.size ?? 0;
+      return [
+        fairnessItem({
+          questionId: link.question_id,
+          taughtItem: link.taught_item,
+          served,
+          correct: correctBy.get(link.question_id)?.size ?? 0,
+          // An open item has no automatic verdict, so every served student is ungraded (R16).
+          ungraded: link.snapshot?.type === 'open' ? served : 0,
+        }),
+      ];
+    });
+
+    return success({
+      respondents: respondents.size,
+      minRespondents: FAIRNESS_MIN_RESPONDENTS,
+      items,
+    });
+  }
+
+  /**
+   * Declares one item taught (R9): a ledger event or a prior answer no longer excludes it from this
+   * student's sample, the item is labelled in results, and fairness statistics leave it out.
+   *
+   * Declared on a draft and frozen with the published snapshot: moving the flag after publish would
+   * change a live sample mid-window and rewrite fairness after the cohort sat it.
+   */
+  async setTaughtItem(
+    id: string,
+    questionId: string,
+    taught: boolean,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const editable = await this.draftClient(id, ctx);
+    if (isFailure(editable)) return editable;
+
+    const written = await this.writeItemFlag(editable.data, id, questionId, {
+      taught_item: taught,
+    });
+    if (isFailure(written)) return written;
+    if (!written.data) return failure('NOT_FOUND');
+    return success({ taught_item: taught });
+  }
+
+  /**
+   * One flag on one assessment item, through a client whose caller already proved the run is theirs
+   * and in the right state. `false` means the item is not bound to this assessment.
+   */
+  private async writeItemFlag(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    questionId: string,
+    patch: Database['public']['Tables']['assignment_questions']['Update'],
+  ): Promise<ServiceResult<boolean>> {
     const { data, error } = await supabase
       .from('assignment_questions')
-      .update({ withhold_from_review: withheld, released_at: null })
+      .update(patch)
       .eq('assignment_id', id)
       .eq('question_id', questionId)
       .select('id')
       .maybeSingle();
 
     if (error) return toDbFailure(error);
-    if (!data) return failure('NOT_FOUND');
-    return success({ withhold_from_review: withheld });
+    return success(Boolean(data));
   }
 
   /**
@@ -896,7 +1061,8 @@ export class TeacherAssignmentService {
    * The results list feeds two surfaces: the table, and the per-question grading
    * view (`/edu/assignments/:id/results/question/:qId`), which grades every
    * student's answer for one question. The answer rows therefore travel with the
-   * attempt, in the same shape `getStudentAnswers` returns (#1230).
+   * attempt, in the same shape `getStudentAnswers` returns (#1230), plus the
+   * published option's text — the card prints the option, never its id (#1238).
    */
   async getResults(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
@@ -911,7 +1077,26 @@ export class TeacherAssignmentService {
       .order('started_at', { ascending: false });
 
     if (error) return toDbFailure(error);
-    return success(dbRows(attempts));
+
+    const fairness = await this.fairness(id, supabase);
+    if (isFailure(fairness)) return fairness;
+
+    // The grading card prints the option's text, and an answer row carries only
+    // `selected_option_id` (#1238). Resolve it from the frozen snapshot: the live item may have
+    // been edited after publish (R11).
+    const snapshots = await readAssignmentSnapshots(id);
+    if (isFailure(snapshots)) return snapshots;
+
+    return success({
+      attempts: dbRows(attempts).map((attempt) => ({
+        ...attempt,
+        quiz_answers: dbRows(attempt.quiz_answers).map((answer) => ({
+          ...answer,
+          selected_option_content: selectedOptionContent(snapshots.data, answer),
+        })),
+      })),
+      fairness: fairness.data,
+    });
   }
 
   /**
@@ -1398,15 +1583,15 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * The items one attempt serves (R6/R7). The pool is everything the assessment binds; the draw is
-   * `attempt_item_count` of it (all of it when the teacher set no count).
+   * The items one attempt serves (R6/R7/R8/R9). The pool is everything the assessment binds; the
+   * draw is `attempt_item_count` of it (all of it when the teacher set no count).
    *
-   * - First attempt: a draw from the pool.
-   * - Retake, default: a draw from the items this student has **not** seen — served, answered or
-   *   key-rendered. An exhausted inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse.
-   * - Retake, `allow_same_item_retake`: the items the earlier attempt was served, which is what
-   *   "same item" means. A prior attempt with no served rows is a corrupt state, and serving the
-   *   pool is the honest repair rather than a refusal.
+   * Every attempt draws from the eligible pool: an item this student has **not** met — served,
+   * answered or key-rendered — unless the item is declared `taughtItem` (R9). An exhausted
+   * inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse of a burnt item.
+   * - `allow_same_item_retake`: the items the earlier attempt was served, which is what "same item"
+   *   means. A prior attempt with no served rows is a corrupt state, and serving the pool is the
+   *   honest repair rather than a refusal.
    *
    * Both retake forms happen inside the window: this method already refused everything outside it.
    */
@@ -1416,22 +1601,20 @@ export class TeacherAssignmentService {
     links: AssignmentLink[],
     options: { isRetake: boolean; allowSameItemRetake: boolean; itemCount: number | null },
   ): Promise<ServiceResult<AssignmentLink[]>> {
-    if (!options.isRetake) return success(drawSample(links, options.itemCount));
-
     const candidates = [
       ...new Set(links.flatMap((link) => (link.question_id ? [link.question_id] : []))),
     ];
     const history = await attemptHistory(studentId, id, candidates);
     if (isFailure(history)) return history;
 
-    if (options.allowSameItemRetake) {
+    if (options.isRetake && options.allowSameItemRetake) {
       const same = sampleServed(links, history.data.served);
       return success(drawSample(same.length > 0 ? same : links, options.itemCount));
     }
 
-    const fresh = sampleUnseen(links, history.data.seen);
-    if (fresh.length === 0) return failure('NO_UNSEEN_ITEMS');
-    return success(drawSample(fresh, options.itemCount));
+    const eligible = sampleEligible(links, history.data.seen);
+    if (eligible.length === 0) return failure('NO_UNSEEN_ITEMS');
+    return success(drawSample(eligible, options.itemCount));
   }
 
   /**

@@ -13,6 +13,7 @@ import {
   RandomizeSchema,
   ReorderQuestionsSchema,
   SetTargetsSchema,
+  TaughtItemSchema,
   UpdateTeacherAssignmentSchema,
   WithholdItemSchema,
 } from '@studiq/server/models/teacher-assignment.model';
@@ -137,6 +138,27 @@ export class TeacherAssignmentController {
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
     const result = await this.service.releaseItem(id, questionId, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  /** R9: declares one assessment item taught (draft only, frozen at publish). */
+  async setTaughtItem(
+    id: string,
+    questionId: string,
+    body: unknown,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    const parsed = TaughtItemSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+    const result = await this.service.setTaughtItem(id, questionId, parsed.data.taught, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

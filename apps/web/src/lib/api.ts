@@ -134,6 +134,16 @@ export async function apiPut<T>(url: string, body: unknown): Promise<T> {
   return decodeBody<T>(res);
 }
 
+export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
+  const res = await request(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await throwIfNotOk(res, 'PATCH', url);
+  return decodeBody<T>(res);
+}
+
 export async function apiDelete(url: string): Promise<void> {
   const res = await request(url, { method: 'DELETE' });
   await throwIfNotOk(res, 'DELETE', url);
