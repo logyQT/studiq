@@ -33,9 +33,16 @@ export interface SeatPool {
 export function SeatPoolsTable({
   pools,
   dense = false,
+  labelled = false,
 }: {
   pools: readonly SeatPool[];
   dense?: boolean;
+  /**
+   * Names the table for a caller that renders it without a title above it.
+   * The dashboard's card already names it, and a second name there would be the
+   * card title read twice; it also has no overflow to make focusable.
+   */
+  labelled?: boolean;
 }) {
   const t = useTranslations('ManageSeatsPage');
   const head = cn(dense && 'px-1 text-xs');
@@ -43,12 +50,10 @@ export function SeatPoolsTable({
 
   return (
     <Table
-      containerClassName={FOCUS_RING}
-      containerProps={{ tabIndex: 0, 'aria-label': t('pools_title') }}
+      containerClassName={labelled ? FOCUS_RING : undefined}
+      containerProps={labelled ? { tabIndex: 0, 'aria-label': t('pools_title') } : undefined}
     >
-      {/* The manager's card titles this table; on a page that renders it without
-          a card the caption is the only accessible name it has. */}
-      <caption className="sr-only">{t('pools_title')}</caption>
+      {labelled ? <caption className="sr-only">{t('pools_title')}</caption> : null}
       <TableHeader>
         <TableRow>
           <TableHead scope="col" className={head}>

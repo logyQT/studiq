@@ -10,5 +10,5 @@ import { SEAT_POOL_FIXTURES } from '@/components/marketing/previews/seat-pools-f
  * pool that is about to run out.
  */
 export function SeatPoolsPreview() {
-  return <SeatPoolsTable pools={SEAT_POOL_FIXTURES} dense />;
+  return <SeatPoolsTable pools={SEAT_POOL_FIXTURES} dense labelled />;
 }
