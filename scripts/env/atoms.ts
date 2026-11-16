@@ -26,6 +26,7 @@ export type EnvCommand =
   | 'logs'
   | 'setup'
   | 'verify'
+  | 'share'
   | 'observability'
   | 'help';
 
@@ -81,6 +82,13 @@ export interface VerifyOptions {
   full: boolean;
 }
 
+export interface ShareOptions {
+  /** Create/refresh `qa/env.json` instead of only printing the pointer. */
+  write: boolean;
+  /** Replace a pointer that names a different app. */
+  force: boolean;
+}
+
 export interface ObservabilityOptions {
   mode: 'status' | 'ensure';
   force: boolean;
@@ -100,6 +108,7 @@ export interface ParsedCommand {
   logs: LogsOptions | null;
   setup: SetupOptions | null;
   verify: VerifyOptions | null;
+  share: ShareOptions | null;
   observability: ObservabilityOptions | null;
   yes: boolean;
   /** Suppress informative stderr lines (`--quiet`). */
@@ -138,6 +147,7 @@ export const USAGE = [
   '  env:logs     [--no-follow]                      Stack logs + .dev/web.log',
   '  env:setup    [--force] [--vault]                Human-only: scaffold .env.local (or optional vault refs)',
   '  env:verify   [--full] [--json]                  Read-only env/schema check (names only)',
+  '  env:share    [--write] [--force] [--json]        Pointer other worktrees read (one app, many agents)',
   '  env:observability [status|ensure] [--force]     Validate/mint the Grafana MCP token (read-only by default)',
   '  env:ports    [--json]                           Print a free APP_PORT',
   '  env:doctor   [--json]                           Explain runtime/stack/registry problems',
@@ -214,6 +224,7 @@ function empty(command: EnvCommand): ParsedCommand {
     logs: null,
     setup: null,
     verify: null,
+    share: null,
     observability: null,
     yes: false,
     quiet: false,
@@ -506,6 +517,29 @@ function parseVerify(rest: string[]): ParsedCommand {
 }
 
 /**
+ * `share` prints, or with `--write` creates, the URL-only pointer other agent
+ * worktrees read. Writing is explicit because every non-lifecycle command
+ * reports by default; `--force` only means something together with `--write`.
+ */
+function parseShare(rest: string[]): ParsedCommand {
+  let write = false;
+  let force = false;
+  return parseSingle(
+    'share',
+    rest,
+    {
+      '--write': () => void (write = true),
+      '--force': () => void (force = true),
+    },
+    (parsed) => {
+      if (force && !write) throw new UsageError("'--force' only applies with '--write'");
+      parsed.share = { write, force };
+    },
+    { allowStack: false },
+  );
+}
+
+/**
  * `status` is read-only; `ensure` mints only when the token is missing or stale.
  * `--force` re-mints a token that still validates (manual recovery). Flags and
  * the mode may appear in any order: agents compose flags-first calls.
@@ -622,6 +656,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
   if (command === 'logs') return parseLogs(rest);
   if (command === 'setup') return parseSetup(rest);
   if (command === 'verify') return parseVerify(rest);
+  if (command === 'share') return parseShare(rest);
   if (command === 'observability') return parseObservability(rest);
   if (!(FLAG_COMMANDS as ReadonlyArray<string>).includes(command)) {
     throw new UsageError(`unknown command '${command}'`);

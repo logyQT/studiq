@@ -4,6 +4,7 @@ import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
+import { pointerPath, readPointer } from '../lib/pointer';
 import {
   grafanaAuthLabel,
   grafanaBaseUrl,
@@ -238,10 +239,41 @@ async function buildReport(): Promise<DoctorReport> {
     problems.push(`app port ${contract.appPort} is in use by another process`);
   }
 
+  // The QA pointer is how a consumer worktree finds this app. Two failure modes
+  // are worth a warning rather than a problem: a pointer that disagrees with
+  // this checkout's own contract (the seeder and specs follow the pointer), and
+  // one that names a stack this machine no longer has.
+  const pointer = readPointer();
+  if (pointer.state === 'invalid') {
+    warnings.push(`qa pointer ${pointerPath()} is not readable: ${pointer.reason}`);
+  } else if (pointer.state === 'ok') {
+    const target = pointer.pointer;
+    if (!contract.shared && target.appUrl !== contract.appUrl) {
+      warnings.push(
+        `qa pointer ${pointerPath()} points at ${target.appUrl}, not this checkout's ` +
+          `${contract.appUrl}: the QA seeder and specs follow the pointer, env:* follows this checkout`,
+      );
+    }
+    if (target.stackId && !registry.entries.some((entry) => entry.projectId === target.stackId)) {
+      warnings.push(
+        `qa pointer ${pointerPath()} names stack ${target.stackId.slice(0, 12)}, which is not in this machine's registry (stopped or owned by another machine)`,
+      );
+    }
+  }
+
+  const pointerLabel =
+    pointer.state === 'absent'
+      ? 'none'
+      : pointer.state === 'invalid'
+        ? `${pointerPath()} (unreadable)`
+        : `${pointerPath()} → ${pointer.pointer.appUrl}` +
+          `${pointer.pointer.stackId ? ` (${pointer.pointer.stackId.slice(0, 12)})` : ''}`;
+
   const lines: string[] = [
     '▸ Checkout',
     `  worktree   ${REPO_ROOT}`,
     `  branch     ${currentBranchName()}`,
+    `  qa pointer ${pointerLabel}`,
     `  registry   ${registry.dir}${trusted || !registryExists ? '' : ' (untrusted — entries ignored)'}`,
   ];
 

@@ -1,5 +1,5 @@
 import type { Contract } from './contract';
-import { REPO_ROOT } from './repo';
+import { REPO_ROOT, currentCommit } from './repo';
 import type { StackStatus } from './stack';
 import { profileRequiresServe } from '../profiles';
 
@@ -41,6 +41,8 @@ export interface StatusSnapshot {
   stackId: string | null;
   runtime: string | null;
   branch: string | null;
+  /** Short HEAD of the checkout that produced the snapshot; `null` when git cannot answer. */
+  commit: string | null;
   ports: StatusPorts;
   urls: {
     app: string;
@@ -122,6 +124,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
     stackId: inputs.stackId ?? stack?.id ?? null,
     runtime: inputs.runtime ?? stack?.runtime ?? null,
     branch: inputs.branch ?? stack?.branch ?? null,
+    commit: currentCommit(),
     ports: {
       app: contract.appPort,
       api: inputs.ports.api,

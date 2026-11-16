@@ -40,7 +40,9 @@ as an action.
    status reports the branch's default stack, so the probes would target the wrong DB.
    `NEXT_PUBLIC_SUPABASE_URL` must be that `API_URL` and `SUPABASE_DB_URL` (when set)
    must be that `DB_URL`; `qa/env.json` overrides the environment, so a QA worktree
-   silently points at the shared `:54421`.
+   silently points at the shared `:54421`. That override is deliberate when the owner
+   created it with `bun run env:share --write` (one app, many agents) — a pointer you did
+   not just copy is stale, and `bun run env:doctor` names it.
 2. **Point the app and the seeder at that stack before building.** `NEXT_PUBLIC_*`
    values are baked in at build time, and the seeder reads root `.env.local`
    (with `qa/env.json` overriding the URL) as its input. Set

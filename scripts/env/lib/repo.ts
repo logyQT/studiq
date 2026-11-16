@@ -57,6 +57,15 @@ export function currentBranchName(): string {
 }
 
 /**
+ * Short HEAD commit for the QA pointer and any handoff, or null when git cannot
+ * answer. A consumer needs it to tell "the same stack" from "the stack that one
+ * looked like three rebases ago".
+ */
+export function currentCommit(): string | null {
+  return runGit(['rev-parse', '--short', 'HEAD']);
+}
+
+/**
  * The primary checkout's path (the first `git worktree list` entry). The
  * machine-wide observability stack belongs to this checkout, not to whichever
  * worktree an agent happens to be in.

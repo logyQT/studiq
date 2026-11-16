@@ -1,4 +1,5 @@
 import { devices } from '@playwright/test';
+import { qaAppUrl } from '#test/helpers/qa-pointer';
 import { defineSuiteConfig } from '#playwright/base';
 
 /**
@@ -26,7 +27,9 @@ export default defineSuiteConfig({
   // each — sees every flake.
   reporter: [['list']],
   use: {
-    baseURL: process.env.QA_APP_URL ?? 'http://localhost:3010',
+    // `QA_APP_URL` when a consumer is told which app to hit, else the pointer
+    // `env:share` wrote, else this machine's local default.
+    baseURL: qaAppUrl(),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

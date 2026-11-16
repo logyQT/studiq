@@ -34,6 +34,7 @@
     "env:logs": "bash scripts/env/varlock-run.sh logs",
     "env:setup": "bun scripts/env/cli.ts setup",
     "env:verify": "bun scripts/env/cli.ts verify",
+    "env:share": "bun scripts/env/cli.ts share",
     "env:observability": "bash scripts/env/varlock-run.sh observability",
     "env:supa": "bash scripts/env/varlock-run.sh supa",
     "env:run": "bash scripts/env/varlock-run.sh run",
