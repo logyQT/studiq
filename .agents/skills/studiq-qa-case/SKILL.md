@@ -133,13 +133,13 @@ org role), `groups` (first is the default), `solo` (an account in no org), `orgs
 `apply_org_plan` RPC the billing webhook uses, so a paid entitlement stays inside
 the case's own tenant instead of leaning on the global catalogue.
 
-Seed it (in a shell that has this checkout's stack contract exported — see
-[Commands](#commands); `env:ensure --profile qa` already seeded every case once):
+Seed it through `env:run` (see [Commands](#commands); `env:ensure --profile qa`
+already seeded every case once):
 
 ```bash
-bun scripts/qa-tenant.ts STU-21                    # base + 3 attempts (CI's retries)
-bun scripts/qa-tenant.ts STU-21 --fresh --attempts 1 --repeats 1   # quick local loop
-bun scripts/qa-tenant.ts STU-21 --profile bare --role manager --fresh
+bun run env:run -- bun scripts/qa-tenant.ts STU-21   # base + 3 attempts (CI's retries)
+bun run env:run -- bun scripts/qa-tenant.ts STU-21 --fresh --attempts 1 --repeats 1
+bun run env:run -- bun scripts/qa-tenant.ts STU-21 --profile bare --role manager --fresh
 ```
 
 The spec must derive **every** id from the tenant (`tenantId(tenant.key, …)`), not
@@ -180,8 +180,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Case: <the steps and the expected result, condensed>.
  *
- * Tenant: `content` (no profile file), seeded in a shell that has the stack
- * contract (Commands): `bun scripts/qa-tenant.ts <ID> --fresh`.
+ * Tenant: `content` (no profile file), seeded through `env:run`:
+ *   `bun run env:run -- bun scripts/qa-tenant.ts <ID> --fresh`.
  *
  * Walk (<date>, <branch> @ <sha>): <what the app actually does, in the order the
  * case does it — including anything that contradicts the case text>.
@@ -244,14 +244,13 @@ axes, in a throwaway commit or with `git stash`, one mutation at a time:
 | **test**    | delete the step that does the work, or the assertion that proves it                                                            | the spec — otherwise the step was scenery            |
 
 The app under test is a production build, so a server mutation needs a rebuild
-before the spec can see it. Run this in the same shell as the
-[Commands](#commands) block, so `QA_APP_URL` and the stack contract are already
-exported:
+before the spec can see it. The rebuild commands need no contract; the spec run
+does, so it goes through `env:run` like every other run:
 
 ```bash
 # mutate apps/web/src/… or packages/server/src/…
 bun run env:down && bun run env:build && bun run env:serve
-bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts
+bun run env:run -- bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts
 git checkout -- <mutated paths>              # restore
 bun run env:down && bun run env:build && bun run env:serve   # then confirm green
 ```
@@ -297,7 +296,7 @@ test.beforeEach(() => {
 ```
 
 ```bash
-QA_RETRY_PROBE=1 CI=1 bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts --retries=1
+QA_RETRY_PROBE=1 CI=1 bun run env:run -- bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts --retries=1
 ```
 
 `--repeat-each=2` is **not** this check: repeats re-seed and re-run hooks, so they
