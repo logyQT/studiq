@@ -2,7 +2,7 @@
 
 Every case in `qa/cases/` mapped to the technique that should own it. This is the
 classification, not the scoreboard — what has actually shipped is tracked in `#926`
-(172 specs of 188 cases, 7 blocked by an open issue, 8 parked, 1 ready to write).
+(which owns the counts, so this file does not restate a snapshot that goes stale).
 
 - **188 cases**: 170 end-to-end, 10 API-level,
   8 manual-owned — four of them carry a partial spec, and all eight are listed

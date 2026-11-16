@@ -2,6 +2,9 @@ import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 import adminEn from '@admin/i18n/messages/en.json';
 import adminPl from '@admin/i18n/messages/pl.json';
+import { translateErrorCode } from '@/lib/error-messages';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { START_REFUSAL_CODES } from '#test/helpers/start-refusals';
 import { createTranslator } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
@@ -390,6 +393,58 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
       expect(message, `TermsPage.${key}`).not.toMatch(/;\S/);
     }
   });
+});
+
+/**
+ * `Errors` as next-intl sees it: `mergeCommon` (`i18n/request.ts`) spreads `Common` under every
+ * namespace, which is how the assessment refusals — stored in `Common` — reach
+ * `translateErrorCode`'s `useTranslations('Errors')`.
+ */
+function errorCopy(messages: (typeof locales)[keyof typeof locales]): Record<string, string> {
+  return { ...messages.Common, ...messages.Errors };
+}
+
+/**
+ * #1258 — three phase-5 refusal codes shipped without catalogue copy, so `translateErrorCode`
+ * fell back to the generic server error and the student saw nothing actionable. Assert the whole
+ * `APP_ERRORS` map (a new code without copy fails here) and the resolution the page performs.
+ */
+describe('error copy for the API codes (#1258)', () => {
+  it.each(Object.entries(locales))('%s translates every APP_ERRORS code', (_locale, messages) => {
+    const errors = errorCopy(messages);
+
+    for (const { code } of Object.values(APP_ERRORS)) {
+      expect(errors[code], code).toBeTypeOf('string');
+      expect(errors[code], code).not.toHaveLength(0);
+    }
+  });
+
+  /**
+   * #1273 — the student detail page toasts `translateErrorCode(...)` for a refused start. Every
+   * code the start endpoint answers with must resolve to its own sentence, not the fallback.
+   */
+  it.each(Object.entries(locales))(
+    '%s resolves every start refusal to its own copy',
+    (locale, messages) => {
+      const errors = errorCopy(messages);
+      const tErr = createTranslator({
+        locale,
+        messages: { Errors: errors },
+        namespace: 'Errors',
+      });
+      const fallback = tErr('ERROR_INTERNAL_SERVER');
+
+      for (const code of START_REFUSAL_CODES) {
+        const message = translateErrorCode(tErr, code);
+
+        expect(message, `${locale}: ${code}`).toBe(errors[`ERROR_${code}`]);
+        // `INTERNAL_SERVER` is the fallback itself: its copy must exist, not differ from it.
+        if (code !== 'INTERNAL_SERVER') {
+          expect(message, `${locale}: ${code}`).not.toBe(fallback);
+        }
+      }
+    },
+  );
 });
 
 describe('deck view bulk action copy (#364)', () => {
