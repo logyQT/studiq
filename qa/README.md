@@ -3,10 +3,13 @@
 Agent-readable version of the StudiQ manual test plan, so agents can run the
 manual scenarios end-to-end and file defects with real root causes.
 
-Source of truth: `source/Studiq_Dokument_Testera_v1.3.docx`
+Source: the cases in `cases/` are the maintained corpus — edit them here. They
+started from `source/Studiq_Dokument_Testera_v1.3.docx`
 (Dokument testera v1.3, 2026-10-17 — 215 scenarios, P1 60 / P2 150 / P3 5; STU-25, M:N flashcard
 linking, is dropped as not planned (#893), and the admin module + 5 admin-dependent cases
-are out of scope, so 188 cases remain).
+are out of scope, so 188 cases remain), which is kept as an **archival original** and is
+no longer a build step. Where the product has moved past the document, the case is
+corrected in place.
 
 Automation: the campaign that turns these cases into the Playwright suite is
 [`docs/plans/archive/e2e-campaign.md`](../docs/plans/archive/e2e-campaign.md) (archived);
@@ -22,7 +25,7 @@ qa/
   context.md       global rules: accounts, org+seed data, plans, priorities, defect template (PL, verbatim)
   index.md         all 188 scenarios: ID | Prio | Title | Prereqs | Module
   cases/<ID>.md    one scenario per file, steps verbatim (PL) + embedded prerequisite context
-  source/          the original .docx (regeneration source)
+  source/          the original .docx (archival — the cases above are the corpus)
 ```
 
 This directory is docs-only. The executable QA harness lives with the rest of the
@@ -98,23 +101,25 @@ the deck `"Matematyka – klasa 1"` (visibility: Grupy, group O1G1) before it ca
 toggle visibility to "Tylko ja". Without this file the agent only sees the five
 lines you paste.
 
-## Regenerate after a document update
+## Editing a case
 
-The docx → markdown converter is part of the operator's QA tooling and is not
-tracked in this repository. Regenerate the corpus with that converter when the
-source document changes; it clears `cases/*.md` before writing, so renamed or
-removed scenarios do not leave orphans, and it prints the case count and any
-prerequisite IDs it could not resolve. Do not hand-edit generated case files to
-update the corpus from the source document; suite workers may still reconcile
-and commit a case's seed/prerequisite details for suite generation, as described
-in `QA-SUITE-APPROACH.md`.
+`cases/<ID>.md` is the maintained source: change the file, and change the row in
+`index.md` too when the edit touches a title, priority, prereqs or module. Keep the
+step text Polish — it is what the tester and the QA suite read, and quoting it
+verbatim is what lets a wording difference be reported as a language defect.
+
+Correct a case the product has moved past. A route that no longer exists, a label
+that was renamed, an entitlement that changed shape: leaving the step as written
+would make the scenario untestable and the defect report wrong. Suite workers may
+also reconcile a case's seed/prerequisite details, as described in
+`QA-SUITE-APPROACH.md`.
 
 ## Notes
 
 - Seeded dev accounts use the password `pass` (see `context.md`); these are local
   test fixtures, not real credentials.
-- The corpus is generated from a customer-facing test document; regenerate it
-  from `source/` rather than hand-editing `cases/` to update the corpus.
+- The corpus is maintained in this repository; `source/` holds the original
+  customer-facing test document for provenance, not for regeneration.
 - QA environment setup is maintained outside this repository and is
   intentionally not documented here.
 
