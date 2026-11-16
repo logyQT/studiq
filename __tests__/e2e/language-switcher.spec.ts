@@ -269,9 +269,9 @@ test.describe('theme switch (#635)', () => {
 
     // First visit follows the OS: System is checked, and its name does not follow the
     // resolved mode — a name that flips under the thumb is unusable when referred to.
-    const system = group.getByRole('radio', { name: pl.ThemeSwitch.system_name });
+    const system = group.getByRole('radio', { name: pl.ThemeSwitch.system, exact: true });
     await expect(system).toHaveAttribute('aria-checked', 'true');
-    await expect(system).toHaveAccessibleName(pl.ThemeSwitch.system_name);
+    await expect(system).toHaveAccessibleName(pl.ThemeSwitch.system);
     await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
 
     await group.getByRole('radio', { name: pl.ThemeSwitch.dark, exact: true }).click();
@@ -308,7 +308,10 @@ test.describe('theme switch (#635)', () => {
 
     // System is reachable again and follows the OS.
     await page.locator('[data-sidebar="footer"] [data-sidebar="menu-button"]').last().click();
-    await page.getByRole('menu').getByRole('radio', { name: pl.ThemeSwitch.system_name }).click();
+    await page
+      .getByRole('menu')
+      .getByRole('radio', { name: pl.ThemeSwitch.system, exact: true })
+      .click();
     await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
   });
 });
