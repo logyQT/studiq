@@ -58,15 +58,18 @@ fresh suffix into the key, so a re-run never sees a previous run's assignment.
 - With no attempt yet the table body is the single cell
   „Żaden uczeń nie ukończył jeszcze tej kartkówki” — the case's empty-state copy.
 - After the targeted student submits a correct answer the row shows „QA student”
-  (the tenant student's profile name), their e-mail, `1/1`, „Przesłane” (completed,
-  `graded_at` still null), the completion date formatted for the UI locale
+  (the tenant student's profile name), their e-mail, `1/1`, „Ocenione” (the item is
+  true/false, so it is graded automatically and nothing waits for the teacher —
+  `graded_at` is still null), the completion date formatted for the UI locale
   (`dd.MM.yyyy` in `pl`) and the „Oceń” action.
 - „Oceń” opens `/edu/assignments/<id>/results/<attemptId>` — the attempt's grading
   page headed „Oceń ucznia”, with „Wynik: 1/1”, the question and the student's answer.
-- Status vocabulary: „Przesłane” is the state the case's prerequisite creates.
-  „Ocenione” needs a graded open answer and „W trakcie” a running attempt, which the
-  single „SC ukończył kartkówkę” prerequisite does not provide; the test therefore
-  asserts the empty state and the completed row, not extra fixtures.
+- Status vocabulary: the status is derived from the attempt's served items (#1069).
+  „Ocenione” means nothing is left to grade — every served item is auto-graded or its
+  open answer carries points — which is exactly the state the case's prerequisite
+  creates. „Przesłane” needs a served open item still waiting for a grade and
+  „W trakcie” a running attempt; neither is what „SC ukończył kartkówkę” provides, so
+  the test asserts the empty state and the completed row, not extra fixtures.
 - The results list is cached per assignment for the session (`useApiQuery`
   `staleTime: Infinity`), so a teacher who opens the screen before the student
   finishes sees the empty state until the page is reloaded. The spec reloads after

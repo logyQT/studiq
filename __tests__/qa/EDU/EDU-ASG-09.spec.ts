@@ -39,7 +39,9 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * 2. Clicking it downloads `assignment-<id>-answers.csv` with
  *    `Content-Type: text/csv; charset=utf-8` and `Content-Disposition: attachment`.
  * 3. The file is UTF-8 with a BOM (`EF BB BF`), so Excel renders the Polish header
- *    „Uczeń … Ukończono” and the status „Przesłane” instead of mojibake.
+ *    „Uczeń … Ukończono” and the status „Ocenione” instead of mojibake. The
+ *    case's item is a choice question, so the attempt needs no manual grade and
+ *    the derived status is terminal on submit (#1069).
  * 4. Header and the student's row equal the `/edu/assignments/<id>/results` table:
  *    student name, e-mail, score, status and completion date (the browser timezone
  *    is forwarded to the export so the date matches the view).
@@ -58,7 +60,7 @@ const COPY = {
   headerScore: 'Wynik',
   headerStatus: 'Status',
   headerCompletedAt: 'Ukończono',
-  submitted: 'Przesłane',
+  graded: 'Ocenione',
 } as const;
 
 /** The quiz the spec prepares in its own tenant; names are case-scoped. */
@@ -118,6 +120,9 @@ interface ResultRow {
   total_questions: number;
   total_points: number | null;
   completed_at: string | null;
+  /** Derived from the served items (#1069); `graded_at` records the last manual grade only. */
+  graded: boolean;
+  pending_grades: number;
   graded_at: string | null;
   user: { id: string; email: string; full_name: string };
 }
@@ -350,7 +355,7 @@ test.describe('@case:EDU-ASG-09 @area:EDU @prio:P2 export quiz answers', () => {
       const row = page.locator('tbody tr').filter({ hasText: student.email });
       await expect(row, 'the completed attempt is listed once').toHaveCount(1);
       const cells = row.locator('td');
-      await expect(cells.nth(3)).toHaveText(COPY.submitted);
+      await expect(cells.nth(3)).toHaveText(COPY.graded);
       await expect(cells.nth(4)).not.toHaveText('-');
 
       const viewRow = {
@@ -436,7 +441,7 @@ test.describe('@case:EDU-ASG-09 @area:EDU @prio:P2 export quiz answers', () => {
       // The Polish characters survive the round-trip in both header and status.
       expect(csv).toContain(COPY.headerStudent);
       expect(csv).toContain(COPY.headerCompletedAt);
-      expect(csv).toContain(COPY.submitted);
+      expect(csv).toContain(COPY.graded);
 
       // --- Adjacent regression path: the export is teacher-only (student PII) --
       const denied = await studentPage.request.get(

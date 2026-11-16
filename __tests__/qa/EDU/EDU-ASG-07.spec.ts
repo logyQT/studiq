@@ -42,15 +42,17 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * 2. With no completions the body is the single cell
  *    „Żaden uczeń nie ukończył jeszcze tej kartkówki”.
  * 3. After the targeted student completes the assignment the row shows their name
- *    and e-mail, the score `1/1`, the status „Przesłane” (completed, not graded),
- *    the completion date in the page's locale (`dd.MM.yyyy` in `pl`) and the
- *    „Oceń” action.
+ *    and e-mail, the score `1/1`, the status „Ocenione”, the completion date in
+ *    the page's locale (`dd.MM.yyyy` in `pl`) and the „Oceń” action.
  * 4. „Oceń” opens the per-student grading page („Oceń ucznia”) for that attempt.
  *
- * The status vocabulary itself is part of the surface: „Ocenione” needs a graded
- * open answer and „W trakcie” a running attempt, neither of which the case's
- * single prerequisite („SC ukończył kartkówkę”) provides, so the spec asserts the
- * state the prerequisite creates instead of inventing extra fixtures.
+ * The status vocabulary itself is part of the surface, and it is derived from the
+ * attempt's served items (#1069): the case's item is true/false, so it is graded
+ * automatically and the attempt needs no manual grade — „Ocenione” the moment it
+ * is submitted, with `graded_at` still null. „Przesłane” is reserved for an
+ * attempt whose open answer is still waiting, and „W trakcie” for a running one;
+ * neither is what the case's single prerequisite („SC ukończył kartkówkę”)
+ * creates, so the spec asserts the state it does create.
  */
 
 const CASE = 'EDU-ASG-07';
@@ -67,7 +69,7 @@ const COPY = {
   backToAssignment: 'Powrót do kartkówki',
   viewResults: 'Zobacz wyniki',
   empty: 'Żaden uczeń nie ukończył jeszcze tej kartkówki',
-  submitted: 'Przesłane',
+  graded: 'Ocenione',
   grade: 'Oceń',
   gradingTitle: 'Oceń ucznia',
 } as const;
@@ -95,6 +97,9 @@ interface ResultRow {
   total_questions: number;
   total_points: number | null;
   completed_at: string | null;
+  /** Derived from the served items (#1069); `graded_at` records the last manual grade only. */
+  graded: boolean;
+  pending_grades: number;
   graded_at: string | null;
   user: { id: string; email: string; full_name: string | null };
 }
@@ -298,7 +303,9 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     expect(attempt.user.email, 'the row belongs to the tenant student').toBe(student.email);
     expect(attempt.user.full_name, 'the attempt carries the student name').toBeTruthy();
     expect(attempt.completed_at, 'the attempt is completed').toBeTruthy();
-    expect(attempt.graded_at, 'the attempt is not graded yet').toBeNull();
+    expect(attempt.graded, 'an auto-graded attempt needs no manual grade').toBe(true);
+    expect(attempt.pending_grades, 'nothing waits for the teacher').toBe(0);
+    expect(attempt.graded_at, 'no manual grade was ever saved').toBeNull();
 
     const row = resultsTable(page).locator('tbody tr').filter({ hasText: student.email });
     await expect(row, 'one row for the student').toHaveCount(1);
@@ -307,7 +314,7 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     await expect(cells.nth(0), 'Uczeń').toHaveText(attempt.user.full_name!);
     await expect(cells.nth(1), 'E-mail').toHaveText(student.email);
     await expect(cells.nth(2), 'Wynik').toHaveText(`${attempt.score}/${attempt.total_points}`);
-    await expect(cells.nth(3), 'Status').toHaveText(COPY.submitted);
+    await expect(cells.nth(3), 'Status').toHaveText(COPY.graded);
     // The page formats the completion date with the UI locale (`pl` → dd.MM.yyyy).
     // `toLocaleDateString('pl')` drops the leading zero on single-digit days
     // and months (e.g. „1.11.2026”), so the pattern must allow one or two.

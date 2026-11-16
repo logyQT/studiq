@@ -52,15 +52,17 @@ suite version uses the case's own tenant and never the legacy accounts.
   the quiz has at least one question.
 - The results screen `/edu/assignments/<id>/results` („Wyniki” / „Wyniki uczniów i status
   ukończenia”) has the columns „Uczeń”, „E-mail”, „Wynik”, „Status”, „Ukończono” and one
-  row per attempt; a submitted ungraded attempt shows „Przesłane” and the date in the
-  browser locale (e.g. `29.10.2026`).
+  row per attempt; a submitted attempt shows its derived status (#1069) and the date in
+  the browser locale (e.g. `29.10.2026`). The case's item is a choice question, so it is
+  graded automatically and the attempt reads „Ocenione” on submit; „Przesłane” is
+  reserved for an attempt whose open answer is still waiting for a grade.
 - Clicking „Eksportuj odpowiedzi” downloads `assignment-<id>-answers.csv` and keeps the
   teacher on the detail page. The response is `text/csv; charset=utf-8` with
   `Content-Disposition: attachment` and `Cache-Control: private, no-store`.
 - The downloaded file starts with a UTF-8 BOM (`EF BB BF`), so the Polish header
-  „Uczeń,E-mail,Wynik,Status,Ukończono” and the status „Przesłane” decode correctly. The
+  „Uczeń,E-mail,Wynik,Status,Ukończono” and the status „Ocenione” decode correctly. The
   single data row is the student from the results view: `QA student, <e-mail>, 1/1,
-Przesłane, 29.10.2026` — same name, e-mail, score, status and completion date as the
+Ocenione, 29.10.2026` — same name, e-mail, score, status and completion date as the
   table. The detail screen forwards the browser timezone (`?tz=`), which keeps the CSV
   date identical to the view.
 - Scope note: the export is the results summary (one row per attempt), i.e. exactly the
