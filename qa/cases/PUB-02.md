@@ -39,5 +39,6 @@ singleton row.
 - Strona nie zawiera tabeli porównania planów: porównanie i limity są wyłącznie na
   `/pricing`. Nie ma też nazw planów „Darmowy / Premium / Uniwersytecki”.
 - Trzy różne miejsca docelowe: `/register` (działanie główne, wysokość ≥ 44 px),
-  `/pricing`, `/contact`.
+  `/pricing`, `/contact`. Żaden odnośnik nie prowadzi do zalogowanej aplikacji
+  (`/app`, `/edu`, `/manage`).
 - Brak surowych kluczy tłumaczeń, „undefined” i „NaN” w treści; brak błędów konsoli.

@@ -25,6 +25,12 @@ interface ProblemQuestionsCardProps {
    * read out as a peer of the page's sections rather than as a sample.
    */
   headingLevel?: 2 | 3;
+  /**
+   * The "all results" link points into the signed-in app. On a public page that
+   * link is a login wall, so the marketing preview drops it instead of promising
+   * a destination the visitor cannot reach.
+   */
+  showResultsLink?: boolean;
 }
 
 /** Shows up to five supplied questions with at least three answers, in their supplied order. */
@@ -34,6 +40,7 @@ export function ProblemQuestionsCard({
   isError,
   onRetry,
   headingLevel = 2,
+  showResultsLink = true,
 }: ProblemQuestionsCardProps) {
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
   const t = useTranslations('EduOverviewPage');
@@ -84,13 +91,15 @@ export function ProblemQuestionsCard({
             ))}
           </ul>
         )}
-        <Link
-          href="/edu/stats/results"
-          className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-        >
-          {t('view_all')}
-          <ArrowRight className="h-4 w-4" aria-hidden="true" />
-        </Link>
+        {showResultsLink ? (
+          <Link
+            href="/edu/stats/results"
+            className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+          >
+            {t('view_all')}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        ) : null}
       </CardContent>
     </Card>
   );

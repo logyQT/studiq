@@ -21,6 +21,12 @@ interface GeneratedCardsProps {
   /** Indices the visitor marked out; the tile dims but stays readable. */
   removed?: ReadonlySet<number>;
   /**
+   * Rendered between the label and the grid: the chat's deck-name field or the
+   * deck the cards are being saved into. It belongs here rather than after the
+   * grid so the label still captions the tiles it introduces.
+   */
+  tools?: ReactNode;
+  /**
    * Absent where the cards are evidence rather than an editable set: the tiles
    * then carry no control at all. The chat always passes it.
    */
@@ -42,6 +48,7 @@ export function GeneratedCards({
   label,
   note,
   removed,
+  tools,
   onToggleCard,
   toggleLabels,
 }: GeneratedCardsProps) {
@@ -52,6 +59,8 @@ export function GeneratedCards({
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
         {note}
       </div>
+
+      {tools}
 
       <div className="max-h-112 overflow-y-auto -mx-1 px-1">
         <div className="grid grid-cols-2 gap-2">

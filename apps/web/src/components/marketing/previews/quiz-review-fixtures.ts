@@ -26,18 +26,23 @@ export type QuizReviewFixtureLocale = QuizFixtureLocale;
 
 /** What the visitor answered, per question of the demo sequence. */
 const SELECTED: Partial<Record<QuizSubject, string>> = {
-  biology: 'mitochondrium',
+  // The one wrong answer, and it is the biology question on purpose: the page's
+  // other two surfaces are the same lecture, so the review has to be too.
+  biology: 'aparat-golgiego',
   history: 'true',
   driving: 'yield',
-  // The one wrong answer: JOIN narrows nothing, it joins.
   tech: 'join',
 };
 
 const EXPLANATIONS: Record<QuizFixtureLocale, Partial<Record<QuizSubject, string>>> = {
   pl: {
+    biology:
+      'Większość ATP powstaje w mitochondrium, w oddychaniu komórkowym. Aparat Golgiego modyfikuje i sortuje białka.',
     tech: 'WHERE filtruje wiersze, zanim trafią do grupowania. JOIN tylko łączy tabele i nie zawęża wyniku.',
   },
   en: {
+    biology:
+      'Most of the ATP is produced in the mitochondrion, during cellular respiration. The Golgi apparatus modifies and sorts proteins.',
     tech: 'WHERE filters rows before they are grouped. JOIN only combines tables and narrows nothing.',
   },
 };

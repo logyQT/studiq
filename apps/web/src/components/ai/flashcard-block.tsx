@@ -154,29 +154,30 @@ export function FlashcardBlock({
           </>
         }
         removed={removedIndices}
-        onToggleCard={readOnly ? undefined : toggleRemove}
+        tools={
+          !readOnly &&
+          (targetDeck ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Layers className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+              <span className="truncate">
+                {t('flashcard_saving_to_deck', { deck: targetDeck.name })}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Pencil className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-7 text-xs"
+                placeholder={t('flashcard_deck_name')}
+              />
+            </div>
+          ))
+        }
+        onToggleCard={toggleRemove}
         toggleLabels={{ remove: t('remove_card'), keep: t('keep_card') }}
       />
-
-      {!readOnly &&
-        (targetDeck ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Layers className="h-3 w-3 shrink-0 text-muted-foreground/60" />
-            <span className="truncate">
-              {t('flashcard_saving_to_deck', { deck: targetDeck.name })}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Pencil className="h-3 w-3 shrink-0 text-muted-foreground/60" />
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-7 text-xs"
-              placeholder={t('flashcard_deck_name')}
-            />
-          </div>
-        ))}
 
       {!readOnly && (
         <Button

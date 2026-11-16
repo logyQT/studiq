@@ -14,16 +14,16 @@ import { expect, test, type Page } from '@playwright/test';
  * destinations. A copy edit does not turn this red; deleting a section, a
  * surface or a link does.
  *
- * Walk (2026-11-16, `feat/features-rework` @ 5e1349d8): one h1, four cluster
- * sections plus the closing band, thirteen h3 capabilities, the contents index
- * with four anchors, the graded-question card under 01, the generated-card tiles
- * under 02, the problem-question card under 03, no table anywhere, and
- * `/register` + `/pricing` + `/contact` reachable.
+ * Walk (2026-11-16, `feat/features-rework`): one h1, four cluster sections plus
+ * the closing band, thirteen h3 capabilities, the contents index with four
+ * anchors, the graded-question card under 01, the generated-card tiles under 02,
+ * the problem-question card under 03, no table anywhere, and `/register` +
+ * `/pricing` + `/contact` reachable with nothing linking into the signed-in app.
  *
- * Mutation (proves this spec can fail): deleting `surface: <QuizReviewPreview />`
- * from the `study-loop` cluster leaves that area without a card and the
- * `#study-loop [data-slot="card"]` assertion goes red with "toHaveCount:
- * Expected: 1, Received: 0".
+ * Mutation (proves this spec can fail): deleting the `study-loop` cluster's
+ * `surface` **and** its import (removing only the JSX line fails the build on the
+ * unused import) leaves that area without a card, and the surface check fails
+ * with "Error: #study-loop ends in a product surface — element(s) not found".
  */
 
 const CLUSTERS = [
@@ -131,6 +131,17 @@ test.describe('@case:PUB-02 @area:PUB @prio:P2 features page', () => {
     const primary = page.locator('main a[href="/register"]').first();
     const box = await primary.boundingBox();
     expect(box?.height ?? 0, 'primary CTA is at least 44px tall').toBeGreaterThanOrEqual(44);
+
+    // A public page must not send a visitor into the signed-in app: that is a
+    // login wall dressed as a destination. A reused product card brought one in
+    // once (the teacher card's "all results" link).
+    const hrefs = await page
+      .locator('main a[href]')
+      .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
+    expect(
+      hrefs.filter((href) => /^\/(app|edu|manage)(\/|$)/.test(href)),
+      'links into the signed-in app',
+    ).toEqual([]);
 
     // --- No raw keys, no placeholders --------------------------------------
     const body = await page.locator('body').innerText();
