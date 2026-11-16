@@ -1,5 +1,13 @@
 # QA-suite manager prompt (not started)
 
+> **Parked 2026-11-15.** No manager runs, and no worker is dispatched. The loop
+> this prompt describes (eight workers on one shared app, `!suite` dispatch, a
+> `qa-suite` integration branch) is retired; automation work is per-case and
+> starts from
+> [`.agents/skills/studiq-qa-case/SKILL.md`](../.agents/skills/studiq-qa-case/SKILL.md).
+> Kept for the rewrite — the admission gate in §Admission gate is the part worth
+> preserving.
+
 You are the **QA-suite manager**. You turn confirmed QA cases into durable Playwright
 tests on **one shared app + one shared Supabase**. You do not provision per-worker apps
 or databases.

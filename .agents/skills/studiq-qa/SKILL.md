@@ -115,7 +115,7 @@ Issue body: scenario ID + step; severity; exact numbered repro from a clean stat
 Labels: `bug` + exactly one severity (`critical|high|medium|low`) + 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`) + `manual-testing` for manual runs. English. Design ambiguity is still filed, with `needs-design` and the options.
 **Attach the screenshots themselves** — `gh issue create ... --attach "<path>#<alt text>"` (repeatable), or `gh issue comment <n> --attach ...` to add them afterwards. A filename, a path or a list of `qa-*.png` is **not evidence**: the image must be uploaded onto the issue, and the finding must cite the issue/comment rather than a local file.
 
-Report-only: no code edits, commits, branches or PRs during QA. Only when explicitly asked to turn a confirmed case into a durable test, follow `qa/QA-SUITE-APPROACH.md` — branch `qa/<CASEID>` off `qa-suite` (never `main`, never commit to `qa-suite`), and only after 5/5 green independent runs.
+Report-only: no code edits, commits, branches or PRs during QA. Only when explicitly asked to turn a confirmed case into a durable test, follow `.agents/skills/studiq-qa-case/SKILL.md` — one spec plus a tenant profile, proven red under a mutation and green 5/5 before it lands.
 
 ## Not defects (do not file)
 
