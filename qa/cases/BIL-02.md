@@ -19,7 +19,7 @@ Zalogowany student1, następnie teacher1.
 ## Expected result
 
 - Student widzi plany typu student (Base, Spark, Ace, Pro); nauczyciel – edukatora (Lite, Guide, Creator, Master).
-- Aktualny plan oznaczony jako „Obecny Plan”, pozostałe z przyciskami zakupu/wyboru.
+- Aktualny plan oznaczony jako „Twój plan”, pozostałe z przyciskami zakupu/wyboru.
 
 ## Seed (reconciled with the tenant seeder)
 
@@ -55,17 +55,17 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
 - Both pages share one shell: heading „Rozwiń swój plan” and subtitle „Wybierz plan
   odpowiedni dla Twoich potrzeb”, followed by a four-column grid of plan cards.
 - `/app/upgrade` (student) shows exactly the student catalogue in catalogue order:
-  StudiQ Base (0 zł, features Fiszki/Testy, „Zacznij za Darmo”), StudiQ Spark
-  (9,99 zł/miesiąc, „Przejdź na Spark”), StudiQ Ace (19,99 zł/miesiąc,
-  „Najpopularniejszy”, „Wybierz Ace”), StudiQ Pro (39,99 zł/miesiąc, „Wybierz Pro”).
-  The Base card carries the „Obecny Plan” badge.
+  StudiQ Base (0 zł, features Fiszki/Testy, „Zacznij za darmo”), StudiQ Spark
+  (9,99 zł/miesiąc, „Wybierz Spark”), StudiQ Ace (19,99 zł/miesiąc,
+  „Zalecany”, „Wybierz Ace”), StudiQ Pro (39,99 zł/miesiąc, „Wybierz Pro”).
+  The Base card carries the „Twój plan” badge.
 - `/edu/upgrade` (educator) shows exactly the educator catalogue: StudiQ Lite (0 zł,
-  „Zacznij za Darmo”), StudiQ Guide (19,99 zł/miesiąc, „Przejdź na Guide”), StudiQ Creator
-  (39,99 zł/miesiąc, „Najpopularniejszy”, „Wybierz Creator”), StudiQ Master
-  (79,99 zł/miesiąc, „Wybierz Master”). The Lite card carries the „Obecny Plan” badge.
+  „Zacznij za darmo”), StudiQ Guide (19,99 zł/miesiąc, „Wybierz Guide”), StudiQ Creator
+  (39,99 zł/miesiąc, „Zalecany”, „Wybierz Creator”), StudiQ Master
+  (79,99 zł/miesiąc, „Wybierz Master”). The Lite card carries the „Twój plan” badge.
 - Each page shows only its own account type's plans; no student plan appears on the
   educator page and vice versa.
-- The purchase buttons are live: „Przejdź na Spark” creates a mock checkout session and
+- The purchase buttons are live: „Wybierz Spark” creates a mock checkout session and
   opens `/checkout?session_id=…&plan_id=spark` („Podsumowanie zamówienia”, „StudiQ
   Spark”).
 - Account-type gating holds: a signed-in student opening `/edu/upgrade` lands on `/app`,

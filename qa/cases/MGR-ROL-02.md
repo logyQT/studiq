@@ -17,7 +17,7 @@ Włącz role.builder dla organizacji (override w adminie lub plan Hub: BIL-04).
 
 _Warunek wstępny: manager@dev.local, organizacja WSB Merito (Launch)._
 
-1. Wejdź na /pricing/org i wybierz „Hub” → zakup (checkout z kartą testową).
+1. Wejdź na /pricing?audience=organization i wybierz „Hub” → zakup (checkout z kartą testową).
 2. Po zakupie sprawdź /manage/settings (branding) i /manage/roles.
 
 Expected:
