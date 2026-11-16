@@ -8,6 +8,21 @@ import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { assignmentKeys } from '@/lib/query-keys';
 
+/** R9: counts only, taught items labelled, cells under the threshold suppressed. */
+interface FairnessItem {
+  questionId: string;
+  taughtItem: boolean;
+  served: number | null;
+  correct: number | null;
+  ungraded: number | null;
+}
+
+interface Fairness {
+  respondents: number;
+  minRespondents: number;
+  items: FairnessItem[];
+}
+
 interface Attempt {
   id: string;
   user_id: string;
@@ -29,16 +44,25 @@ export default function ResultsClient() {
   const locale = useLocale();
   const t = useTranslations('EduAssignmentResultsPage');
 
-  const { data: results, isLoading } = useApiQuery<Attempt[]>({
+  const { data: results, isLoading } = useApiQuery<{ attempts: Attempt[]; fairness: Fairness }>({
     queryKey: assignmentKeys.results(id),
     url: `/api/v1/teacher/assignments/${id}/results`,
   });
 
   // Same query key as the detail page, so in-app navigation is a cache hit.
-  const { data: assignment } = useApiQuery<{ title: string }>({
+  const { data: assignment } = useApiQuery<{
+    title: string;
+    assignment_questions?: Array<{ question_id: string; question: { content: string } | null }>;
+  }>({
     queryKey: assignmentKeys.detail(id),
     url: `/api/v1/teacher/assignments/${id}`,
   });
+
+  const fairness = results?.fairness;
+
+  const itemLabel = (questionId: string) =>
+    assignment?.assignment_questions?.find((link) => link.question_id === questionId)?.question
+      ?.content ?? t('unknown');
 
   // The assignment title is the breadcrumb label; the raw UUID must never render.
   useBreadcrumbLabel(id, assignment?.title);
@@ -93,14 +117,14 @@ export default function ResultsClient() {
                   </td>
                 </tr>
               ))
-            ) : results?.length === 0 ? (
+            ) : results?.attempts.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-muted-foreground">
                   {t('no_results')}
                 </td>
               </tr>
             ) : (
-              results?.map((attempt) => (
+              results?.attempts.map((attempt) => (
                 <tr key={attempt.id} className="border-b hover:bg-muted/30">
                   <td className="p-3 font-medium">{attempt.user?.full_name ?? t('unknown')}</td>
                   <td className="p-3 text-muted-foreground">{attempt.user?.email}</td>
@@ -145,6 +169,51 @@ export default function ResultsClient() {
           </tbody>
         </table>
       </div>
+
+      {fairness && fairness.items.length > 0 && (
+        <div className="space-y-2">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">{t('fairness_title')}</h2>
+            <p className="text-sm text-muted-foreground">
+              {t('fairness_hint', { min: fairness.minRespondents })}
+            </p>
+          </div>
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50 border-b">
+                  <th className="text-left p-3 font-medium">{t('item')}</th>
+                  <th className="text-center p-3 font-medium">{t('served')}</th>
+                  <th className="text-center p-3 font-medium">{t('correct')}</th>
+                  <th className="text-center p-3 font-medium">{t('ungraded')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fairness.items.map((item) => (
+                  <tr key={item.questionId} className="border-b">
+                    <td className="p-3">{itemLabel(item.questionId)}</td>
+                    {item.taughtItem ? (
+                      <td colSpan={3} className="p-3 text-center text-muted-foreground">
+                        {t('taught_excluded')}
+                      </td>
+                    ) : item.served === null ? (
+                      <td colSpan={3} className="p-3 text-center text-muted-foreground">
+                        {t('suppressed')}
+                      </td>
+                    ) : (
+                      <>
+                        <td className="p-3 text-center">{item.served}</td>
+                        <td className="p-3 text-center">{item.correct}</td>
+                        <td className="p-3 text-center">{item.ungraded}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

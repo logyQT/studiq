@@ -157,6 +157,15 @@ export const WithholdItemSchema = registry.register(
 );
 export type WithholdItemInput = z.infer<typeof WithholdItemSchema>;
 
+/** R9: declare an assessment item taught, so a prior exposure or answer no longer excludes it. */
+export const TaughtItemSchema = registry.register(
+  'TaughtItemRequest',
+  z.object({
+    taught: z.boolean({ error: ValidationErrorCode.BOOL }),
+  }),
+);
+export type TaughtItemInput = z.infer<typeof TaughtItemSchema>;
+
 /**
  * The new close of an extension (#1174, R12). Only the bound moves: extending delays the reveal for
  * the whole cohort, and it cannot move backwards — shortening is the manager override (R20).

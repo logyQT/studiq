@@ -62,6 +62,8 @@ export const questionKeys = {
   all: ['questions'] as const,
   list: (filters?: Record<string, string | undefined>) => ['questions', 'list', filters] as const,
   detail: (id: string) => ['questions', id] as const,
+  /** The staff view of one item's exposure ledger (#1172, R8). */
+  ledger: (id: string) => ['questions', id, 'ledger'] as const,
   banks: {
     all: ['questions', 'banks'] as const,
     paginated: (filters?: Record<string, string | undefined>, orgId?: string | null) =>

@@ -43,7 +43,7 @@ GRANT SELECT (id, question_id, content, order_index, match_group, match_side)
 
 REVOKE SELECT ON public.assignment_questions FROM authenticated, anon;
 GRANT SELECT (id, assignment_id, question_id, order_index, points, snapshot, snapshot_version,
-                withhold_from_review, released_at)
+                withhold_from_review, released_at, taught_item)
   ON public.assignment_questions TO authenticated;
 
 -- `model_answer` is the open item's answer (#1173) and `explanation` is the choice item's key

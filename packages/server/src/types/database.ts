@@ -74,6 +74,7 @@ export type Database = {
           snapshot: Json | null;
           snapshot_key: Json | null;
           snapshot_version: number | null;
+          taught_item: boolean;
           withhold_from_review: boolean;
         };
         ComputedFields: never;
@@ -87,6 +88,7 @@ export type Database = {
           snapshot?: Json | null;
           snapshot_key?: Json | null;
           snapshot_version?: number | null;
+          taught_item?: boolean;
           withhold_from_review?: boolean;
         };
         Update: {
@@ -99,6 +101,7 @@ export type Database = {
           snapshot?: Json | null;
           snapshot_key?: Json | null;
           snapshot_version?: number | null;
+          taught_item?: boolean;
           withhold_from_review?: boolean;
         };
         Relationships: [
