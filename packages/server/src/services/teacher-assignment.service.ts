@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import {
   type AssignmentLink,
   ASSIGNMENT_QUESTION_COLUMNS,
+  type QuestionSnapshot,
   readAssignmentLinks,
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
@@ -152,6 +153,22 @@ function addToIndex(index: Map<string, Set<string>>, questionId: string, student
   const set = index.get(questionId) ?? new Set<string>();
   set.add(student);
   index.set(questionId, set);
+}
+
+/**
+ * The published option's text for one answer row. A skipped answer and an open answer both have no
+ * selected option, so they resolve to `null` and the caller renders „Brak odpowiedzi”.
+ */
+function selectedOptionContent(
+  snapshots: Map<string, QuestionSnapshot>,
+  answer: { question_id: string | null; selected_option_id: string | null },
+): string | null {
+  if (!answer.question_id || !answer.selected_option_id) return null;
+  const frozen = snapshots.get(answer.question_id);
+  return (
+    frozen?.question_answers.find((option) => option.id === answer.selected_option_id)?.content ??
+    null
+  );
 }
 
 export class TeacherAssignmentService {
@@ -1044,7 +1061,8 @@ export class TeacherAssignmentService {
    * The results list feeds two surfaces: the table, and the per-question grading
    * view (`/edu/assignments/:id/results/question/:qId`), which grades every
    * student's answer for one question. The answer rows therefore travel with the
-   * attempt, in the same shape `getStudentAnswers` returns (#1230).
+   * attempt, in the same shape `getStudentAnswers` returns (#1230), plus the
+   * published option's text — the card prints the option, never its id (#1238).
    */
   async getResults(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
@@ -1063,7 +1081,22 @@ export class TeacherAssignmentService {
     const fairness = await this.fairness(id, supabase);
     if (isFailure(fairness)) return fairness;
 
-    return success({ attempts: dbRows(attempts), fairness: fairness.data });
+    // The grading card prints the option's text, and an answer row carries only
+    // `selected_option_id` (#1238). Resolve it from the frozen snapshot: the live item may have
+    // been edited after publish (R11).
+    const snapshots = await readAssignmentSnapshots(id);
+    if (isFailure(snapshots)) return snapshots;
+
+    return success({
+      attempts: dbRows(attempts).map((attempt) => ({
+        ...attempt,
+        quiz_answers: dbRows(attempt.quiz_answers).map((answer) => ({
+          ...answer,
+          selected_option_content: selectedOptionContent(snapshots.data, answer),
+        })),
+      })),
+      fairness: fairness.data,
+    });
   }
 
   /**
