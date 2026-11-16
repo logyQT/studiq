@@ -40,7 +40,7 @@ export type QuestionSnapshotKey = QuestionKey;
 
 /** The link columns every assignment read may select (never `snapshot_key`, never `*`). */
 export const ASSIGNMENT_QUESTION_COLUMNS =
-  'id, assignment_id, question_id, order_index, points, snapshot, snapshot_version, withhold_from_review, released_at';
+  'id, assignment_id, question_id, order_index, points, snapshot, snapshot_version, withhold_from_review, released_at, taught_item';
 
 /** The live item projected for a snapshot write. */
 const OPTION_SELECT = 'id, content, order_index, match_group, match_side';
@@ -116,6 +116,8 @@ export interface AssignmentLink {
   points: number;
   snapshot: QuestionSnapshot | null;
   snapshot_version: number | null;
+  /** R9: the teacher declared this item taught, so a prior exposure does not exclude it. */
+  taught_item: boolean;
 }
 
 /**
@@ -129,7 +131,7 @@ export async function readAssignmentLinks(
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('assignment_questions')
-    .select('question_id, order_index, points, snapshot, snapshot_version')
+    .select('question_id, order_index, points, snapshot, snapshot_version, taught_item')
     .eq('assignment_id', assignmentId)
     .order('order_index', { ascending: true });
 

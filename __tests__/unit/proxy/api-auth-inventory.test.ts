@@ -86,6 +86,7 @@ function ungatedHandlers(source: string): string[] {
  */
 const GATED_FACTORIES: Record<string, string> = {
   batchActionRoute: 'packages/server/src/lib/batch-action-route.ts',
+  itemFlagRoute: 'packages/server/src/lib/item-flag-route.ts',
 };
 
 function isGated(body: string): boolean {

@@ -67,6 +67,8 @@ describe('Review renders the teaching artefact and excludes ungraded items (#117
   let orgId!: string;
   let groupId!: string;
   let openItemId!: string;
+  /** A second open item: #1172 makes an answered item ineligible, so a later run needs a fresh one. */
+  let spareOpenItemId!: string;
   let mcqItemId!: string;
   let assignmentId!: string;
 
@@ -223,6 +225,22 @@ describe('Review renders the teaching artefact and excludes ungraded items (#117
     if (openError) throw new Error(openError.message);
     openItemId = openItem.id;
 
+    const { data: spareOpenItem, error: spareError } = await service
+      .from('questions')
+      .insert({
+        organization_id: orgId,
+        created_by: teacher.user.id,
+        bank_id: bank.id,
+        type: 'open',
+        content: `open-spare-${stamp}`,
+        model_answer: FIXTURE_MODEL_ANSWER,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    if (spareError) throw new Error(spareError.message);
+    spareOpenItemId = spareOpenItem.id;
+
     const { data: mcqItem, error: mcqError } = await service
       .from('questions')
       .insert({
@@ -298,9 +316,11 @@ describe('Review renders the teaching artefact and excludes ungraded items (#117
   });
 
   it('reports no score at all for a sheet of open items', async () => {
-    const openOnlyId = await publishAssignment([openItemId]);
+    // The student answered the other open item in the first run, and #1172 does not serve an
+    // answered item again: this run needs its own item to stay about the score.
+    const openOnlyId = await publishAssignment([spareOpenItemId]);
     const score = await takeAndSubmit(openOnlyId, () => [
-      { questionId: openItemId, textAnswer: 'Trzy przyczyny i krótkie uzasadnienie.' },
+      { questionId: spareOpenItemId, textAnswer: 'Trzy przyczyny i krótkie uzasadnienie.' },
     ]);
     // R16: `possible: 0` is a real answer, so the submitted score is `null`, not `0`.
     expect(score).toBeNull();
