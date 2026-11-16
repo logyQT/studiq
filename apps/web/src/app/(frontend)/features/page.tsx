@@ -6,7 +6,6 @@ import { MarketingShell } from '@/components/layout/MarketingShell';
 import { GeneratedCardsPreview } from '@/components/marketing/previews/generated-cards-preview';
 import { ProblemQuestionsPreview } from '@/components/marketing/previews/problem-questions-preview';
 import { QuizReviewPreview } from '@/components/marketing/previews/quiz-review-preview';
-import { QuizScorePreview } from '@/components/marketing/previews/quiz-score-preview';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 
@@ -132,6 +131,7 @@ export default function FeaturesPage() {
         { title: t('study_banks_title'), desc: t('study_banks_desc') },
         { title: t('study_stats_title'), desc: t('study_stats_desc') },
       ],
+      surface: <QuizReviewPreview />,
     },
     {
       id: 'material',
@@ -259,28 +259,10 @@ export default function FeaturesPage() {
           </div>
 
           {/*
-           * The product, under the words rather than beside them: a finished
-           * attempt, split 4/7 the other way round from the claim above. The
-           * result and the caption hold the margin, the question takes the main
-           * column, so the two cards are not peers and the row has no void to
-           * fill. Nothing sits in a plate: the cards carry their own surface.
+           * The product opens under the hero, in the first cluster, rather than
+           * beside the claim: a graded question belongs to the study loop, and a
+           * score card on its own would have said nothing this page does not.
            */}
-          <div className="mt-14 md:mt-20 lg:grid lg:grid-cols-12 lg:gap-x-8">
-            <div className="lg:col-span-4">
-              <QuizScorePreview />
-              <div className="mt-6">
-                <p className="font-mono text-xs tracking-[0.08em] text-primary uppercase">
-                  {t('plate_label')}
-                </p>
-                <p className="mt-3 max-w-[36ch] text-sm leading-relaxed text-muted-foreground text-pretty">
-                  {t('plate_note')}
-                </p>
-              </div>
-            </div>
-            <div className="mt-8 lg:col-span-7 lg:col-start-6 lg:mt-0">
-              <QuizReviewPreview />
-            </div>
-          </div>
         </div>
       </section>
 

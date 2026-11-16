@@ -2122,8 +2122,6 @@
     "index_label": "Cztery obszary",
     "index_aria": "Spis obszarów",
     "index_count": "{count, plural, one {# funkcja} few {# funkcje} many {# funkcji} other {# funkcji}}",
-    "plate_label": "Wynik i odpowiedzi",
-    "plate_note": "Przy każdym pytaniu widzisz swoją odpowiedź, odpowiedź poprawną i wyjaśnienie.",
     "study_title": "Pętla nauki",
     "study_lede": "Fiszki, testy i statystyki pracują na tym samym materiale, więc powtórka trafia tam, gdzie została luka.",
     "study_flashcards_title": "Fiszki z powtórkami",
