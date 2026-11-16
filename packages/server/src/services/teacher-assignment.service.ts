@@ -114,6 +114,77 @@ type StudentAttemptSummaryRow = Pick<
 
 export type AnswersExportStatus = 'graded' | 'submitted' | 'in_progress';
 
+/**
+ * Whether one attempt still waits for a teacher (#1069). Derived from the attempt's served items,
+ * never from `graded_at`: that column is stamped only by a manual grade, so an all-auto-graded
+ * attempt never gets one and a single grade made a half-graded attempt read „Ocenione”.
+ */
+interface AttemptGradingState {
+  /** Nothing left to grade: no served open item is waiting for `teacher_points`. */
+  graded: boolean;
+  /** Served open items whose answer row exists and still waits for `teacher_points`. */
+  pending_grades: number;
+}
+
+/**
+ * The items of one attempt that a teacher grades by hand — the served items published as `open`
+ * (R16: they have no automatic key). Every reader of the attempt's grading state builds this set
+ * from the same frozen snapshots, so the results list, the grading header and the CSV agree.
+ */
+function manualGradeItems(snapshots: ReadonlyMap<string, QuestionSnapshot>): Set<string> {
+  return new Set(
+    [...snapshots].flatMap(([questionId, snapshot]) =>
+      snapshot.type === 'open' ? [questionId] : [],
+    ),
+  );
+}
+
+/** The served items of one attempt, from its `quiz_attempt_questions` embed. */
+function servedItemIds(rows: ReadonlyArray<{ question_id: string | null }>): Set<string> {
+  return new Set(rows.flatMap((row) => (row.question_id ? [row.question_id] : [])));
+}
+
+/**
+ * question_id → the points a teacher awarded, `null` while the row waits for a grade, absent when
+ * the student skipped the item. Legacy rows may repeat one question (#1065), and the highest
+ * award is the one that counts.
+ */
+function gradedAnswerPoints(
+  rows: ReadonlyArray<{ question_id: string | null; teacher_points: number | null }>,
+): Map<string, number | null> {
+  const points = new Map<string, number | null>();
+  for (const row of rows) {
+    if (!row.question_id) continue;
+    const awarded = points.get(row.question_id);
+    points.set(
+      row.question_id,
+      row.teacher_points === null ? (awarded ?? null) : Math.max(row.teacher_points, awarded ?? 0),
+    );
+  }
+  return points;
+}
+
+/**
+ * An attempt is graded once it is submitted and nothing is left to grade: every served item is
+ * auto-graded (choice, true-false) or its open answer carries `teacher_points` (#1069). A
+ * **skipped** open item has no answer row, so it does not hold the attempt open — the student left
+ * nothing to grade. A served item no longer published on the assignment is not pending either, the
+ * same rule the score denominator applies (#1298).
+ */
+function deriveGradingState(
+  completed: boolean,
+  served: ReadonlySet<string>,
+  manualItems: ReadonlySet<string>,
+  answers: ReadonlyMap<string, number | null>,
+): AttemptGradingState {
+  let pendingGrades = 0;
+  for (const questionId of served) {
+    if (!manualItems.has(questionId)) continue;
+    if (answers.get(questionId) === null) pendingGrades += 1;
+  }
+  return { graded: completed && pendingGrades === 0, pending_grades: pendingGrades };
+}
+
 /** One row of the results view, as serialised by the answers CSV export. */
 export interface AnswersExportRow {
   studentName: string | null;
@@ -1131,7 +1202,7 @@ export class TeacherAssignmentService {
     const { data: attempts, error } = await supabase
       .from('quiz_attempts')
       .select(
-        '*, user:user_id(id, email, full_name), quiz_answers:student_answers(*), assignment_answer_images(*)',
+        '*, user:user_id(id, email, full_name), quiz_answers:student_answers(*), assignment_answer_images(*), quiz_attempt_questions(question_id)',
       )
       .eq('assignment_id', id)
       .order('started_at', { ascending: false });
@@ -1146,15 +1217,26 @@ export class TeacherAssignmentService {
     // been edited after publish (R11).
     const snapshots = await readAssignmentSnapshots(id);
     if (isFailure(snapshots)) return snapshots;
+    const manualItems = manualGradeItems(snapshots.data);
 
     return success({
-      attempts: dbRows(attempts).map((attempt) => ({
-        ...attempt,
-        quiz_answers: dbRows(attempt.quiz_answers).map((answer) => ({
-          ...answer,
-          selected_option_content: selectedOptionContent(snapshots.data, answer),
-        })),
-      })),
+      attempts: dbRows(attempts).map((attempt) => {
+        const answers = dbRows(attempt.quiz_answers);
+        return {
+          ...attempt,
+          quiz_answers: answers.map((answer) => ({
+            ...answer,
+            selected_option_content: selectedOptionContent(snapshots.data, answer),
+          })),
+          // Derived per attempt, from the items it was actually served (#1069).
+          ...deriveGradingState(
+            attempt.completed_at !== null,
+            servedItemIds(dbRows(attempt.quiz_attempt_questions)),
+            manualItems,
+            gradedAnswerPoints(answers),
+          ),
+        };
+      }),
       fairness: fairness.data,
     });
   }
@@ -1194,6 +1276,13 @@ export class TeacherAssignmentService {
 
     return success({
       ...attempt,
+      // The grading header and the results list derive the status the same way (#1069).
+      ...deriveGradingState(
+        attempt.completed_at !== null,
+        servedItemIds(dbRows(attempt.quiz_attempt_questions)),
+        manualGradeItems(snapshots.data),
+        gradedAnswerPoints(dbRows(attempt.quiz_answers)),
+      ),
       quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map((q) => {
         const frozen = q.question_id ? snapshots.data.get(q.question_id) : undefined;
         return {
@@ -1761,7 +1850,7 @@ export class TeacherAssignmentService {
     let query = supabase
       .from('quiz_attempts')
       .select(
-        'id, score, total_questions, total_points, completed_at, graded_at, user:user_id(id, email, full_name)',
+        'id, score, total_questions, total_points, completed_at, user:user_id(id, email, full_name), quiz_attempt_questions(question_id), quiz_answers:student_answers(question_id, teacher_points)',
       )
       .eq('assignment_id', id)
       .order('started_at', { ascending: false });
@@ -1774,8 +1863,20 @@ export class TeacherAssignmentService {
 
     if (attemptsError) return toDbFailure(attemptsError);
 
+    // Same derivation as the results list and the grading header (#1069): the CSV must not report
+    // a status the table above it disagrees with.
+    const snapshots = await readAssignmentSnapshots(id);
+    if (isFailure(snapshots)) return snapshots;
+    const manualItems = manualGradeItems(snapshots.data);
+
     const rows = dbRows(attempts).map((attempt) => {
       const user = joinOne(attempt.user);
+      const { graded } = deriveGradingState(
+        attempt.completed_at !== null,
+        servedItemIds(dbRows(attempt.quiz_attempt_questions)),
+        manualItems,
+        gradedAnswerPoints(dbRows(attempt.quiz_answers)),
+      );
       return {
         studentName: user?.full_name ?? null,
         email: user?.email ?? null,
@@ -1784,11 +1885,11 @@ export class TeacherAssignmentService {
             // value falls back to the question count.
             `${attempt.score}/${attempt.total_points ?? attempt.total_questions}`
           : '-',
-        status: attempt.graded_at
-          ? ('graded' as const)
-          : attempt.completed_at
-            ? ('submitted' as const)
-            : ('in_progress' as const),
+        status: attempt.completed_at
+          ? graded
+            ? ('graded' as const)
+            : ('submitted' as const)
+          : ('in_progress' as const),
         completedAt: attempt.completed_at,
       };
     });

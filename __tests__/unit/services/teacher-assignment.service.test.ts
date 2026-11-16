@@ -166,6 +166,27 @@ function snapshotRows(ids: string[]) {
   return chain(ids.map((id) => ({ question_id: id, snapshot: frozen(id), snapshot_version: 1 })));
 }
 
+/**
+ * The frozen items one assignment published, as `readAssignmentSnapshots` returns them. The
+ * grading status is derived from these types (#1069), so each test states them.
+ */
+function stubSnapshots(entries: Array<[string, 'mcq' | 'open']>) {
+  vi.mocked(readAssignmentSnapshots).mockResolvedValueOnce({
+    success: true,
+    data: new Map(
+      entries.map(([questionId, type]) => [
+        questionId,
+        {
+          id: questionId,
+          content: questionId,
+          type,
+          question_answers: [],
+        } satisfies QuestionSnapshot,
+      ]),
+    ),
+  });
+}
+
 /** Any future close: the publish gate only needs the window to be well-formed. */
 const PUBLISH_DEADLINE = new Date(Date.now() + 86_400_000).toISOString();
 
@@ -1411,6 +1432,209 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
+    });
+  });
+
+  /** The results-list row of one attempt, as the table reads it. */
+  async function resultsRow(attempt: Record<string, unknown>) {
+    mock.from
+      .mockReturnValueOnce(ownedAssignment())
+      .mockReturnValueOnce(chain([attempt]))
+      .mockReturnValue(chain([]));
+    const result = await service.getResults(assignmentId, ctx);
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.error);
+    return asJson<{ graded: boolean; pending_grades: number }>(
+      asJson<{ attempts: unknown[] }>(result.data).attempts[0],
+    );
+  }
+
+  describe('derived grading status (#1069)', () => {
+    const completedAt = '2026-11-16T09:00:00.000Z';
+
+    /** One closed item plus one open one, the open answer carrying the grade under test. */
+    const mixedAttempt = (teacherPoints: number | null) => ({
+      id: 'attempt-1',
+      user_id: 'student-1',
+      completed_at: completedAt,
+      graded_at: null,
+      quiz_attempt_questions: [{ question_id: 'q-mcq' }, { question_id: 'q-open' }],
+      quiz_answers: [
+        { question_id: 'q-mcq', selected_option_id: 'o-1', teacher_points: null },
+        { question_id: 'q-open', selected_option_id: null, teacher_points: teacherPoints },
+      ],
+    });
+
+    /** Two open items; `graded_at` is already stamped by the first of them. */
+    const twoOpenAttempt = (points: [number | null, number | null]) => ({
+      id: 'attempt-1',
+      user_id: 'student-1',
+      completed_at: completedAt,
+      graded_at: '2026-11-16T10:00:00.000Z',
+      quiz_attempt_questions: [{ question_id: 'q-open-a' }, { question_id: 'q-open-b' }],
+      quiz_answers: [
+        { question_id: 'q-open-a', selected_option_id: null, teacher_points: points[0] },
+        { question_id: 'q-open-b', selected_option_id: null, teacher_points: points[1] },
+      ],
+    });
+
+    it('reads an all-auto-graded attempt as graded, with no manual grade (#1069)', async () => {
+      stubSnapshots([['q-mcq', 'mcq']]);
+
+      const row = await resultsRow({
+        id: 'attempt-1',
+        user_id: 'student-1',
+        completed_at: completedAt,
+        graded_at: null,
+        quiz_attempt_questions: [{ question_id: 'q-mcq' }],
+        quiz_answers: [{ question_id: 'q-mcq', selected_option_id: 'o-1', teacher_points: null }],
+      });
+
+      expect(row).toMatchObject({ graded: true, pending_grades: 0 });
+    });
+
+    it('keeps a mixed attempt submitted until its open answer is graded (#1069)', async () => {
+      stubSnapshots([
+        ['q-mcq', 'mcq'],
+        ['q-open', 'open'],
+      ]);
+      expect(await resultsRow(mixedAttempt(null))).toMatchObject({
+        graded: false,
+        pending_grades: 1,
+      });
+
+      stubSnapshots([
+        ['q-mcq', 'mcq'],
+        ['q-open', 'open'],
+      ]);
+      expect(await resultsRow(mixedAttempt(2))).toMatchObject({
+        graded: true,
+        pending_grades: 0,
+      });
+    });
+
+    it('stays submitted until the last of two open answers is graded (#1069)', async () => {
+      stubSnapshots([
+        ['q-open-a', 'open'],
+        ['q-open-b', 'open'],
+      ]);
+      // `graded_at` is already stamped: it records the first manual grade, not the status.
+      expect(await resultsRow(twoOpenAttempt([1, null]))).toMatchObject({
+        graded: false,
+        pending_grades: 1,
+      });
+
+      stubSnapshots([
+        ['q-open-a', 'open'],
+        ['q-open-b', 'open'],
+      ]);
+      expect(await resultsRow(twoOpenAttempt([1, 1]))).toMatchObject({
+        graded: true,
+        pending_grades: 0,
+      });
+    });
+
+    it('does not hold the attempt open for a skipped open item (#1069)', async () => {
+      stubSnapshots([
+        ['q-mcq', 'mcq'],
+        ['q-open', 'open'],
+      ]);
+
+      const row = await resultsRow({
+        id: 'attempt-1',
+        user_id: 'student-1',
+        completed_at: completedAt,
+        graded_at: null,
+        quiz_attempt_questions: [{ question_id: 'q-mcq' }, { question_id: 'q-open' }],
+        // The student skipped the open item: there is no answer row to grade.
+        quiz_answers: [{ question_id: 'q-mcq', selected_option_id: 'o-1', teacher_points: null }],
+      });
+
+      expect(row).toMatchObject({ graded: true, pending_grades: 0 });
+    });
+
+    it('is not graded while the attempt is still running (#1069)', async () => {
+      stubSnapshots([['q-mcq', 'mcq']]);
+
+      const row = await resultsRow({
+        id: 'attempt-1',
+        user_id: 'student-1',
+        completed_at: null,
+        graded_at: null,
+        quiz_attempt_questions: [{ question_id: 'q-mcq' }],
+        quiz_answers: [],
+      });
+
+      expect(row).toMatchObject({ graded: false, pending_grades: 0 });
+    });
+
+    it('reports the same state on the grading header (#1069)', async () => {
+      stubSnapshots([['q-open', 'open']]);
+      mock.from
+        .mockReturnValueOnce(ownedAssignment())
+        .mockReturnValueOnce(
+          chain({
+            id: 'attempt-1',
+            assignment_id: assignmentId,
+            user_id: 'student-1',
+            completed_at: completedAt,
+            graded_at: null,
+            quiz_attempt_questions: [{ question_id: 'q-open', order_index: 0 }],
+            quiz_answers: [{ question_id: 'q-open', teacher_points: null }],
+            assignment_answer_images: [],
+          }),
+        )
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(asJson<{ graded: boolean; pending_grades: number }>(result.data)).toMatchObject({
+          graded: false,
+          pending_grades: 1,
+        });
+      }
+    });
+
+    it('exports the derived status, never `graded_at` (#1069)', async () => {
+      stubSnapshots([
+        ['q-mcq', 'mcq'],
+        ['q-open', 'open'],
+      ]);
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(
+        chain([
+          {
+            id: 'attempt-1',
+            score: 5,
+            total_questions: 5,
+            total_points: 5,
+            completed_at: completedAt,
+            graded_at: null,
+            user: null,
+            quiz_attempt_questions: [{ question_id: 'q-mcq' }],
+            quiz_answers: [{ question_id: 'q-mcq', teacher_points: null }],
+          },
+          {
+            id: 'attempt-2',
+            score: 4,
+            total_questions: 5,
+            total_points: 4,
+            completed_at: completedAt,
+            // A first manual grade landed, but the second open item still waits.
+            graded_at: '2026-11-16T10:00:00.000Z',
+            user: null,
+            quiz_attempt_questions: [{ question_id: 'q-open' }],
+            quiz_answers: [{ question_id: 'q-open', teacher_points: null }],
+          },
+        ]),
+      );
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(result.data.map((row) => row.status)).toEqual(['graded', 'submitted']);
     });
   });
 
@@ -3121,6 +3345,8 @@ describe('TeacherAssignmentService', () => {
             email: 'student-classroom@dev.local',
             full_name: 'Classroom Student',
           },
+          quiz_attempt_questions: [{ question_id: 'q-open' }],
+          quiz_answers: [{ question_id: 'q-open', teacher_points: 3 }],
         },
         {
           id: 'attempt-2',
@@ -3134,6 +3360,8 @@ describe('TeacherAssignmentService', () => {
             email: 'second@dev.local',
             full_name: 'Second Student',
           },
+          quiz_attempt_questions: [{ question_id: 'q-open' }],
+          quiz_answers: [{ question_id: 'q-open', teacher_points: null }],
         },
         {
           id: 'attempt-3',
@@ -3143,9 +3371,17 @@ describe('TeacherAssignmentService', () => {
           completed_at: null,
           graded_at: null,
           user: null,
+          quiz_attempt_questions: [],
+          quiz_answers: [],
         },
       ];
 
+      vi.mocked(readAssignmentSnapshots).mockResolvedValueOnce({
+        success: true,
+        data: new Map([
+          ['q-open', { id: 'q-open', content: 'q-open', type: 'open', question_answers: [] }],
+        ]),
+      });
       mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(chain(attempts));
 
       const result = await service.exportAnswers(assignmentId, undefined, ctx);

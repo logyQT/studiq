@@ -31,7 +31,8 @@ interface Attempt {
   total_points: number | null;
   completed_at: string | null;
   started_at: string;
-  graded_at: string | null;
+  /** Derived from the served items (#1069): nothing left for a teacher to grade. */
+  graded: boolean;
   user: {
     id: string;
     email: string;
@@ -136,14 +137,14 @@ export default function ResultsClient() {
                   <td className="p-3 text-center">
                     <span
                       className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        attempt.graded_at
+                        attempt.graded
                           ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                           : attempt.completed_at
                             ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                             : 'bg-muted text-muted-foreground'
                       }`}
                     >
-                      {attempt.graded_at
+                      {attempt.graded
                         ? t('graded')
                         : attempt.completed_at
                           ? t('submitted')
