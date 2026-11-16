@@ -101,9 +101,11 @@ export function ThemeSwitch({ size = 'sm', className }: ThemeSwitchProps) {
 
   // The accessible name must not follow the OS: "System (dark)" would rename
   // itself when the visitor's system flips, and a name that changes under the
-  // thumb is unusable for anything that refers back to it. The resolved state is
-  // the thumb glyph plus the hint below.
-  const label = (c: ThemeChoice) => (c === 'system' ? t('system_name') : t(c));
+  // thumb is unusable for anything that refers back to it. The item says
+  // "System" — the group already says "Theme", so repeating it in every item
+  // would only lengthen the name. The resolved state is the thumb glyph plus the
+  // hint below.
+  const label = (c: ThemeChoice) => t(c);
 
   // The hint is written after the theme has resolved, so "System" names the real result.
   useEffect(() => {
