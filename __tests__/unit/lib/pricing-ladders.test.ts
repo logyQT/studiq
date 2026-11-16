@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 import {
+  canPurchasePlan,
   ctaMessageKey,
   formatLimitValue,
   getPlanLadders,
   isRecommendedPlan,
+  planFamilyLabelKey,
   shortPlanName,
   splitFeatureRows,
   splitLimitRows,
@@ -18,7 +20,7 @@ import {
 
 function plan(
   key: string,
-  forAccountType: string,
+  forAccountType: string | null,
   sortOrder: number,
   rest: Partial<PlanInfo> = {},
 ): PlanInfo {
@@ -230,5 +232,57 @@ describe('formatLimitValue', () => {
   it('groups the digits the way the reader’s locale does', () => {
     expect(formatLimitValue(200000, 'pl')).toMatch(/^200[\s\u00a0]000$/);
     expect(formatLimitValue(200000, 'en')).toBe('200,000');
+  });
+});
+
+describe('canPurchasePlan (#1274)', () => {
+  const student = plan('spark', 'student', 4, { priceMonthly: 999 });
+  const educator = plan('guide', 'educator', 5, { priceMonthly: 1999 });
+  const manager = plan('team', 'manager', 6, { priceMonthly: 9900 });
+
+  it('offers every row to a visitor, who is routed to registration', () => {
+    for (const p of [student, educator, manager]) {
+      expect(canPurchasePlan(p, null), `${p.key} for a visitor`).toBe(true);
+    }
+  });
+
+  it('holds a signed-in account to its own family', () => {
+    expect(canPurchasePlan(student, 'student')).toBe(true);
+    expect(canPurchasePlan(educator, 'student')).toBe(false);
+    expect(canPurchasePlan(manager, 'student')).toBe(false);
+
+    expect(canPurchasePlan(educator, 'educator')).toBe(true);
+    expect(canPurchasePlan(student, 'educator')).toBe(false);
+
+    expect(canPurchasePlan(manager, 'manager')).toBe(true);
+    expect(canPurchasePlan(student, 'manager')).toBe(false);
+    expect(canPurchasePlan(educator, 'manager')).toBe(false);
+  });
+
+  it('offers a plan with no family to everyone', () => {
+    const open = plan('open', null, 13, { priceMonthly: 500 });
+    for (const viewer of ['student', 'educator', 'manager']) {
+      expect(canPurchasePlan(open, viewer)).toBe(true);
+    }
+  });
+});
+
+describe('planFamilyLabelKey (#1274)', () => {
+  it('names the family the reader is not in', () => {
+    expect(planFamilyLabelKey(plan('spark', 'student', 4))).toBe('plan_family_student');
+    expect(planFamilyLabelKey(plan('guide', 'educator', 5))).toBe('plan_family_educator');
+    expect(planFamilyLabelKey(plan('team', 'manager', 6))).toBe('plan_family_organization');
+  });
+
+  it('resolves every label in both locales', () => {
+    for (const key of [
+      'plan_family_student',
+      'plan_family_educator',
+      'plan_family_organization',
+      'plan_family_other',
+    ]) {
+      expect(Object.keys(pl.PricingPage), `pl is missing ${key}`).toContain(key);
+      expect(Object.keys(en.PricingPage), `en is missing ${key}`).toContain(key);
+    }
   });
 });

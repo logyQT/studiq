@@ -54,6 +54,7 @@ const UI = {
   success: /Płatność udana! Przekierowywanie/,
   successPageTitle: 'Zakup udany!',
   currentPlan: 'Twój plan',
+  otherFamily: 'Dla konta edukatora',
 } as const;
 
 /** The simulated card the case uses (a Stripe test number, never charged). */
@@ -101,6 +102,14 @@ test.describe('BIL-03 — student plan purchase', () => {
     // --- Step 1: pick Spark on the /pricing student ladder ----------------
     await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
+
+    // #1274: the educator ladder is visible but not purchasable from a student
+    // account; the row says which family it is for instead of offering a button
+    // the server will refuse.
+    const guideRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#guide') });
+    await expect(guideRow, 'one Guide plan row').toHaveCount(1);
+    await expect(guideRow.getByRole('button'), 'no checkout on the educator row').toHaveCount(0);
+    await expect(guideRow, 'the educator row names its family').toContainText(UI.otherFamily);
 
     const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
     await expect(sparkRow, 'one Spark plan row').toHaveCount(1);

@@ -5,8 +5,9 @@ import { Loader2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { apiPost } from '@/lib/api';
+import { ApiError, apiPost } from '@/lib/api';
 import { checkoutSessionBody } from '@/lib/checkout-entry';
+import { translateErrorCode } from '@/lib/error-messages';
 
 interface CheckoutButtonProps {
   /** Catalog plan key (`spark`, `hub`, …), never the plan UUID. */
@@ -26,6 +27,7 @@ export function CheckoutButton({
   className,
 }: CheckoutButtonProps) {
   const t = useTranslations('CheckoutPage');
+  const tErr = useTranslations('Errors');
   const locale = useLocale();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -41,8 +43,16 @@ export function CheckoutButton({
         }),
       );
       window.location.href = data.url;
-    } catch {
-      toast.error(t('payment_failed'));
+    } catch (error) {
+      /*
+       * A refusal is not a payment failure: `FORBIDDEN` means the plan belongs to
+       * another account family, `BAD_REQUEST` that the plan cannot be checked out
+       * at all. Say what the server said; only a transport error has no code and
+       * falls back to the payment phrase.
+       */
+      toast.error(
+        error instanceof ApiError ? translateErrorCode(tErr, error.code) : t('payment_failed'),
+      );
     } finally {
       setIsLoading(false);
     }

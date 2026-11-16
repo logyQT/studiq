@@ -59,7 +59,8 @@ export function PricingPageClient() {
   // Students/educators keep reading their own personal plan (#181).
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
   const rawAccountType: unknown = user?.app_metadata.account_type;
-  const isManager = rawAccountType === 'manager';
+  const viewerAccountType = typeof rawAccountType === 'string' ? rawAccountType : null;
+  const isManager = viewerAccountType === 'manager';
   const { data: currentPlan } = useApiQuery<PlanInfo>({
     queryKey: ['me', isManager ? 'plan' : 'personal-plan'],
     url: isManager ? '/api/v1/me/plan' : '/api/v1/me/personal-plan',
@@ -167,6 +168,7 @@ export function PricingPageClient() {
                           plan={plan}
                           isCurrent={currentPlan?.key === plan.key}
                           signedIn={!!user}
+                          viewerAccountType={viewerAccountType}
                           orgId={activeOrg?.id}
                         />
                       ))}

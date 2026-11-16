@@ -211,6 +211,20 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () =
       `${plan.name} does not list Kreator ról`,
     ).toHaveCount(0);
 
+    // #1274: the manager's default /pricing view is the individual catalogue,
+    // and none of it is purchasable from a manager account. The rows stay as
+    // information and name the family they belong to.
+    await page.goto('/pricing');
+    for (const key of ['spark', 'ace', 'guide', 'creator']) {
+      const row = page.locator('#pricing-plans li').filter({ has: page.locator(`h3#${key}`) });
+      await expect(row, `row ${key}`).toHaveCount(1);
+      await expect(row.getByRole('button'), `row ${key} offers no checkout`).toHaveCount(0);
+    }
+    await expect(
+      page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') }),
+      'the student row names its family',
+    ).toContainText('Dla konta ucznia lub studenta');
+
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
 });

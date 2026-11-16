@@ -5,13 +5,21 @@ import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { formatPlanPrice } from '@/lib/landing-pricing';
-import { ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import {
+  canPurchasePlan,
+  ctaMessageKey,
+  isRecommendedPlan,
+  planFamilyLabelKey,
+  shortPlanName,
+} from '@/lib/pricing-ladders';
 import { cn } from '@/lib/utils';
 
 interface PlanRowProps {
   plan: PlanInfo;
   isCurrent: boolean;
   signedIn: boolean;
+  /** The reader's own account family; null for a visitor. */
+  viewerAccountType: string | null;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
 }
@@ -21,7 +29,7 @@ interface PlanRowProps {
  * not a card. The comparison tables are the feature surface, so no bullet list
  * repeats them here.
  */
-export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
+export function PlanRow({ plan, isCurrent, signedIn, viewerAccountType, orgId }: PlanRowProps) {
   const t = useTranslations('PricingPage');
   const locale = useLocale();
 
@@ -34,6 +42,9 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const ctaKey = ctaMessageKey(plan);
   const description = t.has(descKey) ? t(descKey) : null;
   const note = t.has(noteKey) ? t(noteKey) : null;
+  const familyLabelKey = planFamilyLabelKey(plan);
+  // A signed-in reader is only offered the family their account can check out.
+  const otherFamily = signedIn && !canPurchasePlan(plan, viewerAccountType);
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
 
@@ -84,6 +95,15 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
           <CtaButton href="/contact" tone="quiet" fullWidth className="whitespace-nowrap">
             {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
           </CtaButton>
+        ) : otherFamily ? (
+          /*
+           * A family the reader's account cannot check out has no action at all:
+           * a button here would be refused by the server (#1274). The label says
+           * who the plan is for, so the row still explains itself.
+           */
+          <span className="inline-flex min-h-11 items-center text-xs text-balance text-muted-foreground md:justify-self-end">
+            {familyLabelKey ? t(familyLabelKey) : null}
+          </span>
         ) : signedIn ? (
           isFree ? null : (
             <CheckoutButton

@@ -32,6 +32,36 @@ export function ctaMessageKey(plan: Pick<PlanInfo, 'key' | 'priceMonthly'>): str
   return `cta_${plan.key}`;
 }
 
+/**
+ * The label a row carries when its plan belongs to another account family. The
+ * checkout rules refuse another family even for a free plan
+ * (`checkout-rules.ts` → `resolveApplicablePlan`), so a signed-in reader must
+ * not be offered an action the server will always reject (#1274).
+ */
+const PLAN_FAMILY_LABEL_KEYS: Record<string, string> = {
+  student: 'plan_family_student',
+  educator: 'plan_family_educator',
+  manager: 'plan_family_organization',
+};
+
+export function planFamilyLabelKey(plan: Pick<PlanInfo, 'forAccountType'>): string | null {
+  if (!plan.forAccountType) return null;
+  return PLAN_FAMILY_LABEL_KEYS[plan.forAccountType] ?? 'plan_family_other';
+}
+
+/**
+ * Whether this reader may buy this plan. A visitor is routed to registration,
+ * which accepts any family, so every row is theirs to start; a signed-in account
+ * is held to the family the server enforces.
+ */
+export function canPurchasePlan(
+  plan: Pick<PlanInfo, 'forAccountType'>,
+  viewerAccountType: string | null | undefined,
+): boolean {
+  if (!viewerAccountType) return true;
+  return plan.forAccountType === null || plan.forAccountType === viewerAccountType;
+}
+
 export type PlanLadders = {
   individual: {
     student: PlanInfo[];
