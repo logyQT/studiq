@@ -2141,7 +2141,7 @@
     "index_label": "Four areas",
     "index_aria": "Area index",
     "index_count": "{count, plural, one {# feature} other {# features}}",
-    "plate_label": "After the test",
+    "plate_label": "Score and answers",
     "plate_note": "Each question shows your answer, the correct answer and the explanation.",
     "study_title": "The study loop",
     "study_lede": "Flashcards, tests and stats work from the same material, so the next review lands where the gap is.",

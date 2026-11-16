@@ -18,6 +18,13 @@ interface ProblemQuestionsCardProps {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  /**
+   * The title's heading level. The teacher dashboard renders the card as a
+   * section of its page; a marketing page reuses it as a sample inside a
+   * section whose own title is already an `h2`, where a second `h2` would be
+   * read out as a peer of the page's sections rather than as a sample.
+   */
+  headingLevel?: 2 | 3;
 }
 
 /** Shows up to five supplied questions with at least three answers, in their supplied order. */
@@ -26,7 +33,9 @@ export function ProblemQuestionsCard({
   isLoading,
   isError,
   onRetry,
+  headingLevel = 2,
 }: ProblemQuestionsCardProps) {
+  const Heading = headingLevel === 3 ? 'h3' : 'h2';
   const t = useTranslations('EduOverviewPage');
   // The server already applies the floor; the card keeps it too, so a one-answer question can
   // never be drawn as a red 0 % whatever feeds it.
@@ -44,7 +53,7 @@ export function ProblemQuestionsCard({
               aria-hidden="true"
             />
           </div>
-          <h2>{t('problem_title')}</h2>
+          <Heading>{t('problem_title')}</Heading>
         </CardTitle>
         <CardDescription>{t('problem_desc')}</CardDescription>
       </CardHeader>

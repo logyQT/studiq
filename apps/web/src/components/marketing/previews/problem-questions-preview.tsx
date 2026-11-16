@@ -24,6 +24,7 @@ export function ProblemQuestionsPreview() {
       isLoading={false}
       isError={false}
       onRetry={() => {}}
+      headingLevel={3}
     />
   );
 }
