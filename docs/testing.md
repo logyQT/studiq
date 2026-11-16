@@ -45,16 +45,20 @@ content is still created through the real API routes. There are no shared per-ru
 
 Playwright tests run against the full application in a real browser.
 
-**Location:** `__tests__/e2e/` — conventions and the target architecture are in
+**Location:** `__tests__/e2e/` — conventions are in
 [`e2e-campaign.md`](plans/archive/e2e-campaign.md) (archived).
 
-**Target architecture:** one spec per QA case (`__tests__/e2e/cases/<ID>.spec.ts`), each test
-provisioning its own organization and accounts, so specs can run in any order at N workers.
-Cross-test interference is a tenant leak, not a flake.
+**One spec per case, one tenant per case.** Each test provisions its own organization and
+accounts, so specs can run in any order at N workers. Cross-test interference is a tenant
+leak, not a flake. The QA-case suite that implements this for the tester document lives in
+`__tests__/qa/<AREA>/<ID>.spec.ts` (`bun run test:qa`, seeded by
+`bun scripts/qa-tenant.ts`); how a case becomes a spec:
+`.agents/skills/studiq-qa-case/SKILL.md`.
 
 **Covered flows today:** login and registration, student flashcard practice, teacher question
 management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
-194 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
+170 e2e · 10 API-level · 8 manual-owned (4 of them with a partial spec) of 188 cases; status in
+`#926`.
 
 ## Running Tests
 

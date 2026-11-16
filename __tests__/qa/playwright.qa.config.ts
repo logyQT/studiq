@@ -2,13 +2,14 @@ import { devices } from '@playwright/test';
 import { defineSuiteConfig } from '#playwright/base';
 
 /**
- * QA-suite runner: one shared app + one shared Supabase, one spec per case.
+ * QA-suite runner: one spec per case, one isolated tenant per case (and per
+ * attempt), against whatever app `QA_APP_URL` names.
  *
  *   bunx playwright test -c __tests__/qa/playwright.qa.config.ts __tests__/qa/<AREA>/<CASEID>.spec.ts --workers=1
  *
- * Local: keep `workers` at 1 — the dev box also hosts the app, Supabase and the
- * eight browser tiles, and a parallel run OOM-kills it. CI sets QA_WORKERS (each
- * test owns its tenant, so parallel is safe there).
+ * Local: keep `workers` at 1 — the same machine also hosts the app, Supabase and
+ * the browser you are watching, and a parallel run OOM-kills it. CI sets
+ * QA_WORKERS (each test owns its tenant, so parallel is safe there).
  */
 export default defineSuiteConfig({
   // `testDir` resolves relative to this config file, so `.` is `__tests__/qa`.
@@ -21,7 +22,7 @@ export default defineSuiteConfig({
   // must fail fast, so a spec that needs longer overrides that call explicitly.
   timeout: 90_000,
   // `defineSuiteConfig` owns the CI-only retry budget and `forbidOnly`. Local
-  // retries stay 0, so the admission gate — 3/3 independent runs, fresh tenant
+  // retries stay 0, so the admission gate — 5/5 independent runs, fresh tenant
   // each — sees every flake.
   reporter: [['list']],
   use: {

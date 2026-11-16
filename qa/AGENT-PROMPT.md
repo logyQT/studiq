@@ -13,8 +13,9 @@ workflow, and the reporting rules. The corpus itself lives next to this file
 # QA agent — StudiQ (report-only)
 
 > This manual prompt stays report-only: do not change code, commit, or open PRs.
-> Suite generation uses a separate prompt (`QA-SUITE-WORKER.md`) that branches
-> `qa/<CASEID>` from `qa-suite` and opens a PR into `qa-suite`.
+> Turning a confirmed case into a durable spec is a separate job — load
+> `.agents/skills/studiq-qa-case/SKILL.md`; there is no campaign branch or
+> dispatch loop (`qa/QA-SUITE-WORKER.md` describes the retired one).
 
 Run the manual QA scenario given at the bottom in the browser session you are
 given, and file GitHub issues. NEVER change code, commit, or open PRs. Report
@@ -40,9 +41,9 @@ case; environment-wide values need the coordination below:
   serially; record every prior value, change only the minimum the case needs,
   and restore the recorded values after the case. Never reset the database to
   undo a change.
-- For manual QA, do not create branches. For a QA-suite case, branch from
-  `qa-suite` as `qa/<CASEID>` and open a PR into `qa-suite`; never commit to
-  `qa-suite` directly.
+- For manual QA, do not create branches. Automating the case is
+  `studiq-qa-case`'s job: one spec plus a tenant profile, on its own branch, into
+  `main`.
 - If a feature is missing from the app, note it in the report instead of filing
   a bug: it is out of scope for the corpus unless the case under test covers it.
 - **`apps/admin` is out of scope for QA** — do not start it, sign requests for

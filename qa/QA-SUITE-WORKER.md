@@ -1,5 +1,11 @@
 # QA-suite worker prompt
 
+> **Parked 2026-11-15.** `qa/tools/qa-manager.py` does not exist and no worker
+> inbox is running. The per-case rules that survive (walk before writing, tenant
+> fixture, 5/5 admission, no expected-failure specs) live in
+> [`.agents/skills/studiq-qa-case/SKILL.md`](../.agents/skills/studiq-qa-case/SKILL.md);
+> this prompt is kept only as source for that rewrite.
+
 `qa/tools/qa-manager.py suite <CASEID> --env N` creates a fresh session from the fenced
 block below and substitutes `{{CASE_ID}}`, `{{WORKER}}`, `{{BROWSER_PORT}}`, `{{APP_URL}}`
 and `{{SUPABASE_URL}}`. One case, one session, one branch.

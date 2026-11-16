@@ -211,13 +211,8 @@ describe('Assessment lifecycle: cancel, extend, override (#1174)', () => {
       userId: managerUser.id,
       orgRoleId: asJson<{ id: string }>(adminRole).id,
     });
-    // The override proves ownership by organisation scope, which is what the admin role grants once
-    // an org admin has configured it.
-    await service.from('org_role_permissions').insert({
-      org_role_id: asJson<{ id: string }>(adminRole).id,
-      permission_name: 'assignment.update',
-      scope: 'organization',
-    });
+    // The override proves ownership by organisation scope, which the seeded `admin` role carries
+    // out of the box (#1256) — no permission row is written here on purpose.
     manager = { id: managerUser.id, role: 'manager' };
 
     questionId = requiredAt(teacher.created.questions, 0, 'the seeded question');
@@ -594,14 +589,10 @@ describe('Assessment lifecycle: closed runs cannot be extended or cancelled (#11
       userId: managerUser.id,
       orgRoleId: asJson<{ id: string }>(adminRole).id,
     });
-    // The override proves ownership by organisation scope, which is what the admin role grants once
-    // an org admin has configured it.
-    await service.from('org_role_permissions').insert({
-      org_role_id: asJson<{ id: string }>(adminRole).id,
-      permission_name: 'assignment.update',
-      scope: 'organization',
-    });
+    // The override proves ownership by organisation scope, which the seeded `admin` role carries
+    // out of the box (#1256) — no permission row is written here on purpose.
     manager = { id: managerUser.id, role: 'manager' };
+
     questionId = requiredAt(teacher.created.questions, 0, 'the seeded question');
 
     mockUser(teacher.user);

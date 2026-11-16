@@ -1,5 +1,20 @@
 # QA suite on one shared app + one Supabase
 
+> **Parked 2026-11-15 — kept as source for a rewrite, not as instruction.** This
+> page describes the 2026 suite-generation campaign: one shared app at `:3010`,
+> one shared Supabase, eight browser "workers" per case, a `qa-suite` integration
+> branch and a manager/worker dispatch loop. None of that runs: the campaign is
+> over (172 specs of 188 cases, `#926`), dispatch is the operator telling an
+> agent what to do, and the tooling is now `bun run env:ensure` + a per-worktree
+> stack + `bun scripts/qa-tenant.ts` + `bun run test:qa`. Do not follow the
+> branch, dispatch or shared-box instructions below.
+>
+> What still holds verbatim and is carried into
+> [`.agents/skills/studiq-qa-case/SKILL.md`](../.agents/skills/studiq-qa-case/SKILL.md):
+> [Retry safety](#retry-safety--every-spec-must-survive-its-own-retry),
+> [Asserting user-visible copy](#asserting-user-visible-copy) and the admission
+> criteria in [Manager flow](#manager-flow-not-started-yet). The rest is history.
+
 Status: **infrastructure up; manager and PR→manager event wiring not built yet** (see
 §Manager flow). This document is the contract for the QA-suite generation loop. It replaces the old “one app + one Supabase per slot” model for
 QA-suite work; all workers share the single app/DB below instead of running separate apps.

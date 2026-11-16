@@ -552,9 +552,9 @@ jobs:
 
       - name: Export env
         # The app build reads the process environment (varlock injects it), and
-        # the QA seeder and the specs that seed their own tenant are plain Bun
-        # processes: without these vars in the job environment they fall back to
-        # the shared-VM localhost:54421 and fail with `fetch failed`.
+        # the QA seeder and the Playwright workers are plain Bun processes:
+        # without these vars in the job environment they fall back to the old
+        # shared-VM localhost:54421 and fail with `fetch failed`.
         run: |
           status=$(bunx supabase stack status --output-format json)
           API_URL=$(jq -r .env.API_URL <<<"$status")
