@@ -1,3 +1,5 @@
+import { isSuccess } from '@studiq/server/lib/service-result';
+import { subscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { connection } from 'next/server';
@@ -27,17 +29,20 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function PricingPage() {
   /*
-   * The audience is read from the query string by the client switch, and a
-   * dynamic render is what lets that read answer during the server render too:
-   * a cold `?audience=organization` arrives with the organization ladder in the
-   * HTML instead of swapping after hydration. `connection()` is the request
-   * signal that keeps the route out of the prerender.
+   * The catalogue is read here, not only in the browser: prices are the one thing
+   * a crawler or a shared `?audience=organization` link should read, so a cold
+   * response carries the ladder rows instead of a spinner. The client query still
+   * runs and owns later refetches — this is the first paint, not a second source
+   * of truth. A failed read passes `undefined`, which leaves the client's own
+   * "catalogue unavailable" line to say so.
    */
   await connection();
 
+  const catalogue = await subscriptionPlanService.listActive();
+
   return (
     <MarketingShell>
-      <PricingPageClient />
+      <PricingPageClient initialPlans={isSuccess(catalogue) ? catalogue.data : undefined} />
     </MarketingShell>
   );
 }

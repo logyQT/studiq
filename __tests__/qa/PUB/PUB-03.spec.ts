@@ -273,6 +273,16 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     expect(organizationHtml, 'and not the student ladder').not.toContain(
       `>${copy('ladder_student_title')}</h2>`,
     );
+    /*
+     * The rows and their prices are the page's promise to a crawler: the heading
+     * alone is true of a client-fetched ladder too (#1272). The handles are the
+     * plan keys the catalogue renders (`#launch` … `#campus`).
+     */
+    for (const key of ['launch', 'team', 'hub', 'campus']) {
+      expect(organizationHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
+    }
+    expect(organizationHtml, 'with its price').toContain(copy('period_month'));
+    expect(organizationHtml, 'and no individual row').not.toContain('id="base"');
     const organizationRadioTag = /<input[^>]*value="organization"[^>]*>/.exec(
       organizationHtml,
     )?.[0];
@@ -287,6 +297,11 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     expect(individualHtml, 'and not the organization ladder').not.toContain(
       `>${copy('ladder_org_title')}</h2>`,
     );
+    for (const key of ['base', 'spark', 'ace', 'pro', 'lite', 'guide', 'creator', 'master']) {
+      expect(individualHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
+    }
+    expect(individualHtml, 'with prices').toContain(copy('period_month'));
+    expect(individualHtml, 'and no organization row').not.toContain('id="launch"');
     const individualRadioTag = /<input[^>]*value="individual"[^>]*>/.exec(individualHtml)?.[0];
     expect(individualRadioTag, 'the individual segment is the chosen one by default').toContain(
       'checked',
