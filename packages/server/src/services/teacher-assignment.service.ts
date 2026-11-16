@@ -17,6 +17,7 @@ import {
   sampleServed,
 } from '@studiq/server/lib/attempt-sample';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
+import { assessPreExposure } from '@studiq/server/lib/assignment-preexposure';
 import {
   ensureClosed,
   expireInProgressAttempts,
@@ -287,10 +288,19 @@ export class TeacherAssignmentService {
       : await assessExposure(id, dbRows(assignment.assignment_targets));
     if (exposure && isFailure(exposure)) return exposure;
 
+    // R8: publishing is the last moment a teacher can declare an item taught, so the draft carries
+    // what each targeted class has already seen. Information, not a refusal — R3 owns the blocking
+    // decision.
+    const preExposure = isPublished
+      ? null
+      : await assessPreExposure(id, dbRows(assignment.assignment_targets));
+    if (preExposure && isFailure(preExposure)) return preExposure;
+
     return success({
       ...assignment,
       assignment_questions: assignmentQuestions,
       ...(exposure?.success ? { exposure: exposure.data } : {}),
+      ...(preExposure?.success ? { preExposure: preExposure.data } : {}),
     });
   }
 
@@ -553,10 +563,10 @@ export class TeacherAssignmentService {
 
   /**
    * Declares one item taught (R9): a ledger event or a prior answer no longer excludes it from this
-   * student's sample, and the item is labelled in results.
+   * student's sample, the item is labelled in results, and fairness statistics leave it out.
    *
    * Declared on a draft and frozen with the published snapshot: moving the flag after publish would
-   * change a live sample mid-window.
+   * change a live sample mid-window and rewrite fairness after the cohort sat it.
    */
   async setTaughtItem(
     id: string,

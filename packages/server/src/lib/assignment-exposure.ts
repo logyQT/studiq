@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
@@ -33,7 +33,7 @@ interface Target {
 }
 
 /** Student members (`role = 'member'`) of the given groups. */
-async function memberIds(
+export async function memberIds(
   supabase: SupabaseClient<Database>,
   groupIds: readonly string[],
 ): Promise<Set<string>> {
@@ -51,6 +51,22 @@ async function memberIds(
 }
 
 /**
+ * The assessment's bound item ids. Both publish forecasts start here, and both read the link rows
+ * with the service role because the caller is the author of a draft.
+ */
+export async function assessmentItemIds(
+  supabase: SupabaseClient<Database>,
+  assignmentId: string,
+): Promise<ServiceResult<string[]>> {
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .select('question_id')
+    .eq('assignment_id', assignmentId);
+  if (error) return toDbFailure(error);
+  return success(dbRows(data).flatMap((row) => (row.question_id ? [row.question_id] : [])));
+}
+
+/**
  * How much of this assessment is still reachable by a student it does not target. Read with the
  * service role: the caller is the author, and the answer spans classes they cannot see.
  */
@@ -61,12 +77,9 @@ export async function assessExposure(
   const supabase = createServiceClient();
   const empty: ExposureForecast = { openItemCount: 0, outsideStudentCount: 0 };
 
-  const links = await supabase
-    .from('assignment_questions')
-    .select('question_id')
-    .eq('assignment_id', assignmentId);
-  if (links.error) return toDbFailure(links.error);
-  const itemIds = dbRows(links.data).flatMap((row) => (row.question_id ? [row.question_id] : []));
+  const items = await assessmentItemIds(supabase, assignmentId);
+  if (isFailure(items)) return items;
+  const itemIds = items.data;
   if (itemIds.length === 0) return success(empty);
 
   const targetGroupIds = [...new Set(targets.flatMap((t) => (t.group_id ? [t.group_id] : [])))];

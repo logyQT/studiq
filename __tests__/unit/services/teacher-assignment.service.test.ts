@@ -49,6 +49,10 @@ vi.mock('@studiq/server/lib/assignment-exposure', () => ({
   assessExposure: vi.fn(() => Promise.resolve({ success: true, data: exposureState })),
 }));
 
+vi.mock('@studiq/server/lib/assignment-preexposure', () => ({
+  assessPreExposure: vi.fn(() => Promise.resolve({ success: true, data: [] })),
+}));
+
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
   select: Mock<(columns: string) => QueryChain>;
@@ -293,6 +297,8 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).toEqual({
           ...assignment,
           exposure: { openItemCount: 0, outsideStudentCount: 0 },
+          // R8: the draft's per-class pre-exposure warning; empty when nothing is burnt.
+          preExposure: [],
         });
     });
 
@@ -307,6 +313,8 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).toEqual({
           ...otherUserAssignment,
           exposure: { openItemCount: 0, outsideStudentCount: 0 },
+          // R8: the draft's per-class pre-exposure warning; empty when nothing is burnt.
+          preExposure: [],
         });
     });
 

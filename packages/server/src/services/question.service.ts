@@ -15,6 +15,7 @@ import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -25,6 +26,9 @@ import type {
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
+
+/** How many ledger rows one staff read returns; the count stays exact. */
+const EXPOSURE_LEDGER_LIMIT = 200;
 
 /** Shape of the `question_topic_assignments(topic_id, topics(id, name))` embed. */
 type QuestionTopicLink = {
@@ -311,6 +315,81 @@ export class QuestionService {
 
     const [item] = await withKeys([withTopics(question)], ctx);
     return success(item);
+  }
+
+  /**
+   * The exposure ledger of one item (#1172, R8): which students the system showed its key or
+   * explanation to, when, and which classes they shared with the run — plus the pre-exposed count.
+   *
+   * The staff key permission is the ledger's permission: whoever may read the key may audit who saw
+   * it. The answer is a list of events, never a key field. Reads are bounded to the caller's
+   * organisation, because a shared item's events span tenants and the ledger names students.
+   */
+  async exposureLedger(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.clientFactory();
+
+    const { data: question, error } = await supabase
+      .from('questions')
+      .select('id, created_by, organization_id')
+      .eq('id', id)
+      .neq('status', 'deleted')
+      .maybeSingle();
+    if (error) return toDbFailure(error);
+    if (!question) return failure('NOT_FOUND');
+    if (!canReadQuestionKey(ctx, question)) return failure('FORBIDDEN');
+
+    const service = createServiceClient();
+    const base = service
+      .from('exposure_events')
+      .select('student_id, group_ids, seen_correct, created_at', { count: 'exact' })
+      .eq('question_id', id)
+      .order('created_at', { ascending: false })
+      .limit(EXPOSURE_LEDGER_LIMIT);
+    const scoped = ctx.activeOrgId
+      ? base.eq('organization_id', ctx.activeOrgId)
+      : base.is('organization_id', null);
+
+    const { data: events, error: eventError, count } = await scoped;
+    if (eventError) return toDbFailure(eventError);
+
+    const rows = dbRows(events);
+    const studentIds = [...new Set(rows.map((event) => event.student_id))];
+    const people = new Map<string, { id: string; full_name: string | null; email: string }>();
+    if (studentIds.length > 0) {
+      const { data: profiles, error: profileError } = await service
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', studentIds);
+      if (profileError) return toDbFailure(profileError);
+      for (const profile of dbRows(profiles)) people.set(profile.id, profile);
+    }
+
+    // The event carries ids; the reader needs the class names, and a UUID is not a name.
+    const groupIds = [...new Set(rows.flatMap((event) => event.group_ids))];
+    const groups: Array<{ id: string; name: string }> = [];
+    if (groupIds.length > 0) {
+      const { data: groupRows, error: groupError } = await service
+        .from('groups')
+        .select('id, name')
+        .in('id', groupIds);
+      if (groupError) return toDbFailure(groupError);
+      groups.push(...dbRows(groupRows));
+    }
+
+    return success({
+      itemId: id,
+      // One event per (student, item), so the row count is the number of students.
+      preExposedCount: count ?? rows.length,
+      groups,
+      events: rows.map((event) => ({
+        studentId: event.student_id,
+        studentName: people.get(event.student_id)?.full_name ?? null,
+        studentEmail: people.get(event.student_id)?.email ?? null,
+        seenCorrect: event.seen_correct,
+        createdAt: event.created_at,
+        groupIds: event.group_ids,
+      })),
+    });
   }
 
   async update(

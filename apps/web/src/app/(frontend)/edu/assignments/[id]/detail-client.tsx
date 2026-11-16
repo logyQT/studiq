@@ -85,6 +85,13 @@ interface AssignmentDetail {
   closed_at: string | null;
   /** Cross-class forecast, computed for a draft only (the composer is the only reader). */
   exposure?: { openItemCount: number; outsideStudentCount: number };
+  /** R8: per targeted class, what it has already seen a key for. Draft only, counts only. */
+  preExposure?: Array<{
+    groupId: string | null;
+    studentId: string | null;
+    seenItemCount: number;
+    seenStudentCount: number;
+  }>;
   created_at: string;
   assignment_targets?: Array<{ group_id: string | null; student_id: string | null }>;
   assignment_questions: Array<{
@@ -144,6 +151,88 @@ function arrayMove<T>(arr: T[], from: number, to: number): T[] {
   return copy;
 }
 
+interface ExposureLedger {
+  itemId: string;
+  preExposedCount: number;
+  groups: Array<{ id: string; name: string }>;
+  events: Array<{
+    studentId: string;
+    studentName: string | null;
+    seenCorrect: boolean;
+    createdAt: string;
+    groupIds: string[];
+  }>;
+}
+
+/**
+ * The staff view of one item's exposure ledger (R8): who already saw the key, when, and in which
+ * class. It renders no key material — the teacher reading it is deciding whether to declare the
+ * item taught, not reviewing it.
+ */
+function ExposureLedgerDialog({ questionId }: { questionId: string }) {
+  const t = useTranslations('EduAssignmentDetailPage');
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useApiQuery<ExposureLedger>({
+    queryKey: questionKeys.ledger(questionId),
+    url: `/api/v1/questions/${questionId}/ledger`,
+    enabled: open,
+  });
+  const groupNames = new Map((data?.groups ?? []).map((group) => [group.id, group.name]));
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="ghost" size="sm" className="shrink-0" onClick={() => setOpen(true)}>
+        {t('ledger')}
+      </Button>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('ledger')}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {t('ledger_count', { count: data?.preExposedCount ?? 0 })}
+          </p>
+          {isLoading ? (
+            <div className="h-16 bg-muted animate-pulse rounded" />
+          ) : (data?.events.length ?? 0) === 0 ? (
+            <p className="text-sm">{t('ledger_empty')}</p>
+          ) : (
+            <ul className="space-y-2 max-h-80 overflow-y-auto">
+              {data?.events.map((event) => {
+                const classes = event.groupIds.flatMap((groupId) => {
+                  const name = groupNames.get(groupId);
+                  return name ? [name] : [];
+                });
+                const detail = [
+                  ...(event.seenCorrect ? [t('ledger_saw_answer')] : []),
+                  ...classes,
+                ].join(' · ');
+
+                return (
+                  <li
+                    key={`${event.studentId}-${event.createdAt}`}
+                    className="rounded-md border p-2 space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {event.studentName ?? t('unknown_student')}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(event.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SortableQuestionRow({
   question,
   index,
@@ -199,6 +288,7 @@ function SortableQuestionRow({
         />
         {taughtLabel}
       </label>
+      <ExposureLedgerDialog questionId={question.question_id} />
       <button
         type="button"
         className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
@@ -626,6 +716,13 @@ export default function AssignmentDetailClient() {
   const questions = localQuestions ?? [];
   const exposure = assignment.exposure;
   const exposureOpen = (exposure?.openItemCount ?? 0) > 0 && !sealOrgWide;
+
+  // R8: only the classes that actually lost items need a line; a zero is not information.
+  const preExposed = (assignment.preExposure ?? []).filter((target) => target.seenItemCount > 0);
+  const targetLabel = (target: { groupId: string | null; studentId: string | null }) =>
+    target.groupId
+      ? (groupOptions.find((group) => group.value === target.groupId)?.label ?? '')
+      : (studentOptions.find((student) => student.value === target.studentId)?.label ?? '');
   // Publish validates all of this server-side; the composer states it up front so the button
   // cannot silently do nothing.
   // An audience and at least one item are what the composer can require up front; the deadline is
@@ -861,6 +958,7 @@ export default function AssignmentDetailClient() {
                         {t('release')}
                       </Button>
                     ) : null}
+                    <ExposureLedgerDialog questionId={aq.question_id} />
                     <span className="text-sm text-muted-foreground">
                       {t('pts', { count: aq.points })}
                     </span>
@@ -1186,6 +1284,28 @@ export default function AssignmentDetailClient() {
                   <p className="text-xs text-muted-foreground">{t('seal_org_wide_hint')}</p>
                 </div>
               </div>
+
+              {preExposed.length > 0 && (
+                <div
+                  role="note"
+                  data-testid="pre-exposure-warning"
+                  className="space-y-1 rounded-md border px-3 py-2 text-sm"
+                >
+                  <p className="font-medium">{t('pre_exposure_title')}</p>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {preExposed.map((target) => (
+                      <li key={target.groupId ?? target.studentId}>
+                        {t('pre_exposure_row', {
+                          target: targetLabel(target),
+                          items: target.seenItemCount,
+                          students: target.seenStudentCount,
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">{t('pre_exposure_hint')}</p>
+                </div>
+              )}
 
               {exposureOpen && (
                 <div
