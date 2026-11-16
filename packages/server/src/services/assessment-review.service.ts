@@ -70,7 +70,12 @@ export interface AssignmentReview {
   completedAt: string | null;
   /** `null` when there is no attempt, or when the attempt holds only ungraded items (R16). */
   score: { earned: number; possible: number } | null;
+  /**
+   * Items of the reviewed attempt that have no automatic key (R16) — the same set `score` is
+   * computed from, not the whole sheet. `0` when there is no attempt.
+   */
   ungradedCount: number;
+  /** The cohort reveal: every item the assessment holds, whichever attempt was reviewed. */
   items: ReviewedItem[];
   /**
    * Every submitted attempt this student has on the assessment, latest first (tie-break by id), so
@@ -94,6 +99,19 @@ interface AnswerRow {
   is_correct: boolean | null;
   teacher_points: number | null;
   teacher_feedback: string | null;
+}
+
+/**
+ * The open items (R16) among the items one attempt was served. Both the headline count and the
+ * per-attempt index use this, so a partially served attempt reports only what it held (#1257).
+ */
+function countUngraded(
+  served: ReadonlySet<string> | null,
+  reviewItems: readonly ReviewItem[],
+): number {
+  if (!served) return 0;
+  return reviewItems.filter((item) => item.snapshot.type === 'open' && served.has(item.questionId))
+    .length;
 }
 
 export class AssessmentReviewService {
@@ -208,7 +226,9 @@ export class AssessmentReviewService {
       attemptId: chosen?.id ?? null,
       completedAt: chosen?.completed_at ?? null,
       score: chosen && possible > 0 ? { earned: chosen.score, possible } : null,
-      ungradedCount: items.filter((item) => !item.graded).length,
+      // The headline describes the same attempt as `score`: an attempt served a subset of the
+      // pool (R7) cannot report the open items it never saw (#1257).
+      ungradedCount: countUngraded(served ? served.data : null, reviewItems.data),
       items,
       attempts: history.data,
     });
@@ -256,10 +276,6 @@ export class AssessmentReviewService {
       servedByAttempt.set(row.attempt_id, ids);
     }
 
-    const ungraded = new Set(
-      reviewItems.filter((item) => item.snapshot.type === 'open').map((item) => item.questionId),
-    );
-
     return success(
       attempts.map((attempt) => {
         const items = servedByAttempt.get(attempt.id) ?? new Set<string>();
@@ -268,7 +284,7 @@ export class AssessmentReviewService {
           attemptId: attempt.id,
           completedAt: attempt.completed_at,
           score: possible > 0 ? { earned: attempt.score, possible } : null,
-          ungradedCount: [...items].filter((itemId) => ungraded.has(itemId)).length,
+          ungradedCount: countUngraded(items, reviewItems),
         };
       }),
     );
