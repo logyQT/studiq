@@ -1,4 +1,3 @@
-import { recordExposure } from '@studiq/server/lib/exposure-ledger';
 import type { NextRequest } from 'next/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asJson, json } from '#test/helpers/json';
@@ -37,9 +36,9 @@ import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[i
  * pool's points into `quiz_attempts.total_points`, so a partially served attempt jumped from
  * `3/4` to `4/20` — the earned numerator was right and only the denominator widened.
  *
- * The draws are made deterministic through eligibility: an item the student has already been shown
- * (an exposure event) is not served again (R8), so burning the pool items a fixture does not need
- * leaves exactly the served set this test asserts on.
+ * The draws are made deterministic through eligibility: an item the student has already answered is
+ * not served again (R8), so answering the two pool items this fixture does not need leaves exactly
+ * the served set the test asserts on.
  */
 
 type AssignmentRoute = (
@@ -389,13 +388,20 @@ describe('A manual grade re-scores the served items, not the pool (#1298)', () =
       pool.push(await insertItem(bank.id, 'mcq', `subset-mcq-${stamp}-${index}`));
     }
     subsetOpenItemId = await insertItem(bank.id, 'open', `subset-open-${stamp}`);
-    // Burning two pool items leaves exactly four eligible, so the draw is the whole eligible set.
-    const burned = await recordExposure({
-      studentId: student.user.id,
-      questionIds: [requiredAt(pool, 3, 'the burned item'), requiredAt(pool, 4, 'the burned item')],
-      organizationId: orgId,
-    });
-    expect(burned.success).toBe(true);
+
+    // Two pool items are burnt for this student first: an item they have already answered is not
+    // served again (R8), so the subset draw below is exactly the four items the test asserts on.
+    const burnedIds = [
+      requiredAt(pool, 3, 'the burnt item'),
+      requiredAt(pool, 4, 'the burnt item'),
+    ];
+    const primerAnswers = new Map<string, string>();
+    for (const id of burnedIds) {
+      const choice = options.get(id);
+      if (choice) primerAnswers.set(id, choice.wrong);
+    }
+    await takeAndSubmit(await publishAssignment(burnedIds), primerAnswers);
+
     subsetAssignmentId = await publishAssignment([...pool, subsetOpenItemId], 4);
 
     // Two right, one wrong: the served closed items earn 2 of their 3 points.
