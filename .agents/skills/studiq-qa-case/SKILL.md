@@ -384,38 +384,32 @@ not keep a red test.
 ## Commands
 
 A bare worktree (no `.env.local`) has no stack contract in the shell:
-`env:ensure` exports it only to its own children, `bun scripts/qa-tenant.ts`
-reads just `.env.local`/`qa/env.json`, and `test:qa`'s `varlock` wrapper injects
-only `.env.local`. There is no one wrapper command, so start the environment,
-export the contract in the shell that seeds and runs, then run:
+`env:ensure` exports it only to its own children, and `bun scripts/qa-tenant.ts`
+reads just `.env.local`/`qa/env.json`. `env:run` is the wrapper that closes that
+gap: it exports this checkout's app/stack contract to the one command after `--`,
+sets `QA_APP_URL` to this checkout's app, and never starts or stops a stack.
 
 ```bash
 # 1. stack + production build + served app + every QA tenant (one run suffix).
 #    `--profile web` does NOT seed QA tenants: its seeder is scripts/e2e-seed.ts.
 bun run env:ensure --profile qa
-#    prints `app http://localhost:<port>`; `bun run env:status --json` → .urls.app
 
-# 2. this checkout's app — the runner falls back to the shared :3010 without it
-export QA_APP_URL=http://localhost:<port>
-
-# 3. the stack contract (spec db-admin helpers + the seeder). For a named stack
-#    add `--stack "$SUPABASE_STACK"`. No env:* command exports this for you.
-eval "$(bunx supabase status --output-format json | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.env.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.env.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.env.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.env.DB_URL)"')"
-
-# 4. run and reseed
-bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts # run it
-bun run test:qa __tests__/qa/<AREA>              # one area
-bun scripts/qa-tenant.ts <ID> --fresh            # one case (3 attempts)
+# 2. run and reseed. `env:run` exports NEXT_PUBLIC_SUPABASE_URL/_ANON_KEY,
+#    SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL and QA_APP_URL; it reads
+#    APP_URL/SUPABASE_STACK from the environment exactly like `env:status`.
+bun run env:run -- bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts # run it
+bun run env:run -- bun run test:qa __tests__/qa/<AREA>              # one area
+bun run env:run -- bun scripts/qa-tenant.ts <ID> --fresh            # one case (3 attempts)
 bun run mock:llm                                 # fake inference, for AI cases
 bun run env:build                                # only for the mutation loop
 bun run review:static -- --changed origin/main   # tautology rules on the diff
 ```
 
 `env:ensure --profile qa` re-seeds every case with a fresh run suffix on each
-run (172 tenants, a few seconds), so a full reseed needs no export; step 3 is
-what lets you seed a single case in an ugly but working shell. A spec that reads
-the database (`createQaSupabase`) fails loudly without it — `qa-db: no Supabase
-URL` — while a UI-only spec would instead run silently against `:3010`.
+run (172 tenants, a few seconds), so a full reseed needs no wrapper. A spec that
+reads the database (`createQaSupabase`) fails loudly without the contract —
+`qa-db: no Supabase URL` — while a spec run with a raw `bunx playwright` instead
+of `env:run` has no `QA_APP_URL` and falls back to the shared `:3010` app.
 
 CI runs four shards by area (`edu`, `stu`, `mgr-sec-bil`,
 `aut-nfr-onb-pub-lim`), path-scoped per PR and all four nightly, plus `ai-suite`.
