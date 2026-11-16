@@ -125,7 +125,7 @@ describe('dashboard screen', () => {
     }
   });
 
-  it.each(['group-performance-card', 'activity-feed-card', 'problem-questions-card'])(
+  it.each(['group-performance-card', 'activity-feed-card'])(
     '%s has an error branch and a heading',
     (name) => {
       const card = read(`apps/web/src/components/edu/dashboard/${name}.tsx`);
@@ -133,6 +133,14 @@ describe('dashboard screen', () => {
       expect(card).toContain('<h2>');
     },
   );
+
+  it('problem-questions-card has an error branch and a heading level the caller can set', () => {
+    const card = read('apps/web/src/components/edu/dashboard/problem-questions-card.tsx');
+    expect(card).toContain('<CardError onRetry={onRetry} />');
+    // Default h2 for the dashboard, h3 where the card is a sample inside a section.
+    expect(card).toContain('headingLevel = 2');
+    expect(card).toContain("headingLevel === 3 ? 'h3' : 'h2'");
+  });
 
   it('labels the flashcard column as accuracy and says "no data" in words', () => {
     const card = read('apps/web/src/components/edu/dashboard/group-performance-card.tsx');
