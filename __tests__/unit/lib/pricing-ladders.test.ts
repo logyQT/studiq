@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 import {
+  canBuyPlan,
   ctaMessageKey,
   formatLimitValue,
   getPlanLadders,
@@ -18,7 +19,7 @@ import {
 
 function plan(
   key: string,
-  forAccountType: string,
+  forAccountType: string | null,
   sortOrder: number,
   rest: Partial<PlanInfo> = {},
 ): PlanInfo {
@@ -113,6 +114,37 @@ describe('isRecommendedPlan', () => {
       expect(plans.filter((row) => isRecommendedPlan(row.key)).map((row) => row.key)).toEqual([
         recommended,
       ]);
+    }
+  });
+});
+
+describe('canBuyPlan', () => {
+  it('lets a reader buy a paid plan of their own family', () => {
+    expect(canBuyPlan(plan('guide', 'educator', 5, { priceMonthly: 1999 }), 'educator')).toBe(true);
+    expect(canBuyPlan(plan('hub', 'manager', 9, { priceMonthly: 29900 }), 'manager')).toBe(true);
+  });
+
+  it('does not offer another family’s plan to the reader', () => {
+    // A student sees the educator ladder on the same page; the server refuses
+    // that purchase with FORBIDDEN (#1274).
+    expect(canBuyPlan(plan('guide', 'educator', 5, { priceMonthly: 1999 }), 'student')).toBe(false);
+    expect(canBuyPlan(plan('hub', 'manager', 9, { priceMonthly: 29900 }), 'student')).toBe(false);
+    expect(canBuyPlan(plan('ace', 'student', 7, { priceMonthly: 1999 }), 'manager')).toBe(false);
+  });
+
+  it('leaves a plan with no family available to every account type', () => {
+    const anyFamily = plan('shared', null, 13, { priceMonthly: 999 });
+    expect(canBuyPlan(anyFamily, 'student')).toBe(true);
+    expect(canBuyPlan(anyFamily, 'educator')).toBe(true);
+    expect(canBuyPlan(anyFamily, 'manager')).toBe(true);
+  });
+
+  it('fails closed when the caller’s account type is missing or unknown', () => {
+    // `app_metadata.account_type` is an untyped map: a missing value must not
+    // open a purchase the button cannot complete.
+    for (const unknown of [undefined, null, '', 'teacher']) {
+      expect(canBuyPlan(plan('guide', 'educator', 5, { priceMonthly: 1999 }), unknown)).toBe(false);
+      expect(canBuyPlan(plan('shared', null, 13, { priceMonthly: 999 }), unknown)).toBe(false);
     }
   });
 });

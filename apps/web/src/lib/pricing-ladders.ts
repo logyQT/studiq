@@ -61,6 +61,30 @@ export function getPlanLadders(plans: readonly PlanInfo[]): PlanLadders {
   };
 }
 
+/**
+ * Account families `subscription_plans.for_account_type` can name. A plan with a
+ * `null` family belongs to no ladder and is available to every account type —
+ * `resolveApplicablePlan` checks the family only when the catalogue sets one.
+ */
+const ACCOUNT_FAMILIES: readonly string[] = ['student', 'educator', 'manager'];
+
+/**
+ * Whether a signed-in reader may buy this plan. The server enforces the same
+ * family rule (`checkout-rules.ts` → `FORBIDDEN` for another family's plan), so
+ * the page must not print a checkout that can only fail: one URL carries both
+ * families, and a reader sees three of the four ladders as someone else's (#1274).
+ *
+ * `accountType` comes from the untyped `app_metadata` map, so a missing or
+ * unrecognised value fails closed — no purchase action rather than a refused one.
+ */
+export function canBuyPlan(
+  plan: Pick<PlanInfo, 'forAccountType'>,
+  accountType: string | null | undefined,
+): boolean {
+  if (!accountType || !ACCOUNT_FAMILIES.includes(accountType)) return false;
+  return plan.forAccountType === null || plan.forAccountType === accountType;
+}
+
 /** `StudiQ Ace` → `Ace`: the page says StudiQ already, the tier is the column. */
 export function shortPlanName(name: string): string {
   return name.replace(/^StudiQ\s+/i, '').trim();
