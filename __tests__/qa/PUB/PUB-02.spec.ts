@@ -9,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * What is pinned is the contract this page can actually break, not its wording
  * (same rule as PUB-01): the heading outline, the four areas and their ids, the
- * contents index, that areas 01–03 still end in a real product surface, that the
+ * contents index, that every area still ends in a real product surface, that the
  * plan matrix stays deleted, and that the page keeps three distinct
  * destinations. A copy edit does not turn this red; deleting a section, a
  * surface or a link does.

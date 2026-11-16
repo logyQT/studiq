@@ -26,34 +26,33 @@ export interface SeatPool {
  * here rather than at every caller.
  *
  * `dense` is for a page that gives the table a phone-width column rather than a
- * dashboard's full content area: the manager's screen keeps `text-sm`, and a
- * marketing band at 320 px fits its four columns in one gutter instead of
- * hiding "Dostępne" behind a horizontal scroll.
+ * dashboard's full content area: four columns fit a 288 px gutter there instead
+ * of hiding "Dostępne" behind a horizontal scroll. It steps back to the kit's
+ * own size from `md`, where the column is wide enough for it.
+ *
+ * The container is focusable and named because this table overflows on a phone
+ * in both callers: the manager's 390 px dashboard gives it 293 px for a 388 px
+ * table, so the region that scrolls is the only way to reach the last column
+ * from the keyboard. `aria-label` sits on the `<table>` as well — the manager's
+ * card title is a `div`, so it names nothing programmatically.
  */
 export function SeatPoolsTable({
   pools,
   dense = false,
-  labelled = false,
 }: {
   pools: readonly SeatPool[];
   dense?: boolean;
-  /**
-   * Names the table for a caller that renders it without a title above it.
-   * The dashboard's card already names it, and a second name there would be the
-   * card title read twice; it also has no overflow to make focusable.
-   */
-  labelled?: boolean;
 }) {
   const t = useTranslations('ManageSeatsPage');
-  const head = cn(dense && 'px-1 text-xs');
-  const cell = cn(dense && 'px-1 text-xs');
+  const head = cn(dense && 'px-1 text-xs md:text-sm');
+  const cell = cn(dense && 'px-1 text-xs md:text-sm');
 
   return (
     <Table
-      containerClassName={labelled ? FOCUS_RING : undefined}
-      containerProps={labelled ? { tabIndex: 0, 'aria-label': t('pools_title') } : undefined}
+      aria-label={t('pools_title')}
+      containerClassName={FOCUS_RING}
+      containerProps={{ tabIndex: 0, role: 'region', 'aria-label': t('pools_title') }}
     >
-      {labelled ? <caption className="sr-only">{t('pools_title')}</caption> : null}
       <TableHeader>
         <TableRow>
           <TableHead scope="col" className={head}>
@@ -83,7 +82,7 @@ export function SeatPoolsTable({
               <TableCell className={cn('font-medium', cell)}>{pool.planLabel}</TableCell>
               <TableCell className={cn('text-right', cell)}>{pool.total}</TableCell>
               <TableCell className={cn('text-right', cell)}>{pool.assigned}</TableCell>
-              <TableCell className={cn('text-right whitespace-nowrap', cell)}>
+              <TableCell className={cn('text-right', cell)}>
                 <span className={nearFull ? 'text-destructive font-medium' : ''}>{available}</span>
                 {nearFull && (
                   <Badge variant="destructive" className="ml-2">
