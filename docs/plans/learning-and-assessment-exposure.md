@@ -416,6 +416,9 @@ GET    /assessments/:id/attempts/:id/review → a specific submitted attempt; sa
                                      {attemptId, score: {earned, possible} | null, ungradedCount,
                                       items:[{itemId, graded, correct: boolean | null,
                                               explanation?, modelAnswer?, correctOption?}]}
+                                     `attemptId`, `score` and `ungradedCount` all describe that one
+                                     attempt; `items` is the whole cohort reveal, so an item outside
+                                     the attempt's sample carries `correct: null` (#1257)
 POST   /assessments/:id/retake     → fresh sample; 409 NO_UNSEEN_ITEMS / ATTEMPTS_CLOSED / NO_ATTEMPTS_LEFT
 POST   /assessments/:id/close      → sets closedAt := now, expires in-progress attempts, ends reservations
                                      (withheld items stay sealed); 409 ASSESSMENT_CLOSED /
