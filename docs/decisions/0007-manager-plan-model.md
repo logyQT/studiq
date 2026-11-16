@@ -43,8 +43,8 @@ and the limits resolver did not honour that decision.
    per-member (`scope: 'user'`) limit keys.
 4. `/me/plan` is unchanged: active organization's plan for a manager, personal
    plan otherwise.
-5. `/pricing/org` badges the current plan from `/me/plan` for managers (and keeps
-   `/me/personal-plan` for students/educators).
+5. `/pricing?audience=organization` badges the current plan from `/me/plan` for
+   managers (and keeps `/me/personal-plan` for students/educators).
 6. `getPersonalPlan` never reports a paid organization plan as a manager's
    personal plan; legacy rows that still hold one resolve to the free manager
    tier.

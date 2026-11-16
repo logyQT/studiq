@@ -41,7 +41,7 @@ tenant is read or written.
 
 ## Steps
 
-1. Wejdź na /pricing/org i wybierz „Hub” → zakup (checkout z kartą testową).
+1. Wejdź na /pricing?audience=organization i wybierz „Hub” → zakup (checkout z kartą testową).
 2. Po zakupie sprawdź /manage/settings (branding) i /manage/roles.
 
 ## Expected result
@@ -63,7 +63,7 @@ never becomes a personal plan.
 
 Confirmed end to end on this case's tenant:
 
-- `/pricing/org` lists Launch as „Obecny Plan” and offers „Wybierz Hub”; the CTA
+- `/pricing?audience=organization` lists Launch as „Twój plan” and offers „Wybierz Hub”; the CTA
   creates a checkout session for the tenant's organization, and `/checkout`
   shows „Dla: <organizacja>”, „StudiQ Hub”, 299 zł/mies., „Razem” and the
   „Zabezpieczone przez StudiQ Pay…” warning.

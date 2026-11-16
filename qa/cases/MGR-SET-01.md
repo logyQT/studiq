@@ -48,7 +48,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
 ## Expected result
 
 - Zamiast uploadu widoczna karta „Własny branding – Ulepsz plan, aby uzyskać dostęp do własnego brandingu”; brak pola koloru marki.
-- Przycisk prowadzi do /pricing.
+- Przycisk prowadzi do /pricing?audience=organization.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)
 
@@ -60,9 +60,9 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   przycisk **„Zobacz plany”**. Nie ma przycisku „Wgraj logo”, napisu „Brak logo”, etykiety
   „Kolor marki”, żadnego `input[type=file]` ani `input[type=color]`. Profil organizacji
   (nazwa, data utworzenia) pozostaje widoczny — blokada dotyczy tylko brandingu.
-- Krok 2 — „Zobacz plany” prowadzi dokładnie do **`/pricing`** („Wybierz Swój Plan”) z
-  trzema kartami typów planów; karta „Organizacja” prowadzi do `/pricing/org`, gdzie
-  „Obecny Plan” to „StudiQ Launch”, a plany **Hub** i **Campus** wymieniają funkcję
+- Krok 2 — „Zobacz plany” prowadzi dokładnie do **`/pricing?audience=organization`**
+  („Wybierz swój plan”), z przełącznikiem ustawionym na „Dla organizacji”. Wiersz
+  „StudiQ Launch” jest oznaczony „Twój plan”, a plany **Hub** i **Campus** wymieniają funkcję
   „Własny branding” (Launch i Team — nie). Ścieżka ulepszenia, o której mówi karta, istnieje.
 - Ta sama sesja potwierdza bramkę po stronie API: `GET /api/v1/features/me` nie zawiera
   `branding`, `GET /api/v1/me/plan` zwraca `launch` bez `branding`,
@@ -71,4 +71,4 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   (multipart PNG) → **403** `FORBIDDEN`. `organizations.brand_color` i `logo_url`
   pozostają `null`.
 - Zgodność z oczekiwanym rezultatem: pełna (karta blokady zamiast uploadu, brak pola
-  koloru marki, przycisk → /pricing).
+  koloru marki, przycisk → /pricing?audience=organization).
