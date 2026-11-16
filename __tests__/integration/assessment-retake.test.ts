@@ -615,6 +615,9 @@ describe('Assessment attempts: the exposure ledger burns an item for retakes (#1
             // two — the count alone decides the rule.
             maxAttempts: 2,
             attemptItemCount: 2,
+            // The ledger arm is what this suite is about, so the run opts into unseen-only: on the
+            // default it is information, and the burnt item would be served.
+            unseenOnly: true,
           }),
         },
         cookie(),
