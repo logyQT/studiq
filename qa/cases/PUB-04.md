@@ -56,6 +56,9 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 - Brak sesji: Base ma „Zacznij za darmo”, płatne plany uczniów i edukatorów mają „Załóż konto”,
   Campus w sekcji organizacji ma „Porozmawiajmy” i prowadzi do /contact. Zalecany plan ma
   zielony przycisk akcji, pozostałe obrysowany.
+- Zalogowany czytelnik dostaje akcję zakupu tylko przy planach swojej rodziny konta. Plan innej
+  rodziny (np. plan edukatora czytany przez studenta) zostaje wierszem z nazwą i ceną, ale bez
+  przycisku — serwer odmówiłby takiego zakupu jako `FORBIDDEN` (#1274).
 - Wyróżnienie „Zalecany” ma zawsze dokładnie jeden plan w sekcji: Ace dla uczniów i Creator
   dla edukatorów.
 - Tabela pod każdą sekcją zawiera tylko różnice między planami; nad nią jedna linia
