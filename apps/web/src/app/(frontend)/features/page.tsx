@@ -1,194 +1,211 @@
 'use client';
 
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
-import {
-  ArrowRight,
-  BarChart3,
-  BookOpen,
-  Brain,
-  Building2,
-  FileText,
-  GraduationCap,
-  type LucideIcon,
-  Mail,
-  Sparkles,
-  TrendingUp,
-  Zap,
-} from 'lucide-react';
-import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { MainLayout } from '@/components/layout/MainLayout';
-import { ComparisonCell } from '@/components/marketing/comparison-cell';
+import { MarketingShell } from '@/components/layout/MarketingShell';
+import { QuizQuestionPreview } from '@/components/marketing/previews/quiz-question-preview';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
+import { SectionHeader } from '@/components/marketing/ui/section-header';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 
-const FREE = 'free';
-const PREMIUM = 'premium';
-const UNIVERSITY = 'university';
-
-type PlanKey = typeof FREE | typeof PREMIUM | typeof UNIVERSITY;
-
-interface FeatureEntry {
-  icon: LucideIcon;
+interface Capability {
   title: string;
   desc: string;
-  plan: PlanKey;
 }
 
-const planColors: Record<PlanKey, { bg: string; text: string }> = {
-  free: { bg: 'bg-blue-500/10', text: 'text-blue-500' },
-  premium: { bg: 'bg-violet-500/10', text: 'text-violet-500' },
-  university: { bg: 'bg-emerald-500/10', text: 'text-emerald-500' },
-};
+/**
+ * One capability per hairline row, term above its description.
+ *
+ * The rows are stacked rather than a two-column split because each cluster
+ * already gives its header a four-column rail: a split *inside* the remaining
+ * seven would put the description in a third of the page and wrap it to five
+ * lines. Term over description keeps the scannable list and reads at 320 px
+ * exactly as it does at 1440.
+ *
+ * A card grid was this page's defect (ten peers, no argument), so the list is
+ * ruled and the claim lives in the section header.
+ */
+function Capabilities({ items }: { items: readonly Capability[] }) {
+  return (
+    <ul className="mt-8 border-t border-border md:mt-0">
+      {items.map(({ title, desc }) => (
+        <li key={title} className="border-b border-border py-5 md:py-6">
+          <h3 className="text-h3 font-semibold text-balance">{title}</h3>
+          <p className="mt-1.5 max-w-prose text-sm leading-snug text-muted-foreground md:leading-relaxed">
+            {desc}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * A cluster: the claim on the four-column rail, its capabilities on the seven to
+ * its right. Four of these are the page's spine, which is why they share one
+ * shape instead of four arrangements; the hero and the closing block are the two
+ * places the page turns.
+ */
+function Cluster({
+  id,
+  eyebrow,
+  title,
+  lede,
+  items,
+  children,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  lede: string;
+  items: readonly Capability[];
+  children?: React.ReactNode;
+}) {
+  return (
+    <section id={id} className="scroll-mt-header border-t border-border py-16 md:py-20">
+      <div className="mx-auto max-w-content px-content lg:grid lg:grid-cols-12 lg:gap-x-8">
+        <div className="lg:col-span-4">
+          <SectionHeader eyebrow={eyebrow} title={title} lede={lede} />
+          {children}
+        </div>
+        <div className="lg:col-span-7 lg:col-start-6">
+          <Capabilities items={items} />
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function FeaturesPage() {
   const t = useTranslations('FeaturesPage');
 
-  const features: FeatureEntry[] = [
-    { icon: FileText, title: t('manual_questions'), desc: t('manual_questions_desc'), plan: FREE },
-    { icon: Brain, title: t('flashcard_practice'), desc: t('flashcard_practice_desc'), plan: FREE },
-    { icon: BookOpen, title: t('quiz_taking'), desc: t('quiz_taking_desc'), plan: FREE },
-    { icon: BarChart3, title: t('basic_stats'), desc: t('basic_stats_desc'), plan: FREE },
-    { icon: Sparkles, title: t('ai_questions'), desc: t('ai_questions_desc'), plan: PREMIUM },
-    { icon: Zap, title: t('ai_flashcards'), desc: t('ai_flashcards_desc'), plan: PREMIUM },
-    { icon: TrendingUp, title: t('advanced_stats'), desc: t('advanced_stats_desc'), plan: PREMIUM },
-    {
-      icon: Building2,
-      title: t('org_management'),
-      desc: t('org_management_desc'),
-      plan: UNIVERSITY,
-    },
-    { icon: Mail, title: t('bulk_invites'), desc: t('bulk_invites_desc'), plan: UNIVERSITY },
-    {
-      icon: GraduationCap,
-      title: t('uni_analytics'),
-      desc: t('uni_analytics_desc'),
-      plan: UNIVERSITY,
-    },
+  const study = [
+    { title: t('study_flashcards_title'), desc: t('study_flashcards_desc') },
+    { title: t('study_tests_title'), desc: t('study_tests_desc') },
+    { title: t('study_banks_title'), desc: t('study_banks_desc') },
+    { title: t('study_stats_title'), desc: t('study_stats_desc') },
   ];
 
-  const planBadge = (plan: string) => {
-    if (plan === FREE) return <Badge variant="secondary">{t('manual_questions_plan')}</Badge>;
-    if (plan === PREMIUM) return <Badge className="bg-violet-500">{t('ai_questions_plan')}</Badge>;
-    return <Badge variant="outline">{t('org_management_plan')}</Badge>;
-  };
+  const material = [
+    { title: t('material_flashcards_title'), desc: t('material_flashcards_desc') },
+    { title: t('material_questions_title'), desc: t('material_questions_desc') },
+  ];
 
-  const comparisonRows = [
-    { feature: t('manual_questions'), free: true, premium: true, university: true },
-    { feature: t('flashcard_practice'), free: true, premium: true, university: true },
-    { feature: t('quiz_taking'), free: true, premium: true, university: true },
-    { feature: t('basic_stats'), free: true, premium: true, university: true },
-    { feature: t('ai_questions'), free: false, premium: true, university: true },
-    { feature: t('ai_flashcards'), free: false, premium: true, university: true },
-    { feature: t('advanced_stats'), free: false, premium: true, university: true },
-    { feature: t('org_management'), free: false, premium: false, university: true },
-    { feature: t('bulk_invites'), free: false, premium: false, university: true },
-    { feature: t('uni_analytics'), free: false, premium: false, university: true },
+  const teaching = [
+    { title: t('teaching_groups_title'), desc: t('teaching_groups_desc') },
+    { title: t('teaching_roles_title'), desc: t('teaching_roles_desc') },
+    { title: t('teaching_dashboard_title'), desc: t('teaching_dashboard_desc') },
+  ];
+
+  const organization = [
+    { title: t('org_structure_title'), desc: t('org_structure_desc') },
+    { title: t('org_invites_title'), desc: t('org_invites_desc') },
+    { title: t('org_analytics_title'), desc: t('org_analytics_desc') },
   ];
 
   return (
-    <MainLayout>
-      {/* HERO */}
-      <section className="relative overflow-hidden text-center py-12 sm:py-20">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-blue-500/10 via-violet-500/5 to-emerald-500/10 dark:from-blue-500/5 dark:via-violet-500/3 dark:to-emerald-500/5" />
-        <div className="absolute top-1/3 left-1/4 -z-10 h-64 w-64 rounded-full bg-blue-500/15 blur-3xl" />
-        <div className="absolute bottom-1/3 right-1/4 -z-10 h-64 w-64 rounded-full bg-emerald-500/15 blur-3xl" />
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
-          {t('subtitle')}
+    <MarketingShell>
+      {/*
+       * Copy on the seven-column rail, product on the five-column one, the split
+       * the landing hero uses. The quiz card is the page's dominant surface and
+       * the only one above the fold: it is the real component, so the first thing
+       * a visitor can do here is answer a question and finish on a graded score.
+       */}
+      <section className="pt-12 pb-12 md:pt-28 md:pb-20">
+        <div className="mx-auto grid max-w-content gap-y-8 px-content lg:grid-cols-12 lg:gap-x-8 lg:gap-y-0">
+          <div className="lg:col-span-7">
+            <h1 className="font-display text-display font-semibold text-balance">{t('title')}</h1>
+            <p className="mt-4 max-w-xl text-lede text-muted-foreground text-pretty md:mt-6">
+              {t('subtitle')}
+            </p>
+            <div className="mt-8 flex flex-col gap-3 md:mt-10 md:flex-row md:flex-wrap md:items-center">
+              <CtaButton href="/register" tone="signal">
+                {t('cta_start')}
+              </CtaButton>
+              <CtaButton href="/pricing" tone="quiet">
+                {t('cta_pricing')}
+                <ArrowRight className="size-4" aria-hidden />
+              </CtaButton>
+            </div>
+          </div>
+          <div className="lg:col-span-5 lg:col-start-8 lg:border-l-2 lg:border-primary lg:pt-4 lg:pl-8">
+            <QuizQuestionPreview />
+          </div>
+        </div>
+      </section>
+
+      <Cluster
+        id="study-loop"
+        eyebrow={t('study_eyebrow')}
+        title={t('study_title')}
+        lede={t('study_lede')}
+        items={study}
+      />
+
+      <Cluster
+        id="material"
+        eyebrow={t('material_eyebrow')}
+        title={t('material_title')}
+        lede={t('material_lede')}
+        items={material}
+      />
+
+      <Cluster
+        id="teaching"
+        eyebrow={t('teaching_eyebrow')}
+        title={t('teaching_title')}
+        lede={t('teaching_lede')}
+        items={teaching}
+      />
+
+      <Cluster
+        id="organization"
+        eyebrow={t('org_eyebrow')}
+        title={t('org_title')}
+        lede={t('org_lede')}
+        items={organization}
+      >
+        <p className="mt-6">
+          <a
+            href="/contact"
+            className={`inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4 ${FOCUS_RING}`}
+          >
+            {t('org_contact_link')}
+          </a>
         </p>
-      </section>
+      </Cluster>
 
-      {/* FEATURES GRID */}
-      <section className="py-12">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map(({ icon: Icon, title, desc, plan }) => {
-            const colors = planColors[plan];
-            return (
-              <Card key={title} className="border-border/50">
-                <CardHeader>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div
-                      className={`h-9 w-9 rounded-lg ${colors.bg} flex items-center justify-center`}
-                    >
-                      <Icon className={`h-5 w-5 ${colors.text}`} />
-                    </div>
-                    {planBadge(plan)}
-                  </div>
-                  <CardTitle className="text-lg">{title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{desc}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/*
+       * The page ends on a decision, not a cheer: the action it has earned is a
+       * free account, and the two questions left (what it costs, how to roll it
+       * out) each have an address. Prices and limits live on /pricing only, so no
+       * tier vocabulary is reprinted here.
+       */}
+      <section className="border-t border-primary py-16 md:py-20">
+        <div className="mx-auto max-w-content px-content md:grid md:grid-cols-12 md:gap-x-8">
+          <div className="md:col-span-7">
+            <h2 className="font-display text-h2 font-semibold text-balance">
+              {t('closing_title')}
+            </h2>
+            <p className="mt-4 max-w-xl text-lede text-muted-foreground text-pretty">
+              {t('closing_lede')}
+            </p>
+          </div>
+          <div className="mt-8 md:col-span-5 md:col-start-8 md:mt-0">
+            <CtaButton href="/register" tone="signal">
+              {t('cta_start')}
+            </CtaButton>
+            <p className="mt-4">
+              <a
+                href="/pricing"
+                className={`inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4 ${FOCUS_RING}`}
+              >
+                {t('closing_pricing_link')}
+              </a>
+            </p>
+          </div>
         </div>
       </section>
-
-      {/* COMPARISON TABLE */}
-      <section className="py-12 sm:py-16">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-8">
-          {t('comparison_title')}
-        </h2>
-        <div className="relative overflow-x-auto">
-          <table className="w-full text-sm">
-            <caption className="sr-only">{t('comparison_title')}</caption>
-            <thead>
-              <tr className="border-b">
-                <th scope="col" className="text-left py-3 px-4 font-medium">
-                  {t('comparison_feature')}
-                </th>
-                <th scope="col" className="text-center py-3 px-4 font-medium">
-                  {t('comparison_free')}
-                </th>
-                <th scope="col" className="text-center py-3 px-4 font-medium">
-                  {t('comparison_premium')}
-                </th>
-                <th scope="col" className="text-center py-3 px-4 font-medium">
-                  {t('comparison_university')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisonRows.map(({ feature, free, premium, university }) => (
-                <tr key={feature} className="border-b border-border/50">
-                  <th scope="row" className="py-3 px-4 text-left font-normal text-muted-foreground">
-                    {feature}
-                  </th>
-                  <ComparisonCell
-                    included={free}
-                    yesLabel={t('comparison_yes')}
-                    noLabel={t('comparison_no')}
-                    checkClassName="text-primary"
-                  />
-                  <ComparisonCell
-                    included={premium}
-                    yesLabel={t('comparison_yes')}
-                    noLabel={t('comparison_no')}
-                    checkClassName="text-violet-500"
-                  />
-                  <ComparisonCell
-                    included={university}
-                    yesLabel={t('comparison_yes')}
-                    noLabel={t('comparison_no')}
-                    checkClassName="text-emerald-500"
-                  />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-16 text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('cta_title')}</h2>
-        <p className="mt-4 text-lg text-muted-foreground">{t('cta_desc')}</p>
-        <Button size="lg" className="mt-8" asChild>
-          <Link href="/register">
-            {t('cta_button')} <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Button>
-      </section>
-    </MainLayout>
+    </MarketingShell>
   );
 }
