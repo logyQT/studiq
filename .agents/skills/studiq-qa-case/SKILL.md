@@ -400,7 +400,7 @@ export QA_APP_URL=http://localhost:<port>
 
 # 3. the stack contract (spec db-admin helpers + the seeder). For a named stack
 #    add `--stack "$SUPABASE_STACK"`. No env:* command exports this for you.
-eval "$(bunx supabase status --env | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.DB_URL)"')"
+eval "$(bunx supabase status --output-format json | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.env.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.env.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.env.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.env.DB_URL)"')"
 
 # 4. run and reseed
 bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts # run it

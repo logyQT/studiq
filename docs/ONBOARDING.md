@@ -318,7 +318,7 @@ go through the `env` tool):
 
 ```bash
 bun run env:supa status            # human-readable endpoints + service state
-bun run env:supa status --env      # exportable KEY=VALUE (APP_URL exported)
+bun run env:supa status --output-format json | jq .env   # the stack's URLs/keys (APP_URL exported)
 ```
 
 For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
@@ -555,7 +555,7 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 # 2. Generate migration from the selected stack (default or SUPABASE_STACK)
 STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
 if [ -n "$STACK" ]; then
-  DB_URL=$(bun run env:supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  DB_URL=$(bun run env:supa status --stack "$STACK" --output-format json | jq -r .env.DB_URL)
   # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
   # the URL's existing query params.
   case "$DB_URL" in
@@ -582,7 +582,7 @@ bun run env:ensure --profile web                      # this branch's Supabase s
 # Apply new migrations to the selected stack (default or SUPABASE_STACK)
 STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
 if [ -n "$STACK" ]; then
-  DB_URL=$(bun run env:supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  DB_URL=$(bun run env:supa status --stack "$STACK" --output-format json | jq -r .env.DB_URL)
   # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
   # the URL's existing query params.
   case "$DB_URL" in
@@ -667,7 +667,7 @@ Run the deterministic gates locally before pushing: `bun run lint`,
 > Team member workflow above), and pass it as a remote target:
 >
 > ```bash
-> DB_URL=$(bun run env:supa status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+> DB_URL=$(bun run env:supa status --stack "$SUPABASE_STACK" --output-format json | jq -r .env.DB_URL)
 > case "$DB_URL" in
 >   *sslmode=*) ;;
 >   *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
