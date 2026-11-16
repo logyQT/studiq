@@ -57,7 +57,7 @@ import { AssignmentNotFound } from '@/components/edu/assignment-not-found';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
-import { ApiError, apiPost, apiPut } from '@/lib/api';
+import { ApiError, apiPatch, apiPost, apiPut } from '@/lib/api';
 import { translateErrorCode } from '@/lib/error-messages';
 import { createPendingSave, publishWithPendingTargets } from '@/lib/assignment-publish';
 import { dbToDatetimeLocal } from '@/lib/datetime';
@@ -95,6 +95,8 @@ interface AssignmentDetail {
     /** R10: kept back from the cohort review until released. */
     withhold_from_review: boolean;
     released_at: string | null;
+    /** R9: graded even though the class already saw the key. */
+    taught_item: boolean;
     question: {
       id: string;
       content: string;
@@ -146,10 +148,14 @@ function SortableQuestionRow({
   question,
   index,
   onRemove,
+  onToggleTaught,
+  taughtLabel,
 }: {
   question: AssignmentDetail['assignment_questions'][number];
   index: number;
   onRemove: () => void;
+  onToggleTaught: (taught: boolean) => void;
+  taughtLabel: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: question.id,
@@ -185,6 +191,14 @@ function SortableQuestionRow({
       <span className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
         {question.points} pts
       </span>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+        <input
+          type="checkbox"
+          checked={question.taught_item}
+          onChange={(event) => onToggleTaught(event.target.checked)}
+        />
+        {taughtLabel}
+      </label>
       <button
         type="button"
         className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
@@ -305,7 +319,7 @@ export default function AssignmentDetailClient() {
 
   const withholdMutation = useApiMutation<unknown, { questionId: string; withheld: boolean }>({
     mutationFn: (vars) =>
-      apiPut<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/review`, {
+      apiPut<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/flags`, {
         withheld: vars.withheld,
       }),
     invalidateKeys: [assignmentKeys.detail(id)],
@@ -319,6 +333,18 @@ export default function AssignmentDetailClient() {
         `/api/v1/teacher/assignments/${id}/questions/${questionId}/release`,
         undefined,
       ),
+    invalidateKeys: [assignmentKeys.detail(id)],
+    onError: (error) =>
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null)),
+  });
+
+  // R9: a taught item is graded even though the class already saw it. Declared on a draft, where
+  // the publish warning shows what was pre-exposed; the flag is frozen at publish.
+  const taughtMutation = useApiMutation<unknown, { questionId: string; taught: boolean }>({
+    mutationFn: (vars) =>
+      apiPatch<unknown>(`/api/v1/teacher/assignments/${id}/questions/${vars.questionId}/flags`, {
+        taught: vars.taught,
+      }),
     invalidateKeys: [assignmentKeys.detail(id)],
     onError: (error) =>
       toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null)),
@@ -775,6 +801,10 @@ export default function AssignmentDetailClient() {
                         removeQuestionMutation.mutate(aq.question_id);
                         setLocalQuestions((prev) => (prev ?? []).filter((q) => q.id !== aq.id));
                       }}
+                      onToggleTaught={(taught) =>
+                        taughtMutation.mutate({ questionId: aq.question_id, taught })
+                      }
+                      taughtLabel={t('taught_item')}
                     />
                   ))}
                 </SortableContext>
@@ -796,6 +826,11 @@ export default function AssignmentDetailClient() {
                     {aq.withhold_from_review && (
                       <Badge variant="secondary" className="shrink-0">
                         {aq.released_at ? t('released_to_review') : t('held_back')}
+                      </Badge>
+                    )}
+                    {aq.taught_item && (
+                      <Badge variant="secondary" className="shrink-0">
+                        {t('taught_item')}
                       </Badge>
                     )}
                   </div>

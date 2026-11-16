@@ -19,7 +19,8 @@ import { createServiceClient } from '@studiq/server/lib/supabase/service';
  * - `seen` — `served`, plus the items they **answered** (`student_answers`; an answer whose link row
  *   is gone still burns the item), plus every item with an **exposure event** for them (the review
  *   of this or another assessment, or practice, already rendered the key, so it is burnt
- *   everywhere). A fresh-sample retake draws only from outside this set.
+ *   everywhere). Every attempt — first or retake — draws only from outside this set (#1172, R8),
+ *   except items the teacher declared `taught_item` (R9).
  *
  * Same-item retakes skip the fresh rule, which is why they are an explicit, flagged per-assessment
  * choice rather than the default (`teacher_assignments.allow_same_item_retake`).
@@ -39,6 +40,9 @@ export interface AttemptHistory {
 /**
  * The history for one student on one assessment. `candidateIds` bounds the ledger read to the items
  * this assessment could serve, so the answer does not grow with the student's whole history.
+ *
+ * `seen` is global in one respect: an item the student **answered** anywhere is burnt for them
+ * (#1172, R8), so the answer read spans every attempt of the student, not only this assessment's.
  */
 export async function attemptHistory(
   studentId: string,
@@ -59,43 +63,59 @@ export async function attemptHistory(
   const attemptIds = dbRows(attempts).map((attempt) => attempt.id);
 
   if (attemptIds.length > 0) {
-    const [servedRows, answerRows] = await Promise.all([
-      supabase.from('quiz_attempt_questions').select('question_id').in('attempt_id', attemptIds),
-      supabase.from('student_answers').select('question_id').in('attempt_id', attemptIds),
-    ]);
-    if (servedRows.error) return mapSupabaseError(servedRows.error);
-    if (answerRows.error) return mapSupabaseError(answerRows.error);
+    const { data: servedRows, error: servedError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .in('attempt_id', attemptIds);
+    if (servedError) return mapSupabaseError(servedError);
 
-    for (const row of dbRows(servedRows.data)) {
+    for (const row of dbRows(servedRows)) {
       if (!row.question_id) continue;
       served.add(row.question_id);
       seen.add(row.question_id);
     }
-    for (const row of dbRows(answerRows.data)) if (row.question_id) seen.add(row.question_id);
   }
 
   for (let i = 0; i < candidateIds.length; i += ITEM_CHUNK) {
-    const { data: events, error: eventError } = await supabase
-      .from('exposure_events')
-      .select('question_id')
-      .eq('student_id', studentId)
-      .in('question_id', candidateIds.slice(i, i + ITEM_CHUNK));
-    if (eventError) return mapSupabaseError(eventError);
-    for (const row of dbRows(events)) seen.add(row.question_id);
+    const batch = candidateIds.slice(i, i + ITEM_CHUNK);
+    const [answers, events] = await Promise.all([
+      supabase
+        .from('student_answers')
+        .select('question_id, quiz_attempts!student_answers_attempt_id_fkey!inner(user_id)')
+        .eq('quiz_attempts.user_id', studentId)
+        .in('question_id', batch),
+      supabase
+        .from('exposure_events')
+        .select('question_id')
+        .eq('student_id', studentId)
+        .in('question_id', batch),
+    ]);
+    if (answers.error) return mapSupabaseError(answers.error);
+    if (events.error) return mapSupabaseError(events.error);
+
+    for (const row of dbRows(answers.data)) if (row.question_id) seen.add(row.question_id);
+    for (const row of dbRows(events.data)) seen.add(row.question_id);
   }
 
   return success({ served, seen });
 }
 
 /**
- * The items an attempt serves, in the assignment's own order. A link without a question is kept —
- * the caller already treats that as a corrupt state.
+ * The items an attempt may serve (#1172, R7/R8/R9): everything this student has not met, plus every
+ * item the teacher declared taught. Eligibility is per student and computed at attempt start — an
+ * exposure event or a prior answer burns the item for that student only. `taughtItem` is the
+ * teacher's explicit declaration that the item was taught; it waives that penalty and nothing else,
+ * so the item is still sealed during the window and its key is still withheld (R2/R4/R10).
+ *
+ * A link without a question is kept: the caller already treats it as a corrupt state.
  */
-export function sampleUnseen<T extends { question_id: string | null }>(
+export function sampleEligible<T extends { question_id: string | null; taught_item: boolean }>(
   links: readonly T[],
   seen: ReadonlySet<string>,
 ): T[] {
-  return links.filter((link) => !link.question_id || !seen.has(link.question_id));
+  return links.filter(
+    (link) => !link.question_id || link.taught_item || !seen.has(link.question_id),
+  );
 }
 
 /** The links whose item this student was already served — the same-item retake set. */
