@@ -3,7 +3,8 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
- * BIL-04 — a manager buys the organization plan from `/pricing/org`.
+ * BIL-04 — a manager buys the organization plan from the organization ladder of
+ * `/pricing` (`/pricing?audience=organization`).
  *
  * The case was written against the legacy manual seed (`manager@dev.local`,
  * organization „WSB Merito”, password `pass`); the suite version uses this
@@ -45,10 +46,10 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 const CASE = 'BIL-04';
 
 const UI = {
-  pricingTitle: 'Wybierz Swój Plan',
+  pricingTitle: 'Wybierz swój plan',
   hubName: 'StudiQ Hub',
+  hubRowName: 'Hub',
   hubCta: 'Wybierz Hub',
-  currentPlan: 'Obecny Plan',
   summary: 'Podsumowanie zamówienia',
   targetOrg: 'Dla',
   total: 'Razem',
@@ -157,8 +158,8 @@ test.describe('BIL-04 — organization plan purchase', () => {
     const orgBefore = await readOrganization(page, orgId);
     expect(orgBefore.name, 'the checkout targets the tenant organization').toBe(tenant.org!.name);
 
-    // --- Step 1: pick Hub on /pricing/org --------------------------------
-    // The card's CTA sends the *active* organization id, which the page resolves
+    // --- Step 1: pick Hub on the organization ladder ----------------------
+    // The row's CTA sends the *active* organization id, which the page resolves
     // from `/api/v1/me/orgs`; clicking before that query settles would post an
     // empty `orgId` and the checkout would refuse it. Wait for the membership
     // list and for the network to go quiet (the resolved org is rendered into
@@ -168,19 +169,17 @@ test.describe('BIL-04 — organization plan purchase', () => {
         new URL(response.url()).pathname === '/api/v1/me/orgs' && response.status() === 200,
       { timeout: 20_000 },
     );
-    await page.goto('/pricing/org');
+    await page.goto('/pricing?audience=organization');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
     await orgsLoaded;
     await page.waitForLoadState('networkidle');
 
-    const hubCard = page.locator('[data-slot="card"]').filter({ hasText: UI.hubName });
-    await expect(hubCard, 'one Hub plan card').toHaveCount(1);
-    await expect(hubCard, 'the Hub card shows the organization plan name').toContainText(
-      UI.hubName,
-    );
-    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/299\s*zł/);
-    const hubCta = hubCard.getByRole('button', { name: UI.hubCta, exact: true });
-    await expect(hubCta, 'the Hub card offers its purchase button').toBeVisible();
+    const hubRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#hub') });
+    await expect(hubRow, 'one Hub plan row').toHaveCount(1);
+    await expect(hubRow.locator('h3#hub'), 'the Hub row names the plan').toHaveText(UI.hubRowName);
+    await expect(hubRow, 'the Hub row shows the monthly price').toContainText(/299\s*zł/);
+    const hubCta = hubRow.getByRole('button', { name: UI.hubCta, exact: true });
+    await expect(hubCta, 'the Hub row offers its purchase button').toBeVisible();
     await hubCta.click();
 
     // --- Step 1 (cont.): the checkout belongs to this organization --------

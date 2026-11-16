@@ -15,6 +15,8 @@ interface CtaButtonBaseProps {
   size?: 'md' | 'lg';
   /** Fills the column: the panel's CTA is the sheet's width, not a floating pill. */
   fullWidth?: boolean;
+  /** Layout only — a price list's action column is narrower than the copy around it. */
+  className?: string;
 }
 
 interface CtaLinkProps extends CtaButtonBaseProps {
@@ -63,12 +65,13 @@ const SIZE: Record<NonNullable<CtaButtonBaseProps['size']>, string> = {
 };
 
 export function CtaButton(props: CtaButtonProps) {
-  const { children, tone = 'signal', size = 'md', fullWidth = false } = props;
+  const { children, tone = 'signal', size = 'md', fullWidth = false, className: extra } = props;
   const className = cn(
     'inline-flex items-center justify-center gap-2 rounded-control px-6 font-semibold transition-colors',
     SIZE[size],
     fullWidth && 'w-full',
     TONE[tone],
+    extra,
     FOCUS_RING,
   );
 

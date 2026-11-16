@@ -57,7 +57,12 @@ test.describe('Manage roles — role.builder plan gate (#259)', () => {
     await expect(page.locator('tbody tr').first()).toBeVisible();
 
     await page.getByRole('button', { name: t('ManageRolesPage.locked_cta') }).click();
-    await page.waitForURL(/\/pricing\/org$/);
+    // The CTA opens the organization ladder of the one `/pricing` page, not a
+    // route of its own, so the address carries the audience.
+    await page.waitForURL(/\/pricing\?audience=organization$/);
+    await expect(
+      page.getByRole('heading', { level: 2, name: t('PricingPage.ladder_org_title') }),
+    ).toBeVisible();
   });
 
   test('entitled org keeps the create flow and never renders the locked card', async ({ page }) => {

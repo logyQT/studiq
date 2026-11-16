@@ -24,16 +24,17 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * The „Logo” section renders the lock card „Własny branding — Ulepsz plan, aby
  * uzyskać dostęp do własnego brandingu” with a „Zobacz plany” button; the upload
  * control, the „Kolor marki” picker and the file input are not rendered at all.
- * „Zobacz plany” goes to `/pricing` (the plan-type chooser), whose „Organizacja”
- * card leads to `/pricing/org`, where Hub/Campus list „Własny branding” and the
- * current Launch card does not. The API enforces the same `branding` gate: a
- * `PUT /api/v1/organization/:id` carrying `brandColor` and a logo upload both
- * return 403 FORBIDDEN, and the org row keeps `brand_color`/`logo_url` null.
+ * „Zobacz plany” goes to the organization ladder of `/pricing`
+ * (`/pricing?audience=organization`), where Hub/Campus list „Własny branding” in
+ * the ladder's comparison and the current Launch row does not. The API enforces the
+ * same `branding` gate: a `PUT /api/v1/organization/:id` carrying `brandColor` and
+ * a logo upload both return 403 FORBIDDEN, and the org row keeps
+ * `brand_color`/`logo_url` null.
  *
  * Asserted behaviour (the case's expected result):
  * - Instead of the upload control, the „Logo” section shows the branded lock
  *   card with the upgrade copy; there is no brand-colour field.
- * - „Zobacz plany” leads to `/pricing`.
+ * - „Zobacz plany” leads to the organization plans.
  * - Adjacent: the plan feature set (`branding` absent on Launch) and the API
  *   gate agree with the UI, and the upgrade catalogue actually offers branding.
  */
@@ -55,8 +56,8 @@ const COPY = {
   uploadLogo: 'Wgraj logo',
   noLogo: 'Brak logo',
   brandColorLabel: 'Kolor marki',
-  currentPlan: 'Obecny Plan',
-  pricingHeading: 'Wybierz Swój Plan',
+  currentPlan: 'Twój plan',
+  pricingHeading: 'Wybierz swój plan',
   brandingFeature: 'Własny branding',
 } as const;
 
@@ -93,11 +94,9 @@ function profileCard(page: Page) {
     .filter({ has: page.getByText(COPY.profileCard, { exact: true }) });
 }
 
-/** A plan card on the organization catalogue, matched by its title. */
-function planCard(page: Page, planName: string) {
-  return page.locator('[data-slot="card"]').filter({
-    has: page.locator('[data-slot="card-title"]', { hasText: planName }),
-  });
+/** A plan row of the organization ladder, addressed by its `h3` handle. */
+function planRow(page: Page, planKey: string) {
+  return page.locator('#pricing-plans li').filter({ has: page.locator(`h3#${planKey}`) });
 }
 
 test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
@@ -192,35 +191,46 @@ test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
     expect(afterWrites.brand_color, 'the rejected colour must not be stored').toBeNull();
     expect(afterWrites.logo_url, 'the rejected logo must not be stored').toBeNull();
 
-    // --- Step 2: „Zobacz plany” leads to /pricing ---------------------------
+    // --- Step 2: „Zobacz plany” leads to the organization ladder -----------
     await profile.getByRole('button', { name: COPY.lockedCta, exact: true }).click();
-    await expect(page).toHaveURL(/\/pricing$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/\/pricing\?audience=organization$/, { timeout: 20_000 });
     await expect(
       page.getByRole('heading', { level: 1, name: COPY.pricingHeading, exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Dla organizacji', exact: true }),
+    ).toBeVisible();
 
-    // The catalogue is the upgrade path the lock promises: its organization
-    // card lists the plans and marks this org's current plan on /pricing/org.
-    await page.locator('a[href="/pricing/org"]').first().click();
-    await expect(page).toHaveURL(/\/pricing\/org$/, { timeout: 20_000 });
-    const currentPlanCard = planCard(page, launchPlan.name);
-    await expect(currentPlanCard).toHaveCount(1);
-    await expect(currentPlanCard.getByText(COPY.currentPlan, { exact: true })).toBeVisible();
+    // The catalogue is the upgrade path the lock promises: the ladder lists the
+    // plans and marks this org's current plan.
+    const currentPlanRow = planRow(page, launchPlan.key);
+    await expect(currentPlanRow).toHaveCount(1);
+    await expect(currentPlanRow.getByText(COPY.currentPlan, { exact: true })).toBeVisible();
+
+    // Its comparison table carries the feature the lock withholds, and it is a row
+    // precisely because the plans differ on it.
+    const brandingHeader = page.getByRole('rowheader', { name: COPY.brandingFeature, exact: true });
+    await expect(brandingHeader, 'branding is a comparison row').toHaveCount(1);
+    const brandingRow = brandingHeader.locator('xpath=..');
 
     const entitled = plans.filter((candidate) => candidate.features.includes('branding'));
     expect(entitled.length, 'the catalogue offers at least one plan with branding').toBeGreaterThan(
       0,
     );
     for (const candidate of entitled) {
-      const card = planCard(page, candidate.name);
-      await expect(card, `plan card ${candidate.name}`).toHaveCount(1);
+      // Columns follow the ladder's catalogue order, so the index is the column.
+      const column = plans.findIndex((cataloguePlan) => cataloguePlan.key === candidate.key);
       await expect(
-        card.getByText(COPY.brandingFeature, { exact: true }),
+        brandingRow.locator('td').nth(column).locator('svg.lucide-check'),
         `${candidate.name} lists branding`,
-      ).toBeVisible();
+      ).toHaveCount(1);
     }
     // Launch really lacks the entitlement — the lock is not a UI-only label.
-    await expect(currentPlanCard.getByText(COPY.brandingFeature, { exact: true })).toHaveCount(0);
+    const launchColumn = plans.findIndex((cataloguePlan) => cataloguePlan.key === launchPlan.key);
+    await expect(
+      brandingRow.locator('td').nth(launchColumn).locator('svg.lucide-check'),
+      `${launchPlan.name} does not list branding`,
+    ).toHaveCount(0);
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
