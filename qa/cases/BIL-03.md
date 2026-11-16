@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-Konto TS (plan Base). Wejście przez /pricing/student lub /app/upgrade.
+Konto TS (plan Base). Wejście przez /pricing (Dla siebie) lub /app/upgrade.
 
 ## Seed (reconciled with the tenant seeder)
 

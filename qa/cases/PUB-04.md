@@ -1,4 +1,4 @@
-# PUB-04 — Podstrona planów (/pricing/student) – karty planów
+# PUB-04 — Cennik dla osoby indywidualnej – plany, porównanie i FAQ
 
 - id: PUB-04
 - priority: P2 ważny
@@ -14,7 +14,7 @@ Brak sesji.
 ## Seed (QA-suite tenant)
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `student1@dev.local`, …).
-Strona planów jest publiczna, więc przypadek nie potrzebuje zalogowanego użytkownika — jego
+Strona cennika jest publiczna, więc przypadek nie potrzebuje zalogowanego użytkownika — jego
 izolowany tenant istnieje tylko jako nazwa przypadku i dowód izolacji:
 
 ```bash
@@ -35,30 +35,45 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 - Przeglądarka startuje z pustym stanem sesji (`storageState: { cookies: [], origins: [] }`)
   i ustawionym `NEXT_LOCALE=pl`; żaden użytkownik tenanta nie jest zalogowany.
 - Spec nie zapisuje żadnych współdzielonych rekordów: katalog planów czyta tylko przez
-  publiczne `GET /api/v1/subscription-plans?for=student` i porównuje z nim wyrenderowane
-  karty oraz tabelę limitów.
+  publiczne `GET /api/v1/subscription-plans` i porównuje z nim wyrenderowane plany, tabelę
+  i FAQ.
 
 ## Steps
 
-1. Otwórz /pricing/student.
-2. Dla każdej karty sprawdź: nazwę, cenę, listę funkcji i limitów, przycisk CTA.
+1. Otwórz /pricing (domyślnie wybrane „Dla siebie”).
+2. W sekcji „Dla uczniów i studentów” sprawdź kolejno plany Base, Spark, Ace i Pro: nazwę,
+   cenę, opis i przycisk akcji.
+3. Sprawdź tabelę „Porównaj plany” pod planami uczniów.
+4. Sprawdź sekcję „Dla edukatorów” i jej tabelę.
+5. Sprawdź FAQ pod tabelami.
 
 ## Expected result
 
-- Ceny zgodne z konfiguracją: Base 0 zł; Spark 9,99 zł; Ace 19,99 zł; Pro 39,99 zł /miesiąc (wartości wyświetlane z groszy: 999 → 9,99).
-- Funkcje: Base – Fiszki, Testy; Ace/Pro – dodatkowo Asystent AI i Zaawansowane Statystyki.
-- Limity wyświetlane czytelnie, „Bez ograniczeń” dla wartości -1.
-- CTA różni się per plan (np. „Zacznij za Darmo”, „Przejdź na Spark”, „Wybierz Ace”, „Wybierz Pro”).
-- Plan „Ace”/„Pro” ma wyróżnienie „Najpopularniejszy” (jeśli skonfigurowane).
+- Ceny zgodne z konfiguracją: Base 0 zł (w miejscu ceny słowo „Darmowy”), Spark 9,99 zł,
+  Ace 19,99 zł, Pro 39,99 zł /miesiąc (wartości z groszy: 999 → 9,99).
+- Plany są wierszami listy (nazwa, opis, cena, przycisk), a nie kartami. Nazwa każdego planu
+  jest nagłówkiem i ma kotwicę `#<klucz>` (np. `#ace`).
+- Brak sesji: Base ma „Zacznij za darmo”, płatne plany uczniów i edukatorów mają „Załóż konto”,
+  Campus w sekcji organizacji ma „Porozmawiajmy” i prowadzi do /contact. Zalecany plan ma
+  zielony przycisk akcji, pozostałe obrysowany.
+- Wyróżnienie „Zalecany” ma zawsze dokładnie jeden plan w sekcji: Ace dla uczniów i Creator
+  dla edukatorów.
+- Tabela pod każdą sekcją zawiera tylko różnice między planami; nad nią jedna linia
+  „Wszystkie plany obejmują: …”. Wartość -1 to „∞”, brak limitu to „—”, a liczby są grupowane
+  (np. 200 000). Tabela uczniów nie zawiera limitów organizacyjnych (Maks. studentów,
+  Maks. grup).
+- FAQ jest zwinięte. Otwarcie pytania pokazuje odpowiedź, a otwarcie kolejnego zamyka
+  poprzednie. Odpowiedzi są w HTML strony również wtedy, gdy są zwinięte.
+- Brak sesji nie pokazuje przycisku zakupu ani checkoutu.
 
-## Notatka z przejścia (QA-suite, 2026-10-28)
+## Notatka z przejścia (QA-suite, 2026-10-28, zaktualizowana 2026-11-16)
 
-- Limity nie są wypisane na kartach planów — znajdują się w tabeli „Porównaj Plany” pod
-  kartami (wiersze: Maks. fiszki, Maks. talie, Maks. pytania, Maks. banki pytań,
-  Próby dziennie, Tokeny AI / dzień). Dla planu studenckiego tabela nie pokazuje limitów
-  organizacyjnych (Maks. studentów, Maks. grup), bo nie dotyczą planu osobistego.
-- „Najpopularniejszy” ma zawsze plan Ace (stała per typ konta, nie pole w katalogu planów).
+- Limity nie są wypisane przy planach — znajdują się w tabeli „Porównaj plany” pod planami
+  sekcji. Tabela uczniów ma wiersze: Zaawansowane statystyki, Asystent AI, Obsługa dokumentów,
+  Maks. fiszki, Maks. talie, Maks. pytania, Maks. banki pytań, Próby dziennie, Tokeny AI / dzień.
+  Limity organizacyjne (Maks. studentów, Maks. grup) pojawiają się tylko w sekcji edukatorów
+  i organizacji.
+- „Zalecany” to stała per sekcja (Ace / Creator / Hub), a nie pole w katalogu planów.
 - Ceny i funkcje są globalną konfiguracją planów, więc spec nie wpisuje ich na sztywno:
-  pobiera katalog przez `GET /api/v1/subscription-plans?for=student` i sprawdza, że karty,
-  tabela limitów i CTA renderują dokładnie tę konfigurację (grosze → zł, -1 → „Bez
-  ograniczeń”).
+  pobiera katalog przez `GET /api/v1/subscription-plans` i sprawdza, że plany, tabele i akcje
+  renderują dokładnie tę konfigurację (grosze → zł, -1 → „∞”, brak → „—”).

@@ -7,8 +7,8 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | ----------- | -------------- | -------------------------------------------------------------------- | ----------- | ------------------------------------------------- |
 | PUB-01      | P1 krytyczny   | Strona główna – struktura i nawigacja (niezalogowany)                | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-02      | P2 ważny       | Strona „Funkcje” (/features)                                         | —           | PUB – Strony publiczne i nawigacja ogólna         |
-| PUB-03      | P1 krytyczny   | Strona „Cennik” (/pricing) – kafelki typów kont                      | —           | PUB – Strony publiczne i nawigacja ogólna         |
-| PUB-04      | P2 ważny       | Podstrona planów (/pricing/student) – karty planów                   | —           | PUB – Strony publiczne i nawigacja ogólna         |
+| PUB-03      | P1 krytyczny   | Strona „Cennik” (/pricing) – przełącznik odbiorcy                    | —           | PUB – Strony publiczne i nawigacja ogólna         |
+| PUB-04      | P2 ważny       | Cennik dla osoby indywidualnej – plany, porównanie i FAQ             | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-05      | P3 kosmetyczny | Strona Kontakt (/contact)                                            | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-06      | P3 kosmetyczny | Polityka prywatności i Regulamin                                     | —           | PUB – Strony publiczne i nawigacja ogólna         |
 | PUB-07      | P2 ważny       | Strona 404 (niezalogowany)                                           | —           | PUB – Strony publiczne i nawigacja ogólna         |
