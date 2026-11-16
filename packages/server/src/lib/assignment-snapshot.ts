@@ -282,6 +282,26 @@ export async function writeAssignmentSnapshots(
 }
 
 /**
+ * The items one attempt was served (`quiz_attempt_questions`), as a set. The pool can be larger
+ * than the draw (`attempt_item_count`, R7), so anything that describes *this attempt* — its review
+ * headline (#1257) or its score denominator (#1298) — reads this, never the assignment's links.
+ */
+export async function readServedQuestionIds(
+  supabase: SupabaseClient<Database>,
+  attemptId: string,
+): Promise<ServiceResult<Set<string>>> {
+  const { data, error } = await supabase
+    .from('quiz_attempt_questions')
+    .select('question_id')
+    .eq('attempt_id', attemptId);
+
+  if (error) return toDbFailure(error);
+  return success(
+    new Set(dbRows(data).flatMap((row) => (row.question_id ? [row.question_id] : []))),
+  );
+}
+
+/**
  * The question payload of one attempt, in its own order: an assignment reads its frozen snapshots,
  * practice the live item. A published link without a snapshot is a corrupt state and is skipped.
  */

@@ -1,6 +1,10 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
-import { readReviewItems, type ReviewItem } from '@studiq/server/lib/assignment-snapshot';
+import {
+  readReviewItems,
+  readServedQuestionIds,
+  type ReviewItem,
+} from '@studiq/server/lib/assignment-snapshot';
 import { reviewState } from '@studiq/server/lib/assignment-visibility';
 import { recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -155,7 +159,7 @@ export class AssessmentReviewService {
     // The review is the cohort reveal, so it renders the whole assessment; what changes per attempt
     // is the **verdict**. A retake is served a different sample (R7), so an item this attempt never
     // saw has no verdict for it (`null`) — only an item it was served and skipped is `false`.
-    const served = attempt.data ? await this.servedQuestionIds(supabase, attempt.data.id) : null;
+    const served = attempt.data ? await readServedQuestionIds(supabase, attempt.data.id) : null;
     if (served && isFailure(served)) return served;
 
     const items = reviewItems.data.map((item) => {
@@ -317,22 +321,6 @@ export class AssessmentReviewService {
     // missing one.
     if (attemptId && !attempt) return failure('NOT_FOUND');
     return success(attempt ?? null);
-  }
-
-  /** The items one attempt was served, so its review cannot show another attempt's questions. */
-  private async servedQuestionIds(
-    supabase: SupabaseClient<Database>,
-    attemptId: string,
-  ): Promise<ServiceResult<Set<string>>> {
-    const { data, error } = await supabase
-      .from('quiz_attempt_questions')
-      .select('question_id')
-      .eq('attempt_id', attemptId);
-
-    if (error) return toDbFailure(error);
-    return success(
-      new Set(dbRows(data).flatMap((row) => (row.question_id ? [row.question_id] : []))),
-    );
   }
 
   /** The caller's own answer sheet for one submitted attempt. */
