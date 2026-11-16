@@ -2,7 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
-import { isFailure } from '@studiq/server/lib/service-result';
+import { isFailure, type ServiceResult } from '@studiq/server/lib/service-result';
 import {
   AddQuestionsSchema,
   CreateTeacherAssignmentSchema,
@@ -56,22 +56,19 @@ export class TeacherAssignmentController {
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = UpdateTeacherAssignmentSchema.safeParse(body);
     if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
-    const result = await this.service.update(id, parsed.data, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    return this.fromService(await this.service.update(id, parsed.data, ctx));
+  }
+
+  /** A service refusal keeps its per-field issues, so the deadline rule can answer on the field. */
+  private fromService(result: ServiceResult<unknown>): ControllerResponse {
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.success(result.data);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.service.delete(id, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    return this.fromService(await this.service.delete(id, ctx));
   }
 
   async unpublish(id: string, ctx: RequestContext): Promise<ControllerResponse> {

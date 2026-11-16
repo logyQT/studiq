@@ -33,6 +33,9 @@ export enum ValidationErrorCode {
   TOO_LONG = 'VALIDATION_TOO_LONG',
   INVALID_ROLE = 'VALIDATION_INVALID_ROLE',
 
+  /** R12/R20 (#1191): ending a live run now is the explicit close, not a deadline in the past. */
+  DEADLINE_END_IS_CLOSE = 'VALIDATION_DEADLINE_END_IS_CLOSE',
+
   /** R16/R17 authoring rules: the post-close artefact has to teach, not label the key. */
   EXPLANATION_REQUIRED = 'VALIDATION_EXPLANATION_REQUIRED',
   EXPLANATION_TOO_SHORT = 'VALIDATION_EXPLANATION_TOO_SHORT',

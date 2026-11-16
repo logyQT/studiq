@@ -25,9 +25,11 @@ import {
   fairnessItem,
 } from '@studiq/server/lib/fairness';
 import {
+  type AssessmentWindow,
   ensureClosed,
   expireInProgressAttempts,
   isAssessmentClosed,
+  isAssessmentLive,
 } from '@studiq/server/lib/assessment-close';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
@@ -139,6 +141,33 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 function isLiveRun(run: { status?: string; start_time?: string | null }, now: Date): boolean {
   if (run.status !== 'published') return false;
   return !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
+}
+
+/**
+ * The two deadline edits a teacher may not make (R12/R20, #1191). A close at or before the window's
+ * own start is not a window; and on a **live** run the new close must be in the future, because a
+ * close at or before `now` ends the run — that is the explicit close, which records `closed_at`,
+ * expires running attempts and reveals deliberately. A shrink to a future instant is a normal
+ * correction and stays allowed, and draft/scheduled runs keep free editing (their close is still
+ * bound by the start rule above).
+ */
+function deadlineRefusal(
+  run: AssessmentWindow,
+  deadline: string,
+  now: Date,
+): ServiceResult<never> | null {
+  const at = new Date(deadline).getTime();
+  if (run.start_time && at <= new Date(run.start_time).getTime()) {
+    return failure('UNPROCESSABLE_ENTITY', [
+      { code: 'custom', path: ['deadline'], message: ValidationErrorCode.INVALID_INPUT },
+    ]);
+  }
+  if (isAssessmentLive(run, now) && at <= now.getTime()) {
+    return failure('UNPROCESSABLE_ENTITY', [
+      { code: 'custom', path: ['deadline'], message: ValidationErrorCode.DEADLINE_END_IS_CLOSE },
+    ]);
+  }
+  return null;
 }
 
 /** The fairness block of the results payload (R9): counts only, taught items excluded. */
@@ -368,6 +397,18 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
+
+    // The deadline is a window bound, not a close (#1191). Settling a run whose clock has already
+    // run out first makes the edit inert on it instead of a reopen; then the two edits that are not
+    // a correction are refused, naming the field so the composer can point at it.
+    if (data.deadline !== undefined) {
+      const window = await this.loadCloseWindow(supabase, id);
+      if (isFailure(window)) return window;
+      const settled = await ensureClosed(window.data);
+      if (isFailure(settled)) return settled;
+      const refused = deadlineRefusal(settled.data, data.deadline, new Date());
+      if (refused) return refused;
+    }
 
     const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {};
     if (data.title !== undefined) updateData.title = data.title;

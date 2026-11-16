@@ -68,6 +68,15 @@ interface AssignmentFormProps {
   isPending: boolean;
   onSubmit: (payload: AssignmentPayload) => void;
   onCancel: () => void;
+  /** A published run that has opened: its close may move forward, never into the past. */
+  live?: boolean;
+  /** The server's per-field refusal of the deadline, as a key of the `Errors` namespace. */
+  deadlineError?: string | null;
+  /** Drops a stale server refusal once the teacher edits the field. */
+  onDeadlineChange?: () => void;
+  /** The documented way to end a live run now (R12/R20); omitted outside the edit form. */
+  onCloseNow?: () => void;
+  closePending?: boolean;
 }
 
 export function AssignmentForm({
@@ -77,8 +86,14 @@ export function AssignmentForm({
   isPending,
   onSubmit,
   onCancel,
+  live = false,
+  deadlineError = null,
+  onDeadlineChange,
+  onCloseNow,
+  closePending = false,
 }: AssignmentFormProps) {
   const t = useTranslations('EduAssignmentForm');
+  const tErrors = useTranslations('Errors');
   const [values, setValues] = useState<AssignmentFormValues>({
     ...EMPTY_ASSIGNMENT_FORM,
     ...initial,
@@ -90,6 +105,18 @@ export function AssignmentForm({
   ): void => {
     setValues((prev) => ({ ...prev, [key]: value }));
   };
+
+  // A live run is ending early only through Close (durable `closed_at`, expired attempts, deliberate
+  // reveal); a deadline that is not in the future is not a correction, so the field says so before
+  // and after the save.
+  const deadlineAt = values.deadline ? new Date(values.deadline).getTime() : null;
+  const deadlineInPast = live && deadlineAt !== null && deadlineAt <= Date.now();
+  const deadlineGuidance =
+    deadlineError && tErrors.has(deadlineError)
+      ? deadlineError
+      : deadlineInPast
+        ? 'VALIDATION_DEADLINE_END_IS_CLOSE'
+        : null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,8 +178,31 @@ export function AssignmentForm({
               id="deadline"
               type="datetime-local"
               value={values.deadline}
-              onChange={(e) => set('deadline', e.target.value)}
+              onChange={(e) => {
+                set('deadline', e.target.value);
+                onDeadlineChange?.();
+              }}
+              aria-invalid={deadlineGuidance !== null}
+              aria-describedby={deadlineGuidance ? 'deadline-guidance' : undefined}
             />
+            {deadlineGuidance && (
+              <div id="deadline-guidance" className="space-y-2">
+                <p role="alert" className="text-xs text-destructive">
+                  {tErrors(deadlineGuidance)}
+                </p>
+                {onCloseNow && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onCloseNow}
+                    disabled={closePending}
+                  >
+                    {t(closePending ? 'closing_now' : 'close_now')}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="timeLimit">{t('time_limit_min')}</Label>

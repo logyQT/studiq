@@ -272,9 +272,13 @@ practice sees the new version.
 **R12 — An assessment has exactly one window and one class set.** A **scheduled** (not yet live)
 assessment can be withdrawn back to draft — no exposure exists yet, so this is the phase-2 repair
 path for a wrong publish. Extending `closesAt` before close is allowed (it delays reveal for everyone);
-reopening after close is not — it requires a new assessment (new window, new snapshot). _Test:_ withdraw a scheduled run → draft,
-publish corrected; extend before close → review remains locked; reopen after close →
-`409 ASSESSMENT_CLOSED`.
+reopening after close is not — it requires a new assessment (new window, new snapshot). A deadline
+edit on a **live** run must keep the close in the future: shortening to a future instant is a normal
+correction, while a close at or before `now` is refused (`422` on `deadline`) because ending the run
+early is the **close** — it writes `closed_at`, expires running attempts and reveals deliberately. A
+clock edit is not a close, and it is never a reopen either. _Test:_ withdraw a scheduled run → draft,
+publish corrected; extend before close → review remains locked; a live run's deadline set to the past
+→ `422`, still sealed; reopen after close → `409 ASSESSMENT_CLOSED`.
 
 **R13 — Items cannot be added to or removed from a live assessment.** _Test:_ composer edit on a live
 assessment → `409 ASSESSMENT_LIVE`.
@@ -314,6 +318,9 @@ model-answer rules and invalid publish config.
 
 **R20 — Managers may change windows but never unseal a live class.** Overrides shrink or extend
 windows, resolve conflicts and author makeups; they cannot release a live reservation or un-reveal.
+The teacher's own deadline edit stops at the same edge: shrink-to-future is allowed and is **not**
+manager-gated, while ending the run now is Close (`422` on `deadline`), so "may shrink" and "never
+unseal a live class" describe two different operations.
 
 ## Visibility matrix (student)
 
@@ -361,7 +368,9 @@ bank. Submit → `score` + per-item `correct` boolean. Attempts only inside the 
 
 `closesAt` (or an explicit close, which sets `closesAt := now`) → in-progress attempts expire;
 reservations end except withheld items (R10); review unlocks for the whole cohort (R5). Review shows
-key, explanation/model answer, "practise these" links.
+key, explanation/model answer, "practise these" links. Ending a run **early** is `POST …/close` and
+nothing else: a deadline moved to the past on a live run is refused (`422`, field `deadline`), so the
+reveal and the unseal stay on one deliberate, recorded path (R12/R20).
 
 ### 6. Retake
 
@@ -428,7 +437,9 @@ POST   /assessments/:id/close      → sets closedAt := now, expires in-progress
 POST   /assessments/:id/cancel     → closes a scheduled/live run; state `cancelled`; 409 ASSESSMENT_CLOSED
 POST   /assessments/:id/withdraw   → scheduled → draft (no exposure yet); 409 ASSESSMENT_LIVE / ASSESSMENT_ALREADY_PUBLISHED
 POST   /assessments/:id/extend     → {closesAt} before close; 409 ASSESSMENT_CLOSED; re-opens nobody's review
-PUT    /assessments/:id            → 409 ASSESSMENT_LIVE when items/window change after publish
+PUT    /assessments/:id            → 409 ASSESSMENT_LIVE when items/window change after publish;
+                                     a live run's `deadline` must stay in the future (422 on the
+                                     field — ending early is Close), 422 when it lands before the start
 POST   /assessments/:id/items/:itemId/release → releases a withholdFromReview item; 409 RELEASE_NOT_WITHHELD
 POST   /assessments/:id/publish    → validates classes/window/maxAttempts; 422 invalid, 409
                                      EXPOSURE_ACK_REQUIRED / ASSESSMENT_ALREADY_PUBLISHED / ASSESSMENT_CANCELLED

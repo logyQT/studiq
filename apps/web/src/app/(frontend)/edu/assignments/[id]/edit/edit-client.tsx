@@ -2,6 +2,8 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   AssignmentForm,
   type AssignmentFormValues,
@@ -11,15 +13,20 @@ import { AssignmentNotFound } from '@/components/edu/assignment-not-found';
 import { AssignmentPage } from '@/components/edu/assignment-page';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { apiPut } from '@/lib/api';
+import { ApiError, apiPost, apiPut, getFieldErrorCode } from '@/lib/api';
 import { dbToDatetimeLocal } from '@/lib/datetime';
+import { translateErrorCode } from '@/lib/error-messages';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface AssignmentDetail {
   id: string;
   title: string;
   description: string | null;
+  status: string;
+  start_time: string | null;
   deadline: string | null;
+  /** Written by the durable close; a later deadline edit cannot reopen the run. */
+  closed_at: string | null;
   time_limit_min: number | null;
   shuffle_questions: boolean;
   shuffle_answers: boolean;
@@ -34,6 +41,9 @@ export default function EditAssignmentClient() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const t = useTranslations('EduAssignmentEditPage');
+  const tErrors = useTranslations('Errors');
+  /** The server's per-field refusal of the deadline, as an `Errors` code (R12/R20). */
+  const [deadlineError, setDeadlineError] = useState<string | null>(null);
 
   const { data: assignment, isLoading } = useApiQuery<AssignmentDetail>({
     queryKey: assignmentKeys.detail(id),
@@ -49,9 +59,35 @@ export default function EditAssignmentClient() {
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
 
+  // Ending a live run early is its own recorded action, never a deadline in the past (#1191).
+  const closeMutation = useApiMutation({
+    mutationFn: () => apiPost<unknown>(`/api/v1/teacher/assignments/${id}/close`, undefined),
+    invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
+  });
+
   const handleSubmit = async (payload: AssignmentPayload) => {
-    await updateMutation.mutateAsync(payload);
-    router.push(`/edu/assignments/${id}`);
+    setDeadlineError(null);
+    try {
+      await updateMutation.mutateAsync(payload);
+      router.push(`/edu/assignments/${id}`);
+    } catch (error) {
+      // A 422 that names the deadline belongs under that field, next to the Close action.
+      const fieldError = getFieldErrorCode(error, 'deadline');
+      if (fieldError) {
+        setDeadlineError(fieldError);
+        return;
+      }
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null));
+    }
+  };
+
+  const handleCloseNow = async () => {
+    try {
+      await closeMutation.mutateAsync(undefined);
+      router.push(`/edu/assignments/${id}`);
+    } catch (error) {
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null));
+    }
   };
 
   if (isLoading) {
@@ -65,6 +101,12 @@ export default function EditAssignmentClient() {
   if (!assignment) {
     return <AssignmentNotFound />;
   }
+
+  // The same window the server decides on: published, opened, and not closed.
+  const live =
+    assignment.status === 'published' &&
+    !assignment.closed_at &&
+    (!assignment.start_time || new Date(assignment.start_time).getTime() <= Date.now());
 
   const initial: AssignmentFormValues = {
     title: assignment.title,
@@ -86,6 +128,11 @@ export default function EditAssignmentClient() {
         mode="edit"
         initial={initial}
         isPending={updateMutation.isPending}
+        live={live}
+        deadlineError={deadlineError}
+        onDeadlineChange={() => setDeadlineError(null)}
+        onCloseNow={live ? () => void handleCloseNow() : undefined}
+        closePending={closeMutation.isPending}
         onSubmit={(payload) => {
           void handleSubmit(payload);
         }}
