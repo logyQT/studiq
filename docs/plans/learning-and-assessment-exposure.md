@@ -1,9 +1,10 @@
 # Learning and assessment: the exposure model
 
-**Status:** v5 — **implemented**. Phases 1–5 shipped on `main` (2026-11-16); phase 6 (study
-surface) is deferred by the operator. This document stays normative for behaviour, contracts and
-rules; the phase issues and their merge commits carry the implementation record, and the
-"Phased build" section below names what landed.
+**Status:** v6 — **implemented**. Phases 1–5 shipped on `main` (2026-11-16); phase 6 (study
+surface) is deferred by the operator. v6 amends decision (g), R8 and R9: exposure is recorded and
+reported, **exclusion is opt-in per assessment** (2026-11-16, see "Model amendment"). This document
+stays normative for behaviour, contracts and rules; the phase issues and their merge commits carry
+the implementation record, and the "Phased build" section below names what landed.
 **Related:** #678 (closed — its framing is superseded by this model), #1165 (the concrete database
 leak, phase 1), epic #1169.
 
@@ -50,15 +51,15 @@ not in shelves. Bank names such as "8A — learning" remain a convenience, never
 
 ## Decisions (operator)
 
-| #   | Decision          | Choice                                                                                                   |
-| --- | ----------------- | -------------------------------------------------------------------------------------------------------- |
-| a   | Reservation scope | **Per class**; org-wide only as an explicit per-assessment toggle, behind a blocking warning             |
-| b   | Reveal moment     | **At close**, cohort-wide — not per submission                                                           |
-| c   | Who may reserve   | **Any reader of the bank may include items**; owner notified, managers may override                      |
-| d   | Retakes           | **Fresh sample** from items unseen by that student; same-item retake only as an explicit, flagged choice |
-| e   | Close-out default | **Release to open**; retirement is an explicit option after repeated binding                             |
-| f   | Explanation       | **Required for choice items**, cap **2 040 characters** (8 × today's 255), mechanical authoring checks   |
-| g   | Ledger            | **Record from day one** — from phase 2, when the review first renders a key; phase 3 adds eligibility    |
+| #   | Decision          | Choice                                                                                                                                                                           |
+| --- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a   | Reservation scope | **Per class**; org-wide only as an explicit per-assessment toggle, behind a blocking warning                                                                                     |
+| b   | Reveal moment     | **At close**, cohort-wide — not per submission                                                                                                                                   |
+| c   | Who may reserve   | **Any reader of the bank may include items**; owner notified, managers may override                                                                                              |
+| d   | Retakes           | **Fresh sample** from items unseen by that student; same-item retake only as an explicit, flagged choice                                                                         |
+| e   | Close-out default | **Release to open**; retirement is an explicit option after repeated binding                                                                                                     |
+| f   | Explanation       | **Required for choice items**, cap **2 040 characters** (8 × today's 255), mechanical authoring checks                                                                           |
+| g   | Ledger            | **Record from day one** — from phase 2, when the review first renders a key; phase 3 adds the ledger, the publish warning, fairness and the **opt-in** exclusion (`unseen_only`) |
 
 ## Review-driven amendments (v2)
 
@@ -133,11 +134,34 @@ null` with `graded: boolean`, and an explicit `ungradedCount`. `correct: boolean
    `(item, student)` exposure event is written (R8). An item whose review carries no key artefact — no
    explanation, no model answer, no correct option — burns nothing.
 
+## Model amendment (v6, 2026-11-16)
+
+The phase-3 default excluded every item whose key a student had already met from their graded
+sample. A student who studied was therefore served a shorter sample — or `409 NO_UNSEEN_ITEMS` on a
+**first** attempt. That punishes learning, which is the behaviour the product exists to produce.
+
+The operator's ruling: **exposure is information, not a default exclusion.** "Unseen items only"
+becomes an explicit per-assessment choice (`teacher_assignments.unseen_only`, default `false`).
+
+1. **Off (the default).** A first attempt draws from the whole bound pool; an exposure event from
+   practice or a review does not exclude an item, and `taughtItem` is inert. A retake still draws a
+   **fresh sample** — items this student was served or answered stay out, which is the disjointness
+   R6/R7 require.
+2. **On.** The phase-3 rule, exactly: served, answered and key-rendered items are all excluded,
+   `taughtItem` waives both, and an empty eligible pool is `409 NO_UNSEEN_ITEMS`.
+3. **Unchanged.** The ledger records every key render (R8), the publish warning reports the
+   pre-exposed counts in **both** modes, fairness excludes `taughtItem`, and the seal/reveal rules
+   (R2/R4/R5/R10) are untouched. Hiding items while the window is live, fresh-sample retakes and the
+   private-bank option already cover cheating; a ledger event from studying is not evidence of it.
+4. **Frozen at publish**, like every other sampling rule: a live run's mode decides the samples of
+   the students who have not started yet.
+
 ## Goals
 
 - Students learn from open questions with immediate feedback, explanations and retries.
-- Students are graded on questions they could not pre-learn; that is a property of the system, not
-  of teacher discipline.
+- Students are graded on questions they could not pre-learn **when the assessment asks for it**
+  (`unseen_only`), and the system never hands a key to a student while the window is live. Both are
+  properties of the system, not of teacher discipline.
 - After an assessment, students still learn from it without arming a retake or the next class.
 - Teachers author each question once and keep one source of truth.
 - Every rule is enforceable server-side, with one sentence a teacher and a student both understand.
@@ -166,17 +190,17 @@ members of targeted groups; a **makeup** is a separate assessment.
 
 ## Domain model
 
-| Entity            | Fields (conceptual)                                                                                                                                                 | Notes                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Bank`            | id, org, owner, name, readers                                                                                                                                       | curation only; **no type**                                                                |
-| `Item`            | id, bank, stem, type (`mcq`/`true_false`/`open`), options, correct option, explanation, modelAnswer, version, status (`open`/`retired`/`deleted`)                   | edits after binding create a new version                                                  |
-| `Assessment`      | id, org, owner, groups[], studentIds[], `opensAt`, `closesAt`, state (`draft`/`scheduled`/`live`/`closed`/`cancelled`), scoring rules, `maxAttempts`, `showResults` | **one window**; publish-once applies from `live`                                          |
-| `AssessmentItem`  | assessment, item, version, flags (`taughtItem`, `withholdFromReview`)                                                                                               | immutable once published                                                                  |
-| `Reservation`     | item, assessment, groups[], studentIds[], effective window                                                                                                          | **derived**: active from `opensAt` to `closesAt` (or explicit release for withheld items) |
-| `Attempt`         | assessment, student, state (`in_progress`/`submitted`/`expired`), started/finished, score, answers                                                                  | one in progress at a time; attempts only in-window                                        |
-| `Answer`          | attempt, item, submitted value, correctness (`correct`/`incorrect`/`ungraded`)                                                                                      | never exposed before reveal                                                               |
-| `ExposureEvent`   | student, item, group(s), `seenCorrect: true`, timestamp                                                                                                             | the **exposure ledger**; written when a key/explanation renders (idempotent)              |
-| `PracticeAttempt` | student, bank/item set, answers, score                                                                                                                              | unlimited, no stakes                                                                      |
+| Entity            | Fields (conceptual)                                                                                                                                                               | Notes                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `Bank`            | id, org, owner, name, readers                                                                                                                                                     | curation only; **no type**                                                                |
+| `Item`            | id, bank, stem, type (`mcq`/`true_false`/`open`), options, correct option, explanation, modelAnswer, version, status (`open`/`retired`/`deleted`)                                 | edits after binding create a new version                                                  |
+| `Assessment`      | id, org, owner, groups[], studentIds[], `opensAt`, `closesAt`, state (`draft`/`scheduled`/`live`/`closed`/`cancelled`), scoring rules, `maxAttempts`, `showResults`, `unseenOnly` | **one window**; publish-once applies from `live`                                          |
+| `AssessmentItem`  | assessment, item, version, flags (`taughtItem`, `withholdFromReview`)                                                                                                             | immutable once published                                                                  |
+| `Reservation`     | item, assessment, groups[], studentIds[], effective window                                                                                                                        | **derived**: active from `opensAt` to `closesAt` (or explicit release for withheld items) |
+| `Attempt`         | assessment, student, state (`in_progress`/`submitted`/`expired`), started/finished, score, answers                                                                                | one in progress at a time; attempts only in-window                                        |
+| `Answer`          | attempt, item, submitted value, correctness (`correct`/`incorrect`/`ungraded`)                                                                                                    | never exposed before reveal                                                               |
+| `ExposureEvent`   | student, item, group(s), `seenCorrect: true`, timestamp                                                                                                                           | the **exposure ledger**; written when a key/explanation renders (idempotent)              |
+| `PracticeAttempt` | student, bank/item set, answers, score                                                                                                                                            | unlimited, no stakes                                                                      |
 
 ### Derived visibility
 
@@ -187,16 +211,20 @@ sealed(item, student) := exists active Reservation r where
     and (student.id ∈ r.students or student.groups ∩ r.groups ≠ ∅)
     and now ∈ [r.opensAt, r.closesAt)          // or r held open by withholdFromReview
 
-eligible(item, student) := not sealed(item, student)
-    and not taughtItem(item, assessment)
-    and no ExposureEvent(item, student)       // any key/explanation shown
-    and no Answer(item, student)              // the student has never been shown it in an attempt
+// `seen` = served by an earlier attempt of this assessment, or answered in any attempt (R6/R7)
+// `exposed` = an ExposureEvent exists (a key/explanation was rendered — R8)
+excludedFromSample(item, student) :=
+    unseenOnly(assessment)
+        ? not taughtItem(item, assessment) and (seen(item, student) or exposed(item, student))
+        : isRetake(student, assessment) and seen(item, student)   // a fresh sample, always
+
+eligible(item, student) := not sealed(item, student) and not excludedFromSample(item, student)
 
 // per assessment, per student
 canStartAttempt := now ∈ [opensAt, closesAt)
     and attemptsUsed < maxAttempts
     and no attempt in_progress
-    and eligibleInventory(student) is not empty
+    and eligibleInventory(student) is not empty    // only `unseen_only` empties it
 
 // attempts exist only inside the window, so close leaves nothing outstanding
 reviewUnlocked(student) := now >= closesAt
@@ -246,18 +274,22 @@ in-progress attempt at close expires, counts as consumed, and cannot be submitte
 attempt is possible; a makeup is a new assessment over items with no exposure event for that student.
 _Test:_ retake after close → `409 ATTEMPTS_CLOSED`; retake sample disjoint from prior attempts.
 
-**R8 — Any key render burns the item for that learner.** An exposure event is written whenever the
-system shows a student a key or explanation — today that is the post-submission review (practice
-quizzes deliver their feedback through it); a future study/practice surface writes the same event.
-One event per (item, student). An item with an event is excluded from that student's graded sample
-unless the teacher marks it `taughtItem`. _Test:_ open a reviewed item → publish warning count → the
-student's sample omits it; a second render does not duplicate the event.
+**R8 — Any key render is recorded; exclusion is the assessment's choice.** An exposure event is
+written whenever the system shows a student a key or explanation — today that is the
+post-submission review (practice quizzes deliver their feedback through it); a future study/practice
+surface writes the same event. One event per (item, student). The event is **reported** — publish
+warning, staff ledger, fairness — and it excludes the item from that student's graded sample **only
+when the assessment sets `unseen_only`**; a first attempt of a default assessment draws from the
+whole bound pool. _Test:_ open a reviewed item → publish warning count in both modes → the student's
+sample omits it only in `unseen_only`; a second render does not duplicate the event.
 
 **R9 — Deliberate pre-exposure is declared, not forbidden.** `taughtItem` grades a taught item: it
-scores, is labelled in results, and is excluded from fairness reporting. It waives **both** the
-ledger event and a prior answer when computing eligibility, and it does **not** unseal the item
-during the window (R2/R4 still apply). _Test:_ `taughtItem` is eligible despite a ledger event or a
-prior submitted answer; the key is still hidden while live.
+scores, is labelled in results, and is excluded from fairness reporting. It applies **inside
+`unseen_only`**, where it waives **both** the ledger event and a prior answer when computing
+eligibility; with the mode off nothing is excluded, so the declaration changes nothing (it stays
+labelled, and fairness still leaves it out). It never unseals the item during the window (R2/R4
+still apply). _Test:_ in an `unseen_only` run, `taughtItem` is eligible despite a ledger event or a
+prior submitted answer, and inert in a default run; the key is still hidden while live.
 
 **R10 — `withholdFromReview` keeps an item sealed after close** until the teacher (or a manager)
 explicitly releases it; item-level withholding outranks the automatic release at `closesAt`, and it
@@ -374,8 +406,9 @@ reveal and the unseal stay on one deliberate, recorded path (R12/R20).
 
 ### 6. Retake
 
-Inside the window, up to `maxAttempts`, a fresh sample of items with no ledger event and no prior
-answer for that student (R7). A same-item retake is possible only when the teacher allowed it and
+Inside the window, up to `maxAttempts`, a fresh sample of items this student was not served and did
+not answer in this assessment (R7); an item whose key they saw elsewhere is excluded only in
+`unseen_only` (R8). A same-item retake is possible only when the teacher allowed it and
 also happens before close; it never withholds review (R6). After close, a makeup is a separate
 assessment.
 
@@ -388,7 +421,8 @@ assessment.
 - **Item edited while sealed:** new version; live assessment keeps its snapshot (R11).
 - **Item retired/deleted:** new binding blocked; a published assessment keeps its frozen version.
 - **Item added to a live assessment:** refused (R13).
-- **Pre-exposed students:** warned at publish; excluded from their samples unless `taughtItem`.
+- **Pre-exposed students:** warned at publish in every mode; excluded from their samples only when
+  the assessment is `unseen_only`, where `taughtItem` is the way back in.
 - **Student withdraws/joins mid-window:** joining adds them to the cohort with an empty ledger; a
   retake samples unseen items for them.
 - **Reserving an item for a class that already has it live:** `409 RESERVATION_CONFLICT` (same item,
@@ -415,7 +449,7 @@ POST   /practice/:bankId/answers   → {answers:[{itemId, value}]}
 POST   /assessments/:id/attempts   → {attemptId, state:'in_progress', items:[{itemId, stem, type,
                                      options:[{id, content}]}]}
                                      409 ATTEMPTS_NOT_OPEN / ATTEMPT_IN_PROGRESS / NO_ATTEMPTS_LEFT /
-                                     NO_UNSEEN_ITEMS
+                                     NO_UNSEEN_ITEMS (unseen_only, or a retake whose pool is spent)
 GET    /attempts/current           → 200 {attemptId, assessmentId, items} (same shape as start) | 404
 POST   /attempts/:id/submit        → {score: {earned, possible} | null, ungradedCount,
                                       results:[{itemId, graded: boolean, correct: boolean | null}]}
@@ -513,8 +547,10 @@ Purpose: feel the model and the rules; prove the contracts; not a production bui
 2. A direct data read cannot return `is_correct` to a student **at all** for a reader-facing path —
    the phase 1 column revoke is unconditional, before any seal-aware projection (see #1165).
 3. Review is unreachable before close; at close it unlocks for the whole cohort.
-4. Retakes never repeat an item the student has seen, unless explicitly allowed and flagged.
-5. Publish blocks on cross-class exposure and warns about pre-exposed items.
+4. Retakes never repeat an item the student already met **in that assessment**, unless explicitly
+   allowed and flagged.
+5. Publish blocks on cross-class exposure and reports pre-exposed items; whether they are excluded
+   is the assessment's `unseen_only` choice.
 6. Editing a bound item never changes a live assessment.
 7. Reveal happens at the single assessment close, cohort-wide.
 8. Explanation (choice) and model answer (open) are required and pass the mechanical checks.
@@ -540,7 +576,8 @@ shippable PR sequence within the 400-line budget, and 1 → 2 → 3 is a real de
    (sealing, held notice, publish gate), `dae6765a`, `1456dcb8`, `2460dec6`, `29357546` (close,
    reveal, withheld items, ledger writes).
 3. **Exposure ledger** (#1172): eligibility per student (ledger + prior answers), `taughtItem` waiver,
-   pre-exposed warnings and fairness flags. Recording already exists from phase 2.
+   pre-exposed warnings and fairness flags. Recording already exists from phase 2, and since v6 the
+   eligibility half is opt-in per assessment (`unseen_only`, default off).
    **Shipped:** `09536749` (explanation boundary + practice renders recorded), `1fbc5b50`
    (eligibility + `taughtItem`), `cea27d05` (publish warning + staff ledger), `a4b7d7c1` (fairness).
 4. **Explanation/model answer** (#1173): required for choice items, 2 040 cap, mechanical checks,
@@ -561,7 +598,7 @@ shippable PR sequence within the 400-line budget, and 1 → 2 → 3 is a real de
 - Per-class reservation (decision a) still allows cross-class leakage; the blocking acknowledgement
   and the org-wide toggle make it a decision rather than an accident.
 - Inventory is the real cost: a class needs several times the items of one quiz for fresh-sample
-  retakes and unseen sampling.
+  retakes.
 - Aggregates are suppressed below 5 respondents, so small classes may see no statistics at all.
 
 ## Open questions

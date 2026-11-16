@@ -81,6 +81,8 @@ interface AssignmentDetail {
   total_points: number;
   /** R3: this run holds its items from every student in the organisation. */
   seal_org_wide: boolean;
+  /** R8: this run leaves out items a student has already seen. Off is the default. */
+  unseen_only: boolean;
   /** Written by the durable close (R7/R12); a later clock change does not reopen it. */
   closed_at: string | null;
   /** Cross-class forecast, computed for a draft only (the composer is the only reader). */
@@ -1312,7 +1314,13 @@ export default function AssignmentDetailClient() {
                       </li>
                     ))}
                   </ul>
-                  <p className="text-xs text-muted-foreground">{t('pre_exposure_hint')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      assignment.unseen_only
+                        ? 'pre_exposure_hint_excluded'
+                        : 'pre_exposure_hint_kept',
+                    )}
+                  </p>
                 </div>
               )}
 

@@ -47,6 +47,8 @@ describe('Exposure eligibility (#1172)', () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
   let fresh!: BeforeResult;
+  /** A student with no history of their own, so the retake sample is the only thing under test. */
+  let retaker!: BeforeResult;
   let orgId!: string;
   let groupId!: string;
   let pool: string[] = [];
@@ -128,7 +130,11 @@ describe('Exposure eligibility (#1172)', () => {
     return attempt.questions.map((question) => question.id);
   }
 
-  async function createAssessment(title: string, questionIds: string[]): Promise<string> {
+  async function createAssessment(
+    title: string,
+    questionIds: string[],
+    options: { unseenOnly?: boolean; maxAttempts?: number; attemptItemCount?: number } = {},
+  ): Promise<string> {
     mockUser(teacher.user);
     const created = await createAssignmentPost(
       createNextRequest(
@@ -141,6 +147,7 @@ describe('Exposure eligibility (#1172)', () => {
             deadline: FUTURE(),
             showResults: true,
             shuffleQuestions: false,
+            ...options,
           }),
         },
         cookie(),
@@ -209,6 +216,7 @@ describe('Exposure eligibility (#1172)', () => {
     teacher = await before({ role: 'educator', org: true, groups: 1, questions: 6 });
     student = await before({ role: 'student' });
     fresh = await before({ role: 'student' });
+    retaker = await before({ role: 'student' });
     if (!teacher.orgId) throw new Error('the teacher fixture has no organisation');
     orgId = teacher.orgId;
     groupId = requiredAt(teacher.groups, 0, 'the seeded group');
@@ -219,7 +227,7 @@ describe('Exposure eligibility (#1172)', () => {
       .eq('organization_id', orgId)
       .eq('name', 'member')
       .single();
-    for (const member of [student, fresh]) {
+    for (const member of [student, fresh, retaker]) {
       await seedOrgMembership({
         organizationId: orgId,
         userId: member.user.id,
@@ -245,6 +253,7 @@ describe('Exposure eligibility (#1172)', () => {
   afterAll(async () => {
     await cleanupQuizAttempts(student.user.id);
     await cleanupQuizAttempts(fresh.user.id);
+    await cleanupQuizAttempts(retaker.user.id);
     await cleanupTeacherAssignments(teacher.user.id);
     await cleanupQuestions(teacher.user.id, 'seed-question-');
     await cleanupOrganizationDeep(orgId);
@@ -252,10 +261,11 @@ describe('Exposure eligibility (#1172)', () => {
 
   it('omits a burnt item from the next assessment’s sample (R8)', async () => {
     const [first, second, third] = pool;
-    const seen = await createAssessment(`eligibility-burn-${Date.now()}`, [
-      requiredAt(pool, 0, 'first item'),
-      requiredAt(pool, 1, 'second item'),
-    ]);
+    const seen = await createAssessment(
+      `eligibility-burn-${Date.now()}`,
+      [requiredAt(pool, 0, 'first item'), requiredAt(pool, 1, 'second item')],
+      { unseenOnly: true },
+    );
     expect((await publish(seen)).status).toBe(200);
 
     const sat = await sit(student.user, seen);
@@ -280,11 +290,15 @@ describe('Exposure eligibility (#1172)', () => {
     expect((await reviewGet(reviewCall.request, { params: reviewCall.params })).status).toBe(200);
 
     // The next assessment over the same items, plus one the student has never met.
-    const next = await createAssessment(`eligibility-next-${Date.now()}`, [
-      requiredAt(pool, 0, 'first item'),
-      requiredAt(pool, 1, 'second item'),
-      requiredAt(pool, 2, 'third item'),
-    ]);
+    const next = await createAssessment(
+      `eligibility-next-${Date.now()}`,
+      [
+        requiredAt(pool, 0, 'first item'),
+        requiredAt(pool, 1, 'second item'),
+        requiredAt(pool, 2, 'third item'),
+      ],
+      { unseenOnly: true },
+    );
     expect((await publish(next)).status).toBe(200);
 
     const sample = await sampleOf(student.user, next);
@@ -294,11 +308,15 @@ describe('Exposure eligibility (#1172)', () => {
 
   it('serves a taughtItem despite the event, and still hides its key while live (R9)', async () => {
     const [first, second] = pool;
-    const taught = await createAssessment(`eligibility-taught-${Date.now()}`, [
-      requiredAt(pool, 0, 'first item'),
-      requiredAt(pool, 1, 'second item'),
-      requiredAt(pool, 3, 'fourth item'),
-    ]);
+    const taught = await createAssessment(
+      `eligibility-taught-${Date.now()}`,
+      [
+        requiredAt(pool, 0, 'first item'),
+        requiredAt(pool, 1, 'second item'),
+        requiredAt(pool, 3, 'fourth item'),
+      ],
+      { unseenOnly: true },
+    );
     // Declared while the run is a draft: the flag is frozen with the published snapshot.
     const declared = await declareTaught(taught, first);
     expect(declared.status, await declared.clone().text()).toBe(200);
@@ -325,10 +343,11 @@ describe('Exposure eligibility (#1172)', () => {
 
   it('starts a new cohort with an empty ledger: a fresh student sees the item again', async () => {
     const [first, second] = pool;
-    const reuse = await createAssessment(`eligibility-cohort-${Date.now()}`, [
-      requiredAt(pool, 0, 'first item'),
-      requiredAt(pool, 1, 'second item'),
-    ]);
+    const reuse = await createAssessment(
+      `eligibility-cohort-${Date.now()}`,
+      [requiredAt(pool, 0, 'first item'), requiredAt(pool, 1, 'second item')],
+      { unseenOnly: true },
+    );
     expect((await publish(reuse)).status).toBe(200);
 
     const sample = await sampleOf(fresh.user, reuse);
@@ -344,12 +363,18 @@ describe('Exposure eligibility (#1172)', () => {
     const untouched = requiredAt(pool, 4, 'fifth item');
     const other = requiredAt(pool, 5, 'sixth item');
 
-    const sat = await createAssessment(`eligibility-answer-${Date.now()}`, [answered, untouched]);
+    const sat = await createAssessment(`eligibility-answer-${Date.now()}`, [answered, untouched], {
+      unseenOnly: true,
+    });
     expect((await publish(sat)).status).toBe(200);
     // Submitted, never reviewed: no exposure event, only a prior answer.
     expect(await sit(fresh.user, sat, answered)).toEqual(expect.arrayContaining([answered]));
 
-    const next = await createAssessment(`eligibility-answer-next-${Date.now()}`, [answered, other]);
+    const next = await createAssessment(
+      `eligibility-answer-next-${Date.now()}`,
+      [answered, other],
+      { unseenOnly: true },
+    );
     expect((await publish(next)).status).toBe(200);
 
     const sample = await sampleOf(fresh.user, next);
@@ -361,15 +386,88 @@ describe('Exposure eligibility (#1172)', () => {
     const answered = requiredAt(pool, 3, 'fourth item');
     const other = requiredAt(pool, 4, 'fifth item');
 
-    const taught = await createAssessment(`eligibility-answer-taught-${Date.now()}`, [
-      answered,
-      other,
-    ]);
+    const taught = await createAssessment(
+      `eligibility-answer-taught-${Date.now()}`,
+      [answered, other],
+      { unseenOnly: true },
+    );
     expect((await declareTaught(taught, answered)).status).toBe(200);
     expect((await publish(taught)).status).toBe(200);
 
     const sample = await sampleOf(fresh.user, taught);
     expect(sample.status, JSON.stringify(sample)).toBe(200);
     expect(sample.served, 'the declaration outranks the prior answer').toEqual([answered, other]);
+  });
+
+  /** The ledger row that used to exclude the item; one per (item, student), so it is reusable. */
+  async function markStudied(userId: string, questionId: string): Promise<void> {
+    const { error } = await service.from('exposure_events').insert({
+      student_id: userId,
+      question_id: questionId,
+      organization_id: orgId,
+      group_ids: [],
+    });
+    expect(error === null || error.code === '23505', error?.message).toBe(true);
+  }
+
+  // The model change (#1172 revisited): exposure is information for the teacher, not a default
+  // exclusion for the student. Studying must not cost a student items, and it must never turn a
+  // **first** attempt into `409 NO_UNSEEN_ITEMS`.
+  describe('the default mode', () => {
+    it('serves an item whose key the student already saw on a first attempt', async () => {
+      await markStudied(retaker.user.id, requiredAt(pool, 0, 'first item'));
+
+      const assessment = await createAssessment(`eligibility-default-${Date.now()}`, [
+        requiredAt(pool, 0, 'first item'),
+        requiredAt(pool, 1, 'second item'),
+      ]);
+      expect((await publish(assessment)).status).toBe(200);
+
+      const sample = await sampleOf(retaker.user, assessment);
+      expect(sample.status, JSON.stringify(sample)).toBe(200);
+      expect(sample.served, 'studying does not cost the student the item').toEqual([
+        requiredAt(pool, 0, 'first item'),
+        requiredAt(pool, 1, 'second item'),
+      ]);
+    });
+
+    it('excludes that item once the assessment opts into unseen-only', async () => {
+      await markStudied(retaker.user.id, requiredAt(pool, 0, 'first item'));
+
+      const assessment = await createAssessment(
+        `eligibility-unseen-${Date.now()}`,
+        [requiredAt(pool, 0, 'first item'), requiredAt(pool, 1, 'second item')],
+        { unseenOnly: true },
+      );
+      expect((await publish(assessment)).status).toBe(200);
+
+      const sample = await sampleOf(retaker.user, assessment);
+      expect(sample.status, JSON.stringify(sample)).toBe(200);
+      expect(sample.served, 'the opt-in is what excludes it').toEqual([
+        requiredAt(pool, 1, 'second item'),
+      ]);
+    });
+
+    it('keeps a retake disjoint with the flag off, and refuses only when the pool is spent', async () => {
+      const items = pool.slice(0, 4);
+      const assessment = await createAssessment(`eligibility-retake-${Date.now()}`, items, {
+        maxAttempts: 3,
+        attemptItemCount: 2,
+      });
+      expect((await publish(assessment)).status).toBe(200);
+
+      const first = await sit(retaker.user, assessment);
+      expect(first).toHaveLength(2);
+      const second = await sit(retaker.user, assessment);
+      expect(second).toHaveLength(2);
+      expect(
+        second.filter((id) => first.includes(id)),
+        'a retake is still a fresh sample',
+      ).toEqual([]);
+
+      const third = await sampleOf(retaker.user, assessment);
+      expect(third.status, 'two disjoint draws spend a four-item pool').toBe(409);
+      expect(third.error).toBe('NO_UNSEEN_ITEMS');
+    });
   });
 });

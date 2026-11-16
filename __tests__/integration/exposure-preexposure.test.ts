@@ -55,7 +55,11 @@ describe('Exposure before publish (#1172)', () => {
 
   const cookie = () => ({ active_org_id: orgId });
 
-  async function createAssessment(title: string, questionIds: string[]): Promise<string> {
+  async function createAssessment(
+    title: string,
+    questionIds: string[],
+    options: { unseenOnly?: boolean } = {},
+  ): Promise<string> {
     mockUser(teacher.user);
     const created = await createAssignmentPost(
       createNextRequest(
@@ -68,6 +72,7 @@ describe('Exposure before publish (#1172)', () => {
             deadline: FUTURE(),
             showResults: true,
             shuffleQuestions: false,
+            ...options,
           }),
         },
         cookie(),
@@ -262,6 +267,35 @@ describe('Exposure before publish (#1172)', () => {
       studentId: null,
       seenItemCount: 1,
       seenStudentCount: 1,
+    });
+
+    // The warning is information in both modes: opting into unseen-only changes what the sample
+    // excludes, never what the teacher is told about the class.
+    const unseenDraft = await createAssessment(
+      `fairness-draft-unseen-${Date.now()}`,
+      [seenItem, requiredAt(pool, 2, 'third item')],
+      { unseenOnly: true },
+    );
+    const unseenDetail = await detailOf(unseenDraft);
+    expect(unseenDetail.status, await unseenDetail.clone().text()).toBe(200);
+    expect(
+      (
+        await json<{
+          data: {
+            unseen_only: boolean;
+            preExposure?: Array<{
+              groupId: string | null;
+              studentId: string | null;
+              seenItemCount: number;
+              seenStudentCount: number;
+            }>;
+          };
+        }>(unseenDetail)
+      ).data,
+      'the counts do not depend on the sampling mode',
+    ).toMatchObject({
+      unseen_only: true,
+      preExposure: [{ groupId, studentId: null, seenItemCount: 1, seenStudentCount: 1 }],
     });
 
     // The staff ledger: who saw the key, when, and the classes they shared with the run.

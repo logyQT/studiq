@@ -260,6 +260,7 @@ export class TeacherAssignmentService {
       show_results: data.showResults,
       max_attempts: data.maxAttempts,
       allow_same_item_retake: data.allowSameItemRetake,
+      unseen_only: data.unseenOnly,
       attempt_item_count: data.attemptItemCount,
       passing_score: data.passingScore,
     };
@@ -410,6 +411,22 @@ export class TeacherAssignmentService {
       if (refused) return refused;
     }
 
+    // The sampling mode is frozen at publish, like the item flags it changes (R8): flipping it on a
+    // live run would rewrite the samples of students who have not started yet. Re-sending the value
+    // the run already has — what the edit form does on every save — is not a change.
+    if (data.unseenOnly !== undefined) {
+      const { data: current, error: currentError } = await supabase
+        .from('teacher_assignments')
+        .select('status, unseen_only')
+        .eq('id', id)
+        .maybeSingle();
+      if (currentError) return toDbFailure(currentError);
+      if (!current) return failure('NOT_FOUND');
+      if (current.status !== 'draft' && current.unseen_only !== data.unseenOnly) {
+        return failure('ASSESSMENT_LIVE');
+      }
+    }
+
     const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
@@ -422,6 +439,7 @@ export class TeacherAssignmentService {
     if (data.allowSameItemRetake !== undefined) {
       updateData.allow_same_item_retake = data.allowSameItemRetake;
     }
+    if (data.unseenOnly !== undefined) updateData.unseen_only = data.unseenOnly;
     if (data.attemptItemCount !== undefined) {
       updateData.attempt_item_count = data.attemptItemCount;
     }
@@ -1543,6 +1561,7 @@ export class TeacherAssignmentService {
       isRetake: attempts.length > 0,
       allowSameItemRetake: assignment.allow_same_item_retake,
       itemCount: assignment.attempt_item_count ?? null,
+      unseenOnly: assignment.unseen_only,
     });
     if (isFailure(sample)) return sample;
 
@@ -1627,12 +1646,19 @@ export class TeacherAssignmentService {
    * The items one attempt serves (R6/R7/R8/R9). The pool is everything the assessment binds; the
    * draw is `attempt_item_count` of it (all of it when the teacher set no count).
    *
-   * Every attempt draws from the eligible pool: an item this student has **not** met — served,
-   * answered or key-rendered — unless the item is declared `taughtItem` (R9). An exhausted
-   * inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse of a burnt item.
-   * - `allow_same_item_retake`: the items the earlier attempt was served, which is what "same item"
-   *   means. A prior attempt with no served rows is a corrupt state, and serving the pool is the
-   *   honest repair rather than a refusal.
+   * The assessment's `unseen_only` decides whether prior exposure excludes an item:
+   *
+   * - off (the default) — a first attempt draws from the whole bound pool. Studying must not cost a
+   *   student items, and a `409 NO_UNSEEN_ITEMS` on a first attempt was the complaint that made
+   *   this the default (#1172 revisited). A retake is still a **fresh sample**: served and answered
+   *   items stay out, which is what keeps R6/R7's disjointness.
+   * - on — the phase-3 rule, exactly: served, answered and key-rendered items are all excluded, and
+   *   `taughtItem` waives both (R9). An exhausted inventory is `409 NO_UNSEEN_ITEMS`, never a silent
+   *   reuse of a burnt item.
+   *
+   * `allow_same_item_retake` serves the items the earlier attempt was served, which is what "same
+   * item" means. A prior attempt with no served rows is a corrupt state, and serving the pool is the
+   * honest repair rather than a refusal.
    *
    * Both retake forms happen inside the window: this method already refused everything outside it.
    */
@@ -1640,22 +1666,47 @@ export class TeacherAssignmentService {
     id: string,
     studentId: string,
     links: AssignmentLink[],
-    options: { isRetake: boolean; allowSameItemRetake: boolean; itemCount: number | null },
+    options: {
+      isRetake: boolean;
+      allowSameItemRetake: boolean;
+      itemCount: number | null;
+      unseenOnly: boolean;
+    },
   ): Promise<ServiceResult<AssignmentLink[]>> {
-    const candidates = [
-      ...new Set(links.flatMap((link) => (link.question_id ? [link.question_id] : []))),
-    ];
-    const history = await attemptHistory(studentId, id, candidates);
-    if (isFailure(history)) return history;
-
     if (options.isRetake && options.allowSameItemRetake) {
+      const history = await this.attemptHistoryFor(id, studentId, links);
+      if (isFailure(history)) return history;
       const same = sampleServed(links, history.data.served);
       return success(drawSample(same.length > 0 ? same : links, options.itemCount));
     }
 
-    const eligible = sampleEligible(links, history.data.seen);
+    // A first attempt of a default assessment serves the whole pool: nothing can be stale yet, so
+    // the history read would only ever be spent to prove it is empty.
+    if (!options.unseenOnly && !options.isRetake) {
+      return success(drawSample(links, options.itemCount));
+    }
+
+    const history = await this.attemptHistoryFor(id, studentId, links);
+    if (isFailure(history)) return history;
+
+    const eligible = sampleEligible(
+      links,
+      { seen: history.data.seen, exposed: history.data.exposed },
+      options.unseenOnly,
+    );
     if (eligible.length === 0) return failure('NO_UNSEEN_ITEMS');
     return success(drawSample(eligible, options.itemCount));
+  }
+
+  private async attemptHistoryFor(
+    id: string,
+    studentId: string,
+    links: AssignmentLink[],
+  ): Promise<ReturnType<typeof attemptHistory>> {
+    const candidates = [
+      ...new Set(links.flatMap((link) => (link.question_id ? [link.question_id] : []))),
+    ];
+    return attemptHistory(studentId, id, candidates);
   }
 
   /**

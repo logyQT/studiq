@@ -26,6 +26,7 @@ export interface AssignmentFormValues {
   maxAttempts: string;
   attemptItemCount: string;
   allowSameItemRetake: boolean;
+  unseenOnly: boolean;
   passingScore: string;
 }
 
@@ -42,6 +43,7 @@ export interface AssignmentPayload {
   /** `null` reopens the whole pool; omitted leaves the column untouched. */
   attemptItemCount?: number | null;
   allowSameItemRetake: boolean;
+  unseenOnly: boolean;
   passingScore?: number;
 }
 
@@ -56,6 +58,7 @@ const EMPTY_ASSIGNMENT_FORM: AssignmentFormValues = {
   maxAttempts: '1',
   attemptItemCount: '',
   allowSameItemRetake: false,
+  unseenOnly: false,
   passingScore: '',
 };
 
@@ -131,6 +134,7 @@ export function AssignmentForm({
       maxAttempts: parseInt(values.maxAttempts, 10),
       attemptItemCount: values.attemptItemCount ? parseInt(values.attemptItemCount, 10) : null,
       allowSameItemRetake: values.allowSameItemRetake,
+      unseenOnly: values.unseenOnly,
       passingScore: values.passingScore ? parseInt(values.passingScore, 10) : undefined,
     });
   };
@@ -283,6 +287,12 @@ export function AssignmentForm({
             description={t('same_item_retake_desc')}
             checked={values.allowSameItemRetake}
             onCheckedChange={(checked) => set('allowSameItemRetake', checked)}
+          />
+          <ToggleRow
+            label={t('unseen_only')}
+            description={t('unseen_only_desc')}
+            checked={values.unseenOnly}
+            onCheckedChange={(checked) => set('unseenOnly', checked)}
           />
         </CardContent>
       </Card>
