@@ -23,7 +23,8 @@ interface StudentAnswers {
   score: number;
   total_questions: number;
   total_points: number | null;
-  graded_at: string | null;
+  /** Derived from the served items (#1069): nothing left for a teacher to grade. */
+  graded: boolean;
   quiz_attempt_questions: Array<{
     question_id: string;
     order_index: number;
@@ -140,7 +141,7 @@ export default function StudentGradingClient() {
               // value falls back to the question count.
               total: attempt.total_points ?? attempt.total_questions,
             })}
-            {attempt.graded_at && ` ${t('graded')}`}
+            {attempt.graded && ` ${t('graded')}`}
           </p>
         </div>
       </div>
