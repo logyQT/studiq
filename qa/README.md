@@ -119,7 +119,7 @@ also reconcile a case's seed/prerequisite details, as described in
 - Seeded dev accounts use the password `pass` (see `context.md`); these are local
   test fixtures, not real credentials.
 - The corpus is maintained in this repository; `source/` holds the original
-  customer-facing test document for provenance, not for regeneration.
+  test document for provenance, not for regeneration.
 - QA environment setup is maintained outside this repository and is
   intentionally not documented here.
 
