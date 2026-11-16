@@ -31,11 +31,11 @@ mutation you will run to prove it — and you run it before you open the PR.
 Answer three questions before writing anything. If any answer is "nothing", stop
 and park the case (see [Parking](#parking-a-case)) instead of writing code.
 
-| question                                              | a real answer looks like                                                     |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------- |
-| What would a user notice if this broke?               | "the deck list shows another org's deck", "grading silently drops the toast" |
-| Which production change would break it?               | a permission check, a redirect rule, a `select()` list, a limit counter       |
-| What does the spec read that the UI did not hand it?  | a persisted row, another role's view, an API response, a computed count       |
+| question                                             | a real answer looks like                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| What would a user notice if this broke?              | "the deck list shows another org's deck", "grading silently drops the toast" |
+| Which production change would break it?              | a permission check, a redirect rule, a `select()` list, a limit counter      |
+| What does the spec read that the UI did not hand it? | a persisted row, another role's view, an API response, a computed count      |
 
 The third question is the one that catches tautology: a spec that types
 "Matematyka" and then asserts "Matematyka" proves the browser has a keyboard.
@@ -63,13 +63,20 @@ A case that survives Step 0 without a real answer is either **manual** (see
 [Parking](#parking-a-case)) or **wrong** (spec drift — file it, do not encode
 it).
 
-## The three artifacts
+## The artifacts
 
-| artifact                        | path                                | owns                                                    |
-| ------------------------------- | ----------------------------------- | ------------------------------------------------------- |
-| **case**                        | `qa/cases/<ID>.md`                  | the intent, in Polish, generated from the tester doc    |
-| **spec**                        | `__tests__/qa/<AREA>/<ID>.spec.ts`  | the assertion; `test.describe('@case:<ID> @area:… …')`  |
-| **tenant profile**              | `__tests__/qa/profiles/<ID>.json`   | the tenant shape CI seeds before the run                |
+| artifact                      | path                               | owns                                          |
+| ----------------------------- | ---------------------------------- | --------------------------------------------- |
+| **case**                      | `qa/cases/<ID>.md`                 | the intent, in Polish, generated from the doc |
+| **spec**                      | `__tests__/qa/<AREA>/<ID>.spec.ts` | the assertion                                 |
+| **tenant profile** (optional) | `__tests__/qa/profiles/<ID>.json`  | the tenant shape; absent = `content`          |
+
+The profile is **conditional**: without a file the seeder builds the default
+`content` tenant (org + manager/teacher/student + a default group), which is what
+most cases need. Add `__tests__/qa/profiles/<ID>.json` only when the case needs a
+different shape (`bare`, `org-limit`, `two-org`, `plan`, `members`, `groups`,
+`solo`, `orgs`). The repo's 172 case specs share 150 profile files for exactly
+that reason.
 
 `qa/` is docs-only; the harness lives under `__tests__/qa/`. Coverage state for
 every case is tracked in `#926`; the technique classification (e2e / api /
@@ -80,9 +87,12 @@ manual) is [`qa/coverage.md`](../../../qa/coverage.md).
 1. `qa/index.md` → the case's priority and `prereqs`; `qa/cases/<ID>.md` → steps
    and the embedded prerequisite chain. Read every referenced case.
 2. The case text is **generated** from the tester document: never hand-edit the
-   steps or the expected result. The one legal edit is reconciling the
-   `Prereqs`/`Seed` block with the tenant model (the legacy `student1@dev.local`
-   accounts are not used).
+   steps or the expected result. The one legal edit is the tenant block:
+   reconcile an existing `## Seed (QA-suite tenant)` section **or add one when
+   the generated case has none** (`STU-07` has only the verbatim prerequisite)
+   with the tenant model — the legacy `student1@dev.local` accounts are never
+   used. The walk record does not go in the case file; it goes in the spec
+   docblock (Step 4).
 3. Read the code the case exercises. Without it you cannot answer Step 0's
    second question, and you cannot tell a defect from a case that describes a
    product you do not ship (`STU-25`, `#893`).
@@ -93,8 +103,9 @@ manual) is [`qa/coverage.md`](../../../qa/coverage.md).
 ## Step 2 — shape the tenant
 
 One case, one tenant, no shared state. CI seeds it from
-`__tests__/qa/profiles/<ID>.json` before the suite starts; the spec reads it
-through `loadTenant()` and never creates accounts itself.
+`__tests__/qa/profiles/<ID>.json` before the suite starts — or from the default
+`content` shape when the case has no profile file; the spec reads it through
+`loadTenant()` and never creates accounts itself.
 
 ```jsonc
 // the default: org + manager/teacher/student + a default group
@@ -116,7 +127,8 @@ org role), `groups` (first is the default), `solo` (an account in no org), `orgs
 `apply_org_plan` RPC the billing webhook uses, so a paid entitlement stays inside
 the case's own tenant instead of leaning on the global catalogue.
 
-Seed it:
+Seed it (in a shell that has this checkout's stack contract exported — see
+[Commands](#commands); `env:ensure --profile qa` already seeded every case once):
 
 ```bash
 bun scripts/qa-tenant.ts STU-21                    # base + 3 attempts (CI's retries)
@@ -132,10 +144,14 @@ stack (`--dedicated`) or it parks.
 
 ## Step 3 — walk it before you write it
 
-Run the case as a tester in the app (`bun run env:ensure --profile web`, agents
-never `next dev`) and record the real screens, copy, selectors and states. You
-cannot encode behaviour you have not seen; a spec written from the case text
-alone asserts the author's imagination.
+Run the case as a tester in the app (`bun run env:ensure --profile qa`, agents
+never `next dev`; the [Commands](#commands) block has the app URL and the stack
+contract) and record the real screens, copy, selectors and states. You cannot
+encode behaviour you have not seen; a spec written from the case text alone
+asserts the author's imagination. If no interactive browser is available, walk
+it with a headless Playwright script against the served build and keep the
+screenshots as evidence — the walk is still required, only the input device
+changes.
 
 If the walk shows the product **not** doing what the case says, stop:
 
@@ -158,8 +174,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Case: <the steps and the expected result, condensed>.
  *
- * Tenant: `content`, seeded by the profile file:
- *   bun scripts/qa-tenant.ts <ID> --fresh
+ * Tenant: `content` (no profile file), seeded in a shell that has the stack
+ * contract (Commands): `bun scripts/qa-tenant.ts <ID> --fresh`.
  *
  * Walk (<date>, <branch> @ <sha>): <what the app actually does, in the order the
  * case does it — including anything that contradicts the case text>.
@@ -179,6 +195,9 @@ test.describe('@case:<ID> @area:<AREA> @prio:<Pn> <short title>', () => {
   });
 });
 ```
+
+The docblock is where the walk record lives — date, commit and what the app
+actually did. It never goes in `qa/cases/<ID>.md`, which is generated (Step 1).
 
 Rules that the gates and reviewers actually enforce:
 
@@ -202,21 +221,25 @@ Rules that the gates and reviewers actually enforce:
 - **No `test.skip`, `test.fixme`, `test.soft`, `test.only`, or expected-failure
   wrappers.** The only legitimate skip is the temporary stack-mode guard
   (`skipBrandedAuthTemplateTest`), which is a named workaround with an exit.
-- **One case per file**, `@case:<ID>` in the `describe` title, so a shard's
-  report names the case that failed.
+- **One case per file**, and for a **new** spec `@case:<ID>` in the `describe`
+  title, so a shard's report names the case that failed. Most shipped specs
+  predate the tag (68 of 178 files carry no `@case:`), so an audit leaves a
+  working title alone rather than renaming it.
 
 ## Step 5 — prove it can fail (the mutation gate)
 
 Green means nothing until you have seen it red **for the right reason**. Do both
 axes, in a throwaway commit or with `git stash`, one mutation at a time:
 
-| axis           | mutation                                                     | must go red                     |
-| -------------- | ------------------------------------------------------------ | ------------------------------- |
-| **product**    | break what the case protects — drop the ownership filter, the permission check, the redirect rule, a field from the `select()` | the spec, on the assertion that names that behaviour |
-| **test**       | delete the step that does the work, or the assertion that proves it | the spec — otherwise the step was scenery |
+| axis        | mutation                                                                                                                       | must go red                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| **product** | break what the case protects — drop the ownership filter, the permission check, the redirect rule, a field from the `select()` | the spec, on the assertion that names that behaviour |
+| **test**    | delete the step that does the work, or the assertion that proves it                                                            | the spec — otherwise the step was scenery            |
 
 The app under test is a production build, so a server mutation needs a rebuild
-before the spec can see it:
+before the spec can see it. Run this in the same shell as the
+[Commands](#commands) block, so `QA_APP_URL` and the stack contract are already
+exported:
 
 ```bash
 # mutate apps/web/src/… or packages/server/src/…
@@ -252,13 +275,22 @@ read by `loadTenant()`), so the spec only has to avoid freezing attempt 0:
 - a mutating spec either resets its own rows at attempt start
   (`resetInviteeState`, `resetFirstRunTenant` with a `qaDbNow()` cutoff) or is
   not retry-safe;
-- prove it: fail attempt 0 on purpose (temporary probe, never committed) with
-  `--retries=1` and expect **one flaky** — the retry passing against its own
-  attempt file is the proof:
+- prove it: fail attempt 0 on purpose with `--retries=1` and expect **one
+  flaky** — the retry passing against its own attempt file is the proof. There
+  is no probe flag in the harness: add the throw to the spec for this one run
+  and delete it before you commit (the same snippet as
+  `qa/QA-SUITE-APPROACH.md`, which nothing reads automatically):
+
+```ts
+// TEMPORARY — never committed
+test.beforeEach(() => {
+  if (process.env.QA_RETRY_PROBE !== '1' || test.info().retry !== 0) return;
+  throw new Error('QA retry probe: fail attempt 0 once');
+});
+```
 
 ```bash
-QA_RETRY_PROBE=1 CI=1 bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
-  __tests__/qa/<AREA>/<ID>.spec.ts --retries=1
+QA_RETRY_PROBE=1 CI=1 bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts --retries=1
 ```
 
 `--repeat-each=2` is **not** this check: repeats re-seed and re-run hooks, so they
@@ -277,11 +309,11 @@ An entry needs all of:
 6. the **mutation proof** above, with the message quoted;
 7. a retry-isolation probe for anything that writes.
 
-The PR carries: the spec, the profile file, the reconciled `Prereqs`/`Seed` in the
-case, and the mutation + 5/5 evidence in the body. Branch `qa/<ID>` or
-`test/qa-<ID>`, PR into `main`. Scope it to one case (plus a shared helper if the
-case genuinely needs one) — a shared-helper change that restyles every spec is a
-separate PR.
+The PR carries: the spec, the profile file (only when the tenant is not the
+default `content`), the reconciled or added `Prereqs`/`Seed` block in the case,
+and the mutation + 5/5 evidence in the body. Branch `qa/<ID>` or `test/qa-<ID>`,
+PR into `main`. Scope it to one case (plus a shared helper if the case genuinely
+needs one) — a shared-helper change that restyles every spec is a separate PR.
 
 AI cases (`EDU-DECK-05`, `SEC-07`, `STU-09`, `STU-45`, `STU-49`, and the shipped
 `STU-47`/`STU-48`) run in the `ai-suite` job against the fake inference server
@@ -331,15 +363,39 @@ not keep a red test.
 
 ## Commands
 
+A bare worktree (no `.env.local`) has no stack contract in the shell:
+`env:ensure` exports it only to its own children, `bun scripts/qa-tenant.ts`
+reads just `.env.local`/`qa/env.json`, and `test:qa`'s `varlock` wrapper injects
+only `.env.local`. There is no one wrapper command, so start the environment,
+export the contract in the shell that seeds and runs, then run:
+
 ```bash
-bun run env:ensure --profile web                 # this checkout's app + stack
-bun scripts/qa-tenant.ts <ID> --fresh            # seed one case (3 attempts)
+# 1. stack + production build + served app + every QA tenant (one run suffix).
+#    `--profile web` does NOT seed QA tenants: its seeder is scripts/e2e-seed.ts.
+bun run env:ensure --profile qa
+#    prints `app http://localhost:<port>`; `bun run env:status --json` → .urls.app
+
+# 2. this checkout's app — the runner falls back to the shared :3010 without it
+export QA_APP_URL=http://localhost:<port>
+
+# 3. the stack contract (spec db-admin helpers + the seeder). For a named stack
+#    add `--stack "$SUPABASE_STACK"`. No env:* command exports this for you.
+eval "$(bunx supabase status --env | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.DB_URL)"')"
+
+# 4. run and reseed
 bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts # run it
 bun run test:qa __tests__/qa/<AREA>              # one area
+bun scripts/qa-tenant.ts <ID> --fresh            # one case (3 attempts)
 bun run mock:llm                                 # fake inference, for AI cases
 bun run env:build                                # only for the mutation loop
 bun run review:static -- --changed origin/main   # tautology rules on the diff
 ```
+
+`env:ensure --profile qa` re-seeds every case with a fresh run suffix on each
+run (172 tenants, a few seconds), so a full reseed needs no export; step 3 is
+what lets you seed a single case in an ugly but working shell. A spec that reads
+the database (`createQaSupabase`) fails loudly without it — `qa-db: no Supabase
+URL` — while a UI-only spec would instead run silently against `:3010`.
 
 CI runs four shards by area (`edu`, `stu`, `mgr-sec-bil`,
 `aut-nfr-onb-pub-lim`), path-scoped per PR and all four nightly, plus `ai-suite`.
