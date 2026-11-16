@@ -43,7 +43,7 @@ const UI = {
   pricingTitle: 'Wybierz swój plan',
   sparkName: 'StudiQ Spark',
   sparkRowName: 'Spark',
-  sparkCta: 'Przejdź na Spark',
+  sparkCta: 'Wybierz Spark',
   summary: 'Podsumowanie zamówienia',
   total: 'Razem',
   cardNumber: 'Numer karty',
