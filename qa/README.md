@@ -154,6 +154,13 @@ and runs Playwright at `QA_WORKERS=4` across four path-scoped shards (`edu`, `st
 inference server. Only specs that pass **5/5** independent fresh-tenant runs are admitted,
 and no spec is skipped, `fixme`d or written as expected-to-fail.
 
+Several agents, one app: the checkout that ran `env:ensure --profile web` is the owner and
+shares a pointer (`bun run env:share --write` → `qa/env.json`, URLs only). Each other worktree
+copies that file, sets `SUPABASE_SHARED=1` in its own `.env.local`, copies the anon and
+service-role keys from the owner, and never starts a stack — the specs, `db-admin`, `mailpit`,
+the seeder and the Playwright `baseURL` all read the pointer. Details: `AGENTS.md` →
+"One app, N agents".
+
 Designing, writing, mutating or pruning a case: `.agents/skills/studiq-qa-case/SKILL.md`.
 The three campaign prompts (`QA-SUITE-APPROACH.md`, `QA-SUITE-MANAGER.md`,
 `QA-SUITE-WORKER.md`) describe the retired shared-VM loop; they are parked for rewrite, and

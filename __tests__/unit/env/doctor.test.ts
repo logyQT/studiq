@@ -1,6 +1,6 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   appPortBase,
@@ -68,6 +68,29 @@ describe('env:doctor', () => {
     expect(Array.isArray(report.warnings)).toBe(true);
     // A stopped/absent stack is a clean CLI answer, not a CLI failure.
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
+  });
+
+  it('warns when the QA pointer sends specs to another app', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const pointer = String(harness.env.STUDIQ_QA_POINTER);
+    mkdirSync(dirname(pointer), { recursive: true });
+    writeFileSync(
+      pointer,
+      JSON.stringify({
+        appUrl: 'http://localhost:3999',
+        supabaseUrl: 'http://localhost:3998',
+        stackId: 'stack-that-is-not-on-this-machine',
+      }),
+    );
+
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const warnings = stringList(parseJsonObject(result.stdout).warnings).join('\n');
+    expect(warnings).toContain('points at http://localhost:3999');
+    expect(warnings).toContain('not in this machine');
   });
 
   it('reports the machine-wide observability stack and its primary start command', async () => {

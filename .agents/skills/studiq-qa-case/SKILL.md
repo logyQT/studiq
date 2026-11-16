@@ -410,6 +410,11 @@ reads the database (`createQaSupabase`) fails loudly without the contract —
 `qa-db: no Supabase URL` — while a spec run with a raw `bunx playwright` instead
 of `env:run` has no `QA_APP_URL` and falls back to the shared `:3010` app.
 
+If another checkout owns the app (many agents, one environment), you are a consumer: copy its
+`qa/env.json` (`bun run env:share --write` writes it there), set `SUPABASE_SHARED=1`, take the
+anon + service-role keys from that checkout's `.env.local`, and never run `env:ensure`,
+`env:down`, `env:reset-db` or `--seed`. The pointer carries URLs only.
+
 CI runs four shards by area (`edu`, `stu`, `mgr-sec-bil`,
 `aut-nfr-onb-pub-lim`), path-scoped per PR and all four nightly, plus `ai-suite`.
 Each shard seeds only its own areas
