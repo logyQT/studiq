@@ -33,8 +33,8 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
  * (StudiQ Base, Spark, Ace, Pro), `/edu/upgrade` exactly the educator catalogue
  * (StudiQ Lite, Guide, Creator, Master). In both, the current plan's card carries the
  * „Obecny Plan” badge and every other card a purchase/selection button
- * („Przejdź na Spark”, „Wybierz Ace”, „Wybierz Pro” / „Przejdź na Guide”,
- * „Wybierz Creator”, „Wybierz Master”). „Przejdź na Spark” opens
+ * („Wybierz Spark”, „Wybierz Ace”, „Wybierz Pro” / „Wybierz Guide”,
+ * „Wybierz Creator”, „Wybierz Master”). „Wybierz Spark” opens
  * `/checkout?session_id=…&plan_id=spark`. A student opening `/edu/upgrade` is
  * redirected to `/app`, an educator opening `/app/upgrade` to `/edu`. The behavior
  * matches the case exactly; no defect to report.

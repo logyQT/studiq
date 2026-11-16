@@ -118,6 +118,7 @@ Roadmap-backed, so all of it is sellable. Status column is the roadmap's, not th
 | `SM-2` spaced repetition and study sessions                                     | 0, 5B           | ✅                                             |
 | Questions (multiple choice, true/false, open), banks, quizzes, attempts, review | 0, 3A           | ✅                                             |
 | Groups, org hierarchy, roles, per-group visibility                              | 1, 2            | ✅                                             |
+| Own branding: organization logo and brand colour                                | 8A              | ✅                                             |
 | Seats, plans, features and limits, Stripe checkout                              | 6               | 🏗️ integration complete, go-live pending #1019 |
 | AI flashcard generation from text or PDF, with a daily token budget             | 4A              | ✅                                             |
 | AI question and quiz generation                                                 | 4B (#658)       | 📋 ships before launch                         |
@@ -135,18 +136,28 @@ The page may sell the 📋 rows. It may not sell anything absent from this table
 
 ## Gaps: claimed, but not in the roadmap
 
-Three claims are live and have no roadmap row. Under the rule above they get no promise until
-they do. Each is a decision, not a design task.
+One claim is live and has no roadmap row. Under the rule above it gets no promise until it
+does. It is a decision, not a design task.
 
-1. **14-day free trial** (`PricingPage.faq_a3`). Every `/pricing/*` page states new users
-   get a 14-day trial of all Premium features. No trial exists in the code or the roadmap.
-2. **Data kept 30 days after cancellation** (`PricingPage.faq_a2`). Cancellation is
-   `cancel_at_period_end`; the 30-day grace belongs to soft-deleted _accounts_, not
-   subscriptions.
-3. **"Free Forever"** (`LandingPage.free_badge`). The free-tier band is badged "Free Forever"
+1. **"Free Forever"** (`LandingPage.free_badge`). The free-tier band is badged "Free Forever"
    / "Zawsze za darmo". The free plan is 0 zł today, but "forever" is a pricing promise, and
    the roadmap makes none: nothing in it or in `subscription_plans` fixes that price. Either
-   back it with a policy decision or drop the badge from the band.
+   back it with a policy decision or drop the badge from the band. The badge is on the landing
+   page's pricing band, not on `/pricing`, so this redesign does not touch it.
+
+**Closed by the `/pricing` redesign.** The FAQ used to answer a 14-day trial and a 30-day
+retention window. Both described a product the roadmap does not have, so both are gone and
+the page now states only what the roadmap backs. Recorded because both are tempting to
+re-add:
+
+- **There is no trial.** Checkout creates a plain subscription (`stripe-payment.gateway.ts`):
+  no trial period, no trial plan, no roadmap row for one.
+- **Cancellation deletes nothing.** It sets `cancel_at_period_end`, so the plan falls back to
+  the free tier when the paid period ends and the account, its material and its groups stay.
+  There is no 30-day window to describe.
+- **A downgrade prunes nothing.** Limits are read live from the plan when content is created,
+  so material already above a cheaper plan's limits stays and stays readable; the reader
+  simply cannot add more past the new cap.
 
 **Dropped:** AI exam simulation. It was sold as Premium value on the landing page, the
 marketing premium card and `/features`, and subphase 4C covers learning paths, report agents

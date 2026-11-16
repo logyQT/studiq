@@ -193,9 +193,9 @@ plan, and a seated member's features are `org role features ∪ seat plan
 features`, so the displayed plan can be narrower than enforcement in those
 mixes (#181/#270).
 
-`/pricing/org` badges its "current plan" from the same precedence (#228): a
-manager reads `/api/v1/me/plan` (the active org's plan), while
-students/educators keep reading `/api/v1/me/personal-plan`.
+The organization ladder on `/pricing?audience=organization` badges its "current
+plan" from the same precedence (#228): a manager reads `/api/v1/me/plan` (the
+active org's plan), while students/educators keep reading `/api/v1/me/personal-plan`.
 
 Value semantics:
 

@@ -1,4 +1,4 @@
-# PUB-03 — Strona „Cennik” (/pricing) – kafelki typów kont
+# PUB-03 — Strona „Cennik” (/pricing) – przełącznik odbiorcy
 
 - id: PUB-03
 - priority: P1 krytyczny
@@ -14,7 +14,7 @@ Brak sesji.
 ## Seed (QA-suite tenant)
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `student1@dev.local`, …).
-Kafelek cennika jest publiczny, więc przypadek nie potrzebuje zalogowanego użytkownika — jego
+Cennik jest publiczny, więc przypadek nie potrzebuje zalogowanego użytkownika — jego
 izolowany tenant istnieje tylko jako nazwa przypadku i dowód izolacji:
 
 ```bash
@@ -32,19 +32,28 @@ bun scripts/qa-tenant.ts PUB-03           # seed od zera (deterministyczny)
 - Przeglądarka startuje z pustym stanem sesji (`storageState: { cookies: [], origins: [] }`)
   i ustawionym `NEXT_LOCALE=pl`; żaden użytkownik tenanta nie jest zalogowany.
 - Spec nie zapisuje żadnych współdzielonych rekordów: katalog planów czyta tylko przez
-  publiczne `GET /api/v1/subscription-plans?for=<typ>` i porównuje z nim wyrenderowane karty.
+  publiczne `GET /api/v1/subscription-plans` i porównuje z nim wyrenderowane plany.
 
 ## Steps
 
 1. Otwórz /pricing.
-2. Sprawdź trzy kafelki: Student, Edukator, Organizacja.
-3. Kliknij kafelek „Student”, wróć, powtórz dla „Edukator” i „Organizacja”.
+2. Sprawdź przełącznik „Cennik”: dwie opcje, „Dla siebie” i „Dla organizacji”.
+3. Przełącz na „Dla organizacji”, a potem z powrotem na „Dla siebie”. Sprawdź adres w pasku
+   i przycisk „wstecz” przeglądarki.
+4. Otwórz bezpośrednio /pricing?audience=organization.
 
 ## Expected result
 
-- Tytuł „Wybierz Swój Plan” i podtytuł „Zacznij za darmo, ulepsz gdy potrzebujesz więcej”.
-- Trzy kafelki (Student / Edukator / Organizacja) z ikoną, nazwą i opisem. Cały kafelek jest klikalny (link nakładkowy) — brak osobnego przycisku „Zobacz N plany” i brak licznika planów na kafelku.
-- Kliknięcie kafelka „Student” → /pricing/student z 4 planami: Base, Spark, Ace, Pro.
-- Kliknięcie kafelka „Edukator” → /pricing/edu z 4 planami: Lite, Guide, Creator, Master.
-- Kliknięcie kafelka „Organizacja” → /pricing/org z 4 planami: Launch, Team, Hub, Campus.
-- Powrót na /pricing przez link „Cennik” w nagłówku (strona planów nie ma osobnego linku „Powrót do planów”).
+- Tytuł „Wybierz swój plan” i podtytuł „Ceny miesięczne w złotych. Na każdej ścieżce zaczynasz
+  za darmo.”
+- Jeden przełącznik z dwiema opcjami (grupa radio, nie kafelki typów kont). Nie ma osobnych
+  podstron /pricing/student, /pricing/edu ani /pricing/org.
+- „Dla siebie” pokazuje dwie sekcje: „Dla uczniów i studentów” (Base, Spark, Ace, Pro)
+  i „Dla edukatorów” (Lite, Guide, Creator, Master). Każda sekcja ma własne porównanie planów.
+- „Dla organizacji” pokazuje sekcję „Dla organizacji” z planami Launch, Team, Hub, Campus.
+- Przełączenie zmienia plany bez przeładowania dokumentu, zachowuje pozycję przewinięcia
+  i dopisuje do adresu `?audience=organization`; „wstecz” wraca do poprzedniego widoku.
+- Zimny start /pricing?audience=organization od razu pokazuje plany organizacji — treść jest
+  w HTML odpowiedzi, nie pojawia się dopiero po hydratacji.
+- Link „Cennik” w nagłówku prowadzi na /pricing i pokazuje „Dla siebie”, także wtedy, gdy
+  wybrana była organizacja.
