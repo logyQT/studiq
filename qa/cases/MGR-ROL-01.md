@@ -52,6 +52,6 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   **403** `{"success":false,"error":"FORBIDDEN"}` i nie tworzy roli; `PUT` istniejącej
   roli jest odrzucany tak samo, a nazwa roli pozostaje bez zmian.
 - Lista ról (`admin`, `teacher`, `member`) pozostaje czytelna — blokada dotyczy tylko zapisu.
-- „Zobacz plany” prowadzi do `/pricing/org` („Wybierz Swój Plan”): karta bieżącego planu
-  oznaczona „Obecny Plan”, a plany z funkcją „Kreator Ról” są na liście. UI **informuje**
+- „Zobacz plany” prowadzi do `/pricing?audience=organization` („Wybierz swój plan”):
+  wiersz bieżącego planu oznaczony „Twój plan”, a plany z funkcją „Kreator ról” są na liście. UI **informuje**
   więc o konieczności zmiany planu — to odpowiedź na uwagę z oczekiwanego rezultatu.

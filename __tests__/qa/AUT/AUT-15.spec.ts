@@ -57,7 +57,7 @@ const COPY = {
   loginTitle: 'Witaj ponownie',
   loginSubtitle: 'Zaloguj się, aby kontynuować naukę',
   loginSubmit: 'Zaloguj się',
-  pricingTitle: 'Wybierz Swój Plan',
+  pricingTitle: 'Wybierz swój plan',
 } as const;
 
 /** Path + query of the current page, so assertions are base-URL independent. */

@@ -36,6 +36,7 @@
     "env:verify": "bun scripts/env/cli.ts verify",
     "env:observability": "bash scripts/env/varlock-run.sh observability",
     "env:supa": "bash scripts/env/varlock-run.sh supa",
+    "env:run": "bash scripts/env/varlock-run.sh run",
     "dev:web": "bun run --filter @studiq/web dev",
     "dev:admin": "varlock run --inject vars -- bun run --filter @studiq/admin dev",
     "knip": "knip --treat-config-hints-as-errors --no-progress",
