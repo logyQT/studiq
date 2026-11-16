@@ -34,6 +34,7 @@ interface AssignmentDetail {
   max_attempts: number;
   attempt_item_count: number | null;
   allow_same_item_retake: boolean;
+  unseen_only: boolean;
   passing_score: number | null;
 }
 
@@ -119,6 +120,7 @@ export default function EditAssignmentClient() {
     maxAttempts: assignment.max_attempts.toString(),
     attemptItemCount: assignment.attempt_item_count?.toString() ?? '',
     allowSameItemRetake: assignment.allow_same_item_retake,
+    unseenOnly: assignment.unseen_only,
     passingScore: assignment.passing_score?.toString() ?? '',
   };
 

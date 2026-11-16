@@ -2206,6 +2206,7 @@ export type Database = {
           time_limit_min: number | null;
           title: string;
           total_points: number;
+          unseen_only: boolean;
           updated_at: string | null;
         };
         ComputedFields: never;
@@ -2232,6 +2233,7 @@ export type Database = {
           time_limit_min?: number | null;
           title: string;
           total_points?: number;
+          unseen_only?: boolean;
           updated_at?: string | null;
         };
         Update: {
@@ -2257,6 +2259,7 @@ export type Database = {
           time_limit_min?: number | null;
           title?: string;
           total_points?: number;
+          unseen_only?: boolean;
           updated_at?: string | null;
         };
         Relationships: [

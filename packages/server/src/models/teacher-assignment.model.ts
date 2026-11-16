@@ -38,6 +38,12 @@ const teacherAssignmentFields = z.object({
   /** R6: serve the same items on a retake instead of a fresh sample. Off by default. */
   allowSameItemRetake: z.boolean({ error: ValidationErrorCode.BOOL }),
   /**
+   * R8: exclude items this student has already met (served, answered, key rendered) from their
+   * sample. Off by default — exposure is reported, not excluded; a first attempt serves the whole
+   * pool. Frozen at publish like every other sampling rule.
+   */
+  unseenOnly: z.boolean({ error: ValidationErrorCode.BOOL }),
+  /**
    * R7: how many items one attempt serves out of the pool. Omitted = leave the column alone,
    * `null` = the whole pool. The explicit null is what lets the composer clear a count it set
    * earlier; without it the field could only ever be narrowed or changed, never reopened.
@@ -59,6 +65,7 @@ export const CreateTeacherAssignmentSchema = registry.register(
     showResults: teacherAssignmentFields.shape.showResults.default(false),
     maxAttempts: teacherAssignmentFields.shape.maxAttempts.default(1),
     allowSameItemRetake: teacherAssignmentFields.shape.allowSameItemRetake.default(false),
+    unseenOnly: teacherAssignmentFields.shape.unseenOnly.default(false),
   }),
 );
 export type CreateTeacherAssignmentInput = z.infer<typeof CreateTeacherAssignmentSchema>;

@@ -17,6 +17,8 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
 // need its value. Slice 2 moved the link rows and the reader snapshots behind the same service-role
 // seam, so each test declares the links it serves here.
 type AssignmentLink = import('@studiq/server/lib/assignment-snapshot').AssignmentLink;
+/** The `start` payload as far as the sampling tests read it. */
+type AttemptPayload = { questions: Array<{ id: string }> };
 type QuestionSnapshot = import('@studiq/server/lib/assignment-snapshot').QuestionSnapshot;
 
 const linkRows = vi.hoisted(() => ({ rows: [] as AssignmentLink[] }));
@@ -38,6 +40,7 @@ vi.mock('@studiq/server/lib/assignment-snapshot', async (importOriginal) => ({
 const attemptHistoryState = vi.hoisted(() => ({
   served: new Set<string>(),
   seen: new Set<string>(),
+  exposed: new Set<string>(),
 }));
 vi.mock('@studiq/server/lib/attempt-sample', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@studiq/server/lib/attempt-sample')>()),
@@ -489,6 +492,51 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    describe('unseenOnly (R8)', () => {
+      it('refuses to flip the sampling mode on a published run', async () => {
+        mock.from
+          .mockReturnValueOnce(
+            chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+          )
+          .mockReturnValueOnce(chain({ status: 'published', unseen_only: false }));
+
+        const result = await service.update(assignmentId, { unseenOnly: true }, ctx);
+
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+        // Ownership and the mode read only: the refused edit never reaches the write.
+        expect(mock.from).toHaveBeenCalledTimes(2);
+      });
+
+      it('accepts a save that re-sends the mode the run already has', async () => {
+        const updated = { id: assignmentId, title: 'T', unseen_only: true };
+        mock.from
+          .mockReturnValueOnce(
+            chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+          )
+          .mockReturnValueOnce(chain({ status: 'published', unseen_only: true }))
+          .mockReturnValue(chain(updated));
+
+        const result = await service.update(assignmentId, { title: 'T', unseenOnly: true }, ctx);
+
+        expect(result.success).toBe(true);
+      });
+
+      it('lets a draft choose the mode', async () => {
+        const updated = { id: assignmentId, unseen_only: true };
+        mock.from
+          .mockReturnValueOnce(
+            chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+          )
+          .mockReturnValueOnce(chain({ status: 'draft', unseen_only: false }))
+          .mockReturnValue(chain(updated));
+
+        const result = await service.update(assignmentId, { unseenOnly: true }, ctx);
+
+        expect(result.success).toBe(true);
+      });
     });
 
     describe('deadline (R12/R20, #1191)', () => {
@@ -2953,6 +3001,108 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
       expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    /** The item ids the started attempt was served, for a first attempt of `assignmentOverride`. */
+    async function servedIds(assignmentOverride: Record<string, unknown>): Promise<string[]> {
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, ...assignmentOverride }))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) return [];
+      return asJson<AttemptPayload>(result.data).questions.map((question) => question.id);
+    }
+
+    // The model change (#1172 revisited): exposure is information, not a default exclusion. A
+    // student who studied must still be served the item on a **first** attempt.
+    describe('unseen_only', () => {
+      const twoItems = [
+        { question_id: 'q-1', order_index: 0, points: 1, taught_item: false },
+        { question_id: 'q-2', order_index: 1, points: 1, taught_item: false },
+      ].map((link) => ({ ...link, snapshot: frozen(link.question_id), snapshot_version: 1 }));
+
+      beforeEach(() => {
+        attemptHistoryState.served = new Set();
+        attemptHistoryState.seen = new Set();
+        attemptHistoryState.exposed = new Set();
+      });
+
+      it('serves an item whose key the student already saw on a first attempt (the default)', async () => {
+        linkRows.rows = twoItems;
+        attemptHistoryState.exposed = new Set(['q-1']);
+
+        expect(await servedIds({ unseen_only: false })).toEqual(['q-1', 'q-2']);
+      });
+
+      it('excludes that item when the assessment is unseen-only', async () => {
+        linkRows.rows = twoItems;
+        attemptHistoryState.exposed = new Set(['q-1']);
+
+        expect(await servedIds({ unseen_only: true })).toEqual(['q-2']);
+      });
+
+      it('refuses NO_UNSEEN_ITEMS on an unseen-only run with nothing left', async () => {
+        linkRows.rows = twoItems;
+        attemptHistoryState.exposed = new Set(['q-1', 'q-2']);
+        mock.from
+          .mockReturnValueOnce(chain({ ...assignment, unseen_only: true }))
+          .mockReturnValueOnce(chain([]));
+
+        const result = await service.startAttempt(assignmentId, ctx);
+
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toBe('NO_UNSEEN_ITEMS');
+      });
+
+      it('keeps a retake disjoint with the flag off: served and answered items stay out', async () => {
+        linkRows.rows = twoItems;
+        attemptHistoryState.served = new Set(['q-1']);
+        attemptHistoryState.seen = new Set(['q-1']);
+        mock.from
+          .mockReturnValueOnce(chain({ ...assignment, unseen_only: false, max_attempts: 2 }))
+          .mockReturnValueOnce(chain([{ id: 'a-1', completed_at: '2026-11-01T00:00:00Z' }]))
+          .mockReturnValueOnce(chain({ id: 'attempt-2' }))
+          .mockReturnValue(chain(null));
+
+        const result = await service.startAttempt(assignmentId, ctx);
+
+        expect(result.success, JSON.stringify(result)).toBe(true);
+        if (result.success) {
+          expect(asJson<AttemptPayload>(result.data).questions.map((q) => q.id)).toEqual(['q-2']);
+        }
+      });
+
+      it('waives the exclusion for a taught item when the run is unseen-only', async () => {
+        linkRows.rows = twoItems.map((link) =>
+          link.question_id === 'q-1' ? { ...link, taught_item: true } : link,
+        );
+        attemptHistoryState.exposed = new Set(['q-1']);
+
+        expect(await servedIds({ unseen_only: true })).toEqual(['q-1', 'q-2']);
+      });
+
+      it('leaves taughtItem inert with the flag off: a retake still skips the served item', async () => {
+        linkRows.rows = twoItems.map((link) =>
+          link.question_id === 'q-1' ? { ...link, taught_item: true } : link,
+        );
+        attemptHistoryState.seen = new Set(['q-1']);
+        mock.from
+          .mockReturnValueOnce(chain({ ...assignment, unseen_only: false, max_attempts: 2 }))
+          .mockReturnValueOnce(chain([{ id: 'a-1', completed_at: '2026-11-01T00:00:00Z' }]))
+          .mockReturnValueOnce(chain({ id: 'attempt-2' }))
+          .mockReturnValue(chain(null));
+
+        const result = await service.startAttempt(assignmentId, ctx);
+
+        expect(result.success, JSON.stringify(result)).toBe(true);
+        if (result.success) {
+          expect(asJson<AttemptPayload>(result.data).questions.map((q) => q.id)).toEqual(['q-2']);
+        }
+      });
     });
   });
 

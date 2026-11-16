@@ -1,32 +1,67 @@
 import { drawSample, sampleEligible, sampleServed } from '@studiq/server/lib/attempt-sample';
 import { describe, expect, it } from 'vitest';
 
-// #1174 phase 5: the pure half of the retake sample (R6/R7), and #1172 phase 3: eligibility
-// (R7/R8/R9). The DB half (`attemptHistory`) is covered by the integration tests; these pin the
-// rules that decide which bound items one attempt may serve.
+// #1174 phase 5: the pure half of the retake sample (R6/R7), and #1172: eligibility (R8/R9).
+// Exposure excludes an item only for an assessment that opted into `unseen_only`; the retake rule
+// (served + answered) holds in both modes. The DB half (`attemptHistory`) is covered by the
+// integration tests; these pin the rules that decide which bound items one attempt may serve.
 
 const links = (ids: Array<string | null>) =>
   ids.map((question_id) => ({ question_id, taught_item: false }));
 
-describe('sampleEligible (#1172, R8/R9)', () => {
-  it('drops every item the student has already met', () => {
-    const seen = new Set(['q-1', 'q-3']);
-    expect(sampleEligible(links(['q-1', 'q-2', 'q-3']), seen)).toEqual([
+const nothing = { seen: new Set<string>(), exposed: new Set<string>() };
+
+describe('sampleEligible with unseen_only off (#1172 revisited)', () => {
+  it('serves an item whose key the student already saw — exposure is information, not exclusion', () => {
+    const exclusion = { seen: new Set<string>(), exposed: new Set(['q-1']) };
+    expect(sampleEligible(links(['q-1', 'q-2']), exclusion, false)).toEqual([
+      { question_id: 'q-1', taught_item: false },
       { question_id: 'q-2', taught_item: false },
     ]);
   });
 
-  it('serves a taught item even when the student has met it', () => {
-    const seen = new Set(['q-1', 'q-2']);
+  it('still leaves out what a retake must not repeat: served and answered items', () => {
+    const exclusion = { seen: new Set(['q-1', 'q-3']), exposed: new Set<string>() };
+    expect(sampleEligible(links(['q-1', 'q-2', 'q-3']), exclusion, false)).toEqual([
+      { question_id: 'q-2', taught_item: false },
+    ]);
+  });
+
+  it('leaves taughtItem inert: the declaration changes nothing outside unseen_only', () => {
     const taught = [
       { question_id: 'q-1', taught_item: true },
       { question_id: 'q-2', taught_item: false },
     ];
-    expect(sampleEligible(taught, seen)).toEqual([{ question_id: 'q-1', taught_item: true }]);
+    const exclusion = { seen: new Set(['q-1']), exposed: new Set<string>() };
+    expect(sampleEligible(taught, exclusion, false)).toEqual([
+      { question_id: 'q-2', taught_item: false },
+    ]);
+  });
+});
+
+describe('sampleEligible with unseen_only on (#1172, R8/R9)', () => {
+  it('drops every item the student has already met', () => {
+    const exclusion = { seen: new Set(['q-1']), exposed: new Set(['q-3']) };
+    expect(sampleEligible(links(['q-1', 'q-2', 'q-3']), exclusion, true)).toEqual([
+      { question_id: 'q-2', taught_item: false },
+    ]);
+  });
+
+  it('serves a taught item despite a ledger event or a prior answer', () => {
+    const taught = [
+      { question_id: 'q-1', taught_item: true },
+      { question_id: 'q-2', taught_item: true },
+      { question_id: 'q-3', taught_item: false },
+    ];
+    const exclusion = { seen: new Set(['q-2', 'q-3']), exposed: new Set(['q-1']) };
+    expect(sampleEligible(taught, exclusion, true)).toEqual([
+      { question_id: 'q-1', taught_item: true },
+      { question_id: 'q-2', taught_item: true },
+    ]);
   });
 
   it('keeps the assignment order and a link without a question', () => {
-    expect(sampleEligible(links(['q-3', null, 'q-1']), new Set(['q-2']))).toEqual([
+    expect(sampleEligible(links(['q-3', null, 'q-1']), nothing, true)).toEqual([
       { question_id: 'q-3', taught_item: false },
       { question_id: null, taught_item: false },
       { question_id: 'q-1', taught_item: false },
@@ -34,7 +69,8 @@ describe('sampleEligible (#1172, R8/R9)', () => {
   });
 
   it('is empty when the pool holds nothing eligible — the refusal the caller turns into a 409', () => {
-    expect(sampleEligible(links(['q-1', 'q-2']), new Set(['q-1', 'q-2']))).toEqual([]);
+    const exclusion = { seen: new Set(['q-1']), exposed: new Set(['q-2']) };
+    expect(sampleEligible(links(['q-1', 'q-2']), exclusion, true)).toEqual([]);
   });
 });
 
