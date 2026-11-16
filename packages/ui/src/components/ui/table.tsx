@@ -4,9 +4,27 @@ import type * as React from 'react';
 
 import { cn } from '../../utils';
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+function Table({
+  className,
+  containerClassName,
+  containerProps,
+  ...props
+}: React.ComponentProps<'table'> & {
+  /**
+   * The scroll container's own class and props. A table that can overflow needs
+   * to be reachable from the keyboard, and the region that scrolls is the
+   * container, not the `<table>`: a caller names it and makes it focusable here
+   * without every other table in the app growing a tab stop.
+   */
+  containerClassName?: string;
+  containerProps?: React.ComponentProps<'div'>;
+}) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div
+      data-slot="table-container"
+      className={cn('relative w-full overflow-x-auto', containerClassName)}
+      {...containerProps}
+    >
       <table
         data-slot="table"
         className={cn('w-full caption-bottom text-sm', className)}

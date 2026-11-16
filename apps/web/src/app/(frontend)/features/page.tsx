@@ -6,6 +6,7 @@ import { MarketingShell } from '@/components/layout/MarketingShell';
 import { GeneratedCardsPreview } from '@/components/marketing/previews/generated-cards-preview';
 import { ProblemQuestionsPreview } from '@/components/marketing/previews/problem-questions-preview';
 import { QuizReviewPreview } from '@/components/marketing/previews/quiz-review-preview';
+import { SeatPoolsPreview } from '@/components/marketing/previews/seat-pools-preview';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 
@@ -114,10 +115,11 @@ export default function FeaturesPage() {
   const t = useTranslations('FeaturesPage');
 
   /*
-   * One worked example runs through the page: the four surfaces are the same
-   * biology lecture — generated cards, a graded test, a class's failed
-   * questions — so the page reads as the product applied to one course instead
-   * of four unrelated demos.
+   * One worked example runs through the page's first three surfaces: they are the
+   * same biology lecture — generated cards, a graded test, a class's failed
+   * questions — so the page reads as the product applied to one course instead of
+   * four unrelated demos. The fourth is an institution's seat pools, which belong
+   * to the organization that owns the course.
    */
   const clusters: readonly ClusterData[] = [
     {
@@ -166,6 +168,7 @@ export default function FeaturesPage() {
         { title: t('org_invites_title'), desc: t('org_invites_desc') },
         { title: t('org_analytics_title'), desc: t('org_analytics_desc') },
       ],
+      surface: <SeatPoolsPreview />,
       action: (
         <p className="mt-6">
           <a

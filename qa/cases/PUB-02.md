@@ -36,8 +36,10 @@ singleton row.
 - Spis obszarów w nagłówku strony prowadzi do tych czterech sekcji (cztery odnośniki `#…`).
 - Obszary 01–03 kończą się przykładem z produktu; obszar 04 kończy się odnośnikiem do
   `/contact`. „Wynik: 75%” ani żadna karta wyniku nie występuje na stronie.
-- Strona nie zawiera tabeli porównania planów: porównanie i limity są wyłącznie na
-  `/pricing`. Nie ma też nazw planów „Darmowy / Premium / Uniwersytecki”.
+- Jedyna tabela na stronie to pule miejsc w obszarze Organizacja (plan, wykupione,
+  przydzielone, dostępne). Porównanie planów i limity są wyłącznie na `/pricing`;
+  nie ma nazw planów „Darmowy / Premium / Uniwersytecki”. Obszar 04 kończy się tą
+  tabelą oraz odnośnikiem do `/contact`.
 - Trzy różne miejsca docelowe: `/register` (działanie główne, wysokość ≥ 44 px),
   `/pricing`, `/contact`. Żaden odnośnik nie prowadzi do zalogowanej aplikacji
   (`/app`, `/edu`, `/manage`).
