@@ -36,9 +36,9 @@ import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[i
  * pool's points into `quiz_attempts.total_points`, so a partially served attempt jumped from
  * `3/4` to `4/20` — the earned numerator was right and only the denominator widened.
  *
- * The draws are made deterministic through eligibility: an item the student has already answered is
- * not served again (R8), so answering the two pool items this fixture does not need leaves exactly
- * the served set the test asserts on.
+ * The subset fixture grows the pool after the attempt has been served, so the served set is
+ * deterministic and the pool is four times its size — the state `attempt_item_count < pool` (R7)
+ * produces in production.
  */
 
 type AssignmentRoute = (
@@ -82,6 +82,7 @@ describe('A manual grade re-scores the served items, not the pool (#1298)', () =
   let teacher!: BeforeResult;
   let student!: BeforeResult;
   let orgId!: string;
+  let poolBankId!: string;
 
   /** Both option ids of every mcq, so a served item can be answered right or wrong on purpose. */
   const options = new Map<string, { correct: string; wrong: string }>();
@@ -308,6 +309,46 @@ describe('A manual grade re-scores the served items, not the pool (#1298)', () =
     );
   }
 
+  /**
+   * Adds `count` closed items to a published run's pool. Composing is draft-only through the API,
+   * and the fixture needs `pool > served` without a random draw, so the pool grows after the
+   * attempt holds its five items — the state #1298 is about.
+   */
+  async function growPool(assignmentId: string, count: number, stamp: number): Promise<void> {
+    const contents = Array.from({ length: count }, (_, index) => `pool-extra-${stamp}-${index}`);
+    const { data: items, error } = await service
+      .from('questions')
+      .insert(
+        contents.map((content) => ({
+          organization_id: orgId,
+          created_by: teacher.user.id,
+          bank_id: poolBankId,
+          type: 'mcq',
+          content,
+          visibility: 'group',
+        })),
+      )
+      .select('id, content');
+    if (error) throw new Error(error.message);
+
+    const { error: linkError } = await service.from('assignment_questions').insert(
+      items.map((item, index) => ({
+        assignment_id: assignmentId,
+        question_id: item.id,
+        order_index: 100 + index,
+        points: 1,
+        snapshot: {
+          id: item.id,
+          content: item.content,
+          type: 'mcq',
+          question_answers: [],
+        },
+        snapshot_version: 1,
+      })),
+    );
+    if (linkError) throw new Error(linkError.message);
+  }
+
   /** One item plus its options, inserted with the service role: this test is not about authoring. */
   async function insertItem(
     bankId: string,
@@ -382,45 +423,27 @@ describe('A manual grade re-scores the served items, not the pool (#1298)', () =
 
     const stamp = Date.now();
 
-    // A pool of six of which the attempt is served four: three closed items and the open one.
-    const pool: string[] = [];
-    for (const index of [0, 1, 2, 3, 4]) {
-      pool.push(await insertItem(bank.id, 'mcq', `subset-mcq-${stamp}-${index}`));
+    // The subset attempt: a pool of five served whole (four closed + the open item), then the pool
+    // grows to twenty. That is #1298's shape — served 5 of a 20-item pool — and it keeps the served
+    // set deterministic without depending on the sampler or on eligibility history.
+    poolBankId = bank.id;
+    const served: string[] = [];
+    for (const index of [0, 1, 2, 3]) {
+      served.push(await insertItem(bank.id, 'mcq', `subset-mcq-${stamp}-${index}`));
     }
     subsetOpenItemId = await insertItem(bank.id, 'open', `subset-open-${stamp}`);
+    subsetAssignmentId = await publishAssignment([...served, subsetOpenItemId]);
 
-    // Two pool items are burnt for this student first: an item they have already answered is not
-    // served again (R8), so the subset draw below is exactly the four items the test asserts on.
-    const burnedIds = [
-      requiredAt(pool, 3, 'the burnt item'),
-      requiredAt(pool, 4, 'the burnt item'),
-    ];
-    const primerAnswers = new Map<string, string>();
-    for (const id of burnedIds) {
-      const choice = options.get(id);
-      if (choice) primerAnswers.set(id, choice.wrong);
-    }
-    await takeAndSubmit(await publishAssignment(burnedIds), primerAnswers);
-
-    subsetAssignmentId = await publishAssignment([...pool, subsetOpenItemId], 4);
-
-    // Two right, one wrong: the served closed items earn 2 of their 3 points.
+    // Three right, one wrong: the served closed items earn 3 of their 4 points.
     const subsetAnswers = new Map<string, string>();
-    pool.slice(0, 3).forEach((id, index) => {
+    served.forEach((id, index) => {
       const choice = options.get(id);
-      if (choice) subsetAnswers.set(id, index < 2 ? choice.correct : choice.wrong);
+      if (choice) subsetAnswers.set(id, index < 3 ? choice.correct : choice.wrong);
     });
     const subset = await takeAndSubmit(subsetAssignmentId, subsetAnswers);
     subsetAttemptId = subset.id;
-    // The fixture's guarantee: the draw held the open item and three closed ones.
-    expect(subset.questions.map((question) => question.id).toSorted()).toEqual(
-      [
-        requiredAt(pool, 0, 'mcq'),
-        requiredAt(pool, 1, 'mcq'),
-        requiredAt(pool, 2, 'mcq'),
-        subsetOpenItemId,
-      ].toSorted(),
-    );
+    expect(subset.questions).toHaveLength(5);
+    await growPool(subsetAssignmentId, 15, stamp);
     await close(subsetAssignmentId);
 
     // The control: a pool of three served whole.
@@ -461,50 +484,58 @@ describe('A manual grade re-scores the served items, not the pool (#1298)', () =
   });
 
   it('keeps the served denominator before a grade and widens it by the graded item only (#1298)', async () => {
-    // Before the grade: three served closed items, the ungraded open one outside the denominator.
+    // The pool is four times the served set, so a pool-wide denominator would read 20.
+    const { data: assignment } = await service
+      .from('teacher_assignments')
+      .select('question_count, total_points')
+      .eq('id', subsetAssignmentId)
+      .single();
+    expect(assignment).toMatchObject({ question_count: 20, total_points: 20 });
+
+    // Before the grade: four served closed items, the ungraded open one outside the denominator.
     expect(await storedAttempt(subsetAttemptId)).toEqual({
-      score: 2,
-      total_points: 3,
-      total_questions: 4,
+      score: 3,
+      total_points: 4,
+      total_questions: 5,
     });
     expect(await resultsRow(subsetAssignmentId, subsetAttemptId)).toMatchObject({
-      score: 2,
-      total_points: 3,
+      score: 3,
+      total_points: 4,
     });
     expect(await gradingHeader(subsetAssignmentId, subsetAttemptId)).toMatchObject({
-      score: 2,
-      total_points: 3,
+      score: 3,
+      total_points: 4,
     });
     const beforeGrade = await review(subsetAssignmentId);
-    expect(beforeGrade.score).toEqual({ earned: 2, possible: 3 });
+    expect(beforeGrade.score).toEqual({ earned: 3, possible: 4 });
 
     await grade(subsetAssignmentId, subsetAttemptId, subsetOpenItemId, 1);
 
     // After: the graded open item joins the same served set — 4 of the 5 items the attempt held,
-    // never the pool's 6.
+    // never the pool's 20.
     expect(await storedAttempt(subsetAttemptId)).toEqual({
-      score: 3,
-      total_points: 4,
-      total_questions: 4,
+      score: 4,
+      total_points: 5,
+      total_questions: 5,
     });
 
     const results = await resultsRow(subsetAssignmentId, subsetAttemptId);
-    expect(results).toMatchObject({ score: 3, total_points: 4 });
+    expect(results).toMatchObject({ score: 4, total_points: 5 });
     expect(await gradingHeader(subsetAssignmentId, subsetAttemptId)).toMatchObject({
-      score: 3,
-      total_points: 4,
+      score: 4,
+      total_points: 5,
     });
     expect(await studentCard(subsetAssignmentId)).toMatchObject({
-      score: 3,
-      total_points: 4,
+      score: 4,
+      total_points: 5,
     });
 
     const reviewed = await review(subsetAssignmentId);
-    expect(reviewed.score).toEqual({ earned: 3, possible: 4 });
+    expect(reviewed.score).toEqual({ earned: 4, possible: 5 });
     expect(reviewed.attempts).toHaveLength(1);
     expect(reviewed.attempts[0]).toMatchObject({
       attemptId: subsetAttemptId,
-      score: { earned: 3, possible: 4 },
+      score: { earned: 4, possible: 5 },
     });
   });
 
