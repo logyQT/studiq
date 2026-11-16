@@ -101,9 +101,9 @@ describe('TeacherAssignmentService notifies students', () => {
       .mockReturnValueOnce(owned())
       .mockReturnValueOnce(chain({ user_id: 'student-1', ...attempt }))
       .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }])) // max points
+      .mockReturnValueOnce(chain([{ question_id: 'q1' }])) // served items (#1298)
       .mockReturnValueOnce(chain({ id: 'answer-1' }))
       .mockReturnValueOnce(chain(null)) // answer update
-      .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }]))
       .mockReturnValueOnce(chain([{ question_id: 'q1', is_correct: true, teacher_points: 2 }]))
       .mockReturnValueOnce(chain(null)); // attempt update
   }
@@ -210,7 +210,8 @@ describe('TeacherAssignmentService notifies students', () => {
       mock.from
         .mockReturnValueOnce(owned())
         .mockReturnValueOnce(chain({ id: 'attempt-1', graded_at: null }))
-        .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }]));
+        .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }]))
+        .mockReturnValueOnce(chain([{ question_id: 'q1' }]));
 
       const result = await service.gradeAnswer(
         'a1',

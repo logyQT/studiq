@@ -7,6 +7,7 @@ import {
   readAssignmentSnapshotKeys,
   readAssignmentSnapshots,
   readAttemptQuestions,
+  readServedQuestionIds,
   snapshotFromJson,
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
@@ -1214,9 +1215,15 @@ export class TeacherAssignmentService {
     const maxPoints = await this.loadAssignmentPoints(supabase, id);
     if (isFailure(maxPoints)) return maxPoints;
 
-    const questionMax = maxPoints.data.get(data.questionId)?.points;
-    // Also closes the forged-question-id hole: an answer for a question that is
-    // not part of this assignment can no longer inflate `quiz_attempts.score`.
+    // Only an item this attempt was served can be graded: a pool item it never sat has no answer
+    // to award and no place in its denominator (#1298). This also closes the forged-question-id
+    // hole for the whole pool, not just for questions outside the assignment (#169).
+    const served = await readServedQuestionIds(supabase, attempt.id);
+    if (isFailure(served)) return served;
+
+    const questionMax = served.data.has(data.questionId)
+      ? maxPoints.data.get(data.questionId)?.points
+      : undefined;
     if (questionMax === undefined) return failure('NOT_FOUND');
     if (data.points > questionMax) return failure('UNPROCESSABLE_ENTITY');
 
@@ -1251,7 +1258,12 @@ export class TeacherAssignmentService {
       if (error) return toDbFailure(error);
     }
 
-    const scoreResult = await this.computeAttemptScore(supabase, attempt.id, id);
+    const scoreResult = await this.computeAttemptScore(
+      supabase,
+      attempt.id,
+      maxPoints.data,
+      served.data,
+    );
     if (isFailure(scoreResult)) return scoreResult;
 
     // Grading an open item puts it into the denominator: R16 keeps ungraded items out of
@@ -1276,8 +1288,10 @@ export class TeacherAssignmentService {
   }
 
   /**
-   * question_id → max awardable points and whether the item is in the denominator, from the
-   * assignment's published set. A missing key means the question is no longer part of it.
+   * question_id → max awardable points and whether the item is auto-graded (a closed item), from
+   * the assignment's published set. A missing key means the question is no longer part of it. The
+   * pool is larger than one attempt's draw when `attempt_item_count` is set (R7), so this map is
+   * intersected with the attempt's served items before it decides a score (#1298).
    *
    * The type comes from the snapshot, not the live row: R16 makes an open item ungraded until a
    * teacher grades it, and the published item is what the attempt is scored against (R11).
@@ -1308,35 +1322,34 @@ export class TeacherAssignmentService {
    * question because rows written before the one-row contract (#1065) could repeat one — a
    * question must never score twice.
    *
-   * `possible` counts the gradable items only (R16): every closed item, plus an open item once a
-   * teacher has graded it. It is derived from the published items rather than read back from
-   * `quiz_attempts.total_points`, which each manual grade overwrites with a widened denominator —
-   * reading that back would count an already-graded open item a second time.
+   * Both sides are restricted to the attempt's **served** items: the pool can be larger than the
+   * draw (`attempt_item_count`, R7), and a manual grade must not widen the denominator to items
+   * the student never saw (#1298). `possible` counts the served gradable items only (R16): every
+   * closed served item, plus a served open item once a teacher has graded it. It is derived from
+   * the published items rather than read back from `quiz_attempts.total_points`, which each manual
+   * grade overwrites — reading that back would count an already-graded open item a second time.
    */
   private async computeAttemptScore(
     supabase: SupabaseClient<Database>,
     attemptId: string,
-    assignmentId: string,
+    pointsByQuestion: ReadonlyMap<string | null, { points: number; graded: boolean }>,
+    served: ReadonlySet<string>,
   ): Promise<ServiceResult<{ score: number; possible: number }>> {
-    const pointsByQuestion = await this.loadAssignmentPoints(supabase, assignmentId);
-    if (isFailure(pointsByQuestion)) return pointsByQuestion;
-
     const { data: answers, error: answersError } = await supabase
       .from('student_answers')
-      .select('question_id, question_type, is_correct, teacher_points')
+      .select('question_id, is_correct, teacher_points')
       .eq('attempt_id', attemptId);
 
     if (answersError) return toDbFailure(answersError);
 
     const perQuestion = new Map<
       string | null,
-      { teacherPoints: number | null; isCorrect: boolean; open: boolean }
+      { teacherPoints: number | null; isCorrect: boolean }
     >();
     for (const answer of dbRows(answers)) {
       const entry = perQuestion.get(answer.question_id) ?? {
         teacherPoints: null,
         isCorrect: false,
-        open: answer.question_type === 'open',
       };
       if (answer.teacher_points !== null) {
         entry.teacherPoints =
@@ -1350,7 +1363,10 @@ export class TeacherAssignmentService {
 
     let score = 0;
     for (const [questionId, entry] of perQuestion) {
-      const questionMax = pointsByQuestion.data.get(questionId)?.points;
+      // An answer for an item this attempt was never served cannot earn points: the same served
+      // set that bounds the denominator bounds the numerator (#1298).
+      if (!questionId || !served.has(questionId)) continue;
+      const questionMax = pointsByQuestion.get(questionId)?.points;
       if (entry.teacherPoints !== null) {
         // Legacy rows written before the upper bound existed (a 2-point
         // question graded 5) must not keep inflating the score (#169).
@@ -1363,16 +1379,16 @@ export class TeacherAssignmentService {
       }
     }
 
-    // A closed item is always in the denominator; an open item joins it once a teacher has
-    // graded it (R16: ungraded items stay outside `earned`/`possible`).
+    // The denominator is the attempt's served set, never the assignment's pool (#1298): a closed
+    // served item always counts, and a served open item joins it once a teacher has graded it
+    // (R16: ungraded items stay outside `earned`/`possible`). A served item no longer published on
+    // the assignment has no points to award, so it is skipped.
     let possible = 0;
-    for (const item of pointsByQuestion.data.values()) {
-      if (item.graded) possible += item.points;
-    }
-    for (const [questionId, entry] of perQuestion) {
-      if (!entry.open || entry.teacherPoints === null) continue;
-      const item = pointsByQuestion.data.get(questionId);
-      if (item && !item.graded) possible += item.points;
+    for (const questionId of served) {
+      const item = pointsByQuestion.get(questionId);
+      if (!item) continue;
+      const gradedOpen = perQuestion.get(questionId)?.teacherPoints != null;
+      if (item.graded || gradedOpen) possible += item.points;
     }
 
     return success({ score, possible });
