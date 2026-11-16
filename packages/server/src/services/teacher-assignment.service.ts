@@ -19,6 +19,11 @@ import {
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
 import { assessPreExposure } from '@studiq/server/lib/assignment-preexposure';
 import {
+  FAIRNESS_MIN_RESPONDENTS,
+  type FairnessItem,
+  fairnessItem,
+} from '@studiq/server/lib/fairness';
+import {
   ensureClosed,
   expireInProgressAttempts,
   isAssessmentClosed,
@@ -133,6 +138,20 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 function isLiveRun(run: { status?: string; start_time?: string | null }, now: Date): boolean {
   if (run.status !== 'published') return false;
   return !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
+}
+
+/** The fairness block of the results payload (R9): counts only, taught items excluded. */
+export interface FairnessReport {
+  respondents: number;
+  minRespondents: number;
+  items: FairnessItem[];
+}
+
+/** Adds `student` to `index[questionId]`, creating the set on first use. */
+function addToIndex(index: Map<string, Set<string>>, questionId: string, student: string): void {
+  const set = index.get(questionId) ?? new Set<string>();
+  set.add(student);
+  index.set(questionId, set);
 }
 
 export class TeacherAssignmentService {
@@ -562,6 +581,83 @@ export class TeacherAssignmentService {
   }
 
   /**
+   * The cohort's counts per item (R9): who was served it, who got it right, what had no automatic
+   * verdict. Taught items are labelled and excluded, cells under five respondents are suppressed,
+   * and nothing is option-level — a distribution would be the key.
+   */
+  private async fairness(
+    id: string,
+    supabase: SupabaseClient<Database>,
+  ): Promise<ServiceResult<FairnessReport>> {
+    const links = await readAssignmentLinks(id);
+    if (isFailure(links)) return links;
+
+    const { data: attempts, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, user_id')
+      .eq('assignment_id', id)
+      .not('completed_at', 'is', null);
+    if (error) return toDbFailure(error);
+
+    const attemptRows = dbRows(attempts);
+    const studentOf = new Map(
+      attemptRows.flatMap((attempt) => (attempt.user_id ? [[attempt.id, attempt.user_id]] : [])),
+    );
+    const respondents = new Set(studentOf.values());
+
+    // Distinct students, so a retake never counts twice in one cell.
+    const servedBy = new Map<string, Set<string>>();
+    const correctBy = new Map<string, Set<string>>();
+    if (attemptRows.length > 0) {
+      const attemptIds = attemptRows.map((attempt) => attempt.id);
+      const [servedRows, answerRows] = await Promise.all([
+        supabase
+          .from('quiz_attempt_questions')
+          .select('attempt_id, question_id')
+          .in('attempt_id', attemptIds),
+        supabase
+          .from('student_answers')
+          .select('attempt_id, question_id, is_correct')
+          .in('attempt_id', attemptIds),
+      ]);
+      if (servedRows.error) return toDbFailure(servedRows.error);
+      if (answerRows.error) return toDbFailure(answerRows.error);
+
+      for (const row of dbRows(servedRows.data)) {
+        const student = row.attempt_id ? studentOf.get(row.attempt_id) : undefined;
+        if (row.question_id && student) addToIndex(servedBy, row.question_id, student);
+      }
+      for (const row of dbRows(answerRows.data)) {
+        const student = row.attempt_id ? studentOf.get(row.attempt_id) : undefined;
+        if (row.question_id && student && row.is_correct) {
+          addToIndex(correctBy, row.question_id, student);
+        }
+      }
+    }
+
+    const items = links.data.flatMap((link) => {
+      if (!link.question_id) return [];
+      const served = servedBy.get(link.question_id)?.size ?? 0;
+      return [
+        fairnessItem({
+          questionId: link.question_id,
+          taughtItem: link.taught_item,
+          served,
+          correct: correctBy.get(link.question_id)?.size ?? 0,
+          // An open item has no automatic verdict, so every served student is ungraded (R16).
+          ungraded: link.snapshot?.type === 'open' ? served : 0,
+        }),
+      ];
+    });
+
+    return success({
+      respondents: respondents.size,
+      minRespondents: FAIRNESS_MIN_RESPONDENTS,
+      items,
+    });
+  }
+
+  /**
    * Declares one item taught (R9): a ledger event or a prior answer no longer excludes it from this
    * student's sample, the item is labelled in results, and fairness statistics leave it out.
    *
@@ -963,7 +1059,11 @@ export class TeacherAssignmentService {
       .order('started_at', { ascending: false });
 
     if (error) return toDbFailure(error);
-    return success(dbRows(attempts));
+
+    const fairness = await this.fairness(id, supabase);
+    if (isFailure(fairness)) return fairness;
+
+    return success({ attempts: dbRows(attempts), fairness: fairness.data });
   }
 
   /**

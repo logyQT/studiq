@@ -3036,6 +3036,14 @@
     "open_question": "(pytanie otwarte)"
   },
   "EduAssignmentResultsPage": {
+    "fairness_title": "Rzetelność według pozycji",
+    "fairness_hint": "Tylko liczby, nigdy rozkład odpowiedzi. Komórki z mniej niż {min} uczniów są ukryte.",
+    "item": "Pozycja",
+    "served": "Otrzymali",
+    "correct": "Poprawnie",
+    "ungraded": "Bez oceny",
+    "taught_excluded": "Zrealizowane na lekcji — poza statystyką",
+    "suppressed": "Zbyt mało uczniów",
     "back": "Powrót do kartkówki",
     "title": "Wyniki",
     "subtitle": "Wyniki uczniów i status ukończenia",
