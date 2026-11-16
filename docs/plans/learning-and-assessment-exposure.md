@@ -1,7 +1,9 @@
 # Learning and assessment: the exposure model
 
-**Status:** draft v3 — corrected after three spec reviews and one doc review (fact-checks against
-`main`, phase slicing, contract determinism). No implementation yet.
+**Status:** v5 — **implemented**. Phases 1–5 shipped on `main` (2026-11-16); phase 6 (study
+surface) is deferred by the operator. This document stays normative for behaviour, contracts and
+rules; the phase issues and their merge commits carry the implementation record, and the
+"Phased build" section below names what landed.
 **Related:** #678 (closed — its framing is superseded by this model), #1165 (the concrete database
 leak, phase 1), epic #1169.
 
@@ -516,19 +518,30 @@ shippable PR sequence within the 400-line budget, and 1 → 2 → 3 is a real de
 1. **Database boundary** (#1170, independent): revoke the key column, author-scoped writes, one
    server-side key reader, reader-safe projections/export; fix the classmates'-answers row policy
    (#1165). _Migration first, app in the same release._
+   **Shipped:** `abeba7b6`. The explanation follows the same boundary in `09536749` (phase 3), so
+   `is_correct`, `explanation`, `model_answer` and `search_vector` are all server-served.
 2. **Items in time** (#1171): open/retired/deleted items, per-group/per-student reservations from window open,
    frozen snapshots, publish-once, **durable close**, sealed items absent from practice/browse/export,
    close-time reveal, withheld items + release, blocking cross-class acknowledgement, held notices,
    and withdraw-to-draft for a scheduled run (publish-once applies from live). **Exposure events start here** (the review is the first
    surface that renders a key). _Migrations first, app in the same release._
+   **Shipped:** `204c3e44`, `4a23c4b7`, `a0b6f099` (items + frozen snapshot), `35868a33`, `3160f6c5`
+   (sealing, held notice, publish gate), `dae6765a`, `1456dcb8`, `2460dec6`, `29357546` (close,
+   reveal, withheld items, ledger writes).
 3. **Exposure ledger** (#1172): eligibility per student (ledger + prior answers), `taughtItem` waiver,
    pre-exposed warnings and fairness flags. Recording already exists from phase 2.
+   **Shipped:** `09536749` (explanation boundary + practice renders recorded), `1fbc5b50`
+   (eligibility + `taughtItem`), `cea27d05` (publish warning + staff ledger), `a4b7d7c1` (fairness).
 4. **Explanation/model answer** (#1173): required for choice items, 2 040 cap, mechanical checks,
    model answer for open, review rendering.
+   **Shipped:** `18cbcdfe` (review rendering, ungraded out of the denominator), `2b9446af` (authoring
+   rules, model answer, import/export).
 5. **Lifecycle extras** (#1174): cancel, window extension, manager override, in-window attempt rules,
    fresh-sample retakes (and same-item retake flag), per-attempt review, makeup semantics.
+   **Shipped:** `fd866dc7` (cancel), `35dbee7c` (extend + manager override), `f383a441`
+   (fresh-sample retakes + budget), `c4f751cf` (per-attempt review).
 6. **Study surface** (#1175, needs-design): open items + explanations without an attempt; writes the
-   same exposure event. Not blocking 1–5.
+   same exposure event. Not blocking 1–5. **Deferred by the operator (2026-11-15).**
 
 ## Residual risk
 
