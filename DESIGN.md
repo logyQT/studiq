@@ -269,9 +269,11 @@ Geist text — visible on the default locale of every page.
 | Small   | `0.875rem`                         | `1.5`   | `0`       | Captions, helper text                 |
 | Label   | `0.75rem`                          | `1.4`   | `0.08em`  | Mono, uppercase                       |
 
-`/pricing` and `/features` render their h1 at `text-4xl sm:text-5xl` (up to 3rem), which
-sits above the H2 ceiling and below the Display floor. They get a ramp step when those
-pages are redesigned; declaring a token now would ship a step with no consumer.
+`/pricing` renders its h1 at the Display step. `/features` stays at `text-4xl sm:text-5xl`
+(up to 3rem), which sits above the H2 ceiling and below the Display floor: its h1 is a full
+sentence, and at Display size that sentence runs five lines and reads as a billboard rather
+than a headline. The two therefore sit on different rungs deliberately; a shorter heading on
+`/features` would let it take the step.
 
 Rules: body measure ≤ `66ch`; display never below `1.5rem`; mono never used for a
 paragraph; tabular numerals for compared figures; two weights per screen, three at most.
@@ -368,8 +370,10 @@ are different tokens and the accessibility floor says which applies where:
 ## Components
 
 Marketing components are page-owned. The kit is used only where it is invisible
-(Button semantics, Badge markup). **None of them exist yet**: the table is the build spec
-for the token migration, not a description of current code.
+(Button semantics, Badge markup). `CtaButton` and `SectionHeader` exist
+(`components/marketing/ui/`), and `Eyebrow` is the label `SectionHeader` renders rather than
+a component of its own. `ProofStrip` and `FeatureSplit` do not exist yet: no page has needed
+them, and their rows stay the spec for what one should do when a page does.
 
 | Component       | Spec                                                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
