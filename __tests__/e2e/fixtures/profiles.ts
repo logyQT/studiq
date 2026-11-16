@@ -20,6 +20,7 @@ const PROFILE_BY_FILE: Record<string, SeedProfile> = {
   'student-quiz-open-answer.spec.ts': 'content',
   'student-quiz-double-submit.spec.ts': 'content',
   'student-quiz-subject-selector.spec.ts': 'content',
+  'student-assignment-start-refusal.spec.ts': 'content',
   'teacher-question.spec.ts': 'content',
   'question-bank-crud.spec.ts': 'content',
   'teacher-flashcard.spec.ts': 'content',

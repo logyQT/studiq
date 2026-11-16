@@ -6,9 +6,10 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { apiPost } from '@/lib/api';
+import { ApiError, apiPost } from '@/lib/api';
 import {
   type AttemptSummary,
   attemptsLeft,
@@ -16,6 +17,7 @@ import {
   type StudentAssignmentAttemptState,
 } from '@/lib/assignment-attempts';
 import { timeUntil } from '@/lib/datetime';
+import { translateErrorCode } from '@/lib/error-messages';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AssignmentDetail extends StudentAssignmentAttemptState {
@@ -37,6 +39,7 @@ interface AssignmentDetail extends StudentAssignmentAttemptState {
 
 export default function StudentAssignmentDetailPage() {
   const t = useTranslations('AppAssignmentDetailPage');
+  const tErrors = useTranslations('Errors');
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const locale = useLocale();
@@ -59,11 +62,18 @@ export default function StudentAssignmentDetailPage() {
   });
 
   const handleStart = async () => {
-    const data = await startMutation.mutateAsync(undefined);
-    const deadline = assignment?.deadline
-      ? `&deadline=${encodeURIComponent(assignment.deadline)}`
-      : '';
-    router.push(`/app/assignments/${id}/take?attemptId=${data.id}${deadline}`);
+    try {
+      const data = await startMutation.mutateAsync(undefined);
+      const deadline = assignment?.deadline
+        ? `&deadline=${encodeURIComponent(assignment.deadline)}`
+        : '';
+      router.push(`/app/assignments/${id}/take?attemptId=${data.id}${deadline}`);
+    } catch (error) {
+      // Every start refusal is a 409 product state (`NO_UNSEEN_ITEMS`, `NO_ATTEMPTS_LEFT`,
+      // `ATTEMPTS_CLOSED`, `ATTEMPTS_NOT_OPEN`, `ASSESSMENT_CANCELLED`): say which one instead of
+      // leaving the click silent. `mutateAsync` settles here too, so the button comes back.
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null));
+    }
   };
 
   const formatDate = (dateStr: string | null) => {
