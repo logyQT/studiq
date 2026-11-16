@@ -211,6 +211,9 @@ export function createHarness(): Harness {
     LC_ALL: process.env.LC_ALL,
     STUDIQ_DEV_REGISTRY: registryDir,
     STUDIQ_ENV_STATE_DIR: stateDir,
+    // Hermetic: a real `qa/env.json` in the developer's checkout must not leak
+    // into doctor warnings or a `share --write`.
+    STUDIQ_QA_POINTER: join(dir, 'qa', 'env.json'),
     // Hermetic by default: the ensure hook must never mint against a real stack
     // that happens to be running on the host. Tests that need Grafana override it.
     GRAFANA_URL: 'http://127.0.0.1:1',

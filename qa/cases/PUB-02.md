@@ -23,7 +23,7 @@ singleton row.
 
 1. Otwórz /features (QA: adres aplikacji z `QA_APP_URL`).
 2. Przejrzyj cztery obszary: Pętla nauki, Z materiałów do ćwiczeń, Nauczanie i grupy, Organizacja.
-3. Obejrzyj przykład produktu przy obszarach 01–03.
+3. Obejrzyj przykład produktu przy każdym obszarze.
 4. Sprawdź spis obszarów w nagłówku strony.
 5. Sprawdź działania: „Zacznij naukę za darmo”, „Zobacz cennik”, „Porozmawiajmy o wdrożeniu”.
 
@@ -34,10 +34,13 @@ singleton row.
 - Cztery sekcje z identyfikatorami `#study-loop`, `#material`, `#teaching`, `#organization`.
   Każda ma jeden `h2` i co najmniej dwie funkcje jako `h3`.
 - Spis obszarów w nagłówku strony prowadzi do tych czterech sekcji (cztery odnośniki `#…`).
-- Obszary 01–03 kończą się przykładem z produktu; obszar 04 kończy się odnośnikiem do
-  `/contact`. „Wynik: 75%” ani żadna karta wyniku nie występuje na stronie.
-- Strona nie zawiera tabeli porównania planów: porównanie i limity są wyłącznie na
-  `/pricing`. Nie ma też nazw planów „Darmowy / Premium / Uniwersytecki”.
+- Każdy obszar kończy się przykładem z produktu: karta sprawdzonego pytania (01),
+  kafelki wygenerowanych fiszek (02), karta pytań do przeglądu (03) i tabela pul
+  miejsc (04). „Wynik: 75%” ani żadna karta wyniku nie występuje na stronie.
+- Jedyna tabela na stronie to pule miejsc w obszarze Organizacja (plan, wykupione,
+  przydzielone, dostępne). Porównanie planów i limity są wyłącznie na `/pricing`;
+  nie ma nazw planów „Darmowy / Premium / Uniwersytecki”. Obszar 04 kończy się tą
+  tabelą oraz odnośnikiem do `/contact`.
 - Trzy różne miejsca docelowe: `/register` (działanie główne, wysokość ≥ 44 px),
   `/pricing`, `/contact`. Żaden odnośnik nie prowadzi do zalogowanej aplikacji
   (`/app`, `/edu`, `/manage`).

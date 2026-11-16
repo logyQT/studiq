@@ -55,6 +55,7 @@ env:reset-db [--yes]                             # destructive; this checkout on
 env:logs     [--no-follow]                       # stack logs + .dev/web.log
 env:setup    [--force] [--vault]                 # human-only, mutating, idempotent
 env:verify   [--full] [--json]                   # read-only, agent-safe
+env:share    [--write] [--force] [--json]        # URL-only pointer other worktrees read
 env:observability [status|ensure] [--force]      # validate/mint the Grafana MCP token; read-only by default
 env:ports    [--json]                            # app port
 env:doctor   [--json]                            # explain state; exit 1 on a real conflict

@@ -6,8 +6,10 @@
  * they read only the process environment, the cross-checkout registry and
  * `supabase stack status`, so a locked vault never blocks them. `setup` and
  * `verify` are unwrapped too, but they do touch the root `.env.local` — `setup`
- * scaffolds it, `verify` loads it through `varlock` (names/presence only). The
- * value-consuming commands (`ensure`, `serve`, `build`, `dev`, `down`,
+ * scaffolds it, `verify` loads it through `varlock` (names/presence only).
+ * `share` is unwrapped as well: it writes the URL-only QA pointer from the
+ * checked stack and never carries a key. The value-consuming commands
+ * (`ensure`, `serve`, `build`, `dev`, `down`,
  * `reset-db`, `logs`, `supa`, `run`) run under `varlock run --inject vars --`
  * (see `scripts/env/varlock-run.sh` and root `package.json`), which is where
  * their values come from. The CLI itself never parses a dotenv file.
@@ -29,6 +31,7 @@ import { runResetDb } from './commands/reset-db';
 import { runCommand } from './commands/run';
 import { runServe } from './commands/serve';
 import { runSetup } from './commands/setup';
+import { runShare } from './commands/share';
 import { runStatus } from './commands/status';
 import { runSupa } from './commands/supa';
 import { runVerify } from './commands/verify';
@@ -68,6 +71,8 @@ async function dispatch(parsed: ParsedCommand): Promise<number> {
       return runSetup(parsed);
     case 'verify':
       return runVerify(parsed);
+    case 'share':
+      return runShare(parsed);
     case 'observability':
       return runObservability(parsed);
   }

@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
-import { asJson, json } from '#test/helpers/json';
+import { json } from '#test/helpers/json';
+import { qaAppUrl, readQaPointer } from '#test/helpers/qa-pointer';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import { qaDbNow } from '#test/helpers/db-admin';
 import { resetInviteeState } from '#test/qa/fixtures/invitees';
@@ -111,19 +110,8 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
-/** The shared stack this worker runs against (`qa/env.json` is authoritative). */
-function workerEnv(): { appUrl: string; supabaseUrl?: string } {
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    return asJson<{ appUrl: string; supabaseUrl?: string }>(JSON.parse(raw));
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-    return { appUrl: 'http://localhost:3010' };
-  }
-}
-
 /**
- * Resolve the shared Supabase admin credentials (env → CI env → worker config →
+ * Resolve the shared Supabase admin credentials (env → CI env → the pointer →
  * local defaults). Used only to backdate the expired invitation.
  */
 function resolveSupabase(): { url: string; serviceKey: string } {
@@ -131,7 +119,7 @@ function resolveSupabase(): { url: string; serviceKey: string } {
     url:
       process.env.QA_SUPABASE_URL ??
       process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      workerEnv().supabaseUrl ??
+      readQaPointer()?.supabaseUrl ??
       LOCAL_SUPABASE_URL,
     serviceKey:
       process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
@@ -140,13 +128,9 @@ function resolveSupabase(): { url: string; serviceKey: string } {
   };
 }
 
-function appUrl(): string {
-  return process.env.QA_APP_URL ?? workerEnv().appUrl;
-}
-
 /** A manager API context with the tenant org active, so roles/invites are org-scoped. */
 async function managerApi(): Promise<APIRequestContext> {
-  const api = await apiRequest.newContext({ baseURL: appUrl() });
+  const api = await apiRequest.newContext({ baseURL: qaAppUrl() });
   const login = await api.post('/api/v1/auth/login', {
     data: { email: MANAGER.email, password: MANAGER.password },
   });

@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
-import { asJson, json } from '#test/helpers/json';
+import { json } from '#test/helpers/json';
+import { qaAppUrl } from '#test/helpers/qa-pointer';
 import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
 
 /**
@@ -83,24 +82,9 @@ interface OrgMembership {
   isActive: boolean;
 }
 
-/** The shared stack this worker runs against (`qa/env.json` is authoritative). */
-function workerEnv(): { appUrl: string } {
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    return asJson<{ appUrl: string }>(JSON.parse(raw));
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-    return { appUrl: 'http://localhost:3010' };
-  }
-}
-
-function appUrl(): string {
-  return process.env.QA_APP_URL ?? workerEnv().appUrl;
-}
-
 /** A manager API context with the tenant org active, so invites are org-scoped. */
 async function managerApi(): Promise<APIRequestContext> {
-  const api = await apiRequest.newContext({ baseURL: appUrl() });
+  const api = await apiRequest.newContext({ baseURL: qaAppUrl() });
   const login = await api.post('/api/v1/auth/login', {
     data: { email: MANAGER.email, password: MANAGER.password },
   });
