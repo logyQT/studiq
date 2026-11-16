@@ -9,28 +9,29 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * What is pinned is the contract this page can actually break, not its wording
  * (same rule as PUB-01): the heading outline, the four areas and their ids, the
- * contents index, that areas 01–03 still end in a real product surface, that the
+ * contents index, that every area still ends in a real product surface, that the
  * plan matrix stays deleted, and that the page keeps three distinct
  * destinations. A copy edit does not turn this red; deleting a section, a
  * surface or a link does.
  *
- * Walk (2026-11-16, `feat/features-rework`): one h1, four cluster sections plus
- * the closing band, thirteen h3 capabilities, the contents index with four
+ * Walk (2026-11-16, `feat/features-org-surface`): one h1, four cluster sections
+ * plus the closing band, thirteen h3 capabilities, the contents index with four
  * anchors, the graded-question card under 01, the generated-card tiles under 02,
- * the problem-question card under 03, no table anywhere, and `/register` +
- * `/pricing` + `/contact` reachable with nothing linking into the signed-in app.
+ * the problem-question card under 03, the seat-pool table under 04 (the page's
+ * only table), and `/register` + `/pricing` + `/contact` reachable with nothing
+ * linking into the signed-in app.
  *
- * Mutation (proves this spec can fail): deleting the `study-loop` cluster's
+ * Mutation (proves this spec can fail): deleting the `organization` cluster's
  * `surface` **and** its import (removing only the JSX line fails the build on the
- * unused import) leaves that area without a card, and the surface check fails
- * with "Error: #study-loop ends in a product surface — element(s) not found".
+ * unused import) leaves area 04 without its table, and the surface check fails
+ * with "Error: #organization ends in a product surface — element(s) not found".
  */
 
 const CLUSTERS = [
   { id: '#study-loop', surfaces: 'card' },
   { id: '#material', surfaces: 'badge' },
   { id: '#teaching', surfaces: 'card' },
-  { id: '#organization', surfaces: null },
+  { id: '#organization', surfaces: 'table' },
 ] as const;
 
 /** Destinations the page must keep offering: register, pricing, contact. */
@@ -107,7 +108,6 @@ test.describe('@case:PUB-02 @area:PUB @prio:P2 features page', () => {
 
     // --- Each area still proves its claim with the product -----------------
     for (const { id, surfaces } of CLUSTERS) {
-      if (surfaces === null) continue;
       await expect(
         page.locator(`${id} [data-slot="${surfaces}"]`).first(),
         `${id} ends in a product surface`,
@@ -121,8 +121,13 @@ test.describe('@case:PUB-02 @area:PUB @prio:P2 features page', () => {
       await expect(indexLinks.nth(position)).toHaveAttribute('href', id);
     }
 
-    // --- The plan matrix stays on /pricing ---------------------------------
-    await expect(page.locator('main table'), 'no plan comparison table').toHaveCount(0);
+    // --- The only table is the seat pools; comparison stays on /pricing ----
+    // A plan matrix was deleted from this page once, and a second table is the
+    // shape it would take if it came back.
+    await expect(page.locator('main table'), 'one table, the seat pools').toHaveCount(1);
+    await expect(page.locator('#organization table'), 'the seat pools sit in area 04').toHaveCount(
+      1,
+    );
 
     // --- Three destinations, one primary action ----------------------------
     for (const href of DESTINATIONS) {

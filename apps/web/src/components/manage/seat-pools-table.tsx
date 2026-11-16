@@ -1,0 +1,99 @@
+'use client';
+
+import { Badge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@studiq/ui';
+import { useTranslations } from 'next-intl';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
+import { availableSeats } from '@/lib/seats';
+import { cn } from '@/lib/utils';
+
+export interface SeatPool {
+  id: string;
+  /**
+   * The plan's display name, resolved by the caller: the catalogue is a query,
+   * and this table is the same in the manager's screen and on a page that has no
+   * catalogue to read.
+   */
+  planLabel: string;
+  total: number;
+  assigned: number;
+}
+
+/**
+ * The organization's seat pools: what was bought, what is in use, what is left.
+ *
+ * The "low" flag fires only once seats have actually been assigned — a fresh
+ * single-seat pool (1/0/1) is not low, it is untouched — so the threshold lives
+ * here rather than at every caller.
+ *
+ * `dense` is for a page that gives the table a phone-width column rather than a
+ * dashboard's full content area: four columns fit a 288 px gutter there instead
+ * of hiding "Dostępne" behind a horizontal scroll. It steps back to the kit's
+ * own size from `md`, where the column is wide enough for it.
+ *
+ * The container is focusable and named because this table overflows on a phone
+ * in both callers: the manager's 390 px dashboard gives it 293 px for a 388 px
+ * table, so the region that scrolls is the only way to reach the last column
+ * from the keyboard. `aria-label` sits on the `<table>` as well — the manager's
+ * card title is a `div`, so it names nothing programmatically.
+ */
+export function SeatPoolsTable({
+  pools,
+  dense = false,
+}: {
+  pools: readonly SeatPool[];
+  dense?: boolean;
+}) {
+  const t = useTranslations('ManageSeatsPage');
+  const head = cn(dense && 'px-1 text-xs md:text-sm');
+  const cell = cn(dense && 'px-1 text-xs md:text-sm');
+
+  return (
+    <Table
+      aria-label={t('pools_title')}
+      containerClassName={FOCUS_RING}
+      containerProps={{ tabIndex: 0, role: 'region', 'aria-label': t('pools_title') }}
+    >
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col" className={head}>
+            {t('plan_column')}
+          </TableHead>
+          <TableHead scope="col" className={cn('text-right', head)}>
+            {t('purchased_column')}
+          </TableHead>
+          <TableHead scope="col" className={cn('text-right', head)}>
+            {t('assigned_column')}
+          </TableHead>
+          <TableHead scope="col" className={cn('text-right', head)}>
+            {t('available_column')}
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {pools.map((pool) => {
+          const available = availableSeats(pool.total, pool.assigned);
+          const nearFull =
+            pool.total > 0 &&
+            pool.assigned > 0 &&
+            available <= Math.max(1, Math.floor(pool.total * 0.2));
+
+          return (
+            <TableRow key={pool.id}>
+              <TableCell className={cn('font-medium', cell)}>{pool.planLabel}</TableCell>
+              <TableCell className={cn('text-right', cell)}>{pool.total}</TableCell>
+              <TableCell className={cn('text-right', cell)}>{pool.assigned}</TableCell>
+              <TableCell className={cn('text-right', cell)}>
+                <span className={nearFull ? 'text-destructive font-medium' : ''}>{available}</span>
+                {nearFull && (
+                  <Badge variant="destructive" className="ml-2">
+                    {t('low')}
+                  </Badge>
+                )}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}

@@ -2,7 +2,6 @@
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -33,10 +32,11 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
+import { SeatPoolsTable } from '@/components/manage/seat-pools-table';
+import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
-import { availableSeats } from '@/lib/seats';
 
 interface Pool {
   id: string;
@@ -421,45 +421,12 @@ export default function ManageSeatsPage() {
               {pools.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">{t('no_pools')}</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('plan_column')}</TableHead>
-                      <TableHead className="text-right">{t('purchased_column')}</TableHead>
-                      <TableHead className="text-right">{t('assigned_column')}</TableHead>
-                      <TableHead className="text-right">{t('available_column')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pools.map((pool) => {
-                      const available = availableSeats(pool.total, pool.assigned);
-                      // Only flag a pool once seats have actually been assigned; a fresh
-                      // single-seat pool (1/0/1) is not "low", it is simply untouched.
-                      const nearFull =
-                        pool.total > 0 &&
-                        pool.assigned > 0 &&
-                        available <= Math.max(1, Math.floor(pool.total * 0.2));
-
-                      return (
-                        <TableRow key={pool.id}>
-                          <TableCell className="font-medium">{planName(pool.planKey)}</TableCell>
-                          <TableCell className="text-right">{pool.total}</TableCell>
-                          <TableCell className="text-right">{pool.assigned}</TableCell>
-                          <TableCell className="text-right">
-                            <span className={nearFull ? 'text-destructive font-medium' : ''}>
-                              {available}
-                            </span>
-                            {nearFull && (
-                              <Badge variant="destructive" className="ml-2">
-                                {t('low')}
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <SeatPoolsTable
+                  pools={pools.map((pool) => ({
+                    ...pool,
+                    planLabel: planName(pool.planKey),
+                  }))}
+                />
               )}
             </CardContent>
           </Card>
@@ -475,13 +442,23 @@ export default function ManageSeatsPage() {
                   {t('no_assignments')}
                 </p>
               ) : (
-                <Table>
+                <Table
+                  aria-label={t('assignments_title')}
+                  containerClassName={FOCUS_RING}
+                  containerProps={{
+                    tabIndex: 0,
+                    role: 'region',
+                    'aria-label': t('assignments_title'),
+                  }}
+                >
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t('member_column')}</TableHead>
-                      <TableHead>{t('plan_column')}</TableHead>
-                      <TableHead>{t('assigned_since_column')}</TableHead>
-                      <TableHead className="text-right">{t('actions_column')}</TableHead>
+                      <TableHead scope="col">{t('member_column')}</TableHead>
+                      <TableHead scope="col">{t('plan_column')}</TableHead>
+                      <TableHead scope="col">{t('assigned_since_column')}</TableHead>
+                      <TableHead scope="col" className="text-right">
+                        {t('actions_column')}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
