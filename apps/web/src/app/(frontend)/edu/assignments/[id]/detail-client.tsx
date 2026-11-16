@@ -774,7 +774,7 @@ export default function AssignmentDetailClient() {
             <p className="text-sm text-muted-foreground mt-2">{assignment.description}</p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           {isDraft && (
             <>
               <Link href={`/edu/assignments/${id}/edit`}>
@@ -786,6 +786,15 @@ export default function AssignmentDetailClient() {
                 <Trash2 className="w-4 h-4 mr-1" /> {t('delete')}
               </Button>
             </>
+          )}
+          {/* A published run's window can still be corrected (#1191): the deadline may move, the
+              item set may not (R13), and ending it now stays the Close action. */}
+          {isPublished && !isClosed && !isCancelled && (
+            <Link href={`/edu/assignments/${id}/edit`}>
+              <Button variant="outline" size="sm">
+                <Edit className="w-4 h-4 mr-1" /> {t('edit')}
+              </Button>
+            </Link>
           )}
           {isPublished && (
             <Link href={`/edu/assignments/${id}/results`}>

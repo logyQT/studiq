@@ -50,6 +50,14 @@ vi.mock('@studiq/server/lib/assignment-exposure', () => ({
   assessExposure: vi.fn(() => Promise.resolve({ success: true, data: exposureState })),
 }));
 
+// A deadline edit settles a run whose clock has already run out before deciding on it (#1191); these
+// tests state the row, so the service-role client is the same stub as the user-scoped one.
+const serviceRole: { client: unknown } = vi.hoisted(() => ({ client: undefined }));
+vi.mock('@studiq/server/lib/supabase/service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/supabase/service')>()),
+  createServiceClient: vi.fn(() => serviceRole.client),
+}));
+
 vi.mock('@studiq/server/lib/assignment-preexposure', () => ({
   assessPreExposure: vi.fn(() => Promise.resolve({ success: true, data: [] })),
 }));
@@ -208,6 +216,28 @@ const owned = () => chain({ id: assignmentId, created_by: userId, organization_i
 const ownedAssignment = () =>
   chain({ id: assignmentId, created_by: userId, organization_id: orgId });
 
+/** A live run: published, opened an hour ago, closing in a day, not closed. */
+function liveRun() {
+  return {
+    id: assignmentId,
+    status: 'published',
+    start_time: new Date(Date.now() - 3_600_000).toISOString(),
+    deadline: new Date(Date.now() + 86_400_000).toISOString(),
+    closed_at: null,
+  };
+}
+
+/** ownership → the stored window → the write, for a deadline edit (#1191). */
+function deadlineFixture(
+  mock: ReturnType<typeof mockSupabaseClient>,
+  run: Record<string, unknown>,
+  updated: unknown = { id: assignmentId },
+) {
+  const write = chain(updated);
+  mock.from.mockReturnValueOnce(owned()).mockReturnValueOnce(chain(run)).mockReturnValueOnce(write);
+  return write;
+}
+
 /** One `assignment_questions` row as the service reads it (#1173, R16): the published snapshot
  * carries the type, and an open item stays outside the denominator until a teacher grades it. */
 const publishedItem = (questionId: string, points: number, type: 'mcq' | 'open') => ({
@@ -223,6 +253,7 @@ describe('TeacherAssignmentService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    serviceRole.client = mock;
     service = new TeacherAssignmentService(() => Promise.resolve(mock));
   });
 
@@ -458,6 +489,74 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    describe('deadline (R12/R20, #1191)', () => {
+      it("refuses a live run's deadline at or before now, naming the field", async () => {
+        deadlineFixture(mock, liveRun());
+
+        const result = await service.update(
+          assignmentId,
+          { deadline: new Date(Date.now() - 60_000).toISOString() },
+          ctx,
+        );
+
+        expect(result).toEqual({
+          success: false,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: [
+            {
+              code: 'custom',
+              path: ['deadline'],
+              message: 'VALIDATION_DEADLINE_END_IS_CLOSE',
+            },
+          ],
+        });
+        // Ownership, the window read, and nothing else: the refused edit never reaches the write.
+        expect(mock.from).toHaveBeenCalledTimes(2);
+      });
+
+      it('accepts a live run shrinking to a future instant', async () => {
+        const deadline = new Date(Date.now() + 3_600_000).toISOString();
+        const updated = { id: assignmentId, deadline };
+        const write = deadlineFixture(mock, liveRun(), updated);
+
+        const result = await service.update(assignmentId, { deadline }, ctx);
+
+        expect(result).toEqual({ success: true, data: updated });
+        expect(write.update).toHaveBeenCalledWith(expect.objectContaining({ deadline }));
+      });
+
+      it('accepts a past deadline on a draft, where nothing is live yet', async () => {
+        const deadline = new Date(Date.now() - 60_000).toISOString();
+        const updated = { id: assignmentId, deadline };
+        const write = deadlineFixture(mock, { ...liveRun(), status: 'draft' }, updated);
+
+        const result = await service.update(assignmentId, { deadline }, ctx);
+
+        expect(result).toEqual({ success: true, data: updated });
+        expect(write.update).toHaveBeenCalledWith(expect.objectContaining({ deadline }));
+      });
+
+      it('refuses a deadline at or before the window start', async () => {
+        const startTime = new Date(Date.now() + 86_400_000).toISOString();
+        deadlineFixture(mock, {
+          ...liveRun(),
+          status: 'draft',
+          start_time: startTime,
+          deadline: null,
+        });
+
+        const result = await service.update(assignmentId, { deadline: startTime }, ctx);
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+          expect(result.details).toEqual([
+            { code: 'custom', path: ['deadline'], message: 'VALIDATION_INVALID_INPUT' },
+          ]);
+        }
+      });
     });
   });
 
