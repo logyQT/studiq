@@ -28,7 +28,15 @@ import { cn } from '@/lib/utils';
 /** The region the audience radios swap; the switch's `aria-controls` points here. */
 const PLANS_REGION_ID = 'pricing-plans';
 
-export function PricingPageClient() {
+interface PricingPageClientProps {
+  /**
+   * The catalogue as the server read it. Present on a left one; `undefined` when
+   * that read failed, so the page falls back to the client query alone.
+   */
+  initialPlans?: PlanInfo[];
+}
+
+export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
   const t = useTranslations('PricingPage');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -45,14 +53,19 @@ export function PricingPageClient() {
 
   // One request: the catalogue is a flat list and `sort_order` spans all three
   // ladders, so the page splits it rather than asking per audience.
-  const {
-    data: plans,
-    isLoading,
-    isError,
-  } = useApiQuery<PlanInfo[]>({
+  const catalogue = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active'],
     url: '/api/v1/subscription-plans',
   });
+
+  /*
+   * The server read is the first paint: keep printing its rows while this query
+   * resolves, and do not let a client failure erase prices the response already
+   * carried. Only a page with no catalogue at all shows the error line.
+   */
+  const plans = catalogue.data ?? initialPlans;
+  const catalogueUnavailable = catalogue.isError && !plans;
+  const isLoading = !plans && !catalogueUnavailable;
 
   // Managers are the org's billing contact: their current plan is the active
   // organization's plan, the same `/me/plan` query `/manage/billing` uses (#228).
@@ -126,7 +139,7 @@ export function PricingPageClient() {
       </section>
 
       <div id={PLANS_REGION_ID}>
-        {isError ? (
+        {catalogueUnavailable ? (
           // A failed catalogue has no prices to print, and inventing one is worse
           // than saying so. One line replaces the ladders; the action is real.
           <section className="py-16 md:py-20">
