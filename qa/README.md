@@ -139,7 +139,7 @@ One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts`, one isolated tenant per
 ```bash
 bun run env:ensure --profile qa                  # stack + build + app + every tenant
 export QA_APP_URL=http://localhost:<port>        # from `env:status --json` .urls.app
-eval "$(bunx supabase status --env | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.DB_URL)"')"
+eval "$(bunx supabase status --output-format json | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.env.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.env.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.env.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.env.DB_URL)"')"
 bun run test:qa __tests__/qa/STU/STU-21.spec.ts  # run it
 ```
 
