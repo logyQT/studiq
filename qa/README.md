@@ -138,15 +138,15 @@ One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts`, one isolated tenant per
 
 ```bash
 bun run env:ensure --profile qa                  # stack + build + app + every tenant
-export QA_APP_URL=http://localhost:<port>        # from `env:status --json` .urls.app
-eval "$(bunx supabase status --output-format json | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.env.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.env.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.env.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.env.DB_URL)"')"
-bun run test:qa __tests__/qa/STU/STU-21.spec.ts  # run it
+bun run env:run -- bun run test:qa __tests__/qa/STU/STU-21.spec.ts  # run it
 ```
 
-A bare worktree needs the `eval` line because the runner reads the stack contract
-from the environment and `varlock` only injects `.env.local`; without `QA_APP_URL`
-the runner falls back to the shared `:3010` app. The case skill's Commands block
-has the same sequence with the per-case reseed.
+`env:run` exports the stack contract (`NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`)
+and sets `QA_APP_URL` to this checkout's app. A raw `bunx playwright` gets
+neither: it has no `QA_APP_URL` and falls back to the shared `:3010` app, while a
+spec that reads the database fails loudly (`qa-db: no Supabase URL`). The case
+skill's Commands block has the same sequence with the per-case reseed.
 
 CI seeds a shard's areas once (`bun scripts/qa-tenant.ts --all --areas … --run ci<id>`)
 and runs Playwright at `QA_WORKERS=4` across four path-scoped shards (`edu`, `stu`,

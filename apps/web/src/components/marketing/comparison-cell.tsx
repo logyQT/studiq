@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type ComparisonCellProps = {
   included: boolean;
@@ -8,6 +9,8 @@ type ComparisonCellProps = {
   noLabel: string;
   /** Colour of the check icon (matches the plan column). */
   checkClassName: string;
+  /** Cell geometry, for a table that has less room than another one. */
+  className?: string;
 };
 
 /**
@@ -19,9 +22,10 @@ export function ComparisonCell({
   yesLabel,
   noLabel,
   checkClassName,
+  className,
 }: ComparisonCellProps) {
   return (
-    <td className="text-center py-3 px-4">
+    <td className={cn('text-center py-3 px-4', className)}>
       {included ? (
         <>
           <Check aria-hidden="true" className={`h-4 w-4 mx-auto ${checkClassName}`} />

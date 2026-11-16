@@ -12,6 +12,7 @@ import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/l
 import '@/app/globals.css';
 import { Sonner, ToastProvider } from '@studiq/ui';
 import { getSiteUrl } from '@studiq/server/lib/site-url';
+import { preconnectOrigin } from '@/lib/preconnect-origin';
 
 /**
  * =============================================================================
@@ -114,12 +115,12 @@ export default async function RootLayout({
   const locale = await getLocale();
   const messages = await getMessages();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseOrigin = preconnectOrigin(process.env.NEXT_PUBLIC_SUPABASE_URL || '');
 
   return (
     <html lang={locale} className={`bg-background ${archivo.variable}`} suppressHydrationWarning>
       <head>
-        {supabaseUrl && <link rel="preconnect" href={supabaseUrl} crossOrigin="anonymous" />}
+        {supabaseOrigin && <link rel="preconnect" href={supabaseOrigin} crossOrigin="anonymous" />}
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <ThemeProvider

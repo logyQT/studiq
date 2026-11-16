@@ -50,6 +50,7 @@ env:build    [--force] [--json]                  # explicit build only
 env:serve    [--json]                            # serve an existing build
 env:dev      [atoms]                             # human-only HMR
 env:supa     <args…>                             # bunx supabase with the contract exported
+env:run      -- <command> [args…]                # run a command with the contract exported
 env:reset-db [--yes]                             # destructive; this checkout only
 env:logs     [--no-follow]                       # stack logs + .dev/web.log
 env:setup    [--force] [--vault]                 # human-only, mutating, idempotent
@@ -68,6 +69,12 @@ revokes the credential it supersedes); `--force` re-mints a token that still val
 reset`, `migration down` and `storage rm` exit 2; `stop`/`restart` only for this checkout's stack (exit 6);
 `--json` becomes `--output-format json`; under `SUPABASE_SHARED=1` only `stack list`/`stack status`/`--version`
 pass, everything else exits 6.
+
+`run` is the non-Supabase passthrough of the same shape: it exports the resolved app + stack contract (and
+`QA_APP_URL`) to one command from the checkout root, with the child's stdio inherited and its exit code returned.
+It never starts or stops a stack, and it refuses the Supabase CLI (exit 2) — that surface belongs to `supa`.
+With no running stack it uses the contract already in the environment (`.env.local` through the `varlock`
+wrapper), and exits 4 when neither exists.
 
 Exit codes: `0` ready; `2` bad usage; `3` native unavailable; `4` start failed; `5` timeout; `6` conflict.
 `status`/`ports` report `ready: false` with exit 0; `verify` exits 1 when the schema cannot be read; `doctor`
@@ -335,6 +342,15 @@ shortcut stays), capability reconcile (`env:down --all` then
 Also out of scope: caching (#1078); CI changes; the vault provider implementation; removing the `varlock run`
 wrappers (post-stability); `--attach`; `next dev` for agents; two environments per checkout; per-agent stacks;
 Kubernetes/remote/production; changing the pinned CLI or backend; enabling the pooler.
+
+**One addition after the surface was called settled:** `env:run` (§2). The QA seeder
+(`bun scripts/qa-tenant.ts`) and the QA runner (`bun run test:qa`) read the stack contract from the
+environment, and no existing command could give it to them: `ensure` exports it only to its own children,
+`scripts/seed/cli.ts`'s `loadEnv` reads only `.env.local`/`qa/env.json`, and `test:qa`'s `varlock` wrapper
+injects only `.env.local`. Every doc therefore asked the operator to paste a five-line
+`eval "$(bunx supabase status --output-format json | jq …)"`, and a UI-only spec that skipped it ran silently
+against the shared `:3010` app. `supa` is the precedent for a guarded passthrough, so `run` is its
+contract-only sibling rather than a new mechanism.
 
 ## References
 

@@ -3,7 +3,7 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { PlanCard } from '@/app/(frontend)/pricing/_components/pricing-content';
+import { PlanCard } from '@/components/pricing/plan-card';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 
@@ -47,7 +47,6 @@ export function UpgradePlans({ audience, currentPlanKey, orgId }: UpgradePlansPr
               isCurrentPlan={plan.key === currentPlanKey}
               user={user}
               t={pt}
-              accountType={audience}
               orgId={orgId}
             />
           ))}

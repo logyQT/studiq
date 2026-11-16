@@ -164,19 +164,19 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () =
     ).toBe('admin');
 
     // 4. „Zobacz plany” answers the case's „czy UI informuje o konieczności zmiany
-    //    planu”: it opens the organization plan catalogue, where this org's
+    //    planu”: it opens the organization ladder of /pricing, where this org's
     //    current plan is marked and the plans that include „Kreator Ról” are listed.
     await page.getByRole('button', { name: 'Zobacz plany', exact: true }).click();
-    await expect(page).toHaveURL(/\/pricing\/org$/);
+    await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Wybierz Swój Plan', exact: true }),
+      page.getByRole('heading', { level: 1, name: 'Wybierz swój plan', exact: true }),
     ).toBeVisible();
 
-    const currentPlanCard = page
-      .locator('[data-slot="card"]')
-      .filter({ has: page.getByText('Obecny Plan', { exact: true }) });
-    await expect(currentPlanCard).toHaveCount(1);
-    await expect(currentPlanCard.locator('[data-slot="card-title"]')).toHaveText(plan.name);
+    const currentPlanRow = page
+      .locator('#pricing-plans li')
+      .filter({ has: page.locator(`h3#${plan.key}`) });
+    await expect(currentPlanRow, 'one row for the current plan').toHaveCount(1);
+    await expect(currentPlanRow.getByText('Twój plan', { exact: true })).toBeVisible();
 
     const upgradePlans = await getData<PlanInfo[]>(page, '/api/v1/subscription-plans?for=manager');
     const entitled = upgradePlans.filter((candidate) =>
@@ -188,12 +188,28 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () =
     ).toBeGreaterThan(0);
     for (const candidate of entitled) {
       await expect(
-        page.locator('[data-slot="card-title"]', { hasText: candidate.name }),
-        `plan card ${candidate.name}`,
+        page.locator(`#pricing-plans h3#${candidate.key}`),
+        `plan row ${candidate.name}`,
       ).toHaveCount(1);
     }
-    // The feature the locked card promises is listed on those plan cards.
-    await expect(page.getByText('Kreator Ról', { exact: true }).first()).toBeVisible();
+
+    // The feature the locked card promises is a row of the ladder's comparison,
+    // and it is a row precisely because the plans differ on it: the entitled
+    // plans carry the check, the current one does not.
+    const featureRow = page.getByRole('rowheader', { name: 'Kreator ról', exact: true });
+    await expect(featureRow, 'role.builder is a comparison row').toHaveCount(1);
+    for (const candidate of entitled) {
+      const column = upgradePlans.findIndex((cataloguePlan) => cataloguePlan.key === candidate.key);
+      await expect(
+        featureRow.locator('xpath=..').locator('td').nth(column).locator('svg.lucide-check'),
+        `${candidate.name} lists Kreator ról`,
+      ).toHaveCount(1);
+    }
+    const currentColumn = upgradePlans.findIndex((cataloguePlan) => cataloguePlan.key === plan.key);
+    await expect(
+      featureRow.locator('xpath=..').locator('td').nth(currentColumn).locator('svg.lucide-check'),
+      `${plan.name} does not list Kreator ról`,
+    ).toHaveCount(0);
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });

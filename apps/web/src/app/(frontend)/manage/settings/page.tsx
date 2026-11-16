@@ -27,6 +27,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
 import { isDraftSaved, resolveBrandColor } from '@/lib/brand-color';
 import { formatDate } from '@/lib/datetime';
+import { ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 
 interface OrganizationDetail {
   id: string;
@@ -178,7 +179,7 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-2">{t('logo_label')}</p>
                 {!canBrand ? (
-                  <BrandingLockedCard onUpgrade={() => router.push('/pricing')} />
+                  <BrandingLockedCard onUpgrade={() => router.push(ORGANIZATION_PRICING_URL)} />
                 ) : (
                   <div className="flex items-center gap-3">
                     {organization.logo_url ? (

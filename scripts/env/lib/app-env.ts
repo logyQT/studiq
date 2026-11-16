@@ -40,3 +40,33 @@ export function sharedStackEnv(): StackEnv {
     studioUrl: process.env.SUPABASE_STUDIO_URL ?? null,
   };
 }
+
+/**
+ * The contract this process was already started with, or null when it carries
+ * neither a Supabase URL nor a service-role key.
+ *
+ * `env:run` must work without a running stack: a `.env.local` for a manually
+ * provisioned (or shared) stack names the API URL through the
+ * `NEXT_PUBLIC_SUPABASE_URL` alias, while `ensure`/`serve` relay `SUPABASE_URL`.
+ * Accepting only one of the two would make the command's answer depend on which
+ * producer wrote the environment. A half contract is rejected rather than
+ * forwarded, because a child started against nothing is the failure this
+ * command exists to remove.
+ */
+export function exportedStackEnv(): StackEnv | null {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const apiUrl = rawUrl ? normalizeLocalhost(trimTrailingSlash(rawUrl)) : '';
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || null;
+  if (!apiUrl || !serviceRoleKey) return null;
+  return {
+    apiUrl,
+    restUrl: `${apiUrl}/rest/v1`,
+    dbUrl: process.env.SUPABASE_DB_URL || null,
+    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || null,
+    serviceRoleKey,
+    publishableKey: null,
+    secretKey: null,
+    mailUrl: process.env.SUPABASE_MAIL_URL || null,
+    studioUrl: process.env.SUPABASE_STUDIO_URL || null,
+  };
+}
