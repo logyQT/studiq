@@ -23,6 +23,7 @@ import {
   initialCheckoutStatus,
   isAllowedStripeCheckoutUrl,
 } from '@/lib/checkout-entry';
+import { INDIVIDUAL_PRICING_URL, ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 
 interface StripeCheckoutRedirectProps {
   /** Catalog plan key from `?plan_id=` (`spark`, `hub`, …). */
@@ -99,7 +100,7 @@ export function StripeCheckoutRedirect({ planKey, orgId, canceled }: StripeCheck
     setStatus('starting');
   }
 
-  const backPath = orgId ? '/pricing/org' : '/pricing';
+  const backPath = orgId ? ORGANIZATION_PRICING_URL : INDIVIDUAL_PRICING_URL;
   const rawAccountType: unknown = user?.app_metadata.account_type;
   const billingHref = `${dashboardPathForAccountType(rawAccountType)}/billing`;
   const canRetry = status === 'canceled' || (status === 'failed' && failure?.retryable === true);

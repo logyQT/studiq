@@ -80,7 +80,7 @@ enforced (an observation for LIM-02, not this case).
   „Nie udało się zapisać talii” appears — a readable message, not a blank screen.
   The copy is generic (LIM-02's "czytelny komunikat o limicie" concern); LIM-03
   only asserts that the attempt fails cleanly and creates no deck.
-- Purchase path: `/pricing/student` → Spark card → „Przejdź na Spark” →
+- Purchase path: `/pricing` → wiersz „Spark” → „Wybierz Spark” →
   `/checkout?session_id=…&plan_id=spark` (summary names Spark, „9,99 zł/miesiąc”,
   „Maks. talie 50”, „Razem”) → card `4242 4242 4242 4242`, `12/30`, `123`,
   „Test Student” → „Zapłać 9,99 zł/miesiąc” → „Płatność udana!

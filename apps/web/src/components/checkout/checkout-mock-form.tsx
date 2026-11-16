@@ -28,6 +28,7 @@ import { resolveCheckoutOrg, type CheckoutOrg, type OrgsStatus } from '@/lib/che
 import { getHighlightedFeatures, sortFeaturesByPriority } from '@/lib/pricing-benefits';
 import { getFeatureLabel } from '@/lib/pricing-features';
 import { getLimitLabel, SORTED_LIMIT_KEYS } from '@/lib/pricing-limits';
+import { INDIVIDUAL_PRICING_URL, ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 
 const HIGHLIGHTED_FEATURES = 5;
 
@@ -83,7 +84,7 @@ export function CheckoutMockForm() {
 
   // The target org comes from the self-scoped membership list (RLS: members
   // only) — never from the URL, which is user-editable and goes stale on a
-  // rename. Shared key with the navbar so coming from `/pricing/org` reuses it.
+  // rename. Shared key with the navbar so coming from the org ladder reuses it.
   const orgsQuery = useApiQuery<CheckoutOrg[]>({
     queryKey: ['orgs'],
     url: '/api/v1/me/orgs',
@@ -190,7 +191,7 @@ export function CheckoutMockForm() {
       ? resolution.isDifferentFromActive
       : false;
 
-  const plansUrl = isOrgPlan ? '/pricing/org' : '/pricing';
+  const plansUrl = isOrgPlan ? ORGANIZATION_PRICING_URL : INDIVIDUAL_PRICING_URL;
 
   let blockedState: {
     title: string;
