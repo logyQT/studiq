@@ -57,7 +57,8 @@ leak, not a flake. The QA-case suite that implements this for the tester documen
 
 **Covered flows today:** login and registration, student flashcard practice, teacher question
 management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
-170 e2e · 10 API-level · 8 manual-only of 188 cases; status in `#926`.
+170 e2e · 10 API-level · 8 manual-owned (4 of them with a partial spec) of 188 cases; status in
+`#926`.
 
 ## Running Tests
 

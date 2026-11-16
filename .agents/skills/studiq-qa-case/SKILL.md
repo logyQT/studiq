@@ -82,6 +82,11 @@ that reason.
 every case is tracked in `#926`; the technique classification (e2e / api /
 manual) is [`qa/coverage.md`](../../../qa/coverage.md).
 
+A `SEC-*` case is also governed by [`qa/security/ROE.md`](../../../qa/security/ROE.md):
+its own stack and app port (never the shared `:3010` app or `:54421` database),
+`--dedicated` seeding, and that file's evidence standard. Read it before the walk;
+everything else here still applies.
+
 ## Step 1 — read the case, then the product
 
 1. `qa/index.md` → the case's priority and `prereqs`; `qa/cases/<ID>.md` → steps
@@ -315,13 +320,23 @@ and the mutation + 5/5 evidence in the body. Branch `qa/<ID>` or `test/qa-<ID>`,
 PR into `main`. Scope it to one case (plus a shared helper if the case genuinely
 needs one) — a shared-helper change that restyles every spec is a separate PR.
 
-AI cases (`EDU-DECK-05`, `SEC-07`, `STU-09`, `STU-45`, `STU-49`, and the shipped
+Cases that actually call a model (`EDU-DECK-05`, `STU-49`, and the shipped
 `STU-47`/`STU-48`) run in the `ai-suite` job against the fake inference server
-(`scripts/fake-llm`, [`docs/ai/fake-inference-server.md`](../../../docs/ai/fake-inference-server.md)),
-one worker, with `LLM_PROVIDER=fake`. Their mutation axis is usually the app's
+(`scripts/fake-llm`,
+[`docs/ai/fake-inference-server.md`](../../../docs/ai/fake-inference-server.md)),
+one worker, with `LLM_PROVIDER=fake`. That job runs only `__tests__/qa/AI`, so a
+new AI case goes there and its profile/case files join `AI_OWN` in `verify.yml`
+so an edit to them still starts the job. Their mutation axis is usually the app's
 handling of bad model output, which the fixtures make deterministic: never call a
 real provider from a spec, and never assert model-side detail the app does not
 control.
+
+A case that only asserts the AI **gate** is not an AI-suite case and needs no
+model: `STU-45` (the plan feature hides the entry point) and `STU-09` (quiz
+generation from the tenant's stored questions, no model call) belong to their
+area shard, and `SEC-07` (a manager POSTs `/api/v1/ai/chat` and `withAuth` refuses
+the account type before any model call) is a `SEC-*` case — follow
+[`qa/security/ROE.md`](../../../qa/security/ROE.md).
 
 ## Auditing and pruning existing specs
 
@@ -348,14 +363,17 @@ defect.
 Manual is a real verdict, not a shrug. Park when no assertion is possible without
 machinery we deliberately do not own in the merge gate:
 
-| reason                                  | example                                   |
-| --------------------------------------- | ----------------------------------------- |
-| print/PDF pipeline                      | `EDU-ASG-10`                              |
-| CDP network emulation                   | `EDU-QZ-04`, `NFR-06`                     |
-| visual judgement across a theme sweep   | `NFR-03`                                  |
-| keyboard-only focus-order judgement     | `NFR-05`                                  |
-| a relation **between** browsers         | `NFR-08` (the suite is chromium-only)     |
-| a case that needs an input only a human has | `STU-49`'s PDF, `MGR-SET-02`'s logo   |
+| reason                                | example                               |
+| ------------------------------------- | ------------------------------------- |
+| CDP network emulation                 | `EDU-QZ-04`, `NFR-06`                 |
+| visual judgement across a theme sweep | `NFR-03`                              |
+| a relation **between** browsers       | `NFR-08` (the suite is chromium-only) |
+| an input only a human can supply      | `STU-49` (a text PDF)                 |
+
+Four of the eight manual-owned cases now carry a partial spec (`EDU-ASG-10`,
+`LIM-02`, `NFR-05`, `NFR-07`). That does not un-park them: the spec pins the part
+a browser can see, the manual row still owns the rest (the rendered PDF, the
+SQL-level limit mutation, the cross-page keyboard walk, the whole-run sweep).
 
 Record it in [`qa/coverage.md`](../../../qa/coverage.md) (owner `manual` + the
 one-line reason) and in `#926`. A parked case keeps its file; a parked bug does

@@ -5,11 +5,14 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 (172 specs of 188 cases, 7 blocked by an open issue, 8 parked, 1 ready to write).
 
 - **188 cases**: 170 end-to-end, 10 API-level,
-  8 manual-only (listed with a reason at the bottom).
+  8 manual-owned — four of them carry a partial spec, and all eight are listed
+  with the reason automation cannot cover the whole case at the bottom.
 - First pass, generated from each case's front-matter and steps; a case that mixes UI and
   API work is filed under `e2e`, because the UI is what has to be exercised either way.
-- `manual` does not mean "skip": it means no assertion is possible without a print
-  pipeline, CDP network emulation or human judgement. Those stay on the release checklist.
+- `manual` does not mean "skip" and does not mean "no spec": it means the whole
+  case cannot be asserted without a print pipeline, CDP network emulation or
+  human judgement, so it stays on the release checklist even when a spec pins part
+  of it.
 - A case whose product behaviour contradicts its text is an issue, not a spec — `#926`
   tracks the open ones. Turning a case into a spec:
   `.agents/skills/studiq-qa-case/SKILL.md`.
@@ -223,31 +226,36 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | STU-52      | STU  | P3   | e2e    |                                                                      |
 | STU-53      | STU  | P3   | e2e    |                                                                      |
 
-## Manual-only, with the reason automation cannot cover it
+## Manual-owned, with the reason automation cannot cover the whole case
 
-| case       | reason                                                         |
-| ---------- | -------------------------------------------------------------- |
-| EDU-ASG-10 | print layout - needs a print/PDF pipeline, not a DOM assertion |
-| EDU-QZ-04  | offline/online recovery mid-flow - CDP network emulation       |
-| LIM-02     | mutates plan_limits directly in SQL before the UI check        |
-| NFR-03     | theme sweep across key screens - visual judgement              |
-| NFR-05     | keyboard-only walkthrough - focus order, not assertions        |
-| NFR-06     | offline behaviour across four flows - CDP emulation            |
-| NFR-07     | console/network dependency sweep - judgement over a whole run  |
-| NFR-08     | cross-browser smoke matrix - needs the browser matrix job      |
+| case       | reason                                                         | partial spec  |
+| ---------- | -------------------------------------------------------------- | ------------- |
+| EDU-ASG-10 | print layout - needs a print/PDF pipeline, not a DOM assertion | print view    |
+| EDU-QZ-04  | offline/online recovery mid-flow - CDP network emulation       | —             |
+| LIM-02     | mutates plan_limits directly in SQL before the UI check        | the real caps |
+| NFR-03     | theme sweep across key screens - visual judgement              | —             |
+| NFR-05     | keyboard-only walkthrough - focus order, not assertions        | focus order   |
+| NFR-06     | offline behaviour across four flows - CDP emulation            | —             |
+| NFR-07     | console/network dependency sweep - judgement over a whole run  | smoke journey |
+| NFR-08     | cross-browser smoke matrix - needs the browser matrix job      | —             |
+
+A partial spec pins the part a browser can see; it does not move the case off the
+manual checklist. The four with `—` are the ones with no spec at all.
 
 ## How the automated cases get built
 
-- One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts`,
-  `test.describe('@case:<ID> …')`, so a shard's report names the case that failed.
-- Every case gets an isolated tenant from `__tests__/qa/profiles/<ID>.json`
+- One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts` — `test.describe()` may
+  carry `@case:<ID>`, so a shard's report names the case that failed.
+- Every case gets an isolated tenant — the default `content` shape, or the one in
+  `__tests__/qa/profiles/<ID>.json` when the case needs another
   (`bun scripts/qa-tenant.ts <ID>`), read through `loadTenant()`; no spec creates
   accounts or writes shared rows.
 - UI cases drive the real path with the tenant's own users; API cases use
   Playwright's request context with the seeded session cookie.
-- Run it with `bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts`; CI seeds a
-  shard's areas once and runs four path-scoped shards, plus `ai-suite` for the AI
-  cases against the fake inference server.
+- Run it with `bun run test:qa __tests__/qa/<AREA>/<ID>.spec.ts` in a shell that
+  has this checkout's stack contract and `QA_APP_URL` exported (the case skill's
+  Commands block); CI seeds a shard's areas once and runs four path-scoped shards,
+  plus `ai-suite` for the AI cases against the fake inference server.
 - Gate: 5/5 independent fresh-tenant runs, a mutation that turns the spec red for
   the right reason, and the manual list above acknowledged as the only remaining
   manual coverage.

@@ -9,9 +9,10 @@ linking, is dropped as not planned (#893), and the admin module + 5 admin-depend
 are out of scope, so 188 cases remain).
 
 Automation: the suite that turns these cases into Playwright specs lives in
-[`__tests__/qa/`](../__tests__/qa/) — one spec per case, one tenant profile per case —
-and the technique classification (e2e / api / manual) is
-[`coverage.md`](coverage.md). Current coverage state: `#926`.
+[`__tests__/qa/`](../__tests__/qa/) — one spec per case, one isolated tenant per case
+(a profile file only when the default shape does not fit) — and the technique
+classification (e2e / api / manual) is [`coverage.md`](coverage.md). Current coverage
+state: `#926`.
 
 ## Layout
 
@@ -42,9 +43,10 @@ index, agent prompt) is English, matching the repo/issue convention.
 ## Running a scenario
 
 The operator provisions the app, database, browser and telemetry for a run and
-assigns the scenario; that setup lives outside this repository. Copy the prompt
-from `AGENT-PROMPT.md`, set the scenario ID on the last line
-(`## SCENARIO ▶ <ID>`), then let the agent:
+assigns the scenario; the setup itself is documented here and in the case skill's
+Commands block (`bun run env:ensure --profile qa` for a checkout's own stack and
+tenants). Copy the prompt from `AGENT-PROMPT.md`, set the scenario ID on the last
+line (`## SCENARIO ▶ <ID>`), then let the agent:
 
 1. Read `qa/context.md` once (accounts, seed data, plan limits, priorities, defect template).
 2. Find the scenario ID in `qa/index.md`.
@@ -106,9 +108,12 @@ tracked in this repository. Regenerate the corpus with that converter when the
 source document changes; it clears `cases/*.md` before writing, so renamed or
 removed scenarios do not leave orphans, and it prints the case count and any
 prerequisite IDs it could not resolve. Do not hand-edit generated case files to
-update the corpus from the source document; suite workers may still reconcile
-and commit a case's seed/prerequisite details for suite generation, as described
-in `QA-SUITE-APPROACH.md`.
+update the corpus from the source document. The one edit a suite worker may make
+is the case's tenant block (`Prereqs`/`Seed`) — reconciled, or added when the
+generated case has none — and the rules for it are in
+`.agents/skills/studiq-qa-case/SKILL.md` (Step 1). The retired campaign prompts
+(`QA-SUITE-APPROACH.md` and the others) are parked and no longer describe how a
+case is written.
 
 ## Notes
 
@@ -116,8 +121,11 @@ in `QA-SUITE-APPROACH.md`.
   test fixtures, not real credentials.
 - The corpus is generated from a customer-facing test document; regenerate it
   from `source/` rather than hand-editing `cases/` to update the corpus.
-- QA environment setup is maintained outside this repository and is
-  intentionally not documented here.
+- QA environment setup is documented: `bun run env:ensure --profile qa` starts
+  this checkout's stack and app and seeds every case, and the case skill's
+  Commands block lists the full sequence (including `QA_APP_URL` and the stack
+  contract the runner and the seeder read). See also
+  [`docs/testing.md`](../docs/testing.md).
 
 ## QA suite
 
@@ -125,10 +133,16 @@ One spec per case in `__tests__/qa/<AREA>/<ID>.spec.ts`, one isolated tenant per
 (and per attempt), so a shard runs its files in parallel:
 
 ```bash
-bun run env:ensure --profile web                 # this checkout's app + stack
-bun scripts/qa-tenant.ts STU-21 --fresh          # seed the case's tenant
+bun run env:ensure --profile qa                  # stack + build + app + every tenant
+export QA_APP_URL=http://localhost:<port>        # from `env:status --json` .urls.app
+eval "$(bunx supabase status --env | jq -r '"export NEXT_PUBLIC_SUPABASE_URL=\(.API_URL)\nexport NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.ANON_KEY)\nexport SUPABASE_SERVICE_ROLE_KEY=\(.SERVICE_ROLE_KEY)\nexport SUPABASE_DB_URL=\(.DB_URL)"')"
 bun run test:qa __tests__/qa/STU/STU-21.spec.ts  # run it
 ```
+
+A bare worktree needs the `eval` line because the runner reads the stack contract
+from the environment and `varlock` only injects `.env.local`; without `QA_APP_URL`
+the runner falls back to the shared `:3010` app. The case skill's Commands block
+has the same sequence with the per-case reseed.
 
 CI seeds a shard's areas once (`bun scripts/qa-tenant.ts --all --areas … --run ci<id>`)
 and runs Playwright at `QA_WORKERS=4` across four path-scoped shards (`edu`, `stu`,
