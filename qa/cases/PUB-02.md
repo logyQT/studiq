@@ -1,74 +1,44 @@
 # PUB-02 — Strona „Funkcje” (/features)
 
-- id: PUB-02
 - priority: P2 ważny
 - module: PUB – Strony publiczne i nawigacja ogólna
 - section: Funkcje, Cennik, Kontakt, strony prawne
-- prereqs: none
-- source: StudiQ Dokument Testera v1.3
 
 ## Prerequisite (verbatim)
 
 Brak sesji.
 
-## Seed (tenant model)
+## Seed (QA-suite tenant)
 
-The page is public: the acceptance criteria are the anonymous visitor's, so the spec
-signs nobody in and sends no storage state.
+The page is public: the acceptance criteria are the anonymous visitor's, so the spec signs
+nobody in and sends no storage state. The case uses the default `content` tenant (no
+`__tests__/qa/profiles/PUB-02.json`); nothing on the page reads a tenant, plan, flag or
+singleton row.
 
 - tenant key: `tenantKey("qa/cases/PUB-02.md", "PUB-02", "qa-shared")` →
-  `PUB-02.md::PUB-02::qa-shared` (`--fresh` runs get
-  `PUB-02.md::PUB-02#<suffix>::qa-shared`)
-- seed: `bun scripts/qa-tenant.ts PUB-02` → org `qa-pub-02-<key tail>`, manager/teacher/
-  student (`Seed4Test!`), group `G1`
-- the tenant users are deliberately unused: `/features` is static copy plus a
-  plan-comparison table, and the spec reads no tenant, plan, feature-flag or singleton row
+  `PUB-02.md::PUB-02::qa-shared`; seed with `bun run env:run -- bun scripts/qa-tenant.ts PUB-02`
+- the tenant users are deliberately unused
 
 ## Steps
 
-1. Otwórz /features (QA: http://localhost:3010/features).
-2. Przejrzyj listę funkcji i tabelę „Porównanie Planów”.
+1. Otwórz /features (QA: adres aplikacji z `QA_APP_URL`).
+2. Przejrzyj cztery obszary: Pętla nauki, Z materiałów do ćwiczeń, Nauczanie i grupy, Organizacja.
+3. Obejrzyj przykład produktu przy obszarach 01–03.
+4. Sprawdź spis obszarów w nagłówku strony.
+5. Sprawdź działania: „Zacznij naukę za darmo”, „Zobacz cennik”, „Porozmawiajmy o wdrożeniu”.
 
 ## Expected result
 
-- Tytuł „Wszystko Czego Potrzebujesz, Aby Odnieść Sukces”.
-- Karty funkcji z oznaczeniem planu (Darmowy / Premium / Uniwersytecki), np. „Ręczne Tworzenie Pytań – Darmowy”, „Generowanie Pytań przez AI – Premium”.
-- Tabela porównania: kolumny Darmowy / Premium / Uniwersytecki, wartości Tak / Nie / Indywidualny.
-- Przycisk „Zacznij Za Darmo” prowadzi do rejestracji.
-
-## Observations (walk, 2026-10-28, shared app :3010, QA worker qa-env-3)
-
-- Wszystkie wymienione napisy są widoczne: tytuł „Wszystko Czego Potrzebujesz, Aby
-  Odnieść Sukces”, podtytuł „Od podstawowych fiszek po egzaminy oparte na AI”, 11 kart
-  funkcji z ikoną, nazwą i opisem, tabela „Porównanie Planów”, sekcja CTA „Gotowy, Aby
-  Zacząć Naukę?”. Brak błędów konsoli, surowych kluczy tłumaczeń, „undefined”/„NaN”.
-- Karty: 4 × Darmowy (Ręczne Tworzenie Pytań, Ćwiczenie z Fiszkami, Rozwiązywanie Testów,
-  Podstawowe Statystyki), 4 × Premium (Generowanie Pytań przez AI, Generowanie Fiszek
-  przez AI, Symulacja Egzaminu AI, Zaawansowana Analityka), 3 × Uniwersytecki
-  (Zarządzanie Organizacją, Masowe Zaproszenia, Analityka Uczelni) — kolejność jak w kodzie.
-  Oznaczenie planu to plakietka (`Badge`) obok ikony, a nie dopisek w tytule karty.
-- Tabela: kolumny dokładnie Funkcja / Darmowy / Premium / Uniwersytecki, 11 wierszy w tej
-  samej kolejności co karty. Wartości są graficzne: znacznik „Tak” to ikona `lucide-check`,
-  „Nie” to pauza „—”; oba elementy są `aria-hidden` (build współdzielonej aplikacji
-  powstał przed #639, więc nie ma jeszcze tekstu `sr-only` „Tak”/„Nie”). Macierz: cztery
-  funkcje bazowe — Tak we wszystkich planach; cztery funkcje AI — Tak od Premium;
-  trzy funkcje organizacyjne — Tak tylko w Uniwersyteckim.
-- Odstępstwo od dokumentu: „Indywidualny” nie występuje na stronie i żaden wiersz nie ma
-  wartości „custom” — decyzja produktowa z #291 / PR #639 („the table has no row whose
-  value is custom”); klucz `FeaturesPage.comparison_custom` pozostaje nieużywany. Test
-  sprawdza więc dwuwartościową macierz Tak/Nie, a nie wartość indywidualną.
-- „Zacznij Za Darmo” → `/register`; strona rejestracji pokazuje formularz („Utwórz konto”,
-  przycisk „Zarejestruj się”), ale nie ma nagłówka `h1`. Wejście z nagłówka: „Funkcje” →
-  `/features`.
-
-## Re-check (2026-11-14, branch `landing/13-final`)
-
-The copy was corrected in `3ac0e12e`; the findings below replace the 2026-10-28 walk.
-
-- The subtitle is „Od ręcznych fiszek po analitykę dla całej uczelni”: the product ships
-  no exam simulation, so the promise stops at the two ends the page actually lists.
-- Ten cards and ten table rows. „Symulacja Egzaminu AI” does not exist, so Premium has
-  three cards (Generowanie Pytań przez AI, Generowanie Fiszek przez AI, Zaawansowana
-  Analityka) and the table's rows are those same ten features.
-- The „Masowe Zaproszenia” card says „Zaproś kilku członków naraz i przypisz każdemu
-  rolę” — with no text/CSV import and no automatic registration.
+- Strona ma dokładnie jeden nagłówek `h1`; poziomy nagłówków rosną o jeden (bez przeskoków).
+  Nagłówki funkcji są nagłówkami `h3`, nie `div`-ami.
+- Cztery sekcje z identyfikatorami `#study-loop`, `#material`, `#teaching`, `#organization`.
+  Każda ma jeden `h2` i co najmniej dwie funkcje jako `h3`.
+- Spis obszarów w nagłówku strony prowadzi do tych czterech sekcji (cztery odnośniki `#…`).
+- Obszary 01–03 kończą się przykładem z produktu; obszar 04 kończy się odnośnikiem do
+  `/contact`. „Wynik: 75%” ani żadna karta wyniku nie występuje na stronie.
+- Strona nie zawiera tabeli porównania planów: porównanie i limity są wyłącznie na
+  `/pricing`. Nie ma też nazw planów „Darmowy / Premium / Uniwersytecki”.
+- Trzy różne miejsca docelowe: `/register` (działanie główne, wysokość ≥ 44 px),
+  `/pricing`, `/contact`. Żaden odnośnik nie prowadzi do zalogowanej aplikacji
+  (`/app`, `/edu`, `/manage`).
+- Brak surowych kluczy tłumaczeń, „undefined” i „NaN” w treści; brak błędów konsoli.

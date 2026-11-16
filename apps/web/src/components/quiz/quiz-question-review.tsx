@@ -67,7 +67,8 @@ export function QuizQuestionReview({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
+        {/* Three badges do not fit one 320px line; wrapped, they keep their words. */}
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{labels.questionShort}</Badge>
           <Badge variant="outline">{labels.typeLabel}</Badge>
           {isOpenQuestion ? (

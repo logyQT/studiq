@@ -1,21 +1,15 @@
 'use client';
 
-import { Badge, Button, Input } from '@studiq/ui';
+import { Button, Input } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, ExternalLink, Layers, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Check, ExternalLink, Layers, Loader2, Pencil } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { GeneratedCards, type FlashcardData } from '@/components/ai/generated-cards';
 import { apiPost } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
-import { cn } from '@/lib/utils';
-
-export interface FlashcardData {
-  front: string;
-  back: string;
-  topic?: string;
-}
 
 /** Deck the generated cards are saved into, when the chat was opened from a deck. */
 export interface DeckTarget {
@@ -102,25 +96,25 @@ export function FlashcardBlock({
   if (loading) {
     const skeletonCount = count || 6;
     return (
-      <div className="space-y-3 mt-2 animate-pulse">
-        <div className="h-4 w-48 bg-muted rounded" />
+      <div className="mt-2 animate-pulse space-y-3">
+        <div className="h-4 w-48 rounded bg-muted" />
         <div className="grid grid-cols-2 gap-2">
           {Array.from({ length: skeletonCount }).map((_, i) => (
-            <div key={i} className="rounded-lg border bg-background/60 p-2.5 space-y-2">
-              <div className="h-3 w-3/4 bg-muted rounded" />
-              <div className="h-3 w-1/2 bg-muted rounded" />
-              <div className="h-2 w-1/3 bg-muted rounded" />
+            <div key={i} className="space-y-2 rounded-lg border bg-background/60 p-2.5">
+              <div className="h-3 w-3/4 rounded bg-muted" />
+              <div className="h-3 w-1/2 rounded bg-muted" />
+              <div className="h-2 w-1/3 rounded bg-muted" />
             </div>
           ))}
         </div>
-        <div className="h-8 w-full bg-muted rounded-md" />
+        <div className="h-8 w-full rounded-md bg-muted" />
       </div>
     );
   }
 
   if (savedDeckId) {
     return (
-      <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 mt-2 space-y-2">
+      <div className="mt-2 space-y-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3">
         <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
           <Check className="h-4 w-4 shrink-0" />
           <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
@@ -139,36 +133,39 @@ export function FlashcardBlock({
   }
 
   return (
-    <div className="space-y-3 mt-2">
-      {/* Deck name + count */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-xs font-medium text-muted-foreground">
-            {readOnly
-              ? t('flashcards_preview', { count: flashcards.length })
-              : t('flashcards_generated', { count: flashcards.length })}
-          </span>
-          {readOnly && (
-            <span className="text-[10px] text-muted-foreground/40 italic ml-auto">
-              awaiting approval
-            </span>
-          )}
-          {removedCount > 0 && (
-            <span className="text-xs text-muted-foreground/60">({removedCount} removed)</span>
-          )}
-        </div>
-        {!readOnly &&
+    <div className="mt-2 space-y-3">
+      <GeneratedCards
+        cards={flashcards}
+        label={
+          readOnly
+            ? t('flashcards_preview', { count: flashcards.length })
+            : t('flashcards_generated', { count: flashcards.length })
+        }
+        note={
+          <>
+            {readOnly && (
+              <span className="ml-auto text-[10px] text-muted-foreground/40 italic">
+                awaiting approval
+              </span>
+            )}
+            {removedCount > 0 && (
+              <span className="text-xs text-muted-foreground/60">({removedCount} removed)</span>
+            )}
+          </>
+        }
+        removed={removedIndices}
+        tools={
+          !readOnly &&
           (targetDeck ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Layers className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+              <Layers className="h-3 w-3 shrink-0 text-muted-foreground/60" />
               <span className="truncate">
                 {t('flashcard_saving_to_deck', { deck: targetDeck.name })}
               </span>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <Pencil className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+              <Pencil className="h-3 w-3 shrink-0 text-muted-foreground/60" />
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -176,53 +173,12 @@ export function FlashcardBlock({
                 placeholder={t('flashcard_deck_name')}
               />
             </div>
-          ))}
-      </div>
+          ))
+        }
+        onToggleCard={toggleRemove}
+        toggleLabels={{ remove: t('remove_card'), keep: t('keep_card') }}
+      />
 
-      {/* Scrollable card grid */}
-      <div className="max-h-112 overflow-y-auto -mx-1 px-1">
-        <div className="grid grid-cols-2 gap-2">
-          {flashcards.map((card, i) => (
-            <div
-              key={i}
-              className={cn(
-                'group relative rounded-lg border bg-background/60 p-2.5 text-xs transition-opacity',
-                removedIndices.has(i) && 'opacity-30',
-              )}
-            >
-              {/* Delete toggle */}
-              <button
-                type="button"
-                onClick={() => toggleRemove(i)}
-                className={cn(
-                  'absolute top-1.5 right-1.5 rounded-md p-1 transition-colors',
-                  removedIndices.has(i)
-                    ? 'text-green-500 hover:text-green-600 bg-green-500/10'
-                    : 'text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100',
-                )}
-                title={removedIndices.has(i) ? t('keep_card') : t('remove_card')}
-              >
-                {removedIndices.has(i) ? (
-                  <Check className="h-3 w-3" />
-                ) : (
-                  <Trash2 className="h-3 w-3" />
-                )}
-              </button>
-
-              {/* Card content */}
-              <div className="font-medium pr-5">{card.front}</div>
-              <div className="text-muted-foreground mt-0.5">{card.back}</div>
-              {card.topic && (
-                <Badge variant="secondary" className="mt-1 text-[10px] px-1.5 py-0">
-                  {card.topic}
-                </Badge>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Save button */}
       {!readOnly && (
         <Button
           onClick={handleSave}

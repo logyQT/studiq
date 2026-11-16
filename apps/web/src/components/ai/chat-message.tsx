@@ -2,11 +2,8 @@
 
 import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
 import { memo, useState } from 'react';
-import {
-  type DeckTarget,
-  type FlashcardData,
-  FlashcardBlock,
-} from '@/components/ai/flashcard-block';
+import type { FlashcardData } from '@/components/ai/generated-cards';
+import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
 import { PlanBlock } from '@/components/ai/plan-block';
 import { QuestionBlock } from '@/components/ai/question-block';
 import { ThinkingBlock } from '@/components/ai/thinking-block';
