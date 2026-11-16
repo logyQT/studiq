@@ -8,9 +8,9 @@
  * `verify` are unwrapped too, but they do touch the root `.env.local` — `setup`
  * scaffolds it, `verify` loads it through `varlock` (names/presence only). The
  * value-consuming commands (`ensure`, `serve`, `build`, `dev`, `down`,
- * `reset-db`, `logs`, `supa`) run under `varlock run --inject vars --` (see
- * `scripts/env/varlock-run.sh` and root `package.json`), which is where their
- * values come from. The CLI itself never parses a dotenv file.
+ * `reset-db`, `logs`, `supa`, `run`) run under `varlock run --inject vars --`
+ * (see `scripts/env/varlock-run.sh` and root `package.json`), which is where
+ * their values come from. The CLI itself never parses a dotenv file.
  *
  * Exit codes: 0 success/ready, 1 doctor found a problem (and verify cannot read
  * the schema), 2 bad usage, 3 native unavailable, 4 start or build failed, 5
@@ -26,6 +26,7 @@ import { runLogs } from './commands/logs';
 import { runObservability } from './commands/observability';
 import { runPorts } from './commands/ports';
 import { runResetDb } from './commands/reset-db';
+import { runCommand } from './commands/run';
 import { runServe } from './commands/serve';
 import { runSetup } from './commands/setup';
 import { runStatus } from './commands/status';
@@ -47,6 +48,8 @@ async function dispatch(parsed: ParsedCommand): Promise<number> {
       return runPorts(parsed);
     case 'supa':
       return runSupa(parsed.passthrough);
+    case 'run':
+      return runCommand(parsed.passthrough);
     case 'ensure':
       return runEnsure(parsed);
     case 'down':

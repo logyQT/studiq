@@ -16,6 +16,7 @@ export type EnvCommand =
   | 'doctor'
   | 'ports'
   | 'supa'
+  | 'run'
   | 'ensure'
   | 'down'
   | 'build'
@@ -88,7 +89,7 @@ export interface ObservabilityOptions {
 export interface ParsedCommand {
   command: EnvCommand;
   json: boolean;
-  /** `supa` only: arguments forwarded verbatim to `bunx supabase`. */
+  /** `supa`/`run` only: the arguments forwarded verbatim to the child. */
   passthrough: string[];
   ensure: EnsureOptions | null;
   down: DownOptions | null;
@@ -132,6 +133,7 @@ export const USAGE = [
   '  env:serve    [--json]                           Serve the existing production build',
   '  env:dev      [atoms]                            Human-only `next dev` HMR (agents build + serve)',
   '  env:supa     <args…>                            Run `bunx supabase` with the contract exported',
+  '  env:run      -- <command> [args…]               Run a command with this checkout’s env exported',
   '  env:reset-db [--yes]                            Destructive: reset this checkout’s database',
   '  env:logs     [--no-follow]                      Stack logs + .dev/web.log',
   '  env:setup    [--force] [--vault]                Human-only: scaffold .env.local (or optional vault refs)',
@@ -606,8 +608,8 @@ export function parseCommand(argv: string[]): ParsedCommand {
   const [command, ...rest] = args;
   if (command === undefined) throw new UsageError('missing command');
   if (command === 'help' || command === '--help' || command === '-h') return empty('help');
-  if (command === 'supa') {
-    const parsed = empty('supa');
+  if (command === 'supa' || command === 'run') {
+    const parsed = empty(command);
     parsed.passthrough = rest[0] === '--' ? rest.slice(1) : rest;
     return parsed;
   }
