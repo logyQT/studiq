@@ -2187,6 +2187,8 @@ export type Database = {
           deadline: string | null;
           description: string | null;
           id: string;
+          allow_same_item_retake: boolean;
+          attempt_item_count: number | null;
           max_attempts: number;
           organization_id: string | null;
           passing_score: number | null;
@@ -2211,6 +2213,8 @@ export type Database = {
           deadline?: string | null;
           description?: string | null;
           id?: string;
+          allow_same_item_retake?: boolean;
+          attempt_item_count?: number | null;
           max_attempts?: number;
           organization_id?: string | null;
           passing_score?: number | null;
@@ -2234,6 +2238,8 @@ export type Database = {
           deadline?: string | null;
           description?: string | null;
           id?: string;
+          allow_same_item_retake?: boolean;
+          attempt_item_count?: number | null;
           max_attempts?: number;
           organization_id?: string | null;
           passing_score?: number | null;
@@ -2772,7 +2778,7 @@ export type Database = {
     };
     Enums: {
       account_type: 'student' | 'educator' | 'manager';
-      assignment_status: 'draft' | 'published';
+      assignment_status: 'draft' | 'published' | 'cancelled';
       question_status: 'open' | 'retired' | 'deleted';
       question_type:
         'mcq' | 'true_false' | 'open' | 'multi_select' | 'matching' | 'ordering' | 'fill_in_blank';
@@ -2894,7 +2900,7 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ['student', 'educator', 'manager'],
-      assignment_status: ['draft', 'published'],
+      assignment_status: ['draft', 'published', 'cancelled'],
       question_status: ['open', 'retired', 'deleted'],
       question_type: [
         'mcq',

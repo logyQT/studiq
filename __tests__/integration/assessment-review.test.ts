@@ -204,6 +204,9 @@ describe('Assignment review: locked before close, revealed at close (#1171)', ()
             deadline: FUTURE(),
             showResults: true,
             maxAttempts: 2,
+            // This suite is about the review, not the retake sample: both attempts hold both items,
+            // which is the flagged same-item retake (#1174, R6) rather than a fresh sample.
+            allowSameItemRetake: true,
           }),
         },
         cookie(),

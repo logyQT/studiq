@@ -35,6 +35,20 @@ const teacherAssignmentFields = z.object({
     .min(0, { error: ValidationErrorCode.TOO_SMALL })
     .max(100, { error: ValidationErrorCode.TOO_BIG })
     .optional(),
+  /** R6: serve the same items on a retake instead of a fresh sample. Off by default. */
+  allowSameItemRetake: z.boolean({ error: ValidationErrorCode.BOOL }),
+  /**
+   * R7: how many items one attempt serves out of the pool. Omitted = leave the column alone,
+   * `null` = the whole pool. The explicit null is what lets the composer clear a count it set
+   * earlier; without it the field could only ever be narrowed or changed, never reopened.
+   */
+  attemptItemCount: z
+    .number({ error: ValidationErrorCode.NUMBER })
+    .int({ error: ValidationErrorCode.INTEGER })
+    .min(1, { error: ValidationErrorCode.TOO_SMALL })
+    .max(100, { error: ValidationErrorCode.TOO_BIG })
+    .nullable()
+    .optional(),
 });
 
 export const CreateTeacherAssignmentSchema = registry.register(
@@ -44,6 +58,7 @@ export const CreateTeacherAssignmentSchema = registry.register(
     shuffleAnswers: teacherAssignmentFields.shape.shuffleAnswers.default(true),
     showResults: teacherAssignmentFields.shape.showResults.default(false),
     maxAttempts: teacherAssignmentFields.shape.maxAttempts.default(1),
+    allowSameItemRetake: teacherAssignmentFields.shape.allowSameItemRetake.default(false),
   }),
 );
 export type CreateTeacherAssignmentInput = z.infer<typeof CreateTeacherAssignmentSchema>;
@@ -141,6 +156,41 @@ export const WithholdItemSchema = registry.register(
   }),
 );
 export type WithholdItemInput = z.infer<typeof WithholdItemSchema>;
+
+/**
+ * The new close of an extension (#1174, R12). Only the bound moves: extending delays the reveal for
+ * the whole cohort, and it cannot move backwards — shortening is the manager override (R20).
+ */
+export const ExtendAssignmentSchema = registry.register(
+  'ExtendAssignmentRequest',
+  z.object({
+    closesAt: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .datetime({ offset: true, error: ValidationErrorCode.INVALID_INPUT }),
+  }),
+);
+export type ExtendAssignmentInput = z.infer<typeof ExtendAssignmentSchema>;
+
+/** A manager's window override (#1174, R20): either bound, either direction, never past the seal. */
+export const OverrideAssignmentSchema = registry.register(
+  'OverrideAssignmentRequest',
+  z
+    .object({
+      closesAt: z
+        .string()
+        .datetime({ offset: true, error: ValidationErrorCode.INVALID_INPUT })
+        .optional(),
+      opensAt: z
+        .string()
+        .datetime({ offset: true, error: ValidationErrorCode.INVALID_INPUT })
+        .optional(),
+    })
+    .refine((input) => input.closesAt !== undefined || input.opensAt !== undefined, {
+      error: ValidationErrorCode.REQUIRED,
+      path: ['closesAt'],
+    }),
+);
+export type OverrideAssignmentInput = z.infer<typeof OverrideAssignmentSchema>;
 
 /**
  * The publish preconditions, validated against the **stored** assessment plus the request's window.

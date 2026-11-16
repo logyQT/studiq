@@ -67,7 +67,7 @@ it).
 
 | artifact                      | path                               | owns                                          |
 | ----------------------------- | ---------------------------------- | --------------------------------------------- |
-| **case**                      | `qa/cases/<ID>.md`                 | the intent, in Polish, generated from the doc |
+| **case**                      | `qa/cases/<ID>.md`                 | the intent, in Polish; the maintained corpus  |
 | **spec**                      | `__tests__/qa/<AREA>/<ID>.spec.ts` | the assertion                                 |
 | **tenant profile** (optional) | `__tests__/qa/profiles/<ID>.json`  | the tenant shape; absent = `content`          |
 
@@ -91,13 +91,14 @@ everything else here still applies.
 
 1. `qa/index.md` → the case's priority and `prereqs`; `qa/cases/<ID>.md` → steps
    and the embedded prerequisite chain. Read every referenced case.
-2. The case text is **generated** from the tester document: never hand-edit the
-   steps or the expected result. The one legal edit is the tenant block:
-   reconcile an existing `## Seed (QA-suite tenant)` section **or add one when
-   the generated case has none** (`STU-07` has only the verbatim prerequisite)
-   with the tenant model — the legacy `student1@dev.local` accounts are never
-   used. The walk record does not go in the case file; it goes in the spec
-   docblock (Step 4).
+2. The case text is the maintained corpus: correct `qa/cases/<ID>.md` in place
+   when the product has moved past it (`qa/README.md` → "Editing a case"), but
+   never reword a step only to make the spec easier. The one suite edit is the
+   tenant block: reconcile an existing `## Seed (QA-suite tenant)` section **or
+   add one when the case has none** (`STU-07` has only the verbatim
+   prerequisite) with the tenant model — the legacy `student1@dev.local`
+   accounts are never used. The walk record does not go in the case file; it
+   goes in the spec docblock (Step 4).
 3. Read the code the case exercises. Without it you cannot answer Step 0's
    second question, and you cannot tell a defect from a case that describes a
    product you do not ship (`STU-25`, `#893`).
@@ -202,7 +203,8 @@ test.describe('@case:<ID> @area:<AREA> @prio:<Pn> <short title>', () => {
 ```
 
 The docblock is where the walk record lives — date, commit and what the app
-actually did. It never goes in `qa/cases/<ID>.md`, which is generated (Step 1).
+actually did. It never goes in `qa/cases/<ID>.md`, which is the case, not a test
+log (Step 1).
 
 Rules that the gates and reviewers actually enforce:
 

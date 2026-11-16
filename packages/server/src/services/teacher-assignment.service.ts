@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import {
+  type AssignmentLink,
   ASSIGNMENT_QUESTION_COLUMNS,
   readAssignmentLinks,
   readAssignmentSnapshotKeys,
@@ -9,13 +10,24 @@ import {
   writeAssignmentSnapshots,
 } from '@studiq/server/lib/assignment-snapshot';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
+import {
+  attemptHistory,
+  drawSample,
+  sampleServed,
+  sampleUnseen,
+} from '@studiq/server/lib/attempt-sample';
 import { assessExposure } from '@studiq/server/lib/assignment-exposure';
-import { expireInProgressAttempts, isAssessmentClosed } from '@studiq/server/lib/assessment-close';
+import {
+  ensureClosed,
+  expireInProgressAttempts,
+  isAssessmentClosed,
+} from '@studiq/server/lib/assessment-close';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -64,6 +76,18 @@ const STUDENT_ATTEMPT_SELECT =
   'assignment_id, id, score, total_questions, total_points, completed_at, expired_at, started_at';
 
 type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
+
+/** A run the caller may write, with the client that proved they may. */
+interface OwnedWindow {
+  supabase: SupabaseClient<Database>;
+  run: {
+    id: string;
+    status: string;
+    start_time: string | null;
+    deadline: string | null;
+    closed_at: string | null;
+  };
+}
 
 /** The slice of a `quiz_attempts` row `STUDENT_ATTEMPT_SELECT` projects. */
 type StudentAttemptSummaryRow = Pick<
@@ -169,6 +193,8 @@ export class TeacherAssignmentService {
       shuffle_answers: data.shuffleAnswers,
       show_results: data.showResults,
       max_attempts: data.maxAttempts,
+      allow_same_item_retake: data.allowSameItemRetake,
+      attempt_item_count: data.attemptItemCount,
       passing_score: data.passingScore,
     };
 
@@ -306,6 +332,12 @@ export class TeacherAssignmentService {
     if (data.shuffleAnswers !== undefined) updateData.shuffle_answers = data.shuffleAnswers;
     if (data.showResults !== undefined) updateData.show_results = data.showResults;
     if (data.maxAttempts !== undefined) updateData.max_attempts = data.maxAttempts;
+    if (data.allowSameItemRetake !== undefined) {
+      updateData.allow_same_item_retake = data.allowSameItemRetake;
+    }
+    if (data.attemptItemCount !== undefined) {
+      updateData.attempt_item_count = data.attemptItemCount;
+    }
     if (data.passingScore !== undefined) updateData.passing_score = data.passingScore;
     updateData.updated_at = new Date().toISOString();
 
@@ -374,6 +406,7 @@ export class TeacherAssignmentService {
     if (isFailure(loaded)) return loaded;
     const { supabase, run: assignment } = loaded.data;
 
+    if (assignment.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
     if (assignment.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
     if (assignment.closed_at) return failure('ASSESSMENT_CLOSED');
 
@@ -382,24 +415,113 @@ export class TeacherAssignmentService {
       return failure('ASSESSMENT_NOT_LIVE');
     }
 
-    // The conditional update is the idempotence guard: two closes race here, and only one fills the
-    // empty column. A NULL result means the other request (or a natural expiry) got there first.
-    const { data: updated, error } = await supabase
-      .from('teacher_assignments')
-      .update({ closed_at: now.toISOString(), updated_at: now.toISOString() })
-      .eq('id', id)
-      .is('closed_at', null)
-      .select()
-      .maybeSingle();
+    const closed = await this.stampClose(supabase, id, now, {});
+    if (isFailure(closed)) return closed;
+    return success(closed.data);
+  }
 
-    if (error) return toDbFailure(error);
-    if (!updated) return failure('ASSESSMENT_CLOSED');
+  /**
+   * Cancels a published run — scheduled or live (R12/R19). It is the ending that does **not** reveal:
+   * the run stops, its in-progress attempts expire (consumed, unsubmittable), its reservations end,
+   * and no review exists at any time (`reviewState` reads the cancelled status). Cancelling a closed
+   * run is refused — the cohort already read the key, so that would be an un-reveal (R20) — and the
+   * status is terminal in the database, so nothing can revive it.
+   */
+  async cancel(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const open = await this.loadOpenWindow(id, ctx);
+    if (isFailure(open)) return open;
+    const { supabase } = open.data;
 
-    // The expiry needs the service role: a teacher may not write another user's attempt rows.
-    const expired = await expireInProgressAttempts(id, updated.closed_at ?? now.toISOString());
-    if (isFailure(expired)) return expired;
+    const cancelled = await this.stampClose(supabase, id, new Date(), { status: 'cancelled' });
+    if (isFailure(cancelled)) return cancelled;
+    return success(cancelled.data);
+  }
 
-    return success({ ...updated, expired_attempts: expired.data });
+  /**
+   * Moves `closesAt` later, before the close (R12). Extending delays the reveal for the **whole
+   * cohort** — there is no per-student extension, which is what keeps one window and one reveal — and
+   * it can only move forward: shortening a window is the manager override (R20), and an extension
+   * that shrinks would be a silent early reveal.
+   *
+   * A run that already closed cannot be extended: reopening is impossible, and the repair path is a
+   * new assessment (makeup) over items with no exposure for the student.
+   */
+  async extend(id: string, closesAt: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const open = await this.loadOpenWindow(id, ctx);
+    if (isFailure(open)) return open;
+    const { supabase, run } = open.data;
+
+    const current = run.deadline ? new Date(run.deadline).getTime() : null;
+    if (current !== null && new Date(closesAt).getTime() <= current) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        {
+          code: 'custom',
+          path: ['closesAt'],
+          message: ValidationErrorCode.INVALID_INPUT,
+        },
+      ]);
+    }
+
+    // Closed between the read and the write: the extension must not land on a revealed run.
+    const updated = await this.writeWindow(supabase, id, {
+      deadline: closesAt,
+      updated_at: new Date().toISOString(),
+    });
+    if (isFailure(updated)) return updated;
+    return success(updated.data);
+  }
+
+  /**
+   * The manager override (R20): move either bound of the window, in either direction, on a published
+   * run. It exists for the cases the teacher paths cannot express — a shrink, a start moved, a late
+   * correction — and it stops exactly where the seal is: it **never unseals a live class and never
+   * un-reveals**. A shrink to a future instant is allowed (the cohort learns earlier, together); an
+   * override that would end the seal now, or move the start past now, is refused with
+   * `409 ASSESSMENT_LIVE`; a closed or cancelled run is refused outright, because both already
+   * released their items.
+   */
+  async override(
+    id: string,
+    input: { closesAt?: string; opensAt?: string },
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const open = await this.loadOpenWindow(id, ctx);
+    if (isFailure(open)) return open;
+    const { supabase, run } = open.data;
+
+    const now = new Date();
+    const closesAt = input.closesAt ?? run.deadline ?? null;
+    const opensAt = input.opensAt ?? run.start_time ?? null;
+
+    if (!closesAt) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['closesAt'], message: ValidationErrorCode.REQUIRED },
+      ]);
+    }
+    if (opensAt && new Date(opensAt).getTime() >= new Date(closesAt).getTime()) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        { code: 'custom', path: ['opensAt'], message: ValidationErrorCode.INVALID_INPUT },
+      ]);
+    }
+
+    // The window already opened: anything that moves the seal's edge to `now` or behind it would
+    // hand a live class its key early, or release items it is still being assessed on. The state is
+    // the run's **current** one — a proposed start in the future is exactly the move being refused.
+    const liveNow = !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
+    if (liveNow) {
+      const endsSeal = new Date(closesAt).getTime() <= now.getTime();
+      const movesStartAhead =
+        input.opensAt !== undefined && new Date(input.opensAt).getTime() > now.getTime();
+      if (endsSeal || movesStartAhead) return failure('ASSESSMENT_LIVE');
+    }
+
+    const updated = await this.writeWindow(supabase, id, {
+      deadline: closesAt,
+      start_time: opensAt,
+      updated_at: now.toISOString(),
+    });
+    if (isFailure(updated)) return updated;
+    return success(updated.data);
   }
 
   /**
@@ -508,7 +630,9 @@ export class TeacherAssignmentService {
     if (!config.success) return failure('UNPROCESSABLE_ENTITY', config.error.issues);
 
     // Publish-once applies from live: a scheduled run has no exposure yet, but it is still
-    // published — withdraw it to draft to change it.
+    // published — withdraw it to draft to change it. A cancelled run is terminal: publishing it
+    // again would serve an assessment whose items were released and whose attempts expired.
+    if (before.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
     if (before.status === 'published') return failure('ASSESSMENT_ALREADY_PUBLISHED');
 
     // Sealing for the whole organisation leaves nothing exposed, so the forecast is only needed for
@@ -1179,17 +1303,26 @@ export class TeacherAssignmentService {
 
     const completedCount = attempts.filter((a) => a.completed_at || a.expired_at).length;
 
+    // The budget is a product state, not a throttle: the student (and the UI) must be able to tell
+    // "you are out of attempts" from "slow down" (R19).
     if (completedCount >= assignment.max_attempts) {
-      return failure('RATE_LIMITED');
+      return failure('NO_ATTEMPTS_LEFT');
     }
 
     const links = await readAssignmentLinks(id);
     if (isFailure(links)) return links;
     if (links.data.length === 0) return failure('NOT_FOUND');
 
+    const sample = await this.drawAttemptSample(id, ctx.userId, links.data, {
+      isRetake: attempts.length > 0,
+      allowSameItemRetake: assignment.allow_same_item_retake,
+      itemCount: assignment.attempt_item_count ?? null,
+    });
+    if (isFailure(sample)) return sample;
+
     const orderedQuestions = assignment.shuffle_questions
-      ? [...links.data].toSorted(() => Math.random() - 0.5)
-      : [...links.data];
+      ? [...sample.data].toSorted(() => Math.random() - 0.5)
+      : [...sample.data];
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
@@ -1262,6 +1395,43 @@ export class TeacherAssignmentService {
       ...toAttemptPayload(attempt),
       questions: payloads,
     });
+  }
+
+  /**
+   * The items one attempt serves (R6/R7). The pool is everything the assessment binds; the draw is
+   * `attempt_item_count` of it (all of it when the teacher set no count).
+   *
+   * - First attempt: a draw from the pool.
+   * - Retake, default: a draw from the items this student has **not** seen — served, answered or
+   *   key-rendered. An exhausted inventory is `409 NO_UNSEEN_ITEMS`, never a silent reuse.
+   * - Retake, `allow_same_item_retake`: the items the earlier attempt was served, which is what
+   *   "same item" means. A prior attempt with no served rows is a corrupt state, and serving the
+   *   pool is the honest repair rather than a refusal.
+   *
+   * Both retake forms happen inside the window: this method already refused everything outside it.
+   */
+  private async drawAttemptSample(
+    id: string,
+    studentId: string,
+    links: AssignmentLink[],
+    options: { isRetake: boolean; allowSameItemRetake: boolean; itemCount: number | null },
+  ): Promise<ServiceResult<AssignmentLink[]>> {
+    if (!options.isRetake) return success(drawSample(links, options.itemCount));
+
+    const candidates = [
+      ...new Set(links.flatMap((link) => (link.question_id ? [link.question_id] : []))),
+    ];
+    const history = await attemptHistory(studentId, id, candidates);
+    if (isFailure(history)) return history;
+
+    if (options.allowSameItemRetake) {
+      const same = sampleServed(links, history.data.served);
+      return success(drawSample(same.length > 0 ? same : links, options.itemCount));
+    }
+
+    const fresh = sampleUnseen(links, history.data.seen);
+    if (fresh.length === 0) return failure('NO_UNSEEN_ITEMS');
+    return success(drawSample(fresh, options.itemCount));
   }
 
   /**
@@ -1505,24 +1675,92 @@ export class TeacherAssignmentService {
   private async loadOwnedCloseWindow(
     id: string,
     ctx: RequestContext,
-  ): Promise<
-    ServiceResult<{
-      supabase: SupabaseClient<Database>;
-      run: {
-        id: string;
-        status: string;
-        start_time: string | null;
-        deadline: string | null;
-        closed_at: string | null;
-      };
-    }>
-  > {
+  ): Promise<ServiceResult<OwnedWindow>> {
     const supabase = await this.ownedClient(id, ctx);
     if (!supabase) return failure('NOT_FOUND');
 
     const loaded = await this.loadCloseWindow(supabase, id);
     if (isFailure(loaded)) return loaded;
     return success({ supabase, run: loaded.data });
+  }
+
+  /**
+   * The prelude every lifecycle action shares (R12/R19/R20): ownership, then a published run that
+   * still has a window to act on. A cancelled run is terminal, a draft was never published, and a
+   * closed run already released its items and expired its attempts — none of the three has anything
+   * left to move, and reviving one would serve an assessment whose first attempt already happened.
+   *
+   * The natural expiry is settled here, so the refusal is decided on the durable close: a run whose
+   * deadline has passed is closed even if no reader had written `closed_at` yet, and this is the read
+   * that writes it down.
+   */
+  private async loadOpenWindow(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<OwnedWindow>> {
+    const loaded = await this.loadOwnedCloseWindow(id, ctx);
+    if (isFailure(loaded)) return loaded;
+
+    if (loaded.data.run.status === 'cancelled') return failure('ASSESSMENT_CANCELLED');
+    if (loaded.data.run.status !== 'published') return failure('ASSESSMENT_NOT_PUBLISHED');
+
+    const settled = await ensureClosed(loaded.data.run);
+    if (isFailure(settled)) return settled;
+    if (isAssessmentClosed(settled.data)) return failure('ASSESSMENT_CLOSED');
+
+    return success({ supabase: loaded.data.supabase, run: settled.data });
+  }
+
+  /**
+   * The once-only close: fills `closed_at` under the race guard (two closes serialise on the empty
+   * column, and a natural expiry may have got there first) and then expires the attempts that were
+   * still running. The expiry needs the service role — a teacher may not write another user's
+   * attempt rows — so it lives here rather than in the caller.
+   */
+  private async stampClose(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    now: Date,
+    extra: Database['public']['Tables']['teacher_assignments']['Update'],
+  ): Promise<
+    ServiceResult<
+      Database['public']['Tables']['teacher_assignments']['Row'] & { expired_attempts: number }
+    >
+  > {
+    const closedAt = now.toISOString();
+    const updated = await this.writeWindow(supabase, id, {
+      ...extra,
+      closed_at: closedAt,
+      updated_at: closedAt,
+    });
+    if (isFailure(updated)) return updated;
+
+    const expired = await expireInProgressAttempts(id, updated.data.closed_at ?? closedAt);
+    if (isFailure(expired)) return expired;
+    return success({ ...updated.data, expired_attempts: expired.data });
+  }
+
+  /**
+   * Writes window fields on a run that is still open, refusing to land on a run that closed between
+   * the read and the write: a moved bound must never touch a revealed run.
+   */
+  private async writeWindow(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    patch: Database['public']['Tables']['teacher_assignments']['Update'],
+  ): Promise<ServiceResult<Database['public']['Tables']['teacher_assignments']['Row']>> {
+    const { data: updated, error } = await supabase
+      .from('teacher_assignments')
+      .update(patch)
+      .eq('id', id)
+      .eq('status', 'published')
+      .is('closed_at', null)
+      .select()
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!updated) return failure('ASSESSMENT_CLOSED');
+    return success(updated);
   }
 
   /**

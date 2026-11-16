@@ -24,6 +24,8 @@ export interface AssignmentFormValues {
   shuffleAnswers: boolean;
   showResults: boolean;
   maxAttempts: string;
+  attemptItemCount: string;
+  allowSameItemRetake: boolean;
   passingScore: string;
 }
 
@@ -37,6 +39,9 @@ export interface AssignmentPayload {
   shuffleAnswers: boolean;
   showResults: boolean;
   maxAttempts: number;
+  /** `null` reopens the whole pool; omitted leaves the column untouched. */
+  attemptItemCount?: number | null;
+  allowSameItemRetake: boolean;
   passingScore?: number;
 }
 
@@ -49,6 +54,8 @@ const EMPTY_ASSIGNMENT_FORM: AssignmentFormValues = {
   shuffleAnswers: true,
   showResults: false,
   maxAttempts: '1',
+  attemptItemCount: '',
+  allowSameItemRetake: false,
   passingScore: '',
 };
 
@@ -95,6 +102,8 @@ export function AssignmentForm({
       shuffleAnswers: values.shuffleAnswers,
       showResults: values.showResults,
       maxAttempts: parseInt(values.maxAttempts, 10),
+      attemptItemCount: values.attemptItemCount ? parseInt(values.attemptItemCount, 10) : null,
+      allowSameItemRetake: values.allowSameItemRetake,
       passingScore: values.passingScore ? parseInt(values.passingScore, 10) : undefined,
     });
   };
@@ -169,6 +178,19 @@ export function AssignmentForm({
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="attemptItemCount">{t('attempt_item_count')}</Label>
+            <Input
+              id="attemptItemCount"
+              type="number"
+              min={1}
+              max={100}
+              value={values.attemptItemCount}
+              onChange={(e) => set('attemptItemCount', e.target.value)}
+              placeholder={t('whole_pool')}
+            />
+            <p className="text-xs text-muted-foreground">{t('attempt_item_count_desc')}</p>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="passingScore">{t('passing_score')}</Label>
             <Input
               id="passingScore"
@@ -205,6 +227,12 @@ export function AssignmentForm({
             description={t('show_results_desc')}
             checked={values.showResults}
             onCheckedChange={(checked) => set('showResults', checked)}
+          />
+          <ToggleRow
+            label={t('same_item_retake')}
+            description={t('same_item_retake_desc')}
+            checked={values.allowSameItemRetake}
+            onCheckedChange={(checked) => set('allowSameItemRetake', checked)}
           />
         </CardContent>
       </Card>

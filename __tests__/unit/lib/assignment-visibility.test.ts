@@ -1,4 +1,8 @@
-import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
+import {
+  hiddenResultAssignmentIds,
+  resultsHidden,
+  reviewState,
+} from '@studiq/server/lib/assignment-visibility';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { asSupabaseClient } from '#test/helpers/supabase-double';
 
@@ -101,5 +105,27 @@ describe('hiddenResultAssignmentIds (#374)', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+  });
+});
+
+describe('reviewState (#1171 R5, #1174 R12)', () => {
+  const past = new Date(Date.now() - 60_000).toISOString();
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+
+  it('has no review at any time when the teacher never enabled results', () => {
+    expect(reviewState({ show_results: false, deadline: past })).toBe('hidden');
+  });
+
+  it('locks the review until the close and opens it after', () => {
+    expect(reviewState({ show_results: true, deadline: future })).toBe('locked');
+    expect(reviewState({ show_results: true, deadline: past })).toBe('open');
+    expect(reviewState({ show_results: true, deadline: future, closed_at: past })).toBe('open');
+  });
+
+  it('never reveals a cancelled run, even though the cancel writes a close', () => {
+    expect(
+      reviewState({ show_results: true, status: 'cancelled', deadline: future, closed_at: past }),
+      'cancelling ends the run without handing the cohort the key',
+    ).toBe('hidden');
   });
 });

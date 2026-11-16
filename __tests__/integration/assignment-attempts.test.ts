@@ -47,6 +47,7 @@ type StartBody = {
     id: string;
     questions: Array<{ id: string; question_answers?: Array<{ id: string }> }>;
   };
+  error?: string;
 };
 
 /** `POST /api/v1/quiz/:attemptId` — the graded attempt. */
@@ -144,6 +145,20 @@ describe(`Assignment Attempts Integration`, () => {
       .update({ max_attempts: maxAttempts })
       .eq('id', assignmentId);
     if (error) throw new Error(`Failed to update max_attempts: ${error.message}`);
+  }
+
+  /**
+   * The seeded assignment binds two items and serves both, so a fresh-sample retake would have
+   * nothing left to draw (#1174 R6/R7). The #372 cases are about the budget and the resume, not
+   * about sampling, so they opt into the flagged same-item retake.
+   */
+  async function setSameItemRetake(allow: boolean): Promise<void> {
+    const supabase = createServiceClient();
+    const { error } = await supabase
+      .from('teacher_assignments')
+      .update({ allow_same_item_retake: allow })
+      .eq('id', assignmentId);
+    if (error) throw new Error(`Failed to update allow_same_item_retake: ${error.message}`);
   }
 
   async function setShowResults(showResults: boolean): Promise<void> {
@@ -328,6 +343,7 @@ describe(`Assignment Attempts Integration`, () => {
     await setMaxAttempts(1);
     // The seed default is `false`; pin it so the #374 cases stay isolated.
     await setShowResults(false);
+    await setSameItemRetake(false);
     await cleanupQuizAttempts(student.user.id);
     await cleanupQuizAttempts(other.id);
     await cleanupQuizAttempts(nonTargeted.id);
@@ -464,7 +480,8 @@ describe(`Assignment Attempts Integration`, () => {
     expect(submitRes.status).toBe(200);
 
     const restart = await startAs(student.user);
-    expect(restart.status).toBe(429);
+    expect(restart.status).toBe(409);
+    expect(restart.body.error).toBe('NO_ATTEMPTS_LEFT');
     expect(await openAttemptCount()).toBe(0);
   });
 
@@ -508,6 +525,7 @@ describe(`Assignment Attempts Integration`, () => {
 
   it('starts the second attempt once the first is submitted (#372)', async () => {
     await setMaxAttempts(2);
+    await setSameItemRetake(true);
     mockUser(student.user);
 
     const started1 = await startAs(student.user);
@@ -530,6 +548,7 @@ describe(`Assignment Attempts Integration`, () => {
 
   it('refuses another start once max_attempts is exhausted (#372)', async () => {
     await setMaxAttempts(2);
+    await setSameItemRetake(true);
     mockUser(student.user);
 
     const started1 = await startAs(student.user);
@@ -538,7 +557,8 @@ describe(`Assignment Attempts Integration`, () => {
     await submitAttempt(started2.body);
 
     const start3 = await startAs(student.user);
-    expect(start3.status).toBe(429);
+    expect(start3.status).toBe(409);
+    expect(start3.body.error).toBe('NO_ATTEMPTS_LEFT');
     expect(await openAttemptCount()).toBe(0);
 
     const detailResult = await detail();

@@ -58,7 +58,7 @@ document does not describe, so clipped values are rejected rather than published
 | `ink`            | `0.175 0.022 264`    | `#0C101A` | ok    | All text                                            | **17.50:1** paper · 18.18:1 card |
 | `ink-muted`      | `0.470 0.020 264`    | `#555B66` | ok    | Secondary text                                      | **6.30:1** paper · 5.81:1 sunk   |
 | `hairline`       | `0.880 0.012 85`     | `#DBD7CF` | ok    | Decorative rules only                               | 1.32:1                           |
-| `border-control` | `0.630 0.020 264`    | `#838996` | ok    | Field and outline-button borders                    | **3.23:1** paper · 3.35:1 card   |
+| `border-control` | `0.600 0.020 264`    | `#7A808D` | ok    | Field and outline-button borders                    | **3.64:1** paper · 3.78:1 card   |
 | `secondary`      | `0.905 0.012 85`     | `#E3DFD7` | ok    | Non-interactive chip fill                           | 1.22:1 (see §Boundaries)         |
 | `accent-surface` | `0.930 0.012 85`     | `#EBE7DF` | ok    | Hover surface for menus and rows                    | 1.13:1                           |
 | `cobalt`         | `0.455 0.215 264`    | `#1244CB` | ok    | Brand: nav, links, focus, closing band              | **7.15:1** paper · 7.43:1 card   |
@@ -332,8 +332,22 @@ are different tokens and the accessibility floor says which applies where:
 - **Decorative** (`--border`, rules, separators): no minimum. It is not information.
 - **Load-bearing** (`--input`, outline buttons, any control identified only by its edge, and
   **separators between interactive list rows**): ≥ 3:1 against its surface.
-  `border-control` measures 3.23:1 on paper and 3.35:1 on card. On `paper-sunk` it is 2.98:1,
-  so **bare controls never sit on `paper-sunk`**.
+  `border-control` measures 3.64:1 on paper and 3.78:1 on card, 3.36:1 on `paper-sunk`.
+  The ratios are quoted against flat tokens; painted, the same edge measures 3.19–3.86
+  (3.55 on the grain pixel directly above a field, 3.19 at the gradient's darkest stop,
+  `rgb(237 230 218)`). The old `0.630` token read 3.06–3.30 there and 2.82–2.95 where
+  the grain is darkest, which is why the light token sits at `0.600`.
+- **A field's fill is a surface token, never a mix of the edge.** The kit's `Input`,
+  `Textarea` and `SelectTrigger` paint `card` (`1.04:1` on paper, `1.12:1` on the dark
+  page) so the edge has a known colour on both sides of it. `dark:bg-input/30` mixed 30%
+  of the border colour into the fill and left the dark edge at **2.48:1** painted, under
+  the floor on flat paper — a fill that borrows the edge's colour cannot be measured
+  against it.
+- **The offset band has a cost.** The ring's `2px` offset is painted in `--background`
+  rather than left transparent, so on a card panel in dark the band measures `1.11:1`
+  against the card and reads as a dark groove at high zoom. Accepted: it is the price of
+  a solid ring on a filled field. The future fix is a real `outline` with
+  `outline-offset`, which needs no painted band; it is its own change.
 - **`--secondary` chips** are non-interactive fills carrying text at 5.61:1, so they are
   exempt from the 3:1 boundary rule. If a chip ever becomes interactive it needs a
   `border-control` edge.
@@ -508,9 +522,16 @@ deliberately not in this PR:
 - 65 hardcoded `violet-/indigo-/cyan-/purple-` utilities across 12 files, including
   `packages/ui/src/components/ui/stat-card.tsx`.
 - 27 arbitrary font sizes (`text-[11px]`×10, `text-[10px]`×10, `text-[15px]`×4, …).
-- The kit's focus ring is `ring-[3px] ring-ring/50`, and cobalt at 50% over paper measures
-  **2.45:1**, below the 3:1 that 1.4.11 requires. Marketing components use a solid ring;
-  fixing the kit is its own change.
+- The kit's `input-group` draws its ring on the **group**: the `fieldset` carries
+  `ring-[3px] ring-ring/50` (plus `ring-destructive/20` when its control is invalid) and
+  the inner control opts out, so the cue belongs to the wrapper. `checkbox`,
+  `radio-group`, `switch`, `tabs`, `input-otp`, `calendar` and the remaining kit controls
+  that still draw `ring-ring/50` at 50% (`accordion`, `slider`, `scroll-area`,
+  `navigation-menu`, `item`, `badge`, `toggle` today) share the same problem, and the
+  quiz option card mirrors it at the app level; cobalt at 50% over paper measures
+  **2.45:1**, below the 3:1 that 1.4.11 requires. The three field primitives (`Input`,
+  `Textarea`, `SelectTrigger`) now draw the solid 2px ring at a 2px offset; the rest is
+  its own change.
 
 ## Accessibility floor
 
@@ -523,7 +544,13 @@ deliberately not in this PR:
   rather than calling it 44px and shipping 40. The 44px figure is AAA (2.5.5), not AA;
   say which.
 - Focus visible everywhere: solid `ring` (not `/50`), `2px`, with a `2px` offset. Never
-  `outline: none`.
+  `outline: none`. The ring is opaque and measured: `--ring` is **7.42:1** against the
+  field fill and **7.12:1** against the `2px` `--background` offset band in light
+  (7.15:1 as flat tokens); 6.02:1 and 6.69:1 in dark. The invalid field's ring
+  (`--destructive`) is 4.91:1 and 4.72:1 on the fill. Nothing about a focus cue may
+  fade: a field's transition is colour-only, so blur removes the ring in the frame it
+  happens rather than over 150ms (which left a glowing line above the field, and measured
+  2.45:1 at 50% alpha while it faded).
 - Links in body copy are distinguished by underline or weight, not colour alone.
 - Every motion respects `prefers-reduced-motion`.
 

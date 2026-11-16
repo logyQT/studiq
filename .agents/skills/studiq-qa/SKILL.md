@@ -48,7 +48,7 @@ Accounts, orgs/groups and seeded content are in `qa/context.md`; the alias list 
 1. `qa/context.md` — once per session.
 2. `qa/index.md` — find the case ID, its priority and its `Prereqs`.
 3. `qa/cases/<ID>.md` — the steps **and** the embedded prerequisite chain. If a referenced ID is not embedded, read `qa/cases/<that-ID>.md` too, and reproduce the prerequisite state first.
-4. Case text is Polish and generated: do not edit it, and quote expected copy verbatim (a wording difference is a P3 language remark unless it misleads).
+4. Case text is Polish and maintained in this repository: correct a case the product has moved past, and quote expected copy verbatim (a wording difference is a P3 language remark unless it misleads).
 5. For a PR/branch with no matching case, derive claims from the PR body and the touched UI/API, then take the account, org and plan baseline from `qa/context.md`.
 
 ## Test data

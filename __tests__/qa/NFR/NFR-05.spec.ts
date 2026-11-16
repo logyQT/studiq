@@ -26,7 +26,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * 1. `/login`: the „StudiQ” wordmark is the first stop, then Tab reaches e-mail →
  *    password → submit → „Zarejestruj się”; Shift+Tab walks the same order backwards.
  *    Every stop draws a ring: a solid 2 px `--ring` at a 2 px offset on the wordmark,
- *    the button and the trailing link, and `ring-ring/50` at 3 px on the fields.
+ *    the button, the trailing link and the fields.
  * 2. Enter in the password field submits the form — a real sign-in, not a
  *    client-only no-op — and lands on the student dashboard.
  * 3. `/register`: the panel's wordmark and the „Zaloguj się” exit are the first two
@@ -123,9 +123,8 @@ function isTransparent(color: string): boolean {
 
 /**
  * A keyboard user can see where they are: either a real outline or a box-shadow ring
- * with a spread of at least 2 px (the product draws `ring-2` at a 2 px offset on
- * buttons, `ring-[3px]` on form fields, and `focus:ring-2` on the dialog close
- * button).
+ * with a spread of at least 2 px. `ring-2` at a 2 px offset paints two opaque layers
+ * (the offset colour at 2 px, the ring at 4 px), so it satisfies this on either layer.
  */
 function hasVisibleFocus(style: FocusStyle): boolean {
   const outline =

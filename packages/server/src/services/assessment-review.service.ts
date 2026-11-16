@@ -1,6 +1,6 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
-import { readReviewItems } from '@studiq/server/lib/assignment-snapshot';
+import { readReviewItems, type ReviewItem } from '@studiq/server/lib/assignment-snapshot';
 import { reviewState } from '@studiq/server/lib/assignment-visibility';
 import { recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -53,6 +53,16 @@ export interface ReviewedItem {
   teacherFeedback: string | null;
 }
 
+/** One submitted attempt as the review index shows it: its own score and its own ungraded count. */
+export interface AttemptReviewSummary {
+  attemptId: string;
+  completedAt: string | null;
+  /** `null` when the attempt holds only ungraded items (R16), never `0 out of 0`. */
+  score: { earned: number; possible: number } | null;
+  /** Items of *this* attempt that have no automatic key (R16). */
+  ungradedCount: number;
+}
+
 export interface AssignmentReview {
   assignmentId: string;
   /** The reviewed attempt; `null` for a cohort member who has no submitted attempt. */
@@ -62,6 +72,11 @@ export interface AssignmentReview {
   score: { earned: number; possible: number } | null;
   ungradedCount: number;
   items: ReviewedItem[];
+  /**
+   * Every submitted attempt this student has on the assessment, latest first (tie-break by id), so
+   * a retake can be read against the one before it (R5/R19). `[]` when they sat none.
+   */
+  attempts: AttemptReviewSummary[];
 }
 
 interface AttemptRow {
@@ -119,6 +134,12 @@ export class AssessmentReviewService {
       answers = sheet.data;
     }
 
+    // The review is the cohort reveal, so it renders the whole assessment; what changes per attempt
+    // is the **verdict**. A retake is served a different sample (R7), so an item this attempt never
+    // saw has no verdict for it (`null`) — only an item it was served and skipped is `false`.
+    const served = attempt.data ? await this.servedQuestionIds(supabase, attempt.data.id) : null;
+    if (served && isFailure(served)) return served;
+
     const items = reviewItems.data.map((item) => {
       const answer = answers.get(item.questionId);
       const graded = item.snapshot.type !== 'open';
@@ -136,8 +157,12 @@ export class AssessmentReviewService {
         modelAnswer: item.key.modelAnswer,
         graded,
         // No attempt at all is not "wrong": the cohort reveal serves the key, not a verdict on a
-        // student who never sat it (R5). A skipped item inside a real attempt is `false`.
-        correct: graded ? (attempt.data ? (answer?.is_correct ?? false) : null) : null,
+        // student who never sat it (R5). An item the attempt was **served** and skipped is `false`;
+        // an item it was never served (a fresh-sample retake draws its own) has no verdict at all.
+        correct:
+          graded && attempt.data && served?.data.has(item.questionId)
+            ? (answer?.is_correct ?? false)
+            : null,
         selectedOptionId: answer?.selected_option_id ?? null,
         textAnswer: answer?.text_answer ?? null,
         teacherPoints: answer?.teacher_points ?? null,
@@ -168,6 +193,16 @@ export class AssessmentReviewService {
     // attempt (graded items only), so it cannot drift with a later edit.
     const possible = chosen ? (chosen.total_points ?? chosen.total_questions) : 0;
 
+    // R5/R19: earlier attempts are part of the review, each with its own score and its own
+    // ungraded count — a retake never overwrites the previous verdict.
+    const history = await this.reviewedAttempts(
+      supabase,
+      assignmentId,
+      ctx.userId,
+      reviewItems.data,
+    );
+    if (isFailure(history)) return history;
+
     return success({
       assignmentId,
       attemptId: chosen?.id ?? null,
@@ -175,7 +210,68 @@ export class AssessmentReviewService {
       score: chosen && possible > 0 ? { earned: chosen.score, possible } : null,
       ungradedCount: items.filter((item) => !item.graded).length,
       items,
+      attempts: history.data,
     });
+  }
+
+  /**
+   * Every submitted attempt of the caller on this assessment, newest first. The per-attempt ungraded
+   * count is computed from what that attempt was **served** and what the review can grade, so an
+   * earlier attempt keeps its own denominator and its own ungraded count after a retake.
+   */
+  private async reviewedAttempts(
+    supabase: SupabaseClient<Database>,
+    assignmentId: string,
+    userId: string,
+    reviewItems: readonly ReviewItem[],
+  ): Promise<ServiceResult<AttemptReviewSummary[]>> {
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, score, total_points, total_questions, completed_at')
+      .eq('assignment_id', assignmentId)
+      .eq('user_id', userId)
+      .not('completed_at', 'is', null)
+      .order('started_at', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (error) return toDbFailure(error);
+    const attempts = dbRows(data);
+    if (attempts.length === 0) return success([]);
+
+    const { data: served, error: servedError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('attempt_id, question_id')
+      .in(
+        'attempt_id',
+        attempts.map((attempt) => attempt.id),
+      );
+
+    if (servedError) return toDbFailure(servedError);
+
+    const servedByAttempt = new Map<string, Set<string>>();
+    for (const row of dbRows(served)) {
+      if (!row.attempt_id || !row.question_id) continue;
+      const ids = servedByAttempt.get(row.attempt_id) ?? new Set<string>();
+      ids.add(row.question_id);
+      servedByAttempt.set(row.attempt_id, ids);
+    }
+
+    const ungraded = new Set(
+      reviewItems.filter((item) => item.snapshot.type === 'open').map((item) => item.questionId),
+    );
+
+    return success(
+      attempts.map((attempt) => {
+        const items = servedByAttempt.get(attempt.id) ?? new Set<string>();
+        const possible = attempt.total_points ?? attempt.total_questions;
+        return {
+          attemptId: attempt.id,
+          completedAt: attempt.completed_at,
+          score: possible > 0 ? { earned: attempt.score, possible } : null,
+          ungradedCount: [...items].filter((itemId) => ungraded.has(itemId)).length,
+        };
+      }),
+    );
   }
 
   /** The named attempt (must be the caller's and submitted), or the latest submitted one. */
@@ -205,6 +301,22 @@ export class AssessmentReviewService {
     // missing one.
     if (attemptId && !attempt) return failure('NOT_FOUND');
     return success(attempt ?? null);
+  }
+
+  /** The items one attempt was served, so its review cannot show another attempt's questions. */
+  private async servedQuestionIds(
+    supabase: SupabaseClient<Database>,
+    attemptId: string,
+  ): Promise<ServiceResult<Set<string>>> {
+    const { data, error } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .eq('attempt_id', attemptId);
+
+    if (error) return toDbFailure(error);
+    return success(
+      new Set(dbRows(data).flatMap((row) => (row.question_id ? [row.question_id] : []))),
+    );
   }
 
   /** The caller's own answer sheet for one submitted attempt. */
