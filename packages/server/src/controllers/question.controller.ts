@@ -84,6 +84,14 @@ export class QuestionController {
     return controllerResponse.success(question.data);
   }
 
+  /** R8: the staff ledger of one item — who saw its key, when, and with which classes. */
+  async ledger(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.service.exposureLedger(id, ctx);
+    return isFailure(result)
+      ? controllerResponse.error(result.error)
+      : controllerResponse.success(result.data);
+  }
+
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = UpdateQuestionSchema.safeParse(body);
 
