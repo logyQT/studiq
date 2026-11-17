@@ -16,6 +16,7 @@ interface AdmissionDecision {
   admit: boolean;
   cap: number;
   reason: string;
+  failed: string | null;
 }
 
 interface StackReserve {
@@ -160,14 +161,43 @@ describe('build admission arithmetic', () => {
 
   it('refuses on free memory while another build runs, and admits one when none does', () => {
     const tight = { freeBytes: 3 * GIB };
-    expect(decide(1, tight)).toMatchObject({ admit: false, reason: 'free' });
+    expect(decide(1, tight)).toMatchObject({ admit: false, reason: 'free', failed: 'free' });
     // Always-one: a box under pressure can still run the build needed to fix it.
-    expect(decide(0, tight)).toMatchObject({ admit: true, reason: 'always-one' });
+    expect(decide(0, tight)).toMatchObject({
+      admit: true,
+      reason: 'always-one',
+      failed: 'free',
+    });
+  });
+
+  it('names the capacity test when capacity is what failed, even with free memory', () => {
+    // 8 GB capacity − 3.9 GB slot = 4.1 GB < 4.5 GB, while 14 GB of free memory
+    // clears the floor: the failure is capacity, not free.
+    const capacityOnly = { capacityBytes: 8 * GIB, freeBytes: 14 * GIB };
+    expect(decide(0, capacityOnly)).toMatchObject({
+      admit: true,
+      reason: 'always-one',
+      failed: 'capacity',
+    });
+    expect(decide(1, capacityOnly)).toMatchObject({
+      admit: false,
+      reason: 'capacity',
+      failed: 'capacity',
+    });
+  });
+
+  it('reports no failed test when both admission tests held', () => {
+    expect(decide(0)).toMatchObject({ admit: true, reason: 'memory', failed: null });
   });
 
   it('clamps the cap to one when the memory probe failed', () => {
     const failed = { capacityBytes: null, freeBytes: null };
-    expect(decide(0, failed)).toMatchObject({ admit: true, cap: 1, reason: 'degraded' });
+    expect(decide(0, failed)).toMatchObject({
+      admit: true,
+      cap: 1,
+      reason: 'degraded',
+      failed: null,
+    });
     expect(decide(1, failed)).toMatchObject({ admit: false, cap: 1, reason: 'degraded' });
   });
 

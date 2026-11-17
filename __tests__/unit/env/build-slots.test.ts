@@ -43,6 +43,13 @@ interface AdmissionDecision {
   reason: string;
 }
 
+interface MemoryReading {
+  capacityBytes: number | null;
+  freeBytes: number | null;
+  hostFallback: boolean;
+  detail: string | null;
+}
+
 interface LocksModule {
   processStartTime(pid: number): string | null;
   worktreeKey(root?: string): string;
@@ -57,6 +64,7 @@ interface LocksModule {
       progressMs?: number;
       backoffMs?: { initial: number; max: number };
       decide?(activeSlots: number): AdmissionDecision;
+      probe?(): MemoryReading;
       invalidate?(worktree: string): void;
       now?(): number;
     },
@@ -551,6 +559,56 @@ describe('build slots', () => {
     const lines = stderr.mock.calls.map((call) => String(call[0])).join('');
     expect(lines).toContain('build: waiting for a slot (1/1 busy, 1 waiting)');
     expect(lines).toMatch(/elapsed, \d+:\d\d left/);
+  });
+});
+
+describe('admission warnings', () => {
+  const GIB = 1024 ** 3;
+
+  it('names the capacity test, not free memory, when capacity is what failed', async () => {
+    registry();
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    // 8.0 − (1 × 3.9 + 0.0) = 4.1 < 4.5 fails, while 14.0 GB of free memory
+    // clears the floor: only the capacity test failed, so only it may be named.
+    await locks.withBuildSlots(() => Promise.resolve(), {
+      invalidate: () => {},
+      probe: () => ({
+        capacityBytes: 8 * GIB,
+        freeBytes: 14 * GIB,
+        hostFallback: false,
+        detail: null,
+      }),
+    });
+
+    const lines = stderr.mock.calls.map((call) => String(call[0])).join('');
+    expect(lines).toContain(
+      'warning: build: admitting one build under memory pressure (capacity 8.0 GB − ' +
+        '(1 × 3.9 GB + reserve 0.0 GB) = 4.1 GB < MIN_FREE 4.5 GB)',
+    );
+    expect(lines).not.toContain('free 14.0 GB < MIN_FREE');
+  });
+
+  it('names free memory when the free test is what failed', async () => {
+    registry();
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await locks.withBuildSlots(() => Promise.resolve(), {
+      invalidate: () => {},
+      probe: () => ({
+        capacityBytes: 19.5 * GIB,
+        freeBytes: 3.2 * GIB,
+        hostFallback: false,
+        detail: null,
+      }),
+    });
+
+    const lines = stderr.mock.calls.map((call) => String(call[0])).join('');
+    expect(lines).toContain(
+      'warning: build: admitting one build under memory pressure (free 3.2 GB < ' +
+        'MIN_FREE 4.5 GB, stack reserve 0.0 GB)',
+    );
+    expect(lines).not.toContain('capacity 19.5 GB −');
   });
 });
 

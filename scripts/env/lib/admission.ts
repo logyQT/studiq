@@ -203,11 +203,20 @@ export type AdmissionReason =
   | 'capacity'
   | 'free';
 
+/** Which admission test failed, when one did. */
+export type AdmissionFailure = 'capacity' | 'free';
+
 export interface AdmissionDecision {
   admit: boolean;
   /** The cap recorded for status: at least 1, because one build is always admitted. */
   cap: number;
   reason: AdmissionReason;
+  /**
+   * The test that failed, or null when both held. `always-one` admits *despite* a
+   * failure, so its `reason` cannot say which test it was; this field can, and
+   * the warning it prints is only correct if it reads this rather than assuming.
+   */
+  failed: AdmissionFailure | null;
 }
 
 /**
@@ -242,10 +251,10 @@ export function decideAdmission(input: {
   minFreeBytes: number;
 }): AdmissionDecision {
   if (input.capacityBytes === null || input.freeBytes === null) {
-    return { admit: input.activeSlots < 1, cap: 1, reason: 'degraded' };
+    return { admit: input.activeSlots < 1, cap: 1, reason: 'degraded', failed: null };
   }
   if (input.minFreeBytes <= 0) {
-    return { admit: true, cap: SLOT_CEILING, reason: 'disabled' };
+    return { admit: true, cap: SLOT_CEILING, reason: 'disabled', failed: null };
   }
   const cap = Math.max(
     1,
@@ -254,9 +263,12 @@ export function decideAdmission(input: {
   const reserved = (input.activeSlots + 1) * SLOT_RSS_BYTES + input.stackReserveBytes;
   const capacityOk = input.capacityBytes - reserved >= input.minFreeBytes;
   const freeOk = input.freeBytes >= input.minFreeBytes;
-  if (capacityOk && freeOk) return { admit: true, cap, reason: 'memory' };
-  if (input.activeSlots === 0) return { admit: true, cap, reason: 'always-one' };
-  return { admit: false, cap, reason: capacityOk ? 'free' : 'capacity' };
+  if (capacityOk && freeOk) return { admit: true, cap, reason: 'memory', failed: null };
+  const failed: AdmissionFailure = capacityOk ? 'free' : 'capacity';
+  // A refusal's reason *is* the failed test; `always-one` admits, so it keeps its
+  // own reason and reports the failure separately.
+  if (input.activeSlots === 0) return { admit: true, cap, reason: 'always-one', failed };
+  return { admit: false, cap, reason: failed, failed };
 }
 
 export interface StackReserve {

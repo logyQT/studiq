@@ -20,7 +20,9 @@ import {
   readStackReserve,
   slotCap,
   stackReserveBytes,
+  SLOT_RSS_BYTES,
   type AdmissionDecision,
+  type AdmissionFailure,
   type MemoryReading,
 } from './admission';
 import { EXIT_CONFLICT, EXIT_QUEUED, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
@@ -747,6 +749,8 @@ export interface BuildSlotsOptions {
   backoffMs?: { initial: number; max: number };
   /** Test seam: the admission decision for a given live slot count. */
   decide?(activeSlots: number): AdmissionDecision;
+  /** Test seam: the memory reading admission uses (defaults to `probeMemory`). */
+  probe?(): MemoryReading;
   /** Test seam: the artifact invalidation a reclaim performs. */
   invalidate?(worktree: string): void;
   now?(): number;
@@ -851,6 +855,40 @@ function announceGate(reading: MemoryReading, minFree: number): void {
     return;
   }
   if (reading.hostFallback) writeStderrLine('build: no cgroup limit; using host MemAvailable');
+}
+
+/**
+ * The `always-one` warning: one build is admitted although a test failed.
+ *
+ * `always-one` is the reason for the admission, not the reason for the failure,
+ * so the failed test — and the numbers that test used — come from the decision's
+ * `failed` field. Assuming the free test here reports `free 14.0 GB < MIN_FREE
+ * 4.5 GB` when the capacity test is what failed.
+ */
+function alwaysOneWarning(
+  failed: AdmissionFailure,
+  numbers: {
+    activeSlots: number;
+    capacityBytes: number;
+    freeBytes: number;
+    reserve: number;
+    minFree: number;
+  },
+): string {
+  const head = 'warning: build: admitting one build under memory pressure';
+  if (failed === 'free') {
+    return (
+      `${head} (free ${formatGb(numbers.freeBytes)} < MIN_FREE ${formatGb(numbers.minFree)}, ` +
+      `stack reserve ${formatGb(numbers.reserve)})`
+    );
+  }
+  const slots = numbers.activeSlots + 1;
+  const reserved = slots * SLOT_RSS_BYTES + numbers.reserve;
+  return (
+    `${head} (capacity ${formatGb(numbers.capacityBytes)} − (${slots} × ` +
+    `${formatGb(SLOT_RSS_BYTES)} + reserve ${formatGb(numbers.reserve)}) = ` +
+    `${formatGb(numbers.capacityBytes - reserved)} < MIN_FREE ${formatGb(numbers.minFree)})`
+  );
 }
 
 function firstFreeSlot(root: string, cap: number): number | null {
@@ -1200,7 +1238,8 @@ export async function withBuildSlots<T>(
   const now = options.now ?? Date.now;
   const startedAt = now();
   const minFree = minFreeBytes();
-  const reading = probeMemory();
+  const probe = options.probe ?? probeMemory;
+  const reading = probe();
   recordGate(root, reading, minFree, stackReserveBytes(readStackReserve()));
   announceGate(reading, minFree);
 
@@ -1221,7 +1260,7 @@ export async function withBuildSlots<T>(
     decide:
       options.decide ??
       ((active) => {
-        const tick = probeMemory();
+        const tick = probe();
         const reserve = stackReserveBytes(readStackReserve());
         const decision = decideAdmission({
           activeSlots: active,
@@ -1230,10 +1269,23 @@ export async function withBuildSlots<T>(
           stackReserveBytes: reserve,
           minFreeBytes: minFree,
         });
-        if (decision.reason === 'always-one') {
+        // `always-one` is only reachable with both readings present (a failed
+        // probe degrades first), so the null checks are what TypeScript needs to
+        // say that; the warning names the test the decision says failed.
+        if (
+          decision.reason === 'always-one' &&
+          decision.failed !== null &&
+          tick.capacityBytes !== null &&
+          tick.freeBytes !== null
+        ) {
           writeStderrLine(
-            `warning: build: admitting one build under memory pressure (free ${formatGb(tick.freeBytes ?? 0)} ` +
-              `< MIN_FREE ${formatGb(minFree)}, stack reserve ${formatGb(reserve)})`,
+            alwaysOneWarning(decision.failed, {
+              activeSlots: active,
+              capacityBytes: tick.capacityBytes,
+              freeBytes: tick.freeBytes,
+              reserve,
+              minFree,
+            }),
           );
         }
         return decision;
