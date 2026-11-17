@@ -326,7 +326,8 @@ bun run env:supa status --output-format json | jq .env   # the stack's URLs/keys
 For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
 add `--stack "$SUPABASE_STACK"` to `bun run env:supa status|logs`. The stack
 lifecycle goes through `env:ensure` / `env:down` / `env:reset-db`, which own the
-app-port lease and the build lock; the passthrough refuses `stop --all` /
+app-port lease and the build's slot and worktree mutex; the passthrough refuses
+`stop --all` /
 `restart --all`, `destroy`, `db reset`, `migration down`, `storage rm`, and any
 unscoped or foreign stop/restart. Destroying a stack is a manual,
 ownership-checked `bunx supabase stack destroy --stack <name>`; v1 has no
@@ -682,7 +683,7 @@ Run the deterministic gates locally before pushing: `bun run lint`,
 > `db reset`, `migration down`, `storage rm`, and unscoped or foreign
 > stop/restart forms are refused (every stack mutation is refused under
 > `SUPABASE_SHARED=1`). Use `env:ensure` / `env:down` / `env:reset-db`; they own
-> the port lease and build lock.
+> the port lease and the build's slot and worktree mutex.
 
 ---
 

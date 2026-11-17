@@ -91,10 +91,10 @@ assumption.
 
    **Publishing** — manifest, verification, pointer swap and retention — runs
    after the build is done and under a separate `snapshot.lock` (decision 3,
-   locks). The checkout lock and the build lock are both released before
-   `snapshot.lock` is taken; the snapshot step holds neither. Snapshot work is
-   best-effort: a failed or interrupted publish leaves the previous snapshot in
-   place and never fails the build.
+   locks). The checkout lock and the build's slot and worktree mutex are all
+   released before `snapshot.lock` is taken; the snapshot step holds none of them.
+   Snapshot work is best-effort: a failed or interrupted publish leaves the
+   previous snapshot in place and never fails the build.
 
    **Storage and swap.** Snapshots are immutable directories
    `<cacheRoot>/snapshots/<id>/`, where `<id>` is a UTC timestamp plus a short
@@ -223,11 +223,12 @@ assumption.
    from one immutable id, so concurrent seeds never serialize. The staging copy is
    taken inside the locked build, while the cache is quiescent. Publication —
    manifest, verification, pointer swap, retention — is the only part that takes
-   the registry `snapshot.lock` (decision 2), and it runs after both the checkout
-   lock and `build.lock` are released. Ordering is fixed: checkout lock → build
-   lock → staging copy → **release both** → `snapshot.lock`; `snapshot.lock` is
-   never taken while either is held. A snapshot that cannot take `snapshot.lock`
-   within its short wait is skipped with a warning.
+   the registry `snapshot.lock` (decision 2), and it runs after the checkout lock
+   and the build's slot and worktree mutex are released. Ordering is fixed:
+   checkout lock → **released** → worktree mutex → slot → staging copy →
+   **release both** → `snapshot.lock`; `snapshot.lock` is never taken while any of
+   them is held. A snapshot that cannot take `snapshot.lock` within its short wait
+   is skipped with a warning.
 
    Use a plain copy where reflink is unavailable (`cp -a`); use
    `cp --reflink=auto` / `cp -c` on APFS and CoW filesystems.
@@ -377,14 +378,21 @@ assumption.
      group. A leader that is gone leaves no start time to read, and the surviving
      group is still ours — the kernel keeps a group id allocated while the group
      exists — so the orphan is killed; a leader that is alive with a different
-     start time is a recycled pid and is left alone with a warning. A slot whose
-     launcher died but whose group survives is reclaimed only after the group is
-     killed, so a new build is never admitted over an orphan writing `.next`. When
-     a slot is reclaimed because its launcher died, the reclaim path invalidates
-     **this checkout's** `.next` and removes its build record before the slot is
-     freed; a foreign worktree's artifact is left to its own fingerprint and
-     handover, because writing into another checkout from here would be worse
-     than the stale artifact.
+     start time is a recycled pid and is left alone with a warning. A slot that
+     recorded **no** start time at all (written before this field existed, or by a
+     process that could not read its child's) is never signalled: the group is
+     left running and the warning names it, because an unverified kill is exactly
+     the failure this rule exists to prevent. That is the one case where "never
+     admitted over an orphan" lapses, and it is conservative on purpose — the
+     slot is still freed and this checkout's `.next` still invalidated, so the
+     next build starts from a clean artifact. Otherwise, a slot whose launcher
+     died but whose group survives is reclaimed only after the group is killed, so
+     a new build is never admitted over an orphan writing `.next`. When a slot is
+     reclaimed because its launcher died, the reclaim path invalidates **this
+     checkout's** `.next` and removes its build record before the slot is freed; a
+     foreign worktree's artifact is left to its own fingerprint and handover,
+     because writing into another checkout from here would be worse than the
+     stale artifact.
    - **Deadlines.** One 60-minute deadline from invocation: at most 30 minutes
      waiting for a slot and at most 30 minutes building, each enforced
      separately, so a long queue can never consume the build's budget. The build
@@ -532,9 +540,11 @@ measurement that will not appear, and never refuses every build.
 8. **Report state, don't add a daemon — and report only what is countable.**
    `env status` and `env doctor` stay read-only (ADR-0011 §1) and cheap: one
    pointer read, one manifest read, a shallow `readdir`, no `du`. The slot
-   liveness check is a `/proc` read on Linux and one `ps` per slot record
-   elsewhere — bounded by the recorded cap, never a scan. Reclamation belongs to
-   the admission path (decision 5); status observes staleness and never cleans it.
+   liveness check is a `/proc` read per numeric slot directory on Linux and one
+   `ps` per record elsewhere — bounded by the slot directories present, which the
+   cap does not bound (the cap gates admission, and `busy` can exceed it), never a
+   scan of the filesystem. Reclamation belongs to the admission path (decision 5);
+   status observes staleness and never cleans it.
 
    - **Slots.** `build: <busy>/<slotCap> busy` — `build: 2/3 busy` when two of
      three slot records carry a live identity. `<slotCap>` is read from

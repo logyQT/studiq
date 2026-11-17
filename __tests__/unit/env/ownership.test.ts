@@ -66,6 +66,9 @@ const locksModule = await loadEnvModule<{
   worktreeKey(root?: string): string;
   processStartTime(pid: number): string | null;
 }>('lib/locks.ts');
+const stackModule = await loadEnvModule<{
+  readStack(stackName: string | null): unknown;
+}>('lib/stack.ts');
 
 const baselineEnv: NodeJS.ProcessEnv = { ...process.env };
 const harnesses: Harness[] = [];
@@ -184,6 +187,16 @@ describe('env:reset-db refuses a stack this checkout does not own', () => {
   });
 });
 
+/** The per-worktree mutex record a live build leaves behind. */
+function writeBuildMutex(registryDir: string): void {
+  const mutex = join(registryDir, 'build-slots', 'worktrees', locksModule.worktreeKey(REPO_ROOT));
+  mkdirSync(mutex, { recursive: true, mode: 0o700 });
+  writeFileSync(join(mutex, 'pid'), `${process.pid}\n`);
+  writeFileSync(join(mutex, 'start'), `${locksModule.processStartTime(process.pid)}\n`);
+  writeFileSync(join(mutex, 'token'), 'live-build\n');
+  writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
+}
+
 describe('env:serve refuses another checkout’s stack and keys', () => {
   it('refuses a foreign SUPABASE_WORKDIR before reading the stack', async () => {
     const harness = newHarness();
@@ -258,17 +271,7 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     applyHarnessEnv(harness);
     // A live build owns `.next` and keeps `checkout.lock` free, so the build
     // record and the fingerprint cannot see it; the mutex is the signal.
-    const mutex = join(
-      harness.registryDir,
-      'build-slots',
-      'worktrees',
-      locksModule.worktreeKey(REPO_ROOT),
-    );
-    mkdirSync(mutex, { recursive: true, mode: 0o700 });
-    writeFileSync(join(mutex, 'pid'), `${process.pid}\n`);
-    writeFileSync(join(mutex, 'start'), `${locksModule.processStartTime(process.pid)}\n`);
-    writeFileSync(join(mutex, 'token'), 'live-build\n');
-    writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
+    writeBuildMutex(harness.registryDir);
     const start = vi.spyOn(webModule, 'startWebServer');
 
     const failure = await serveModule.runServe(parse(['serve'])).catch((error: unknown) => error);
@@ -279,5 +282,44 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     expect(start).not.toHaveBeenCalled();
     // Refused before the stack was read, so no CLI call was made.
     expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('refuses when a build takes the mutex while the stack is being read', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+    applyHarnessEnv(harness);
+    process.env.APP_PORT = String(await firstFreePort(appPortBase()));
+    // A current build is recorded, so only the build guard can refuse: without
+    // it this command would start a server over the artifact.
+    vi.spyOn(fingerprintModule, 'computeBuildFingerprint').mockReturnValue('built');
+    vi.spyOn(stateModule, 'readBuildState').mockReturnValue({
+      fingerprint: 'built',
+      envHash: 'env-hash',
+      builtAt: '',
+    });
+    vi.spyOn(stateModule, 'buildArtifactPresent').mockReturnValue(true);
+    const start = vi.spyOn(webModule, 'startWebServer').mockReturnValue(process.pid);
+    vi.spyOn(webModule, 'waitForWeb').mockResolvedValue({ ok: true, reason: 'ready', http: 200 });
+
+    // The race the early guard cannot see: serve passes it, then blocks on the
+    // checkout lock while the build's prelude holds it, and the build takes its
+    // mutex moments after releasing that lock — while serve reads the stack.
+    const realReadStack = stackModule.readStack;
+    const readStack = vi.spyOn(stackModule, 'readStack').mockImplementation((name) => {
+      writeBuildMutex(harness.registryDir);
+      return realReadStack(name);
+    });
+
+    const failure = await serveModule
+      .runServe(parse(['serve', '--quiet']))
+      .catch((error: unknown) => error);
+
+    expect(readStack).toHaveBeenCalled();
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain(`pid ${process.pid}`);
+    expect(start).not.toHaveBeenCalled();
   });
 });

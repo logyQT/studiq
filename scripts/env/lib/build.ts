@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { EXIT_USAGE, EnvFailure } from './exit';
+import { EXIT_CONFLICT, EXIT_USAGE, EnvFailure } from './exit';
 import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import {
   formatBuildSlots,
@@ -14,6 +14,7 @@ import {
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 import { appendEnvLog } from './state';
+import { readWebPid } from './web';
 
 const BUILD_ID = join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID');
 const SECRET_LINE_RE = /(?:KEY|SECRET|PASSWORD|TOKEN)\s*=\s*\S|eyJ[A-Za-z0-9_-]{10,}/;
@@ -91,6 +92,16 @@ interface SpawnOutcome {
   timedOut: boolean;
   output: string;
 }
+
+/** I/O seams for the production build; production uses the defaults below. */
+export interface ProductionBuildDeps {
+  /** This checkout's recorded server, or null when none is running. */
+  readWebPid(): number | null;
+  /** Spawn the build in its own process group under the slot it holds. */
+  spawnBuild(slot: BuildSlotHandle): Promise<SpawnOutcome>;
+}
+
+const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild };
 
 /**
  * Spawn the build as its own process group and enforce the build budget.
@@ -173,12 +184,28 @@ function spawnBuild(slot: BuildSlotHandle): Promise<SpawnOutcome> {
  * This is the single admission seam: `env build` and `env ensure`'s rebuild both
  * reach `next build` through here, so neither can bypass the slot, the
  * per-worktree mutex or the memory gate.
+ *
+ * The "no server" check is repeated **under the mutex**, immediately before the
+ * spawn. `env build` checks it before queueing, but that check runs before this
+ * mutex is taken, so a server started while the build waited for a slot — and
+ * `env serve` is excluded only by this mutex, which it reads — would be invisible
+ * to it, and the build would overwrite the artifact that server is serving.
  */
-export async function runProductionBuild(envHash: string): Promise<BuildResult> {
+export async function runProductionBuild(
+  envHash: string,
+  deps: ProductionBuildDeps = defaultProductionBuildDeps,
+): Promise<BuildResult> {
   const input = { root: REPO_ROOT, mode: BUILD_MODE, envHash };
   return withBuildSlots(async (slot) => {
+    const webPid = deps.readWebPid();
+    if (webPid !== null) {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `a web server (pid ${webPid}) is running; run 'env:down' before building`,
+      );
+    }
     const fingerprintBefore = computeBuildFingerprint(input);
-    const outcome = await spawnBuild(slot);
+    const outcome = await deps.spawnBuild(slot);
     const fingerprintAfter = computeBuildFingerprint(input);
     return {
       ok: outcome.status === 0 && existsSync(BUILD_ID) && fingerprintAfter === fingerprintBefore,

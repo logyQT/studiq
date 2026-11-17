@@ -1,5 +1,13 @@
 import { createServer, type Server } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -115,6 +123,10 @@ const webModule = await loadEnvModule<{
     foreground: boolean;
   }): { pid: number; exit: Promise<number | null> };
 }>('lib/web.ts');
+const locksModule = await loadEnvModule<{
+  worktreeKey(root?: string): string;
+  processStartTime(pid: number): string | null;
+}>('lib/locks.ts');
 const lifecycleModule = await loadEnvModule<{
   applyStackEnv(env: unknown, extras: { appUrl: string; appEnv: string; stackId?: string }): void;
 }>('lib/stack-lifecycle.ts');
@@ -433,6 +445,42 @@ describe('env:dev always relays the stack environment to HMR', () => {
     expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 4 });
     if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
     expect(failure.message).toContain('NEXT_PUBLIC_SUPABASE_URL');
+    expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe('env:dev refuses while a build owns this worktree', () => {
+  it('refuses before stopping a server or spawning HMR', async () => {
+    const harness = newHarness();
+    applyHarnessEnv(harness);
+    // HMR's own stack setup is not what this test is about.
+    vi.spyOn(ensureModule, 'runEnsure').mockResolvedValue(0);
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost:20041';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
+    // A live build holds the mutex: HMR writes the same `.next` it is rewriting.
+    const mutex = join(
+      harness.registryDir,
+      'build-slots',
+      'worktrees',
+      locksModule.worktreeKey(REPO_ROOT),
+    );
+    mkdirSync(mutex, { recursive: true, mode: 0o700 });
+    writeFileSync(join(mutex, 'pid'), `${process.pid}\n`);
+    writeFileSync(join(mutex, 'start'), `${locksModule.processStartTime(process.pid)}\n`);
+    writeFileSync(join(mutex, 'token'), 'live-build\n');
+    writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
+    const start = vi.spyOn(webModule, 'startDevServer').mockImplementation(() => {
+      throw new Error('HMR must not start while a build owns .next');
+    });
+
+    const failure = await devModule
+      .runDev(parse(['dev', '--json']))
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain(`pid ${process.pid}`);
     expect(start).not.toHaveBeenCalled();
   });
 });
