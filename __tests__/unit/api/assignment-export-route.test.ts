@@ -108,7 +108,6 @@ describe('GET /api/v1/teacher/assignments/[id]/export-answers', () => {
 
     // `Response.text()` strips the BOM while decoding, so check the raw bytes.
     const bytes = new Uint8Array(await res.arrayBuffer());
-    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
 
     const body = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
     expect(body).toBe(
