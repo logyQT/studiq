@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -47,6 +47,10 @@ function runSpin(cwd: string, args: string[], env: NodeJS.ProcessEnv = TEST_ENV)
   });
 }
 
+function runSpinCaptured(cwd: string, args: string[], env: NodeJS.ProcessEnv = TEST_ENV) {
+  return spawnSync('bash', [SPIN_SCRIPT, ...args], { cwd, encoding: 'utf8', env });
+}
+
 function branchExists(repo: string, branch: string): boolean {
   return git(repo, 'branch', '--list', '--', branch).trim() !== '';
 }
@@ -83,6 +87,29 @@ exec "${realGit}" "$@"
     { mode: 0o755 },
   );
   return { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}` };
+}
+
+// A git that fails only on `fetch`, with a caller-chosen message. Needed to
+// prove the script redacts a URL that still carries credentials — the real git
+// redacts them itself, so a live fetch cannot exercise that branch.
+function failingFetchEnv(parent: string, message: string): NodeJS.ProcessEnv {
+  const bin = join(parent, 'bin');
+  mkdirSync(bin, { recursive: true });
+  const realGit = execFileSync('bash', ['-c', 'command -v git'], {
+    encoding: 'utf8',
+    env: TEST_ENV,
+  }).trim();
+  writeFileSync(
+    join(bin, 'git'),
+    `#!/usr/bin/env bash
+case "$*" in
+  *fetch*) printf '%s\\n' "$FAKE_FETCH_ERROR" >&2; exit 1 ;;
+esac
+exec "${realGit}" "$@"
+`,
+    { mode: 0o755 },
+  );
+  return { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}`, FAKE_FETCH_ERROR: message };
 }
 
 describe('scripts/spin', () => {
@@ -304,10 +331,98 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
     const worktree = join(root, 'feat', 'listed');
 
     runSpin(repo, ['feat/listed']);
+    const base = git(repo, 'rev-parse', 'feat/listed').trim().slice(0, 12);
     expect(runSpin(repo, ['--list'])).toContain(worktree);
+    expect(runSpin(repo, ['--list'])).toContain(`base ${base}`);
     expect(runSpin(repo, ['--help'])).toContain('-worktrees/feat/my-feature');
     expect(runSpin(repo, ['--help'])).toContain('--no-install');
 
     runSpin(repo, ['feat/listed', '--clean']);
+  });
+
+  it('branches from a freshly fetched origin/main and stamps the base commit', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const remote = join(parent, 'remote.git');
+    git(parent, 'init', '-q', '--bare', '-b', 'main', remote);
+    git(repo, 'remote', 'add', 'origin', remote);
+    git(repo, 'push', '-q', 'origin', 'main');
+    const staleMain = git(repo, 'rev-parse', 'main').trim();
+
+    // Advance the remote without touching local main, the state a stale
+    // checkout is in when work starts.
+    const clone = join(parent, 'clone');
+    git(parent, 'clone', '-q', remote, clone);
+    git(clone, 'commit', '-q', '--allow-empty', '-m', 'ahead of local main');
+    git(clone, 'push', '-q', 'origin', 'main');
+    const remoteMain = git(clone, 'rev-parse', 'HEAD').trim();
+
+    runSpin(repo, ['feat/fresh']);
+    const worktree = join(root, 'feat', 'fresh');
+
+    expect(git(repo, 'rev-parse', 'feat/fresh').trim()).toBe(remoteMain);
+    expect(git(repo, 'rev-parse', 'main').trim()).toBe(staleMain);
+    expect(readFileSync(join(worktree, '.spin-base'), 'utf8').trim()).toBe(remoteMain);
+
+    runSpin(repo, ['feat/fresh', '--clean']);
+  });
+
+  it('falls back to local main when origin/main cannot be fetched and none is cached', () => {
+    const { root, repo } = makeRepo('studiq');
+    git(repo, 'remote', 'add', 'origin', join(root, 'missing.git'));
+    const localMain = git(repo, 'rev-parse', 'main').trim();
+
+    const result = runSpinCaptured(repo, ['feat/offline']);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('branching from local main');
+    expect(result.stdout).toContain('Fetch failed:');
+    const worktree = join(root, 'feat', 'offline');
+
+    expect(git(repo, 'rev-parse', 'feat/offline').trim()).toBe(localMain);
+    expect(readFileSync(join(worktree, '.spin-base'), 'utf8').trim()).toBe(localMain);
+
+    runSpin(repo, ['feat/offline', '--clean']);
+  });
+
+  it('prefers the last fetched origin/main over local main when the fetch fails', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const remote = join(parent, 'remote.git');
+    git(parent, 'init', '-q', '--bare', '-b', 'main', remote);
+    git(repo, 'remote', 'add', 'origin', remote);
+    git(repo, 'push', '-q', 'origin', 'main');
+
+    const clone = join(parent, 'clone');
+    git(parent, 'clone', '-q', remote, clone);
+    git(clone, 'commit', '-q', '--allow-empty', '-m', 'fetched ahead of local main');
+    git(clone, 'push', '-q', 'origin', 'main');
+    git(repo, 'fetch', '-q', 'origin', 'main');
+    const cached = git(repo, 'rev-parse', 'origin/main').trim();
+
+    // Warm cache, dead remote: prefer the cached ref over stale local main.
+    git(repo, 'remote', 'set-url', 'origin', join(root, 'missing.git'));
+
+    const result = runSpinCaptured(repo, ['feat/cached']);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('using the last fetched origin/main');
+    expect(git(repo, 'rev-parse', 'feat/cached').trim()).toBe(cached);
+    expect(readFileSync(join(root, 'feat', 'cached', '.spin-base'), 'utf8').trim()).toBe(cached);
+
+    runSpin(repo, ['feat/cached', '--clean']);
+  });
+
+  it('redacts credentials from a fetch failure', () => {
+    const { parent, repo } = makeRepo('studiq');
+    git(repo, 'remote', 'add', 'origin', 'https://user:secret@example.test/repo.git');
+    const env = failingFetchEnv(
+      parent,
+      "fatal: unable to access 'https://user:secret@example.test/repo.git/': boom",
+    );
+
+    const result = runSpinCaptured(repo, ['feat/redacted'], env);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Fetch failed:');
+    expect(result.stdout).not.toContain('secret');
+    expect(result.stdout).toContain('https://***@example.test/repo.git/');
+
+    runSpin(repo, ['feat/redacted', '--clean'], env);
   });
 });

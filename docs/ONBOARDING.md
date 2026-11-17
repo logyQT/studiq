@@ -118,10 +118,12 @@ scripts/spin feat/my-feature
 ```
 
 This creates a new git worktree beside the repo (grouped by branch prefix)
-with its own branch off `main`. Each worktree gets its own Supabase stack and
-its own app port (CLI-assigned): **one environment per checkout**, so a second
-stack or server for a different stack/profile in the same checkout is refused
-(exit 6) — spin another worktree instead. Move your agent session into it:
+with its own branch cut from a freshly fetched `origin/main`; the base commit
+is recorded in the worktree's `.spin-base`. Each worktree gets its own Supabase
+stack and its own app port (CLI-assigned): **one environment per checkout**, so
+a second stack or server for a different stack/profile in the same checkout is
+refused (exit 6) — spin another worktree instead. Move your agent session into
+it:
 
 ```bash
 cd ../studiq-worktrees/feat/my-feature
