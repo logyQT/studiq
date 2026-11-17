@@ -90,7 +90,6 @@ describe('StatsService', () => {
 
       const result = await service.getTeacherStats(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual({
         totalQuestions: 1,
         totalFlashcards: 1,
@@ -135,7 +134,6 @@ describe('StatsService', () => {
 
       const result = await service.getTeacherStats(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result).subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
       // localeCompare('pl'): Geografia before Historia; the bank missing from the
       // lookup (RLS / left-org edge case) keeps a null name and sorts last.
@@ -166,7 +164,6 @@ describe('StatsService', () => {
 
       const result = await service.getTeacherStats(ctx, { subjectId: 'bank-his' });
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result).subject.byType).toEqual({ mcq: 2, true_false: 1 });
       // Totals and the by-subject overview stay global.
       expect(expectSuccess(result).totalQuestions).toBe(5);
@@ -338,7 +335,6 @@ describe('StatsService', () => {
 
       const result = await service.getStudentStats(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result).totalQuizzes).toBe(2);
       expect(expectSuccess(result).avgScore).toBe(70);
       expect(expectSuccess(result).bestScore).toBe(80);

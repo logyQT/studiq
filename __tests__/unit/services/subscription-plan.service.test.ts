@@ -132,7 +132,6 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.listActive();
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
       expect(expectSuccess(result)[0]?.features).toEqual(['quiz']);
       expect(expectSuccess(result)[0]?.limits.max_groups).toBe(3);
@@ -149,19 +148,21 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.listActive();
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)[0]?.forAccountType).toBe('manager');
       expect(expectSuccess(result)[1]?.forAccountType).toBeNull();
     });
 
     it('filters by account type', async () => {
-      mock.from.mockReturnValueOnce(qb([]));
+      const plansQb = qb([]);
+      mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.listActive('student');
 
       expect(result.success).toBe(true);
+      expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
+      expect(plansQb.eq).toHaveBeenCalledWith('for_account_type', 'student');
     });
 
     it('returns error on plans query failure', async () => {
@@ -328,6 +329,8 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+      // Short-circuits on the missing key instead of reading the plan catalogue.
+      expect(mock.from).not.toHaveBeenCalledWith('subscription_plans');
     });
 
     it('returns NOT_FOUND when plan not found', async () => {
@@ -361,6 +364,8 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(false);
+      // The org lookup error surfaces as a server error, not as the later profile fallback.
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -385,6 +390,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getPersonalPlan(ctx);
 
       expect(result.success).toBe(true);
+      expect(expectSuccess(result).key).toBe('free');
     });
 
     it('reports the free manager plan for a manager carrying a purchased org plan (#228)', async () => {
@@ -466,13 +472,16 @@ describe('SubscriptionPlanService', () => {
 
   describe('getAllAdmin', () => {
     it('returns all plans', async () => {
-      mock.from.mockReturnValueOnce(qb([{ id: 'p-1', key: 'base', name: 'Base' }]));
+      const plansQb = qb([{ id: 'p-1', key: 'base', name: 'Base' }]);
+      mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.getAllAdmin();
 
       expect(result.success).toBe(true);
+      expect(plansQb.order).toHaveBeenCalledWith('sort_order', { ascending: true });
+      expect(expectSuccess(result).map((plan) => plan.key)).toEqual(['base']);
     });
   });
 
@@ -488,13 +497,16 @@ describe('SubscriptionPlanService', () => {
         sort_order: 0,
         is_active: true,
       };
-      mock.from.mockReturnValueOnce(qb(plan));
+      const plansQb = qb(plan);
+      mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.getByKey('base');
 
       expect(result.success).toBe(true);
+      expect(plansQb.eq).toHaveBeenCalledWith('key', 'base');
+      expect(expectSuccess(result).key).toBe('base');
     });
 
     it('returns NOT_FOUND when not found', async () => {
@@ -509,11 +521,15 @@ describe('SubscriptionPlanService', () => {
 
   describe('getById', () => {
     it('returns plan by id', async () => {
-      mock.from.mockReturnValueOnce(qb({ id: 'p-1', key: 'base' }));
+      const plan = { id: 'p-1', key: 'base' };
+      const findQb = qb(plan);
+      mock.from.mockReturnValueOnce(findQb);
 
       const result = await service.getById('p-1');
 
       expect(result.success).toBe(true);
+      expect(expectSuccess(result)).toEqual(plan);
+      expect(findQb.eq).toHaveBeenCalledWith('id', 'p-1');
     });
 
     it('returns NOT_FOUND when not found', async () => {
@@ -529,12 +545,16 @@ describe('SubscriptionPlanService', () => {
   describe('create', () => {
     it('creates a plan', async () => {
       const plan = { id: 'p-1', key: 'new', name: 'New Plan' };
-      mock.from.mockReturnValueOnce(qb(plan));
+      const insertQb = qb(plan);
+      mock.from.mockReturnValueOnce(insertQb);
 
       const result = await service.create({ key: 'new', name: 'New Plan' });
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual(plan);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'new', name: 'New Plan' }),
+      );
     });
 
     it('writes for_account_type from forAccountType, defaulting to null', async () => {
@@ -559,11 +579,14 @@ describe('SubscriptionPlanService', () => {
   describe('update', () => {
     it('updates a plan', async () => {
       const plan = { id: 'p-1', key: 'base', name: 'Updated' };
-      mock.from.mockReturnValueOnce(qb(plan));
+      const updateQb = qb(plan);
+      mock.from.mockReturnValueOnce(updateQb);
 
       const result = await service.update('p-1', { name: 'Updated' });
 
       expect(result.success).toBe(true);
+      expect(updateQb.update).toHaveBeenCalledWith(expect.objectContaining({ name: 'Updated' }));
+      expect(updateQb.eq).toHaveBeenCalledWith('id', 'p-1');
     });
 
     it('only writes for_account_type when explicitly provided', async () => {
@@ -589,12 +612,15 @@ describe('SubscriptionPlanService', () => {
 
   describe('delete', () => {
     it('deletes an existing plan', async () => {
+      const deleteQb = qb(undefined);
       mock.from.mockReturnValueOnce(qb({ id: 'p-1' }));
-      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(deleteQb);
 
       const result = await service.delete('p-1');
 
       expect(result.success).toBe(true);
+      expect(deleteQb.delete).toHaveBeenCalled();
+      expect(deleteQb.eq).toHaveBeenCalledWith('id', 'p-1');
     });
 
     it('returns NOT_FOUND when plan does not exist', async () => {

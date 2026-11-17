@@ -98,11 +98,14 @@ describe('StorageService', () => {
 
     it('rejects an empty file', async () => {
       const file = makeFile([], PNG_MIME);
+      const slice = vi.spyOn(file, 'slice');
 
       await expect(service().uploadFile('user-1', file)).rejects.toMatchObject({
         code: 'UNPROCESSABLE_ENTITY',
       });
       expect(storage.upload).not.toHaveBeenCalled();
+      // The size guard runs before the bytes are sniffed.
+      expect(slice).not.toHaveBeenCalled();
     });
 
     it('rejects files above 50 MB with PAYLOAD_TOO_LARGE', async () => {

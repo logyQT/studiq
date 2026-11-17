@@ -668,17 +668,19 @@ describe('SeatService', () => {
 
   describe('unassignSeat', () => {
     it('deletes assignment successfully', async () => {
-      mock.from.mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-          }),
-        }),
-      });
+      const firstEq = vi.fn();
+      const secondEq = vi.fn().mockResolvedValue({ data: null, error: null });
+      firstEq.mockReturnValue({ eq: secondEq });
+      const deleteMock = vi.fn().mockReturnValue({ eq: firstEq });
+      mock.from.mockReturnValue({ delete: deleteMock });
 
       const result = await service.unassignSeat(ctx, 'assign-1');
 
       expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('org_seat_assignments');
+      expect(deleteMock).toHaveBeenCalled();
+      expect(firstEq).toHaveBeenCalledWith('id', 'assign-1');
+      expect(secondEq).toHaveBeenCalledWith('organization_id', ctx.activeOrgId);
     });
 
     it('returns FORBIDDEN when no activeOrgId', async () => {

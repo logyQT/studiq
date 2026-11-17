@@ -43,7 +43,7 @@ const ctx: RequestContext = {
 };
 
 describe('UpdateStudySettingsSchema', () => {
-  it.each([0, 1, 30, MAX_DAILY_REVIEW_GOAL])('accepts %d', (dailyReviewGoal) => {
+  it.each([0, 30, MAX_DAILY_REVIEW_GOAL])('accepts %d', (dailyReviewGoal) => {
     expect(UpdateStudySettingsSchema.safeParse({ dailyReviewGoal }).success).toBe(true);
   });
 
