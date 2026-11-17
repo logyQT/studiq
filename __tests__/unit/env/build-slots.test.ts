@@ -41,6 +41,13 @@ interface AdmissionDecision {
   admit: boolean;
   cap: number;
   reason: string;
+  /**
+   * The test that failed, or null. Required, so a fixture cannot leave it
+   * `undefined` through the `decide` seam: `decision.failed !== null` is true for
+   * `undefined`, and an `always-one` fixture would then format a warning for a
+   * test it never ran.
+   */
+  failed: 'capacity' | 'free' | null;
 }
 
 interface MemoryReading {
@@ -184,9 +191,27 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<voi
   }
 }
 
-const admitOne = (): AdmissionDecision => ({ admit: true, cap: 1, reason: 'memory' });
-const admitThree = (): AdmissionDecision => ({ admit: true, cap: 3, reason: 'memory' });
-const refuse = (): AdmissionDecision => ({ admit: false, cap: 1, reason: 'capacity' });
+const admitOne = (): AdmissionDecision => ({
+  admit: true,
+  cap: 1,
+  reason: 'memory',
+  failed: null,
+});
+const admitThree = (): AdmissionDecision => ({
+  admit: true,
+  cap: 3,
+  reason: 'memory',
+  failed: null,
+});
+const refuse = (): AdmissionDecision => ({
+  admit: false,
+  cap: 1,
+  reason: 'capacity',
+  // A refusal's reason already names the failing test, and nothing reads
+  // `failed` on this path; the fixture declares null so the seam's shape is
+  // explicit rather than undefined.
+  failed: null,
+});
 
 describe('build slots', () => {
   it('reads a start time for a live pid and none for a pid that does not exist', () => {
