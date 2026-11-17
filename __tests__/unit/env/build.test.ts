@@ -353,7 +353,9 @@ describe('env:build --app and the admission flags', () => {
     });
 
     expect(code).toBe(0);
-    expect(seen).toEqual({ app: 'admin', admission: 'slot' });
+    // `snapshot: false` is exact: `apps/admin` has its own `.next/cache` and v1
+    // neither stages nor seeds it (ADR-0014, decision 3).
+    expect(seen).toEqual({ app: 'admin', admission: 'slot', snapshot: false });
     // `.dev/build.json` describes `apps/web`'s artifact; an admin build must not
     // claim it is current.
     expect(stateModule.readBuildState()).toBeNull();
@@ -366,6 +368,7 @@ describe('env:build --app and the admission flags', () => {
 
     let seen: unknown = null;
     const code = await buildModule.runBuild(parsedBuildWith('--no-slot'), {
+      producerReason: () => 'not the primary checkout (a linked worktree never publishes)',
       build(_envHash, options) {
         seen = options;
         return Promise.resolve(buildResult());
@@ -373,7 +376,9 @@ describe('env:build --app and the admission flags', () => {
     });
 
     expect(code).toBe(0);
-    expect(seen).toEqual({ app: 'web', admission: 'no-slot' });
+    // The gate is re-read at publish, but staging is skipped up front: a checkout
+    // that cannot publish must not pay for the copy.
+    expect(seen).toEqual({ app: 'web', admission: 'no-slot', snapshot: false });
   });
 
   it('records a slot build as current but never a --no-lock one', async () => {
@@ -454,6 +459,85 @@ describe('env:build --app and the admission flags', () => {
   });
 });
 
+describe('env:build reports the cache snapshot step', () => {
+  it('passes snapshot:false and names the gate when this checkout cannot publish', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    const reason = 'not the primary checkout (a linked worktree never publishes)';
+    let seen: unknown = null;
+    const deps = {
+      producerReason: () => reason,
+      build: (_envHash: string, options: unknown) => {
+        seen = options;
+        return Promise.resolve(buildResult());
+      },
+    };
+    const stderr: string[] = [];
+    const errSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stderr.push(String(chunk));
+        return true;
+      });
+    try {
+      expect(await buildModule.runBuild(parsedBuild(), deps)).toBe(0);
+    } finally {
+      errSpy.mockRestore();
+    }
+
+    expect(seen).toEqual({ app: 'web', admission: 'slot', snapshot: false });
+    expect(stderr.join('')).toContain(`build: snapshot skipped: ${reason}`);
+  });
+
+  it('passes snapshot:true when the checkout is producer-eligible, and reports a copy skip', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    let seen: unknown = null;
+    const deps = {
+      producerReason: () => null,
+      build: (_envHash: string, options: unknown) => {
+        seen = options;
+        return Promise.resolve({
+          ...buildResult(),
+          snapshotSkipped: 'staged copy cannot be taken',
+        });
+      },
+    };
+    const stderr: string[] = [];
+    const stdout: string[] = [];
+    const errSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stderr.push(String(chunk));
+        return true;
+      });
+    const outSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    try {
+      expect(await buildModule.runBuild(parsedBuild(), deps)).toBe(0);
+      expect(await buildModule.runBuild(parsedJson(), deps)).toBe(0);
+    } finally {
+      outSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+
+    expect(seen).toEqual({ app: 'web', admission: 'slot', snapshot: true });
+    // A build that ran prints its finish line itself; the snapshot verdict is
+    // this command's to report, and it must name a reason either way.
+    expect(stderr.join('')).toContain('build: snapshot skipped: staged copy cannot be taken');
+    const payload = parseJsonObject(stdout.join(''));
+    const snapshot = objectField(objectField(payload, 'buildRun'), 'snapshot');
+    expect(snapshot['outcome']).toBe('skipped');
+    expect(typeof snapshot['reason']).toBe('string');
+  });
+});
+
 describe('env:build reports a failed build', () => {
   it('throws the exit code and log path after printing the compiler error', async () => {
     const harness = newHarness();
@@ -466,7 +550,10 @@ describe('env:build reports a failed build', () => {
         stderr.push(String(chunk));
         return true;
       });
-    const output = '\u001b[31mError: Expression expected\u001b[0m\n  ./src/x.tsx:36:12\n';
+    // Bun's prebuild lifecycle line arrives right above the compiler error.
+    const output =
+      '@studiq/web build: Exited with code 0\n' +
+      '\u001b[31mError: Expression expected\u001b[0m\n  ./src/x.tsx:36:12\n';
 
     let failure: unknown;
     try {
@@ -493,6 +580,9 @@ describe('env:build reports a failed build', () => {
     expect(text).toContain('build: Error: Expression expected');
     expect(text).toContain('build:   ./src/x.tsx:36:12');
     expect(text).not.toContain('\u001b[');
+    // A lifecycle exit line must never be re-printed: `code 0` beside a compiler
+    // error reads as success.
+    expect(text).not.toContain('Exited with code');
   });
 });
 

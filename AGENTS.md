@@ -99,7 +99,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 ## Commands
 
-`package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
+`package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`. Two rows are abbreviated: `format` and `format:check` prepend `bun scripts/check-bun-version.ts`, and `test:integration` and `test:e2e` run under `varlock run --inject vars --`.
 
 | Command                            | What it does                                                                                                                                                                                                   |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -156,22 +156,33 @@ CI workflow configuration, repository variables and required checks: **[docs/ci.
 ### The build path (what a build prints, and how it fails)
 
 Only `bun run env:build` (and `env:ensure`'s rebuild) reaches `next build` with
-output worth reading; everything else fails before it starts.
+output worth reading. Everything reached through `bun run …` fails before
+`next build` starts; a raw build bypasses it, and only works from `apps/web`
+(see the local-dev note below).
 
 - **What a build prints.** A start line before the spawn —
   `build: building apps/web (slot 1)`, or `(no-slot)`/`(no-lock)` — then one of
   two finishes: `Build complete (apps/web, slot) in 12.4s` with up to 10 warning
   lines above it, or the last 40 lines of the failed build on stderr followed by
-  `env: build failed (exit 4); full log: .dev/env.log`. A clean build is the start
-  line plus one summary line; a build with warnings shows them.
+  `env: build failed (exit 4); full log: .dev/env.log`. A clean build is three to
+  five lines, not two; a build with warnings shows them.
+- **Informational lines.** Besides the start and finish, a successful build may
+  print `build: no cgroup limit; using host MemAvailable`, and — on a worktree
+  with no cache — `build: seed skipped: …` and `build: snapshot skipped: …`,
+  including on the `Build is already current.` short-circuit. The guard's
+  `build: admitted apps/web (slot 1, launcher pid …)` goes to `.dev/env.log` and
+  appears in a failed build's tail.
 - **`.dev/env.log`** is this checkout's env/build log: the env command lines,
   every warning from a successful build, and the full output of a failed one.
   ANSI is stripped before anything is written or re-printed, so it reads with
   `cat`/`rg` (it is not part of `env:logs`, which follows the stack and
   `.dev/web.log`).
-- **Exit codes on the build path**: `4` build failed, `5` timed out, `6` refused
-  (no grant, a running web server, another checkout's stack), `7` waited out the
-  slot budget; `2` is bad usage.
+- **Exit codes on the build path**: `4` build failed — and `env:serve` refusing a
+  non-current artifact also exits `4`, because "nothing servable" is a start
+  failure, not a conflict; `5` timed out, `6` a **build-admission** refusal (no
+  grant, a running web server, another checkout's stack), `7` waited out the slot
+  budget; `2` is bad usage. A failed build's re-printed tail never contains Bun's
+  `Exited with code N` lifecycle line: it says `code 0` next to a compiler error.
 - **A queue is not a hang.** A build waiting for a slot prints
   `build: waiting for a slot (1 of 1 busy, 1 waiting), 0:42 elapsed, 29:18 left`
   every 30 s. The wait is capped at 30 minutes and then exits `7`.
@@ -200,6 +211,42 @@ bun run env:status --json                  # health/stack id/endpoints; stable a
 bun run env:down                           # stop this checkout's web; `--all` also stops the stack
 ```
 
+`env:status --json` is the machine contract; the fields an agent reads (a served
+run, trimmed):
+
+```json
+{
+  "ready": true,
+  "worktree": "/workspaces/studiq-worktrees/feat/env-build-cache",
+  "branch": "refs/heads/feat/env-build-cache",
+  "commit": "93ab8a71",
+  "web": { "url": "http://localhost:3007", "pid": 12345, "http": 200 },
+  "cold": false,
+  "build": {
+    "present": true,
+    "state": "current",
+    "fingerprint": "53033aa53013…",
+    "failed": [],
+    "slots": { "busy": 0, "cap": 1, "stale": 0, "waiting": 0, "degraded": false, "detail": null }
+  },
+  "snapshot": {
+    "id": "20261117T213849Z-39e24f82",
+    "sizeBytes": 296738414,
+    "fileCount": 39,
+    "commit": "a86f133b08a7",
+    "ageDays": 0.1,
+    "behindCommits": 0,
+    "turbopack": ["v16.4.5-4e5335a0"],
+    "warnings": []
+  },
+  "warnings": []
+}
+```
+
+`build.state` is `current`, `stale`, `unrecorded` or `missing` (`null` when the
+fingerprint cannot be computed), `build.failed` lists `.next.failed-*`
+leftovers, and `snapshot: null` means no snapshot has been published.
+
 > **One values file: root `.env.local`.** It is the only hand-edited env file
 > (Git-ignored; never commit it) and it is optional for a single checkout —
 > everything falls back to derived defaults. [`.env.schema`](.env.schema) is the
@@ -213,12 +260,23 @@ bun run env:down                           # stop this checkout's web; `--all` a
 > `supabase stack` backend (`[experimental] stack = true`): the CLI assigns ports
 > (20000-32767) and keeps a separate database per project root, branch and
 > optional `SUPABASE_STACK` name. Only `APP_PORT` can collide between checkouts —
-> set it in `.env.local` (`bun run env:ports` prints a free one). A branch switch
+> set it in `.env.local` (`bun run env:ports` prints a free one). When the
+> configured port is taken, **`env:ensure`** leases the next free one instead of
+> failing (it leased 3006 while other checkouts held 3000–3005) and records it;
+> `env:serve` then serves that leased port — with no lease it uses `APP_PORT` and
+> refuses a port another server answers on (exit 6). `env:status` reports the
+> leased port when `APP_PORT`/`APP_URL` are unset; `env:ports` prints the next
+> candidate. A branch switch
 > creates/resumes its own stack; moving/renaming the checkout creates a new one.
 > `bun run env:down --all` stops the stack and keeps its data; add
 > `--stack "$SUPABASE_STACK"` for a named stack. Deleting a stack is a manual
 > operation (`bunx supabase stack destroy --stack <name>`, ownership checked
 > first) — there is no v1 command for it.
+>
+> **A fresh stack reports config drift.** `env:doctor` prints
+> `stack config drift: restart the stack to apply config.toml changes` on a stack
+> `env:ensure` just created; it settles after the stack's first restart. It is not
+> a conflict and never changes doctor's exit code.
 >
 > **One environment per checkout.** One stack and one web server: a second
 > `ensure`/`serve` for a different stack or profile, or on the same app port, is
@@ -230,10 +288,12 @@ bun run env:down                           # stop this checkout's web; `--all` a
 > `bun run env:ensure --profile web`), not `next dev`; `env:dev` is human-only.
 > A `bun run build` with no grant fails before `next build` starts: `env:build` in
 > one of its three modes is the only thing that mints the single-use grant the
-> `prebuild` guard consumes. The hook covers every `bun run` route; **a raw
-> `bunx next build` never runs `prebuild` and bypasses admission entirely**, and
-> the lint guard only stops _automation_ (workflows, Playwright) from drifting
-> back to it — it cannot catch a person typing the command.
+> `prebuild` guard consumes. The hook covers every `bun run` route; **a raw build
+> (`cd apps/web && bunx next build`) never runs `prebuild` and bypasses
+> admission entirely.** From the repo root it exits 1 and leaves a stray root
+> `.next/`; only the `apps/web` form builds. The lint guard only stops
+> _automation_ (workflows, Playwright) from drifting back to it; it cannot catch
+> a person typing the command.
 >
 > **What the cutover deleted:** `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`,
 > `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`).
@@ -241,6 +301,22 @@ bun run env:down                           # stop this checkout's web; `--all` a
 > the live surface, not this paragraph: the grep excludes Markdown, so it cannot match this line or the
 > historical names above, and it must return nothing —
 > `rg -n 'scripts/dev|dev:(up|serve|status|down|reset-db|build|logs|doctor|ports|prepull)' package.json scripts apps packages supabase .github -g '!*.md'`.
+>
+> **The Turbopack cache is seeded per worktree (ADR-0014).** `scripts/spin` copies
+> the local snapshot into the new worktree's `.next/cache` after `bun install`
+> (`--no-seed-cache` or `STUDIQ_CACHE_SEED=0` opts out), and `env build` seeds a
+> worktree whose cache is missing. Snapshots live in
+> `${STUDIQ_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/studiq}` and are published
+> only by a clean primary checkout whose `HEAD` is `origin/main`; every other
+> checkout seeds and builds cold. `STUDIQ_CACHE_MAX_MB` caps one snapshot (`0`
+> disables the cap) and `STUDIQ_CACHE_RESERVE_MB` is the free space a copy must
+> leave. `env status` and `env doctor` report the snapshot, its age and the
+> recorded commit distance; a seed is always best-effort and never blocks a
+> worktree. On a fresh worktree these three lines are the normal cold case, not
+> a broken cache:
+> `build: snapshot skipped: not the primary checkout`,
+> `build: seed skipped: no published snapshot`,
+> `snapshot    none (no published snapshot; every worktree builds cold)`.
 
 - **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
   real value, never a default that carries a secret. The vendored Varlock skill's schema checklist and
@@ -263,7 +339,7 @@ bun run env:down                           # stop this checkout's web; `--all` a
 - **`.env.vault` is opt-in, not required.** A fresh checkout runs from `.env.local` alone. The vault is only for provider refs that cannot come from the local stack: **LLM inference** (`LLM_API_KEY`, optionally `LLM_BASE_URL`/`LLM_PROVIDER`) and **Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` only for webhook testing). Everything else stays in `.env.local` or is discovered from the stack. A human creates it with `bun run env:setup --vault` (comments/empty refs, mode 600) and fills the refs; refs are varlock resolver calls (`op(...)`, `bwp(...)`, `infisical(...)`). It lives in the **primary checkout**, Git-ignored, resolved through `STUDIQ_ENV_VAULT` (default `<primary>/.env.vault`), and is passed with `varlock run --path` **only when present**. Wording: `.env.local` is the only _values_ file; `.env.vault` is the optional _vault pointer_.
 - **`env:ensure` is fast and idempotent**: no `bun install`, no unconditional `next build`, no `supabase db reset`, and no unconditional tenant seeds — the profile decides (`qa`/`e2e` seed by default, the rest do not; `--no-seed` opts out). Cold time is dominated by the first `supabase stack start` (artifact pull). Supabase starts **lean** with `supabase stack start --eager -x studio,realtime,functions,analytics,pooler` (capability names); a profile's table is the source of truth. Builds are admitted through the registry's memory-derived build slots, one per worktree (`DEV_BUILD_MEMORY_MB=4096` caps the build's heap; `STUDIQ_BUILD_MIN_FREE_MB` sets the memory floor).
 - **Destructive/explicit steps are separate**: `bun run env:reset-db --yes` (drops and re-seeds **this branch's** DB) and `bun run env:build` (production build; stop the web server first). Tenant seeding is `env:ensure --profile qa|e2e` (profile default) or an explicit `--seed`; there are no seed markers or run ids in v1.
-- **A build record is a claim about an artifact, not a fingerprint.** Every wrapper build (`env build` with a slot, `--no-slot` and `--no-lock`, and `env ensure`'s rebuild) deletes `.dev/build.json` immediately before it spawns — after admission, so a queue timeout keeps the previous artifact's true claim — and only a successful, fingerprinted slot/`--no-slot` build writes it back; `--no-lock` never does, and an `apps/admin` build neither reads nor writes it. On a nonzero or timed-out exit the wrapper moves `apps/web/.next` aside to `apps/web/.next.failed-<timestamp>` and removes the record **before releasing its slot**; the reclaim path does the same for this checkout when the launcher died and leaves a foreign worktree to its own next build. A successful build deletes that leftover (one is kept only until the tree builds again) and `env status` lists it under `build.failed` meanwhile. `env status` and `env serve` accept an artifact as `current` only when the fingerprint matches, the record exists, and `.next/BUILD_ID` is not newer than the record's `builtAt`; the other answers are reported distinctly, in text and in `--json` (`build.state`): `stale` (the tree or the inlined env moved), `unrecorded` (a raw `next build` or a `--no-lock` build leaves no record) and `missing`. `env serve` refuses all four non-current answers — including `null`/`unknown`, when the fingerprint cannot be computed — and names `env:build`; `env build` rebuilds them. `env status` never reads the stack's keys, so it judges the **tree** against the record's own `envHash`: it can say `current` while `serve` refuses `stale` because only the inlined environment moved.
+- **A build record is a claim about an artifact, not a fingerprint.** Every wrapper build (`env build` with a slot, `--no-slot` and `--no-lock`, and `env ensure`'s rebuild) deletes `.dev/build.json` immediately before it spawns — after admission, so a queue timeout keeps the previous artifact's true claim — and only a successful, fingerprinted slot/`--no-slot` build writes it back; `--no-lock` never does, and an `apps/admin` build neither reads nor writes it. On a nonzero or timed-out exit the wrapper moves `apps/web/.next` aside to `apps/web/.next.failed-<timestamp>` and removes the record **before releasing its slot**; the reclaim path does the same for this checkout when the launcher died and leaves a foreign worktree to its own next build. A successful build deletes that leftover (one is kept only until the tree builds again) and `env status` lists it under `build.failed` meanwhile. `env status` and `env serve` accept an artifact as `current` only when the fingerprint matches, the record exists, and `.next/BUILD_ID` is not newer than the record's `builtAt`; the other answers are reported distinctly, in text and in `--json` (`build.state`): `stale` (the tree or the inlined env moved), `unrecorded` (the record does not describe this artifact: a raw `next build` moves `.next/BUILD_ID` past the record's `builtAt`, which the mtime rule catches, while only a `--no-lock` build leaves no record at all) and `missing`. `env serve` refuses all four non-current answers — including `null`/`unknown`, when the fingerprint cannot be computed — and names `env:build`; `env build` rebuilds them. `env status` never reads the stack's keys, so it judges the **tree** against the record's own `envHash`: it can say `current` while `serve` refuses `stale` because only the inlined environment moved.
 - **The shared QA stack is protected**: the tool never leases or suggests the shared QA app port (`:3010`, excluded from the app-port candidates), and shared mode is opt-in via `SUPABASE_SHARED=1` (see above), where it never mutates the shared stack.
 - **`apps/admin` has no lifecycle command of its own, but it is not outside the build guard.** Use the standalone `bun run dev:admin` shortcut (or the workspace's own `bun run --filter @studiq/admin dev`) plus `env:build --app admin`/`start:admin`. Admin's build takes the same slot and the same `prebuild` guard as web; it has no fingerprint and no build record of its own (ADR-0014, decision 6). Admin binds loopback only and has no app-specific env file.
 
@@ -590,6 +666,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 ## i18n
 
 - `next-intl` with `getRequestConfig` pulling locale from the `NEXT_LOCALE` cookie (defaults `'pl'`) — config in `apps/web/src/i18n/request.ts` and `apps/admin/src/i18n/request.ts`
+- To verify both locales there is no header switcher: `LanguageSwitcher` renders in the footer (`apps/web/src/components/layout/Footer.tsx`), and the cookie can be set directly — `NEXT_LOCALE=pl` or `NEXT_LOCALE=en`.
 - Messages in `apps/web/src/i18n/messages/{locale}.json` (admin: `apps/admin/src/i18n/messages/{locale}.json`) — nested per component/page
 - ICU message format for plurals
 - Server error codes are returned as `APP_ERRORS` codes (e.g. `ERROR_FORBIDDEN`); message files carry `ERROR_*` keys for most of them

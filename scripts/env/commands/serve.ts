@@ -135,6 +135,10 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
     const projectId = leaseProjectId(identityKey(REPO_ROOT, currentBranchRef(), stackName ?? ''));
     const lease = readLease(readRegistry().dir, projectId);
 
+    // Where this port came from: `contractWithLease` adopts the lease when one
+    // exists, and falls back to APP_PORT when it does not. Naming the wrong one
+    // sends an agent looking for a lease that was never taken.
+    const portSource = lease?.appPort === contract.appPort ? 'the leased port' : 'APP_PORT';
     let webPid = readWebPid();
     let webHttp = await probeHttp(contract.appUrl);
     if (healthy(webHttp)) {
@@ -142,7 +146,7 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       if (!readiness.ready) {
         throw new EnvFailure(
           EXIT_CONFLICT,
-          `${contract.appUrl} answers but is not this checkout's server on the leased port; run 'env:down' first`,
+          `${contract.appUrl} answers but is not this checkout's server on ${portSource}; run 'env:down' first`,
         );
       }
     } else {

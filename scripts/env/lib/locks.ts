@@ -25,6 +25,7 @@ import {
   type AdmissionFailure,
   type MemoryReading,
 } from './admission';
+import { atomicWriteFile } from './atomic-file';
 import { EXIT_CONFLICT, EXIT_QUEUED, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
 import type { BuildSlotsStatus } from './json';
 import { writeStderrLine } from './output';
@@ -638,16 +639,6 @@ function ensureSlotsRoot(): string {
   return root;
 }
 
-function writeAtomic(path: string, contents: string): void {
-  const temp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
-  try {
-    writeFileSync(temp, contents, { mode: 0o600, flag: 'wx' });
-    renameSync(temp, path);
-  } finally {
-    rmSync(temp, { force: true });
-  }
-}
-
 function readCapacity(root: string): number | null {
   const text = readOwnerField(root, 'capacity');
   if (text === null || !/^\d+$/.test(text)) return null;
@@ -905,8 +896,8 @@ function recordGate(root: string, reading: MemoryReading, minFree: number, reser
     reading.capacityBytes === null
       ? 1
       : Math.max(1, slotCap(reading.capacityBytes, reserve, minFree));
-  writeAtomic(join(root, 'capacity'), `${cap}\n`);
-  writeAtomic(
+  atomicWriteFile(join(root, 'capacity'), `${cap}\n`);
+  atomicWriteFile(
     join(root, 'memory.json'),
     `${JSON.stringify(
       {
@@ -1408,6 +1399,37 @@ export async function withBuildSlots<T>(
   } finally {
     rmSync(waiter, { recursive: true, force: true });
     await mutex?.release();
+  }
+}
+
+/** A snapshot publish waits this long for its lock, then skips (decision 3). */
+const SNAPSHOT_LOCK_WAIT_SECONDS = 5;
+
+/**
+ * Serialize snapshot publication only (`snapshot.lock`).
+ *
+ * Entered after the checkout lock, the build slot and this worktree's mutex are
+ * released — never while any of them is held — because publication reads and
+ * swaps directories the next build's stage step writes. The wait is short and a
+ * timeout is non-fatal: the previous snapshot stays current and the build has
+ * already succeeded. `null` reports the skip to the caller.
+ *
+ * @public Exercised by the unit tests through `env build`'s snapshot reporting.
+ */
+export async function withSnapshotLock<T>(fn: () => Promise<T> | T): Promise<T | null> {
+  try {
+    const dir = ensureRegistrySubdir('locks');
+    return await withLockAt(
+      join(dir, 'snapshot.lock'),
+      SNAPSHOT_LOCK_WAIT_SECONDS,
+      EXIT_TIMEOUT,
+      'timed out waiting for the snapshot lock',
+      fn,
+    );
+  } catch (error) {
+    if (!(error instanceof EnvFailure)) throw error;
+    writeStderrLine(`warning: build: snapshot skipped: ${error.message}`);
+    return null;
   }
 }
 

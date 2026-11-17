@@ -1,6 +1,7 @@
 import type { Contract } from './contract';
 import type { BuildAdmission, BuildApp } from './grant';
 import { REPO_ROOT, currentCommit } from './repo';
+import type { SnapshotStatus } from './build-cache';
 import type { BuildArtifactState } from './state';
 import type { StackStatus } from './stack';
 import { profileRequiresServe } from '../profiles';
@@ -56,6 +57,27 @@ export interface BuildSlotsStatus {
  * and whether the guard consumed the grant. An agent must never have to scrape
  * the human lines to learn that.
  */
+/**
+ * What `env build` did to a missing `.next/cache` before it built (decision 3).
+ *
+ * `none` means the cache already existed or the seed was opted out, so there was
+ * nothing to say; `skipped` and `refused` both mean the build ran cold.
+ */
+export interface SeedRunStatus {
+  outcome: 'seeded' | 'skipped' | 'refused' | 'none';
+  id: string | null;
+  reason: string | null;
+}
+
+export interface SnapshotRunStatus {
+  outcome: 'published' | 'refused' | 'skipped' | 'none';
+  id: string | null;
+  sizeBytes: number | null;
+  fileCount: number | null;
+  /** The gate, preflight or copy failure that left no snapshot; null when published. */
+  reason: string | null;
+}
+
 export interface BuildRunStatus {
   app: BuildApp;
   admission: BuildAdmission;
@@ -72,6 +94,9 @@ export interface BuildRunStatus {
   /** Web only; `null` for `apps/admin`, which has no fingerprint of its own. */
   fingerprint: string | null;
   builtAt: string | null;
+  /** What the build did to the local cache snapshot (ADR-0014, decisions 2–4). */
+  snapshot: SnapshotRunStatus;
+  seed: SeedRunStatus;
 }
 
 export interface StatusSnapshot {
@@ -128,6 +153,8 @@ export interface StatusSnapshot {
     failed: string[];
     slots: BuildSlotsStatus | null;
   };
+  /** The published cache snapshot this machine would seed from; null when none. */
+  snapshot: SnapshotStatus | null;
   warnings: string[];
   log: string;
 }
@@ -154,6 +181,7 @@ export interface StatusInputs {
   buildState?: BuildArtifactState | null;
   buildFailed?: string[];
   buildSlots?: BuildSlotsStatus | null;
+  snapshot?: SnapshotStatus | null;
   // Lifecycle facts (phase 2); all default to "unknown" for read-only calls.
   profile?: string | null;
   cold?: boolean | null;
@@ -235,6 +263,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
       failed: inputs.buildFailed ?? [],
       slots: inputs.buildSlots ?? null,
     },
+    snapshot: inputs.snapshot ?? null,
     warnings: inputs.warnings,
     log: '.dev/env.log',
   };

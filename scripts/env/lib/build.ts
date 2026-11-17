@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { relative } from 'node:path';
+import { join, relative } from 'node:path';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
 import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { grantPath, mintBuildGrant, type BuildAdmission, type BuildApp } from './grant';
@@ -13,6 +13,14 @@ import {
   type BuildSlotHandle,
   type BuildSlotsOptions,
 } from './locks';
+import {
+  collectIdentityFacts,
+  nextVersionOf,
+  pruneForeignVersions,
+  resolveCacheDir,
+  stageSnapshot,
+  type StagedSnapshot,
+} from './build-cache';
 import { stripAnsi, writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 import {
@@ -47,6 +55,16 @@ const SUCCESS_WARNING_LINES = 10;
  */
 const DIAGNOSTIC_RE = /\b(?:warning|warn|error|deprecated)\b|failed to compile|⚠/i;
 
+/**
+ * Bun's prebuild bookkeeping, not build output.
+ *
+ * `bun run` prints `Exited with code N` for the lifecycle hook, and in a failed
+ * build that line can read `… code 0` directly above the compiler error — an
+ * agent grepping the output would read the failure as success. The build's own
+ * exit status already reports the outcome.
+ */
+const BUN_LIFECYCLE_EXIT_RE = /^Exited with code \d+$/;
+
 export interface BuildResult {
   ok: boolean;
   timedOut: boolean;
@@ -68,6 +86,14 @@ export interface BuildResult {
   invalidated?: string | null;
   /** Wall time of the spawn, for the finish line. */
   durationMs?: number;
+  /**
+   * The staging copy this build took while it held its slot and mutex, or null.
+   * `env build` publishes it after both are released; every other caller leaves
+   * it null and the copy is never taken.
+   */
+  staged?: StagedSnapshot | null;
+  /** Why the snapshot step was skipped inside the build, or null. */
+  snapshotSkipped?: string | null;
 }
 
 /**
@@ -104,7 +130,7 @@ function buildOutputLines(output: string, app: BuildApp): string[] {
     .map((line) => line.trimEnd())
     .map((line) => line.replace(label, ''))
     .map((line) => line.replace(toolTag, ''))
-    .filter((line) => line !== '');
+    .filter((line) => line !== '' && !BUN_LIFECYCLE_EXIT_RE.test(line));
 }
 
 /** Append build output to `.dev/env.log`; callers never pass secrets. */
@@ -250,6 +276,12 @@ interface SpawnOutcome {
 export interface ProductionBuildOptions {
   app: BuildApp;
   admission: BuildAdmission;
+  /**
+   * Take the staging copy while the build holds its slot and mutex. Only
+   * `env build` sets this, and only for a checkout that can publish; every other
+   * caller (the rebuild transaction) prunes the cache but never stages.
+   */
+  snapshot?: boolean;
 }
 
 const defaultBuildOptions: ProductionBuildOptions = { app: 'web', admission: 'slot' };
@@ -375,6 +407,47 @@ function invalidateFailedArtifact(deps: ProductionBuildDeps): string | null {
   );
 }
 
+/** This checkout's Turbopack cache root; `apps/admin` has its own and is not covered. */
+function worktreeCacheDir(): string {
+  return join(REPO_ROOT, 'apps', 'web', '.next', 'cache');
+}
+
+/**
+ * The staging copy, taken before the slot and mutex are released.
+ *
+ * The copy is the one thing that must happen while the cache is quiescent — a
+ * later read could race `next dev` or a raw build — so it lives inside
+ * `buildOnce`, not in the command. Publication is deliberately elsewhere: it
+ * must run with no build lock held.
+ */
+async function stageInsideBuild(
+  envHash: string,
+): Promise<{ staged: StagedSnapshot | null; skipped: string | null }> {
+  const identity = await collectIdentityFacts(REPO_ROOT, envHash);
+  const nextVersion = identity.next ?? '';
+  if (nextVersion !== '') {
+    // The resolved directory is passed explicitly: a pre-release version compares
+    // on its numeric prefix, and this name must never be the thing deleted.
+    const pruned = pruneForeignVersions(
+      join(worktreeCacheDir(), 'turbopack'),
+      nextVersion,
+      identity.turbopackDir,
+    );
+    if (pruned.length > 0) {
+      writeStderrLine(`build: pruned foreign Turbopack cache director(ies): ${pruned.join(', ')}`);
+    }
+  }
+  const result = await stageSnapshot({
+    cacheRoot: resolveCacheDir(),
+    worktreeCacheDir: worktreeCacheDir(),
+    identity,
+    nextVersion,
+  });
+  return 'staged' in result
+    ? { staged: result.staged, skipped: null }
+    : { staged: null, skipped: result.skipped };
+}
+
 /**
  * One build, under whatever admission the caller already took.
  *
@@ -432,6 +505,21 @@ async function buildOnce(
   // A green build is when the previous corpse stops being evidence: the tree it
   // described has been replaced by one that builds.
   if (ok && web) removeFailedBuildArtifacts(artifactDir);
+  // Decision 4's worktree prune runs after every successful web build, whether
+  // or not this checkout can publish: the build key rejects a foreign version
+  // directory, so the prune buys disk, never correctness.
+  let staged: StagedSnapshot | null = null;
+  let snapshotSkipped: string | null = null;
+  if (ok && web) {
+    if (options.snapshot === true) {
+      const snapshot = await stageInsideBuild(envHash);
+      staged = snapshot.staged;
+      snapshotSkipped = snapshot.skipped;
+    } else {
+      const next = nextVersionOf(REPO_ROOT);
+      if (next !== null) pruneForeignVersions(join(worktreeCacheDir(), 'turbopack'), next);
+    }
+  }
   // The finish line belongs here, not in `commands/build.ts`: `env ensure`'s
   // rebuild reaches the same seam and must report the build it ran.
   if (ok) reportBuildSuccess(options, outcome.output, outcome.durationMs);
@@ -444,6 +532,8 @@ async function buildOnce(
     grant: existsSync(grantPath()) ? 'unconsumed' : 'consumed',
     invalidated,
     durationMs: outcome.durationMs,
+    staged,
+    snapshotSkipped,
   };
 }
 

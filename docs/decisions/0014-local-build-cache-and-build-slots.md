@@ -5,16 +5,23 @@
 Accepted (2026-11-17). Measurements recorded below are from this repo at
 `ea790b3e` (main) and `521792db` (PR #1083) on a 16 vCPU / 19.9 GB RAM / 5 GB
 swap container (overlay + ext4, no reflink), Next 16.4.4 (Turbopack), Bun 1.4.4.
+The cold-vs-seeded equality experiment (Evidence §5) was run later on the same
+box at Next 16.4.5 Turbo, cache directory `v16.4.5-4e5335a0`, Bun 1.4.4.
 
 The **admission half** is implemented: decision 5 (memory-derived slots, one
 build per worktree, the waiter directory and the deadlines), decision 6 (the
 `prebuild` guard, the single-use grant, `--app`/`--no-slot`/`--no-lock`, the
 entrypoint check and the CI/Playwright switch), decision 7 (`oom_score_adj` and
 the failure invalidation), and decision 8 (slot reporting, the build record and
-the four artifact states). The **cache half** (decisions 1–4, and the snapshot
-reporting in decision 8) stays conditional on the cold-vs-seeded experiment
-listed under Evidence → Not measured: it ships only if a seeded build emits the
-same bytes as a cold one.
+the four artifact states).
+
+The **cache half** (decisions 1–4, and the snapshot reporting in decision 8) is
+implemented too, including the seed in `scripts/spin` and in `env build`. The
+equality experiment it was conditional on has now been run and passes: a seeded
+build is byte-identical to a cold build of the same tree **modulo per-build
+random values, which two cold builds also differ in** (0 differences after
+normalising 14 files out of 4,573 — Evidence §5). One decision changed because of
+it: the inlined env hash is **recorded, not matched** (decision 3).
 
 This ADR settles the two questions [#1078](https://github.com/logyQT/studiq/issues/1078)
 left open — whether a local `main` build-cache snapshot is worth seeding, and how
@@ -44,9 +51,10 @@ content + inlined `NEXT_PUBLIC_*` + build mode, so it decides whether **this**
 worktree's build must re-run. It says nothing about what a build that reuses a
 foreign cache emits, and it covers neither build-time HTTP responses nor
 typecheck state. This ADR is about _input_ caching, never serving a stale `.next`
-output: the seed therefore copies an allowlist (decision 3), and whether a seeded
-build emits the same bytes as a cold one is an experiment in Evidence, not an
-assumption.
+output: the seed therefore copies an allowlist (decision 3). Whether a seeded
+build emits a cold build's content is now measured (Evidence §5): the emitted
+tree is identical modulo per-build random values, which two cold builds also
+differ in, so the seed adds nothing a rebuild does not already change.
 
 ## Decision
 
@@ -100,30 +108,45 @@ assumption.
 
    **Storage and swap.** Snapshots are immutable directories
    `<cacheRoot>/snapshots/<id>/`, where `<id>` is a UTC timestamp plus a short
-   hash of the match key. `snapshots/current` is a pointer file holding the id,
-   replaced atomically (write-then-rename). A seed reads the pointer once and
-   copies from that id; a pointer change mid-copy cannot affect it, and the
-   retired id is not deleted while a copy that started before the swap can still
-   be walking it. Retention is **`current` plus one retired predecessor**: the
-   previous id is deleted by a _later_ snapshot write once it has been retired for
-   longer than a 10-minute grace period (a target, not a measurement), and no
+   hash of the match key, and the seed accepts the pointer only when it matches
+   that shape (`YYYYMMDDTHHMMSSZ-<8 hex>`): the id is one path component, so a
+   hand-edited `../../x` reads as "no snapshot" instead of escaping the cache
+   root. `snapshots/current` is a pointer file holding the id, replaced
+   atomically (write-then-rename). A seed reads the pointer once and copies from
+   that id; a pointer change mid-copy is handled by the next paragraph, and no
    read lock is taken on the seed path (a burst of concurrent seeds must not
    serialize).
-   The cache root therefore holds at most two published snapshots — `current`
-   and the retired predecessor — plus the staging copy of a write in progress: a
-   worst case of three snapshot-sized trees, each bounded by decision 4's cap.
+
+   Retention is **`current` plus exactly one retired predecessor**, and the
+   10-minute grace (a target, not a measurement) protects only that one: a seed
+   that read the pointer just before a swap still finds its id, and the next
+   publish deletes the predecessor it supersedes — a copy that was walking the
+   older tree may then fail, which costs a cold build and never wrong bytes.
+   Keeping every predecessor younger than the grace instead would let a `--force`
+   loop hold several cap-sized trees at once; the cap bounds one snapshot, this
+   bound is what bounds the directory. The cache root therefore holds at most two
+   published snapshots — `current` and the retired predecessor — plus the staging
+   copy of the write in progress: three snapshot-sized trees, each bounded by
+   decision 4's cap.
 
    **Location.** `$STUDIQ_CACHE_DIR` = `${XDG_CACHE_HOME:-$HOME/.cache}/studiq`.
    The value is user-overridable from `.env.local`, so the constraint is enforced
    rather than documented. The cache root is validated by the registry's trust
    guard — its leaf path is not a symlink, it is owned by the caller and it is
    mode 700 — **plus** a repository-containment check: not inside, or an ancestor
-   of, the repo. Every snapshot and staging path under it inherits that validation
-   before any write or delete. The seed destination is different: it is inside
-   this worktree by construction, so it is validated as inside this worktree's
-   `.next` instead. A refused cache path fails an explicit cache operation with a
-   non-zero exit and nothing written or deleted; an implicit seed skips and the
-   build runs cold. No CI artifact, no upload/download, no signing surface.
+   of, **any checkout of this repository** (the primary, this worktree, and every
+   linked worktree `git worktree list` reports). That last part matters for the
+   seed, whose target is a _different_ checkout: validating only the worktree it
+   is about to write into would accept a root inside the checkout running the
+   command. The seed is also read-only towards the root: it never creates it and
+   never repairs its mode, so a `chmod` is something only a write path does, and
+   `env doctor` cannot turn a 755 root into 700 by looking at it. Every snapshot
+   and staging path under the root inherits that validation before any write or
+   delete. The seed destination is different: it is inside this worktree by
+   construction, so it is validated as inside this worktree's `.next` instead. A
+   refused cache path fails an explicit cache operation with a non-zero exit and
+   nothing written or deleted; an implicit seed skips and the build runs cold. No
+   CI artifact, no upload/download, no signing surface.
 
 3. **Seed rules: exact identity, an allowlist, a verified atomic landing.** A
    snapshot publishes a manifest; the seed copies from it only when every match
@@ -142,7 +165,7 @@ assumption.
    | `bun.lock`      | sha256 of the root lockfile                       | match  |
    | mode            | `production` only; no other mode publishes        | match  |
    | seed scope      | the allowlisted cache directories copied          | match  |
-   | inlined env     | `buildEnvHash` over the three inlined values      | match  |
+   | inlined env     | `buildEnvHash` over the three inlined values      | record |
    |                 | (named below) — hash, no values                   |        |
    | `commit`,       | `HEAD` and tree state at publish time (dirty must | record |
    | `dirty`         | be false to publish)                              |        |
@@ -153,29 +176,39 @@ assumption.
 
    The Turbopack row is resolved, not guessed: the snapshot's full directory
    name is compared with the name the installed Next resolves for its Turbopack
-   cache. If that name cannot be resolved without running a build, the seed is
-   skipped — never guessed.
+   cache. The implementation asks Next itself — `getTurbopackCacheVersion()` from
+   `next/dist/build/swc` after `loadBindings()` — which is the same call a build
+   uses to name the directory, so the comparison is against the real name
+   (`v16.4.5-4e5335a0`), never the version. If the bindings cannot be loaded (no
+   `node_modules`, an unsupported platform, a rejected install) the seed and the
+   snapshot step are skipped; no version-prefix fallback exists.
 
    The asymmetry is deliberate: a component that does not affect the cache costs
    one cold build when it changes; a component that does affect it and is
    missing costs correctness. `commit` is recorded rather than matched because a
    snapshot 20 commits behind `main` still measured a 52 % saving; it is reported
    as staleness instead. The lockfile is matched because it is the repo's
-   strongest existing invalidation signal — CI's own cache is keyed on it. The
-   env hash is matched because `NEXT_PUBLIC_*` is inlined at build time and no
-   measurement exists for reusing a cache across a different inlined value; the
-   three values are `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SITE_URL` and
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+   strongest existing invalidation signal — CI's own cache is keyed on it — but
+   that is **precaution, not evidence**: it was held constant in every
+   experiment arm, so no arm shows what a changed lockfile would emit. The env
+   hash is **recorded, not matched.** The three inlined values
+   (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SITE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`) were each measured separately: changing them
+   and seeding from a snapshot built with the old values produced 0 differences
+   after normalisation and **0 occurrences of the stale value in any emitted
+   file** (Evidence §5). Matching on it would therefore have cost a seed on every
+   fresh worktree — each leases its own app port, so `NEXT_PUBLIC_SITE_URL`
+   almost always differs — for no measured correctness. It stays in the manifest
+   so a future regression has the fact to compare, and because a value that is
+   inlined is worth being able to audit.
 
-   **Consequence, stated plainly.** With the env hash in the key, a seed applies
-   only when the inlined environment is identical. A fresh worktree leases its
-   own app port, so its `NEXT_PUBLIC_SITE_URL` usually differs and the seed
-   usually misses. The measured −48 % (Evidence §1) was taken with identical env
-   and an unchanged lockfile and is therefore a **ceiling**, not the expected
-   saving; the practical hit rate is unmeasured (Evidence, Not measured). Until
-   the env-independence experiment passes, the seed's realised value is expected
-   in same-contract rebuilds (`--force`, restored worktrees, stack restarts at
-   the same port) rather than in the first build of a new port.
+   **Consequence, stated plainly.** A fresh worktree's own port no longer costs
+   the seed, so the first build of a new worktree is the case the seed now
+   covers; the −30 % measured on a real 12-file branch across different ports
+   (Evidence §5) is the representative number, and the −48.3 % same-tree arm with
+   one inlined value changed is the upper bound.
+   The lockfile remains the only matched input that a worktree can plausibly
+   differ in; when it differs the seed is skipped and the build is cold.
 
    **What is seeded.** The snapshot body, and therefore the seed, is exactly one
    entry: `turbopack/`. Every other entry under `.next/cache` is skipped by name
@@ -196,12 +229,32 @@ assumption.
      cold-vs-seeded diagnostics comparison that has not been run, so it is
      excluded until one exists.
 
+   **`apps/admin` is not covered by v1.** It is a second Next app with its own
+   `apps/admin/.next/cache` under the same Next version, so a web snapshot can
+   never be its input and an admin build neither stages nor publishes. The
+   manifest's `scope` field is `apps/web:turbopack`, which makes the two trees
+   non-matching even if an admin snapshot is added later. An admin snapshot is a
+   follow-up: it needs the same cold-vs-seeded equality run against
+   `apps/admin/.next` (whose peak RSS is also still unmeasured, decision 5), and
+   its build has no fingerprint or build record to key on.
+
    An **unrecognised cache root** — an entry under `.next/cache` that is neither
    the allowlist nor one of those three, or no `turbopack/` at all — is a reason
    to build cold, never a reason to copy: that snapshot is skipped and
    `env doctor` reports the layout, so a Next layout change cannot silently
    degrade every worktree. The three entries above are known exclusions, not
    unrecognised roots, and never trigger a skip.
+
+   **The snapshot body is never empty.** `fileCount` is written from the staging
+   copy and verified before a publish, and a body with no files is refused at
+   both ends: an empty `turbopack/` is not a cache, and publishing one would
+   report `seeded (0 files)` while every build still ran cold. A pre-release Next
+   is the case that produced one: `16.5.0-canary.3` writes
+   `v16.5.0-canary3<hash>`, whose numeric prefix is `16.5.0`; comparing the full
+   version with the directory's numeric prefix called the live directory foreign
+   and pruned it, so the prune now compares **numeric prefixes**, never deletes
+   the directory named by the resolved Turbopack name, and removes nothing at all
+   when the installed version cannot be parsed.
 
    **Seeding is additive and lands atomically.** Seed only when `.next/cache` is
    absent; never overwrite or merge into a worktree's own cache. Run decision 4's
@@ -240,9 +293,12 @@ assumption.
    rebuild cold. The only pruning **within a cache tree** is **foreign version
    dirs**, applied in two places: the worktree's own cache after a successful
    build (as today), and the snapshot writer's staging copy before it is
-   published. Both delete only `turbopack/v*` directories whose version prefix
-   differs from the installed `next` version. The cap below deletes nothing, so
-   this remains the only pruning.
+   published. Both delete only `turbopack/v*` directories whose **numeric**
+   `X.Y.Z` prefix differs from the installed `next` version, never the directory
+   the installed Next resolved by name, and nothing when that version cannot be
+   parsed — a pre-release (`16.5.0-canary.3` ↔ `v16.5.0-canary3abc`) shares the
+   numeric prefix and survives. The cap below deletes nothing, so this remains
+   the only pruning.
 
    The writer prunes the staging copy it has just taken, so the snapshot every
    seed copies is already pruned. The destination prune stays only as a defensive
@@ -260,7 +316,9 @@ assumption.
    published snapshot is pruned and sits far below it (435–440 MB measured for
    the pruned steady state). The cap therefore binds only long same-version
    growth past the measured 20-commit range, which is unmeasured.
-   `STUDIQ_CACHE_MAX_MB` overrides it. Over the cap:
+   `STUDIQ_CACHE_MAX_MB` overrides it; `0` **disables** the cap (the value that
+   reads as "off" does what it says), and an unreadable value falls back to the
+   default rather than to no limit. Over the cap:
    no snapshot is written, the previous snapshot is kept, and a worktree with no
    snapshot builds cold. The cap never deletes cache content, never evicts LRU
    and never triggers a rebuild — that would contradict the rule above, and the
@@ -714,16 +772,19 @@ measurement that will not appear, and never refuses every build.
 
 ## Evidence
 
-All runs are sequential builds in isolated worktrees, identical env, with only
-**one** variable changed: the presence of a seeded `.next/cache` (§4 is the
-concurrency table; every other table is sequential). Wall time is the whole
-`next build` process.
+All runs are sequential builds in isolated worktrees, with only **one** variable
+changed per table: the presence of a seeded `.next/cache` (§4 is the concurrency
+table; every other table is sequential). Wall time is the whole `next build`
+process.
 
-Env was held identical across arms, so every number below measures the ceiling
-for the seed: it is the saving when the snapshot identity (decision 3) matches
-exactly. A worktree that differs in `NEXT_PUBLIC_*` or in `bun.lock` skips the
-seed. The benchmark builds invoked `next build` directly, so none of these
-artifacts carried a build record and none was ever reported as current.
+§1–§4 held the env and `bun.lock` identical across arms. That no longer describes
+the match key: decision 3 records the inlined env rather than matching it (§5
+measured why), so `NEXT_PUBLIC_*` is not a reason a seed misses and these numbers
+are not a ceiling for that component. `bun.lock` **is** still matched, but it was
+held constant in every arm here, so nothing below measures what a changed
+lockfile emits — the match is precaution, not evidence. The benchmark builds
+invoked `next build` directly, so none of these artifacts carried a build record
+and none was ever reported as current.
 
 ### 1. Seed pays for itself (5 runs each, PR #1083: 14 files, 3 commits behind `main`)
 
@@ -754,9 +815,10 @@ measured separately (see Not measured).
 Ordinary main movement costs ~0.4 s of the benefit per 20 commits. A tool
 version change is the only _measured_ hard invalidation — the cache key changes,
 the old directory is kept, and the build is simply cold. Under the snapshot
-identity in decision 3 it is not the only one: a changed `bun.lock`, a different
-inlined env, a changed seed scope or a changed Turbopack directory name also
-skips the seed. Only the version-change case is measured here. Next does not
+identity in decision 3 it is not the only one: a changed `bun.lock`, a changed
+seed scope or a changed Turbopack directory name also skips the seed. (The
+inlined env no longer does — it is recorded, not matched; Evidence §5.) Only the
+version-change case is measured here. Next does not
 prune it: `v16.4.3` + `v16.4.4` together measured 523 MB.
 
 ### 3. Cache growth over 20 real commits (Oct 27–31, replaying main history)
@@ -791,55 +853,113 @@ A single warm build peaks at **3.93 GB RSS across 18 processes** (15 page-gen
 workers + compiler). RAM, not cores, is the limit; one build already saturates
 16 cores, which is why 3 slots buy only ~25–35 % throughput.
 
+### 5. Cold vs seeded output equality (the safety claim, measured)
+
+Next 16.4.5 Turbo with cache directory `v16.4.5-4e5335a0`, Bun 1.4.4, same
+benchmark box. A controlled harness compared every file under `.next`
+byte-for-byte (`cmp.py` over the two trees) and searched every emitted file for
+the stale inlined value. Raw arms and scripts:
+`/workspaces/lucky-harbor/.tmp/cache-eq-evidence/` (`arms3.jsonl`), git-ignored
+and local-only.
+
+**The noise floor.** Two **cold** builds of the same tree are not identical to
+each other. Exactly 14 of 4,573 files differ, and every difference is a per-build
+random value:
+
+- `BUILD_ID` and its derivations: the `static/<BUILD_ID>/` directory name, three
+  path strings in three manifests, and the flight row's `"b":"<BUILD_ID>"` field;
+- `previewModeId`, `previewModeSigningKey`, `previewModeEncryptionKey`;
+- the RSC `server-reference-manifest` `encryptionKey`;
+- the sitemap's build-time `<lastmod>`.
+
+After normalising those, the comparison is meaningful. A seeded build is **byte
+identical to a cold build of the same tree, modulo that noise**: 0 differences.
+Seeding adds nothing a rebuild does not already change, and it removes nothing.
+
+| Arm (seeded from a snapshot, cold in a second worktree)                                                                             | Differences after normalisation | Stale inlined value in output | Wall (cold → seeded)           |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------- | ------------------------------ |
+| same tree                                                                                                                           | 0                               | —                             | 29.5 s → **10.75 s (−63.5 %)** |
+| different `NEXT_PUBLIC_SITE_URL` (`:3002`→`:3999`)                                                                                  | 0                               | **0** in 3 inlining files     | **−48.3 %**                    |
+| different `NEXT_PUBLIC_SUPABASE_URL` (`:30222`→`:30299`)                                                                            | 0                               | **0** in 22 inlining files    | not timed separately           |
+| different `NEXT_PUBLIC_SUPABASE_ANON_KEY`                                                                                           | 0                               | **0** in 5 inlining files     | not timed separately           |
+| real branch diff (12 files in `apps/web/src`, +58/−193, identical `bun.lock`), seeded from `main`'s cache (`efd4b57a` → `f1226053`) | 0                               | 0                             | **−30 % wall, −46 % compile**  |
+
+The branch arm is the load-bearing one, because it is the real use case: the
+emitted tree was the **branch's**, not `main`'s — the deleted `seat-pools-table`
+chunk was absent, the shrunk `en.json` chunk was present at the branch's exact
+byte size, and main-only identifiers appeared in zero files. The seed changes
+speed, not content.
+
+**The allowlist is exactly right, and the typecheck is not weakened.** Excluding
+`fetch-cache/`, `config.json` and `.tsbuildinfo` reproduced the cold output above.
+A negative control proves the exclusion costs no diagnostics: injecting
+`export const x: number = "s"` under a warm seeded cache failed the build with
+`TS2322` and `Failed to type check.`
+
+**A cache hit is confirmed by three independent indicators**, so the timings are
+not misread as a faster machine: the compile span is 4–5× faster, the build wrote
+**16 MB** of cache instead of **297 MB**, and a `turbopack-compaction` span
+appears only in the seeded arms.
+
+**The allowlisted root measures 297 MB.** `du -sb
+apps/web/.next/cache/turbopack` on this checkout at the implementation commit:
+`296,885,945` bytes over 39 files, against `298,370,947` for the whole
+`.next/cache` (`fetch-cache` 195,572; `config.json` 185; `.tsbuildinfo`
+1,285,149). So the snapshot body is the cache minus ~1.5 MB, not a second copy of
+the app.
+
 ### Not measured
 
 Everything above times builds; none of it compares what a seeded build _emits_,
 or measures the cases the decisions now depend on. Each item below is an
 experiment, not a number.
 
-- **Cold vs seeded output equality.** The seed's central safety claim is
-  unproven. Experiment: same tree, two isolated worktrees, one cold and one
-  seeded from the matching snapshot; compare every file under `.next` except
-  `BUILD_ID` (static and server chunks, prerender HTML, manifests) byte-for-byte,
-  plus the TypeScript diagnostics; repeat with a different
-  `NEXT_PUBLIC_SITE_URL` in the seeded arm. A negative result withdraws the seed
-  (decisions 1–3 do not ship in this form).
-- **Env-independence hit rate.** The decision-3 match includes the inlined env
-  hash, so a fresh worktree often misses. Experiment: record seed hit/miss and
-  wall time for a changed `NEXT_PUBLIC_SITE_URL` and for a changed `bun.lock`,
-  then decide whether the env hash can be demoted to a recorded field. Until
-  then, the §1 saving stays a ceiling.
+- **A changed `bun.lock`.** Every arm held the lockfile constant, so the match is
+  precaution, not evidence: no run shows whether a seeded build across a changed
+  lockfile emits the old dependency graph, and none is claimed. Experiment: bump
+  one dependency, seed from the previous lockfile's snapshot, and diff the output
+  the way §5 does.
 - **Admin peak RSS.** `apps/admin` reserves one web-sized slot because its own
   peak is unmeasured. Experiment: peak RSS of an `apps/admin` build under the
   same fan-out as §4.
 - **Native vs Docker stack footprint.** The one-slot/two-slot reserve is policy.
   Experiment: RSS of a native Supabase stack vs `docker stats` for a Docker stack
   on the benchmark box.
-- **Turbopack-only seed size.** The allowlist means the seed is smaller than the
-  copied tree. Experiment: `du -sb` the `turbopack/` root of a real
-  `apps/web/.next/cache`.
+- **The 7-day and 100-commit thresholds.** Both are targets, not measurements;
+  no run compares the saving at either boundary.
+- **Reflink copy cost.** Open Question 2: this filesystem has no reflink, so the
+  `cp -c`/`--reflink=auto` path stays unmeasured.
 
 ## Consequences
 
-- **The seed is a best-case ~8 s saving.** The −48 % in Evidence §1 was measured
-  with identical env and an unchanged lockfile, so it is an **upper bound**, not
-  the expected saving. Under the exact identity in decision 3 a fresh worktree
-  normally differs in `NEXT_PUBLIC_*` (its own port → `NEXT_PUBLIC_SITE_URL`) and
-  often in `bun.lock`, so its first build frequently misses and runs cold; the
-  realised hit rate is unmeasured (Evidence, Not measured). Setup cost is ~0.1 s
-  and at most ~272 MB (whole-cache measurement; the allowlisted root is smaller,
-  unmeasured).
+- **The seed saves a measured fraction of the build, not a promise.** Measured
+  seeded-against-cold: **−63.5 %** on the same tree (29.5 s → 10.75 s), **−48.3 %**
+  with a different `NEXT_PUBLIC_SITE_URL`, and **−30 % wall / −46 % compile** on a
+  real 12-file branch seeded from `main` across different ports (Evidence §5).
+  Because the env hash is recorded rather than matched, a fresh worktree's own
+  port no longer costs the seed; the only matched input it can plausibly differ
+  in is `bun.lock`, and a changed lockfile skips the seed (unmeasured, and stated
+  as such). Setup cost is one copy: ~297 MB of `turbopack/` measured, 80–101 ms
+  with `cp -a` (Evidence §1), closer to free where reflink exists.
 - **The seed is best-effort and verified.** Missing or unverifiable snapshot,
   identity mismatch, foreign version, unrecognised cache layout, failed
   free-space preflight, untrusted cache root, failed copy, incomplete manifest or
   an over-cap snapshot never blocks a worktree — the build runs cold, the reason
   is reported once and in `env doctor`, and a failed snapshot is retired instead
   of retried forever.
-- **Snapshot correctness is not proven yet.** Whether a seeded build emits the
-  same bytes as a cold one is unmeasured (Evidence, Not measured); this ADR is
-  Proposed partly on that experiment, and a negative result withdraws the seed.
-- **Disk:** ~270 MB of cache per fresh worktree (the whole-cache figure; it
-  replaces what the cold build writes), ~440 MB after 20 changes, and the 1024 MB
+- **Snapshot correctness is measured, with a stated qualification.** A seeded
+  build is byte-identical to a cold build of the same tree **modulo per-build
+  random values** (`BUILD_ID` and its derivations, three preview-mode values, the
+  RSC manifest encryption key, the sitemap `<lastmod>`): two cold builds differ in
+  the same 14 of 4,573 files, so the seed adds nothing a rebuild does not already
+  change (Evidence §5). The typecheck is not weakened — a planted type error
+  still fails the build under a warm seeded cache — and the three inlined
+  `NEXT_PUBLIC_*` values were each measured with 0 stale occurrences, which is
+  why the env hash is recorded rather than matched. What remains unmeasured is a
+  changed `bun.lock` (still matched) and the admin tree (not covered by v1).
+- **Disk:** ~297 MB of `turbopack/` per fresh worktree (measured on this
+  checkout; it replaces what the cold build writes), ~440 MB after 20 changes,
+  and the 1024 MB
   cap binds only long same-version growth past the measured 20-commit range
   (unmeasured); a published snapshot is always pruned and cannot reach the cap
   through the un-pruned case. Two
@@ -882,9 +1002,14 @@ experiment, not a number.
   Playwright's `webServer` command switch to `env build --no-slot`; cache keys,
   stack lifecycle and shard layout are unchanged. ADR-0011 §11 carries the
   corrected line.
-- **Admin is counted, not exempt.** `apps/admin` builds take the same guard and
-  the same pool as `apps/web`; the pool is a total, never a per-app quota.
-  Admin's peak RSS is unmeasured, so it reserves one web-sized slot.
+- **Admin is counted, not exempt — but it is not snapshot-covered.** `apps/admin`
+  builds take the same guard and the same pool as `apps/web`; the pool is a
+  total, never a per-app quota. Its peak RSS is unmeasured, so it reserves one
+  web-sized slot. Its `apps/admin/.next/cache` is a different tree under the same
+  Next version: v1 neither snapshots nor seeds it (the manifest `scope` is
+  `apps/web:turbopack`), so an admin build always compiles cold. Covering it
+  needs the same equality run against the admin output and a second scope; it is
+  a follow-up, not a silent gap.
 - **No daemon.** All state is files: slot directories and the waiter directory in
   the runtime registry, the grant and the build record in `.dev/`, the snapshot
   directories and manifest under the cache root. Stale slots are reclaimed by pid
@@ -898,12 +1023,13 @@ experiment, not a number.
 - **Platforms degrade to one.** Where memory cannot be measured, one build runs
   with a warning instead of no build running. macOS keeps the admission gate but
   has no OOM-score blast-radius guard; Windows-native is not a build platform.
-- **Out of scope / follow-ups.** The repository work this decision implies —
-  declaring the new environment keys in the schema, making worktree creation's
-  optional seed ergonomic, and updating AGENTS/README — is implementation and
-  lands with #1078 after acceptance, not in this record. A seeded cache does not
-  replace `bun install`: a fresh checkout still installs dependencies before its
-  first build.
+- **Out of scope / follow-ups.** The schema keys (`STUDIQ_CACHE_DIR`,
+  `STUDIQ_CACHE_MAX_MB`, `STUDIQ_CACHE_RESERVE_MB`, `STUDIQ_CACHE_SEED`), the
+  `scripts/spin` seed hook and its `--no-seed-cache` opt-out, and the status and
+  doctor reporting landed with the cache half. `apps/admin` coverage, a changed
+  `bun.lock`, and the 7-day / 100-commit thresholds are the follow-ups above. A
+  seeded cache does not replace `bun install`: a fresh checkout still installs
+  dependencies before its first build, and the seed hook runs after that install.
 - **Turbopack's cache layout is private API.** The allowlist and the key are
   stated at directory-name level; if a Next release renames or restructures the
   root, the seed skips (decision 3) and `env doctor` reports it rather than
@@ -942,15 +1068,26 @@ experiment, not a number.
   byte-capacity-based reservation with the measured per-slot RSS, a recorded
   slot cap, and stack reserves from registry records plus this checkout's
   `.dev/stack.json`.
-- New `scripts/env/lib/build-cache.ts` — snapshot identity + manifest, staging
-  copy taken inside the locked build, publish (verify, atomic pointer swap,
-  retention) after the locks are released, foreign-version prune of the staging
-  copy before publish and of the worktree cache after a successful build; seed
-  (preflight, temp directory, verify, rename) and the allowlist.
+- `scripts/env/lib/build-cache.ts` (implemented) — snapshot identity + manifest,
+  staging copy taken inside the locked build, publish (verify, atomic pointer
+  swap, retention) after the locks are released, foreign-version prune of the
+  staging copy before publish and of the worktree cache after a successful build;
+  seed (preflight, temp directory, verify, rename) and the allowlist. The
+  write-then-rename helper lives in `scripts/env/lib/atomic-file.ts` and is shared
+  with the registry records; the remaining private copies in `state.ts` are a
+  follow-up, not this change. The
+  seed's entrypoint is `scripts/env/seed-cache.ts`, not an `env` command: it is
+  the read side only and `scripts/spin` spawns it by path after `bun install`
+  (`STUDIQ_CACHE_SEED=0` / `--no-seed-cache` opts out). `env build` seeds too
+  (when `.next/cache` is absent and no build holds the mutex), so a worktree
+  created before a snapshot existed still picks one up; `env ensure`'s rebuild
+  does not — it is the rebuild transaction, and worktree creation already seeded.
 - `scripts/env/lib/build.ts` / `commands/build.ts` — take the staging copy inside
   the locked scope, run publish after it in the command (even when the
-  fingerprint was already current); `--app <web|admin>`, `--no-slot`,
-  `--no-lock`; mint the single-use grant in every mode (slot, `--no-slot`,
+  fingerprint was already current); a producer-ineligible checkout (linked
+  worktree, dirty tree, `HEAD` ≠ `origin/main`) skips the copy entirely and
+  reports the gate instead; `--app <web|admin>` (admin is not snapshot-covered),
+  `--no-slot`, `--no-lock`; mint the single-use grant in every mode (slot, `--no-slot`,
   `--no-lock`), delete `.dev/build.json` immediately before the spawn, record
   only on success, and move `.next` aside on a failed exit before the slot is
   released.
@@ -965,8 +1102,11 @@ experiment, not a number.
 - `scripts/check-build-entrypoints.ts` — wired into `lint`; fails a workflow or
   Playwright file that invokes `next build` or a bare `bun run build`.
 - `scripts/env/commands/status.ts` / `doctor.ts` — slots, waiter count, the
-  artifact state and failed artifacts, snapshot manifest line and staleness;
-  read-only, no `du`.
+  artifact state and failed artifacts, snapshot size/files/commit/`behindCommits`
+  (labelled "at publish"), `turbopack/v*` names from one shallow `readdir`, the
+  `.next/cache` layout and the last publish verdict; read-only, no `du`, no live
+  commit distance. `--json` carries the same fields, with `null` where a field
+  could not be read.
 
 ## Rollback
 
@@ -988,19 +1128,29 @@ cache mechanisms in two independent steps:
   **Restore the callers**: put `bun run build` back in the three `verify.yml` build
   steps and in Playwright's `webServer` command, because `--no-slot` no longer
   exists. This step is required for CI and E2E to stay green.
-- **Cache.** Delete `$STUDIQ_CACHE_DIR` — the snapshot directories, their
-  manifests and the `current` pointer — and remove the seed hook from worktree
-  creation, the snapshot step from `env build`, the snapshot/status reporting
-  (status then prints `null`/`unknown`) and `snapshot.lock` with it. Every
+- **Cache.** Delete every cache root this machine may use — `$STUDIQ_CACHE_DIR`,
+  or `${XDG_CACHE_HOME:-$HOME/.cache}/studiq` — including the snapshot
+  directories, their manifests, `staging/`, `retired.json` and the `current`
+  pointer. Then remove the mechanism: the seed block from `scripts/spin` (and the
+  `--no-seed-cache` flag and its help line), `scripts/env/seed-cache.ts` plus its
+  `knip.ts` entry, the `env build` staging and publish step
+  (`publishSnapshotRun`, the `snapshot` option on `ProductionBuildOptions`, the
+  `staged`/`snapshotSkipped` fields on `BuildResult`), the worktree foreign-version
+  prune that came with it, the snapshot field in `status`/`doctor`/`--json`
+  (`SnapshotStatus`, `SnapshotRunStatus`, `BuildCacheReport`) so status prints
+  `none`/`unknown`, `scripts/env/lib/build-cache.ts` and `withSnapshotLock` from
+  `lib/locks.ts`, and the four `STUDIQ_CACHE_*` keys from `.env.schema`. Every
   worktree then builds cold, and a later re-enable cannot pick up a stale
-  snapshot.
+  snapshot. Keep the `envHash` in `.dev/build.json` — that is the build record,
+  not the cache.
 
 Every removal is correctness-neutral except the CI caller restoration, which is
 required for CI to stay green. Neither rollback affects the build fingerprint:
 with no snapshot a build is simply cold, and with one exclusive lock a build is
-simply serialized. Removing the seed also removes this ADR's dependence on the
-unproven cold-vs-seeded equivalence (Evidence, Not measured). Both are reversible
-in the other direction by restoring the files. Neither rollback changes the
+simply serialized. Removing the seed also removes this ADR's dependence on
+the cold-vs-seeded equivalence measurement (Evidence §5) and the env-hash
+demotion with it; both are reversible in the other direction by restoring the
+files and re-running the experiment. Neither rollback changes the
 fingerprint or the `next build` invocation; removing the seed restores cold
 builds.
 
@@ -1011,6 +1161,12 @@ The benchmark scripts and CSVs were run from this workspace, outside the repo:
 `fanarm.sh`, plus `results.csv`, `staleness.csv`, `churn.csv`, `fanout.csv`).
 They are local-only; commit a trimmed `scripts/bench/` harness only if the team
 wants the numbers to be re-runnable.
+
+§5's harness is local-only too, beside the experiment's worktrees:
+`/workspaces/lucky-harbor/.tmp/cache-eq-evidence/` (`cmp.py`, `arms3.jsonl`, the
+arm scripts). It builds one arm cold and one from a copied `turbopack/` root,
+normalises the 14 per-build random files and compares every remaining file
+byte-for-byte. The branch arm used a real branch pair (`efd4b57a` → `f1226053`).
 
 ## References
 

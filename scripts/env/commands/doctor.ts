@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
@@ -14,6 +15,17 @@ import {
 } from '../lib/grafana';
 import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
 import { formatBuildSlots, readBuildSlots } from '../lib/locks';
+import {
+  CACHE_KNOWN_EXCLUSIONS,
+  cacheLayoutRecognised,
+  cacheMaxBytes,
+  checkCacheRoot,
+  classifyCacheLayout,
+  readCurrentSnapshotId,
+  readLastPublish,
+  readSnapshotStatus,
+  resolveCacheDir,
+} from '../lib/build-cache';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
 import {
@@ -49,11 +61,23 @@ export interface ObservabilityStatus {
   mcpBinary: boolean;
 }
 
+export interface BuildCacheReport {
+  root: string;
+  /** Why the root is unusable; null when it is trusted. */
+  problem: string | null;
+  snapshot: ReturnType<typeof readSnapshotStatus>;
+  lastPublish: ReturnType<typeof readLastPublish>;
+  layout: string[] | null;
+  /** Whether `.next/cache` is one the snapshot step may read. */
+  layoutRecognised: boolean | null;
+}
+
 export interface DoctorReport {
   ok: boolean;
   problems: string[];
   warnings: string[];
   observability: ObservabilityStatus;
+  cache: BuildCacheReport;
   lines: string[];
 }
 
@@ -79,6 +103,23 @@ export function observabilityLabel(upCount: number, total: number): string {
 
 function isWebHealthy(code: number): boolean {
   return code >= 200 && code < 400;
+}
+
+/**
+ * Whether the cache root already holds published snapshot directories.
+ *
+ * A pointer that is missing while snapshots exist means a publish was interrupted
+ * between the rename and the swap; the next publish prunes or restores it. One
+ * `readdir`, no manifest read.
+ */
+function cacheRootHasSnapshots(cacheRoot: string): boolean {
+  try {
+    return readdirSync(join(cacheRoot, 'snapshots')).some(
+      (name) => !['current', 'retired.json', 'last-publish.json', 'staging'].includes(name),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function stackLines(stack: StackStatus | null): string[] {
@@ -128,6 +169,17 @@ async function buildReport(): Promise<DoctorReport> {
   // Read-only: one shallow `readdir` plus the recorded cap. Reclamation belongs
   // to the admission path, so doctor reports staleness and never cleans it.
   const slots = readBuildSlots();
+  // Read-only, like the slots: one pointer read, one manifest read, two shallow
+  // `readdir`s. The cache root is validated without creating it.
+  const cacheRoot = resolveCacheDir();
+  const cacheRootProblem = checkCacheRoot(cacheRoot, REPO_ROOT, { create: false });
+  const cacheSnapshot = readSnapshotStatus({ cacheDir: cacheRoot });
+  const snapshotPointerMissing =
+    cacheSnapshot === null && readCurrentSnapshotId(cacheRoot) === null
+      ? cacheRootHasSnapshots(cacheRoot)
+      : false;
+  const lastPublish = readLastPublish(cacheRoot);
+  const worktreeCacheLayout = classifyCacheLayout(join(REPO_ROOT, 'apps', 'web', '.next', 'cache'));
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
   // Same probe `env:ports` uses: a bind failure includes a listener on any
@@ -234,6 +286,34 @@ async function buildReport(): Promise<DoctorReport> {
       `${slots.stale} stale build slot(s): the next build kills the recorded group and frees the slot, and invalidates .next only for this checkout`,
     );
   }
+  if (cacheRootProblem !== null) {
+    warnings.push(`build cache: ${cacheRootProblem}; snapshots and seeds are refused`);
+  }
+  if (snapshotPointerMissing) {
+    warnings.push(
+      `build cache ${cacheRoot} holds snapshots but its 'current' pointer is missing; the next publish restores it`,
+    );
+  }
+  if (lastPublish?.outcome === 'refused') {
+    warnings.push(
+      `last snapshot publish was refused: ${lastPublish.reason ?? 'unknown reason'} (the previous snapshot is kept)`,
+    );
+  }
+  const cacheCapBytes = cacheMaxBytes();
+  if (
+    cacheCapBytes > 0 &&
+    lastPublish?.sizeBytes != null &&
+    lastPublish.sizeBytes > cacheCapBytes
+  ) {
+    warnings.push(
+      `last snapshot was ${Math.round(lastPublish.sizeBytes / 1024 / 1024)} MB, over the ${Math.round(cacheCapBytes / 1024 / 1024)} MB cap (STUDIQ_CACHE_MAX_MB)`,
+    );
+  }
+  if (worktreeCacheLayout !== null && !cacheLayoutRecognised(worktreeCacheLayout)) {
+    warnings.push(
+      `apps/web/.next/cache layout is unrecognised (${worktreeCacheLayout.entries.join(', ')}); the snapshot step and seeds are skipped until the allowlist matches`,
+    );
+  }
   if (slots?.degraded) {
     warnings.push(
       `build memory gate degraded (${slots.detail ?? 'the memory probe failed'}); concurrent builds are capped at 1`,
@@ -316,6 +396,35 @@ async function buildReport(): Promise<DoctorReport> {
       `  cap        ${slots.cap ?? 'unknown'} (recorded when derived; never recomputed here)`,
     );
     lines.push(`  memory     ${slots.detail ?? (slots.degraded ? 'degraded' : 'ok')}`);
+  }
+
+  lines.push('', '▸ Build cache');
+  lines.push(
+    `  root       ${cacheRoot}${cacheRootProblem === null ? ' (trusted)' : ` (refused: ${cacheRootProblem})`}`,
+  );
+  if (cacheSnapshot === null) {
+    lines.push('  snapshot   none (no published snapshot; every worktree builds cold)');
+  } else {
+    const size =
+      cacheSnapshot.sizeBytes === null
+        ? 'unknown'
+        : `${(cacheSnapshot.sizeBytes / 1024 / 1024).toFixed(1)} MB`;
+    const files = cacheSnapshot.fileCount === null ? 'unknown' : `${cacheSnapshot.fileCount} files`;
+    lines.push(`  snapshot   ${cacheSnapshot.id} — ${size}, ${files}`);
+    lines.push(
+      `  commit     ${cacheSnapshot.commit ?? 'unknown'} (at publish: ${cacheSnapshot.behindCommits ?? 'unknown'} behind origin/main)`,
+    );
+    lines.push(
+      `  turbopack  ${cacheSnapshot.turbopack === null ? 'unknown' : cacheSnapshot.turbopack.join(', ') || 'none'}`,
+    );
+  }
+  lines.push(
+    `  layout     ${worktreeCacheLayout === null ? 'none (no apps/web/.next/cache yet)' : `${worktreeCacheLayout.entries.join(', ')} (${cacheLayoutRecognised(worktreeCacheLayout) ? 'recognised' : `unrecognised; known exclusions: ${CACHE_KNOWN_EXCLUSIONS.join(', ')}`})`}`,
+  );
+  if (lastPublish !== null) {
+    lines.push(
+      `  last       ${lastPublish.outcome}${lastPublish.reason ? ` (${lastPublish.reason})` : ''} at ${lastPublish.at}`,
+    );
   }
 
   lines.push(
@@ -428,7 +537,17 @@ async function buildReport(): Promise<DoctorReport> {
     lines.push('', '✔ No ownership or port conflicts for this checkout.');
   }
 
-  return { ok: problems.length === 0, problems, warnings, observability, lines };
+  const cache: BuildCacheReport = {
+    root: cacheRoot,
+    problem: cacheRootProblem,
+    snapshot: cacheSnapshot,
+    lastPublish,
+    layout: worktreeCacheLayout === null ? null : worktreeCacheLayout.entries,
+    layoutRecognised:
+      worktreeCacheLayout === null ? null : cacheLayoutRecognised(worktreeCacheLayout),
+  };
+
+  return { ok: problems.length === 0, problems, warnings, observability, cache, lines };
 }
 
 export async function runDoctor(parsed: ParsedCommand): Promise<number> {
@@ -439,6 +558,7 @@ export async function runDoctor(parsed: ParsedCommand): Promise<number> {
       problems: report.problems,
       warnings: report.warnings,
       observability: report.observability,
+      cache: report.cache,
     });
   } else {
     for (const line of report.lines) writeLine(line);
