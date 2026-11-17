@@ -1,4 +1,6 @@
 import {
+  accessSync,
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -198,6 +200,53 @@ async function runningStack(harness: Harness): Promise<void> {
   const http = await startHttpServer(200);
   harness.track(() => http.close());
   harness.setStatusFixture(stackStatusFixture({ apiUrl: http.url, apiPort: http.port }));
+}
+
+/**
+ * A `git` first on `PATH` that records its arguments and then runs the real one.
+ *
+ * It is transparent, so anything that does call git still works — which is the
+ * point: the log says whether a code path ran `git` at all, not whether it
+ * succeeded. Restore before the assertions so a failure cannot leak the shim
+ * into another test.
+ */
+function installGitShim(): { calls(): string[]; restore(): void } {
+  const realGit = (process.env.PATH ?? '')
+    .split(':')
+    .filter(Boolean)
+    .map((dir) => join(dir, 'git'))
+    .find((path) => {
+      try {
+        accessSync(path, constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  if (realGit === undefined) throw new Error('no git on PATH to wrap');
+  const shimDir = mkdtempSync(join(tmpdir(), 'studiq-env-git-shim-'));
+  dirs.push(shimDir);
+  const log = join(shimDir, 'calls.log');
+  // The log path is baked into the shim: a second env key would have to be
+  // declared in `.env.schema` for a test-only scratch file.
+  writeFileSync(
+    join(shimDir, 'git'),
+    `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${log}"\nexec ${realGit} "$@"\n`,
+    { mode: 0o755 },
+  );
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${shimDir}:${originalPath ?? ''}`;
+  return {
+    calls: () =>
+      existsSync(log)
+        ? readFileSync(log, 'utf8')
+            .split('\n')
+            .filter((line) => line !== '')
+        : [],
+    restore: () => {
+      process.env.PATH = originalPath;
+    },
+  };
 }
 
 /** A temporary `apps/web/.next` with a `BUILD_ID`, as a build leaves it. */
@@ -513,11 +562,12 @@ describe('a failed build is never current', () => {
 });
 
 describe('the invalidation happens before the slot is released', () => {
-  it('still holds its slot record when a failed build’s artifact is moved aside', async () => {
+  it('has moved the artifact aside and still holds its slot when the hook runs', async () => {
     const dir = registry();
     const artifact = newArtifact();
     writeRecord();
     let slotAtInvalidation: boolean | null = null;
+    let corpsesAtInvalidation: number | null = null;
 
     const result = await buildModule.runProductionBuild(
       'env-hash',
@@ -528,16 +578,19 @@ describe('the invalidation happens before the slot is released', () => {
         artifactDir: artifact,
         onInvalidate: () => {
           slotAtInvalidation = existsSync(join(dir, 'build-slots', '1'));
+          corpsesAtInvalidation = failedSiblings(artifact).length;
         },
       },
       { app: 'web', admission: 'slot' },
     );
 
     expect(result.ok).toBe(false);
-    // Releasing the slot first would admit the next build over an artifact that
-    // is still there: the invalidation is inside the slot's lifetime.
+    // Both facts are required: the slot must still be held (releasing it first
+    // would admit the next build over an artifact that is still there) and the
+    // move-aside must already have happened (a hook that only proves the slot
+    // is held would pass with the invalidation deferred past the release).
     expect(slotAtInvalidation).toBe(true);
-    expect(failedSiblings(artifact)).toHaveLength(1);
+    expect(corpsesAtInvalidation).toBe(1);
     expect(existsSync(join(dir, 'build-slots', '1'))).toBe(false);
   });
 });
@@ -747,6 +800,52 @@ describe('status and serve report the record, not just the fingerprint', () => {
     expect(snapshot.build.present).toBe(true);
     expect(snapshot.build.state).toBe('stale');
     expect(snapshot.build.fingerprint).toBe('recorded-from-another-tree');
+  });
+
+  it('answers missing and unrecorded without running git at all', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    applyHarnessEnv(harness);
+    const artifact = newArtifact();
+    // The headline `unrecorded`: a wrapper build's record, then a raw
+    // `next build` that moved `BUILD_ID` past it. The fingerprint cannot help —
+    // the tree still matches — so the mtime rule has to decide it for free.
+    writeRecord({ builtAt: new Date(Date.now() - 60_000).toISOString() });
+    const missingArtifact = join(dirname(artifact), '.next-missing');
+
+    const shim = installGitShim();
+    let unrecorded: Awaited<ReturnType<SnapshotModule['collectSnapshot']>>;
+    let missing: Awaited<ReturnType<SnapshotModule['collectSnapshot']>>;
+    try {
+      unrecorded = await snapshotModule.collectSnapshot({
+        artifactDir: artifact,
+        stack: null,
+        skipStackLookup: true,
+        web: { pid: null, http: 0 },
+        supabaseHttp: 0,
+      });
+      missing = await snapshotModule.collectSnapshot({
+        artifactDir: missingArtifact,
+        stack: null,
+        skipStackLookup: true,
+        web: { pid: null, http: 0 },
+        supabaseHttp: 0,
+      });
+    } finally {
+      shim.restore();
+    }
+
+    expect(unrecorded.build.state).toBe('unrecorded');
+    expect(missing.build.state).toBe('missing');
+    // The shim is live: `currentCommit` ran through it, so an empty list below
+    // means the fingerprint's commands never ran rather than that the shim was
+    // bypassed.
+    expect(shim.calls().some((line) => line.includes('--short HEAD'))).toBe(true);
+    // `currentCommit` still runs git; the fingerprint's two commands must not.
+    const fingerprinted = shim
+      .calls()
+      .filter((line) => line.includes('HEAD^{tree}') || line.includes('--porcelain'));
+    expect(fingerprinted).toEqual([]);
   });
 
   it('refuses to serve an unrecorded artifact and names the state', async () => {

@@ -149,13 +149,41 @@ export interface ExpectedBuild {
 }
 
 /**
- * Classify `apps/web/.next` against the record and the expected build.
+ * Whether the artifact is newer than the record describes it.
  *
- * The mtime rule is what makes a raw `next build` honest: Next writes
- * `BUILD_ID` at the end of every build, so an artifact whose `BUILD_ID` is
- * newer than the record's `builtAt` is not the artifact the record describes —
- * no matter how well the fingerprint happens to match. A record without a
- * readable `builtAt` cannot prove anything and is treated the same way.
+ * Next writes `BUILD_ID` at the end of every build, so an artifact whose
+ * `BUILD_ID` mtime is past the record's `builtAt` is not the artifact the
+ * record names — no matter how well the fingerprint happens to match. A record
+ * without a readable `builtAt` cannot prove anything and is treated the same
+ * way. `null` means there is no `BUILD_ID` at all.
+ *
+ * This is the whole mtime rule, shared by the classifier and the status
+ * snapshot: it is decidable from the filesystem alone, so an artifact a raw
+ * `next build` replaced never pays for a fingerprint.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function artifactOutlivesRecord(
+  record: BuildState,
+  artifactDir: string = buildArtifactDir(),
+): boolean | null {
+  let buildIdMtimeMs: number;
+  try {
+    buildIdMtimeMs = statSync(join(artifactDir, 'BUILD_ID')).mtimeMs;
+  } catch {
+    return null;
+  }
+  const builtAtMs = Date.parse(record.builtAt);
+  // `mtimeMs` carries sub-millisecond precision while `builtAt` is an ISO
+  // string, so both sides are floored to whole milliseconds: a build that lands
+  // in the same millisecond as its record is still current, and a raw build
+  // seconds later is still caught.
+  if (Number.isNaN(builtAtMs)) return true;
+  return Math.floor(buildIdMtimeMs) > builtAtMs;
+}
+
+/**
+ * Classify `apps/web/.next` against the record and the expected build.
  *
  * `artifactDir` is `apps/web/.next` in production and a temporary directory in
  * the tests, which is the only way to exercise the mtime rule without touching
@@ -167,20 +195,12 @@ export function classifyBuildArtifact(
   expected: ExpectedBuild,
   artifactDir: string = buildArtifactDir(),
 ): BuildArtifactState | null {
-  let buildIdMtimeMs: number;
-  try {
-    buildIdMtimeMs = statSync(join(artifactDir, 'BUILD_ID')).mtimeMs;
-  } catch {
-    return 'missing';
-  }
+  if (!buildArtifactPresent(artifactDir)) return 'missing';
   const record = readBuildState();
   if (!record) return 'unrecorded';
-  const builtAtMs = Date.parse(record.builtAt);
-  // `mtimeMs` carries sub-millisecond precision while `builtAt` is an ISO
-  // string, so both sides are floored to whole milliseconds: a build that lands
-  // in the same millisecond as its record is still current, and a raw build
-  // seconds later is still caught.
-  if (Number.isNaN(builtAtMs) || Math.floor(buildIdMtimeMs) > builtAtMs) return 'unrecorded';
+  // `null` here means `BUILD_ID` vanished between the two stats; it is still not
+  // the recorded artifact, so it reads as unrecorded rather than throwing.
+  if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
   if (expected.envHash !== null && record.envHash !== expected.envHash) return 'stale';
   if (expected.fingerprint === null) return null;
   return record.fingerprint === expected.fingerprint ? 'current' : 'stale';

@@ -11,6 +11,7 @@ import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import {
+  artifactOutlivesRecord,
   buildArtifactDir,
   buildArtifactPresent,
   classifyBuildArtifact,
@@ -116,19 +117,24 @@ function sharedProjectId(): string | null {
  * Status does not read the stack's keys, so it compares the tree with the
  * recorded build's **own** env hash: `current` here means "this is the recorded
  * build of this tree". `env serve` and `env build` compare the inlined
- * environment too, so an env change reads as `stale` there and is rebuilt. The
- * fingerprint is computed only when a record *and* an artifact are both
- * present, so `missing` and `unrecorded` cost no `git` call.
+ * environment too, so an env change reads as `stale` there and is rebuilt.
+ *
+ * The cheap answers come first: no `BUILD_ID` is `missing`, and an artifact a
+ * raw `next build` moved past the record is `unrecorded`, both decided from the
+ * filesystem. Only `current` and `stale` pay for the fingerprint (two `git`
+ * calls).
  */
 function artifactState(
   record: ReturnType<typeof readBuildState>,
   artifactDir: string,
 ): BuildArtifactState | null {
-  // `classifyBuildArtifact` decides `missing`/`unrecorded` from the filesystem
-  // alone; computing a fingerprint here would pay for a verdict it discards.
   if (!record || !buildArtifactPresent(artifactDir)) {
     return classifyBuildArtifact({ fingerprint: null, envHash: null }, artifactDir);
   }
+  // The same mtime rule the classifier applies, ahead of the fingerprint: a raw
+  // `next build` after a wrapper build is the headline `unrecorded` case, and it
+  // must not cost two `git` calls to answer.
+  if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
   let fingerprint: string | null;
   try {
     fingerprint = computeBuildFingerprint({

@@ -704,10 +704,11 @@ measurement that will not appear, and never refuses every build.
      the record's **own** `envHash`: `current` there means "this is the recorded
      build of this tree". `env serve` and `env build` compute the fingerprint
      from the environment they would build for, so a changed `NEXT_PUBLIC_*`
-     value reads as `stale` there and is rebuilt. The fingerprint is computed
-     only when a record _and_ an artifact are both present — status stats
-     `BUILD_ID` first and short-circuits otherwise — so `missing` and
-     `unrecorded` cost no `git` call. The consequence for an agent is exact:
+     value reads as `stale` there and is rebuilt. Only `current` and `stale` pay
+     for the fingerprint: status decides `missing` (no `BUILD_ID`) and
+     `unrecorded` (no record, or a `BUILD_ID` newer than `builtAt`) from the
+     filesystem first, so the headline case — a raw `next build` after a wrapper
+     build — costs no `git` call. The consequence for an agent is exact:
      `status` can say `current` while `serve` refuses `stale`, when only the
      inlined environment moved; `status` never claims the environment.
 

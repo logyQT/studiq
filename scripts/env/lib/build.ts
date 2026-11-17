@@ -266,9 +266,10 @@ export interface ProductionBuildDeps {
    */
   artifactDir?: string;
   /**
-   * Test seam: called immediately before a failed web build's artifact is
-   * invalidated, still inside the slot it held. That is what lets a test prove
-   * the invalidation happens **before** the slot is released.
+   * Test seam: called **after** a failed web build's artifact was invalidated,
+   * still inside the slot it held. A test that asserts both facts here — the
+   * slot record is present, and the corpse already exists — fails if either
+   * side of the invalidation moves past the slot's release.
    */
   onInvalidate?(): void;
   /**
@@ -413,8 +414,8 @@ async function buildOnce(
   } catch (error) {
     // A spawn that threw still may have written part of `.next`.
     if (web) {
-      deps.onInvalidate?.();
       invalidateFailedArtifact(deps);
+      deps.onInvalidate?.();
     }
     throw error;
   }
@@ -425,8 +426,8 @@ async function buildOnce(
   // Before the slot is released: a nonzero or timed-out build leaves an
   // artifact no serve path may report as current (ADR-0014, decision 7).
   if (!ok && web) {
-    deps.onInvalidate?.();
     invalidated = invalidateFailedArtifact(deps);
+    deps.onInvalidate?.();
   }
   // A green build is when the previous corpse stops being evidence: the tree it
   // described has been replaced by one that builds.
