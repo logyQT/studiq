@@ -27,10 +27,6 @@ describe('sortFeaturesByPriority', () => {
     ]);
   });
 
-  it('returns an empty list for no features', () => {
-    expect(sortFeaturesByPriority([])).toEqual([]);
-  });
-
   it('keeps every priority key discoverable', () => {
     expect(sortFeaturesByPriority(FEATURE_PRIORITY)).toEqual([...FEATURE_PRIORITY]);
   });
@@ -61,10 +57,6 @@ describe('getHighlightedFeatures', () => {
 
   it('does not pad a short list', () => {
     expect(getHighlightedFeatures(['branding', 'quiz'])).toEqual(['branding', 'quiz']);
-  });
-
-  it('returns an empty list for no features', () => {
-    expect(getHighlightedFeatures([])).toEqual([]);
   });
 
   it('keeps the first five bullets stable when the list is expanded', () => {

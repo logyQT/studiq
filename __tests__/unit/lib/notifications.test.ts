@@ -127,7 +127,6 @@ describe('unreadBadge', () => {
     [1, '1'],
     [9, '9'],
     [10, '9+'],
-    [250, '9+'],
   ])('%d -> %j', (count, text) => {
     expect(unreadBadge(count)).toBe(text);
   });

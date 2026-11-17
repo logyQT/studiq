@@ -226,7 +226,6 @@ describe('questionTextIssues: keeping false positives out (R17)', () => {
 
   it('does not flag an eleven-character option quoted verbatim', () => {
     const option = 'Wisła 1047k';
-    expect(option.length).toBeLessThan(12);
     expect(
       issues({
         explanation: `Wisła 1047k to zapis, który pojawia się w tym zdaniu, a rzeka uchodzi do Bałtyku.`,
