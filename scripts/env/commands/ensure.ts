@@ -43,6 +43,8 @@ import {
 } from '../lib/rebuild';
 import {
   acquireCheckoutLock,
+  buildInProgress,
+  buildInProgressFailure,
   pidAlive,
   withClaimsLock,
   withReleasedCheckoutLock,
@@ -170,6 +172,11 @@ export async function startWebReplacement(input: {
   webPid: number | null;
   timeoutSeconds?: number;
 }): Promise<{ pid: number; http: number }> {
+  // A build in this worktree owns `.next` and holds the mutex for its whole run;
+  // `checkout.lock` is free for it, so this is the only fact that says the
+  // artifact is being written. Refuse before stopping or starting anything.
+  const build = buildInProgress();
+  if (build) throw buildInProgressFailure(build);
   if (input.webPid !== null) stopWebServerForReplacement();
   const pid = startWebServer({
     appPort: input.appPort,
@@ -694,10 +701,10 @@ export async function runEnsure(
   appendEnvLog(`ensure: profile=${options.profile} stack=${cliStackName ?? 'default'}`);
 
   // One lock per checkout: the app-port lease and the web claim are authoritative
-  // while it is held. The build lock is taken later, inside the build, and the
-  // checkout lock is deliberately released around that build (see
-  // `rebuildWithoutCheckoutLock`) so a concurrent `down` is never blocked for
-  // the whole build.
+  // while it is held. The build's slot and per-worktree mutex are taken later,
+  // inside the build, and the checkout lock is deliberately released around that
+  // build (`withReleasedCheckoutLock`) so a concurrent `down` is never blocked
+  // for the whole build.
   const lock = await acquireCheckoutLock();
   try {
     // Settle an artifact left behind by an interrupted rebuild before the lease

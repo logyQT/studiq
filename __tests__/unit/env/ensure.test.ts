@@ -129,6 +129,12 @@ interface RebuildModule {
 
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-ensure-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
+// The rebuild and the replacement start read this worktree's build mutex from
+// the registry; keep that off the developer's real one, where a running build
+// would refuse these fixtures.
+const ensureRegistryDir = mkdtempSync(join(tmpdir(), 'studiq-env-ensure-registry-'));
+const savedEnsureRegistry = process.env.STUDIQ_DEV_REGISTRY;
+process.env.STUDIQ_DEV_REGISTRY = ensureRegistryDir;
 
 /**
  * Per-file base for the runs that need a real (bind-checked) app port.
@@ -150,9 +156,16 @@ const webModule = await loadEnvModule<WebModule>('lib/web.ts');
 const ensureModule = await loadEnvModule<EnsureModule>('commands/ensure.ts');
 const exitModule = await loadEnvModule<ExitModule>('lib/exit.ts');
 const rebuildModule = await loadEnvModule<RebuildModule>('lib/rebuild.ts');
+const locksModule = await loadEnvModule<{
+  worktreeKey(root?: string): string;
+  processStartTime(pid: number): string | null;
+}>('lib/locks.ts');
 
 afterAll(() => {
   rmSync(stateDir, { recursive: true, force: true });
+  rmSync(ensureRegistryDir, { recursive: true, force: true });
+  if (savedEnsureRegistry === undefined) delete process.env.STUDIQ_DEV_REGISTRY;
+  else process.env.STUDIQ_DEV_REGISTRY = savedEnsureRegistry;
 });
 
 const harnesses: Harness[] = [];
@@ -358,6 +371,45 @@ describe('env:ensure never starts a replacement over a surviving server', () => 
     } finally {
       stop.mockRestore();
       start.mockRestore();
+    }
+  });
+
+  it('refuses to start a replacement while a build holds this worktree mutex', async () => {
+    const mutex = join(
+      ensureRegistryDir,
+      'build-slots',
+      'worktrees',
+      locksModule.worktreeKey(REPO_ROOT),
+    );
+    mkdirSync(mutex, { recursive: true, mode: 0o700 });
+    writeFileSync(join(mutex, 'pid'), `${process.pid}\n`);
+    writeFileSync(join(mutex, 'start'), `${locksModule.processStartTime(process.pid)}\n`);
+    writeFileSync(join(mutex, 'token'), 'live-build\n');
+    writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
+    const stop = vi.spyOn(webModule, 'stopWebServerForReplacement');
+    const start = vi.spyOn(webModule, 'startWebServer');
+
+    try {
+      const failure = await ensureModule
+        .startWebReplacement({
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          webPid: 4242,
+        })
+        .then(() => null)
+        .catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+      if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+      expect(failure.message).toContain(`pid ${process.pid}`);
+      // Nothing was stopped and no server was started over the build's artifact.
+      expect(stop).not.toHaveBeenCalled();
+      expect(start).not.toHaveBeenCalled();
+    } finally {
+      stop.mockRestore();
+      start.mockRestore();
+      rmSync(join(ensureRegistryDir, 'build-slots'), { recursive: true, force: true });
     }
   });
 

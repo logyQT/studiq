@@ -1,8 +1,8 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
-import { contractWithLease } from '../lib/contract-lease';
-import { withCheckoutLock } from '../lib/locks';
+import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
+import { buildInProgress, buildInProgressFailure, withCheckoutLock } from '../lib/locks';
 import { readStack } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
 import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
@@ -63,12 +63,16 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       );
     }
 
+    // A build owns `.next` for its whole run and `checkout.lock` is deliberately
+    // free for it, so the build record and the fingerprint cannot tell that the
+    // artifact is half-written. Starting a server here would serve it.
+    const build = buildInProgress();
+    if (build) throw buildInProgressFailure(build);
+
     const base = readContract();
     const stackName = options.stack ?? base.stackName;
     const contract = contractWithLease({ ...base, stackName });
-    process.env.APP_PORT = String(contract.appPort);
-    process.env.APP_URL = contract.appUrl;
-    process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+    applyContractEnv(contract);
     appendEnvLog(`serve: stack=${stackName ?? 'default'} shared=${contract.shared}`);
 
     const state = readStackState();

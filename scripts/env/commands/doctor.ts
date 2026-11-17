@@ -231,7 +231,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (slots && slots.stale) {
     warnings.push(
-      `${slots.stale} stale build slot(s): the next build kills the group, invalidates .next and frees the slot`,
+      `${slots.stale} stale build slot(s): the next build kills the recorded group and frees the slot, and invalidates .next only for this checkout`,
     );
   }
   if (slots?.degraded) {

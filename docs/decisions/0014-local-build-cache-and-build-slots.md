@@ -300,6 +300,15 @@ assumption.
      the same worktree waits on the mutex inside the same deadline and prints the
      holder's slot; it never runs concurrently with the first. If the holder's
      identity is dead, the mutex is reclaimed under the liveness rule below.
+     The mutex is also the **read-only "a build is live here" signal**: `env serve`,
+     `env ensure`'s replacement start and the rebuild prelude read it and refuse
+     (exit 6) naming the holder's pid, start time and slot, because
+     `checkout.lock` is deliberately free for the build and the fingerprint
+     describes the source tree, not the artifact. The rebuild prelude reads it
+     after it claims the handover record — the claim keeps a later build out, the
+     read keeps the prelude from moving `.next` under an earlier one — and never
+     takes the mutex itself, which would deadlock the non-reentrant directory
+     mutex `runProductionBuild` takes below.
    - **Both Next apps draw on one pool.** `apps/admin` is a second Next app and a
      second full build; its `build` script takes the same guard and the same slot
      as `apps/web`. A pool of `n` admits `n` Next builds in total, never `n` per
@@ -310,22 +319,29 @@ assumption.
      cgroup v2 is `memory.max`/`memory.current`, v1 is
      `memory.limit_in_bytes`/`memory.usage_in_bytes`; a cgroup value of `max`
      means no limit. `capacityBytes = min(MemTotal, cgroup max)`. Fall back to
-     the host reading only when no cgroup limit exists, and log
-     `build: no cgroup limit; using host MemAvailable` on every admission — a
-     host reading inside a limited sandbox is the failure this decision exists to
-     prevent.
+     the host reading only when no cgroup limit exists, and print
+     `build: no cgroup limit; using host MemAvailable` once per invocation (not
+     once per backoff tick — a 30-minute wait would repeat it hundreds of times) —
+     a host reading inside a limited sandbox is the failure this decision exists
+     to prevent.
    - **Reservation.** Admit only when both
      `capacityBytes − ((activeSlots + 1) × SLOT_RSS + stackReserve) >= MIN_FREE`
      and `free >= MIN_FREE`, with `SLOT_RSS = 3.9 GB` (measured: one warm build
      peaks at 3.93 GB RSS across 18 processes) and `MIN_FREE = 4.5 GB` (a target,
-     not a measurement). The candidate build counts as one slot. On the 19.9 GB
-     benchmark box the first test admits 3 (3 × 3.9 + 4.5 = 16.2 GB) and refuses
-     a fourth (4 × 3.9 + 4.5 = 20.1 GB), which matches the measured safe point:
-     three concurrent builds had ~2.5 GB headroom and four went into swap
-     (Evidence §4). The second test catches non-build consumers that the
-     byte-capacity test does not model (a dev server, an unrecorded stack
-     process). **The ceiling is 3 until Open Question 1 is measured; memory is
-     the only input that lowers it.**
+     not a measurement). The candidate build counts as one slot. The recorded cap
+     is the byte-capacity ceiling
+     `n × SLOT_RSS + stackReserve + MIN_FREE <= capacityBytes`, so it is a
+     function of the **stack reserve**: on the 19.9 GB benchmark box it is 3 with
+     no stack running (3 × 3.9 + 4.5 = 16.2 GB), 2 with one native stack
+     (2 × 3.9 + 3.9 + 4.5 = 16.2 GB), and 1 with two (1 × 3.9 + 7.8 + 4.5 =
+     16.2 GB; two slots would need 20.1 GB). A dev box with a stack up therefore
+     admits one build at a time, not two, and the "first test admits 3" figure is
+     the zero-stack case. The zero-stack figure is also the one that matches the
+     measured safe point: three concurrent builds had ~2.5 GB headroom and four
+     went into swap (Evidence §4). The second test catches non-build consumers
+     that the byte-capacity test does not model (a dev server, an unrecorded stack
+     process). **The ceiling is 3 until Open Question 1 is measured; memory is the
+     only input that lowers it.**
    - **Stack reserve.** Detect stacks from the registry's stack records across
      all checkouts plus this checkout's `.dev/stack.json` (the checkout state
      directory — `.dev` by default; `STUDIQ_ENV_STATE_DIR` overrides),
@@ -353,13 +369,22 @@ assumption.
      from the recorded one**; a slot whose identity still matches is never
      reclaimed on heartbeat age alone.
    - **Kill and reclaim.** The build is spawned as its own process group and its
-     `pgid` is recorded in the slot. On timeout, launcher exit or any exit path,
-     send `SIGTERM` to the group, wait a 10 s grace, then `SIGKILL`, and only
-     then release the slot. A slot whose launcher died but whose group survives
-     is reclaimed only after the group is killed, so a new build is never
-     admitted over an orphan writing `.next`. When a slot is reclaimed because
-     its launcher died, the reclaim path invalidates that worktree's `.next` and
-     removes its build record before the slot is freed.
+     `pgid` is recorded in the slot, together with the group leader's start time.
+     On timeout, launcher exit or any exit path, send `SIGTERM` to the group, wait
+     a 10 s grace, then `SIGKILL`, and only then release the slot. A reclaim
+     signals a recorded group only while that recorded identity still holds: a
+     `pgid` is a pid, so a recycled number must never `SIGTERM` an unrelated
+     group. A leader that is gone leaves no start time to read, and the surviving
+     group is still ours — the kernel keeps a group id allocated while the group
+     exists — so the orphan is killed; a leader that is alive with a different
+     start time is a recycled pid and is left alone with a warning. A slot whose
+     launcher died but whose group survives is reclaimed only after the group is
+     killed, so a new build is never admitted over an orphan writing `.next`. When
+     a slot is reclaimed because its launcher died, the reclaim path invalidates
+     **this checkout's** `.next` and removes its build record before the slot is
+     freed; a foreign worktree's artifact is left to its own fingerprint and
+     handover, because writing into another checkout from here would be worse
+     than the stale artifact.
    - **Deadlines.** One 60-minute deadline from invocation: at most 30 minutes
      waiting for a slot and at most 30 minutes building, each enforced
      separately, so a long queue can never consume the build's budget. The build
@@ -506,17 +531,23 @@ measurement that will not appear, and never refuses every build.
 
 8. **Report state, don't add a daemon — and report only what is countable.**
    `env status` and `env doctor` stay read-only (ADR-0011 §1) and cheap: one
-   pointer read, one manifest read, a shallow `readdir`, no `du`, no child
-   process. Reclamation belongs to the admission path (decision 5); status
-   observes staleness and never cleans it.
+   pointer read, one manifest read, a shallow `readdir`, no `du`. The slot
+   liveness check is a `/proc` read on Linux and one `ps` per slot record
+   elsewhere — bounded by the recorded cap, never a scan. Reclamation belongs to
+   the admission path (decision 5); status observes staleness and never cleans it.
 
    - **Slots.** `build: <busy>/<slotCap> busy` — `build: 2/3 busy` when two of
      three slot records carry a live identity. `<slotCap>` is read from
      `<registry>/build-slots/capacity` (decision 5), never recomputed from memory
      or stack state at read time. The slot `readdir` counts only the numeric
      entries; `worktrees/`, `waiters/` and `capacity` are excluded by name. A
-     record whose process is gone is reported as stale (`2/3 busy, 1 stale`), not
-     dropped and not reclaimed.
+     record whose identity is gone — pid, pid start time or process group — is
+     reported as stale (`2/3 busy, 1 stale`), not dropped and not reclaimed.
+     Two consequences of reporting facts rather than promises: `busy` can exceed
+     `cap` (a stack that appeared after the cap was derived lowers it while an
+     admitted build keeps its slot), and `busy < cap` promises nothing (the
+     free-memory test can refuse admission below the byte-capacity cap). The cap
+     gates admission; it never describes the live count.
    - **Queue depth.** Decision 5 has every waiter register a directory under
      `<registry>/build-slots/waiters/`, and removes it when the waiter is
      admitted, so status prints a waiter **count** (`build: 2/3 busy, 1 waiting`)
@@ -755,12 +786,13 @@ experiment, not a number.
 
 ## Implementation sketch
 
-- `scripts/env/lib/locks.ts` — `withBuildLock` → `withBuildSlots(n, minFreeMb, fn)`
+- `scripts/env/lib/locks.ts` — `withBuildLock` → `withBuildSlots(fn, options)`
   built on `dirMutex` slots (no `flockMutex` for slots), identity = pid + process
   start time, reclaim by process-group death; the per-worktree mutex and the
-  `waiters/` directory live beside the slots. Add `withSnapshotLock()`
-  (`snapshot.lock`, short wait, non-fatal on timeout), entered only after the
-  checkout lock and `build.lock` are released.
+  `waiters/` directory live beside the slots, and `buildInProgress(worktree)` is
+  the read-only holder signal the serve/rebuild paths consult. Add
+  `withSnapshotLock()` (`snapshot.lock`, short wait, non-fatal on timeout),
+  entered only after the checkout lock and the build scope are released.
 - `scripts/env/lib/admission.ts` (or the same module) — cgroup-aware reading
   (`min(MemAvailable, cgroup max − current)`, v2 and v1, host fallback logged),
   byte-capacity-based reservation with the measured per-slot RSS, a recorded
@@ -795,12 +827,16 @@ cache mechanisms in two independent steps:
 - **Concurrency.** Delete `<registry>/build-slots` — slot directories, the
   per-worktree mutex, the `waiters/` directory and the `capacity` file — drop the
   `prebuild` guard from both apps, stop minting the grant, and remove the
-  entrypoint check from `lint`; point `env build` back at the single exclusive
-  `build.lock`. Every build is then serialized across worktrees, and
-  `--no-slot`/`--no-lock` are removed with the guard. **Restore the callers**:
-  put `bun run build` back in the two `verify.yml` build steps and in
-  Playwright's `webServer` command, because `--no-slot` no longer exists. This
-  step is required for CI and E2E to stay green.
+  entrypoint check from `lint`. **Restore the lock**: `withBuildLock` no longer
+  exists, so add it back to `scripts/env/lib/locks.ts` (an exclusive
+  `<registry>/build.lock` with a 1800 s wait, taken by `runProductionBuild` and
+  released after the build) and delete the read-only `buildInProgress` guard from
+  `commands/serve.ts`, `commands/ensure.ts` and `lib/rebuild.ts` with it — with no
+  per-worktree mutex it has nothing to read. Every build is then serialized
+  across worktrees, and `--no-slot`/`--no-lock` are removed with the guard.
+  **Restore the callers**: put `bun run build` back in the two `verify.yml` build
+  steps and in Playwright's `webServer` command, because `--no-slot` no longer
+  exists. This step is required for CI and E2E to stay green.
 - **Cache.** Delete `$STUDIQ_CACHE_DIR` — the snapshot directories, their
   manifests and the `current` pointer — and remove the seed hook from worktree
   creation, the snapshot step from `env build`, the snapshot/status reporting
@@ -830,5 +866,6 @@ wants the numbers to be re-runnable.
 - [Issue #1078 — local cache strategy](https://github.com/logyQT/studiq/issues/1078)
 - [Issue #1077 / ADR-0011 — the `env` CLI](0011-env-cli.md)
 - [ADR-0010 — one root values file](0010-env-ssot.md)
-- `scripts/env/lib/locks.ts` (`withBuildLock`), `scripts/env/lib/build.ts`
-  (`runProductionBuild`), `scripts/env/lib/fingerprint.ts`
+- `scripts/env/lib/locks.ts` (`withBuildSlots`, `buildInProgress`),
+  `scripts/env/lib/build.ts` (`runProductionBuild`),
+  `scripts/env/lib/fingerprint.ts`

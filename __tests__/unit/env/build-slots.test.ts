@@ -7,6 +7,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
@@ -29,6 +30,13 @@ interface BuildSlotsStatus {
   detail: string | null;
 }
 
+interface BuildInProgress {
+  pid: number | null;
+  start: string | null;
+  startedAt: string | null;
+  slot: number | null;
+}
+
 interface AdmissionDecision {
   admit: boolean;
   cap: number;
@@ -37,6 +45,9 @@ interface AdmissionDecision {
 
 interface LocksModule {
   processStartTime(pid: number): string | null;
+  worktreeKey(root?: string): string;
+  buildInProgress(worktreeRoot?: string): BuildInProgress | null;
+  buildInProgressFailure(build: BuildInProgress): Error & { exitCode: number };
   readBuildSlots(): BuildSlotsStatus | null;
   formatBuildSlots(status: BuildSlotsStatus | null): string;
   withBuildSlots<T>(
@@ -72,6 +83,14 @@ afterAll(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  // A failed assertion must not leave a fixture group behind for the next test.
+  for (const pgid of groups.splice(0)) {
+    try {
+      process.kill(-pgid, 'SIGKILL');
+    } catch {
+      /* the test already killed it, or it exited */
+    }
+  }
 });
 
 function registry(): string {
@@ -89,6 +108,7 @@ interface SlotFixture {
   pid: number;
   start?: string | null;
   pgid?: number;
+  pgidStart?: string | null;
   token?: string;
   worktree?: string;
 }
@@ -99,11 +119,49 @@ function writeSlot(dir: string, slot: number, fixture: SlotFixture): string {
   writeFileSync(join(path, 'pid'), `${fixture.pid}\n`);
   writeFileSync(join(path, 'start'), `${fixture.start ?? ''}\n`);
   writeFileSync(join(path, 'pgid'), `${fixture.pgid ?? 0}\n`);
+  writeFileSync(join(path, 'pgidStart'), `${fixture.pgidStart ?? ''}\n`);
   writeFileSync(join(path, 'token'), `${fixture.token ?? 'fixture-token'}\n`);
   writeFileSync(join(path, 'worktree'), `${fixture.worktree ?? '/tmp/another-worktree'}\n`);
   writeFileSync(join(path, 'startedAt'), `${new Date().toISOString()}\n`);
   writeFileSync(join(path, 'heartbeat'), `${Date.now()}\n`);
   return path;
+}
+
+/** The per-worktree mutex record a live build leaves behind. */
+function writeMutex(
+  dir: string,
+  holder: { pid: number; start: string; startedAt?: string },
+): string {
+  const mutex = join(slotsDir(dir), 'worktrees', locks.worktreeKey(REPO_ROOT));
+  mkdirSync(mutex, { recursive: true, mode: 0o700 });
+  writeFileSync(join(mutex, 'pid'), `${holder.pid}\n`);
+  writeFileSync(join(mutex, 'start'), `${holder.start}\n`);
+  writeFileSync(join(mutex, 'token'), 'mutex-token\n');
+  writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
+  if (holder.startedAt !== undefined) {
+    writeFileSync(join(mutex, 'startedAt'), `${holder.startedAt}\n`);
+  }
+  return mutex;
+}
+
+/** A pid this test owns, in a process group of its own (`detached` = `setsid`). */
+const groups: number[] = [];
+
+function spawnGroup(): number {
+  const child = spawn('sleep', ['120'], { detached: true, stdio: 'ignore' });
+  if (child.pid === undefined) throw new Error('could not spawn the fixture process group');
+  child.unref();
+  groups.push(child.pid);
+  return child.pid;
+}
+
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -123,7 +181,7 @@ const admitThree = (): AdmissionDecision => ({ admit: true, cap: 3, reason: 'mem
 const refuse = (): AdmissionDecision => ({ admit: false, cap: 1, reason: 'capacity' });
 
 describe('build slots', () => {
-  it('reads a process start time that a recycled pid cannot match', () => {
+  it('reads a start time for a live pid and none for a pid that does not exist', () => {
     const start = locks.processStartTime(process.pid);
     expect(start).not.toBeNull();
     expect(locks.processStartTime(999_999_999)).toBeNull();
@@ -186,6 +244,18 @@ describe('build slots', () => {
     expect(existsSync(join(slotsDir(dir), '2'))).toBe(true);
   });
 
+  it('reports a slot whose pid was recycled as stale, not busy', () => {
+    const dir = registry();
+    // A live pid with a different start time is a recycled number: the ADR's
+    // liveness rule calls that stale, and status must agree with it.
+    writeSlot(dir, 1, { pid: process.pid, start: 'not-this-process', token: 'recycled' });
+    writeFileSync(join(slotsDir(dir), 'capacity'), '1\n');
+
+    const status = locks.readBuildSlots();
+    expect(status).toMatchObject({ busy: 0, stale: 1 });
+    expect(locks.formatBuildSlots(status)).toBe('0/1 busy, 1 stale');
+  });
+
   it('reclaims a dead launcher, kills nothing and invalidates its worktree', async () => {
     const dir = registry();
     const start = locks.processStartTime(process.pid) ?? '';
@@ -227,7 +297,13 @@ describe('build slots', () => {
   it('reclaims a slot whose process group died, without invalidating a live launcher', async () => {
     const dir = registry();
     const start = locks.processStartTime(process.pid) ?? '';
-    writeSlot(dir, 1, { pid: process.pid, start, pgid: 999_999, token: 'orphan' });
+    // A group this test owns and has already killed: a fixed pgid could name a
+    // real group on the host, and the reclaim would signal it.
+    const pgid = spawnGroup();
+    const pgidStart = locks.processStartTime(pgid);
+    process.kill(-pgid, 'SIGKILL');
+    await waitFor(() => !groupAlive(pgid));
+    writeSlot(dir, 1, { pid: process.pid, start, pgid, pgidStart, token: 'orphan' });
     const invalidated: string[] = [];
 
     let ran = false;
@@ -243,6 +319,86 @@ describe('build slots', () => {
     // a launcher that is still alive keeps its artifact.
     expect(ran).toBe(true);
     expect(invalidated).toEqual([]);
+  });
+
+  it('kills the surviving process group of a dead launcher before the slot is freed', async () => {
+    const dir = registry();
+    // A real group this test owns: the reclaim must be what ends it, and a
+    // launcher that is gone is the orphan the ADR says is never admitted over.
+    const pgid = spawnGroup();
+    const pgidStart = locks.processStartTime(pgid);
+    expect(pgidStart).not.toBeNull();
+    expect(groupAlive(pgid)).toBe(true);
+    writeSlot(dir, 1, {
+      pid: 999_999_999,
+      start: '1',
+      pgid,
+      pgidStart,
+      token: 'orphan',
+      worktree: REPO_ROOT,
+    });
+
+    let aliveWhenAdmitted: boolean | null = null;
+    await locks.withBuildSlots(
+      () => {
+        aliveWhenAdmitted = groupAlive(pgid);
+        return Promise.resolve();
+      },
+      { decide: admitOne, invalidate: () => {} },
+    );
+
+    // Deleting the kill from the reclaim leaves this true: the group outlives
+    // the slot and a new build would run over its `.next`.
+    expect(aliveWhenAdmitted).toBe(false);
+  });
+
+  it('records the process group with the leader start time the reclaim verifies', async () => {
+    const dir = registry();
+    const pgid = spawnGroup();
+    let recorded: { pgid: string; pgidStart: string } | null = null;
+
+    await locks.withBuildSlots(
+      (slot) => {
+        slot.setProcessGroup(pgid);
+        const path = join(slotsDir(dir), '1');
+        recorded = {
+          pgid: readFileSync(join(path, 'pgid'), 'utf8').trim(),
+          pgidStart: readFileSync(join(path, 'pgidStart'), 'utf8').trim(),
+        };
+        return Promise.resolve();
+      },
+      { decide: admitOne, invalidate: () => {} },
+    );
+
+    // Without the start time the reclaim could not tell this group from a
+    // recycled pgid, and would have to leave a real orphan running.
+    expect(recorded).toEqual({ pgid: String(pgid), pgidStart: locks.processStartTime(pgid) });
+  });
+
+  it('leaves a recycled process group alone instead of signalling it', async () => {
+    const dir = registry();
+    // The slot names a group whose leader start time is not the one recorded:
+    // the number now belongs to an unrelated process, so it must not be killed.
+    const pgid = spawnGroup();
+    writeSlot(dir, 1, {
+      pid: 999_999_999,
+      start: '1',
+      pgid,
+      pgidStart: 'not-this-group',
+      token: 'recycled-pgid',
+      worktree: REPO_ROOT,
+    });
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await locks.withBuildSlots(() => Promise.resolve(), {
+      decide: admitOne,
+      invalidate: () => {},
+    });
+
+    expect(groupAlive(pgid)).toBe(true);
+    expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain(
+      `not signalling process group ${pgid}`,
+    );
   });
 
   it('never reclaims a live build on heartbeat age alone', async () => {
@@ -395,5 +551,50 @@ describe('build slots', () => {
     const lines = stderr.mock.calls.map((call) => String(call[0])).join('');
     expect(lines).toContain('build: waiting for a slot (1/1 busy, 1 waiting)');
     expect(lines).toMatch(/elapsed, \d+:\d\d left/);
+  });
+});
+
+describe('build in progress', () => {
+  it('names the live build that holds this worktree mutex, with its slot', () => {
+    const dir = registry();
+    const start = locks.processStartTime(process.pid) ?? '';
+    writeSlot(dir, 1, { pid: process.pid, start, token: 'live' });
+    writeMutex(dir, { pid: process.pid, start, startedAt: '2026-11-17T18:53:45.000Z' });
+
+    expect(locks.buildInProgress()).toEqual({
+      pid: process.pid,
+      start,
+      startedAt: '2026-11-17T18:53:45.000Z',
+      slot: 1,
+    });
+  });
+
+  it('reports no build for a mutex whose holder is gone or whose pid was recycled', () => {
+    const dir = registry();
+    const mutex = writeMutex(dir, { pid: process.pid, start: 'not-this-process' });
+    expect(locks.buildInProgress()).toBeNull();
+
+    writeFileSync(join(mutex, 'pid'), '999999999\n');
+    writeFileSync(join(mutex, 'start'), '1\n');
+    expect(locks.buildInProgress()).toBeNull();
+
+    // A mutex that has not named its owner yet is a build taking it, not a free
+    // one, until the no-owner grace expires.
+    writeFileSync(join(mutex, 'pid'), '0\n');
+    expect(locks.buildInProgress()).toMatchObject({ pid: null });
+  });
+
+  it('refuses with the build’s pid, start time and slot', () => {
+    const failure = locks.buildInProgressFailure({
+      pid: 4242,
+      start: '99',
+      startedAt: '2026-11-17T18:53:45.000Z',
+      slot: 2,
+    });
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    expect(failure.message).toContain('pid 4242');
+    expect(failure.message).toContain('started 2026-11-17T18:53:45.000Z');
+    expect(failure.message).toContain('slot 2');
   });
 });

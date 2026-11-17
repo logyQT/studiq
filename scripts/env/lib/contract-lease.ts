@@ -20,3 +20,14 @@ export function contractWithLease(contract: Contract): Contract {
   if (!lease?.appPort) return contract;
   return contractWithPort(contract, lease.appPort);
 }
+
+/**
+ * Adopt a resolved contract for this process, so the server or build it starts
+ * inherits the leased port and site URL. An operator-set `NEXT_PUBLIC_SITE_URL`
+ * wins: it is inlined at build time and must not be silently replaced.
+ */
+export function applyContractEnv(contract: Contract): void {
+  process.env.APP_PORT = String(contract.appPort);
+  process.env.APP_URL = contract.appUrl;
+  process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+}

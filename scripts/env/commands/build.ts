@@ -1,7 +1,7 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
-import { contractWithLease } from '../lib/contract-lease';
+import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { readStack } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
@@ -68,9 +68,7 @@ export async function runBuild(
       ...base,
       stackName: options.stack ?? base.stackName,
     });
-    process.env.APP_PORT = String(contract.appPort);
-    process.env.APP_URL = contract.appUrl;
-    process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+    applyContractEnv(contract);
     appendEnvLog(`build: shared=${contract.shared} force=${options.force}`);
 
     const state = readStackState();

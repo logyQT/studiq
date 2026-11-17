@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { logBuildOutput, runProductionBuild, type BuildResult } from './build';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
-import { pidAlive } from './locks';
+import { buildInProgress, buildInProgressFailure, pidAlive } from './locks';
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 import { DEV_DIR, removeBuildState } from './state';
@@ -702,6 +702,15 @@ export async function rebuildWithRecovery(
   // Claim before the stop: nothing is mutated until this rebuild owns the
   // handover, and a rebuild that already owns it makes this one refuse.
   const claimed = claimHandover(deps, previousPid);
+  // The claim keeps a *later* build out (it sees the in-flight handover), and
+  // this read-only check keeps this rebuild from moving `.next` out from under a
+  // build that started before the claim. The mutex is not taken here:
+  // `runProductionBuild` takes it below and a directory mutex is not reentrant.
+  const build = buildInProgress();
+  if (build !== null) {
+    removeHandover();
+    throw buildInProgressFailure(build);
+  }
   if (previousPid !== null) deps.stopForReplacement();
 
   let backup: string | null;

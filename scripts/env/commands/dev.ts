@@ -1,7 +1,7 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
-import { contractWithLease } from '../lib/contract-lease';
+import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
 import { pidAlive, withCheckoutLock } from '../lib/locks';
 import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
@@ -92,9 +92,7 @@ export async function runDev(parsed: ParsedCommand): Promise<number> {
   const base = readContract();
   const stackName = options.stack ?? base.stackName;
   const contract = contractWithLease({ ...base, stackName });
-  process.env.APP_PORT = String(contract.appPort);
-  process.env.APP_URL = contract.appUrl;
-  process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+  applyContractEnv(contract);
 
   const handle = await withCheckoutLock(async () => {
     const conflict = liveServerConflict(
