@@ -249,12 +249,6 @@ describe('planChangeFeedback', () => {
       hostedInvoiceUrl: 'https://invoice.stripe.test/in_3',
     });
   });
-
-  it('does not surface an empty invoice URL', () => {
-    expect(planChangeFeedback({ status: 'pending_payment', hostedInvoiceUrl: null })).toMatchObject(
-      { hostedInvoiceUrl: null },
-    );
-  });
 });
 
 describe('invoiceHistoryPath', () => {

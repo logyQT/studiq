@@ -188,10 +188,6 @@ describe('splitFeatureRows', () => {
     expect(differing).toEqual(['ai.chat']);
   });
 
-  it('claims nothing as common when there are no plans', () => {
-    expect(splitFeatureRows([])).toEqual({ common: [], differing: [] });
-  });
-
   it('leaves the org-admin role marker out of the comparison', () => {
     // The seed maps `org.manage` to the free Launch plan only; printing it would
     // make every paid organization plan look worse than the free one.

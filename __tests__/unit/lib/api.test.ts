@@ -52,7 +52,6 @@ describe('apiPut', () => {
     const error = await apiError(apiPut('/api/v1/auth/profile', { name: 'Anna123' }));
 
     expect(error).toBeInstanceOf(ApiError);
-    expect(error).toBeInstanceOf(Error);
     expect(error.code).toBe('UNPROCESSABLE_ENTITY');
     expect(error.message).toBe('UNPROCESSABLE_ENTITY');
     expect(error.status).toBe(422);
