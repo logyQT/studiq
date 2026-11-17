@@ -5,6 +5,7 @@ import { contractWithLease } from './contract-lease';
 import { envPort } from './env-port';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
+import { readBuildSlots } from './locks';
 import { readRegistry, findEntry, registryPathExists } from './registry';
 import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
@@ -167,6 +168,7 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
     buildPresent: existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID')),
+    buildSlots: readBuildSlots(),
     profile,
     cold: options.cold ?? state?.cold ?? null,
     buildFingerprint: readBuildState()?.fingerprint ?? null,

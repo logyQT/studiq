@@ -23,7 +23,7 @@ import { logBuildOutput, runProductionBuild, type BuildResult } from '../lib/bui
 import { recoverHandover } from '../lib/rebuild';
 import { normalizeLocalhost, trimTrailingSlash } from '../lib/urls';
 import { REPO_ROOT } from '../lib/repo';
-import { withCheckoutLock } from '../lib/locks';
+import { acquireCheckoutLock, withReleasedCheckoutLock } from '../lib/locks';
 
 /**
  * The one I/O seam for this command (and the tests' injection point).
@@ -44,8 +44,10 @@ export async function runBuild(
   const options = parsed.build;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'build options are missing');
 
-  // The checkout lock also covers the lease read this build adopts.
-  return withCheckoutLock(async () => {
+  // The checkout lock also covers the lease read this build adopts. It is
+  // released for the build itself and always taken back (see the build block).
+  const lock = await acquireCheckoutLock();
+  try {
     // Settle an artifact left behind by an interrupted rebuild before `.next`
     // or the build state is read. An unresolved recovery aborts the build
     // instead of building over (or reporting) an unproven artifact; a record
@@ -112,12 +114,30 @@ export async function runBuild(
       if (readWebPid()) {
         throw new EnvFailure(EXIT_CONFLICT, "the web server is running; run 'env:down' first");
       }
-      const result = await deps.build(envHash);
+      // Lock ordering: checkout lock → release → worktree mutex → slot → build
+      // → release both → checkout lock. The slot wait can last 30 minutes, and
+      // `env:down` needs this lock, so the build never holds it while it queues.
+      // The per-worktree mutex inside `runProductionBuild` is what keeps a second
+      // build out of this `.next`, so releasing the lock cannot admit one.
+      const result = await withReleasedCheckoutLock(
+        lock,
+        () => deps.build(envHash),
+        'build returned no result',
+      );
+      // The lock was free for the build, so another env process may have started
+      // a server over the artifact this build just replaced. That artifact is not
+      // current for a serving environment, so it is reported, not recorded.
+      if (result.ok && readWebPid()) {
+        throw new EnvFailure(
+          EXIT_CONFLICT,
+          "a web server started during the build; run 'env:down' and retry",
+        );
+      }
       if (!result.ok) {
         logBuildOutput(result.output);
         throw new EnvFailure(
           result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-          result.timedOut ? 'timed out waiting for the build lock' : 'build failed',
+          result.timedOut ? 'timed out building' : 'build failed',
         );
       }
       writeBuildState({
@@ -139,5 +159,7 @@ export async function runBuild(
     else
       writeStderrLine(options.force || !current ? 'Build complete.' : 'Build is already current.');
     return 0;
-  });
+  } finally {
+    await lock.release();
+  }
 }

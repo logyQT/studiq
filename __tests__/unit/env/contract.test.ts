@@ -126,7 +126,7 @@ describe('JSON contract and exit codes (spec §2.1, §9)', () => {
     expect(snapshot.profile).toBe('api');
     expect(snapshot.cold).toBe(false);
     expect(snapshot.seeded).toBe(false);
-    expect(snapshot.build).toEqual({ present: true, fingerprint: 'abc123' });
+    expect(snapshot.build).toEqual({ present: true, fingerprint: 'abc123', slots: null });
     expect(snapshot.ports.block).toBeNull();
     expect(snapshot.warnings).toEqual(['warning']);
     expect('warmMs' in snapshot).toBe(false);
@@ -154,7 +154,7 @@ describe('JSON contract and exit codes (spec §2.1, §9)', () => {
     expect(snapshot.profile).toBeNull();
     expect(snapshot.cold).toBeNull();
     expect(snapshot.seeded).toBeNull();
-    expect(snapshot.build).toEqual({ present: true, fingerprint: null });
+    expect(snapshot.build).toEqual({ present: true, fingerprint: null, slots: null });
   });
 
   it('keeps the legacy camelCase fields', () => {

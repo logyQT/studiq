@@ -2,6 +2,7 @@ import type { ParsedCommand } from '../atoms';
 import { collectSnapshot } from '../lib/snapshot';
 import { printJson, writeLine } from '../lib/output';
 import type { StatusSnapshot } from '../lib/json';
+import { formatBuildSlots } from '../lib/locks';
 
 function orDash(value: string | number | boolean | null): string {
   if (value === null) return '-';
@@ -39,6 +40,7 @@ function printHuman(snapshot: StatusSnapshot): void {
   writeLine(
     `build       ${snapshot.build.present} ${orDash(snapshot.build.fingerprint?.slice(0, 12) ?? null)}`,
   );
+  writeLine(`slots       ${formatBuildSlots(snapshot.build.slots)}`);
   writeLine(`registry    ${snapshot.registry}`);
   if (snapshot.owner) writeLine(`owner       ${snapshot.owner}`);
   for (const warning of snapshot.warnings) writeLine(`warning     ${warning}`);

@@ -2,9 +2,17 @@
 
 ## Status
 
-Proposed (2026-11-11). Measurements recorded below are from this repo at
+Accepted (2026-11-17). Measurements recorded below are from this repo at
 `ea790b3e` (main) and `521792db` (PR #1083) on a 16 vCPU / 19.9 GB RAM / 5 GB
 swap container (overlay + ext4, no reflink), Next 16.4.4 (Turbopack), Bun 1.4.4.
+
+The **admission half** is implemented: decision 5 (memory-derived slots, one
+build per worktree, the waiter directory and the deadlines), decision 7's
+`oom_score_adj` bullet, and decision 8's slot reporting in `env status` /
+`env doctor`. The **cache half** (decisions 1–4, and the snapshot reporting in
+decision 8) stays conditional on the cold-vs-seeded experiment listed under
+Evidence → Not measured: it ships only if a seeded build emits the same bytes as
+a cold one.
 
 This ADR settles the two questions [#1078](https://github.com/logyQT/studiq/issues/1078)
 left open — whether a local `main` build-cache snapshot is worth seeding, and how

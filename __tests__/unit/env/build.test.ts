@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -148,6 +148,33 @@ function buildResult(): BuildResult {
 function parsedBuild(): ParsedCommand {
   return atomsModule.parseCommand(['build', '--force']);
 }
+
+describe('env:build does not hold the checkout lock while it builds', () => {
+  it('lets another env process take the checkout lock during the build', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    const lockFile = join(stateDir, 'locks', 'checkout.lock');
+    // `flock -n` proves the lock is free; the portable fallback has no probe, so
+    // the assertion is skipped where `flock` is unavailable.
+    const flockAvailable = spawnSync('flock', ['--version'], { timeout: 5_000 }).status === 0;
+
+    let lockFreeDuringBuild: boolean | null = null;
+    const code = await buildModule.runBuild(parsedBuild(), {
+      build() {
+        // A 30-minute slot wait under the checkout lock would block `env:down`
+        // for the whole build; the lock must be free here.
+        lockFreeDuringBuild = flockAvailable
+          ? spawnSync('flock', ['-n', lockFile, 'true'], { timeout: 5_000 }).status === 0
+          : null;
+        return Promise.resolve(buildResult());
+      },
+    });
+
+    expect(code).toBe(0);
+    if (flockAvailable) expect(lockFreeDuringBuild).toBe(true);
+  });
+});
 
 describe('env:build settles a pending handover before building', () => {
   it('recovers the interrupted build before the build starts', async () => {

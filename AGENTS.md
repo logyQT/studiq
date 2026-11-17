@@ -108,7 +108,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run env:dev`                  | **Human-only** web HMR (`next dev`) through the tool. Agents never run this; they build + serve (`dev:web` is the raw shortcut)                                |
 | `bun run dev:web`                  | Raw `@studiq/web` dev server (no env handling); human-only, same server as `env:dev`                                                                           |
 | `bun run dev:admin`                | Raw `@studiq/admin` HMR on `127.0.0.1:4000` (varlock-injected); `env` has no admin equivalent                                                                  |
-| `bun run env:build`                | Explicit production build of `@studiq/web` (serialized by a registry-level build lock)                                                                         |
+| `bun run env:build`                | Explicit production build of `@studiq/web` (a memory-derived build slot + one build per worktree; ADR-0014)                                                    |
 | `bun run env:status`               | Web/Supabase health, PIDs, stack id/endpoints (`--json` = stable machine shape)                                                                                |
 | `bun run env:down`                 | Stop this checkout's web server; `env:down --all` also stops **this branch's** Supabase stack (data kept)                                                      |
 | `bun run env:reset-db`             | Destructive `supabase db reset` for **this branch's** stack (`--yes`)                                                                                          |

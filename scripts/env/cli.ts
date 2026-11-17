@@ -16,7 +16,7 @@
  *
  * Exit codes: 0 success/ready, 1 doctor found a problem (and verify cannot read
  * the schema), 2 bad usage, 3 native unavailable, 4 start or build failed, 5
- * timeout, 6 conflict.
+ * timeout, 6 conflict, 7 queued too long for a build slot.
  */
 import { parseCommand, USAGE, UsageError, type ParsedCommand } from './atoms';
 import { runBuild } from './commands/build';

@@ -418,6 +418,27 @@ describe('env:doctor', () => {
     expect(result.stdout).toContain('No ownership or port conflicts');
   });
 
+  it('reports build slots and warns about a stale one', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const slots = join(harness.registryDir, 'build-slots');
+    mkdirSync(join(slots, '2'), { recursive: true });
+    writeFileSync(join(slots, '2', 'pid'), '999999999\n');
+    writeFileSync(join(slots, 'capacity'), '2\n');
+
+    const json = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+    expect(json.status).toBe(0);
+    const warnings = stringList(parseJsonObject(json.stdout).warnings).join('\n');
+    expect(warnings).toContain('1 stale build slot(s)');
+
+    const text = await harness.run(['doctor'], { APP_PORT: String(appPort) });
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain('▸ Build slots');
+    expect(text.stdout).toContain('0/2 busy, 1 stale');
+    expect(text.stdout).toContain('cap        2 (recorded when derived');
+  });
+
   it('rejects unknown flags with exit code 2', async () => {
     const harness = newHarness();
     const result = await harness.run(['doctor', '--fix']);

@@ -13,6 +13,7 @@ import {
   type GrafanaAuthState,
 } from '../lib/grafana';
 import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
+import { formatBuildSlots, readBuildSlots } from '../lib/locks';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
 import {
@@ -124,6 +125,9 @@ async function buildReport(): Promise<DoctorReport> {
         ? 'shared stack (owned by another checkout; not inspected)'
         : 'none (no stack for this branch)';
 
+  // Read-only: one shallow `readdir` plus the recorded cap. Reclamation belongs
+  // to the admission path, so doctor reports staleness and never cleans it.
+  const slots = readBuildSlots();
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
   // Same probe `env:ports` uses: a bind failure includes a listener on any
@@ -225,6 +229,16 @@ async function buildReport(): Promise<DoctorReport> {
       'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:check:quiet` for env checks; exit code only)',
     );
   }
+  if (slots && slots.stale) {
+    warnings.push(
+      `${slots.stale} stale build slot(s): the next build kills the group, invalidates .next and frees the slot`,
+    );
+  }
+  if (slots?.degraded) {
+    warnings.push(
+      `build memory gate degraded (${slots.detail ?? 'the memory probe failed'}); concurrent builds are capped at 1`,
+    );
+  }
   if (appPortProbe.state === 'unavailable') {
     warnings.push(
       `cannot check app port ${contract.appPort}: ${appPortProbe.error ?? 'bind failed'} ` +
@@ -292,6 +306,17 @@ async function buildReport(): Promise<DoctorReport> {
     `  port       ${contract.appPort} → ${contract.appUrl}`,
     `  web        http=${webHttp} pid=${orDash(webPid)}`,
   );
+
+  lines.push('', '▸ Build slots');
+  if (slots === null) {
+    lines.push('  slots      unknown (no build has run in this checkout)');
+  } else {
+    lines.push(`  slots      ${formatBuildSlots(slots)}`);
+    lines.push(
+      `  cap        ${slots.cap ?? 'unknown'} (recorded when derived; never recomputed here)`,
+    );
+    lines.push(`  memory     ${slots.detail ?? (slots.degraded ? 'degraded' : 'ok')}`);
+  }
 
   lines.push(
     '',

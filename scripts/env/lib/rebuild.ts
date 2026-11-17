@@ -682,7 +682,7 @@ function failFenced(deps: RebuildRecoveryDeps, backup: string | null, cause: unk
  * second ensure in this checkout refuses instead of stopping the same server or
  * backing up the same artifact (the checkout lock is free for the build). The
  * previous build is then moved aside and the build runs under the existing
- * build lock. Any failure restores that build (and restarts the previous server
+ * build slot. Any failure restores that build (and restarts the previous server
  * when it was serving); only a fully successful build/start discards the backup
  * and releases the record.
  *
@@ -727,12 +727,14 @@ export async function rebuildWithRecovery(
   } catch (error) {
     // A thrown build (not a `{ ok: false }` result) would otherwise skip
     // recovery entirely and leave the previous build stranded in the backup.
+    // The build's own exit code is kept: a slot wait that expires is `7`, not a
+    // generic start failure.
     return failWithRecovery({
       deps,
       request,
       previousPid,
       backup,
-      code: EXIT_START_FAILED,
+      code: error instanceof EnvFailure ? error.exitCode : EXIT_START_FAILED,
       message: `build failed (${error instanceof Error ? error.message : String(error)})`,
       cause: error,
     });
@@ -745,7 +747,7 @@ export async function rebuildWithRecovery(
       previousPid,
       backup,
       code: result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-      message: result.timedOut ? 'timed out waiting for the build lock' : 'build failed',
+      message: result.timedOut ? 'timed out building' : 'build failed',
     });
   }
 
