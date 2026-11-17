@@ -12,6 +12,9 @@
 #   ../studiq-worktrees/feat/my-feature/
 #   ../studiq-worktrees/fix/login-bug/
 #
+# The branch is cut from a freshly fetched origin/main, and the base commit
+# it was cut from is written to <worktree>/.spin-base (git-ignored).
+#
 # After creating, move your OpenCode session into the worktree:
 #   /session-move <worktree-path>
 
@@ -107,6 +110,9 @@ case "${1:-}" in
     echo ""
     echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
     echo "  ../${REPO_NAME}-worktrees/feat/my-feature"
+    echo ""
+    echo "Branches are cut from a freshly fetched origin/main (local main when the"
+    echo "fetch fails); the base commit is stamped into <worktree>/.spin-base."
     echo ""
     echo "--clean only removes worktrees that scripts/spin created."
     exit 0
@@ -231,9 +237,28 @@ if [ -e "$WORKTREE_PATH" ]; then
   fail "Directory already exists: $WORKTREE_PATH. Remove it or pick a different branch name."
 fi
 
+# ── Resolve the base commit ────────────────────────────────────
+# Local main goes stale between fetches, and a branch cut from a stale main
+# silently re-introduces work that has already merged. Prefer the remote ref;
+# a missing remote or a failed fetch (offline) falls back to local main rather
+# than blocking worktree creation.
+BASE_REF="main"
+if git -C "$PRIMARY_ROOT" remote get-url origin >/dev/null 2>&1; then
+  if fetch_error=$(git -C "$PRIMARY_ROOT" fetch --quiet origin \
+      +refs/heads/main:refs/remotes/origin/main 2>&1); then
+    BASE_REF="origin/main"
+  else
+    warn "Could not fetch origin/main; branching from local main"
+    if [ -n "$fetch_error" ]; then printf '%s\n' "$fetch_error" >&2; fi
+  fi
+fi
+if ! BASE_SHA=$(git -C "$PRIMARY_ROOT" rev-parse --quiet --verify "$BASE_REF^{commit}" 2>&1); then
+  fail "Could not resolve $BASE_REF: $BASE_SHA"
+fi
+
 # ── Create branch + worktree ───────────────────────────────────
-header "Creating branch '$BRANCH' from main"
-if ! branch_error=$(git -C "$PRIMARY_ROOT" branch -- "$BRANCH" main 2>&1); then
+header "Creating branch '$BRANCH' from $BASE_REF (${BASE_SHA:0:12})"
+if ! branch_error=$(git -C "$PRIMARY_ROOT" branch -- "$BRANCH" "$BASE_SHA" 2>&1); then
   fail "Could not create branch '$BRANCH': $branch_error"
 fi
 info "Created branch '$BRANCH'"
@@ -251,6 +276,15 @@ if ! lock_error=$(git -C "$PRIMARY_ROOT" worktree lock --reason "$PROVENANCE_REA
   fail "Could not record worktree provenance at $WORKTREE_PATH: $lock_error (worktree and branch '$BRANCH' were rolled back)"
 fi
 info "Worktree ready at $WORKTREE_PATH"
+
+# The stamp is how later tooling (and the reviewer) learns the intended base
+# even after origin/main has moved on. Stamping is part of the contract, but a
+# failure warns rather than discarding an otherwise usable worktree.
+if printf '%s\n' "$BASE_SHA" > "$WORKTREE_PATH/.spin-base"; then
+  info "Stamped base $BASE_REF at ${BASE_SHA:0:12}"
+else
+  warn "Could not write $WORKTREE_PATH/.spin-base (base $BASE_REF at $BASE_SHA)"
+fi
 
 # ── Install dependencies in the fresh worktree ─────────────────
 # A fresh worktree has no node_modules, and the first pre-commit hook fails
@@ -278,6 +312,7 @@ header "Done"
 echo ""
 printf "  Branch:   ${CYAN}%s${NC}\n" "$BRANCH"
 printf "  Worktree: ${CYAN}%s${NC}\n" "$WORKTREE_PATH"
+printf "  Base:     ${CYAN}%s${NC} @ %s\n" "$BASE_REF" "${BASE_SHA:0:12}"
 echo ""
 echo "  Next steps:"
 echo "    1. cd \"$WORKTREE_PATH\""

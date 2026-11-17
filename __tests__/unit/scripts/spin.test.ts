@@ -310,4 +310,44 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
 
     runSpin(repo, ['feat/listed', '--clean']);
   });
+
+  it('branches from a freshly fetched origin/main and stamps the base commit', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const remote = join(parent, 'remote.git');
+    git(parent, 'init', '-q', '--bare', '-b', 'main', remote);
+    git(repo, 'remote', 'add', 'origin', remote);
+    git(repo, 'push', '-q', 'origin', 'main');
+    const staleMain = git(repo, 'rev-parse', 'main').trim();
+
+    // Advance the remote without touching local main, the state a stale
+    // checkout is in when work starts.
+    const clone = join(parent, 'clone');
+    git(parent, 'clone', '-q', remote, clone);
+    git(clone, 'commit', '-q', '--allow-empty', '-m', 'ahead of local main');
+    git(clone, 'push', '-q', 'origin', 'main');
+    const remoteMain = git(clone, 'rev-parse', 'HEAD').trim();
+
+    runSpin(repo, ['feat/fresh']);
+    const worktree = join(root, 'feat', 'fresh');
+
+    expect(git(repo, 'rev-parse', 'feat/fresh').trim()).toBe(remoteMain);
+    expect(git(repo, 'rev-parse', 'main').trim()).toBe(staleMain);
+    expect(readFileSync(join(worktree, '.spin-base'), 'utf8').trim()).toBe(remoteMain);
+
+    runSpin(repo, ['feat/fresh', '--clean']);
+  });
+
+  it('falls back to local main when origin/main cannot be fetched', () => {
+    const { root, repo } = makeRepo('studiq');
+    git(repo, 'remote', 'add', 'origin', join(root, 'missing.git'));
+    const localMain = git(repo, 'rev-parse', 'main').trim();
+
+    runSpin(repo, ['feat/offline']);
+    const worktree = join(root, 'feat', 'offline');
+
+    expect(git(repo, 'rev-parse', 'feat/offline').trim()).toBe(localMain);
+    expect(readFileSync(join(worktree, '.spin-base'), 'utf8').trim()).toBe(localMain);
+
+    runSpin(repo, ['feat/offline', '--clean']);
+  });
 });
