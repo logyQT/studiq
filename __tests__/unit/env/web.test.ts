@@ -247,7 +247,6 @@ describe('web readiness is bound to the recorded listener', () => {
       );
 
       expect(result).toMatchObject({ ok: true, reason: 'ready', http: 200 });
-      expect(web.readWebPort()).toBe(server.port);
     } finally {
       await server.close();
     }

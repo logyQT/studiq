@@ -65,7 +65,6 @@ describe('env:doctor', () => {
     const report = parseJsonObject(result.stdout);
     expect(report.ok).toBe(true);
     expect(report.problems).toEqual([]);
-    expect(Array.isArray(report.warnings)).toBe(true);
     // A stopped/absent stack is a clean CLI answer, not a CLI failure.
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
   });

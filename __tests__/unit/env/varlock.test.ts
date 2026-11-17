@@ -79,6 +79,7 @@ describe('varlock payload mapping', () => {
     expect(items.get('PRESENT')).toEqual({ present: true, sensitive: false });
     expect(items.has('IGNORED')).toBe(false);
     expect(items.has('SCALAR')).toBe(false);
+    // Exactly the three config entries: no phantom key can leak into env:verify's report.
     expect(items.size).toBe(3);
   });
 

@@ -369,6 +369,12 @@ describe('updatePasswordSchema', () => {
       confirmPassword: '',
     });
     expect(result.success).toBe(false);
+    if (!result.success) {
+      // The empty-confirmation branch reports its own code, not the mismatch one.
+      expect(result.error.issues.map((issue) => issue.message)).toContain(
+        ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED,
+      );
+    }
   });
 
   it('accepts a short legacy currentPassword (no strength rules)', () => {
