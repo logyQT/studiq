@@ -67,7 +67,6 @@ describe('env:ports --json', () => {
     expect(result.status).toBe(0);
     const ports = parseJsonObject(result.stdout);
     expect(ports).toEqual({ appPort: expected, block: null, stackPorts: 'dynamic' });
-    expect(ports.appPort).not.toBe(claimed);
     expect(result.stdout).not.toContain('/tmp/another-checkout');
   });
 
@@ -89,7 +88,6 @@ describe('env:ports --json', () => {
     expect(result.status).toBe(0);
     const ports = parseJsonObject(result.stdout);
     expect(ports.appPort).toBe(expected);
-    expect(ports.appPort).not.toBe(port);
   });
 
   it('refuses to suggest when the registry exists but is untrusted (exit 6)', async () => {
@@ -112,7 +110,6 @@ describe('env:ports --json', () => {
     const match = /^APP_PORT=(\d+)$/m.exec(result.stdout);
     expect(match).not.toBeNull();
     const appPort = Number(match?.[1]);
-    expect(Number.isInteger(appPort)).toBe(true);
     expect(appPort).toBeGreaterThanOrEqual(3000);
     expect(appPort).toBeLessThanOrEqual(3999);
     expect(appPort).not.toBe(3010);

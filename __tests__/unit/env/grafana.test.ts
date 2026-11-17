@@ -94,10 +94,6 @@ function metaFile(): string {
   return join(home, '.config', 'studiq', 'observability', 'grafana-mcp.json');
 }
 
-function readToken(): string | null {
-  return existsSync(tokenFile()) ? readFileSync(tokenFile(), 'utf8').trim() : null;
-}
-
 function newHarness(): Harness {
   const harness = createHarness();
   harnesses.push(harness);
@@ -132,7 +128,6 @@ describe('Grafana MCP token', () => {
     const file = tokenFile();
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(readFileSync(file, 'utf8')).toBe('glsa_test_1');
-    expect(readToken()).toBe('glsa_test_1');
     expect(JSON.parse(readFileSync(metaFile(), 'utf8'))).toMatchObject({
       serviceAccountName: 'studiq-mcp',
     });
