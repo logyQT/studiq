@@ -132,11 +132,20 @@ describe('QuizTeacherService', () => {
         description: 'A test quiz',
         organization_id: orgId,
       };
-      mock.from.mockReturnValue(chain(dbRow));
+      const createChain = chain(dbRow);
+      mock.from.mockReturnValue(createChain);
 
       const result = await service.create({ name: 'My Quiz', description: 'A test quiz' }, ctx);
 
       expect(result.success).toBe(true);
+      expect(createChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organization_id: orgId,
+          created_by: userId,
+          name: 'My Quiz',
+          description: 'A test quiz',
+        }),
+      );
     });
 
     it('returns FORBIDDEN without an active org and never queries (#148)', async () => {
@@ -231,9 +240,11 @@ describe('QuizTeacherService', () => {
 
   describe('update', () => {
     it('updates quiz name and description', async () => {
+      const updated = { id: quizId, name: 'Updated Name', organization_id: orgId };
+      const updateChain = chain(updated);
       mock.from
         .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
-        .mockReturnValue(chain({ id: quizId, name: 'Updated Name', organization_id: orgId }));
+        .mockReturnValue(updateChain);
 
       const result = await service.update(
         quizId,
@@ -242,6 +253,11 @@ describe('QuizTeacherService', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(updateChain.update).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Updated Name', description: 'Updated desc' }),
+      );
+      expect(updateChain.eq).toHaveBeenCalledWith('id', quizId);
+      if (result.success) expect(result.data).toEqual(updated);
     });
 
     it('returns NOT_FOUND for non-existent quiz', async () => {
@@ -258,52 +274,66 @@ describe('QuizTeacherService', () => {
 
   describe('delete', () => {
     it('deletes a quiz', async () => {
+      const deleteChain = chain(null);
       mock.from
         .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
-        .mockReturnValue(chain(null));
+        .mockReturnValue(deleteChain);
 
       const result = await service.delete(quizId, ctx);
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('quizzes');
+      expect(deleteChain.delete).toHaveBeenCalled();
+      expect(deleteChain.eq).toHaveBeenCalledWith('id', quizId);
     });
   });
 
   describe('addQuestions', () => {
     it('adds questions to a quiz with sequential indices', async () => {
+      const insertChain = chain([{ question_id: 'q-1', order_index: 5, points: 1 }]);
       mock.from
         .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
-        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain({ order_index: 4 }))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValue(chain([{ question_id: 'q-1', order_index: 0, points: 1 }]));
+        .mockReturnValue(insertChain);
 
-      const result = await service.addQuestions(quizId, { questionIds: ['q-1'] }, ctx);
+      const result = await service.addQuestions(quizId, { questionIds: ['q-1', 'q-2'] }, ctx);
 
       expect(result.success).toBe(true);
+      // Sequential from the current max (4), never from zero.
+      expect(insertChain.insert).toHaveBeenCalledWith([
+        { quiz_id: quizId, question_id: 'q-1', order_index: 5, points: 1 },
+        { quiz_id: quizId, question_id: 'q-2', order_index: 6, points: 1 },
+      ]);
     });
 
     it('skips duplicate questions', async () => {
+      const insertChain = chain([]);
       mock.from
         .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
-        .mockReturnValue(chain([]));
+        .mockReturnValue(insertChain);
 
       const result = await service.addQuestions(quizId, { questionIds: ['q-1'] }, ctx);
 
       expect(result.success).toBe(true);
+      expect(insertChain.insert).not.toHaveBeenCalled();
     });
   });
 
   describe('removeQuestion', () => {
     it('removes a question from a quiz', async () => {
+      const deleteChain = chain(null);
       mock.from
         .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
-        .mockReturnValue(chain(null));
+        .mockReturnValue(deleteChain);
 
       const result = await service.removeQuestion(quizId, 'q-1', ctx);
 
       expect(result.success).toBe(true);
+      expect(deleteChain.eq).toHaveBeenCalledWith('quiz_id', quizId);
+      expect(deleteChain.eq).toHaveBeenCalledWith('question_id', 'q-1');
     });
   });
 
@@ -337,15 +367,23 @@ describe('QuizTeacherService', () => {
 
     it('saves quiz with empty questions array', async () => {
       const updated = { id: quizId, name: 'Updated Quiz', quiz_questions: [] };
+      const updateChain = chain(null);
+      const deleteChain = chain(null);
       mock.from
         .mockReturnValueOnce(chain({ organization_id: orgId }))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(updateChain)
+        .mockReturnValueOnce(deleteChain)
         .mockReturnValue(chain(updated));
 
       const result = await service.bulkSave(quizId, { ...bulkData, questions: [] }, ctx);
 
       expect(result.success).toBe(true);
+      expect(updateChain.update).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Updated Quiz', description: 'Updated desc' }),
+      );
+      expect(deleteChain.eq).toHaveBeenCalledWith('quiz_id', quizId);
+      // Access, update, delete, select — no fifth call, so nothing was inserted.
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('returns NOT_FOUND when quiz does not exist', async () => {
@@ -395,11 +433,8 @@ describe('QuizTeacherService', () => {
 
   describe('reorderQuestions', () => {
     it('reorders questions sequentially', async () => {
-      mock.from
-        .mockReturnValueOnce(chain({ organization_id: orgId }))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValue(chain(null));
+      const updateChain = chain(null);
+      mock.from.mockReturnValueOnce(chain({ organization_id: orgId })).mockReturnValue(updateChain);
 
       const result = await service.reorderQuestions(
         quizId,
@@ -408,6 +443,19 @@ describe('QuizTeacherService', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(updateChain.update.mock.calls).toEqual([
+        [{ order_index: 0 }],
+        [{ order_index: 1 }],
+        [{ order_index: 2 }],
+      ]);
+      expect(updateChain.eq.mock.calls).toEqual([
+        ['quiz_id', quizId],
+        ['question_id', 'q-1'],
+        ['quiz_id', quizId],
+        ['question_id', 'q-2'],
+        ['quiz_id', quizId],
+        ['question_id', 'q-3'],
+      ]);
     });
 
     it('returns NOT_FOUND when quiz does not exist', async () => {
@@ -455,15 +503,27 @@ describe('QuizTeacherService', () => {
         ],
       };
       const createdAssignment = { id: 'assign-1', title: 'My Quiz', quiz_id: quizId };
+      const assignmentChain = chain(createdAssignment);
+      const linksChain = chain(null);
       mock.from
         .mockReturnValueOnce(chain(quiz))
         .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }])) // every item is open
-        .mockReturnValueOnce(chain(createdAssignment))
-        .mockReturnValue(chain(null));
+        .mockReturnValueOnce(assignmentChain)
+        .mockReturnValue(linksChain);
 
       const result = await service.createAssignment(quizId, ctx);
 
       expect(result.success).toBe(true);
+      expect(assignmentChain.insert).toHaveBeenCalledWith({
+        organization_id: orgId,
+        created_by: userId,
+        title: 'My Quiz',
+        quiz_id: quizId,
+      });
+      expect(linksChain.insert).toHaveBeenCalledWith([
+        { assignment_id: 'assign-1', question_id: 'q-1', order_index: 0, points: 1 },
+        { assignment_id: 'assign-1', question_id: 'q-2', order_index: 1, points: 2 },
+      ]);
     });
 
     it('refuses a quiz copy when an item is no longer open (#1171)', async () => {

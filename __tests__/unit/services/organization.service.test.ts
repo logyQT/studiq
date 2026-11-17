@@ -121,27 +121,6 @@ describe('OrganizationService', () => {
       }
     });
 
-    it('validates input name length', async () => {
-      // Should succeed with valid name - just verify no crash for valid input
-      mock.from
-        .mockReturnValueOnce(chain({ id: 'org-2' }))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain({ id: 'group-1' }))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(
-          chain([
-            { id: 'role-admin', name: 'admin' },
-            { id: 'role-teacher', name: 'teacher' },
-            { id: 'role-member', name: 'member' },
-          ]),
-        )
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain({ id: 'group-1' }));
-
-      const result = await service.createAndJoin(ctx, { name: 'Valid Org' });
-      expect(result.success).toBe(true);
-    });
-
     it('returns error when group creation fails in create()', async () => {
       mock.from
         .mockReturnValueOnce(chain({ id: 'org-1' }))

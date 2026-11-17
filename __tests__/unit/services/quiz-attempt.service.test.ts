@@ -896,7 +896,6 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
       expect(expectSuccess(result).score).toBe(1);
       // Practice quizzes must not look up assignment points.
       expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');

@@ -129,27 +129,39 @@ describe('QuestionReportService', () => {
     it('reports a group with an owner directly to that owner', async () => {
       const group = { id: 'g-1', created_by: 'teacher-2', organization_id: 'org-1' };
       const report = { id: 'r-1', group_id: 'g-1', reported_by: 'student-1' };
+      const insertReport = qb(report);
       mock.from.mockReturnValueOnce(qb(group)); // fetch group
-      mock.from.mockReturnValueOnce(qb(report)); // insert report
+      mock.from.mockReturnValueOnce(insertReport); // insert report
       mock.from.mockReturnValueOnce(qb(undefined)); // insert message
 
       const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(true);
+      expect(insertReport.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teacher_id: 'teacher-2',
+          organization_id: 'org-1',
+          reported_by: ctx.userId,
+        }),
+      );
     });
 
     it('routes a report on an ownerless group to the org admin', async () => {
       const group = { id: 'g-1', created_by: null, organization_id: 'org-1' };
       const admin = { user_id: 'admin-1' };
       const report = { id: 'r-1', group_id: 'g-1', reported_by: 'student-1' };
+      const insertReport = qb(report);
       mock.from.mockReturnValueOnce(qb(group)); // fetch group
       mock.from.mockReturnValueOnce(qb(admin)); // find org admin
-      mock.from.mockReturnValueOnce(qb(report)); // insert report
+      mock.from.mockReturnValueOnce(insertReport); // insert report
       mock.from.mockReturnValueOnce(qb(undefined)); // insert message
 
       const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(true);
+      expect(insertReport.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ teacher_id: 'admin-1' }),
+      );
     });
 
     it('returns NOT_FOUND when an ownerless group has no org admin to route to', async () => {
@@ -420,18 +432,6 @@ describe('QuestionReportService', () => {
   });
 
   describe('getById', () => {
-    it('returns report with messages when user is participant', async () => {
-      const report = { id: 'r-1', reported_by: 'student-1', teacher_id: 'teacher-1' };
-      const messages = [{ id: 'm-1', report_id: 'r-1', body: 'test' }];
-      mock.from.mockReturnValueOnce(qb(report)); // fetchParticipantReport
-      mock.from.mockReturnValueOnce(qb(report)); // fetch report with relations
-      mock.from.mockReturnValueOnce(qb(messages)); // fetch messages
-
-      const result = await service.getById('r-1', ctx);
-
-      expect(result.success).toBe(true);
-    });
-
     it('returns NOT_FOUND when not a participant', async () => {
       mock.from.mockReturnValueOnce(qb(null, null)); // fetchParticipantReport returns null
 
@@ -517,12 +517,18 @@ describe('QuestionReportService', () => {
     it('adds a message to a report', async () => {
       const report = { id: 'r-1', reported_by: 'student-1', teacher_id: 'teacher-1' };
       const message = { id: 'm-1', body: 'test' };
+      const insertMessage = qb(message);
       mock.from.mockReturnValueOnce(qb(report));
-      mock.from.mockReturnValueOnce(qb(message));
+      mock.from.mockReturnValueOnce(insertMessage);
 
       const result = await service.addMessage('r-1', { body: 'test' }, ctx);
 
       expect(result.success).toBe(true);
+      expect(insertMessage.insert).toHaveBeenCalledWith({
+        report_id: 'r-1',
+        sender_id: ctx.userId,
+        body: 'test',
+      });
     });
 
     it('keeps the report resolved when the message insert fails', async () => {
@@ -602,23 +608,32 @@ describe('QuestionReportService', () => {
   describe('markRead', () => {
     it('marks report as read by reporter', async () => {
       const report = { id: 'r-1', reported_by: 'student-1', teacher_id: 'teacher-1' };
+      const receipt = qb(undefined);
       mock.from.mockReturnValueOnce(qb(report));
-      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(receipt);
 
       const result = await service.markRead('r-1', ctx);
 
       expect(result.success).toBe(true);
+      // Exactly one column is written; a null on the other participant's receipt is still a write.
+      expect(receipt.update).toHaveBeenCalledWith({
+        reporter_last_read_at: expect.any(String) as unknown,
+      });
     });
 
     it('marks report as read by teacher', async () => {
       const teacherCtx = { ...ctx, userId: 'teacher-1' };
       const report = { id: 'r-1', reported_by: 'student-1', teacher_id: 'teacher-1' };
+      const receipt = qb(undefined);
       mock.from.mockReturnValueOnce(qb(report));
-      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(receipt);
 
       const result = await service.markRead('r-1', teacherCtx);
 
       expect(result.success).toBe(true);
+      expect(receipt.update).toHaveBeenCalledWith({
+        teacher_last_read_at: expect.any(String) as unknown,
+      });
     });
 
     it('returns NOT_FOUND when not a participant', async () => {

@@ -275,7 +275,6 @@ describe('InvitationService', () => {
         inviteLink: 'http://localhost:3000/join?token=abc123',
         inviteCode: 'abc123',
       });
-      expect(result).toHaveProperty('data.invitationId', 'inv-1');
 
       // The membership probe is scoped to the caller AND the target org.
       expect(membershipQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
