@@ -1,20 +1,36 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { EXIT_CONFLICT, EXIT_TIMEOUT, EnvFailure } from './exit';
+import {
+  decideAdmission,
+  formatGb,
+  minFreeBytes,
+  probeMemory,
+  readStackReserve,
+  slotCap,
+  stackReserveBytes,
+  SLOT_RSS_BYTES,
+  type AdmissionDecision,
+  type AdmissionFailure,
+  type MemoryReading,
+} from './admission';
+import { EXIT_CONFLICT, EXIT_QUEUED, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
+import type { BuildSlotsStatus } from './json';
 import { writeStderrLine } from './output';
 import { resolveRegistryDir } from './registry';
-import { DEV_DIR, ensureDevDir } from './state';
+import { REPO_ROOT, canon } from './repo';
+import { DEV_DIR, ensureDevDir, removeBuildState } from './state';
 
 export function pidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
@@ -151,6 +167,11 @@ export interface DirLockOwner {
   pid: number;
   /** Holder identity written with the pid; '' when the holder left no token. */
   token: string;
+  /**
+   * Process start time, when the record carries one. A recycled pid then fails
+   * the identity check instead of keeping a dead holder's directory alive.
+   */
+  start?: string | null;
 }
 
 function readDirLockOwner(path: string): DirLockOwner {
@@ -221,7 +242,8 @@ export function takeoverStaleDirLock(
     moved.dev !== observed.dev ||
     moved.ino !== observed.ino ||
     movedOwner.pid !== owner.pid ||
-    movedOwner.token !== owner.token
+    movedOwner.token !== owner.token ||
+    (owner.start != null && readOwnerField(tombstone, 'start') !== owner.start)
   ) {
     // A successor got moved instead of the stale lock: put it back untouched.
     // If the name is already taken again, its lock stays in the tombstone and
@@ -414,24 +436,891 @@ export async function withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T> 
   }
 }
 
-function withLock<T>(
-  name: string,
-  waitSeconds: number,
-  timeoutCode: number,
-  message: string,
-  fn: () => Promise<T> | T,
+/**
+ * Run `fn` while the checkout lock is free, then take it back.
+ *
+ * A production build takes minutes and the lock is checkout-wide, so holding it
+ * for the build would block every other env command (`down` included) — and now
+ * also for a slot wait that may last 30 minutes. The caller's own record (the
+ * rebuild handover, or the build slot's per-worktree mutex) keeps ownership of
+ * the artifact while the lock is free. The failure from `fn` is the useful
+ * report, so a re-acquire failure never masks it.
+ */
+export async function withReleasedCheckoutLock<T>(
+  lock: CheckoutLock,
+  fn: () => Promise<T>,
+  emptyResult: string,
 ): Promise<T> {
-  return withLockAt(join(ensureRegistryDir(), name), waitSeconds, timeoutCode, message, fn);
+  await lock.release();
+  let result: T | null = null;
+  let failure: unknown;
+  let failed = false;
+  try {
+    result = await fn();
+  } catch (error) {
+    failed = true;
+    failure = error;
+  }
+  try {
+    await lock.acquire();
+  } catch (error) {
+    if (!failed) throw error;
+  }
+  if (failed) throw failure;
+  if (result === null) throw new EnvFailure(EXIT_START_FAILED, emptyResult);
+  return result;
 }
 
-export function withBuildLock<T>(fn: () => Promise<T> | T): Promise<T> {
-  return withLock(
-    'build.lock',
-    1800,
-    EXIT_TIMEOUT,
-    'timed out waiting for the cross-worktree build lock',
-    fn,
+/** One invocation may wait this long for a slot, and separately build this long. */
+const SLOT_WAIT_MS = 30 * 60 * 1000;
+const SLOT_PROGRESS_MS = 30_000;
+const SLOT_BACKOFF_INITIAL_MS = 2_000;
+const SLOT_BACKOFF_MAX_MS = 10_000;
+/** A slot directory that has not named its owner yet is trusted this long. */
+const SLOT_NO_OWNER_GRACE_MS = 5_000;
+/** SIGTERM → SIGKILL grace before a process group is declared dead. */
+const KILL_GRACE_MS = 10_000;
+const SLOTS_DIR = 'build-slots';
+
+/**
+ * A process's start time: the half of an identity that a pid alone cannot carry.
+ *
+ * Linux reads field 22 of `/proc/<pid>/stat` (clock ticks since boot). The comm
+ * field may contain spaces and parentheses, so the fields are read after the
+ * last `)`, where field 3 starts. Elsewhere `ps -o lstart=` answers the same
+ * question in text form.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function processStartTime(pid: number): string | null {
+  if (!Number.isInteger(pid) || pid <= 1) return null;
+  if (process.platform === 'linux') {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const fields = stat
+        .slice(stat.lastIndexOf(')') + 2)
+        .trim()
+        .split(/\s+/);
+      const start = fields[19];
+      return start === undefined || start === '' ? null : start;
+    } catch {
+      return null;
+    }
+  }
+  const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  const value = (result.stdout ?? '').trim();
+  return result.status === 0 && value !== '' ? value : null;
+}
+
+function groupAlive(pgid: number): boolean {
+  if (!Number.isInteger(pgid) || pgid <= 1) return false;
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/**
+ * SIGTERM the group, wait out the grace, then SIGKILL.
+ *
+ * `false` means there was no group to signal. Callers release a slot only after
+ * this returns, so a new build is never admitted over an orphan still writing
+ * `.next`.
+ */
+export async function killProcessGroup(pgid: number, graceMs = KILL_GRACE_MS): Promise<boolean> {
+  if (!Number.isInteger(pgid) || pgid <= 1) return false;
+  try {
+    process.kill(-pgid, 'SIGTERM');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    throw error;
+  }
+  const deadline = Date.now() + graceMs;
+  while (Date.now() < deadline) {
+    if (!groupAlive(pgid)) return true;
+    await sleep(100);
+  }
+  try {
+    process.kill(-pgid, 'SIGKILL');
+  } catch {
+    /* the group exited between the check and the kill */
+  }
+  return true;
+}
+
+export interface SlotRecord {
+  slot: number;
+  path: string;
+  pid: number;
+  start: string | null;
+  pgid: number;
+  /**
+   * The group leader's start time, recorded with the `pgid`. A pgid is a pid, so
+   * a recycled number can name an unrelated group; the reclaim verifies this
+   * before signalling.
+   */
+  pgidStart: string | null;
+  token: string;
+  worktree: string;
+  startedAt: string;
+  /** Age of the heartbeat file, or of the directory when it has none. */
+  heartbeatAgeMs: number;
+}
+
+/** `pending` is a directory that has not named its owner yet (a takeover window). */
+export type SlotState = 'live' | 'stale' | 'pending';
+
+function writeField(dir: string, name: string, value: string): void {
+  writeFileSync(join(dir, name), `${value}\n`, { mode: 0o600 });
+}
+
+function writeRecord(dir: string, fields: Record<string, string>): void {
+  for (const [name, value] of Object.entries(fields)) writeField(dir, name, value);
+}
+
+function readdirOrNull(dir: string): string[] | null {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return null;
+  }
+}
+
+function readSlotRecord(path: string, slot: number, now: number): SlotRecord {
+  const heartbeat = lstatSync(join(path, 'heartbeat'), { throwIfNoEntry: false });
+  const dir = lstatSync(path, { throwIfNoEntry: false });
+  const heartbeatMs = heartbeat?.mtimeMs ?? dir?.mtimeMs ?? now;
+  return {
+    slot,
+    path,
+    pid: Number(readOwnerField(path, 'pid') ?? '') || 0,
+    start: readOwnerField(path, 'start') || null,
+    pgid: Number(readOwnerField(path, 'pgid') ?? '') || 0,
+    pgidStart: readOwnerField(path, 'pgidStart') || null,
+    token: readOwnerField(path, 'token') ?? '',
+    worktree: readOwnerField(path, 'worktree') ?? '',
+    startedAt: readOwnerField(path, 'startedAt') ?? '',
+    heartbeatAgeMs: now - heartbeatMs,
+  };
+}
+
+function startDiffers(pid: number, start: string): boolean {
+  const current = processStartTime(pid);
+  return current !== null && current !== start;
+}
+
+/**
+ * The ADR's staleness rule: the pid is gone, the pid's start time differs, or
+ * the recorded process group is gone. A matching identity is **never** stale on
+ * heartbeat age alone — a long build is not a dead one.
+ */
+function slotState(record: SlotRecord, probe: { checkStart: boolean }): SlotState {
+  if (record.pid <= 1) {
+    return record.heartbeatAgeMs > SLOT_NO_OWNER_GRACE_MS ? 'stale' : 'pending';
+  }
+  if (!pidAlive(record.pid)) return 'stale';
+  if (probe.checkStart && record.start !== null && startDiffers(record.pid, record.start)) {
+    return 'stale';
+  }
+  if (record.pgid > 1 && !groupAlive(record.pgid)) return 'stale';
+  return 'live';
+}
+
+function ensureSlotsRoot(): string {
+  const root = trustRegistryDir(join(ensureRegistryDir(), SLOTS_DIR));
+  trustRegistryDir(join(root, 'waiters'));
+  trustRegistryDir(join(root, 'worktrees'));
+  return root;
+}
+
+function writeAtomic(path: string, contents: string): void {
+  const temp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  try {
+    writeFileSync(temp, contents, { mode: 0o600, flag: 'wx' });
+    renameSync(temp, path);
+  } finally {
+    rmSync(temp, { force: true });
+  }
+}
+
+function readCapacity(root: string): number | null {
+  const text = readOwnerField(root, 'capacity');
+  if (text === null || !/^\d+$/.test(text)) return null;
+  const cap = Number(text);
+  return Number.isSafeInteger(cap) && cap > 0 ? cap : null;
+}
+
+interface MemoryRecord {
+  degraded: boolean;
+  detail: string | null;
+}
+
+function readMemoryRecord(root: string): MemoryRecord | null {
+  const text = readOwnerField(root, 'memory.json');
+  if (text === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed === null || typeof parsed !== 'object') return null;
+    const record = parsed as { degraded?: unknown; detail?: unknown };
+    return {
+      degraded: record.degraded === true,
+      detail: typeof record.detail === 'string' ? record.detail : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The slot state `env status` and `env doctor` report: one shallow `readdir`,
+ * the recorded cap, and the liveness rule — pid, start time and process group.
+ * Read-only and cheap: no `du`, no cap recomputation, and on Linux the identity
+ * check is a `/proc` read (`ps` only where `/proc` does not exist).
+ *
+ * `busy` counts live records and can exceed `cap`: the cap gates admission and
+ * a stack that appeared after it was derived may have lowered it, while an
+ * already-admitted build keeps its slot. `busy < cap` promises nothing either —
+ * the free-memory test can refuse admission below the byte-capacity cap.
+ *
+ * `null` means the slot directory itself is unreadable (nothing has built here),
+ * which the callers render as `unknown`, never `0`.
+ */
+export function readBuildSlots(): BuildSlotsStatus | null {
+  const root = join(resolveRegistryDir(), SLOTS_DIR);
+  const names = readdirOrNull(root);
+  if (names === null) return null;
+  const now = Date.now();
+  let busy = 0;
+  let stale = 0;
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue;
+    const record = readSlotRecord(join(root, name), Number(name), now);
+    if (slotState(record, { checkStart: true }) === 'stale') stale += 1;
+    else busy += 1;
+  }
+  const memory = readMemoryRecord(root);
+  return {
+    busy,
+    cap: readCapacity(root),
+    stale,
+    waiting: readdirOrNull(join(root, 'waiters'))?.length ?? null,
+    degraded: memory?.degraded ?? false,
+    detail: memory?.detail ?? null,
+  };
+}
+
+/**
+ * `2/3 busy, 1 stale, 1 waiting` — and `unknown` for anything unreadable, never
+ * `0`. Shared by `env status`, `env doctor` and the build's progress line so the
+ * three cannot disagree about what the slot directory says.
+ */
+export function formatBuildSlots(status: BuildSlotsStatus | null): string {
+  if (status === null || status.busy === null) return 'unknown';
+  const cap = status.cap === null ? 'unknown' : String(status.cap);
+  const parts = [`${status.busy}/${cap} busy`];
+  if (status.stale) parts.push(`${status.stale} stale`);
+  if (status.waiting) parts.push(`${status.waiting} waiting`);
+  const degraded = status.degraded ? ' (memory gate degraded)' : '';
+  return `${parts.join(', ')}${degraded}`;
+}
+
+export interface BuildSlotHandle {
+  readonly number: number;
+  readonly token: string;
+  /**
+   * Record the spawned build's process group so a reclaim can find it. The
+   * leader's start time is recorded with it: the reclaim signals the group only
+   * while that identity still matches.
+   */
+  setProcessGroup(pgid: number): void;
+  /** Refresh the slot's heartbeat (progress tick). */
+  heartbeat(): void;
+}
+
+export interface BuildSlotsOptions {
+  /** Test seam: how long one invocation may wait for the mutex and the slot. */
+  waitMs?: number;
+  progressMs?: number;
+  backoffMs?: { initial: number; max: number };
+  /** Test seam: the admission decision for a given live slot count. */
+  decide?(activeSlots: number): AdmissionDecision;
+  /** Test seam: the memory reading admission uses (defaults to `probeMemory`). */
+  probe?(): MemoryReading;
+  /** Test seam: the artifact invalidation a reclaim performs. */
+  invalidate?(worktree: string): void;
+  now?(): number;
+}
+
+interface SlotContext {
+  root: string;
+  token: string;
+  start: string | null;
+  startedAt: number;
+  deadline: number;
+  progressMs: number;
+  backoff: { initial: number; max: number };
+  now(): number;
+  decide(activeSlots: number): AdmissionDecision;
+  invalidate(worktree: string): void;
+}
+
+/**
+ * `m:ss` for a progress line.
+ *
+ * @public Used by the build's progress line and exercised by the unit tests.
+ */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** `build: <state>, 0:42 elapsed, 29:18 left` — the 30-second progress contract. */
+function progressLine(context: SlotContext, state: string): string {
+  const elapsed = formatDuration(context.now() - context.startedAt);
+  const left = formatDuration(Math.max(0, context.deadline - context.now()));
+  return `build: ${state}, ${elapsed} elapsed, ${left} left`;
+}
+
+/** 50–100 % of the current delay, so waiters do not retry in lockstep. */
+function jitter(delayMs: number): number {
+  return Math.round(delayMs * (0.5 + Math.random() * 0.5));
+}
+
+/**
+ * The per-worktree mutex name: a short hash of the canonical checkout root, so
+ * one registry can hold every worktree's mutex side by side.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function worktreeKey(root: string = REPO_ROOT): string {
+  return createHash('sha256').update(canon(root)).digest('hex').slice(0, 16);
+}
+
+/**
+ * The reclaim's artifact invalidation, for **this** checkout only.
+ *
+ * Another worktree's `.next` and `.dev/` are outside this process's ownership:
+ * its group was killed before the slot was freed, so nothing is writing there,
+ * and its own next build invalidates the artifact through its fingerprint and
+ * handover. Writing into a foreign checkout from here would be worse than the
+ * stale artifact.
+ */
+function invalidateWorktree(worktree: string): void {
+  if (!worktree || canon(worktree) !== REPO_ROOT) return;
+  rmSync(join(REPO_ROOT, 'apps', 'web', '.next'), { recursive: true, force: true });
+  removeBuildState();
+  writeStderrLine('build: invalidated apps/web/.next left by the reclaimed build');
+}
+
+function recordGate(root: string, reading: MemoryReading, minFree: number, reserve: number): void {
+  const cap =
+    reading.capacityBytes === null
+      ? 1
+      : Math.max(1, slotCap(reading.capacityBytes, reserve, minFree));
+  writeAtomic(join(root, 'capacity'), `${cap}\n`);
+  writeAtomic(
+    join(root, 'memory.json'),
+    `${JSON.stringify(
+      {
+        degraded: reading.detail !== null,
+        detail: reading.detail,
+        hostFallback: reading.hostFallback,
+        disabled: minFree <= 0,
+        cap,
+        at: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
   );
+}
+
+/**
+ * The one-time admission lines. They are printed once per invocation rather
+ * than once per backoff tick: a 30-minute wait would otherwise repeat the same
+ * sentence hundreds of times.
+ */
+function announceGate(reading: MemoryReading, minFree: number): void {
+  if (minFree <= 0) {
+    writeStderrLine('build: memory gate disabled by STUDIQ_BUILD_MIN_FREE_MB=0');
+    return;
+  }
+  if (reading.detail !== null) {
+    writeStderrLine(`warning: build: ${reading.detail}; concurrent builds are capped at 1`);
+    return;
+  }
+  if (reading.hostFallback) writeStderrLine('build: no cgroup limit; using host MemAvailable');
+}
+
+/**
+ * The `always-one` warning: one build is admitted although a test failed.
+ *
+ * `always-one` is the reason for the admission, not the reason for the failure,
+ * so the failed test — and the numbers that test used — come from the decision's
+ * `failed` field. Assuming the free test here reports `free 14.0 GB < MIN_FREE
+ * 4.5 GB` when the capacity test is what failed.
+ */
+function alwaysOneWarning(
+  failed: AdmissionFailure,
+  numbers: {
+    activeSlots: number;
+    capacityBytes: number;
+    freeBytes: number;
+    reserve: number;
+    minFree: number;
+  },
+): string {
+  const head = 'warning: build: admitting one build under memory pressure';
+  if (failed === 'free') {
+    return (
+      `${head} (free ${formatGb(numbers.freeBytes)} < MIN_FREE ${formatGb(numbers.minFree)}, ` +
+      `stack reserve ${formatGb(numbers.reserve)})`
+    );
+  }
+  const slots = numbers.activeSlots + 1;
+  const reserved = slots * SLOT_RSS_BYTES + numbers.reserve;
+  return (
+    `${head} (capacity ${formatGb(numbers.capacityBytes)} − (${slots} × ` +
+    `${formatGb(SLOT_RSS_BYTES)} + reserve ${formatGb(numbers.reserve)}) = ` +
+    `${formatGb(numbers.capacityBytes - reserved)} < MIN_FREE ${formatGb(numbers.minFree)})`
+  );
+}
+
+function firstFreeSlot(root: string, cap: number): number | null {
+  for (let slot = 1; slot <= cap; slot += 1) {
+    if (!existsSync(join(root, String(slot)))) return slot;
+  }
+  return null;
+}
+
+function takeSlot(context: SlotContext, slot: number): SlotRecord | null {
+  const path = join(context.root, String(slot));
+  try {
+    mkdirSync(path, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return null;
+    throw error;
+  }
+  try {
+    writeRecord(path, {
+      pid: String(process.pid),
+      start: context.start ?? '',
+      pgid: '0',
+      pgidStart: '',
+      token: context.token,
+      worktree: REPO_ROOT,
+      startedAt: new Date(context.now()).toISOString(),
+    });
+    writeField(path, 'heartbeat', String(context.now()));
+  } catch (error) {
+    rmSync(path, { recursive: true, force: true });
+    throw error;
+  }
+  return readSlotRecord(path, slot, context.now());
+}
+
+function handleFor(record: SlotRecord, context: SlotContext): BuildSlotHandle {
+  const owned = (): boolean => readOwnerField(record.path, 'token') === record.token;
+  return {
+    number: record.slot,
+    token: record.token,
+    setProcessGroup(pgid: number) {
+      if (!owned()) return;
+      writeField(record.path, 'pgid', String(pgid));
+      writeField(record.path, 'pgidStart', processStartTime(pgid) ?? '');
+    },
+    heartbeat() {
+      if (owned()) writeField(record.path, 'heartbeat', String(context.now()));
+    },
+  };
+}
+
+/**
+ * Whether the recorded process group is still the one this slot spawned.
+ *
+ * A pgid is a pid, and a pid can be recycled: signalling an unverified group
+ * would SIGTERM whatever now owns that number. Two outcomes are ours:
+ *
+ * - the leader is alive with the recorded start time (the normal case);
+ * - the leader is gone (no start time to read) — the kernel keeps a group's id
+ *   allocated while the group exists, so a surviving group under that id is the
+ *   orphan this slot left behind, not a recycled number.
+ *
+ * A leader that is alive with a *different* start time is a recycled pid, and a
+ * slot that recorded no start time cannot be verified at all.
+ */
+function groupIdentityHolds(record: SlotRecord): boolean {
+  if (record.pgidStart === null) return false;
+  const current = processStartTime(record.pgid);
+  return current === null || current === record.pgidStart;
+}
+
+async function reclaimSlot(record: SlotRecord, context: SlotContext): Promise<void> {
+  const launcherDead =
+    !pidAlive(record.pid) || (record.start !== null && startDiffers(record.pid, record.start));
+  // Kill the surviving group first: a new build is never admitted over an
+  // orphan still writing `.next`. The group is only signalled while its recorded
+  // identity holds, so a recycled pgid cannot hit an unrelated group.
+  if (record.pgid > 1) {
+    if (groupIdentityHolds(record)) await killProcessGroup(record.pgid);
+    else
+      writeStderrLine(
+        `warning: build: not signalling process group ${record.pgid} of stale slot ${record.slot}; its recorded identity no longer matches`,
+      );
+  }
+  if (launcherDead) context.invalidate(record.worktree);
+  const observed = dirLockIdentity(record.path);
+  if (observed) {
+    takeoverStaleDirLock(record.path, observed, {
+      pid: record.pid,
+      token: record.token,
+      start: record.start,
+    });
+  }
+  writeStderrLine(
+    `build: reclaimed stale slot ${record.slot} (pid ${record.pid}${record.worktree ? `, ${record.worktree}` : ''})`,
+  );
+}
+
+/**
+ * Drop waiter directories whose owner is gone, by the slot liveness rule. A
+ * waiter that was killed (or whose shell died) would otherwise inflate the
+ * count `env status` prints for the rest of the machine's uptime.
+ */
+function reclaimStaleWaiters(context: SlotContext): void {
+  for (const name of readdirOrNull(join(context.root, 'waiters')) ?? []) {
+    const path = join(context.root, 'waiters', name);
+    const observed = dirLockIdentity(path);
+    if (!observed) continue;
+    const pid = Number(readOwnerField(path, 'pid') ?? '') || 0;
+    const start = readOwnerField(path, 'start');
+    const stale =
+      pid <= 1
+        ? context.now() - observed.mtimeMs > SLOT_NO_OWNER_GRACE_MS
+        : !pidAlive(pid) || (start != null && start !== '' && startDiffers(pid, start));
+    if (!stale) continue;
+    takeoverStaleDirLock(path, observed, {
+      pid,
+      token: readOwnerField(path, 'token') ?? '',
+      start,
+    });
+  }
+}
+
+async function liveSlots(context: SlotContext): Promise<SlotRecord[]> {
+  const live: SlotRecord[] = [];
+  for (const name of readdirOrNull(context.root) ?? []) {
+    if (!/^\d+$/.test(name)) continue;
+    const record = readSlotRecord(join(context.root, name), Number(name), context.now());
+    if (slotState(record, { checkStart: true }) === 'stale') {
+      await reclaimSlot(record, context);
+      continue;
+    }
+    live.push(record);
+  }
+  return live;
+}
+
+function queuedFailure(context: SlotContext, active: SlotRecord[]): EnvFailure {
+  const holders =
+    active.length === 0
+      ? 'no build slot was free'
+      : active
+          .map(
+            (record) =>
+              `slot ${record.slot} (pid ${record.pid}${record.worktree ? ` in ${record.worktree}` : ''})`,
+          )
+          .join(', ');
+  return new EnvFailure(
+    EXIT_QUEUED,
+    `timed out after ${formatDuration(context.now() - context.startedAt)} waiting for a build slot (${holders})`,
+  );
+}
+
+function holderSlotLabel(root: string, pid: number): string {
+  const slot = slotNumberForPid(root, pid);
+  return slot === null ? '' : `, slot ${slot}`;
+}
+
+function slotNumberForPid(root: string, pid: number): number | null {
+  for (const name of readdirOrNull(root) ?? []) {
+    if (!/^\d+$/.test(name)) continue;
+    if ((Number(readOwnerField(join(root, name), 'pid') ?? '') || 0) === pid) return Number(name);
+  }
+  return null;
+}
+
+/**
+ * A build holding this worktree's mutex, as the read-only signal every path that
+ * touches `.next` or starts a server must consult.
+ *
+ * `checkout.lock` is deliberately free while a build runs, so the mutex is the
+ * only fact that says "a build owns this `.next` right now": a plain build takes
+ * it for its whole run, and the fingerprint describes the source tree, not the
+ * artifact, so neither the lock nor the build record can answer this question.
+ * The signal is read-only — no mutex is taken (a directory mutex is not
+ * reentrant, and the caller may be about to run the build itself) and nothing is
+ * reclaimed; reclamation belongs to the admission path.
+ */
+export interface BuildInProgress {
+  /** The mutex holder's pid, or null while it has not named its owner yet. */
+  pid: number | null;
+  /** The holder's process start time: the half of an identity a pid cannot carry. */
+  start: string | null;
+  /** ISO timestamp the holder recorded when it took the mutex. */
+  startedAt: string | null;
+  /** The holder's build slot, when its slot record is still present. */
+  slot: number | null;
+}
+
+/**
+ * Whether a build holds this worktree's mutex, and which one.
+ *
+ * `null` means no build: the mutex is absent, or its recorded identity is dead
+ * by the same rule the mutex itself uses (pid gone, or the pid's start time
+ * differs). A mutex that has not named its owner yet is a build taking it, not a
+ * free one, until the no-owner grace expires.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function buildInProgress(worktreeRoot: string = REPO_ROOT): BuildInProgress | null {
+  const root = join(resolveRegistryDir(), SLOTS_DIR);
+  const dir = join(root, 'worktrees', worktreeKey(worktreeRoot));
+  const observed = dirLockIdentity(dir);
+  if (!observed) return null;
+  const pid = Number(readOwnerField(dir, 'pid') ?? '') || 0;
+  if (pid <= 1) {
+    return Date.now() - observed.mtimeMs > SLOT_NO_OWNER_GRACE_MS
+      ? null
+      : { pid: null, start: null, startedAt: null, slot: null };
+  }
+  const start = readOwnerField(dir, 'start') || null;
+  if (!pidAlive(pid)) return null;
+  if (start !== null && startDiffers(pid, start)) return null;
+  return {
+    pid,
+    start,
+    startedAt: readOwnerField(dir, 'startedAt'),
+    slot: slotNumberForPid(root, pid),
+  };
+}
+
+/**
+ * The refusal for a live build in this worktree: one message for `env:serve`,
+ * `env:ensure`'s start and the rebuild prelude, naming the build's pid, its
+ * recorded start time and its slot.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function buildInProgressFailure(build: BuildInProgress): EnvFailure {
+  const holder =
+    build.pid === null
+      ? "a build is taking this worktree's build mutex (no pid recorded yet)"
+      : `a build (pid ${build.pid}${build.startedAt === null ? '' : `, started ${build.startedAt}`}${
+          build.slot === null ? '' : `, slot ${build.slot}`
+        })`;
+  return new EnvFailure(
+    EXIT_CONFLICT,
+    `${holder} holds this worktree's build mutex and is writing apps/web/.next; retry once it finishes`,
+  );
+}
+
+function mutexStale(holder: DirLockOwner, observed: DirLockIdentity, now: number): boolean {
+  if (holder.pid <= 1) return now - observed.mtimeMs > SLOT_NO_OWNER_GRACE_MS;
+  if (!pidAlive(holder.pid)) return true;
+  return holder.start != null && holder.start !== '' && startDiffers(holder.pid, holder.start);
+}
+
+/**
+ * The per-worktree mutex: one build per checkout, taken before the slot and
+ * released after it. A second build in the same worktree waits here, inside the
+ * same deadline, and names the holder's slot.
+ */
+async function acquireWorktreeMutex(context: SlotContext): Promise<Mutex> {
+  const dir = join(context.root, 'worktrees', worktreeKey());
+  let delay = context.backoff.initial;
+  let lastProgress = context.now();
+  for (;;) {
+    try {
+      mkdirSync(dir, { mode: 0o700 });
+      writeRecord(dir, {
+        pid: String(process.pid),
+        start: context.start ?? '',
+        token: context.token,
+        worktree: REPO_ROOT,
+        startedAt: new Date(context.startedAt).toISOString(),
+      });
+      return { release: async () => releaseDirMutex(dir, context.token) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const observed = dirLockIdentity(dir);
+      if (!observed) continue;
+      const holder: DirLockOwner = {
+        pid: Number(readOwnerField(dir, 'pid') ?? '') || 0,
+        token: readOwnerField(dir, 'token') ?? '',
+        start: readOwnerField(dir, 'start'),
+      };
+      if (mutexStale(holder, observed, context.now())) {
+        takeoverStaleDirLock(dir, observed, holder);
+        continue;
+      }
+      if (context.now() >= context.deadline) {
+        throw new EnvFailure(
+          EXIT_QUEUED,
+          `timed out after ${formatDuration(context.now() - context.startedAt)} waiting for this worktree's build ` +
+            `(holder pid ${holder.pid}${holderSlotLabel(context.root, holder.pid)})`,
+        );
+      }
+      if (context.now() - lastProgress >= context.progressMs) {
+        lastProgress = context.now();
+        writeStderrLine(
+          progressLine(
+            context,
+            `waiting for this worktree's build (holder pid ${holder.pid}${holderSlotLabel(context.root, holder.pid)})`,
+          ),
+        );
+      }
+      await sleep(jitter(delay));
+      delay = Math.min(delay * 2, context.backoff.max);
+    }
+  }
+}
+
+async function acquireSlot(context: SlotContext): Promise<SlotRecord> {
+  let delay = context.backoff.initial;
+  let lastProgress = context.now();
+  for (;;) {
+    const active = await liveSlots(context);
+    const decision = context.decide(active.length);
+    if (decision.admit) {
+      const free = firstFreeSlot(context.root, decision.cap);
+      if (free !== null) {
+        const held = takeSlot(context, free);
+        if (held !== null) return held;
+      }
+    }
+    if (context.now() >= context.deadline) throw queuedFailure(context, active);
+    if (context.now() - lastProgress >= context.progressMs) {
+      lastProgress = context.now();
+      const waiting = readdirOrNull(join(context.root, 'waiters'))?.length ?? 0;
+      writeStderrLine(
+        progressLine(
+          context,
+          `waiting for a slot (${active.length}/${decision.cap} busy, ${waiting} waiting)`,
+        ),
+      );
+    }
+    await sleep(jitter(delay));
+    delay = Math.min(delay * 2, context.backoff.max);
+  }
+}
+
+/**
+ * Run `fn` while holding a global build slot and this worktree's mutex.
+ *
+ * One invocation owns one slot: the memory-derived cap is a machine-wide total,
+ * and the per-worktree mutex makes two builds in the same checkout impossible
+ * rather than merely unlikely. The wait is bounded by `waitMs` (30 minutes), and
+ * expiry is `EXIT_QUEUED` naming the holders. Admission lives here rather than in
+ * `commands/build.ts` so every caller of `runProductionBuild` — `env build` and
+ * `env ensure`'s rebuild — goes through it.
+ */
+export async function withBuildSlots<T>(
+  fn: (slot: BuildSlotHandle) => Promise<T>,
+  options: BuildSlotsOptions = {},
+): Promise<T> {
+  const root = ensureSlotsRoot();
+  const now = options.now ?? Date.now;
+  const startedAt = now();
+  const minFree = minFreeBytes();
+  const probe = options.probe ?? probeMemory;
+  const reading = probe();
+  recordGate(root, reading, minFree, stackReserveBytes(readStackReserve()));
+  announceGate(reading, minFree);
+
+  const token = randomBytes(12).toString('hex');
+  const start = processStartTime(process.pid);
+  const context: SlotContext = {
+    root,
+    token,
+    start,
+    startedAt,
+    deadline: startedAt + (options.waitMs ?? SLOT_WAIT_MS),
+    progressMs: options.progressMs ?? SLOT_PROGRESS_MS,
+    backoff: options.backoffMs ?? {
+      initial: SLOT_BACKOFF_INITIAL_MS,
+      max: SLOT_BACKOFF_MAX_MS,
+    },
+    now,
+    decide:
+      options.decide ??
+      ((active) => {
+        const tick = probe();
+        const reserve = stackReserveBytes(readStackReserve());
+        const decision = decideAdmission({
+          activeSlots: active,
+          capacityBytes: tick.capacityBytes,
+          freeBytes: tick.freeBytes,
+          stackReserveBytes: reserve,
+          minFreeBytes: minFree,
+        });
+        // `always-one` is only reachable with both readings present (a failed
+        // probe degrades first), so the null checks are what TypeScript needs to
+        // say that; the warning names the test the decision says failed.
+        if (
+          decision.reason === 'always-one' &&
+          decision.failed !== null &&
+          tick.capacityBytes !== null &&
+          tick.freeBytes !== null
+        ) {
+          writeStderrLine(
+            alwaysOneWarning(decision.failed, {
+              activeSlots: active,
+              capacityBytes: tick.capacityBytes,
+              freeBytes: tick.freeBytes,
+              reserve,
+              minFree,
+            }),
+          );
+        }
+        return decision;
+      }),
+    invalidate: options.invalidate ?? invalidateWorktree,
+  };
+
+  reclaimStaleWaiters(context);
+  const waiter = join(root, 'waiters', `${process.pid}-${token}`);
+  mkdirSync(waiter, { mode: 0o700 });
+  writeRecord(waiter, {
+    pid: String(process.pid),
+    start: start ?? '',
+    token,
+    worktree: REPO_ROOT,
+    since: new Date(startedAt).toISOString(),
+  });
+
+  // The waiter is registered before either wait and removed in `finally`, so an
+  // abandoned wait (mutex or slot) never leaves a phantom waiter behind.
+  let mutex: Mutex | null = null;
+  try {
+    mutex = await acquireWorktreeMutex(context);
+    const held = await acquireSlot(context);
+    // Admitted: the slot record replaces the waiter, so status stops counting it.
+    rmSync(waiter, { recursive: true, force: true });
+    try {
+      return await fn(handleFor(held, context));
+    } finally {
+      releaseDirMutex(held.path, held.token);
+    }
+  } finally {
+    rmSync(waiter, { recursive: true, force: true });
+    await mutex?.release();
+  }
 }
 
 /**

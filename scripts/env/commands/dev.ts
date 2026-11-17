@@ -1,8 +1,8 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
-import { contractWithLease } from '../lib/contract-lease';
-import { pidAlive, withCheckoutLock } from '../lib/locks';
+import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
+import { buildInProgress, buildInProgressFailure, pidAlive, withCheckoutLock } from '../lib/locks';
 import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { resolveLocalAppEnv } from '../lib/app-env';
@@ -92,11 +92,14 @@ export async function runDev(parsed: ParsedCommand): Promise<number> {
   const base = readContract();
   const stackName = options.stack ?? base.stackName;
   const contract = contractWithLease({ ...base, stackName });
-  process.env.APP_PORT = String(contract.appPort);
-  process.env.APP_URL = contract.appUrl;
-  process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+  applyContractEnv(contract);
 
   const handle = await withCheckoutLock(async () => {
+    // HMR writes the same `apps/web/.next` a build does, and the build's mutex is
+    // free for it, so a build in this worktree owns the artifact HMR would
+    // overwrite (and HMR would serve a tree the build is rewriting).
+    const build = buildInProgress();
+    if (build) throw buildInProgressFailure(build);
     const conflict = liveServerConflict(
       { stackName: stackName ?? 'default', profile: 'full' },
       'start',

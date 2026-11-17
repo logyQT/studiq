@@ -41,7 +41,15 @@ import {
   type RebuildRecoveryInput,
   type RebuildRecoveryResult,
 } from '../lib/rebuild';
-import { acquireCheckoutLock, pidAlive, withClaimsLock, type CheckoutLock } from '../lib/locks';
+import {
+  acquireCheckoutLock,
+  buildInProgress,
+  buildInProgressFailure,
+  pidAlive,
+  withClaimsLock,
+  withReleasedCheckoutLock,
+  type CheckoutLock,
+} from '../lib/locks';
 import {
   heartbeatAgeMs,
   isClaimOwnerLive,
@@ -164,6 +172,11 @@ export async function startWebReplacement(input: {
   webPid: number | null;
   timeoutSeconds?: number;
 }): Promise<{ pid: number; http: number }> {
+  // A build in this worktree owns `.next` and holds the mutex for its whole run;
+  // `checkout.lock` is free for it, so this is the only fact that says the
+  // artifact is being written. Refuse before stopping or starting anything.
+  const build = buildInProgress();
+  if (build) throw buildInProgressFailure(build);
   if (input.webPid !== null) stopWebServerForReplacement();
   const pid = startWebServer({
     appPort: input.appPort,
@@ -225,46 +238,10 @@ interface BuildRevalidation {
 }
 
 /**
- * Run the rebuild while `checkout.lock` is free and take it back afterwards.
- *
- * A production build takes minutes; holding the checkout-wide lock for it would
- * block every other env command (`down` included) for that whole time. The
- * handover record written before the build keeps recovery ownership of `.next`,
- * so releasing the lock does not hand the artifact to another process. The lock
- * is re-acquired even when the build fails, so the failure path still owns the
- * lease and the attribution it writes.
- */
-async function rebuildWithoutCheckoutLock(
-  lock: CheckoutLock,
-  request: RebuildRecoveryInput,
-  deps: EnsureDeps,
-): Promise<RebuildRecoveryResult> {
-  await lock.release();
-  let outcome: RebuildRecoveryResult | null = null;
-  let failure: unknown;
-  let failed = false;
-  try {
-    outcome = await deps.rebuild(request);
-  } catch (error) {
-    failed = true;
-    failure = error;
-  }
-  try {
-    await lock.acquire();
-  } catch (error) {
-    // The build failure is the useful report: do not mask it with a lock
-    // conflict from the re-acquire. A successful build must surface it.
-    if (!failed) throw error;
-  }
-  if (failed) throw failure;
-  if (outcome === null) throw new EnvFailure(EXIT_START_FAILED, 'rebuild returned no result');
-  return outcome;
-}
-
-/**
  * Rebuild only when nothing proves the recorded build still matches this
  * environment. The rebuild itself runs without the checkout lock (see
- * `rebuildWithoutCheckoutLock`).
+ * `withReleasedCheckoutLock`): a production build takes minutes and the lock is
+ * checkout-wide, so holding it would block every other env command.
  */
 async function rebuildIfNeeded(
   input: {
@@ -286,17 +263,18 @@ async function rebuildIfNeeded(
       computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash: input.envHash }) &&
     buildArtifactPresent();
   if (!input.force && current) return null;
-  return rebuildWithoutCheckoutLock(
+  return withReleasedCheckoutLock(
     input.lock,
-    {
-      envHash: input.envHash,
-      appPort: input.appPort,
-      appUrl: input.appUrl,
-      env: process.env,
-      serve: input.serve,
-      ...(input.beforeServe ? { beforeServe: input.beforeServe } : {}),
-    },
-    deps,
+    () =>
+      deps.rebuild({
+        envHash: input.envHash,
+        appPort: input.appPort,
+        appUrl: input.appUrl,
+        env: process.env,
+        serve: input.serve,
+        ...(input.beforeServe ? { beforeServe: input.beforeServe } : {}),
+      }),
+    'rebuild returned no result',
   );
 }
 
@@ -723,10 +701,10 @@ export async function runEnsure(
   appendEnvLog(`ensure: profile=${options.profile} stack=${cliStackName ?? 'default'}`);
 
   // One lock per checkout: the app-port lease and the web claim are authoritative
-  // while it is held. The build lock is taken later, inside the build, and the
-  // checkout lock is deliberately released around that build (see
-  // `rebuildWithoutCheckoutLock`) so a concurrent `down` is never blocked for
-  // the whole build.
+  // while it is held. The build's slot and per-worktree mutex are taken later,
+  // inside the build, and the checkout lock is deliberately released around that
+  // build (`withReleasedCheckoutLock`) so a concurrent `down` is never blocked
+  // for the whole build.
   const lock = await acquireCheckoutLock();
   try {
     // Settle an artifact left behind by an interrupted rebuild before the lease

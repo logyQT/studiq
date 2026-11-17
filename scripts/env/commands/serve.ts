@@ -1,8 +1,8 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
-import { contractWithLease } from '../lib/contract-lease';
-import { withCheckoutLock } from '../lib/locks';
+import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
+import { buildInProgress, buildInProgressFailure, withCheckoutLock } from '../lib/locks';
 import { readStack } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
 import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
@@ -36,6 +36,20 @@ import { recoverHandover } from '../lib/rebuild';
 const healthy = (code: number) => code >= 200 && code < 400;
 
 /**
+ * Refuse while a build owns this worktree's `.next`.
+ *
+ * `checkout.lock` is free for the build and the fingerprint describes the source
+ * tree, so the per-worktree mutex is the only fact that says the artifact is
+ * being written. Called at each point where the answer can have changed since the
+ * previous read: before the stack is resolved, before the artifact is judged, and
+ * immediately before the server is spawned.
+ */
+function refuseBuildInProgress(): void {
+  const build = buildInProgress();
+  if (build) throw buildInProgressFailure(build);
+}
+
+/**
  * Serve an existing production build. Unlike `ensure`, this never starts or
  * changes the Supabase stack: it refuses when no stack is running or the build
  * fingerprint is stale, naming the command that fixes it. It shares `ensure`'s
@@ -63,12 +77,18 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       );
     }
 
+    // A build owns `.next` for its whole run and `checkout.lock` is deliberately
+    // free for it, so the build record and the fingerprint cannot tell that the
+    // artifact is half-written. Starting a server here would serve it. This early
+    // read is the cheap refusal; it is not the invariant — a build that takes its
+    // mutex while this command is still resolving the stack is only visible to
+    // the re-reads below.
+    refuseBuildInProgress();
+
     const base = readContract();
     const stackName = options.stack ?? base.stackName;
     const contract = contractWithLease({ ...base, stackName });
-    process.env.APP_PORT = String(contract.appPort);
-    process.env.APP_URL = contract.appUrl;
-    process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+    applyContractEnv(contract);
     appendEnvLog(`serve: stack=${stackName ?? 'default'} shared=${contract.shared}`);
 
     const state = readStackState();
@@ -126,6 +146,11 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
         );
       }
     } else {
+      // The stack read above takes hundreds of milliseconds, and the build takes
+      // its mutex only after releasing the checkout lock this command waited on.
+      // This is the check that decides: it must name the build, not report the
+      // artifact the build is rewriting as missing.
+      refuseBuildInProgress();
       const previous = readWebPid();
       if (previous !== null) stopWebServer();
       const built = computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
@@ -136,6 +161,9 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
           "no current production build for this stack; run 'bun run env:build' (or 'env:ensure --profile web')",
         );
       }
+      // Fingerprinting the tree takes long enough for a build to start, so the
+      // mutex is read once more at the point of no return.
+      refuseBuildInProgress();
       webPid = startWebServer({
         appPort: contract.appPort,
         appUrl: contract.appUrl,

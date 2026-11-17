@@ -30,7 +30,6 @@ interface LocksModule {
   pidAlive(pid: number): boolean;
   ensureRegistryDir(): string;
   withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T>;
-  withBuildLock<T>(fn: () => Promise<T> | T): Promise<T>;
   takeoverStaleDirLock(
     path: string,
     observed: { dev: number; ino: number; mtimeMs: number },
@@ -66,6 +65,15 @@ function registry(): string {
   dirs.push(dir);
   process.env.STUDIQ_DEV_REGISTRY = dir;
   return dir;
+}
+
+/**
+ * The portable fallback's directory for the checkout lock. `state.ts` captured
+ * `DEV_DIR` before this module loaded, so it lives under the suite's temp state
+ * directory, not the real `.dev/`.
+ */
+function checkoutLockDir(): string {
+  return join(stateDir, 'locks', 'checkout.lock.d');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -134,11 +142,6 @@ describe('lock primitives', () => {
     expect(await serializes((fn) => locks.withCheckoutLock(fn))).toBe(1);
   });
 
-  it('serializes the cross-worktree build lock', async () => {
-    registry();
-    expect(await serializes((fn) => locks.withBuildLock(fn))).toBe(1);
-  });
-
   it('releases the lock when the callback throws', async () => {
     registry();
     await expect(
@@ -151,22 +154,22 @@ describe('lock primitives', () => {
   });
 
   it('falls back to the directory mutex when flock is unavailable', async () => {
-    const dir = registry();
+    registry();
     await withoutPath(async () => {
-      expect(await serializes((fn) => locks.withBuildLock(fn))).toBe(1);
+      expect(await serializes((fn) => locks.withCheckoutLock(fn))).toBe(1);
     });
-    expect(existsSync(join(dir, 'build.lock.d'))).toBe(false);
+    expect(existsSync(checkoutLockDir())).toBe(false);
   });
 
   it('takes over a directory lock left by a dead pid', async () => {
-    const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
-    mkdirSync(lockDir, { mode: 0o700 });
+    registry();
+    const lockDir = checkoutLockDir();
+    mkdirSync(lockDir, { recursive: true, mode: 0o700 });
     writeFileSync(join(lockDir, 'pid'), '999999999\n');
 
     let ran = false;
     await withoutPath(async () => {
-      await locks.withBuildLock(() => {
+      await locks.withCheckoutLock(() => {
         ran = true;
       });
     });
@@ -175,15 +178,15 @@ describe('lock primitives', () => {
   });
 
   it('takes over a directory lock with a missing pid after the grace period', async () => {
-    const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
-    mkdirSync(lockDir, { mode: 0o700 });
+    registry();
+    const lockDir = checkoutLockDir();
+    mkdirSync(lockDir, { recursive: true, mode: 0o700 });
     const old = new Date(Date.now() - 60_000);
     utimesSync(lockDir, old, old);
 
     let ran = false;
     await withoutPath(async () => {
-      await locks.withBuildLock(() => {
+      await locks.withCheckoutLock(() => {
         ran = true;
       });
     });
@@ -193,7 +196,7 @@ describe('lock primitives', () => {
 
   it('removes only the observed stale lock through a tombstone', () => {
     const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
+    const lockDir = join(dir, 'stale.lock.d');
     mkdirSync(lockDir, { mode: 0o700 });
     writeFileSync(join(lockDir, 'pid'), '999999999\n');
     writeFileSync(join(lockDir, 'token'), 'stale-token\n');
@@ -212,7 +215,7 @@ describe('lock primitives', () => {
 
   it('never deletes a successor installed during a stale takeover', () => {
     const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
+    const lockDir = join(dir, 'stale.lock.d');
     mkdirSync(lockDir, { mode: 0o700 });
     writeFileSync(join(lockDir, 'pid'), '999999999\n');
     writeFileSync(join(lockDir, 'token'), 'stale-token\n');
@@ -242,7 +245,7 @@ describe('lock primitives', () => {
 
   it('never deletes a successor directory when the owner write loses the path', () => {
     const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
+    const lockDir = join(dir, 'stale.lock.d');
     mkdirSync(lockDir, { mode: 0o700 });
     const owned = dirIdentity(lockDir);
 
@@ -264,7 +267,7 @@ describe('lock primitives', () => {
 
   it('removes only its own directory when the owner write fails', () => {
     const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
+    const lockDir = join(dir, 'stale.lock.d');
     mkdirSync(lockDir, { mode: 0o700 });
     const owned = dirIdentity(lockDir);
     // A directory at `pid` makes the owner write fail with EISDIR, not ENOENT.
@@ -276,7 +279,7 @@ describe('lock primitives', () => {
 
   it('keeps a successor directory when the owner write fails for another reason', () => {
     const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
+    const lockDir = join(dir, 'stale.lock.d');
     mkdirSync(lockDir, { mode: 0o700 });
     const owned = dirIdentity(lockDir);
 
@@ -291,11 +294,11 @@ describe('lock primitives', () => {
   });
 
   it('never removes a successor directory when a presumed-stale holder releases', async () => {
-    const dir = registry();
-    const lockDir = join(dir, 'build.lock.d');
+    registry();
+    const lockDir = checkoutLockDir();
 
     await withoutPath(async () => {
-      await locks.withBuildLock(() => {
+      await locks.withCheckoutLock(() => {
         // A successor took the lock over: the directory it now owns has a new
         // inode and its own token. The previous holder's release must not
         // delete it.
@@ -308,6 +311,9 @@ describe('lock primitives', () => {
 
     expect(existsSync(lockDir)).toBe(true);
     expect(readFileSync(join(lockDir, 'token'), 'utf8').trim()).toBe('successor-token');
+    // The successor's lock is the point of the test; it is a live holder for
+    // every later test in this file, so it is removed after the assertion.
+    rmSync(lockDir, { recursive: true, force: true });
   });
 
   it('keeps several concurrent processes mutually exclusive through the fallback', async () => {
@@ -328,14 +334,14 @@ describe('lock primitives', () => {
     writeFileSync(
       childScript,
       [
-        `const { withBuildLock } = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'scripts/env/lib/locks.ts')).href)});`,
+        `const { withCheckoutLock } = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'scripts/env/lib/locks.ts')).href)});`,
         `const fs = await import('node:fs');`,
         `const [dir, id, go, rounds, log] = process.argv.slice(2);`,
         `const markers = ${JSON.stringify(markers)};`,
         `while (!fs.existsSync(go)) await new Promise((done) => setTimeout(done, 2));`,
         `const violations = [];`,
         `for (let round = 0; round < Number(rounds); round += 1) {`,
-        `  await withBuildLock(async () => {`,
+        `  await withCheckoutLock(async () => {`,
         `    const marker = markers + '/' + id + '-' + round + '.busy';`,
         `    fs.writeFileSync(marker, '');`,
         // Hold long enough that an overlapping holder is provably observed.
@@ -413,7 +419,7 @@ describe('lock primitives', () => {
     const sections = readFileSync(sectionLog, 'utf8').split('\n').filter(Boolean);
     expect(sections).toHaveLength(ids.length * rounds);
     expect(new Set(sections).size).toBe(ids.length * rounds);
-    expect(existsSync(join(dir, 'build.lock.d'))).toBe(false);
+    expect(existsSync(join(stateDir, 'locks', 'checkout.lock.d'))).toBe(false);
     // Four real `bun` children under CI load need more than the 5 s default.
   }, 60_000);
 });

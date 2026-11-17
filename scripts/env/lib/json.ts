@@ -29,6 +29,23 @@ export interface StatusPorts {
   pgmeta: number;
 }
 
+/**
+ * The build-slot state `env status`/`env doctor` report (ADR-0014, decision 8).
+ *
+ * Every count is `null` when it cannot be read — never `0`, which would claim a
+ * fact the reader does not have. `cap` is the value recorded when the admission
+ * path derived it, never a fresh memory calculation.
+ */
+export interface BuildSlotsStatus {
+  busy: number | null;
+  cap: number | null;
+  stale: number | null;
+  waiting: number | null;
+  degraded: boolean;
+  /** Why the memory gate is degraded or disabled; null when it is neither. */
+  detail: string | null;
+}
+
 export interface StatusSnapshot {
   ready: boolean;
   projectId: string | null;
@@ -64,7 +81,7 @@ export interface StatusSnapshot {
     projectRoot: string;
   } | null;
   seeded: boolean | null;
-  build: { present: boolean; fingerprint: string | null };
+  build: { present: boolean; fingerprint: string | null; slots: BuildSlotsStatus | null };
   warnings: string[];
   log: string;
 }
@@ -88,6 +105,7 @@ export interface StatusInputs {
   web: { pid: number | null; http: number };
   supabaseHttp: number;
   buildPresent: boolean;
+  buildSlots?: BuildSlotsStatus | null;
   // Lifecycle facts (phase 2); all default to "unknown" for read-only calls.
   profile?: string | null;
   cold?: boolean | null;
@@ -165,6 +183,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
     build: {
       present: inputs.buildPresent,
       fingerprint: inputs.buildFingerprint ?? null,
+      slots: inputs.buildSlots ?? null,
     },
     warnings: inputs.warnings,
     log: '.dev/env.log',

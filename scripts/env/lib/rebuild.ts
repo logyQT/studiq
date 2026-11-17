@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { logBuildOutput, runProductionBuild, type BuildResult } from './build';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
-import { pidAlive } from './locks';
+import { buildInProgress, buildInProgressFailure, pidAlive } from './locks';
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 import { DEV_DIR, removeBuildState } from './state';
@@ -682,7 +682,7 @@ function failFenced(deps: RebuildRecoveryDeps, backup: string | null, cause: unk
  * second ensure in this checkout refuses instead of stopping the same server or
  * backing up the same artifact (the checkout lock is free for the build). The
  * previous build is then moved aside and the build runs under the existing
- * build lock. Any failure restores that build (and restarts the previous server
+ * build slot. Any failure restores that build (and restarts the previous server
  * when it was serving); only a fully successful build/start discards the backup
  * and releases the record.
  *
@@ -702,6 +702,15 @@ export async function rebuildWithRecovery(
   // Claim before the stop: nothing is mutated until this rebuild owns the
   // handover, and a rebuild that already owns it makes this one refuse.
   const claimed = claimHandover(deps, previousPid);
+  // The claim keeps a *later* build out (it sees the in-flight handover), and
+  // this read-only check keeps this rebuild from moving `.next` out from under a
+  // build that started before the claim. The mutex is not taken here:
+  // `runProductionBuild` takes it below and a directory mutex is not reentrant.
+  const build = buildInProgress();
+  if (build !== null) {
+    removeHandover();
+    throw buildInProgressFailure(build);
+  }
   if (previousPid !== null) deps.stopForReplacement();
 
   let backup: string | null;
@@ -727,12 +736,14 @@ export async function rebuildWithRecovery(
   } catch (error) {
     // A thrown build (not a `{ ok: false }` result) would otherwise skip
     // recovery entirely and leave the previous build stranded in the backup.
+    // The build's own exit code is kept: a slot wait that expires is `7`, not a
+    // generic start failure.
     return failWithRecovery({
       deps,
       request,
       previousPid,
       backup,
-      code: EXIT_START_FAILED,
+      code: error instanceof EnvFailure ? error.exitCode : EXIT_START_FAILED,
       message: `build failed (${error instanceof Error ? error.message : String(error)})`,
       cause: error,
     });
@@ -745,7 +756,7 @@ export async function rebuildWithRecovery(
       previousPid,
       backup,
       code: result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-      message: result.timedOut ? 'timed out waiting for the build lock' : 'build failed',
+      message: result.timedOut ? 'timed out building' : 'build failed',
     });
   }
 

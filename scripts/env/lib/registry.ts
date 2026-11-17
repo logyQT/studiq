@@ -27,6 +27,15 @@ export interface RegistryEntry {
   sharedOwner: string | null;
   mode: 'dev' | 'prod';
   claimId: string | null;
+  /** The checkout that owns the stack; `''` on records that only carry `worktree`. */
+  projectRoot: string;
+  /** `''` means the branch's default stack. */
+  stackName: string;
+  /** Last heartbeat of the lease; `''` when the record carries none. */
+  heartbeatAt: string;
+  ttlSec: number;
+  /** `native`/`docker` when the record says so; null otherwise. */
+  runtime: string | null;
 }
 
 export interface Registry {
@@ -124,6 +133,7 @@ function readEntry(file: string): RegistryEntry | null {
     if (parsed.projectId !== entryIdFromPath(file)) return null;
     const sharedOwner = toString(parsed.sharedOwner);
     const claimId = toString(parsed.claimId);
+    const runtime = toString(parsed.runtime);
     return {
       projectId: parsed.projectId,
       worktree: toString(parsed.worktree),
@@ -142,6 +152,11 @@ function readEntry(file: string): RegistryEntry | null {
       sharedOwner: sharedOwner || null,
       mode: parsed.mode === 'prod' ? 'prod' : 'dev',
       claimId: claimId || null,
+      projectRoot: toString(parsed.projectRoot),
+      stackName: toString(parsed.stackName),
+      heartbeatAt: toString(parsed.heartbeatAt),
+      ttlSec: toNumber(parsed.ttlSec),
+      runtime: runtime || null,
     };
   } catch {
     return null;

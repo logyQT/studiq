@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -14,6 +14,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BUN,
   createHarness,
+  REPO_ROOT,
   stackStatusFixture,
   startHttpServer,
   type Harness,
@@ -49,6 +50,20 @@ interface BuildModule {
   ): Promise<number>;
 }
 
+interface ProductionBuildModule {
+  runProductionBuild(
+    envHash: string,
+    deps: {
+      readWebPid(): number | null;
+      spawnBuild(slot: unknown): Promise<{
+        status: number | null;
+        timedOut: boolean;
+        output: string;
+      }>;
+    },
+  ): Promise<BuildResult>;
+}
+
 interface StateModule {
   readBuildState(): Record<string, unknown> | null;
 }
@@ -66,11 +81,16 @@ interface HandoverRecord {
 // `state.ts` and `rebuild.ts` capture DEV_DIR at import time.
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-build-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
+// `runProductionBuild` admits through the registry; keep that off the real one.
+const registryDir = mkdtempSync(join(tmpdir(), 'studiq-env-build-registry-'));
+process.env.STUDIQ_DEV_REGISTRY = registryDir;
 
 const atomsModule = await loadEnvModule<{ parseCommand(argv: string[]): ParsedCommand }>(
   'atoms.ts',
 );
 const buildModule = await loadEnvModule<BuildModule>('commands/build.ts');
+const productionBuildModule = await loadEnvModule<ProductionBuildModule>('lib/build.ts');
+const locksModule = await loadEnvModule<{ worktreeKey(root?: string): string }>('lib/locks.ts');
 const stateModule = await loadEnvModule<StateModule>('lib/state.ts');
 
 const handoverPath = join(stateDir, 'handover.json');
@@ -81,6 +101,7 @@ const caseDirs: string[] = [];
 afterAll(() => {
   for (const dir of caseDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   rmSync(stateDir, { recursive: true, force: true });
+  rmSync(registryDir, { recursive: true, force: true });
 });
 
 afterEach(async () => {
@@ -93,6 +114,7 @@ afterEach(async () => {
 
 beforeEach(() => {
   for (const name of readdirSync(stateDir)) rmSync(join(stateDir, name), { recursive: true });
+  rmSync(join(registryDir, 'build-slots'), { recursive: true, force: true });
 });
 
 function newHarness(): Harness {
@@ -148,6 +170,33 @@ function buildResult(): BuildResult {
 function parsedBuild(): ParsedCommand {
   return atomsModule.parseCommand(['build', '--force']);
 }
+
+describe('env:build does not hold the checkout lock while it builds', () => {
+  it('lets another env process take the checkout lock during the build', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    const lockFile = join(stateDir, 'locks', 'checkout.lock');
+    // `flock -n` proves the lock is free; the portable fallback has no probe, so
+    // the assertion is skipped where `flock` is unavailable.
+    const flockAvailable = spawnSync('flock', ['--version'], { timeout: 5_000 }).status === 0;
+
+    let lockFreeDuringBuild: boolean | null = null;
+    const code = await buildModule.runBuild(parsedBuild(), {
+      build() {
+        // A 30-minute slot wait under the checkout lock would block `env:down`
+        // for the whole build; the lock must be free here.
+        lockFreeDuringBuild = flockAvailable
+          ? spawnSync('flock', ['-n', lockFile, 'true'], { timeout: 5_000 }).status === 0
+          : null;
+        return Promise.resolve(buildResult());
+      },
+    });
+
+    expect(code).toBe(0);
+    if (flockAvailable) expect(lockFreeDuringBuild).toBe(true);
+  });
+});
 
 describe('env:build settles a pending handover before building', () => {
   it('recovers the interrupted build before the build starts', async () => {
@@ -272,5 +321,38 @@ describe('env:build settles a pending handover before building', () => {
     } finally {
       owner.kill('SIGKILL');
     }
+  });
+});
+
+describe('runProductionBuild refuses a server that appeared while it queued', () => {
+  it('re-reads the server under the worktree mutex, before spawning', async () => {
+    let mutexAtCheck: boolean | null = null;
+    let spawned = 0;
+
+    const failure = await productionBuildModule
+      .runProductionBuild('env-hash', {
+        readWebPid: () => {
+          mutexAtCheck = existsSync(
+            join(registryDir, 'build-slots', 'worktrees', locksModule.worktreeKey(REPO_ROOT)),
+          );
+          return 4242;
+        },
+        spawnBuild: () => {
+          spawned += 1;
+          return Promise.resolve({ status: 0, timedOut: false, output: '' });
+        },
+      })
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain('pid 4242');
+    // The check runs inside `withBuildSlots`: the mutex is already held when it
+    // reads, which is what makes a server started during the slot wait visible.
+    expect(mutexAtCheck).toBe(true);
+    expect(spawned).toBe(0);
+    // The refused build released its slot on the way out.
+    expect(existsSync(join(registryDir, 'build-slots', '1'))).toBe(false);
   });
 });

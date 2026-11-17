@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -352,6 +352,55 @@ describe('env:status --json', () => {
     const status = parseJsonObject(result.stdout);
     expect(status.owner).toBeNull();
     expect(status.mode).toBeNull();
+  });
+
+  it('reports build slots from the registry and never recomputes the cap', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const slots = join(harness.registryDir, 'build-slots');
+    mkdirSync(join(slots, '1'), { recursive: true });
+    writeFileSync(join(slots, '1', 'pid'), `${process.pid}\n`);
+    writeFileSync(join(slots, '1', 'pgid'), '0\n');
+    mkdirSync(join(slots, '2'), { recursive: true });
+    writeFileSync(join(slots, '2', 'pid'), '999999999\n');
+    mkdirSync(join(slots, 'waiters', 'waiter-a'), { recursive: true });
+    writeFileSync(join(slots, 'capacity'), '3\n');
+    writeFileSync(
+      join(slots, 'memory.json'),
+      JSON.stringify({ degraded: true, detail: 'cannot measure memory on linux: missing' }),
+    );
+
+    const json = await harness.run(['status', '--json']);
+    expect(json.status).toBe(0);
+    const build = objectField(parseJsonObject(json.stdout), 'build');
+    expect(build.slots).toEqual({
+      busy: 1,
+      cap: 3,
+      stale: 1,
+      waiting: 1,
+      degraded: true,
+      detail: 'cannot measure memory on linux: missing',
+    });
+
+    // The stale record is reported, never reclaimed by a read-only command.
+    const text = await harness.run(['status']);
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(
+      'slots       1/3 busy, 1 stale, 1 waiting (memory gate degraded)',
+    );
+    expect(existsSync(join(slots, '2'))).toBe(true);
+  });
+
+  it('reports build slots as unknown, never zero, before any build has run', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+
+    const json = await harness.run(['status', '--json']);
+    expect(json.status).toBe(0);
+    expect(objectField(parseJsonObject(json.stdout), 'build').slots).toBeNull();
+
+    const text = await harness.run(['status']);
+    expect(text.stdout).toContain('slots       unknown');
   });
 
   it('rejects unknown flags with exit code 2', async () => {

@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { REPO_ROOT } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface BuildResult {
@@ -86,6 +87,10 @@ interface HandoverRecord {
 
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-handover-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
+// The rebuild reads the per-worktree build mutex from the registry; keep that
+// off the developer's real one (a build running there would refuse the fixture).
+const registryDir = mkdtempSync(join(tmpdir(), 'studiq-env-handover-registry-'));
+process.env.STUDIQ_DEV_REGISTRY = registryDir;
 
 const handoverPath = join(stateDir, 'handover.json');
 const buildStatePath = join(stateDir, 'build.json');
@@ -93,15 +98,21 @@ const caseDirs: string[] = [];
 
 const rebuildModule = await loadEnvModule<RebuildModule>('lib/rebuild.ts');
 const stateModule = await loadEnvModule<StateModule>('lib/state.ts');
+const locksModule = await loadEnvModule<{
+  worktreeKey(root?: string): string;
+  processStartTime(pid: number): string | null;
+}>('lib/locks.ts');
 
 afterAll(() => {
   for (const dir of caseDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   rmSync(stateDir, { recursive: true, force: true });
+  rmSync(registryDir, { recursive: true, force: true });
 });
 
 beforeEach(() => {
   rmSync(handoverPath, { force: true });
   rmSync(buildStatePath, { recursive: true, force: true });
+  rmSync(join(registryDir, 'build-slots'), { recursive: true, force: true });
 });
 
 function newCase(): { dir: string; artifactDir: string; backupDir: string } {
@@ -698,5 +709,71 @@ describe('env rebuild handover recovery', () => {
     } finally {
       rmSync(buildStatePath, { recursive: true, force: true });
     }
+  });
+});
+
+describe('env rebuild refuses a live build in this worktree', () => {
+  it('refuses before stopping the server or moving the artifact aside', async () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'old-build');
+    // A build holds this worktree's mutex (this process is its recorded
+    // launcher), so the artifact is being written and must not be moved.
+    const mutex = join(registryDir, 'build-slots', 'worktrees', locksModule.worktreeKey(REPO_ROOT));
+    mkdirSync(mutex, { recursive: true, mode: 0o700 });
+    writeFileSync(join(mutex, 'pid'), `${process.pid}\n`);
+    writeFileSync(join(mutex, 'start'), `${locksModule.processStartTime(process.pid)}\n`);
+    writeFileSync(join(mutex, 'token'), 'live-build\n');
+    writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
+    writeFileSync(join(mutex, 'startedAt'), '2026-11-17T18:53:45.000Z\n');
+
+    let stopped = 0;
+    let built = 0;
+    const deps: RebuildDeps = {
+      build: () => {
+        built += 1;
+        return Promise.resolve({
+          ok: true,
+          timedOut: false,
+          output: '',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => 5151,
+      waitWeb: () => Promise.resolve({ ok: true, reason: 'ready', http: 200 }),
+      stopWeb: () => ({ pid: null, stopped: true }),
+      stopForReplacement: () => {
+        stopped += 1;
+        return { pid: 4242, stopped: true };
+      },
+      readPid: () => 4242,
+      artifactDir,
+      backupDir,
+    };
+
+    const failure = await rebuildModule
+      .rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      )
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain(`pid ${process.pid}`);
+    expect(failure.message).toContain('2026-11-17T18:53:45.000Z');
+    // Nothing was stopped, built or moved, and the claim was released.
+    expect(stopped).toBe(0);
+    expect(built).toBe(0);
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(readdirSync(backupDir)).toEqual([]);
+    expect(existsSync(handoverPath)).toBe(false);
   });
 });
