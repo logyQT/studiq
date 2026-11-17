@@ -73,12 +73,16 @@ describe('OrganizationMemberService', () => {
         full_name: null,
         created_at: '2024-01-01',
       };
-      mock.from.mockReturnValue(chain(profile));
+      const profileChain = chain(profile);
+      mock.from.mockReturnValue(profileChain);
 
       const result = await service.getProfile(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(profile);
+      expect(mock.from).toHaveBeenCalledWith('profiles');
+      expect(profileChain.eq).toHaveBeenCalledWith('id', ctx.userId);
+      expect(profileChain.select).toHaveBeenCalledWith('id, email, full_name, created_at');
     });
 
     it('returns NOT_FOUND when profile does not exist', async () => {
@@ -119,7 +123,23 @@ describe('OrganizationMemberService', () => {
       const result = await service.listMembers(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
+      expect(orgChain.eq).toHaveBeenCalledWith('organization_id', ctx.activeOrgId);
+      expect(orgChain.select).toHaveBeenCalledWith(expect.stringContaining('org_roles!inner'));
+      expect(groupChain.in).toHaveBeenCalledWith('user_id', ['user-1']);
+      expect(groupChain.eq).toHaveBeenCalledWith('groups.organization_id', ctx.activeOrgId);
+      expect(result.data).toEqual([
+        {
+          id: 'user-1',
+          email: 'test@test.com',
+          full_name: null,
+          orgRoleName: 'student',
+          orgRoleDisplayName: 'student',
+          orgRoleId: 'role-1',
+          organization_id: 'uni-1',
+          created_at: '2024-01-01',
+          groups: [],
+        },
+      ]);
     });
 
     it('returns INTERNAL_SERVER when query fails', async () => {
@@ -212,20 +232,21 @@ describe('OrganizationMemberService', () => {
 
   describe('removeMember', () => {
     it('removes member successfully', async () => {
-      mock.from.mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockResolvedValue({ data: [{ user_id: 'user-123' }], error: null }),
-            }),
-          }),
-        }),
-      });
+      const memberChain = chain([{ user_id: 'user-123' }]);
+      const seatChain = chain([{ user_id: 'user-123' }]);
+      mock.from.mockReturnValueOnce(memberChain).mockReturnValueOnce(seatChain);
 
       const result = await service.removeMember(ctx, 'user-123');
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ success: true });
+      // Member first, seat second — both scoped to the org and the target user.
+      expect(memberChain.eq).toHaveBeenCalledWith('organization_id', ctx.activeOrgId);
+      expect(memberChain.eq).toHaveBeenCalledWith('user_id', 'user-123');
+      expect(mock.from).toHaveBeenCalledWith('org_seat_assignments');
+      expect(seatChain.delete).toHaveBeenCalled();
+      expect(seatChain.eq).toHaveBeenCalledWith('organization_id', ctx.activeOrgId);
+      expect(seatChain.eq).toHaveBeenCalledWith('user_id', 'user-123');
     });
 
     // #189: a 0-row delete used to return {"success":true}. Same contract as

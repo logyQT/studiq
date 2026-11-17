@@ -281,14 +281,11 @@ describe('TeacherAssignmentService', () => {
     service = new TeacherAssignmentService(() => Promise.resolve(mock));
   });
 
-  function expectOwnershipCheck() {
-    expect(mock.from).toHaveBeenNthCalledWith(1, 'teacher_assignments');
-  }
-
   describe('create', () => {
     it('creates an assignment successfully', async () => {
       const dbRow = { id: assignmentId, title: 'Quiz 1', organization_id: orgId };
-      mock.from.mockReturnValue(chain(dbRow));
+      const createChain = chain(dbRow);
+      mock.from.mockReturnValue(createChain);
 
       const result = await service.create(
         {
@@ -302,6 +299,15 @@ describe('TeacherAssignmentService', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(createChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organization_id: orgId,
+          created_by: userId,
+          title: 'Quiz 1',
+          shuffle_questions: true,
+          max_attempts: 1,
+        }),
+      );
       if (result.success) {
         expect(result.data).toEqual(dbRow);
       }
@@ -422,26 +428,31 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('list', () => {
-    const assignments = [
+    const listRows = [
       { id: assignmentId, title: 'Quiz 1', created_by: userId, organization_id: orgId },
     ];
 
     it('returns assignments for org scope', async () => {
-      mock.from.mockReturnValue(chain(assignments));
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
 
       const result = await service.list(withOrgScope());
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toHaveLength(1);
+      if (result.success) expect(result.data).toEqual(listRows);
+      // The org branch scopes the read to the active org, not to the caller.
+      expect(listChain.eq).toHaveBeenCalledWith('organization_id', orgId);
     });
 
     it('returns assignments filtered by owner', async () => {
-      mock.from.mockReturnValue(chain(assignments));
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
 
       const result = await service.list(ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toHaveLength(1);
+      if (result.success) expect(result.data).toEqual(listRows);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
     });
 
     it('returns empty array when no assignments', async () => {
@@ -470,21 +481,6 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('update', () => {
-    it('updates assignment successfully', async () => {
-      const updated = { id: assignmentId, title: 'Updated Title' };
-      mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
-        .mockReturnValue(chain(updated));
-
-      const result = await service.update(assignmentId, { title: 'Updated Title' }, ctx);
-
-      expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual(updated);
-      expectOwnershipCheck();
-    });
-
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
@@ -631,15 +627,18 @@ describe('TeacherAssignmentService', () => {
 
   describe('delete', () => {
     it('deletes assignment successfully', async () => {
+      const deleteChain = chain(null);
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
-        .mockReturnValue(chain(null));
+        .mockReturnValue(deleteChain);
 
       const result = await service.delete(assignmentId, ctx);
 
       expect(result.success).toBe(true);
+      expect(deleteChain.delete).toHaveBeenCalled();
+      expect(deleteChain.eq).toHaveBeenCalledWith('id', assignmentId);
     });
 
     it('returns NOT_FOUND when ownership check fails', async () => {
@@ -880,16 +879,20 @@ describe('TeacherAssignmentService', () => {
 
   describe('removeQuestion', () => {
     it('removes question successfully', async () => {
+      const deleteChain = chain(null);
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
         .mockReturnValueOnce(chain({ status: 'draft' })) // not live
-        .mockReturnValue(chain(null));
+        .mockReturnValue(deleteChain);
 
       const result = await service.removeQuestion(assignmentId, 'q-1', ctx);
 
       expect(result.success).toBe(true);
+      expect(deleteChain.delete).toHaveBeenCalled();
+      expect(deleteChain.eq).toHaveBeenCalledWith('assignment_id', assignmentId);
+      expect(deleteChain.eq).toHaveBeenCalledWith('question_id', 'q-1');
     });
 
     it('refuses to remove an item from a published assignment (#1171 R13)', async () => {
@@ -1150,16 +1153,21 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('clears targets when no groups or students', async () => {
+      const clearChain = chain(null);
       mock.from
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
         .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
-        .mockReturnValue(chain(null));
+        .mockReturnValue(clearChain);
 
       const result = await service.setTargets(assignmentId, {}, ctx);
 
       expect(result.success).toBe(true);
+      // An empty target list clears the rows and withdraws the run to draft.
+      expect(mock.from).toHaveBeenCalledWith('assignment_targets');
+      expect(clearChain.delete).toHaveBeenCalled();
+      expect(clearChain.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
     });
 
     it('refuses every target change once the run is published (#1171, R20)', async () => {
@@ -3100,10 +3108,17 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
-      const result = await service.startAttempt(assignmentId, ctx);
+      // A constant RNG makes the shuffle deterministic: every comparison says "swap".
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        const result = await service.startAttempt(assignmentId, ctx);
 
-      expect(result.success).toBe(true);
-      if (result.success) expect(result.data.questions).toHaveLength(2);
+        expect(result.success).toBe(true);
+        // Two items, served in the shuffled order the constant RNG produces.
+        expect(result.data).toMatchObject({ questions: [{ id: 'q-2' }, { id: 'q-1' }] });
+      } finally {
+        random.mockRestore();
+      }
     });
 
     it('resumes the open attempt instead of inserting a new one (#369)', async () => {

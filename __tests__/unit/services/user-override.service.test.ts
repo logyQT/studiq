@@ -60,10 +60,13 @@ describe('UserOverrideService', () => {
 
   describe('getAll', () => {
     it('returns all overrides', async () => {
-      mock.from.mockReturnValueOnce(qb([{ id: 'ov-1' }]));
+      const listQb = qb([{ id: 'ov-1' }]);
+      mock.from.mockReturnValueOnce(listQb);
       const result = await service.getAll();
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(1);
+      expect(mock.from).toHaveBeenCalledWith('user_feature_overrides');
+      expect(listQb.order).toHaveBeenCalledWith('created_at', { ascending: false });
     });
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
@@ -74,9 +77,12 @@ describe('UserOverrideService', () => {
 
   describe('getById', () => {
     it('returns override when found', async () => {
-      mock.from.mockReturnValueOnce(qb({ id: 'ov-1' }));
+      const findQb = qb({ id: 'ov-1' });
+      mock.from.mockReturnValueOnce(findQb);
       const result = await service.getById('ov-1');
       expect(result.success).toBe(true);
+      expect(findQb.eq).toHaveBeenCalledWith('id', 'ov-1');
+      expect(result.data).toEqual({ id: 'ov-1' });
     });
     it('returns NOT_FOUND when not found', async () => {
       mock.from.mockReturnValueOnce(qb(null, null));
@@ -89,10 +95,18 @@ describe('UserOverrideService', () => {
   describe('create', () => {
     it('creates an override', async () => {
       const ov = { id: 'ov-1', user_id: 'u-1', feature_key: 'quiz', is_enabled: true };
-      mock.from.mockReturnValueOnce(qb(ov));
+      const insertQb = qb(ov);
+      mock.from.mockReturnValueOnce(insertQb);
       const result = await service.create({ userId: 'u-1', featureKey: 'quiz', isEnabled: true });
       expect(result.success).toBe(true);
       expect(result.data).toEqual(ov);
+      expect(insertQb.insert).toHaveBeenCalledWith({
+        user_id: 'u-1',
+        feature_key: 'quiz',
+        is_enabled: true,
+        reason: null,
+        expires_at: null,
+      });
     });
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
@@ -103,9 +117,12 @@ describe('UserOverrideService', () => {
 
   describe('update', () => {
     it('updates an override', async () => {
-      mock.from.mockReturnValueOnce(qb({ id: 'ov-1', is_enabled: false }));
+      const updateQb = qb({ id: 'ov-1', is_enabled: false });
+      mock.from.mockReturnValueOnce(updateQb);
       const result = await service.update('ov-1', { isEnabled: false });
       expect(result.success).toBe(true);
+      expect(updateQb.update).toHaveBeenCalledWith({ is_enabled: false });
+      expect(updateQb.eq).toHaveBeenCalledWith('id', 'ov-1');
     });
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
@@ -116,10 +133,17 @@ describe('UserOverrideService', () => {
 
   describe('delete', () => {
     it('deletes an existing override', async () => {
-      mock.from.mockReturnValueOnce(qb({ id: 'ov-1' }));
-      mock.from.mockReturnValueOnce(qb(undefined));
+      const existsQb = qb({ id: 'ov-1' });
+      const deleteQb = qb(undefined);
+      mock.from.mockReturnValueOnce(existsQb);
+      mock.from.mockReturnValueOnce(deleteQb);
       const result = await service.delete('ov-1');
       expect(result.success).toBe(true);
+      // Select-then-delete: the existence probe scopes the read to the same id.
+      expect(existsQb.select).toHaveBeenCalledWith('id');
+      expect(existsQb.eq).toHaveBeenCalledWith('id', 'ov-1');
+      expect(deleteQb.delete).toHaveBeenCalled();
+      expect(deleteQb.eq).toHaveBeenCalledWith('id', 'ov-1');
     });
     it('returns NOT_FOUND when not found', async () => {
       mock.from.mockReturnValueOnce(qb(null, null));
