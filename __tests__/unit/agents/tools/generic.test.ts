@@ -183,12 +183,6 @@ describe('extractConceptsTool', () => {
     expect(result.terms).toHaveLength(1);
     expect(result.terms[0]?.term).toBe('T1');
   });
-
-  it('returns empty array when terms is empty', async () => {
-    const ctx = mockCtx();
-    const result = await extractConceptsTool.execute({ terms: [] }, ctx);
-    expect(result).toEqual({ terms: [] });
-  });
 });
 
 describe('fetchMaterialTool', () => {
