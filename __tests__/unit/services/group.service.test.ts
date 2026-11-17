@@ -102,7 +102,6 @@ describe('GroupService', () => {
 
       const result = await service.listGroups(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
       expect(expectSuccess(result)[0]?.memberCount).toBe(5);
       expect(expectSuccess(result)[0]?.teacherCount).toBe(2);
@@ -201,7 +200,6 @@ describe('GroupService', () => {
 
       const result = await service.createGroup(ctx, { name: 'New Group' });
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual(group);
     });
 
@@ -248,7 +246,6 @@ describe('GroupService', () => {
 
       const result = await service.updateGroup(ctx, 'g-1', { name: 'Updated' });
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual(group);
     });
 
@@ -344,6 +341,9 @@ describe('GroupService', () => {
       const result = await service.deleteGroup(ctx, 'g-1');
 
       expect(result.success).toBe(false);
+      // The DB error must keep its own code instead of collapsing into the
+      // empty-projection NOT_FOUND below it.
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -431,7 +431,6 @@ describe('GroupService', () => {
 
       const result = await service.getGroupMembers(ctx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual([{ userId: 'u-1', role: 'teacher' }]);
     });
 
@@ -542,7 +541,6 @@ describe('GroupService', () => {
 
       const result = await service.listAddableMembers(ctx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual([
         { id: 'u-1', email: 'a@test.com', fullName: 'Alice', orgRoleName: 'admin' },
         { id: 'u-2', email: 'b@test.com', fullName: null, orgRoleName: 'member' },
@@ -556,7 +554,6 @@ describe('GroupService', () => {
 
       const result = await service.listAddableMembers(educatorCtx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual([]);
     });
 
@@ -588,7 +585,6 @@ describe('GroupService', () => {
 
       const result = await service.getUserGroupIds(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual(['g-1', 'g-2']);
     });
 
@@ -605,7 +601,6 @@ describe('GroupService', () => {
 
       const result = await service.getUserGroupIds(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual([]);
     });
   });
@@ -616,7 +611,6 @@ describe('GroupService', () => {
 
       const result = await service.isTeacherInGroup(ctx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBe(true);
     });
 
@@ -625,7 +619,6 @@ describe('GroupService', () => {
 
       const result = await service.isTeacherInGroup(ctx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBe(false);
     });
 
@@ -724,7 +717,6 @@ describe('GroupService', () => {
 
       const result = await service.isUserInGroup(ctx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBe(true);
     });
 
@@ -733,7 +725,6 @@ describe('GroupService', () => {
 
       const result = await service.isUserInGroup(ctx, 'g-1');
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBe(false);
     });
   });
@@ -753,7 +744,6 @@ describe('GroupService', () => {
 
       const result = await service.listMyGroups(ctx);
 
-      expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
       expect(expectSuccess(result)[0]?.id).toBe('g-1');
     });

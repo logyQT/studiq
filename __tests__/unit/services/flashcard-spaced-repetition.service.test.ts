@@ -112,7 +112,10 @@ describe('FlashcardSpacedRepetitionService', () => {
         }),
       );
 
-      expect(result.nextReviewAt.getTime()).toBeGreaterThanOrEqual(new Date().setHours(0, 0, 0, 0));
+      const todayMidnight = new Date().setHours(0, 0, 0, 0);
+      expect(result.nextReviewAt.getTime()).toBeGreaterThanOrEqual(todayMidnight);
+      // The date is advanced by the interval, not left at today-midnight.
+      expect(result.nextReviewAt.getTime()).toBeGreaterThan(todayMidnight + 24 * 60 * 60 * 1000);
     });
   });
 

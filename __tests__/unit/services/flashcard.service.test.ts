@@ -127,13 +127,17 @@ describe('FlashcardService', () => {
       const mockFlashcard = { id: 'fc-1', front: 'Q', back: 'A' };
       const orgCtx = { ...ctx, activeOrgId: 'uni-1' };
 
+      const insertChain = chain(mockFlashcard);
       mock.from.mockReturnValueOnce(chain([], 0));
-      mock.from.mockReturnValue(chain(mockFlashcard));
+      mock.from.mockReturnValue(insertChain);
 
       const result = await service.create({ front: 'Q', back: 'A' }, orgCtx);
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toEqual(mockFlashcard);
+      expect(insertChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_id: 'uni-1', created_by: ctx.userId }),
+      );
     });
 
     it('counts only the caller content in the active org (#233)', async () => {
@@ -176,29 +180,6 @@ describe('FlashcardService', () => {
   });
 
   describe('bulkCreate', () => {
-    it('inserts multiple flashcards and returns them', async () => {
-      const flashcards = [
-        { id: 'fc-1', front: 'Q1', back: 'A1' },
-        { id: 'fc-2', front: 'Q2', back: 'A2' },
-      ];
-
-      mock.from.mockReturnValueOnce(chain([], 0));
-      mock.rpc.mockResolvedValue({ data: flashcards, error: null });
-
-      const result = await service.bulkCreate(
-        {
-          cards: [
-            { front: 'Q1', back: 'A1' },
-            { front: 'Q2', back: 'A2' },
-          ],
-        },
-        ctx,
-      );
-
-      expect(result.success).toBe(true);
-      expect(expectSuccess(result)).toEqual(flashcards);
-    });
-
     it('counts only the caller content in the active org on the bulk path (#233)', async () => {
       const flashcards = [{ id: 'fc-1', front: 'Q1', back: 'A1' }];
       const countChain = chain([], 0);
@@ -267,24 +248,34 @@ describe('FlashcardService', () => {
 
     it('filters by topicIds when provided', async () => {
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
+      const listChain = chain(flashcards);
 
-      mock.from.mockReturnValue(chain(flashcards));
+      mock.from.mockReturnValue(listChain);
 
       const result = await service.list(ctx, { topicIds: ['t-1'] });
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).items).toEqual(flashcards);
+      // The filter is what narrows the rows, and the `!inner` projection is what makes it bind.
+      expect(listChain.filter).toHaveBeenCalledWith(
+        'flashcard_topic_assignments.topic_id',
+        'eq',
+        't-1',
+      );
+      expect(listChain.select).toHaveBeenCalledWith(expect.stringContaining('!inner') as unknown);
     });
 
     it('filters by deckIds when provided', async () => {
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
+      const listChain = chain(flashcards);
 
-      mock.from.mockReturnValue(chain(flashcards));
+      mock.from.mockReturnValue(listChain);
 
       const result = await service.list(ctx, { deckIds: ['d-1'] });
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).items).toEqual(flashcards);
+      expect(listChain.filter).toHaveBeenCalledWith('deck_id', 'eq', 'd-1');
     });
   });
 
@@ -314,14 +305,19 @@ describe('FlashcardService', () => {
     it('updates flashcard and returns it', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
 
+      const updateChain = chain(updated);
       mock.from.mockReturnValueOnce(chain(updated));
-      mock.from.mockReturnValueOnce(chain(updated));
+      mock.from.mockReturnValueOnce(updateChain);
       mock.from.mockReturnValue(chain(updated));
 
       const result = await service.update('fc-1', { front: 'Updated' }, ctx);
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBeDefined();
+      expect(updateChain.update).toHaveBeenCalledWith(
+        expect.objectContaining({ front: 'Updated' }),
+      );
+      expect(updateChain.eq).toHaveBeenCalledWith('id', 'fc-1');
     });
 
     it('returns NOT_FOUND when flashcard does not exist', async () => {
@@ -336,44 +332,57 @@ describe('FlashcardService', () => {
     it('updates topic assignments when topicIds provided', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
 
+      const clearChain = chain(null);
+      const assignChain = chain(null);
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(clearChain);
+      mock.from.mockReturnValueOnce(assignChain);
       mock.from.mockReturnValue(chain(updated));
 
       const result = await service.update('fc-1', { front: 'Updated', topicIds: ['t-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBeDefined();
+      // Reassignment is a full replace: clear first, then write the new links.
+      expect(clearChain.delete).toHaveBeenCalled();
+      expect(clearChain.eq).toHaveBeenCalledWith('flashcard_id', 'fc-1');
+      expect(assignChain.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-1', topic_id: 't-1' }]);
     });
 
     it('updates deck_id when deckId provided', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
 
+      const deckChain = chain(null);
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
-      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(deckChain);
       mock.from.mockReturnValue(chain(updated));
 
       const result = await service.update('fc-1', { front: 'Updated', deckId: 'd-1' }, ctx);
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBeDefined();
+      expect(deckChain.update).toHaveBeenCalledWith({ deck_id: 'd-1' });
+      expect(deckChain.eq).toHaveBeenCalledWith('id', 'fc-1');
     });
 
     it('clears topic assignments when topicIds is empty array', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
 
+      const clearChain = chain(null);
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
-      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(clearChain);
       mock.from.mockReturnValue(chain(updated));
 
       const result = await service.update('fc-1', { topicIds: [] }, ctx);
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toBeDefined();
+      // An empty list clears the links: the delete runs even though nothing is inserted.
+      expect(clearChain.delete).toHaveBeenCalled();
+      expect(clearChain.eq).toHaveBeenCalledWith('flashcard_id', 'fc-1');
     });
   });
 
@@ -490,12 +499,16 @@ describe('FlashcardService', () => {
     it('deletes flashcard successfully', async () => {
       const existing = { id: 'fc-1', front: 'Q', back: 'A' };
 
+      const deleteChain = chain(null);
       mock.from.mockReturnValueOnce(chain(existing));
-      mock.from.mockReturnValue(chain(null));
+      mock.from.mockReturnValue(deleteChain);
 
       const result = await service.delete('fc-1', ctx);
 
       expect(result.success).toBe(true);
+      expect(deleteChain.delete).toHaveBeenCalled();
+      expect(deleteChain.eq).toHaveBeenCalledWith('id', 'fc-1');
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', existing);
     });
 
     it('returns NOT_FOUND when flashcard does not exist', async () => {

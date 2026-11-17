@@ -95,6 +95,9 @@ describe('FlashcardExportService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toContain('Hello');
       expect(result.data).toContain('Cześć');
+      // The row carries the resolved topic and deck names, not just the card text.
+      expect(result.data).toContain('Greeting');
+      expect(result.data).toContain('My Deck');
     });
 
     it('filters by ids', async () => {
@@ -167,6 +170,10 @@ describe('FlashcardExportService', () => {
       const result = await service.exportCsv(ctx);
 
       expect(result.success).toBe(true);
+      // The second page is fetched with the cursor the first page returned.
+      expect(vi.mocked(flashcardService.list).mock.calls[1]?.[1]).toMatchObject({
+        cursor: 'cursor1',
+      });
     });
 
     it('escapes CSV values with commas', async () => {

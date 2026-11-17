@@ -133,10 +133,11 @@ describe('FlashcardImportService', () => {
       const flashcards = [{ id: 'fc-1' }];
       // Service calls: 1) create default deck  2) find existing topics
       //   3) insert flashcards  4) insert topic assignments
+      const assignmentQb = qb(undefined);
       mock.from.mockReturnValueOnce(qb(newDeck));
       mock.from.mockReturnValueOnce(qb(existingTopics));
       mock.from.mockReturnValueOnce(qb(flashcards));
-      mock.from.mockReturnValueOnce(qb(undefined)); // topic assignments
+      mock.from.mockReturnValueOnce(assignmentQb); // topic assignments
 
       const result = await service.importCsv(
         { cards: [{ front: 'Hello', back: 'Cześć', topic: 'Greeting' }] },
@@ -144,6 +145,8 @@ describe('FlashcardImportService', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('flashcard_topic_assignments');
+      expect(assignmentQb.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-1', topic_id: 't-1' }]);
     });
 
     it('creates new topics', async () => {
@@ -152,9 +155,10 @@ describe('FlashcardImportService', () => {
       const flashcards = [{ id: 'fc-1' }];
       // Service calls: 1) create default deck  2) find existing topics (none)
       //   3) create new topics  4) insert flashcards  5) insert topic assignments
+      const createTopicsQb = qb(newTopics);
       mock.from.mockReturnValueOnce(qb(newDeck));
       mock.from.mockReturnValueOnce(qb([])); // existing topics
-      mock.from.mockReturnValueOnce(qb(newTopics)); // new topics
+      mock.from.mockReturnValueOnce(createTopicsQb); // new topics
       mock.from.mockReturnValueOnce(qb(flashcards)); // insert flashcards
       mock.from.mockReturnValueOnce(qb(undefined)); // topic assignments
 
@@ -164,6 +168,10 @@ describe('FlashcardImportService', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('topics');
+      expect(createTopicsQb.insert).toHaveBeenCalledWith([
+        expect.objectContaining({ name: 'NewTopic' }),
+      ]);
     });
 
     it('handles cards with deck names', async () => {
