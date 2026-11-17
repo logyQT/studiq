@@ -65,6 +65,11 @@ interface ProductionBuildModule {
         durationMs?: number;
       }>;
       artifactDir?: string;
+      onInvalidate?(): void;
+      slots?: {
+        waitMs?: number;
+        decide?(activeSlots: number): AdmissionDecision;
+      };
     },
     options?: { app: 'web' | 'admin'; admission: 'slot' | 'no-slot' | 'no-lock' },
   ): Promise<BuildResult>;
@@ -79,6 +84,18 @@ interface BuildCommandModule {
 
 interface StatusModule {
   runStatus(parsed: ParsedCommand): Promise<number>;
+}
+
+interface SnapshotModule {
+  collectSnapshot(options: {
+    artifactDir?: string;
+    stack: null;
+    skipStackLookup: boolean;
+    web: { pid: number | null; http: number };
+    supabaseHttp: number;
+  }): Promise<{
+    build: { present: boolean; fingerprint: string | null; state: string | null; failed: string[] };
+  }>;
 }
 
 interface ServeModule {
@@ -107,6 +124,7 @@ interface LocksModule {
       decide?(activeSlots: number): AdmissionDecision;
       invalidate?(worktree: string): void;
       artifactDir?: string;
+      waitMs?: number;
     },
   ): Promise<T>;
 }
@@ -123,6 +141,7 @@ const stateModule = await loadEnvModule<StateModule>('lib/state.ts');
 const buildModule = await loadEnvModule<ProductionBuildModule>('lib/build.ts');
 const buildCommandModule = await loadEnvModule<BuildCommandModule>('commands/build.ts');
 const statusModule = await loadEnvModule<StatusModule>('commands/status.ts');
+const snapshotModule = await loadEnvModule<SnapshotModule>('lib/snapshot.ts');
 const serveModule = await loadEnvModule<ServeModule>('commands/serve.ts');
 const webModule = await loadEnvModule<WebModule>('lib/web.ts');
 const fingerprintModule = await loadEnvModule<FingerprintModule>('lib/fingerprint.ts');
@@ -334,6 +353,33 @@ describe('only a successful fingerprinted build writes the record back', () => {
   });
 });
 
+describe('a failed build never writes the record', () => {
+  it('leaves .dev/build.json absent and throws the build’s exit code', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+
+    const failure = await buildCommandModule
+      .runBuild(parse(['build', '--force']), {
+        build: () =>
+          Promise.resolve({
+            ok: false,
+            timedOut: false,
+            output: 'Error: boom',
+            fingerprintAfter: 'after-the-failure',
+          }),
+      })
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 4 });
+    // A record written before the failure is thrown away would describe an
+    // artifact the failed run never produced — and would keep describing it if
+    // the move-aside also failed.
+    expect(stateModule.readBuildState()).toBeNull();
+  });
+});
+
 describe('a failed build is never current', () => {
   it('moves .next aside and removes the record on a nonzero exit', async () => {
     registry();
@@ -384,6 +430,42 @@ describe('a failed build is never current', () => {
     expect(failedSiblings(artifact)).toHaveLength(1);
   });
 
+  it('clears the failed artifact when a later build succeeds', async () => {
+    registry();
+    const artifact = newArtifact();
+
+    await buildModule.runProductionBuild(
+      'env-hash',
+      {
+        readWebPid: () => null,
+        spawnBuild: () =>
+          Promise.resolve({ status: 1, timedOut: false, output: 'Error: boom', durationMs: 5 }),
+        artifactDir: artifact,
+      },
+      { app: 'web', admission: 'no-slot' },
+    );
+    expect(failedSiblings(artifact)).toHaveLength(1);
+
+    // A real success rewrites `.next`, so the fake spawn leaves a fresh BUILD_ID
+    // behind and the record's period of evidence is over.
+    const rebuilt = await buildModule.runProductionBuild(
+      'env-hash',
+      {
+        readWebPid: () => null,
+        spawnBuild: () => {
+          mkdirSync(artifact, { recursive: true });
+          writeFileSync(join(artifact, 'BUILD_ID'), 'rebuilt');
+          return succeed();
+        },
+        artifactDir: artifact,
+      },
+      { app: 'web', admission: 'no-slot' },
+    );
+
+    expect(rebuilt.ok).toBe(true);
+    expect(failedSiblings(artifact)).toHaveLength(0);
+  });
+
   it('keeps one failed artifact, not one per attempt', async () => {
     registry();
     const artifact = newArtifact();
@@ -407,6 +489,7 @@ describe('a failed build is never current', () => {
 
   it('leaves an admin build’s artifact and the web record alone', async () => {
     registry();
+    const webArtifact = newArtifact();
     writeRecord();
 
     const result = await buildModule.runProductionBuild(
@@ -415,7 +498,7 @@ describe('a failed build is never current', () => {
         readWebPid: () => null,
         spawnBuild: () =>
           Promise.resolve({ status: 1, timedOut: false, output: 'Error: boom', durationMs: 5 }),
-        artifactDir: newArtifact(),
+        artifactDir: webArtifact,
       },
       { app: 'admin', admission: 'no-slot' },
     );
@@ -424,6 +507,76 @@ describe('a failed build is never current', () => {
     // `apps/admin` has no record and no fingerprint; its failure must not
     // invalidate the web artifact the record describes.
     expect(stateModule.readBuildState()).not.toBeNull();
+    expect(existsSync(join(webArtifact, 'BUILD_ID'))).toBe(true);
+    expect(failedSiblings(webArtifact)).toHaveLength(0);
+  });
+});
+
+describe('the invalidation happens before the slot is released', () => {
+  it('still holds its slot record when a failed build’s artifact is moved aside', async () => {
+    const dir = registry();
+    const artifact = newArtifact();
+    writeRecord();
+    let slotAtInvalidation: boolean | null = null;
+
+    const result = await buildModule.runProductionBuild(
+      'env-hash',
+      {
+        readWebPid: () => null,
+        spawnBuild: () =>
+          Promise.resolve({ status: 1, timedOut: false, output: 'Error: boom', durationMs: 5 }),
+        artifactDir: artifact,
+        onInvalidate: () => {
+          slotAtInvalidation = existsSync(join(dir, 'build-slots', '1'));
+        },
+      },
+      { app: 'web', admission: 'slot' },
+    );
+
+    expect(result.ok).toBe(false);
+    // Releasing the slot first would admit the next build over an artifact that
+    // is still there: the invalidation is inside the slot's lifetime.
+    expect(slotAtInvalidation).toBe(true);
+    expect(failedSiblings(artifact)).toHaveLength(1);
+    expect(existsSync(join(dir, 'build-slots', '1'))).toBe(false);
+  });
+});
+
+describe('a build that is never admitted leaves the record alone', () => {
+  it('keeps the previous claim when the slot wait expires (exit 7)', async () => {
+    const dir = registry();
+    const artifact = newArtifact();
+    writeRecord();
+    // A live slot, so this build cannot be admitted inside a zero-length wait.
+    writeSlot(dir, 1, {
+      pid: process.pid,
+      start: locksModule.processStartTime(process.pid) ?? '',
+      worktree: REPO_ROOT,
+    });
+    let spawned = false;
+
+    const failure = await buildModule
+      .runProductionBuild(
+        'env-hash',
+        {
+          readWebPid: () => null,
+          spawnBuild: () => {
+            spawned = true;
+            return succeed();
+          },
+          artifactDir: artifact,
+          slots: { waitMs: 0, decide: () => ({ admit: true, cap: 1, reason: 'memory' }) },
+        },
+        { app: 'web', admission: 'slot' },
+      )
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 7 });
+    expect(spawned).toBe(false);
+    // Nothing touched `.next`, so the previous artifact's claim is still true.
+    expect(stateModule.readBuildState()).toMatchObject({ fingerprint: 'fingerprint' });
+    expect(existsSync(join(artifact, 'BUILD_ID'))).toBe(true);
   });
 });
 
@@ -572,6 +725,28 @@ describe('status and serve report the record, not just the fingerprint', () => {
       const text = await captureStdout(() => statusModule.runStatus(parse(['status'])));
       expect(text).toContain(`build       ${state}`);
     }
+  });
+
+  it('reports stale when the tree moved past the record', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    applyHarnessEnv(harness);
+    const artifact = newArtifact();
+    // A record whose fingerprint cannot describe this tree, with a `builtAt`
+    // after the artifact: only the fingerprint comparison can call it stale.
+    writeRecord({ fingerprint: 'recorded-from-another-tree' });
+
+    const snapshot = await snapshotModule.collectSnapshot({
+      artifactDir: artifact,
+      stack: null,
+      skipStackLookup: true,
+      web: { pid: null, http: 0 },
+      supabaseHttp: 0,
+    });
+
+    expect(snapshot.build.present).toBe(true);
+    expect(snapshot.build.state).toBe('stale');
+    expect(snapshot.build.fingerprint).toBe('recorded-from-another-tree');
   });
 
   it('refuses to serve an unrecorded artifact and names the state', async () => {

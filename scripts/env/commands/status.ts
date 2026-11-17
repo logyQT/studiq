@@ -11,13 +11,15 @@ function orDash(value: string | number | boolean | null): string {
 }
 
 /**
- * The record's fingerprint, shown only when the artifact is the recorded build:
- * a `stale` or `current` artifact has one, while an `unrecorded`/`missing` one
- * would only print a claim that no longer describes what is on disk.
+ * The record's fingerprint, labelled `recorded` when the artifact is stale: the
+ * number describes the build the record names, not the tree on disk, and an
+ * unlabelled one after the word `stale` reads as the tree's.
  */
 function buildFingerprintLabel(build: StatusSnapshot['build']): string {
-  if (build.state !== 'current' && build.state !== 'stale') return '';
-  return build.fingerprint === null ? '' : ` ${build.fingerprint.slice(0, 12)}`;
+  if (build.fingerprint === null) return '';
+  if (build.state === 'current') return ` ${build.fingerprint.slice(0, 12)}`;
+  if (build.state === 'stale') return ` (recorded ${build.fingerprint.slice(0, 12)})`;
+  return '';
 }
 
 function printHuman(snapshot: StatusSnapshot): void {

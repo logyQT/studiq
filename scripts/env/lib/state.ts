@@ -124,12 +124,8 @@ export function buildArtifactDir(): string {
 }
 
 /** Next's own proof that a build finished, and the file a raw build moves. */
-function buildIdPath(): string {
-  return join(buildArtifactDir(), 'BUILD_ID');
-}
-
-export function buildArtifactPresent(): boolean {
-  return existsSync(buildIdPath());
+export function buildArtifactPresent(artifactDir: string = buildArtifactDir()): boolean {
+  return existsSync(join(artifactDir, 'BUILD_ID'));
 }
 
 /**
@@ -215,7 +211,7 @@ function failedArtifactPrefix(artifactDir: string): string {
  * The `.next.failed-*` directories a failed build left behind, oldest first.
  *
  * One is kept for inspection (the next failure replaces it), so this is
- * normally empty or a single entry. `env doctor` reports it rather than
+ * normally empty or a single entry. `env status` reports it rather than
  * deleting it: the artifact is the only evidence of what the build wrote
  * before it died.
  */
@@ -233,6 +229,25 @@ export function failedBuildArtifacts(artifactDir: string = buildArtifactDir()): 
 }
 
 /**
+ * Delete every `.next.failed-*` beside the artifact.
+ *
+ * Called by a *successful* build: the corpse is evidence of what the failed
+ * build wrote, and a green build is exactly when that period ends. Called
+ * before a failed build moves a new one aside, so a tree that keeps failing
+ * costs one `.next`, not one per attempt. A leftover that cannot be removed is
+ * reported by `env status`, never retried here.
+ */
+export function removeFailedBuildArtifacts(artifactDir: string = buildArtifactDir()): void {
+  for (const stale of failedBuildArtifacts(artifactDir)) {
+    try {
+      rmSync(stale, { recursive: true, force: true });
+    } catch {
+      /* reported by `env status`, not retried here */
+    }
+  }
+}
+
+/**
  * Make a failed build's artifact unusable and forget its claim.
  *
  * Called on every nonzero or timed-out exit, before the slot is released, and
@@ -242,9 +257,6 @@ export function failedBuildArtifacts(artifactDir: string = buildArtifactDir()): 
  * because an unusable `.next` must not survive a failed build. The record goes
  * either way: it was already removed before the build started, and removing it
  * again is the belt to that braces.
- *
- * Older failed artifacts are dropped first, so a tree that keeps failing costs
- * one `.next`, not one per attempt.
  *
  * @public Exercised by the unit tests, which load this module by computed URL.
  */
@@ -256,13 +268,7 @@ export function invalidateBuildArtifact(
   const target = `${artifactDir}${FAILED_ARTIFACT_MARKER}${stamp}`;
   let moved: string | null = null;
   if (existsSync(artifactDir)) {
-    for (const stale of failedBuildArtifacts(artifactDir)) {
-      try {
-        rmSync(stale, { recursive: true, force: true });
-      } catch {
-        /* an undeletable leftover is reported by doctor, not retried here */
-      }
-    }
+    removeFailedBuildArtifacts(artifactDir);
     try {
       renameSync(artifactDir, target);
       moved = target;

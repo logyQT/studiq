@@ -590,14 +590,16 @@ assumption.
      5 performs the same invalidation before freeing the slot. It is not limited
      to the rebuild handover path, today the only path that records an
      interrupted build.
-     **Retention and reporting.** One failed artifact is kept — the newest — and
-     the next failure deletes the older ones before it moves the current tree
-     aside, so a tree that keeps failing costs one `.next`, not one per attempt.
-     The directory is Git-ignored (`apps/web/.next.failed-*/`): an untracked
-     path under `apps/web` would enter the build fingerprint and change it for
-     every later build. `env status` reports leftovers under `build.failed`
-     (repo-relative) and as a `failed` line, because the artifact is the only
-     copy of what the failed build wrote; nothing deletes it automatically.
+     **Retention and reporting.** A failed artifact is evidence until the tree
+     builds again, and that is exactly when the period ends: a _successful_ web
+     build deletes every `.next.failed-*` before its record is written, and the
+     next failure deletes the older ones before it moves the current tree aside.
+     So at most one exists at any time — the newest — and a green build leaves
+     none. The directory is Git-ignored (`apps/web/.next.failed-*/`): an
+     untracked path under `apps/web` would enter the build fingerprint and change
+     it for every later build. `env status` reports leftovers under
+     `build.failed` (repo-relative) and as a `failed` line, because the artifact
+     is the only copy of what the failed build wrote.
      **A spawn that throws counts as a failed build** (`child.on('error')`), and
      so does a zero exit without `BUILD_ID` or with a fingerprint that moved
      during the build — the same `ok` test that decides the exit code.
@@ -668,14 +670,16 @@ measurement that will not appear, and never refuses every build.
      labelled "at publish", and warns above 100; status never invokes git **for
      commit distance**, so a live commit distance is not available at read time.
      It does compute the build fingerprint — two `git` calls — when a record and
-     an artifact are both present, because `current` cannot be reported without
-     it (see the `current` bullet). Staleness warns and never refuses a seed.
+     an artifact are both present (a stat short-circuits otherwise), because
+     `current` cannot be reported without it (see the `current` bullet).
+     Staleness warns and never refuses a seed.
    - **Unknown is null.** A missing manifest, an unreadable record or a failed
      probe prints `null` in `--json` and `unknown` in text — never `0`.
    - **Failed artifacts.** `build.failed` lists the `apps/web/.next.failed-*`
      directories a failed build left behind, repo-relative, and text prints one
-     `failed` line each. One is kept and nothing deletes it automatically
-     (decision 7): it is the only copy of what the failed build wrote.
+     `failed` line each. One is kept (the next failure replaces it) and the next
+     successful build deletes it (decision 7): the artifact is the only copy of
+     what the failed build wrote, and a green build is when that stops mattering.
    - **Degraded memory.** After a failed platform probe, print the clamped slot
      cap and the reason: `build: 1/1 busy (memory gate degraded)`.
    - **`current` needs a record, not just a fingerprint.** `env status` and
@@ -701,8 +705,11 @@ measurement that will not appear, and never refuses every build.
      build of this tree". `env serve` and `env build` compute the fingerprint
      from the environment they would build for, so a changed `NEXT_PUBLIC_*`
      value reads as `stale` there and is rebuilt. The fingerprint is computed
-     only when a record and an artifact are both present, so `missing` and
-     `unrecorded` cost no `git` call.
+     only when a record _and_ an artifact are both present — status stats
+     `BUILD_ID` first and short-circuits otherwise — so `missing` and
+     `unrecorded` cost no `git` call. The consequence for an agent is exact:
+     `status` can say `current` while `serve` refuses `stale`, when only the
+     inlined environment moved; `status` never claims the environment.
 
 ## Evidence
 

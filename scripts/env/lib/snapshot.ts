@@ -1,5 +1,4 @@
-import { existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { relative } from 'node:path';
 import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
 import { envPort } from './env-port';
@@ -12,6 +11,8 @@ import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import {
+  buildArtifactDir,
+  buildArtifactPresent,
   classifyBuildArtifact,
   failedBuildArtifacts,
   readBuildState,
@@ -33,6 +34,11 @@ export interface SnapshotOptions {
   warnings?: string[];
   profile?: string | null;
   cold?: boolean | null;
+  /**
+   * Test seam: the artifact `build.state`/`build.present` describe. Production
+   * uses `apps/web/.next`; the unit tests point this at a temporary directory.
+   */
+  artifactDir?: string;
 }
 
 const EMPTY_PORTS: DiscoveredPorts = {
@@ -111,11 +117,18 @@ function sharedProjectId(): string | null {
  * recorded build's **own** env hash: `current` here means "this is the recorded
  * build of this tree". `env serve` and `env build` compare the inlined
  * environment too, so an env change reads as `stale` there and is rebuilt. The
- * fingerprint is computed only when a record and an artifact are both present,
- * so `missing` and `unrecorded` cost no git call.
+ * fingerprint is computed only when a record *and* an artifact are both
+ * present, so `missing` and `unrecorded` cost no `git` call.
  */
-function artifactState(record: ReturnType<typeof readBuildState>): BuildArtifactState | null {
-  if (!record) return classifyBuildArtifact({ fingerprint: null, envHash: null });
+function artifactState(
+  record: ReturnType<typeof readBuildState>,
+  artifactDir: string,
+): BuildArtifactState | null {
+  // `classifyBuildArtifact` decides `missing`/`unrecorded` from the filesystem
+  // alone; computing a fingerprint here would pay for a verdict it discards.
+  if (!record || !buildArtifactPresent(artifactDir)) {
+    return classifyBuildArtifact({ fingerprint: null, envHash: null }, artifactDir);
+  }
   let fingerprint: string | null;
   try {
     fingerprint = computeBuildFingerprint({
@@ -126,7 +139,7 @@ function artifactState(record: ReturnType<typeof readBuildState>): BuildArtifact
   } catch {
     fingerprint = null;
   }
-  return classifyBuildArtifact({ fingerprint, envHash: record.envHash });
+  return classifyBuildArtifact({ fingerprint, envHash: record.envHash }, artifactDir);
 }
 
 export async function collectSnapshot(options: SnapshotOptions = {}): Promise<StatusSnapshot> {
@@ -184,6 +197,7 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
       ? supabaseHttp === 200
       : webHttp >= 200 && webHttp < 400 && supabaseHttp === 200;
   const record = readBuildState();
+  const artifactDir = options.artifactDir ?? buildArtifactDir();
 
   return shapeStatus({
     contract,
@@ -201,9 +215,9 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     },
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
-    buildPresent: existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID')),
-    buildState: artifactState(record),
-    buildFailed: failedBuildArtifacts().map((path) => relative(REPO_ROOT, path)),
+    buildPresent: buildArtifactPresent(artifactDir),
+    buildState: artifactState(record, artifactDir),
+    buildFailed: failedBuildArtifacts(artifactDir).map((path) => relative(REPO_ROOT, path)),
     buildSlots: readBuildSlots(),
     profile,
     cold: options.cold ?? state?.cold ?? null,
