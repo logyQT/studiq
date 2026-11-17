@@ -7,9 +7,11 @@ Accepted (2026-11-17). Measurements recorded below are from this repo at
 swap container (overlay + ext4, no reflink), Next 16.4.4 (Turbopack), Bun 1.4.4.
 
 The **admission half** is implemented: decision 5 (memory-derived slots, one
-build per worktree, the waiter directory and the deadlines), decision 7's
-`oom_score_adj` bullet, and decision 8's slot reporting in `env status` /
-`env doctor`. The **cache half** (decisions 1–4, and the snapshot reporting in
+build per worktree, the waiter directory and the deadlines), decision 6 (the
+`prebuild` guard, the single-use grant, `--app`/`--no-slot`/`--no-lock`, the
+entrypoint check and the CI/Playwright switch), decision 7's `oom_score_adj`
+bullet, and decision 8's slot reporting in `env status` / `env doctor`. The
+**cache half** (decisions 1–4, and the snapshot reporting in
 decision 8) stays conditional on the cold-vs-seeded experiment listed under
 Evidence → Not measured: it ships only if a seeded build emits the same bytes as
 a cold one.
@@ -482,12 +484,13 @@ assumption.
      `bun run build` there, so CI and E2E cannot drift back to the unguarded
      path. It cannot catch a person typing the command; the residual risk is
      stated in Consequences.
-   - **CI and Playwright use the no-slot path.** The two build steps in
-     `verify.yml` — executed by six jobs: four QA shards and two e2e legs — and
-     Playwright's `webServer` command call `env build --no-slot` instead of
-     `bun run build`. In that mode no slot and no lease is claimed; the contract
-     comes from the environment CI already provides, and the build is still
-     fingerprinted and recorded. Nothing else about those jobs changes.
+   - **CI and Playwright use the no-slot path.** The three build steps in
+     `verify.yml` — the `qa-suite` matrix (one runner per shard), `ai-suite`, and
+     the two `e2e` legs — and Playwright's `webServer` command call
+     `env build --no-slot` instead of `bun run build`. In that mode no slot and no
+     lease is claimed; the contract comes from the environment CI already
+     provides, and the build is still fingerprinted and recorded. Nothing else
+     about those jobs changes.
    - **Only a successful `env build` records a build.** Every path reachable
      through a wrapper that may overwrite `.next` deletes `.dev/build.json`
      before it starts — `env build` with a slot, `--no-slot` and `--no-lock`
@@ -496,6 +499,62 @@ assumption.
      `--no-slot`) writes the record back; `--no-lock` never does. A direct
      `next build` cannot delete the file, so decision 8 makes its artifact read
      as unrecorded instead of current.
+
+   **Implementation notes (what this decision left open).** These are the calls
+   made while building the guard; each is a policy constant or a scope line, not
+   a measurement.
+
+   - **Grant TTL is 10 minutes.** The grant is minted immediately before the
+     build is spawned and consumed by `prebuild` a moment later, so the TTL only
+     has to cover a slow spawn. Single-use consumption is the primary fence; the
+     TTL bounds a leaked grant (a failed spawn, a crashed launcher), which is
+     worthless ten minutes later.
+   - **The grant carries three fields beyond the five named above:**
+     `admission` (`slot`/`no-slot`/`no-lock`), `slot` (the slot number, or
+     `null`) and `mintedAt`. Without `slot` the guard cannot know whether a slot
+     directory should exist at all, and `--json` reports which mode ran.
+   - **A launcher whose start time cannot be read is checked by pid alone.** On a
+     platform with neither `/proc` nor `ps` the grant records no
+     `launcherStart`, and the guard falls back to pid liveness — the same rule a
+     slot record with an empty `start` already uses. The two identity rules must
+     not disagree.
+   - **A refusal exits 6** (conflict), the code the CLI already uses for "another
+     process owns this", and prints the slot state (`busy/cap`, waiting, live
+     holders) after the reason, so an agent can tell a busy machine from a wrong
+     grant.
+   - **`apps/admin` is admitted, not exempt, and stays web-free in what it
+     records.** `env build --app admin` takes the same slot, mints a grant naming
+     `admin`, and spawns `bun run --filter @studiq/admin build`. Admin has **no
+     fingerprint, no `.dev/build.json` record and no `BUILD_ID` check** — those
+     stay web-only, and this change does not invent an admin equivalent — and its
+     build neither reads nor is blocked by the web server's pid, because it
+     serves on 4000 and writes `apps/admin/.next`. Its peak RSS is still
+     unmeasured, so it still reserves one web-sized slot.
+   - **`--no-lock` never writes the build record**, per the bullet above, which
+     is what keeps a bypassed artifact from reading as current. The
+     delete-before-build half of that bullet and the `unrecorded` reporting are
+     not part of the guard change.
+   - **Playwright now requires a live stack.** Its `webServer` command is
+     `env build --no-slot`, and `env build` resolves the stack contract, so E2E
+     needs a stack the way `env serve` already does. That is a requirement, not a
+     limitation: `env:ensure --profile web` is the blessed path and `env:run`
+     already exports the full contract. CI is unaffected — every job starts its
+     own stack before it builds.
+   - **The entrypoint check is a lint gate, not a sandbox.** It reads workflow
+     `run:` steps and Playwright `webServer.command` values, strips YAML/shell
+     and TS comments, and fails `next build` and a bare `bun run build`. A person
+     typing the command is still not caught, which Consequences already states.
+   - **A build reports itself, because a silent failure is a dead end.** The
+     launcher prints a start line before the spawn (`build: building apps/web
+(slot 1)`, or `(no-slot)`/`(no-lock)`), and the finish line is printed by
+     `runProductionBuild` — not `commands/build.ts` — so `env ensure`'s rebuild
+     reports the same thing. Success prints up to 10 warning/error lines (Next's
+     own `✓` lines excluded) and `Build complete (apps/web, slot) in 12.4s`;
+     failure prints the last 40 lines of output, ANSI-stripped, and the message
+     the caller throws names the log: `build failed (exit 4); full log:
+.dev/env.log`. `.dev/env.log` holds every warning from a successful build
+     and the full output of a failed one, ANSI-stripped. Build-path exit codes
+     are 4 (failed), 5 (timed out), 6 (refused) and 7 (queued too long).
 
 7. **Blast-radius guard on Linux, not a watchdog anywhere.** Where the platform
    has an OOM killer and a score knob, set `oom_score_adj=1000` on the build
@@ -759,7 +818,7 @@ experiment, not a number.
   exists for, its artifact is never reported current, and CI cannot regress
   unnoticed. Enforcement is load-bearing for automation; it is not a claim that
   raw builds are impossible.
-- **CI is touched, in one step per job.** The two build steps in `verify.yml` and
+- **CI is touched, in one step per job.** The three build steps in `verify.yml` and
   Playwright's `webServer` command switch to `env build --no-slot`; cache keys,
   stack lifecycle and shard layout are unchanged. ADR-0011 §11 carries the
   corrected line.
@@ -860,7 +919,7 @@ cache mechanisms in two independent steps:
   `lib/rebuild.ts` with it — with no per-worktree mutex it has nothing to read.
   Every build is then serialized across worktrees, and `--no-slot`/`--no-lock`
   are removed with the guard.
-  **Restore the callers**: put `bun run build` back in the two `verify.yml` build
+  **Restore the callers**: put `bun run build` back in the three `verify.yml` build
   steps and in Playwright's `webServer` command, because `--no-slot` no longer
   exists. This step is required for CI and E2E to stay green.
 - **Cache.** Delete `$STUDIQ_CACHE_DIR` — the snapshot directories, their

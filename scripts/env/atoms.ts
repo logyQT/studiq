@@ -1,5 +1,6 @@
 /** argv parsing for the `env` surface (spec §2/§3). */
 import { EXIT_USAGE, EnvFailure } from './lib/exit';
+import type { BuildAdmission, BuildApp } from './lib/grant';
 import {
   PROFILE_NAMES,
   PROFILES,
@@ -56,6 +57,10 @@ export interface DownOptions {
 export interface BuildOptions {
   force: boolean;
   stack: string | null;
+  /** Which Next app to build. */
+  app: BuildApp;
+  /** How the build is admitted; see ADR-0014 decision 6. */
+  admission: BuildAdmission;
 }
 export interface ServeOptions {
   stack: string | null;
@@ -138,7 +143,8 @@ export const USAGE = [
   '  env:ensure   --profile <name> [atoms] [--json]   Idempotent start/seed/build/serve',
   '  env:status   [--json]                           Web/Supabase health, stack identity (read-only)',
   '  env:down     [--all] [--stack <name>] [--yes]   Stop this web server; --all also the stack',
-  '  env:build    [--force] [--json]                 Build @studiq/web (production)',
+  '  env:build    [--force] [--app web|admin] [--no-slot|--no-lock] [--json]',
+  '                                                  Build an app (production); --no-slot is CI/Playwright',
   '  env:serve    [--json]                           Serve the existing production build',
   '  env:dev      [atoms]                            Human-only `next dev` HMR (agents build + serve)',
   '  env:supa     <args…>                            Run `bunx supabase` with the contract exported',
@@ -157,9 +163,12 @@ export const USAGE = [
   'Atoms: --db --rest --auth --storage --studio --mail --realtime --functions --analytics',
   '       --seed --no-seed --web --build --force-build --prod',
   '       --runtime <native|docker> --stack <name> --app-port <n> --wait <s>',
+  '       --app <web|admin> --no-slot --no-lock',
   '       --json --yes --quiet --verbose',
   '',
   '`--web` requires `--prod` (the tool never runs `next dev` outside env:dev).',
+  '`--no-slot` claims no slot or lease (CI, Playwright); `--no-lock` bypasses',
+  'admission and warns on every build. Both still mint the prebuild grant.',
   '`--studio` requires `--rest`. Destructive commands need `--yes` when',
   'non-interactive. status, ports and doctor never read a values file;',
   'verify loads .env.local through varlock and reports key names only.',
@@ -425,14 +434,18 @@ function parseDown(rest: string[]): ParsedCommand {
 
 /**
  * One loop for the single-stack commands. `flags` maps a value-less flag to its
- * handler; `--stack` takes a value and is handed to the finalizer.
+ * handler; `values` maps a value-taking flag to its parser; `--stack` takes a
+ * value and is handed to the finalizer.
  */
 function parseSingle(
   command: EnvCommand,
   rest: string[],
   flags: Readonly<Record<string, () => void>>,
   finalize: (parsed: ParsedCommand, stack: string | null) => void,
-  options: { allowStack?: boolean } = {},
+  options: {
+    allowStack?: boolean;
+    values?: Readonly<Record<string, (value: string) => void>>;
+  } = {},
 ): ParsedCommand {
   const parsed = empty(command);
   let stack: string | null = null;
@@ -449,6 +462,13 @@ function parseSingle(
       stack = parseStackName(read.value);
       continue;
     }
+    const value = options.values?.[name];
+    if (value) {
+      const read = readValue(name, inline, rest, index);
+      index = read.next;
+      value(read.value);
+      continue;
+    }
     if (inline !== undefined) throw new UsageError(`'${name}' does not take a value`);
     const flag = flags[name];
     if (flag) {
@@ -462,13 +482,31 @@ function parseSingle(
   return parsed;
 }
 
+function parseBuildApp(value: string): BuildApp {
+  if (value === 'web' || value === 'admin') return value;
+  throw new UsageError(`unknown app '${value}' (expected web or admin)`);
+}
+
 function parseBuild(rest: string[]): ParsedCommand {
   let force = false;
+  let app: BuildApp = 'web';
+  let admission: BuildAdmission = 'slot';
   return parseSingle(
     'build',
     rest,
-    { '--force': () => void (force = true) },
-    (parsed, stack) => void (parsed.build = { force, stack }),
+    {
+      '--force': () => void (force = true),
+      '--no-slot': () => {
+        if (admission === 'no-lock') throw new UsageError("'--no-slot' conflicts with '--no-lock'");
+        admission = 'no-slot';
+      },
+      '--no-lock': () => {
+        if (admission === 'no-slot') throw new UsageError("'--no-lock' conflicts with '--no-slot'");
+        admission = 'no-lock';
+      },
+    },
+    (parsed, stack) => void (parsed.build = { force, stack, app, admission }),
+    { values: { '--app': (value) => void (app = parseBuildApp(value)) } },
   );
 }
 

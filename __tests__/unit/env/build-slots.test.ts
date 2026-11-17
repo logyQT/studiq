@@ -271,7 +271,7 @@ describe('build slots', () => {
       detail: 'cannot measure memory on linux: missing',
     });
     expect(locks.formatBuildSlots(status)).toBe(
-      '1/3 busy, 1 stale, 1 waiting (memory gate degraded)',
+      '1 of 3 busy, 1 stale, 1 waiting (memory gate degraded)',
     );
     // Read-only: the stale record is reported, never reclaimed.
     expect(existsSync(join(slotsDir(dir), '2'))).toBe(true);
@@ -286,7 +286,7 @@ describe('build slots', () => {
 
     const status = locks.readBuildSlots();
     expect(status).toMatchObject({ busy: 0, stale: 1 });
-    expect(locks.formatBuildSlots(status)).toBe('0/1 busy, 1 stale');
+    expect(locks.formatBuildSlots(status)).toBe('0 of 1 busy, 1 stale');
   });
 
   it('reclaims a dead launcher, kills nothing and invalidates its worktree', async () => {
@@ -582,7 +582,7 @@ describe('build slots', () => {
     expect(failure.message).toContain('slot 1');
 
     const lines = stderr.mock.calls.map((call) => String(call[0])).join('');
-    expect(lines).toContain('build: waiting for a slot (1/1 busy, 1 waiting)');
+    expect(lines).toContain('build: waiting for a slot (1 of 1 busy, 1 waiting)');
     expect(lines).toMatch(/elapsed, \d+:\d\d left/);
   });
 });

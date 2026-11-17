@@ -101,21 +101,21 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 `package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
 
-| Command                            | What it does                                                                                                                                                   |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run env:ensure --profile web` | **The blessed path** — idempotent stack + build + serve (production); `--json` is the agent contract. Other profiles: `db`, `api`, `mail`, `full`, `qa`, `e2e` |
-| `bun run env:serve`                | Serve an existing production build (refuses a stale/missing build)                                                                                             |
-| `bun run env:dev`                  | **Human-only** web HMR (`next dev`) through the tool. Agents never run this; they build + serve (`dev:web` is the raw shortcut)                                |
-| `bun run dev:web`                  | Raw `@studiq/web` dev server (no env handling); human-only, same server as `env:dev`                                                                           |
-| `bun run dev:admin`                | Raw `@studiq/admin` HMR on `127.0.0.1:4000` (varlock-injected); `env` has no admin equivalent                                                                  |
-| `bun run env:build`                | Explicit production build of `@studiq/web` (a memory-derived build slot + one build per worktree; ADR-0014)                                                    |
-| `bun run env:status`               | Web/Supabase health, PIDs, stack id/endpoints (`--json` = stable machine shape)                                                                                |
-| `bun run env:down`                 | Stop this checkout's web server; `env:down --all` also stops **this branch's** Supabase stack (data kept)                                                      |
-| `bun run env:reset-db`             | Destructive `supabase db reset` for **this branch's** stack (`--yes`)                                                                                          |
-| `bun run env:doctor`               | Explain missing / owned / colliding state (exit 1 on a real conflict)                                                                                          |
-| `bun run env:observability`        | `status`/`ensure` `[--force]`: validate or mint the Grafana MCP token (read-only by default)                                                                   |
-| `bun run env:ports`                | Print a free `APP_PORT` (`--json`); Supabase ports are assigned per stack                                                                                      |
-| `bun run env:logs`                 | Follow `.dev/web.log` + this stack's logs (`--no-follow` for the last 100)                                                                                     |
+| Command                            | What it does                                                                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run env:ensure --profile web` | **The blessed path** — idempotent stack + build + serve (production); `--json` is the agent contract. Other profiles: `db`, `api`, `mail`, `full`, `qa`, `e2e`                                                 |
+| `bun run env:serve`                | Serve an existing production build (refuses a stale/missing build)                                                                                                                                             |
+| `bun run env:dev`                  | **Human-only** web HMR (`next dev`) through the tool. Agents never run this; they build + serve (`dev:web` is the raw shortcut)                                                                                |
+| `bun run dev:web`                  | Raw `@studiq/web` dev server (no env handling); human-only, same server as `env:dev`                                                                                                                           |
+| `bun run dev:admin`                | Raw `@studiq/admin` HMR on `127.0.0.1:4000` (varlock-injected); `env` has no admin equivalent                                                                                                                  |
+| `bun run env:build`                | Explicit production build (memory-derived build slot + one build per worktree; ADR-0014). `--app admin` builds the panel, `--no-slot` claims no slot (CI/Playwright), `--no-lock` bypasses admission and warns |
+| `bun run env:status`               | Web/Supabase health, PIDs, stack id/endpoints (`--json` = stable machine shape)                                                                                                                                |
+| `bun run env:down`                 | Stop this checkout's web server; `env:down --all` also stops **this branch's** Supabase stack (data kept)                                                                                                      |
+| `bun run env:reset-db`             | Destructive `supabase db reset` for **this branch's** stack (`--yes`)                                                                                                                                          |
+| `bun run env:doctor`               | Explain missing / owned / colliding state (exit 1 on a real conflict)                                                                                                                                          |
+| `bun run env:observability`        | `status`/`ensure` `[--force]`: validate or mint the Grafana MCP token (read-only by default)                                                                                                                   |
+| `bun run env:ports`                | Print a free `APP_PORT` (`--json`); Supabase ports are assigned per stack                                                                                                                                      |
+| `bun run env:logs`                 | Follow `.dev/web.log` + this stack's logs (`--no-follow` for the last 100)                                                                                                                                     |
 
 | `bun run env:setup` | **Human-only**, idempotent scaffold of `.env.local` (mode 600); `--vault` scaffolds the optional primary-checkout ref file; never a value |
 | `bun run env:verify` | Read-only, agent-safe schema/values check (key **names** only); `--full` adds vault refs + provider status |
@@ -123,8 +123,8 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 | `bun run env:supa` | `bunx supabase …` with `APP_URL` exported (guarded passthrough) |
 | `bun run env:run` | `bun run env:run -- <command> [args…]` — run one command with this checkout's app/stack contract exported (QA seeder/runner, integration tests) |
-| `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
-| `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-adr-numbering.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard + ADR-numbering guard (four-digit `NNNN-slug.md`, unique, gapless, title matches number, intra-directory links resolve) + hardcoded-local-URL guard + suppression-ledger guard + env-inventory guard (`.env.schema` vs `process.env.*`, no stray values files). **Contains no typecheck step.** Does not include `apps/admin/src` (use `lint:admin`). |
+| `bun run build` / `bun run start` | Production build / start for web. **`build` now fails without a grant** — its `prebuild` hook is the ADR-0014 guard; use `bun run env:build` (`build:admin` is guarded the same way, `start:admin` is unchanged) |
+| `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-adr-numbering.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-build-entrypoints.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard + ADR-numbering guard (four-digit `NNNN-slug.md`, unique, gapless, title matches number, intra-directory links resolve) + hardcoded-local-URL guard + build-entrypoint guard (a workflow `run:` step or Playwright `webServer.command` may not call `next build` or a bare `bun run build`; ADR-0014 decision 6) + suppression-ledger guard + env-inventory guard (`.env.schema` vs `process.env.*`, no stray values files). **Contains no typecheck step.** Does not include `apps/admin/src` (use `lint:admin`). |
 | `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
 | `bun run review:static` | `bun scripts/review-static.ts` — the deterministic review gate: oxlint over app/package/test scopes plus the ast-grep tautology rules in `sgconfig.yml` and their `__tests__/rules/` tests. `-- --changed origin/main` scopes **oxlint** to the diff (what `studiq-review` runs); the ast-grep rules always scan the whole tree. A bare `--changed` is a usage error. |
 | `bun run knip` | `knip --treat-config-hints-as-errors --no-progress` — dead-code / unused-dependency gate (documented policy suppressions in `knip.ts`, each with a reason). Also runs in both lefthook hooks and the `checks` CI job. **Not** part of `bun run lint`. |
@@ -152,6 +152,43 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run dup:changed` + `bun run typecheck:all`; **pre-push** runs the merge-conflict check, `format:check`, `lint`, `knip`, `dup:base`, `typecheck:all`, `test:unit`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers. `dup:changed` compares the working tree with `HEAD` and `dup:base` compares new clones with `origin/main`; both tolerate the ~6% duplication that already exists, so they never ask you to fix old code. Hooks are local feedback, not the gate: CI runs the same comparison, so a `--no-verify` push is still caught.
 
 CI workflow configuration, repository variables and required checks: **[docs/ci.md](docs/ci.md)**.
+
+### The build path (what a build prints, and how it fails)
+
+Only `bun run env:build` (and `env:ensure`'s rebuild) reaches `next build` with
+output worth reading; everything else fails before it starts.
+
+- **What a build prints.** A start line before the spawn —
+  `build: building apps/web (slot 1)`, or `(no-slot)`/`(no-lock)` — then one of
+  two finishes: `Build complete (apps/web, slot) in 12.4s` with up to 10 warning
+  lines above it, or the last 40 lines of the failed build on stderr followed by
+  `env: build failed (exit 4); full log: .dev/env.log`. A clean build is the start
+  line plus one summary line; a build with warnings shows them.
+- **`.dev/env.log`** is this checkout's env/build log: the env command lines,
+  every warning from a successful build, and the full output of a failed one.
+  ANSI is stripped before anything is written or re-printed, so it reads with
+  `cat`/`rg` (it is not part of `env:logs`, which follows the stack and
+  `.dev/web.log`).
+- **Exit codes on the build path**: `4` build failed, `5` timed out, `6` refused
+  (no grant, a running web server, another checkout's stack), `7` waited out the
+  slot budget; `2` is bad usage.
+- **A queue is not a hang.** A build waiting for a slot prints
+  `build: waiting for a slot (1 of 1 busy, 1 waiting), 0:42 elapsed, 29:18 left`
+  every 30 s. The wait is capped at 30 minutes and then exits `7`.
+- **`env:ensure` and `env:build` differ on a running server.** `env:ensure`
+  rebuilds and restarts with the server up (it stops it, builds, starts the
+  replacement, and rolls back on failure). `env:build` refuses with
+  `the web server is running; run 'env:down' first` — run `env:down` first, or
+  use `env:ensure`.
+- **`cold=true`** in `env:ensure`'s output means the Supabase stack was started
+  from scratch on that run, so the first request pays the boot cost. It is a
+  session fact: `env:status --json`'s `cold` reports what the last `ensure`
+  recorded, never whether a stack is cold right now.
+- **The admission warning's stack reserve.** Every running stack reserves memory
+  in the admission test (one slot for a native stack, two for Docker), so the
+  build cap shrinks as more worktrees bring their stacks up.
+  `capacity 19.5 GB − (1 × 3.9 GB + reserve 15.6 GB) = 0.0 GB < MIN_FREE 4.5 GB`
+  is that arithmetic, not a build failure.
 
 ### Local dev (one command)
 
@@ -190,6 +227,12 @@ bun run env:down                           # stop this checkout's web; `--all` a
 > every stack on the machine), and never stop/reset a stack you did not start.
 > Agents must use `bun run env:build` + `bun run env:serve` (or
 > `bun run env:ensure --profile web`), not `next dev`; `env:dev` is human-only.
+> A `bun run build` with no grant fails before `next build` starts: `env:build` in
+> one of its three modes is the only thing that mints the single-use grant the
+> `prebuild` guard consumes. The hook covers every `bun run` route; **a raw
+> `bunx next build` never runs `prebuild` and bypasses admission entirely**, and
+> the lint guard only stops _automation_ (workflows, Playwright) from drifting
+> back to it — it cannot catch a person typing the command.
 >
 > **What the cutover deleted:** `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`,
 > `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`).
@@ -220,7 +263,7 @@ bun run env:down                           # stop this checkout's web; `--all` a
 - **`env:ensure` is fast and idempotent**: no `bun install`, no unconditional `next build`, no `supabase db reset`, and no unconditional tenant seeds — the profile decides (`qa`/`e2e` seed by default, the rest do not; `--no-seed` opts out). Cold time is dominated by the first `supabase stack start` (artifact pull). Supabase starts **lean** with `supabase stack start --eager -x studio,realtime,functions,analytics,pooler` (capability names); a profile's table is the source of truth. Builds are admitted through the registry's memory-derived build slots, one per worktree (`DEV_BUILD_MEMORY_MB=4096` caps the build's heap; `STUDIQ_BUILD_MIN_FREE_MB` sets the memory floor).
 - **Destructive/explicit steps are separate**: `bun run env:reset-db --yes` (drops and re-seeds **this branch's** DB) and `bun run env:build` (production build; stop the web server first). Tenant seeding is `env:ensure --profile qa|e2e` (profile default) or an explicit `--seed`; there are no seed markers or run ids in v1.
 - **The shared QA stack is protected**: the tool never leases or suggests the shared QA app port (`:3010`, excluded from the app-port candidates), and shared mode is opt-in via `SUPABASE_SHARED=1` (see above), where it never mutates the shared stack.
-- **`apps/admin` is out of scope** for the `env` tool: use the standalone `bun run dev:admin` shortcut (or the workspace's own `bun run --filter @studiq/admin dev`) plus `build:admin`/`start:admin`. An `env` admin command is deferred; admin binds loopback only and has no app-specific env file.
+- **`apps/admin` has no lifecycle command of its own, but it is not outside the build guard.** Use the standalone `bun run dev:admin` shortcut (or the workspace's own `bun run --filter @studiq/admin dev`) plus `env:build --app admin`/`start:admin`. Admin's build takes the same slot and the same `prebuild` guard as web; it has no fingerprint and no build record of its own (ADR-0014, decision 6). Admin binds loopback only and has no app-specific env file.
 
 | Variable                        | Source                                                                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |

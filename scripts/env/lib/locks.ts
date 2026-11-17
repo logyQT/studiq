@@ -715,18 +715,89 @@ export function readBuildSlots(): BuildSlotsStatus | null {
 }
 
 /**
- * `2/3 busy, 1 stale, 1 waiting` — and `unknown` for anything unreadable, never
- * `0`. Shared by `env status`, `env doctor` and the build's progress line so the
- * three cannot disagree about what the slot directory says.
+ * `2 of 3 busy, 1 stale, 1 waiting` — and `unknown` for anything unreadable,
+ * never `0`. Shared by `env status`, `env doctor` and the build's progress line
+ * so the three cannot disagree about what the slot directory says.
+ *
+ * The numbers are spelled out because `0/1` read as a fraction of a build, not
+ * as "no build is running out of one possible".
  */
 export function formatBuildSlots(status: BuildSlotsStatus | null): string {
   if (status === null || status.busy === null) return 'unknown';
   const cap = status.cap === null ? 'unknown' : String(status.cap);
-  const parts = [`${status.busy}/${cap} busy`];
+  const parts = [`${status.busy} of ${cap} busy`];
   if (status.stale) parts.push(`${status.stale} stale`);
   if (status.waiting) parts.push(`${status.waiting} waiting`);
   const degraded = status.degraded ? ' (memory gate degraded)' : '';
   return `${parts.join(', ')}${degraded}`;
+}
+
+/**
+ * The live holders `env status` would count, as one line for a refusal.
+ *
+ * The `prebuild` guard prints this after its own refusal line: an agent that
+ * finds its build refused needs to know whether the machine is busy (wait) or
+ * empty (the grant is the problem). Read-only, same shallow `readdir` as status.
+ */
+export function describeSlotHolders(): string {
+  const root = join(resolveRegistryDir(), SLOTS_DIR);
+  const now = Date.now();
+  const holders: string[] = [];
+  for (const name of readdirOrNull(root) ?? []) {
+    if (!/^\d+$/.test(name)) continue;
+    const record = readSlotRecord(join(root, name), Number(name), now);
+    if (slotState(record, { checkStart: true }) !== 'live') continue;
+    holders.push(
+      `slot ${record.slot} held by pid ${record.pid}${record.worktree ? ` in ${record.worktree}` : ''}`,
+    );
+  }
+  return holders.join(', ');
+}
+
+/** What the `prebuild` guard needs to know about the slot a grant names. */
+export interface SlotLookup {
+  slot: number;
+  pid: number;
+  worktree: string;
+  live: boolean;
+  /** Why the slot is not live; null when it is. */
+  reason: string | null;
+}
+
+/**
+ * The slot directory whose single-use `token` matches, with decision 5's
+ * liveness verdict.
+ *
+ * This is how the guard turns a grant into "a build really holds a slot": the
+ * token is the slot's own identity, so a grant cannot name a slot that belongs
+ * to another build, and `worktree` is checked by the caller against this
+ * checkout's root.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function findSlotByToken(token: string): SlotLookup | null {
+  if (token === '') return null;
+  const root = join(resolveRegistryDir(), SLOTS_DIR);
+  const now = Date.now();
+  for (const name of readdirOrNull(root) ?? []) {
+    if (!/^\d+$/.test(name)) continue;
+    const record = readSlotRecord(join(root, name), Number(name), now);
+    if (record.token !== token) continue;
+    const state = slotState(record, { checkStart: true });
+    return {
+      slot: record.slot,
+      pid: record.pid,
+      worktree: record.worktree,
+      live: state === 'live',
+      reason:
+        state === 'live'
+          ? null
+          : state === 'pending'
+            ? 'it has not named its owner yet'
+            : 'its launcher, start time or process group is gone',
+    };
+  }
+  return null;
 }
 
 export interface BuildSlotHandle {
@@ -1211,7 +1282,7 @@ async function acquireSlot(context: SlotContext): Promise<SlotRecord> {
       writeStderrLine(
         progressLine(
           context,
-          `waiting for a slot (${active.length}/${decision.cap} busy, ${waiting} waiting)`,
+          `waiting for a slot (${active.length} of ${decision.cap} busy, ${waiting} waiting)`,
         ),
       );
     }

@@ -1,5 +1,5 @@
 import type { ParsedCommand } from '../atoms';
-import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
+import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
 import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
@@ -19,11 +19,17 @@ import {
   readStackState,
   writeBuildState,
 } from '../lib/state';
-import { logBuildOutput, runProductionBuild, type BuildResult } from '../lib/build';
+import {
+  reportBuildFailure,
+  runProductionBuild,
+  type BuildResult,
+  type ProductionBuildOptions,
+} from '../lib/build';
 import { recoverHandover } from '../lib/rebuild';
 import { normalizeLocalhost, trimTrailingSlash } from '../lib/urls';
 import { REPO_ROOT } from '../lib/repo';
 import { acquireCheckoutLock, withReleasedCheckoutLock } from '../lib/locks';
+import type { BuildRunStatus } from '../lib/json';
 
 /**
  * The one I/O seam for this command (and the tests' injection point).
@@ -32,10 +38,12 @@ import { acquireCheckoutLock, withReleasedCheckoutLock } from '../lib/locks';
  * handover recovery can be proven to run before any real build is attempted.
  */
 export interface BuildDeps {
-  build(envHash: string): Promise<BuildResult>;
+  build(envHash: string, options: ProductionBuildOptions): Promise<BuildResult>;
 }
 
-const defaultBuildDeps: BuildDeps = { build: runProductionBuild };
+const defaultBuildDeps: BuildDeps = {
+  build: (envHash, options) => runProductionBuild(envHash, undefined, options),
+};
 
 export async function runBuild(
   parsed: ParsedCommand,
@@ -43,6 +51,8 @@ export async function runBuild(
 ): Promise<number> {
   const options = parsed.build;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'build options are missing');
+  const app = options.app;
+  const web = app === 'web';
 
   // The checkout lock also covers the lease read this build adopts. It is
   // released for the build itself and always taken back (see the build block).
@@ -52,12 +62,15 @@ export async function runBuild(
     // or the build state is read. An unresolved recovery aborts the build
     // instead of building over (or reporting) an unproven artifact; a record
     // owned by a live process is an in-flight rebuild of the same artifact.
-    const recovery = recoverHandover();
-    if (recovery.status === 'in-flight') {
-      throw new EnvFailure(
-        EXIT_CONFLICT,
-        `another env process (pid ${recovery.ownerPid}) is rebuilding apps/web/.next; retry once its build handover settles`,
-      );
+    // The handover describes `apps/web/.next`, so an admin build never touches it.
+    if (web) {
+      const recovery = recoverHandover();
+      if (recovery.status === 'in-flight') {
+        throw new EnvFailure(
+          EXIT_CONFLICT,
+          `another env process (pid ${recovery.ownerPid}) is rebuilding apps/web/.next; retry once its build handover settles`,
+        );
+      }
     }
 
     const appEnv = resolveLocalAppEnv();
@@ -69,14 +82,20 @@ export async function runBuild(
       stackName: options.stack ?? base.stackName,
     });
     applyContractEnv(contract);
-    appendEnvLog(`build: shared=${contract.shared} force=${options.force}`);
+    appendEnvLog(
+      `build: app=${app} admission=${options.admission} shared=${contract.shared} force=${options.force}`,
+    );
 
     const state = readStackState();
-    const conflict = liveServerConflict(
-      { stackName: contract.stackName ?? 'default', profile: state?.profile ?? null },
-      'rebuild',
-    );
-    if (conflict) return refuseConflict(parsed, contract, conflict);
+    // A running web server owns `apps/web/.next` and nothing else: it neither
+    // blocks nor is disturbed by an `apps/admin` build, which serves on 4000.
+    if (web) {
+      const conflict = liveServerConflict(
+        { stackName: contract.stackName ?? 'default', profile: state?.profile ?? null },
+        'rebuild',
+      );
+      if (conflict) return refuseConflict(parsed, contract, conflict);
+    }
 
     const stack = contract.shared ? null : readStack(contract.stackName);
     if (!contract.shared && !stack) {
@@ -101,15 +120,21 @@ export async function runBuild(
       siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
       anonKey: stackEnv.anonKey ?? '',
     });
-    const previous = readBuildState();
+    // The fingerprint and `.dev/build.json` describe `apps/web`'s artifact. Admin
+    // has no fingerprint of its own (ADR-0014, decision 6), so it always builds.
+    const previous = web ? readBuildState() : null;
     const current =
+      web &&
       previous?.envHash === envHash &&
       previous.fingerprint ===
         computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
       buildArtifactPresent();
+    const built = !current || options.force;
 
-    if (options.force || !current) {
-      if (readWebPid()) {
+    let result: BuildResult | null = null;
+    let builtAt: string | null = previous?.builtAt ?? null;
+    if (built) {
+      if (web && readWebPid()) {
         throw new EnvFailure(EXIT_CONFLICT, "the web server is running; run 'env:down' first");
       }
       // Lock ordering: checkout lock → release → worktree mutex → slot → build
@@ -117,32 +142,34 @@ export async function runBuild(
       // `env:down` needs this lock, so the build never holds it while it queues.
       // The per-worktree mutex inside `runProductionBuild` is what keeps a second
       // build out of this `.next`, so releasing the lock cannot admit one.
-      const result = await withReleasedCheckoutLock(
+      result = await withReleasedCheckoutLock(
         lock,
-        () => deps.build(envHash),
+        () => deps.build(envHash, { app, admission: options.admission }),
         'build returned no result',
       );
       // The lock was free for the build, so another env process may have started
       // a server over the artifact this build just replaced. That artifact is not
       // current for a serving environment, so it is reported, not recorded.
-      if (result.ok && readWebPid()) {
+      if (web && result.ok && readWebPid()) {
         throw new EnvFailure(
           EXIT_CONFLICT,
           "a web server started during the build; run 'env:down' and retry",
         );
       }
       if (!result.ok) {
-        logBuildOutput(result.output);
-        throw new EnvFailure(
-          result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-          result.timedOut ? 'timed out building' : 'build failed',
-        );
+        const failure = reportBuildFailure(result, app);
+        throw new EnvFailure(failure.code, failure.message);
       }
-      writeBuildState({
-        fingerprint: result.fingerprintAfter,
-        envHash,
-        builtAt: new Date().toISOString(),
-      });
+      // `--no-lock` never records: a bypassed artifact is not reported as
+      // current by construction (ADR-0014, decision 6).
+      builtAt = new Date().toISOString();
+      if (web && options.admission !== 'no-lock') {
+        writeBuildState({
+          fingerprint: result.fingerprintAfter,
+          envHash,
+          builtAt,
+        });
+      }
     }
 
     const snapshot = await collectSnapshot({
@@ -153,9 +180,20 @@ export async function runBuild(
       profile: state?.profile ?? null,
       cold: state?.cold ?? null,
     });
-    if (parsed.json) printJson(snapshot);
-    else
-      writeStderrLine(options.force || !current ? 'Build complete.' : 'Build is already current.');
+    const buildRun: BuildRunStatus = {
+      app,
+      admission: options.admission,
+      slot: result?.slot ?? null,
+      grant: result?.grant ?? 'unconsumed',
+      built,
+      ok: result?.ok ?? true,
+      fingerprint: web ? (result?.fingerprintAfter ?? previous?.fingerprint ?? null) : null,
+      builtAt,
+    };
+    if (parsed.json) printJson({ ...snapshot, buildRun });
+    // A build that ran already printed its own finish line (with the duration)
+    // from `runProductionBuild`; only the no-op case is this command's to report.
+    else if (!built) writeStderrLine('Build is already current.');
     return 0;
   } finally {
     await lock.release();
