@@ -60,8 +60,11 @@ export interface BuildRunStatus {
   admission: BuildAdmission;
   /** The slot the build held, or null for `--no-slot`/`--no-lock`. */
   slot: number | null;
-  /** `unconsumed` means the grant outlived the build: the guard never ran. */
-  grant: 'consumed' | 'unconsumed';
+  /**
+   * `null` when no build ran, so nothing was minted; `unconsumed` means the
+   * grant outlived the build — the guard never ran.
+   */
+  grant: 'consumed' | 'unconsumed' | null;
   /** False when the web fingerprint was already current, so nothing was built. */
   built: boolean;
   ok: boolean;

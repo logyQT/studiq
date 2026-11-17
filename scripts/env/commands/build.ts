@@ -184,7 +184,8 @@ export async function runBuild(
       app,
       admission: options.admission,
       slot: result?.slot ?? null,
-      grant: result?.grant ?? 'unconsumed',
+      // `result` is null exactly when no build ran, so no grant was minted.
+      grant: result === null ? null : (result.grant ?? 'unconsumed'),
       built,
       ok: result?.ok ?? true,
       fingerprint: web ? (result?.fingerprintAfter ?? previous?.fingerprint ?? null) : null,

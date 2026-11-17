@@ -464,8 +464,15 @@ deployment still needs a shared counter for a hard quota.
 
 1. Connect your GitHub repository to Vercel
 2. Add environment variables in Vercel project settings
-3. Set the build command to `bun run build`
+3. Set the build command to `bunx next build`
 4. Set the output directory to `.next`
+
+> **Build admission is local-only.** `bun run build` runs the ADR-0014
+> `prebuild` guard, which demands a single-use grant that only `env build` mints
+> — and `env build --no-slot` resolves a local stack contract a deploy platform
+> does not have. A deploy therefore calls `bunx next build` directly: the
+> documented bypass, with no slot, no grant and no admission. Do not add a
+> deploy-mode grant.
 
 ### Supabase Configuration
 
@@ -568,8 +575,8 @@ dropped harmlessly. See [observability-debugging.md](./observability-debugging.m
 ## Build and Deploy
 
 ```bash
-# Build locally
-bun run build
+# Build locally (admission is local-only; a deploy platform uses `bunx next build`)
+bun run env:build
 
 # Start production server locally
 bun start

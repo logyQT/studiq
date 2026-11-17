@@ -43,7 +43,11 @@ export default defineSuiteConfig({
   // `env:build --no-slot` is the only build command that mints the grant the
   // `prebuild` guard demands (ADR-0014, decision 6); it claims no slot and no
   // lease because this machine runs one build. It resolves the stack contract,
-  // so E2E needs a live stack: `bun run env:ensure --profile web` is the path.
+  // so E2E needs a live stack **and** that contract exported: either run against
+  // the server `bun run env:ensure --profile web` left up (Playwright reuses it),
+  // or run the suite through `bun run env:run -- bunx playwright test` so
+  // `bun run start` inherits the contract. With the server down and no contract,
+  // `bun run start` 500s.
   webServer:
     process.env.E2E_SKIP_WEB_WS === '1'
       ? []

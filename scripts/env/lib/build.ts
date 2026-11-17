@@ -75,19 +75,23 @@ export function formatBuildDuration(ms: number): string {
 /**
  * ANSI-free build output, one entry per line, with Bun's filter label removed.
  *
- * `bun run --filter` writes `@studiq/<app> build: ` as a label, sometimes on its
- * own line and sometimes in front of the child's line. That label is our own
- * command, not the compiler's output, so it is dropped before the tool's single
- * `build: ` prefix is applied — otherwise a failed build reads
- * `build: @studiq/web build: > 8 | …`, or a bare `build: @studiq/web build:`.
+ * `bun run --filter` writes `@studiq/<app> build:` / `@studiq/<app> prebuild:`
+ * as a label, sometimes on its own line and sometimes in front of the child's
+ * line. Those labels are our own commands, not the compiler's output, so they
+ * are dropped before the tool's single `build: ` prefix is applied. The
+ * `prebuild` child is this tool's own guard, so its `build:` / `env:` /
+ * `build slots:` tag is dropped too — otherwise a successful build logs
+ * `build: build: admitted …`.
  */
 function buildOutputLines(output: string, app: BuildApp): string[] {
-  const label = `@studiq/${app} build:`;
+  const label = new RegExp(`^@studiq/${app} (?:pre)?build:(?: |$)`);
+  const toolTag = /^(?:build slots|build|env): /;
   return stripAnsi(output)
     .split('\n')
     .map((line) => line.trimEnd())
-    .filter((line) => line !== label)
-    .map((line) => (line.startsWith(`${label} `) ? line.slice(label.length + 1) : line));
+    .map((line) => line.replace(label, ''))
+    .map((line) => line.replace(toolTag, ''))
+    .filter((line) => line !== '');
 }
 
 /** Append build output to `.dev/env.log`; callers never pass secrets. */

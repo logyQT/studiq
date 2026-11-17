@@ -220,6 +220,23 @@ describe('build guard', () => {
     expect(result.stderr).toContain('the build slot that minted this grant is gone');
   });
 
+  it('refuses a grant whose token does not match the slot it names', () => {
+    const paths = fixture();
+    // The slot exists and is live, but it belongs to a different build: decision
+    // 6 makes the token equality part of holding a slot, not a formality.
+    writeSlot(paths.registryDir, 1, {
+      pid: process.pid,
+      start: locks.processStartTime(process.pid),
+      token: 'slot-token',
+    });
+    writeGrant(paths.stateDir, { token: 'other-token', slot: 1 });
+
+    const result = runGuard('web', paths);
+
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('the build slot that minted this grant is gone');
+  });
+
   it('refuses when the slot the grant names is stale', () => {
     const paths = fixture();
     writeSlot(paths.registryDir, 1, {

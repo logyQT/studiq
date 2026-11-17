@@ -203,7 +203,7 @@ describe('runProductionBuild mints the single-use grant', () => {
     expect(existsSync(grantPath)).toBe(false);
   });
 
-  it('marks the grant consumed when the guard ran', async () => {
+  it('reports the grant consumed once the prebuild hook has removed it', async () => {
     const result = await build.runProductionBuild(
       'env-hash',
       {

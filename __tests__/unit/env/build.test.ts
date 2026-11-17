@@ -14,6 +14,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import {
   BUN,
   createHarness,
+  objectField,
+  parseJsonObject,
   REPO_ROOT,
   stackStatusFixture,
   startHttpServer,
@@ -92,6 +94,10 @@ const buildModule = await loadEnvModule<BuildModule>('commands/build.ts');
 const productionBuildModule = await loadEnvModule<ProductionBuildModule>('lib/build.ts');
 const locksModule = await loadEnvModule<{ worktreeKey(root?: string): string }>('lib/locks.ts');
 const stateModule = await loadEnvModule<StateModule>('lib/state.ts');
+const fingerprintModule = await loadEnvModule<{
+  BUILD_MODE: string;
+  computeBuildFingerprint(input: { root: string; mode: string; envHash: string }): string;
+}>('lib/fingerprint.ts');
 
 const handoverPath = join(stateDir, 'handover.json');
 const baselineEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -169,6 +175,10 @@ function buildResult(): BuildResult {
 
 function parsedBuild(): ParsedCommand {
   return atomsModule.parseCommand(['build', '--force']);
+}
+
+function parsedJson(): ParsedCommand {
+  return atomsModule.parseCommand(['build', '--json']);
 }
 
 describe('env:build does not hold the checkout lock while it builds', () => {
@@ -385,6 +395,58 @@ describe('env:build --app and the admission flags', () => {
     expect(() => atomsModule.parseCommand(['build', '--no-slot', '--no-lock'])).toThrow(
       /conflicts/,
     );
+  });
+
+  it('reports no grant when a current artifact means no build ran', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    // `current` also needs the artifact, and this checkout may have none.
+    const artifactDir = join(REPO_ROOT, 'apps', 'web', '.next');
+    const buildId = join(artifactDir, 'BUILD_ID');
+    const createdBuildId = !existsSync(buildId);
+    if (createdBuildId) {
+      mkdirSync(artifactDir, { recursive: true });
+      writeFileSync(buildId, 'test-build');
+    }
+    try {
+      // Record the fingerprint the command itself will compute, so the second
+      // run finds the artifact current and mints nothing.
+      let builds = 0;
+      const deps = {
+        build(envHash: string) {
+          builds += 1;
+          return Promise.resolve({
+            ...buildResult(),
+            fingerprintAfter: fingerprintModule.computeBuildFingerprint({
+              root: REPO_ROOT,
+              mode: fingerprintModule.BUILD_MODE,
+              envHash,
+            }),
+          });
+        },
+      };
+      expect(await buildModule.runBuild(parsedBuild(), deps)).toBe(0);
+
+      const stdout: string[] = [];
+      const spy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation((chunk: string | Uint8Array) => {
+          stdout.push(String(chunk));
+          return true;
+        });
+      try {
+        expect(await buildModule.runBuild(parsedJson(), deps)).toBe(0);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(builds).toBe(1);
+      const payload = parseJsonObject(stdout.join(''));
+      expect(objectField(payload, 'buildRun')).toMatchObject({ built: false, grant: null });
+    } finally {
+      if (createdBuildId) rmSync(buildId, { force: true });
+    }
   });
 
   it('rejects an unknown --app value', () => {

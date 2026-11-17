@@ -178,8 +178,9 @@ output worth reading; everything else fails before it starts.
 - **`env:ensure` and `env:build` differ on a running server.** `env:ensure`
   rebuilds and restarts with the server up (it stops it, builds, starts the
   replacement, and rolls back on failure). `env:build` refuses with
-  `the web server is running; run 'env:down' first` — run `env:down` first, or
-  use `env:ensure`.
+  `the web server is running; run 'env:down' first` — but only when it would
+  build: with a current artifact it prints `Build is already current.` and exits
+  `0` without touching the server. Run `env:down` first, or use `env:ensure`.
 - **`cold=true`** in `env:ensure`'s output means the Supabase stack was started
   from scratch on that run, so the first request pays the boot cost. It is a
   session fact: `env:status --json`'s `cold` reports what the last `ensure`

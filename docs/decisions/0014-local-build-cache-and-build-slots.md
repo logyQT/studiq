@@ -498,7 +498,9 @@ assumption.
      run's "current" claim. Only a successful, fingerprinted `env build` (slot or
      `--no-slot`) writes the record back; `--no-lock` never does. A direct
      `next build` cannot delete the file, so decision 8 makes its artifact read
-     as unrecorded instead of current.
+     as unrecorded instead of current. **(The delete-before-build step and the
+     `unrecorded` reading are PR 3; the guard change implements only the
+     `--no-lock` rule — it never writes the record back.)**
 
    **Implementation notes (what this decision left open).** These are the calls
    made while building the guard; each is a policy constant or a scope line, not
@@ -532,8 +534,9 @@ assumption.
      unmeasured, so it still reserves one web-sized slot.
    - **`--no-lock` never writes the build record**, per the bullet above, which
      is what keeps a bypassed artifact from reading as current. The
-     delete-before-build half of that bullet and the `unrecorded` reporting are
-     not part of the guard change.
+     delete-before-build half of that bullet, the `unrecorded` reading and the
+     Consequences sentence "its artifact is never reported current" are **PR 3**,
+     not this change.
    - **Playwright now requires a live stack.** Its `webServer` command is
      `env build --no-slot`, and `env build` resolves the stack contract, so E2E
      needs a stack the way `env serve` already does. That is a requirement, not a
@@ -815,9 +818,9 @@ experiment, not a number.
   A person typing `next build` still does not, and the repo guard on workflow and
   Playwright files only stops automation from drifting back. That residual is
   accepted because one unadmitted build cannot reproduce the burst this cap
-  exists for, its artifact is never reported current, and CI cannot regress
-  unnoticed. Enforcement is load-bearing for automation; it is not a claim that
-  raw builds are impossible.
+  exists for, its artifact is never reported current (PR 3), and CI cannot
+  regress unnoticed. Enforcement is load-bearing for automation; it is not a
+  claim that raw builds are impossible.
 - **CI is touched, in one step per job.** The three build steps in `verify.yml` and
   Playwright's `webServer` command switch to `env build --no-slot`; cache keys,
   stack lifecycle and shard layout are unchanged. ADR-0011 §11 carries the

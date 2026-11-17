@@ -91,6 +91,8 @@ function run(
 
 /** The compiler failure both agents hit, with the ANSI colour Next emits. */
 const COMPILER_FAILURE = [
+  '@studiq/web prebuild: build: admitted apps/web (slot 1, launcher pid 1)',
+  '@studiq/web prebuild: Exited with code 0',
   '@studiq/web build:',
   '@studiq/web build: > Build error occurred',
   '\u001b[31mError: Turbopack build failed with 1 error:',
@@ -125,8 +127,11 @@ describe('a failed build', () => {
     expect(text).toContain('build: > 36 |         <Badge>{label}</Badge>');
     expect(text).toContain('build:      |                ^');
     expect(text).not.toContain('\u001b[');
-    // Bun's own filter label is not part of the compiler's output.
-    expect(text).not.toContain('@studiq/web build:');
+    // Bun's own filter labels (build and prebuild) are not the compiler's output,
+    // and the guard's own `build:` tag is not applied twice.
+    expect(text).not.toContain('@studiq/');
+    expect(text).toContain('build: admitted apps/web (slot 1, launcher pid 1)');
+    expect(text).not.toContain('build: build:');
 
     expect(failure).toEqual({ code: 4, message: 'build failed (exit 4); full log: .dev/env.log' });
   });
@@ -140,7 +145,7 @@ describe('a failed build', () => {
     expect(log).toContain('build: Error: Expression expected');
     expect(log).toContain('build: > 36 |         <Badge>{label}</Badge>');
     expect(log).not.toContain('\u001b[');
-    expect(log).not.toContain('@studiq/web build:');
+    expect(log).not.toContain('@studiq/');
     // The log keeps more than the terminal tail: the first line is there too.
     expect(log).toContain('build: Error: Turbopack build failed with 1 error:');
     // The line the CLI prints names the log, so the failure is not a dead end.
