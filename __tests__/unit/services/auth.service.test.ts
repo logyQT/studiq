@@ -327,6 +327,7 @@ describe('AuthService', () => {
       const result = await service.requestPasswordReset('john@example.com');
 
       expect(result.success).toBe(true);
+      expect(mock.auth.resetPasswordForEmail).toHaveBeenCalledWith('john@example.com');
     });
 
     it('throws BAD_REQUEST when reset fails', async () => {

@@ -150,6 +150,7 @@ describe('ActivityService', () => {
       const result = await service.getClassActivity(ctx, { range: '30d' });
 
       expect(result.success).toBe(true);
+      expect(expectSuccess(result).dailyActivity).toHaveLength(30);
     });
 
     it('handles 90d range', async () => {
@@ -161,6 +162,7 @@ describe('ActivityService', () => {
       const result = await service.getClassActivity(ctx, { range: '90d' });
 
       expect(result.success).toBe(true);
+      expect(expectSuccess(result).dailyActivity).toHaveLength(90);
     });
   });
 });

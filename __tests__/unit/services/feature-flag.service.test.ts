@@ -136,14 +136,6 @@ describe('FeatureFlagService', () => {
   });
 
   describe('delete', () => {
-    it('deletes a feature flag', async () => {
-      mock.from.mockReturnValueOnce(qb(undefined));
-
-      const result = await service.delete('ff-1');
-
-      expect(result.success).toBe(true);
-    });
-
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 

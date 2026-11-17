@@ -273,7 +273,7 @@ describe('FlashcardPracticeService', () => {
         };
       return chain();
     });
-    return upsertMock;
+    return { insertMock, upsertMock };
   }
 
   function setupBatchMocks(
@@ -361,13 +361,24 @@ describe('FlashcardPracticeService', () => {
         repetitions: 1,
       };
 
-      setupMocks({ data: mockPractice, error: null }, null, { data: mockReviewState, error: null });
+      const { insertMock } = setupMocks({ data: mockPractice, error: null }, null, {
+        data: mockReviewState,
+        error: null,
+      });
 
       const result = await service.log('fc-1', true, ctx, 1500, 4, 'session-1');
 
       expect(result.success).toBe(true);
       expect(logPayload(result).practice).toEqual(mockPractice);
       expect(logPayload(result).reviewState).toEqual(mockReviewState);
+      expect(insertMock).toHaveBeenCalledWith({
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: true,
+        response_time_ms: 1500,
+        confidence_level: 4,
+        session_id: 'session-1',
+      });
     });
 
     it('returns error on insert failure', async () => {
@@ -427,7 +438,7 @@ describe('FlashcardPracticeService', () => {
         was_correct: true,
       };
 
-      const upsertMock = setupMocks({ data: mockPractice, error: null }, null, {
+      const { upsertMock } = setupMocks({ data: mockPractice, error: null }, null, {
         data: { ...mockPractice, learning_state: 'learning', learning_step: 1 },
         error: null,
       });
@@ -451,7 +462,7 @@ describe('FlashcardPracticeService', () => {
         was_correct: false,
       };
 
-      const upsertMock = setupMocks({ data: mockPractice, error: null }, null, {
+      const { upsertMock } = setupMocks({ data: mockPractice, error: null }, null, {
         data: { ...mockPractice, learning_state: 'learning', learning_step: 0 },
         error: null,
       });
@@ -779,7 +790,8 @@ describe('FlashcardPracticeService', () => {
     it('returns 0 when RPC returns no data', async () => {
       const c = chain({ data: [], error: null });
       mock.from.mockReturnValue({ select: vi.fn(() => c) });
-      mock.rpc.mockResolvedValue({ data: { total: 0 }, error: null });
+      // No payload at all: the EMPTY_DUE_BREAKDOWN fallback, not an echoed total.
+      mock.rpc.mockResolvedValue({ data: null, error: null });
 
       const result = await service.getDueCount(ctx, {});
 

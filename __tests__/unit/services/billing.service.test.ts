@@ -381,6 +381,8 @@ describe('checkoutExpiresAt', () => {
   });
 });
 
+// The singleton is the only place the export is wrapped by `wrapService`, so touching a
+// member through it is what keeps that Proxy path exercised.
 describe('billingService singleton', () => {
   it('exposes startCheckout with the configured gateway', () => {
     expect(typeof billingService.startCheckout).toBe('function');

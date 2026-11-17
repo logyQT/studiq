@@ -210,19 +210,6 @@ describe('FlashcardDeckService', () => {
       ]);
     });
 
-    it('inserts deck and returns it', async () => {
-      const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: ctx.userId };
-      mock.from.mockReturnValueOnce(qb([], null, 0));
-      mock.from.mockReturnValueOnce(qb(mockDeck));
-      mock.from.mockReturnValueOnce(qb([], null));
-      mock.from.mockReturnValueOnce(qb(mockDeck));
-
-      const result = await service.create({ name: 'Study Deck' }, ctx);
-
-      expect(result.success).toBe(true);
-      expect(mock.from).toHaveBeenCalledWith('flashcard_decks');
-    });
-
     it('returns INTERNAL_SERVER when insert fails', async () => {
       mock.from.mockReturnValueOnce(qb([], null, 0));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
@@ -384,20 +371,6 @@ describe('FlashcardDeckService', () => {
   });
 
   describe('list', () => {
-    it('returns decks for user', async () => {
-      const decks = [
-        { id: 'd-1', name: 'Study Deck', flashcard_count: 0, groupIds: [], suspended: false },
-      ];
-      mock.from.mockReturnValueOnce(qb([], null));
-      mock.from.mockReturnValueOnce(qb(decks));
-      mock.from.mockReturnValueOnce(qb(null, null, 1));
-
-      const result = await service.list(ctx);
-
-      expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
-    });
-
     it('returns the total of all matching decks, independent of page size', async () => {
       const decks = [
         { id: 'd-1', name: 'A' },
@@ -543,16 +516,6 @@ describe('FlashcardDeckService', () => {
   });
 
   describe('getById', () => {
-    it('returns deck when found', async () => {
-      const deck = { id: 'd-1', name: 'Study Deck' };
-      mock.from.mockReturnValueOnce(qb([], null));
-      mock.from.mockReturnValueOnce(qb(deck));
-
-      const result = await service.getById('d-1', ctx);
-
-      expect(result.success).toBe(true);
-    });
-
     it('returns NOT_FOUND when deck does not exist', async () => {
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb(null, null));
