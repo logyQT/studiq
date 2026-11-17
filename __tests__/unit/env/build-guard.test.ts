@@ -138,9 +138,23 @@ describe('build guard', () => {
     expect(result.status).toBe(6);
     expect(result.stderr).toContain('no build grant for this checkout');
     expect(result.stderr).toContain("run 'bun run env:build'");
+    // `env:build` builds web, so the web advice must not carry the admin flag.
+    expect(result.stderr).not.toContain('--app');
     // The slot state is printed too, so "busy machine" is distinguishable from
     // "no grant"; nothing has built here, so the count is unknown.
     expect(result.stderr).toContain('build slots: unknown');
+  });
+
+  it('names --app admin when the admin build is refused', () => {
+    const paths = fixture();
+    const result = runGuard('admin', paths);
+
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('no build grant for this checkout');
+    // `env:build` alone builds web: following that advice would leave this
+    // build refused, so the admin refusal has to name the flag.
+    expect(result.stderr).toContain("run 'bun run env:build --app admin'");
+    expect(result.stderr).not.toContain('env:ensure --profile web');
   });
 
   it('admits a build whose grant names a live slot with the matching token', () => {

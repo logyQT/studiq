@@ -37,7 +37,19 @@ import { writeStderrLine } from './lib/output';
 import { REPO_ROOT, canon } from './lib/repo';
 
 const APPS: readonly BuildApp[] = ['web', 'admin'];
-const NEXT_COMMAND = "run 'bun run env:build' (or 'bun run env:ensure --profile web')";
+
+/**
+ * The command that mints a grant **for this app**.
+ *
+ * `env:build` builds `apps/web` by default, so telling an admin build to run it
+ * would leave the admin build still refused. `env:ensure --profile web` builds
+ * web too, which is why the admin text names neither.
+ */
+function nextCommand(app: BuildApp): string {
+  return app === 'admin'
+    ? "run 'bun run env:build --app admin'"
+    : "run 'bun run env:build' (or 'bun run env:ensure --profile web')";
+}
 
 /** The app whose `prebuild` is running, from the hook's working directory. */
 function appForCwd(): BuildApp | null {
@@ -61,9 +73,12 @@ function refuse(reason: string): never {
   process.exit(EXIT_CONFLICT);
 }
 
-function launcherGone(grant: { launcherPid: number; launcherStart: string | null }): string | null {
+function launcherGone(
+  grant: { launcherPid: number; launcherStart: string | null },
+  app: BuildApp,
+): string | null {
   if (!pidAlive(grant.launcherPid)) {
-    return `the build that minted this grant (pid ${grant.launcherPid}) is gone; ${NEXT_COMMAND}`;
+    return `the build that minted this grant (pid ${grant.launcherPid}) is gone; ${nextCommand(app)}`;
   }
   // A recorded start time is what makes the pid an identity; when the launcher
   // could not read one, the pid alone is the check, exactly like decision 5's
@@ -71,7 +86,7 @@ function launcherGone(grant: { launcherPid: number; launcherStart: string | null
   if (grant.launcherStart === null) return null;
   const current = processStartTime(grant.launcherPid);
   if (current !== null && current !== grant.launcherStart) {
-    return `pid ${grant.launcherPid} now belongs to a different process; ${NEXT_COMMAND}`;
+    return `pid ${grant.launcherPid} now belongs to a different process; ${nextCommand(app)}`;
   }
   return null;
 }
@@ -87,10 +102,10 @@ function main(): void {
 
   const consumption = consumeBuildGrant();
   if (consumption.status === 'missing') {
-    refuse(`no build grant for this checkout; ${NEXT_COMMAND}`);
+    refuse(`no build grant for this checkout; ${nextCommand(app)}`);
   }
   if (consumption.status === 'invalid') {
-    refuse(`the build grant at .dev/build-grant.json is unreadable; ${NEXT_COMMAND}`);
+    refuse(`the build grant at .dev/build-grant.json is unreadable; ${nextCommand(app)}`);
   }
   const grant = consumption.grant;
 
@@ -102,23 +117,23 @@ function main(): void {
 
   const expiresAt = Date.parse(grant.expiresAt);
   if (expiresAt <= Date.now()) {
-    refuse(`the build grant expired at ${grant.expiresAt}; ${NEXT_COMMAND}`);
+    refuse(`the build grant expired at ${grant.expiresAt}; ${nextCommand(app)}`);
   }
 
-  const gone = launcherGone(grant);
+  const gone = launcherGone(grant, app);
   if (gone !== null) refuse(gone);
 
   if (grant.slot !== null) {
     const slot = findSlotByToken(grant.token);
     if (slot === null) {
-      refuse(`the build slot that minted this grant is gone; ${NEXT_COMMAND}`);
+      refuse(`the build slot that minted this grant is gone; ${nextCommand(app)}`);
     }
     if (canon(slot.worktree) !== REPO_ROOT) {
-      refuse(`the build slot belongs to ${slot.worktree}, not this checkout; ${NEXT_COMMAND}`);
+      refuse(`the build slot belongs to ${slot.worktree}, not this checkout; ${nextCommand(app)}`);
     }
     if (!slot.live) {
       refuse(
-        `build slot ${slot.slot} is no longer live (${slot.reason ?? 'unknown'}); ${NEXT_COMMAND}`,
+        `build slot ${slot.slot} is no longer live (${slot.reason ?? 'unknown'}); ${nextCommand(app)}`,
       );
     }
     writeStderrLine(
