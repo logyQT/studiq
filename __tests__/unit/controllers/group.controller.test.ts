@@ -214,6 +214,7 @@ describe('GroupController', () => {
       );
 
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(404);
     });
   });
 
@@ -246,6 +247,7 @@ describe('GroupController', () => {
       );
 
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
     });
   });
 

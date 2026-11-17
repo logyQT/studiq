@@ -39,6 +39,7 @@ describe('PlanFeatureController', () => {
       const response = await controller.getAll();
 
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
     });
   });
 
@@ -73,6 +74,7 @@ describe('PlanFeatureController', () => {
       const response = await controller.create({ planKey: 'base', featureKey: 'quiz' });
 
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(409);
     });
   });
 
@@ -99,6 +101,7 @@ describe('PlanFeatureController', () => {
       const response = await controller.delete('550e8400-e29b-41d4-a716-446655440000');
 
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(404);
     });
   });
 });
