@@ -72,10 +72,15 @@ Build settings (web):
 
 ```text
 Install command: bun install --frozen-lockfile
-Build command:   bun run build
+Build command:   bunx next build
 Output:          .next
 Node:            22
 ```
+
+> Vercel has no local stack contract and no build grant, so it cannot run
+> `bun run build` (the ADR-0014 `prebuild` guard) or `env build --no-slot`. The
+> build command is the documented bypass, `bunx next build`; admission is a
+> local-only mechanism.
 
 The admin project (`apps/admin`, `admin.staging.<domain>`) is documented under
 [Admin protection](#admin-protection) as a future deployment; it is not part of

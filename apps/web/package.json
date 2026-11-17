@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "bun ../../scripts/env/build-guard.ts",
     "build": "next build",
     "start": "bun ../../scripts/payment-preflight.ts && next start --keepAliveTimeout 55000",
     "typecheck": "bun check",

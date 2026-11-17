@@ -51,7 +51,8 @@ as an action.
    still targets shared QA, seeded users cannot authenticate against the app's
    database and probes hit the wrong database.
 3. **Production build, dedicated stack.** Build the app from the repo root with
-   `bun run build`, then start it with
+   `bun run env:build` (a bare `bun run build` has no grant and exits 6), then
+   start it with
    `cd apps/web && bunx next start -p 3020`. `next dev` behaves differently
    (middleware, source maps, error surfaces) and findings do not transfer.
 4. **Seed your own tenants.** Seed with

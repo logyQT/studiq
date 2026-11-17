@@ -435,7 +435,7 @@ describe('env:doctor', () => {
     const text = await harness.run(['doctor'], { APP_PORT: String(appPort) });
     expect(text.status).toBe(0);
     expect(text.stdout).toContain('▸ Build slots');
-    expect(text.stdout).toContain('0/2 busy, 1 stale');
+    expect(text.stdout).toContain('0 of 2 busy, 1 stale');
     expect(text.stdout).toContain('cap        2 (recorded when derived');
   });
 

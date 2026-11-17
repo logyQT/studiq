@@ -18,6 +18,18 @@ export function printJson(value: unknown): void {
 }
 
 /**
+ * Strip ANSI escape sequences from captured child output.
+ *
+ * `next build` colours its compiler errors, and a captured stream keeps the
+ * escapes: `.dev/env.log` was unreadable and a terminal paste of it was worse.
+ * Everything this tool re-prints from a child goes through here first.
+ */
+export function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex -- the escape byte is the point
+  return text.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, '');
+}
+
+/**
  * Strip anything that looks like key material or a DB password from CLI
  * stderr before it reaches a user-visible error or `.dev/env.log`.
  */

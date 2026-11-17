@@ -386,7 +386,7 @@ describe('env:status --json', () => {
     const text = await harness.run(['status']);
     expect(text.status).toBe(0);
     expect(text.stdout).toContain(
-      'slots       1/3 busy, 1 stale, 1 waiting (memory gate degraded)',
+      'slots       1 of 3 busy, 1 stale, 1 waiting (memory gate degraded)',
     );
     expect(existsSync(join(slots, '2'))).toBe(true);
   });

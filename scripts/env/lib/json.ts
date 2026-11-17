@@ -1,4 +1,5 @@
 import type { Contract } from './contract';
+import type { BuildAdmission, BuildApp } from './grant';
 import { REPO_ROOT, currentCommit } from './repo';
 import type { StackStatus } from './stack';
 import { profileRequiresServe } from '../profiles';
@@ -44,6 +45,32 @@ export interface BuildSlotsStatus {
   degraded: boolean;
   /** Why the memory gate is degraded or disabled; null when it is neither. */
   detail: string | null;
+}
+
+/**
+ * What one `env build` did, printed beside the status snapshot under `--json`.
+ *
+ * The snapshot answers "what is this environment"; this answers "what did the
+ * build I just ran do" — which app, how it was admitted, whether it held a slot,
+ * and whether the guard consumed the grant. An agent must never have to scrape
+ * the human lines to learn that.
+ */
+export interface BuildRunStatus {
+  app: BuildApp;
+  admission: BuildAdmission;
+  /** The slot the build held, or null for `--no-slot`/`--no-lock`. */
+  slot: number | null;
+  /**
+   * `null` when no build ran, so nothing was minted; `unconsumed` means the
+   * grant outlived the build — the guard never ran.
+   */
+  grant: 'consumed' | 'unconsumed' | null;
+  /** False when the web fingerprint was already current, so nothing was built. */
+  built: boolean;
+  ok: boolean;
+  /** Web only; `null` for `apps/admin`, which has no fingerprint of its own. */
+  fingerprint: string | null;
+  builtAt: string | null;
 }
 
 export interface StatusSnapshot {

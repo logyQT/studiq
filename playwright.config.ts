@@ -39,12 +39,21 @@ export default defineSuiteConfig({
   // cold route change can blow past a spec's action timeout, and under parallel
   // workers it is the difference between a real failure and a timeout. The
   // build is a no-op (~1 s) when nothing changed.
+  //
+  // `env:build --no-slot` is the only build command that mints the grant the
+  // `prebuild` guard demands (ADR-0014, decision 6); it claims no slot and no
+  // lease because this machine runs one build. It resolves the stack contract,
+  // so E2E needs a live stack **and** that contract exported: either run against
+  // the server `bun run env:ensure --profile web` left up (Playwright reuses it),
+  // or run the suite through `bun run env:run -- bunx playwright test` so
+  // `bun run start` inherits the contract. With the server down and no contract,
+  // `bun run start` 500s.
   webServer:
     process.env.E2E_SKIP_WEB_WS === '1'
       ? []
       : [
           {
-            command: 'bun run build && bun run start',
+            command: 'bun run env:build --no-slot && bun run start',
             url: 'http://localhost:3000',
             reuseExistingServer: !process.env.CI,
             timeout: 300 * 1000,

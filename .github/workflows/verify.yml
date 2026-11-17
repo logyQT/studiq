@@ -677,7 +677,7 @@ jobs:
         # call. Keep it below Node's 60 s `headersTimeout` (Next has no flag for
         # that one).
         run: |
-          bun run build
+          bun run env:build --no-slot
           (cd apps/web && bunx next start -p 3010 --keepAliveTimeout 55000 > /tmp/qa-app.log 2>&1 &)
           for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3010/login && break
@@ -860,7 +860,7 @@ jobs:
         # (see the `qa-suite` job). The job-level `LLM_*` variables are in the
         # environment of both the build and `next start`.
         run: |
-          bun run build
+          bun run env:build --no-slot
           (cd apps/web && bunx next start -p 3010 --keepAliveTimeout 55000 > /tmp/qa-app.log 2>&1 &)
           for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3010/login && break
@@ -1074,7 +1074,7 @@ jobs:
         # the app through Playwright's `APIRequestContext`, which pools sockets
         # for the whole test.
         run: |
-          bun run build
+          bun run env:build --no-slot
           (cd apps/web && bunx next start -p 3000 --keepAliveTimeout 55000 > /tmp/e2e-app.log 2>&1 &)
           for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3000/login && break

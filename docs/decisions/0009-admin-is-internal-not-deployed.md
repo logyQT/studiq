@@ -26,7 +26,8 @@ What remains today:
 - There is no public admin deployment, and no workflow in this repo publishes
   `apps/admin`.
 - QA does not exercise admin; product CI does not gate on admin.
-- Manual checks are `lint:admin`, `typecheck:admin`, `build:admin`, `test:admin`.
+- Manual checks are `lint:admin`, `typecheck:admin`, `env:build --app admin`,
+  `test:admin`.
 
 Building a real app-level gate **now** would mean building it on the current
 authority model — `account_type` route gates, `org.manage`, plan-seeded
@@ -57,7 +58,7 @@ vocabulary or grant model introduced today would be a second model to migrate.
    require the panel. `apps/admin` is excluded from `typecheck:all`, `lint`, the
    e2e matrix and the default unit/integration runs.
 6. **Manual checks replace the CI gate.** Run `bun run lint:admin`,
-   `bun run typecheck:admin`, `bun run build:admin` and `bun run test:admin`
+   `bun run typecheck:admin`, `bun run env:build --app admin` and `bun run test:admin`
    before touching the admin app.
 
 ## Current gap (accepted risk)

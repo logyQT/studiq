@@ -55,7 +55,7 @@ never called it and remain as human-only shortcuts.
 bun run env:status --json   # health, ports, URLs (stable agent contract)
 bun run env:down            # stop the web server (--all also stops Supabase, data kept)
 bun run env:reset-db --yes  # destructive: reset and re-seed this branch's database
-bun run env:build           # production build (stop the server first)
+bun run env:build           # production build (stop the server first; a bare `bun run build` fails without its grant)
 bun run env:logs            # follow the web log; show recent Supabase logs
 ```
 
@@ -71,7 +71,7 @@ The admin panel is opt-in and outside the `env` tool:
 
 ```bash
 bun run dev:admin                    # apps/admin HMR on 127.0.0.1:4000 (human-only)
-bun run build:admin && bun run start:admin  # production build + serve
+bun run env:build --app admin && bun run start:admin  # production build + serve
 ```
 
 The observability stack is started in Quick Start above; `bun run env:doctor`

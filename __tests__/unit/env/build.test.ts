@@ -10,10 +10,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BUN,
   createHarness,
+  objectField,
+  parseJsonObject,
   REPO_ROOT,
   stackStatusFixture,
   startHttpServer,
@@ -92,6 +94,10 @@ const buildModule = await loadEnvModule<BuildModule>('commands/build.ts');
 const productionBuildModule = await loadEnvModule<ProductionBuildModule>('lib/build.ts');
 const locksModule = await loadEnvModule<{ worktreeKey(root?: string): string }>('lib/locks.ts');
 const stateModule = await loadEnvModule<StateModule>('lib/state.ts');
+const fingerprintModule = await loadEnvModule<{
+  BUILD_MODE: string;
+  computeBuildFingerprint(input: { root: string; mode: string; envHash: string }): string;
+}>('lib/fingerprint.ts');
 
 const handoverPath = join(stateDir, 'handover.json');
 const baselineEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -169,6 +175,10 @@ function buildResult(): BuildResult {
 
 function parsedBuild(): ParsedCommand {
   return atomsModule.parseCommand(['build', '--force']);
+}
+
+function parsedJson(): ParsedCommand {
+  return atomsModule.parseCommand(['build', '--json']);
 }
 
 describe('env:build does not hold the checkout lock while it builds', () => {
@@ -324,6 +334,168 @@ describe('env:build settles a pending handover before building', () => {
   });
 });
 
+function parsedBuildWith(...flags: string[]): ParsedCommand {
+  return atomsModule.parseCommand(['build', '--force', ...flags]);
+}
+
+describe('env:build --app and the admission flags', () => {
+  it('passes --app admin to the build and records nothing (admin has no fingerprint)', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+
+    let seen: unknown = null;
+    const code = await buildModule.runBuild(parsedBuildWith('--app', 'admin'), {
+      build(_envHash, options) {
+        seen = options;
+        return Promise.resolve(buildResult());
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(seen).toEqual({ app: 'admin', admission: 'slot' });
+    // `.dev/build.json` describes `apps/web`'s artifact; an admin build must not
+    // claim it is current.
+    expect(stateModule.readBuildState()).toBeNull();
+  });
+
+  it('passes --no-slot through as a slotless admission', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+
+    let seen: unknown = null;
+    const code = await buildModule.runBuild(parsedBuildWith('--no-slot'), {
+      build(_envHash, options) {
+        seen = options;
+        return Promise.resolve(buildResult());
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(seen).toEqual({ app: 'web', admission: 'no-slot' });
+  });
+
+  it('records a slot build as current but never a --no-lock one', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    const deps = { build: () => Promise.resolve(buildResult()) };
+
+    expect(await buildModule.runBuild(parsedBuild(), deps)).toBe(0);
+    expect(stateModule.readBuildState()).not.toBeNull();
+
+    rmSync(join(stateDir, 'build.json'), { force: true });
+    expect(await buildModule.runBuild(parsedBuildWith('--no-lock'), deps)).toBe(0);
+    // A bypassed artifact is not reported as current by construction.
+    expect(stateModule.readBuildState()).toBeNull();
+  });
+
+  it('rejects --no-slot together with --no-lock', () => {
+    expect(() => atomsModule.parseCommand(['build', '--no-slot', '--no-lock'])).toThrow(
+      /conflicts/,
+    );
+  });
+
+  it('reports no grant when a current artifact means no build ran', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    // `current` also needs the artifact, and this checkout may have none.
+    const artifactDir = join(REPO_ROOT, 'apps', 'web', '.next');
+    const buildId = join(artifactDir, 'BUILD_ID');
+    const createdBuildId = !existsSync(buildId);
+    if (createdBuildId) {
+      mkdirSync(artifactDir, { recursive: true });
+      writeFileSync(buildId, 'test-build');
+    }
+    try {
+      // Record the fingerprint the command itself will compute, so the second
+      // run finds the artifact current and mints nothing.
+      let builds = 0;
+      const deps = {
+        build(envHash: string) {
+          builds += 1;
+          return Promise.resolve({
+            ...buildResult(),
+            fingerprintAfter: fingerprintModule.computeBuildFingerprint({
+              root: REPO_ROOT,
+              mode: fingerprintModule.BUILD_MODE,
+              envHash,
+            }),
+          });
+        },
+      };
+      expect(await buildModule.runBuild(parsedBuild(), deps)).toBe(0);
+
+      const stdout: string[] = [];
+      const spy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation((chunk: string | Uint8Array) => {
+          stdout.push(String(chunk));
+          return true;
+        });
+      try {
+        expect(await buildModule.runBuild(parsedJson(), deps)).toBe(0);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(builds).toBe(1);
+      const payload = parseJsonObject(stdout.join(''));
+      expect(objectField(payload, 'buildRun')).toMatchObject({ built: false, grant: null });
+    } finally {
+      if (createdBuildId) rmSync(buildId, { force: true });
+    }
+  });
+
+  it('rejects an unknown --app value', () => {
+    expect(() => atomsModule.parseCommand(['build', '--app', 'worker'])).toThrow(/web or admin/);
+  });
+});
+
+describe('env:build reports a failed build', () => {
+  it('throws the exit code and log path after printing the compiler error', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    const stderr: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stderr.push(String(chunk));
+        return true;
+      });
+    const output = '\u001b[31mError: Expression expected\u001b[0m\n  ./src/x.tsx:36:12\n';
+
+    let failure: unknown;
+    try {
+      await buildModule.runBuild(parsedBuild(), {
+        build() {
+          return Promise.resolve({
+            ok: false,
+            timedOut: false,
+            output,
+            fingerprintAfter: '',
+          });
+        },
+      });
+    } catch (error) {
+      failure = error;
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 4 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toBe('build failed (exit 4); full log: .dev/env.log');
+    const text = stderr.join('');
+    expect(text).toContain('build: Error: Expression expected');
+    expect(text).toContain('build:   ./src/x.tsx:36:12');
+    expect(text).not.toContain('\u001b[');
+  });
+});
+
 describe('runProductionBuild refuses a server that appeared while it queued', () => {
   it('re-reads the server under the worktree mutex, before spawning', async () => {
     let mutexAtCheck: boolean | null = null;
@@ -339,7 +511,7 @@ describe('runProductionBuild refuses a server that appeared while it queued', ()
         },
         spawnBuild: () => {
           spawned += 1;
-          return Promise.resolve({ status: 0, timedOut: false, output: '' });
+          return Promise.resolve({ status: 0, timedOut: false, output: '', durationMs: 1 });
         },
       })
       .then(() => null)

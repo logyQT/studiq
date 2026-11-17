@@ -9,8 +9,8 @@ import {
 } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { logBuildOutput, runProductionBuild, type BuildResult } from './build';
-import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
+import { reportBuildFailure, runProductionBuild, type BuildResult } from './build';
+import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from './exit';
 import { buildInProgress, buildInProgressFailure, pidAlive } from './locks';
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
@@ -749,14 +749,14 @@ export async function rebuildWithRecovery(
     });
   }
   if (!result.ok || result.timedOut) {
-    logBuildOutput(result.output);
+    const failure = reportBuildFailure(result, 'web');
     return failWithRecovery({
       deps,
       request,
       previousPid,
       backup,
-      code: result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-      message: result.timedOut ? 'timed out building' : 'build failed',
+      code: failure.code,
+      message: failure.message,
     });
   }
 
