@@ -69,6 +69,11 @@ describe('PermissionsController', () => {
       expect(response.success).toBe(true);
       const perms = body(response).permissions;
       expect(perms['flashcard.read']).toBe('own');
+      // Filled in by the student default-own loop, not carried in ctx.permissionScopes.
+      expect(perms['deck.delete']).toBe('own');
+      // Only CRUD verbs get the default: `assignment.publish` is a real Permission
+      // without a CRUD suffix, so a filter widened to "every permission" would add it.
+      expect(perms['assignment.publish']).toBeUndefined();
     });
 
     it('adds own permissions for educator', async () => {

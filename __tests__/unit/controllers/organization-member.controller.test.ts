@@ -54,6 +54,7 @@ describe('OrganizationMemberController', () => {
       mockService.listMembers.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
       const response = await controller.listMembers(mockCtx);
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
     });
   });
 
@@ -94,6 +95,7 @@ describe('OrganizationMemberController', () => {
         '550e8400-e29b-41d4-a716-446655440000',
       );
       expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
     });
   });
 });

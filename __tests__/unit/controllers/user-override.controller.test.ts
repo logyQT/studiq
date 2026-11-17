@@ -25,9 +25,10 @@ describe('UserOverrideController', () => {
 
   describe('getAll', () => {
     it('returns all overrides', async () => {
-      mockService.getAll.mockResolvedValueOnce({ success: true, data: [] });
+      mockService.getAll.mockResolvedValueOnce({ success: true, data: [{ id: 'ov-1' }] });
       const response = await controller.getAll();
       expect(response.success).toBe(true);
+      expect(response.data).toEqual([{ id: 'ov-1' }]);
     });
     it('returns error on failure', async () => {
       mockService.getAll.mockResolvedValueOnce({ success: false, error: 'INTERNAL_SERVER' });
@@ -41,6 +42,8 @@ describe('UserOverrideController', () => {
       mockService.getById.mockResolvedValueOnce({ success: true, data: { id: 'ov-1' } });
       const response = await controller.getById('550e8400-e29b-41d4-a716-446655440000');
       expect(response.success).toBe(true);
+      expect(mockService.getById).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440000');
+      expect(response.data).toEqual({ id: 'ov-1' });
     });
     it('returns 400 on invalid id', async () => {
       const response = await controller.getById('invalid');
@@ -83,6 +86,9 @@ describe('UserOverrideController', () => {
         isEnabled: false,
       });
       expect(response.success).toBe(true);
+      expect(mockService.update).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440000', {
+        isEnabled: false,
+      });
     });
     it('returns 400 on invalid id', async () => {
       const response = await controller.update('invalid', { isEnabled: false });
@@ -97,6 +103,7 @@ describe('UserOverrideController', () => {
       const response = await controller.delete('550e8400-e29b-41d4-a716-446655440000');
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
+      expect(mockService.delete).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440000');
     });
     it('returns 400 on invalid id', async () => {
       const response = await controller.delete('invalid');

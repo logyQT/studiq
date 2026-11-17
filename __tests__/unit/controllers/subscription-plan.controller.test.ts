@@ -71,6 +71,8 @@ describe('SubscriptionPlanController', () => {
       mockService.getByKey.mockResolvedValueOnce({ success: true, data: { key: 'base' } });
       const response = await controller.getByKey('base');
       expect(response.success).toBe(true);
+      expect(mockService.getByKey).toHaveBeenCalledWith('base');
+      expect(response.data).toEqual({ key: 'base' });
     });
     it('returns error on failure', async () => {
       mockService.getByKey.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });

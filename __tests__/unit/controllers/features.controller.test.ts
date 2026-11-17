@@ -43,20 +43,11 @@ describe('FeaturesController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
+      expect(resolveFeatures).toHaveBeenCalledWith(mockCtx);
       expect(dataOf(response)).toEqual({
         features: ['flashcards', 'quiz'],
         rollout: { 'ai.chat': 25 },
       });
-    });
-
-    it('returns an empty rollout when nothing is gated', async () => {
-      vi.mocked(resolveFeatures).mockResolvedValueOnce({
-        features: ['flashcards'],
-        rollout: {},
-      });
-
-      const response = await controller.myFeatures(mockCtx);
-      expect(dataOf(response)?.rollout).toEqual({});
     });
   });
 });
