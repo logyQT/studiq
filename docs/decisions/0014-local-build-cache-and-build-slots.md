@@ -309,7 +309,22 @@ assumption.
      after it claims the handover record — the claim keeps a later build out, the
      read keeps the prelude from moving `.next` under an earlier one — and never
      takes the mutex itself, which would deadlock the non-reentrant directory
-     mutex `runProductionBuild` takes below.
+     mutex `runProductionBuild` takes below. The rule is symmetric:
+     `runProductionBuild` reads this checkout's recorded server **under that
+     mutex**, immediately before the spawn, because `env build`'s own check runs
+     before it queues — a server started during the wait is only visible there.
+     **Known limitation (measured).** The serve-side read and the build's
+     take-mutex-then-read are not mutually exclusive, and the window is
+     one-sided: a build that takes its mutex in the ~1–3 ms between serve's last
+     read and serve's pid write is missed by the build's own read (which runs
+     immediately at acquisition, before the ~17 ms fingerprint), so both can
+     spawn — build over server; the reverse, a server over a build that already
+     holds the mutex, is excluded. The closure is to take the same mutex around
+     serve's "read → spawn → write pid → release" with a short bounded wait,
+     which the build already reads under, and it is not taken because
+     `buildInProgress` cannot yet tell a serve holder from a build holder and
+     would report a false build for every serve; revisit with a holder kind in the
+     mutex record.
    - **Both Next apps draw on one pool.** `apps/admin` is a second Next app and a
      second full build; its `build` script takes the same guard and the same slot
      as `apps/web`. A pool of `n` admits `n` Next builds in total, never `n` per
@@ -841,9 +856,10 @@ cache mechanisms in two independent steps:
   exists, so add it back to `scripts/env/lib/locks.ts` (an exclusive
   `<registry>/build.lock` with a 1800 s wait, taken by `runProductionBuild` and
   released after the build) and delete the read-only `buildInProgress` guard from
-  `commands/serve.ts`, `commands/ensure.ts` and `lib/rebuild.ts` with it — with no
-  per-worktree mutex it has nothing to read. Every build is then serialized
-  across worktrees, and `--no-slot`/`--no-lock` are removed with the guard.
+  `commands/serve.ts`, `commands/ensure.ts`, `commands/dev.ts` and
+  `lib/rebuild.ts` with it — with no per-worktree mutex it has nothing to read.
+  Every build is then serialized across worktrees, and `--no-slot`/`--no-lock`
+  are removed with the guard.
   **Restore the callers**: put `bun run build` back in the two `verify.yml` build
   steps and in Playwright's `webServer` command, because `--no-slot` no longer
   exists. This step is required for CI and E2E to stay green.
