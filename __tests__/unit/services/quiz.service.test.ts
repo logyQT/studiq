@@ -156,7 +156,6 @@ describe('QuizService', () => {
       const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 2 }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
       expect(quizQuestions(result)).toBeDefined();
     });
 

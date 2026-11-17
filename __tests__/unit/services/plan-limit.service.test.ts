@@ -69,12 +69,14 @@ describe('PlanLimitService', () => {
   describe('getAll', () => {
     it('returns all limits', async () => {
       const limits = [{ id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
-      mock.from.mockReturnValueOnce(qb(limits));
+      const listQb = qb(limits);
+      mock.from.mockReturnValueOnce(listQb);
 
       const result = await service.getAll();
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(limits);
+      expect(listQb.order).toHaveBeenCalledWith('plan_key', { ascending: true });
     });
 
     it('returns error on DB failure', async () => {
@@ -120,12 +122,16 @@ describe('PlanLimitService', () => {
   describe('update', () => {
     it('updates a plan limit', async () => {
       const limit = { id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 5 };
-      mock.from.mockReturnValueOnce(qb(limit));
+      const updateQb = qb(limit);
+      mock.from.mockReturnValueOnce(updateQb);
 
       const result = await service.update('l-1', { limitValue: 5 });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(limit);
+      // An unscoped update would write every plan's limit.
+      expect(updateQb.update).toHaveBeenCalledWith({ limit_value: 5 });
+      expect(updateQb.eq).toHaveBeenCalledWith('id', 'l-1');
     });
 
     it('returns error on DB failure', async () => {

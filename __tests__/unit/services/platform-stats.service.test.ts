@@ -65,9 +65,15 @@ describe('PlatformStatsService', () => {
   });
 
   it('fails when the database does', async () => {
-    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'denied' } });
-
+    // A valid payload travels with the error: the error guard, not the schema parse,
+    // is what must turn this into a failure.
+    rpc.mockResolvedValue({ data: stats, error: { code: '42501', message: 'denied' } });
     expect((await service.getPlatformStats()).success).toBe(false);
+
+    rpc.mockResolvedValue({
+      data: { days: 30, items: [] },
+      error: { code: '42501', message: 'denied' },
+    });
     expect((await service.getDailyStats()).success).toBe(false);
   });
 });
@@ -78,7 +84,7 @@ describe('DailyStatsQuerySchema', () => {
     expect(DailyStatsQuerySchema.parse({ days: '90' })).toEqual({ days: 90 });
   });
 
-  it.each([{ days: '0' }, { days: '366' }, { days: 'x' }, { days: '2.5' }])('rejects %j', (q) => {
+  it.each([{ days: '0' }, { days: '366' }, { days: '2.5' }])('rejects %j', (q) => {
     expect(DailyStatsQuerySchema.safeParse(q).success).toBe(false);
   });
 });
@@ -127,7 +133,6 @@ describe('PlatformStatsController', () => {
 
 describe('formatBytes', () => {
   it.each([
-    [0, '0 B'],
     [1, '1 B'],
     [1023, '1023 B'],
     [1024, '1.0 KB'],

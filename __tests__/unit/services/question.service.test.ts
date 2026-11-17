@@ -371,12 +371,14 @@ describe('QuestionService', () => {
     it('filters by bankId when provided', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
 
-      mock.from.mockReturnValue(chain(questions));
+      const listChain = chain(questions);
+      mock.from.mockReturnValue(listChain);
 
       const result = await service.list(ctx, { bankId: 'bank-1' });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual([{ id: 'q-1', content: 'Q1', topics: [] }]);
+      expect(listChain.eq).toHaveBeenCalledWith('bank_id', 'bank-1');
     });
 
     it('flattens topic assignments into topics and drops unreadable ones', async () => {

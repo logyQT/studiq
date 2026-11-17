@@ -637,5 +637,12 @@ describe('NotificationController', () => {
     notifications.markAllRead.mockResolvedValue(success(null));
 
     expect(await controller.markAllRead(ctx)).toMatchObject({ success: true, statusCode: 200 });
+    expect(notifications.markAllRead).toHaveBeenCalledWith(ctx);
+  });
+
+  it('maps a markAllRead failure to its HTTP error', async () => {
+    notifications.markAllRead.mockResolvedValue({ success: false, error: 'INTERNAL_SERVER' });
+
+    expect(await controller.markAllRead(ctx)).toMatchObject({ success: false, statusCode: 500 });
   });
 });
