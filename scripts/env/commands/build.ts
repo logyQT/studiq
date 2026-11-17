@@ -14,7 +14,7 @@ import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
 import {
   appendEnvLog,
-  buildArtifactPresent,
+  classifyBuildArtifact,
   readBuildState,
   readStackState,
   writeBuildState,
@@ -125,13 +125,15 @@ export async function runBuild(
     const previous = web ? readBuildState() : null;
     const current =
       web &&
-      previous?.envHash === envHash &&
-      previous.fingerprint ===
-        computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
-      buildArtifactPresent();
+      classifyBuildArtifact({
+        fingerprint: computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }),
+        envHash,
+      }) === 'current';
     const built = !current || options.force;
 
     let result: BuildResult | null = null;
+    // The record's `builtAt`, or null when no record covers the artifact this
+    // run leaves behind (`--no-lock`, and every admin build).
     let builtAt: string | null = previous?.builtAt ?? null;
     if (built) {
       if (web && readWebPid()) {
@@ -162,13 +164,17 @@ export async function runBuild(
       }
       // `--no-lock` never records: a bypassed artifact is not reported as
       // current by construction (ADR-0014, decision 6).
-      builtAt = new Date().toISOString();
       if (web && options.admission !== 'no-lock') {
+        builtAt = new Date().toISOString();
         writeBuildState({
           fingerprint: result.fingerprintAfter,
           envHash,
           builtAt,
         });
+      } else {
+        // Nothing on disk claims this artifact, so nothing may report a
+        // `builtAt` for it.
+        builtAt = null;
       }
     }
 

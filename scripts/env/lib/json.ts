@@ -1,6 +1,7 @@
 import type { Contract } from './contract';
 import type { BuildAdmission, BuildApp } from './grant';
 import { REPO_ROOT, currentCommit } from './repo';
+import type { BuildArtifactState } from './state';
 import type { StackStatus } from './stack';
 import { profileRequiresServe } from '../profiles';
 
@@ -108,7 +109,25 @@ export interface StatusSnapshot {
     projectRoot: string;
   } | null;
   seeded: boolean | null;
-  build: { present: boolean; fingerprint: string | null; slots: BuildSlotsStatus | null };
+  /**
+   * `current` is the only state a serve path accepts. `unrecorded` is an
+   * artifact no record covers (a raw `next build`, a `--no-lock` build, or a
+   * build whose `BUILD_ID` is newer than the record) and `stale` is a recorded
+   * artifact the tree has moved past; `null` is "could not be computed".
+   */
+  build: {
+    present: boolean;
+    fingerprint: string | null;
+    state: BuildArtifactState | null;
+    /**
+     * `.next.failed-*` directories a failed build left behind, repo-relative.
+     * One is kept for inspection and the next failure replaces it, so this is
+     * normally empty; it is reported rather than deleted because it is the only
+     * copy of what the failed build wrote.
+     */
+    failed: string[];
+    slots: BuildSlotsStatus | null;
+  };
   warnings: string[];
   log: string;
 }
@@ -132,6 +151,8 @@ export interface StatusInputs {
   web: { pid: number | null; http: number };
   supabaseHttp: number;
   buildPresent: boolean;
+  buildState?: BuildArtifactState | null;
+  buildFailed?: string[];
   buildSlots?: BuildSlotsStatus | null;
   // Lifecycle facts (phase 2); all default to "unknown" for read-only calls.
   profile?: string | null;
@@ -210,6 +231,8 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
     build: {
       present: inputs.buildPresent,
       fingerprint: inputs.buildFingerprint ?? null,
+      state: inputs.buildState ?? null,
+      failed: inputs.buildFailed ?? [],
       slots: inputs.buildSlots ?? null,
     },
     warnings: inputs.warnings,

@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
 import { envPort } from './env-port';
+import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
 import { readBuildSlots } from './locks';
@@ -10,7 +11,14 @@ import { readRegistry, findEntry, registryPathExists } from './registry';
 import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
-import { readBuildState, readStackState, type StackState } from './state';
+import {
+  classifyBuildArtifact,
+  failedBuildArtifacts,
+  readBuildState,
+  readStackState,
+  type BuildArtifactState,
+  type StackState,
+} from './state';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
 import { readWebPid } from './web';
 
@@ -96,6 +104,31 @@ function sharedProjectId(): string | null {
   return deriveProjectId() || null;
 }
 
+/**
+ * The artifact's state, judged against the record it should match.
+ *
+ * Status does not read the stack's keys, so it compares the tree with the
+ * recorded build's **own** env hash: `current` here means "this is the recorded
+ * build of this tree". `env serve` and `env build` compare the inlined
+ * environment too, so an env change reads as `stale` there and is rebuilt. The
+ * fingerprint is computed only when a record and an artifact are both present,
+ * so `missing` and `unrecorded` cost no git call.
+ */
+function artifactState(record: ReturnType<typeof readBuildState>): BuildArtifactState | null {
+  if (!record) return classifyBuildArtifact({ fingerprint: null, envHash: null });
+  let fingerprint: string | null;
+  try {
+    fingerprint = computeBuildFingerprint({
+      root: REPO_ROOT,
+      mode: BUILD_MODE,
+      envHash: record.envHash,
+    });
+  } catch {
+    fingerprint = null;
+  }
+  return classifyBuildArtifact({ fingerprint, envHash: record.envHash });
+}
+
 export async function collectSnapshot(options: SnapshotOptions = {}): Promise<StatusSnapshot> {
   const contract = options.contract ?? contractWithLease(readContractLenient());
   const registry = readRegistry();
@@ -150,6 +183,7 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     profile && !profileRequiresServe(profile)
       ? supabaseHttp === 200
       : webHttp >= 200 && webHttp < 400 && supabaseHttp === 200;
+  const record = readBuildState();
 
   return shapeStatus({
     contract,
@@ -168,10 +202,12 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
     buildPresent: existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID')),
+    buildState: artifactState(record),
+    buildFailed: failedBuildArtifacts().map((path) => relative(REPO_ROOT, path)),
     buildSlots: readBuildSlots(),
     profile,
     cold: options.cold ?? state?.cold ?? null,
-    buildFingerprint: readBuildState()?.fingerprint ?? null,
+    buildFingerprint: record?.fingerprint ?? null,
     warnings: [...new Set(warnings)],
     ready: options.ready ?? fallbackReady,
     runtime: statusStack?.runtime ?? listedRuntime,

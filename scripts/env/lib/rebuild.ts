@@ -471,7 +471,17 @@ function moveArtifactAside(deps: RebuildRecoveryDeps, backup: string): string | 
   return backup;
 }
 
+/**
+ * Put the previous artifact back and forget any claim about it.
+ *
+ * The invalidation is the first step on purpose: a record that cannot be
+ * removed aborts before `.next` is touched, and a restored artifact must never
+ * inherit the interrupted run's "this build is current" claim (ADR-0014,
+ * decision 7). Every caller restores the *previous* build, whose own record no
+ * longer exists — the failed run deleted it before it spawned.
+ */
 function restoreArtifact(deps: RebuildRecoveryDeps, backup: string): void {
+  removeBuildState();
   rmSync(deps.artifactDir, { recursive: true, force: true });
   renameSync(backup, deps.artifactDir);
 }

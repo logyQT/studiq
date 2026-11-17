@@ -38,6 +38,7 @@ interface BuildModule {
     deps: {
       readWebPid(): number | null;
       spawnBuild(slot: unknown, options: ProductionBuildOptions): Promise<SpawnOutcome>;
+      artifactDir?: string;
     },
     options: ProductionBuildOptions,
   ): Promise<BuildResult>;
@@ -47,6 +48,7 @@ interface BuildModule {
 // `state.ts` captures DEV_DIR at import time; both modules share this directory.
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-grant-state-'));
 const registryDir = mkdtempSync(join(tmpdir(), 'studiq-grant-registry-'));
+const artifactRoot = mkdtempSync(join(tmpdir(), 'studiq-grant-artifact-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
 process.env.STUDIQ_DEV_REGISTRY = registryDir;
 
@@ -57,6 +59,7 @@ const GUARD = join(REPO_ROOT, 'scripts', 'env', 'build-guard.ts');
 afterAll(() => {
   rmSync(stateDir, { recursive: true, force: true });
   rmSync(registryDir, { recursive: true, force: true });
+  rmSync(artifactRoot, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -87,6 +90,9 @@ function ok(): SpawnOutcome {
   return { status: 0, timedOut: false, output: '', durationMs: 1 };
 }
 
+/** A throwaway artifact path: a failed build moves this, not the real `.next`. */
+const artifactDir = join(artifactRoot, '.next');
+
 describe('runProductionBuild mints the single-use grant', () => {
   it('mints an admin grant and spawns the admin workspace filter', async () => {
     let seen: ProductionBuildOptions | null = null;
@@ -99,6 +105,7 @@ describe('runProductionBuild mints the single-use grant', () => {
         readWebPid: () => {
           throw new Error('an admin build must not read the web pid');
         },
+        artifactDir,
         spawnBuild: (_slot, options) => {
           seen = options;
           during = readGrant();
@@ -132,7 +139,7 @@ describe('runProductionBuild mints the single-use grant', () => {
 
     await build.runProductionBuild(
       'env-hash',
-      { readWebPid: () => null, spawnBuild: () => Promise.resolve(ok()) },
+      { readWebPid: () => null, artifactDir, spawnBuild: () => Promise.resolve(ok()) },
       { app: 'web', admission: 'no-slot' },
     );
 
@@ -147,7 +154,7 @@ describe('runProductionBuild mints the single-use grant', () => {
 
     await build.runProductionBuild(
       'env-hash',
-      { readWebPid: () => null, spawnBuild: () => Promise.resolve(ok()) },
+      { readWebPid: () => null, artifactDir, spawnBuild: () => Promise.resolve(ok()) },
       { app: 'web', admission: 'no-lock' },
     );
 
@@ -165,6 +172,7 @@ describe('runProductionBuild mints the single-use grant', () => {
       'env-hash',
       {
         readWebPid: () => null,
+        artifactDir,
         spawnBuild: () => {
           during = readGrant();
           slotToken = readFileSync(join(registryDir, 'build-slots', '1', 'token'), 'utf8').trim();
@@ -183,7 +191,7 @@ describe('runProductionBuild mints the single-use grant', () => {
   it('mints a grant the real prebuild guard accepts', async () => {
     await build.runProductionBuild(
       'env-hash',
-      { readWebPid: () => null, spawnBuild: () => Promise.resolve(ok()) },
+      { readWebPid: () => null, artifactDir, spawnBuild: () => Promise.resolve(ok()) },
       { app: 'web', admission: 'no-slot' },
     );
 
@@ -208,6 +216,7 @@ describe('runProductionBuild mints the single-use grant', () => {
       'env-hash',
       {
         readWebPid: () => null,
+        artifactDir,
         spawnBuild: () => {
           // Stand in for the `prebuild` hook: consume the grant, as the guard does.
           rmSync(grantPath, { force: true });
@@ -227,7 +236,7 @@ describe('a slot-mode grant outlives its slot', () => {
     // shape a crashed or replayed launcher would leave.
     await build.runProductionBuild(
       'env-hash',
-      { readWebPid: () => null, spawnBuild: () => Promise.resolve(ok()) },
+      { readWebPid: () => null, artifactDir, spawnBuild: () => Promise.resolve(ok()) },
       { app: 'web', admission: 'slot' },
     );
     expect(existsSync(grantPath)).toBe(true);

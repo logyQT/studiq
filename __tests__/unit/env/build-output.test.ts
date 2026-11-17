@@ -39,6 +39,7 @@ interface BuildModule {
     deps: {
       readWebPid(): number | null;
       spawnBuild(slot: unknown, options: ProductionBuildOptions): Promise<SpawnOutcome>;
+      artifactDir?: string;
     },
     options: ProductionBuildOptions,
   ): Promise<BuildResult>;
@@ -49,6 +50,7 @@ interface BuildModule {
 // `state.ts` captures DEV_DIR at import time; the log this suite reads is here.
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-build-output-'));
 const registryDir = mkdtempSync(join(tmpdir(), 'studiq-build-output-registry-'));
+const artifactRoot = mkdtempSync(join(tmpdir(), 'studiq-build-output-artifact-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
 process.env.STUDIQ_DEV_REGISTRY = registryDir;
 
@@ -58,6 +60,7 @@ const logPath = join(stateDir, 'env.log');
 afterAll(() => {
   rmSync(stateDir, { recursive: true, force: true });
   rmSync(registryDir, { recursive: true, force: true });
+  rmSync(artifactRoot, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -84,9 +87,20 @@ function run(
 ): Promise<BuildResult> {
   return build.runProductionBuild(
     'env-hash',
-    { readWebPid: () => null, spawnBuild: () => Promise.resolve(spawn) },
+    // A failed web build invalidates the artifact it was pointed at; never this
+    // checkout's real `apps/web/.next`.
+    {
+      readWebPid: () => null,
+      spawnBuild: () => Promise.resolve(spawn),
+      artifactDir: artifactDir(),
+    },
     options,
   );
+}
+
+/** A throwaway artifact path: a failed build moves this, not the real one. */
+function artifactDir(): string {
+  return join(artifactRoot, '.next');
 }
 
 /** The compiler failure both agents hit, with the ANSI colour Next emits. */

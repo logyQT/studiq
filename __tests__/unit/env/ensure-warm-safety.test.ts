@@ -111,8 +111,10 @@ const devModule = await loadEnvModule<DevModule>('commands/dev.ts');
 const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
 const stateModule = await loadEnvModule<{
   identityKey(root: string, branch: string, stack: string): string;
-  readBuildState(): { fingerprint: string; envHash: string; builtAt: string } | null;
-  buildArtifactPresent(): boolean;
+  classifyBuildArtifact(expected: {
+    fingerprint: string | null;
+    envHash: string | null;
+  }): 'current' | 'stale' | 'unrecorded' | 'missing' | null;
 }>('lib/state.ts');
 const repoModule = await loadEnvModule<{ currentBranchRef(): string }>('lib/repo.ts');
 const webModule = await loadEnvModule<{
@@ -525,12 +527,9 @@ describe('env:ensure drops the warm evidence when it restarts the stack', () => 
     vi.spyOn(fingerprintModule, 'computeBuildFingerprint').mockImplementation(
       (input) => `fp-${input.envHash}`,
     );
-    vi.spyOn(stateModule, 'readBuildState').mockReturnValue({
-      fingerprint: `fp-${cachedEnvHash}`,
-      envHash: cachedEnvHash,
-      builtAt: '',
-    });
-    vi.spyOn(stateModule, 'buildArtifactPresent').mockReturnValue(true);
+    vi.spyOn(stateModule, 'classifyBuildArtifact').mockImplementation((expected) =>
+      expected.envHash === cachedEnvHash ? 'current' : 'stale',
+    );
     clearRelayedEnv();
 
     const rebuilds: RebuildRequest[] = [];

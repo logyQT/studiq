@@ -9,8 +9,8 @@ import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
 import {
   identityKey,
   appendEnvLog,
-  buildArtifactPresent,
-  readBuildState,
+  artifactStateLabel,
+  classifyBuildArtifact,
   readStackState,
 } from '../lib/state';
 import { leaseProjectId, readLease, touchLease, writeLease } from '../lib/lease';
@@ -154,11 +154,14 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       const previous = readWebPid();
       if (previous !== null) stopWebServer();
       const built = computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
-      const recorded = readBuildState();
-      if (!buildArtifactPresent() || recorded?.fingerprint !== built) {
+      // A fingerprint match is not enough: the artifact must also be the one
+      // `.dev/build.json` describes, and a raw `next build` (or a `--no-lock`
+      // one) moves `BUILD_ID` past that record. Only `current` may be served.
+      const state = classifyBuildArtifact({ fingerprint: built, envHash });
+      if (state !== 'current') {
         throw new EnvFailure(
           EXIT_START_FAILED,
-          "no current production build for this stack; run 'bun run env:build' (or 'env:ensure --profile web')",
+          `no current production build for this stack — ${artifactStateLabel(state)}; run 'bun run env:build' (or 'env:ensure --profile web')`,
         );
       }
       // Fingerprinting the tree takes long enough for a build to start, so the

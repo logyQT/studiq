@@ -10,6 +10,16 @@ function orDash(value: string | number | boolean | null): string {
   return String(value);
 }
 
+/**
+ * The record's fingerprint, shown only when the artifact is the recorded build:
+ * a `stale` or `current` artifact has one, while an `unrecorded`/`missing` one
+ * would only print a claim that no longer describes what is on disk.
+ */
+function buildFingerprintLabel(build: StatusSnapshot['build']): string {
+  if (build.state !== 'current' && build.state !== 'stale') return '';
+  return build.fingerprint === null ? '' : ` ${build.fingerprint.slice(0, 12)}`;
+}
+
 function printHuman(snapshot: StatusSnapshot): void {
   let project: string;
   if (snapshot.shared) {
@@ -38,9 +48,12 @@ function printHuman(snapshot: StatusSnapshot): void {
   );
   writeLine(`seeded      ${orDash(snapshot.seeded)}`);
   writeLine(
-    `build       ${snapshot.build.present} ${orDash(snapshot.build.fingerprint?.slice(0, 12) ?? null)}`,
+    `build       ${snapshot.build.state ?? 'unknown'}${buildFingerprintLabel(snapshot.build)}`,
   );
   writeLine(`slots       ${formatBuildSlots(snapshot.build.slots)}`);
+  // Only when there is one: a failed build moves its artifact aside instead of
+  // deleting it, and this is how an agent learns the directory exists.
+  for (const failed of snapshot.build.failed) writeLine(`failed      ${failed}`);
   writeLine(`registry    ${snapshot.registry}`);
   if (snapshot.owner) writeLine(`owner       ${snapshot.owner}`);
   for (const warning of snapshot.warnings) writeLine(`warning     ${warning}`);
