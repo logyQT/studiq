@@ -12,8 +12,9 @@
 #   ../studiq-worktrees/feat/my-feature/
 #   ../studiq-worktrees/fix/login-bug/
 #
-# The branch is cut from a freshly fetched origin/main, and the base commit
-# it was cut from is written to <worktree>/.spin-base (git-ignored).
+# The branch is cut from a freshly fetched origin/main (falling back to the
+# last fetched origin/main, then local main) and the base commit it was cut
+# from is written to <worktree>/.spin-base (git-ignored).
 #
 # After creating, move your OpenCode session into the worktree:
 #   /session-move <worktree-path>
@@ -30,6 +31,12 @@ info()  { printf "${GREEN}✔${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
 fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
 header(){ printf "\n${CYAN}▸${NC} %s\n" "$*"; }
+
+# Git prints the remote URL in fetch failures; a remote configured with an
+# embedded token would otherwise leak it into session logs.
+redact_remote_error() {
+  printf '%s\n' "${1%%$'\n'*}" | sed -E 's#(https?://)[^/@[:space:]]+@#\1***@#g'
+}
 
 # Lock reason recorded on every worktree this script creates. Cleanup requires
 # it, so a path match alone cannot authorize removing someone else's worktree.
@@ -97,6 +104,19 @@ case "${1:-}" in
   --list|-l)
     header "Active worktrees"
     git -C "$REPO_ROOT" worktree list
+    # `git worktree list` does not show the fork point; print the SHA spin
+    # stamped for each checkout that has one.
+    while IFS= read -r -d '' record; do
+      case "$record" in
+        "worktree "*) ;;
+        *) continue ;;
+      esac
+      wt="${record#worktree }"
+      if [ -f "$wt/.spin-base" ]; then
+        base=$(<"$wt/.spin-base")
+        printf '  %s  base %s\n' "$wt" "${base:0:12}"
+      fi
+    done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
     exit 0
     ;;
   --help|-h)
@@ -111,8 +131,9 @@ case "${1:-}" in
     echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
     echo "  ../${REPO_NAME}-worktrees/feat/my-feature"
     echo ""
-    echo "Branches are cut from a freshly fetched origin/main (local main when the"
-    echo "fetch fails); the base commit is stamped into <worktree>/.spin-base."
+    echo "Branches are cut from a freshly fetched origin/main (the last fetched"
+    echo "origin/main when the fetch fails, local main when none is cached); the"
+    echo "base commit is stamped into <worktree>/.spin-base and shown by --list."
     echo ""
     echo "--clean only removes worktrees that scripts/spin created."
     exit 0
@@ -239,21 +260,36 @@ fi
 
 # ── Resolve the base commit ────────────────────────────────────
 # Local main goes stale between fetches, and a branch cut from a stale main
-# silently re-introduces work that has already merged. Prefer the remote ref;
-# a missing remote or a failed fetch (offline) falls back to local main rather
-# than blocking worktree creation.
+# silently re-introduces work that has already merged. Prefer the remote ref.
+# When the fetch fails (offline, or another worktree holding the ref lock), use
+# the last fetched origin/main before local main: it is at least as new. One
+# retry covers the common collision when several agents spin at once.
 BASE_REF="main"
 if git -C "$PRIMARY_ROOT" remote get-url origin >/dev/null 2>&1; then
-  if fetch_error=$(git -C "$PRIMARY_ROOT" fetch --quiet origin \
-      +refs/heads/main:refs/remotes/origin/main 2>&1); then
+  fetch_origin_main() {
+    GIT_TERMINAL_PROMPT=0 git -C "$PRIMARY_ROOT" fetch --quiet origin \
+      +refs/heads/main:refs/remotes/origin/main 2>&1
+  }
+  if fetch_error=$(fetch_origin_main); then
     BASE_REF="origin/main"
   else
-    warn "Could not fetch origin/main; branching from local main"
-    if [ -n "$fetch_error" ]; then printf '%s\n' "$fetch_error" >&2; fi
+    sleep 1
+    if fetch_error=$(fetch_origin_main); then
+      BASE_REF="origin/main"
+    elif git -C "$PRIMARY_ROOT" rev-parse --quiet --verify "refs/remotes/origin/main^{commit}" >/dev/null 2>&1; then
+      BASE_REF="origin/main"
+      warn "Could not fetch origin/main; using the last fetched origin/main"
+    else
+      BASE_REF="main"
+      warn "Could not fetch origin/main and none is cached; branching from local main"
+    fi
+    if [ -n "$fetch_error" ]; then
+      warn "Fetch failed: $(redact_remote_error "$fetch_error")"
+    fi
   fi
 fi
-if ! BASE_SHA=$(git -C "$PRIMARY_ROOT" rev-parse --quiet --verify "$BASE_REF^{commit}" 2>&1); then
-  fail "Could not resolve $BASE_REF: $BASE_SHA"
+if ! BASE_SHA=$(git -C "$PRIMARY_ROOT" rev-parse --quiet --verify "$BASE_REF^{commit}" 2>/dev/null); then
+  fail "Could not resolve $BASE_REF to a commit in $PRIMARY_ROOT"
 fi
 
 # ── Create branch + worktree ───────────────────────────────────
