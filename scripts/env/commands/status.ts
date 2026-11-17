@@ -10,6 +10,18 @@ function orDash(value: string | number | boolean | null): string {
   return String(value);
 }
 
+/**
+ * The record's fingerprint, labelled `recorded` when the artifact is stale: the
+ * number describes the build the record names, not the tree on disk, and an
+ * unlabelled one after the word `stale` reads as the tree's.
+ */
+function buildFingerprintLabel(build: StatusSnapshot['build']): string {
+  if (build.fingerprint === null) return '';
+  if (build.state === 'current') return ` ${build.fingerprint.slice(0, 12)}`;
+  if (build.state === 'stale') return ` (recorded ${build.fingerprint.slice(0, 12)})`;
+  return '';
+}
+
 function printHuman(snapshot: StatusSnapshot): void {
   let project: string;
   if (snapshot.shared) {
@@ -38,9 +50,12 @@ function printHuman(snapshot: StatusSnapshot): void {
   );
   writeLine(`seeded      ${orDash(snapshot.seeded)}`);
   writeLine(
-    `build       ${snapshot.build.present} ${orDash(snapshot.build.fingerprint?.slice(0, 12) ?? null)}`,
+    `build       ${snapshot.build.state ?? 'unknown'}${buildFingerprintLabel(snapshot.build)}`,
   );
   writeLine(`slots       ${formatBuildSlots(snapshot.build.slots)}`);
+  // Only when there is one: a failed build moves its artifact aside instead of
+  // deleting it, and this is how an agent learns the directory exists.
+  for (const failed of snapshot.build.failed) writeLine(`failed      ${failed}`);
   writeLine(`registry    ${snapshot.registry}`);
   if (snapshot.owner) writeLine(`owner       ${snapshot.owner}`);
   for (const warning of snapshot.warnings) writeLine(`warning     ${warning}`);

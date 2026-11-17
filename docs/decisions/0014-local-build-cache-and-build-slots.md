@@ -9,12 +9,12 @@ swap container (overlay + ext4, no reflink), Next 16.4.4 (Turbopack), Bun 1.4.4.
 The **admission half** is implemented: decision 5 (memory-derived slots, one
 build per worktree, the waiter directory and the deadlines), decision 6 (the
 `prebuild` guard, the single-use grant, `--app`/`--no-slot`/`--no-lock`, the
-entrypoint check and the CI/Playwright switch), decision 7's `oom_score_adj`
-bullet, and decision 8's slot reporting in `env status` / `env doctor`. The
-**cache half** (decisions 1–4, and the snapshot reporting in
-decision 8) stays conditional on the cold-vs-seeded experiment listed under
-Evidence → Not measured: it ships only if a seeded build emits the same bytes as
-a cold one.
+entrypoint check and the CI/Playwright switch), decision 7 (`oom_score_adj` and
+the failure invalidation), and decision 8 (slot reporting, the build record and
+the four artifact states). The **cache half** (decisions 1–4, and the snapshot
+reporting in decision 8) stays conditional on the cold-vs-seeded experiment
+listed under Evidence → Not measured: it ships only if a seeded build emits the
+same bytes as a cold one.
 
 This ADR settles the two questions [#1078](https://github.com/logyQT/studiq/issues/1078)
 left open — whether a local `main` build-cache snapshot is worth seeding, and how
@@ -406,10 +406,11 @@ assumption.
      died but whose group survives is reclaimed only after the group is killed, so
      a new build is never admitted over an orphan writing `.next`. When a slot is
      reclaimed because its launcher died, the reclaim path invalidates **this
-     checkout's** `.next` and removes its build record before the slot is freed; a
-     foreign worktree's artifact is left to its own fingerprint and handover,
-     because writing into another checkout from here would be worse than the
-     stale artifact.
+     checkout's** `.next` and removes its build record before the slot is freed —
+     the same move-aside the live wrapper performs (decision 7), so the reclaimed
+     artifact is inspectable too; a foreign worktree's artifact is left to its
+     own fingerprint and handover, because writing into another checkout from
+     here would be worse than the stale artifact.
    - **Deadlines.** One 60-minute deadline from invocation: at most 30 minutes
      waiting for a slot and at most 30 minutes building, each enforced
      separately, so a long queue can never consume the build's budget. The build
@@ -498,9 +499,15 @@ assumption.
      run's "current" claim. Only a successful, fingerprinted `env build` (slot or
      `--no-slot`) writes the record back; `--no-lock` never does. A direct
      `next build` cannot delete the file, so decision 8 makes its artifact read
-     as unrecorded instead of current. **(The delete-before-build step and the
-     `unrecorded` reading are PR 3; the guard change implements only the
-     `--no-lock` rule — it never writes the record back.)**
+     as unrecorded instead of current.
+     **Where the delete happens.** Immediately before the spawn, not before the
+     slot wait: a build that waits out its 30-minute budget and exits 7 has not
+     touched `.next`, so the previous artifact's claim is still true and is
+     kept. The delete is inside the same function that spawns and that
+     invalidates on failure (`runProductionBuild`), so `env build` in all three
+     modes and `env ensure`'s rebuild share one implementation. `apps/admin` is
+     exempt: it writes `apps/admin/.next`, has no record of its own, and its
+     build neither deletes nor writes the web artifact's claim.
 
    **Implementation notes (what this decision left open).** These are the calls
    made while building the guard; each is a policy constant or a scope line, not
@@ -533,10 +540,10 @@ assumption.
      serves on 4000 and writes `apps/admin/.next`. Its peak RSS is still
      unmeasured, so it still reserves one web-sized slot.
    - **`--no-lock` never writes the build record**, per the bullet above, which
-     is what keeps a bypassed artifact from reading as current. The
-     delete-before-build half of that bullet, the `unrecorded` reading and the
-     Consequences sentence "its artifact is never reported current" are **PR 3**,
-     not this change.
+     keeps a bypassed artifact from reading as current. It still deletes the
+     previous record before it spawns and still invalidates on failure: the flag
+     bypasses admission, not the record rules, so the artifact it leaves is
+     `unrecorded` on both counts.
    - **Playwright now requires a live stack.** Its `webServer` command is
      `env build --no-slot`, and `env build` resolves the stack contract, so E2E
      needs a stack the way `env serve` already does. That is a requirement, not a
@@ -583,6 +590,19 @@ assumption.
      5 performs the same invalidation before freeing the slot. It is not limited
      to the rebuild handover path, today the only path that records an
      interrupted build.
+     **Retention and reporting.** A failed artifact is evidence until the tree
+     builds again, and that is exactly when the period ends: a _successful_ web
+     build deletes every `.next.failed-*` before its record is written, and the
+     next failure deletes the older ones before it moves the current tree aside.
+     So at most one exists at any time — the newest — and a green build leaves
+     none. The directory is Git-ignored (`apps/web/.next.failed-*/`): an
+     untracked path under `apps/web` would enter the build fingerprint and change
+     it for every later build. `env status` reports leftovers under
+     `build.failed` (repo-relative) and as a `failed` line, because the artifact
+     is the only copy of what the failed build wrote.
+     **A spawn that throws counts as a failed build** (`child.on('error')`), and
+     so does a zero exit without `BUILD_ID` or with a fingerprint that moved
+     during the build — the same `ok` test that decides the exit code.
 
 **Platform behaviour (decisions 5 and 7).** The native matrix is ADR-0011 §12's
 and is not changed here: Linux x86_64/arm64 and macOS arm64 are native, Windows is
@@ -647,11 +667,19 @@ measurement that will not appear, and never refuses every build.
      labelled as such; it is never presented as this worktree's `.next/cache`
      size, which is not measured and would need `du`. Age is computed from
      `createdAt` and warns above 7 days. `behindCommits` is shown as recorded,
-     labelled "at publish", and warns above 100; status never invokes git, so a
-     live commit distance is not available at read time. Staleness warns and
-     never refuses a seed.
+     labelled "at publish", and warns above 100; status never invokes git **for
+     commit distance**, so a live commit distance is not available at read time.
+     It does compute the build fingerprint — two `git` calls — when a record and
+     an artifact are both present (a stat short-circuits otherwise), because
+     `current` cannot be reported without it (see the `current` bullet).
+     Staleness warns and never refuses a seed.
    - **Unknown is null.** A missing manifest, an unreadable record or a failed
      probe prints `null` in `--json` and `unknown` in text — never `0`.
+   - **Failed artifacts.** `build.failed` lists the `apps/web/.next.failed-*`
+     directories a failed build left behind, repo-relative, and text prints one
+     `failed` line each. One is kept (the next failure replaces it) and the next
+     successful build deletes it (decision 7): the artifact is the only copy of
+     what the failed build wrote, and a green build is when that stops mattering.
    - **Degraded memory.** After a failed platform probe, print the clamped slot
      cap and the reason: `build: 1/1 busy (memory gate degraded)`.
    - **`current` needs a record, not just a fingerprint.** `env status` and
@@ -661,6 +689,28 @@ measurement that will not appear, and never refuses every build.
      the artifact then reads as `unrecorded` and is rebuilt rather than served as
      current. A `--no-lock` build never restores the record, so a bypassed
      artifact stays unrecorded by construction.
+     **Four reported states, not a boolean.** `build.state` is `current`,
+     `stale` (a record exists and the tree or the inlined env moved past it),
+     `unrecorded` (an artifact no record covers: no record at all, a `builtAt`
+     that cannot be read, or a `BUILD_ID` newer than it) or `missing` (no
+     `BUILD_ID`); `null` is "the fingerprint could not be computed" (git
+     failed), never `0`. `env serve` refuses all four non-current answers and
+     names the state and `env:build`; `env build` treats them as "not current"
+     and rebuilds. The mtime comparison floors `mtimeMs` to whole milliseconds,
+     because the record's `builtAt` is an ISO string: a build that lands in the
+     same millisecond as its record is still current.
+     **Status judges the tree, serve and build judge the environment too.**
+     `env status` does not read the stack's keys, so it compares the tree against
+     the record's **own** `envHash`: `current` there means "this is the recorded
+     build of this tree". `env serve` and `env build` compute the fingerprint
+     from the environment they would build for, so a changed `NEXT_PUBLIC_*`
+     value reads as `stale` there and is rebuilt. Only `current` and `stale` pay
+     for the fingerprint: status decides `missing` (no `BUILD_ID`) and
+     `unrecorded` (no record, or a `BUILD_ID` newer than `builtAt`) from the
+     filesystem first, so the headline case — a raw `next build` after a wrapper
+     build — costs no `git` call. The consequence for an agent is exact:
+     `status` can say `current` while `serve` refuses `stale`, when only the
+     inlined environment moved; `status` never claims the environment.
 
 ## Evidence
 
@@ -818,9 +868,16 @@ experiment, not a number.
   A person typing `next build` still does not, and the repo guard on workflow and
   Playwright files only stops automation from drifting back. That residual is
   accepted because one unadmitted build cannot reproduce the burst this cap
-  exists for, its artifact is never reported current (PR 3), and CI cannot
-  regress unnoticed. Enforcement is load-bearing for automation; it is not a
-  claim that raw builds are impossible.
+  exists for, its artifact is never reported current, and CI cannot regress
+  unnoticed. Enforcement is load-bearing for automation; it is not a claim that
+  raw builds are impossible.
+- **A build claim is verified against the artifact, not trusted.** The record is
+  deleted before every wrapper build, written only on a successful fingerprinted
+  one, and cross-checked against `BUILD_ID`'s mtime, so `current` is a claim the
+  files support: a raw or `--no-lock` build reads as `unrecorded`, a changed tree
+  or env as `stale`, and a failed build leaves neither a record nor a servable
+  `.next`. The cost is one rebuild after a failed or bypassed build, and one
+  extra `.next`-sized directory while a failed artifact is kept for inspection.
 - **CI is touched, in one step per job.** The three build steps in `verify.yml` and
   Playwright's `webServer` command switch to `env build --no-slot`; cache keys,
   stack lifecycle and shard layout are unchanged. ADR-0011 §11 carries the
@@ -894,16 +951,22 @@ experiment, not a number.
   the locked scope, run publish after it in the command (even when the
   fingerprint was already current); `--app <web|admin>`, `--no-slot`,
   `--no-lock`; mint the single-use grant in every mode (slot, `--no-slot`,
-  `--no-lock`), delete `.dev/build.json` first, record only on success,
-  invalidate `.next` on a failed exit.
+  `--no-lock`), delete `.dev/build.json` immediately before the spawn, record
+  only on success, and move `.next` aside on a failed exit before the slot is
+  released.
+- `scripts/env/lib/state.ts` — the build record, `classifyBuildArtifact` (the
+  `current`/`stale`/`unrecorded`/`missing` answer) and
+  `invalidateBuildArtifact` (move-aside, delete-on-failure, keep one failed
+  artifact). `commands/status.ts` reports `build.state` and `build.failed`.
 - `apps/web/package.json` and `apps/admin/package.json` — a `prebuild` script
   running `bun ../../scripts/env/build-guard.ts` (consumes a single-use grant;
   fails fast with slot/queue state; `env build --no-lock` is the only admission
   opt-out).
 - `scripts/check-build-entrypoints.ts` — wired into `lint`; fails a workflow or
   Playwright file that invokes `next build` or a bare `bun run build`.
-- `scripts/env/commands/status.ts` / `doctor.ts` — slots, waiter count, snapshot
-  manifest line and staleness; read-only, no `du`.
+- `scripts/env/commands/status.ts` / `doctor.ts` — slots, waiter count, the
+  artifact state and failed artifacts, snapshot manifest line and staleness;
+  read-only, no `du`.
 
 ## Rollback
 

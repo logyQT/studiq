@@ -47,8 +47,10 @@ const fingerprintModule = await loadEnvModule<{
   computeBuildFingerprint(input: { root: string; mode: string; envHash: string }): string;
 }>('lib/fingerprint.ts');
 const stateModule = await loadEnvModule<{
-  readBuildState(): { fingerprint: string; envHash: string; builtAt: string } | null;
-  buildArtifactPresent(): boolean;
+  classifyBuildArtifact(expected: {
+    fingerprint: string | null;
+    envHash: string | null;
+  }): 'current' | 'stale' | 'unrecorded' | 'missing' | null;
 }>('lib/state.ts');
 const lifecycleModule = await loadEnvModule<{
   applyStackEnv(env: unknown, extras: { appUrl: string; appEnv: string; stackId?: string }): void;
@@ -244,12 +246,7 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     // A current build is recorded for the served environment; the listener
     // facts are injected so no real `next start` runs here.
     vi.spyOn(fingerprintModule, 'computeBuildFingerprint').mockReturnValue('built');
-    vi.spyOn(stateModule, 'readBuildState').mockReturnValue({
-      fingerprint: 'built',
-      envHash: 'env-hash',
-      builtAt: '',
-    });
-    vi.spyOn(stateModule, 'buildArtifactPresent').mockReturnValue(true);
+    vi.spyOn(stateModule, 'classifyBuildArtifact').mockReturnValue('current');
     const start = vi.spyOn(webModule, 'startWebServer').mockReturnValue(process.pid);
     vi.spyOn(webModule, 'waitForWeb').mockResolvedValue({ ok: true, reason: 'ready', http: 200 });
 
@@ -294,12 +291,7 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     // A current build is recorded, so only the build guard can refuse: without
     // it this command would start a server over the artifact.
     vi.spyOn(fingerprintModule, 'computeBuildFingerprint').mockReturnValue('built');
-    vi.spyOn(stateModule, 'readBuildState').mockReturnValue({
-      fingerprint: 'built',
-      envHash: 'env-hash',
-      builtAt: '',
-    });
-    vi.spyOn(stateModule, 'buildArtifactPresent').mockReturnValue(true);
+    vi.spyOn(stateModule, 'classifyBuildArtifact').mockReturnValue('current');
     const start = vi.spyOn(webModule, 'startWebServer').mockReturnValue(process.pid);
     vi.spyOn(webModule, 'waitForWeb').mockResolvedValue({ ok: true, reason: 'ready', http: 200 });
 

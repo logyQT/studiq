@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { relative } from 'node:path';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
 import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { grantPath, mintBuildGrant, type BuildAdmission, type BuildApp } from './grant';
@@ -11,13 +11,20 @@ import {
   readBuildSlots,
   withBuildSlots,
   type BuildSlotHandle,
+  type BuildSlotsOptions,
 } from './locks';
 import { stripAnsi, writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
-import { appendEnvLog } from './state';
+import {
+  appendEnvLog,
+  buildArtifactDir,
+  buildArtifactPresent,
+  invalidateBuildArtifact,
+  removeBuildState,
+  removeFailedBuildArtifacts,
+} from './state';
 import { readWebPid } from './web';
 
-const BUILD_ID = join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID');
 const SECRET_LINE_RE = /(?:KEY|SECRET|PASSWORD|TOKEN)\s*=\s*\S|eyJ[A-Za-z0-9_-]{10,}/;
 
 /** The build's own budget: a wait for a slot has a separate one (ADR-0014). */
@@ -53,6 +60,12 @@ export interface BuildResult {
   slot?: number | null;
   /** Whether the guard consumed the grant this launcher minted. */
   grant?: 'consumed' | 'unconsumed';
+  /**
+   * Where a failed web build's artifact was moved, or null when it left none.
+   * Set by `runProductionBuild` before the slot is released; printed by
+   * `reportBuildFailure`, which both callers already use.
+   */
+  invalidated?: string | null;
   /** Wall time of the spawn, for the finish line. */
   durationMs?: number;
 }
@@ -135,6 +148,11 @@ export function reportBuildFailure(result: BuildResult, app: BuildApp = 'web'): 
   const lines = buildOutputLines(result.output, app);
   appendBuildLog(lines);
   printBuildLines(lines.slice(-FAILURE_TAIL_LINES));
+  if (result.invalidated != null) {
+    writeStderrLine(
+      `build: moved the failed build aside to ${relative(REPO_ROOT, result.invalidated)}; it is not served and not current`,
+    );
+  }
   const code = result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED;
   const what = result.timedOut ? 'timed out building' : 'build failed';
   return { code, message: `${what} (exit ${code}); full log: .dev/env.log` };
@@ -242,6 +260,23 @@ export interface ProductionBuildDeps {
   readWebPid(): number | null;
   /** Spawn the build in its own process group under the slot it holds. */
   spawnBuild(slot: BuildSlotHandle | null, options: ProductionBuildOptions): Promise<SpawnOutcome>;
+  /**
+   * The artifact a failed web build invalidates. Tests point this at a
+   * temporary directory; production uses `apps/web/.next`.
+   */
+  artifactDir?: string;
+  /**
+   * Test seam: called **after** a failed web build's artifact was invalidated,
+   * still inside the slot it held. A test that asserts both facts here — the
+   * slot record is present, and the corpse already exists — fails if either
+   * side of the invalidation moves past the slot's release.
+   */
+  onInvalidate?(): void;
+  /**
+   * Test seam: admission options for the slot wait (`waitMs`, `decide`, …).
+   * Production uses the defaults in `withBuildSlots`.
+   */
+  slots?: BuildSlotsOptions;
 }
 
 const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild };
@@ -328,6 +363,19 @@ function spawnBuild(
 }
 
 /**
+ * Move a failed build's artifact aside, and return where it went.
+ *
+ * The path is reported by `reportBuildFailure` after the compiler tail, because
+ * it is the only copy of what the build wrote before it died and a leftover
+ * `.next.failed-*` is otherwise a mystery directory. `env status` lists it too.
+ */
+function invalidateFailedArtifact(deps: ProductionBuildDeps): string | null {
+  return invalidateBuildArtifact(
+    deps.artifactDir === undefined ? {} : { artifactDir: deps.artifactDir },
+  );
+}
+
+/**
  * One build, under whatever admission the caller already took.
  *
  * The web-only facts stay web-only (ADR-0014, decision 6): the fingerprint, the
@@ -343,6 +391,7 @@ async function buildOnce(
   slot: BuildSlotHandle | null,
 ): Promise<BuildResult> {
   const web = options.app === 'web';
+  const artifactDir = deps.artifactDir ?? buildArtifactDir();
   if (web) {
     const webPid = deps.readWebPid();
     if (webPid !== null) {
@@ -354,11 +403,35 @@ async function buildOnce(
   }
   const input = { root: REPO_ROOT, mode: BUILD_MODE, envHash };
   const fingerprintBefore = web ? computeBuildFingerprint(input) : '';
-  const outcome = await deps.spawnBuild(slot, options);
+  // From here on the build may overwrite `.next`, so the previous run's
+  // "current" claim must already be gone: an interrupted or failed build never
+  // inherits it (ADR-0014, decision 6). `apps/admin` has no record to delete.
+  if (web) removeBuildState();
+  let outcome: SpawnOutcome;
+  let invalidated: string | null = null;
+  try {
+    outcome = await deps.spawnBuild(slot, options);
+  } catch (error) {
+    // A spawn that threw still may have written part of `.next`.
+    if (web) {
+      invalidateFailedArtifact(deps);
+      deps.onInvalidate?.();
+    }
+    throw error;
+  }
   const fingerprintAfter = web ? computeBuildFingerprint(input) : '';
   const ok =
     outcome.status === 0 &&
-    (!web || (existsSync(BUILD_ID) && fingerprintAfter === fingerprintBefore));
+    (!web || (buildArtifactPresent(artifactDir) && fingerprintAfter === fingerprintBefore));
+  // Before the slot is released: a nonzero or timed-out build leaves an
+  // artifact no serve path may report as current (ADR-0014, decision 7).
+  if (!ok && web) {
+    invalidated = invalidateFailedArtifact(deps);
+    deps.onInvalidate?.();
+  }
+  // A green build is when the previous corpse stops being evidence: the tree it
+  // described has been replaced by one that builds.
+  if (ok && web) removeFailedBuildArtifacts(artifactDir);
   // The finish line belongs here, not in `commands/build.ts`: `env ensure`'s
   // rebuild reaches the same seam and must report the build it ran.
   if (ok) reportBuildSuccess(options, outcome.output, outcome.durationMs);
@@ -369,6 +442,7 @@ async function buildOnce(
     fingerprintAfter,
     slot: slot?.number ?? null,
     grant: existsSync(grantPath()) ? 'unconsumed' : 'consumed',
+    invalidated,
     durationMs: outcome.durationMs,
   };
 }
@@ -399,7 +473,7 @@ export async function runProductionBuild(
       mintBuildGrant({ app: options.app, admission: 'slot', slot: slot.number, token: slot.token });
       writeStderrLine(`build: building apps/${options.app} (slot ${slot.number})`);
       return buildOnce(envHash, deps, options, slot);
-    });
+    }, deps.slots);
   }
   if (options.admission === 'no-slot') {
     writeStderrLine('build: --no-slot: no build slot or lease claimed (CI/Playwright mode)');

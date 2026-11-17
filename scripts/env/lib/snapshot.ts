@@ -1,8 +1,8 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { relative } from 'node:path';
 import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
 import { envPort } from './env-port';
+import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
 import { readBuildSlots } from './locks';
@@ -10,7 +10,17 @@ import { readRegistry, findEntry, registryPathExists } from './registry';
 import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
-import { readBuildState, readStackState, type StackState } from './state';
+import {
+  artifactOutlivesRecord,
+  buildArtifactDir,
+  buildArtifactPresent,
+  classifyBuildArtifact,
+  failedBuildArtifacts,
+  readBuildState,
+  readStackState,
+  type BuildArtifactState,
+  type StackState,
+} from './state';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
 import { readWebPid } from './web';
 
@@ -25,6 +35,11 @@ export interface SnapshotOptions {
   warnings?: string[];
   profile?: string | null;
   cold?: boolean | null;
+  /**
+   * Test seam: the artifact `build.state`/`build.present` describe. Production
+   * uses `apps/web/.next`; the unit tests point this at a temporary directory.
+   */
+  artifactDir?: string;
 }
 
 const EMPTY_PORTS: DiscoveredPorts = {
@@ -96,6 +111,43 @@ function sharedProjectId(): string | null {
   return deriveProjectId() || null;
 }
 
+/**
+ * The artifact's state, judged against the record it should match.
+ *
+ * Status does not read the stack's keys, so it compares the tree with the
+ * recorded build's **own** env hash: `current` here means "this is the recorded
+ * build of this tree". `env serve` and `env build` compare the inlined
+ * environment too, so an env change reads as `stale` there and is rebuilt.
+ *
+ * The cheap answers come first: no `BUILD_ID` is `missing`, and an artifact a
+ * raw `next build` moved past the record is `unrecorded`, both decided from the
+ * filesystem. Only `current` and `stale` pay for the fingerprint (two `git`
+ * calls).
+ */
+function artifactState(
+  record: ReturnType<typeof readBuildState>,
+  artifactDir: string,
+): BuildArtifactState | null {
+  if (!record || !buildArtifactPresent(artifactDir)) {
+    return classifyBuildArtifact({ fingerprint: null, envHash: null }, artifactDir);
+  }
+  // The same mtime rule the classifier applies, ahead of the fingerprint: a raw
+  // `next build` after a wrapper build is the headline `unrecorded` case, and it
+  // must not cost two `git` calls to answer.
+  if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
+  let fingerprint: string | null;
+  try {
+    fingerprint = computeBuildFingerprint({
+      root: REPO_ROOT,
+      mode: BUILD_MODE,
+      envHash: record.envHash,
+    });
+  } catch {
+    fingerprint = null;
+  }
+  return classifyBuildArtifact({ fingerprint, envHash: record.envHash }, artifactDir);
+}
+
 export async function collectSnapshot(options: SnapshotOptions = {}): Promise<StatusSnapshot> {
   const contract = options.contract ?? contractWithLease(readContractLenient());
   const registry = readRegistry();
@@ -150,6 +202,8 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     profile && !profileRequiresServe(profile)
       ? supabaseHttp === 200
       : webHttp >= 200 && webHttp < 400 && supabaseHttp === 200;
+  const record = readBuildState();
+  const artifactDir = options.artifactDir ?? buildArtifactDir();
 
   return shapeStatus({
     contract,
@@ -167,11 +221,13 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     },
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
-    buildPresent: existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID')),
+    buildPresent: buildArtifactPresent(artifactDir),
+    buildState: artifactState(record, artifactDir),
+    buildFailed: failedBuildArtifacts(artifactDir).map((path) => relative(REPO_ROOT, path)),
     buildSlots: readBuildSlots(),
     profile,
     cold: options.cold ?? state?.cold ?? null,
-    buildFingerprint: readBuildState()?.fingerprint ?? null,
+    buildFingerprint: record?.fingerprint ?? null,
     warnings: [...new Set(warnings)],
     ready: options.ready ?? fallbackReady,
     runtime: statusStack?.runtime ?? listedRuntime,

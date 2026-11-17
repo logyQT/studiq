@@ -70,9 +70,8 @@ import { appPortCandidates, chooseAppPort } from '../lib/app-port';
 import { readCachedStack, writeCachedStack, type CachedStack } from '../lib/stack-cache';
 import {
   appendEnvLog,
-  buildArtifactPresent,
+  classifyBuildArtifact,
   identityKey,
-  readBuildState,
   readStackState,
   writeBuildState,
   writeStackState,
@@ -256,12 +255,15 @@ async function rebuildIfNeeded(
   },
   deps: EnsureDeps,
 ): Promise<RebuildRecoveryResult | null> {
-  const state = readBuildState();
   const current =
-    state?.envHash === input.envHash &&
-    state.fingerprint ===
-      computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash: input.envHash }) &&
-    buildArtifactPresent();
+    classifyBuildArtifact({
+      fingerprint: computeBuildFingerprint({
+        root: REPO_ROOT,
+        mode: BUILD_MODE,
+        envHash: input.envHash,
+      }),
+      envHash: input.envHash,
+    }) === 'current';
   if (!input.force && current) return null;
   return withReleasedCheckoutLock(
     input.lock,
@@ -650,12 +652,15 @@ async function warmFromCache(input: {
     return null;
   }
   if (input.build) {
-    const state = readBuildState();
     const current =
-      state?.envHash === cached.envHash &&
-      state.fingerprint ===
-        computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash: cached.envHash }) &&
-      buildArtifactPresent();
+      classifyBuildArtifact({
+        fingerprint: computeBuildFingerprint({
+          root: REPO_ROOT,
+          mode: BUILD_MODE,
+          envHash: cached.envHash,
+        }),
+        envHash: cached.envHash,
+      }) === 'current';
     if (!current || cached.appUrl !== input.contract.appUrl) return null;
   }
   if (input.serve) {

@@ -150,6 +150,7 @@ const APP_PORT_BASE = appPortBase();
 const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
 const stateModule = await loadEnvModule<{
   identityKey(root: string, branch: string, stack: string): string;
+  writeBuildState(state: { fingerprint: string; envHash: string; builtAt: string }): void;
 }>('lib/state.ts');
 const repoModule = await loadEnvModule<{ currentBranchRef(): string }>('lib/repo.ts');
 const webModule = await loadEnvModule<WebModule>('lib/web.ts');
@@ -495,6 +496,13 @@ describe('env:ensure rebuilds recoverably', () => {
   it('restores the previous build and restarts the previous server when the build fails', async () => {
     const harness = newHarness();
     const { artifactDir, backupDir } = recoveryPaths(harness);
+    // A claim from the build that is about to be replaced: the restored artifact
+    // must not inherit it (ADR-0014, decision 7).
+    stateModule.writeBuildState({
+      fingerprint: 'previous-build',
+      envHash: 'env-hash',
+      builtAt: '2026-01-01T00:00:00.000Z',
+    });
     let pid: number | null = 4242;
     const starts: number[] = [];
     const deps: RebuildDeps = {
@@ -540,6 +548,7 @@ describe('env:ensure rebuilds recoverably', () => {
 
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(existsSync(join(artifactDir, 'partial'))).toBe(false);
+    expect(existsSync(join(stateDir, 'build.json'))).toBe(false);
     expect(readdirSync(backupDir)).toEqual([]);
     expect(starts).toHaveLength(1);
   });

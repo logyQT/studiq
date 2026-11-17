@@ -11,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import {
   decideAdmission,
   formatGb,
@@ -30,7 +30,7 @@ import type { BuildSlotsStatus } from './json';
 import { writeStderrLine } from './output';
 import { resolveRegistryDir } from './registry';
 import { REPO_ROOT, canon } from './repo';
-import { DEV_DIR, ensureDevDir, removeBuildState } from './state';
+import { buildArtifactDir, DEV_DIR, ensureDevDir, invalidateBuildArtifact } from './state';
 
 export function pidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
@@ -824,6 +824,8 @@ export interface BuildSlotsOptions {
   probe?(): MemoryReading;
   /** Test seam: the artifact invalidation a reclaim performs. */
   invalidate?(worktree: string): void;
+  /** Test seam: the artifact directory the default invalidation moves aside. */
+  artifactDir?: string;
   now?(): number;
 }
 
@@ -879,13 +881,23 @@ export function worktreeKey(root: string = REPO_ROOT): string {
  * its group was killed before the slot was freed, so nothing is writing there,
  * and its own next build invalidates the artifact through its fingerprint and
  * handover. Writing into a foreign checkout from here would be worse than the
- * stale artifact.
+ * stale artifact — so a foreign worktree returns without touching anything, and
+ * its artifact stays `unrecorded`/`stale` until that checkout's own next build
+ * replaces it.
+ *
+ * @public Exercised by the unit tests, which pass a temporary artifact directory.
  */
-function invalidateWorktree(worktree: string): void {
+export function invalidateWorktree(
+  worktree: string,
+  artifactDir: string = buildArtifactDir(),
+): void {
   if (!worktree || canon(worktree) !== REPO_ROOT) return;
-  rmSync(join(REPO_ROOT, 'apps', 'web', '.next'), { recursive: true, force: true });
-  removeBuildState();
-  writeStderrLine('build: invalidated apps/web/.next left by the reclaimed build');
+  const moved = invalidateBuildArtifact({ artifactDir });
+  writeStderrLine(
+    moved === null
+      ? 'build: invalidated the reclaimed build (it left no artifact)'
+      : `build: moved the artifact left by the reclaimed build aside to ${relative(REPO_ROOT, moved)}`,
+  );
 }
 
 function recordGate(root: string, reading: MemoryReading, minFree: number, reserve: number): void {
@@ -1361,7 +1373,12 @@ export async function withBuildSlots<T>(
         }
         return decision;
       }),
-    invalidate: options.invalidate ?? invalidateWorktree,
+    invalidate:
+      options.invalidate ??
+      ((worktree) =>
+        options.artifactDir === undefined
+          ? invalidateWorktree(worktree)
+          : invalidateWorktree(worktree, options.artifactDir)),
   };
 
   reclaimStaleWaiters(context);

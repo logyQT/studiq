@@ -4,12 +4,15 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 
 /** `.dev/` is runtime state only; `STUDIQ_ENV_STATE_DIR` isolates tests. */
@@ -115,8 +118,203 @@ export function removeBuildState(): void {
   rmSync(BUILD_FILE, { force: true });
 }
 
-export function buildArtifactPresent(): boolean {
-  return existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID'));
+/** Where `apps/web`'s production build lands. */
+export function buildArtifactDir(): string {
+  return join(REPO_ROOT, 'apps', 'web', '.next');
+}
+
+/** Next's own proof that a build finished, and the file a raw build moves. */
+export function buildArtifactPresent(artifactDir: string = buildArtifactDir()): boolean {
+  return existsSync(join(artifactDir, 'BUILD_ID'));
+}
+
+/**
+ * What the artifact on disk is worth, as reported by `env status`, `env serve`
+ * and `env build` (ADR-0014, decision 8).
+ *
+ * `current` is the only state a serve path may use. The other three are
+ * distinct on purpose: `missing` has no artifact, `unrecorded` has one that no
+ * record covers (a raw `next build`, a `--no-lock` build, or a build that
+ * outlived its record), and `stale` is a recorded artifact the tree has moved
+ * past. `null` means the fingerprint could not be computed at all.
+ */
+export type BuildArtifactState = 'current' | 'stale' | 'unrecorded' | 'missing';
+
+/** The build a caller would accept: its tree/env fingerprint and env hash. */
+export interface ExpectedBuild {
+  /** `computeBuildFingerprint` for the tree that would build now; null if git failed. */
+  fingerprint: string | null;
+  /** The inlined-env hash to match, or null to judge the tree alone. */
+  envHash: string | null;
+}
+
+/**
+ * Whether the artifact is newer than the record describes it.
+ *
+ * Next writes `BUILD_ID` at the end of every build, so an artifact whose
+ * `BUILD_ID` mtime is past the record's `builtAt` is not the artifact the
+ * record names — no matter how well the fingerprint happens to match. A record
+ * without a readable `builtAt` cannot prove anything and is treated the same
+ * way. `null` means there is no `BUILD_ID` at all.
+ *
+ * This is the whole mtime rule, shared by the classifier and the status
+ * snapshot: it is decidable from the filesystem alone, so an artifact a raw
+ * `next build` replaced never pays for a fingerprint.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function artifactOutlivesRecord(
+  record: BuildState,
+  artifactDir: string = buildArtifactDir(),
+): boolean | null {
+  let buildIdMtimeMs: number;
+  try {
+    buildIdMtimeMs = statSync(join(artifactDir, 'BUILD_ID')).mtimeMs;
+  } catch {
+    return null;
+  }
+  const builtAtMs = Date.parse(record.builtAt);
+  // `mtimeMs` carries sub-millisecond precision while `builtAt` is an ISO
+  // string, so both sides are floored to whole milliseconds: a build that lands
+  // in the same millisecond as its record is still current, and a raw build
+  // seconds later is still caught.
+  if (Number.isNaN(builtAtMs)) return true;
+  return Math.floor(buildIdMtimeMs) > builtAtMs;
+}
+
+/**
+ * Classify `apps/web/.next` against the record and the expected build.
+ *
+ * `artifactDir` is `apps/web/.next` in production and a temporary directory in
+ * the tests, which is the only way to exercise the mtime rule without touching
+ * this checkout's artifact.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function classifyBuildArtifact(
+  expected: ExpectedBuild,
+  artifactDir: string = buildArtifactDir(),
+): BuildArtifactState | null {
+  if (!buildArtifactPresent(artifactDir)) return 'missing';
+  const record = readBuildState();
+  if (!record) return 'unrecorded';
+  // `null` here means `BUILD_ID` vanished between the two stats; it is still not
+  // the recorded artifact, so it reads as unrecorded rather than throwing.
+  if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
+  if (expected.envHash !== null && record.envHash !== expected.envHash) return 'stale';
+  if (expected.fingerprint === null) return null;
+  return record.fingerprint === expected.fingerprint ? 'current' : 'stale';
+}
+
+/** One line an agent can act on, for a state the classifier returned. */
+const ARTIFACT_STATE_LABELS: Record<BuildArtifactState, string> = {
+  current: 'current',
+  stale: 'stale (the tree or the inlined environment changed since the recorded build)',
+  unrecorded:
+    'unrecorded (no build record covers it: a raw next build or a --no-lock build leaves none)',
+  missing: 'missing (apps/web/.next has no BUILD_ID)',
+};
+
+export function artifactStateLabel(state: BuildArtifactState | null): string {
+  return state === null
+    ? 'unknown (the build fingerprint could not be computed)'
+    : ARTIFACT_STATE_LABELS[state];
+}
+
+const FAILED_ARTIFACT_MARKER = '.failed-';
+
+function failedArtifactPrefix(artifactDir: string): string {
+  return `${basename(artifactDir)}${FAILED_ARTIFACT_MARKER}`;
+}
+
+/**
+ * The `.next.failed-*` directories a failed build left behind, oldest first.
+ *
+ * One is kept for inspection (the next failure replaces it), so this is
+ * normally empty or a single entry. `env status` reports it rather than
+ * deleting it: the artifact is the only evidence of what the build wrote
+ * before it died.
+ */
+export function failedBuildArtifacts(artifactDir: string = buildArtifactDir()): string[] {
+  try {
+    const prefix = failedArtifactPrefix(artifactDir);
+    const parent = dirname(artifactDir);
+    return readdirSync(parent)
+      .filter((name) => name.startsWith(prefix))
+      .sort()
+      .map((name) => join(parent, name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Delete every `.next.failed-*` beside the artifact.
+ *
+ * Called by a *successful* build: the corpse is evidence of what the failed
+ * build wrote, and a green build is exactly when that period ends. Called
+ * before a failed build moves a new one aside, so a tree that keeps failing
+ * costs one `.next`, not one per attempt. A leftover that cannot be removed is
+ * reported by `env status`, never retried here.
+ */
+export function removeFailedBuildArtifacts(artifactDir: string = buildArtifactDir()): void {
+  for (const stale of failedBuildArtifacts(artifactDir)) {
+    try {
+      rmSync(stale, { recursive: true, force: true });
+    } catch {
+      /* reported by `env status`, not retried here */
+    }
+  }
+}
+
+/**
+ * Make a failed build's artifact unusable and forget its claim.
+ *
+ * Called on every nonzero or timed-out exit, before the slot is released, and
+ * by the reclaim path when the launcher itself died. The artifact is moved
+ * aside — a rename on the same filesystem — so the half-written tree is never
+ * served and is still there to inspect; when it cannot be moved it is deleted,
+ * because an unusable `.next` must not survive a failed build. The record goes
+ * either way: it was already removed before the build started, and removing it
+ * again is the belt to that braces.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function invalidateBuildArtifact(
+  input: { artifactDir?: string; at?: Date } = {},
+): string | null {
+  const artifactDir = input.artifactDir ?? buildArtifactDir();
+  const stamp = (input.at ?? new Date()).toISOString().replace(/[:.]/g, '-');
+  const target = `${artifactDir}${FAILED_ARTIFACT_MARKER}${stamp}`;
+  let moved: string | null = null;
+  if (existsSync(artifactDir)) {
+    removeFailedBuildArtifacts(artifactDir);
+    try {
+      renameSync(artifactDir, target);
+      moved = target;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      try {
+        rmSync(artifactDir, { recursive: true, force: true });
+      } catch (removeError) {
+        writeStderrLine(
+          `warning: build: could not move or delete ${artifactDir} after a failed build (${reason}; ${
+            removeError instanceof Error ? removeError.message : String(removeError)
+          })`,
+        );
+      }
+    }
+  }
+  try {
+    removeBuildState();
+  } catch (error) {
+    writeStderrLine(
+      `warning: build: could not remove .dev/build.json after a failed build (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    );
+  }
+  return moved;
 }
 
 /** Append one human line to `.dev/env.log`; callers never pass secrets. */
