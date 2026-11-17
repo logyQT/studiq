@@ -4,6 +4,8 @@
 # Usage:
 #   scripts/spin feat/my-feature              # create branch + worktree (bun install)
 #   scripts/spin feat/my-feature --no-install # create without installing deps
+#   scripts/spin feat/my-feature --no-seed-cache
+#                                             # create without seeding .next/cache
 #   scripts/spin feat/my-feature --clean      # remove worktree + branch
 #   scripts/spin --list                       # list all worktrees
 #
@@ -120,12 +122,13 @@ case "${1:-}" in
     exit 0
     ;;
   --help|-h)
-    echo "Usage: scripts/spin <branch-name> [--clean] [--no-install]"
+    echo "Usage: scripts/spin <branch-name> [--clean] [--no-install] [--no-seed-cache]"
     echo "       scripts/spin --list"
     echo ""
     echo "  <branch-name>   Feature branch name (e.g. feat/my-feature)"
     echo "  --clean          Remove the worktree and delete the branch"
     echo "  --no-install     Skip bun install in the new worktree"
+    echo "  --no-seed-cache  Skip seeding .next/cache from the local snapshot"
     echo "  --list, -l       List all worktrees"
     echo ""
     echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
@@ -144,11 +147,13 @@ esac
 BRANCH="$1"
 CLEAN=false
 NO_INSTALL=false
+NO_SEED_CACHE=false
 shift
 for arg in "$@"; do
   case "$arg" in
     --clean) CLEAN=true ;;
     --no-install) NO_INSTALL=true ;;
+    --no-seed-cache) NO_SEED_CACHE=true ;;
     *) fail "Unknown option: $arg" ;;
   esac
 done
@@ -340,6 +345,28 @@ else
     warn "Run: cd \"$WORKTREE_PATH\" && bun install --frozen-lockfile"
   else
     info "Dependencies installed"
+  fi
+fi
+
+# ── Seed the Turbopack build cache (ADR-0014) ──────────────────
+# Best-effort and optional: a snapshot that does not match this branch, a full
+# disk or a refused cache root leaves the worktree cold and never blocks it. The
+# seed runs from THIS checkout's script (the new branch was cut from origin/main,
+# which may not carry the cache code yet) and targets the new worktree.
+if $NO_SEED_CACHE; then
+  info "Skipping build-cache seed (--no-seed-cache)"
+elif [ "${STUDIQ_CACHE_SEED:-1}" = "0" ]; then
+  info "Skipping build-cache seed (STUDIQ_CACHE_SEED=0)"
+elif [ ! -d "$WORKTREE_PATH/node_modules/next" ]; then
+  info "Skipping build-cache seed (dependencies are not installed)"
+elif [ ! -f "$REPO_ROOT/scripts/env/seed-cache.ts" ]; then
+  warn "Skipping build-cache seed ($REPO_ROOT/scripts/env/seed-cache.ts not found)"
+else
+  header "Seeding the Turbopack build cache"
+  if seed_output=$(cd "$WORKTREE_PATH" && bun "$REPO_ROOT/scripts/env/seed-cache.ts" "$WORKTREE_PATH" 2>&1); then
+    info "$seed_output"
+  else
+    warn "Build-cache seed skipped: $seed_output"
   fi
 fi
 

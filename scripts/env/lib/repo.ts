@@ -66,17 +66,30 @@ export function currentCommit(): string | null {
 }
 
 /**
+ * Every checkout of this repository — linked worktrees included — primary first.
+ *
+ * A seed writes into a *sibling* worktree, so "is this path inside the repo?"
+ * cannot mean "inside `REPO_ROOT`": the cache root must be outside all of them.
+ * A git failure degrades to this checkout alone, which is never the permissive
+ * answer for the checkout the caller already knows about.
+ */
+export function checkoutPaths(): string[] {
+  const output = runGit(['worktree', 'list', '--porcelain', '-z']);
+  if (!output) return [REPO_ROOT];
+  const paths = output
+    .split('\0')
+    .filter((record) => record.startsWith('worktree '))
+    .map((record) => canon(record.slice('worktree '.length)));
+  return paths.length > 0 ? paths : [REPO_ROOT];
+}
+
+/**
  * The primary checkout's path (the first `git worktree list` entry). The
  * machine-wide observability stack belongs to this checkout, not to whichever
  * worktree an agent happens to be in.
  */
 export function primaryCheckoutPath(): string {
-  const output = runGit(['worktree', 'list', '--porcelain', '-z']);
-  if (!output) return REPO_ROOT;
-  for (const record of output.split('\0')) {
-    if (record.startsWith('worktree ')) return canon(record.slice('worktree '.length));
-  }
-  return REPO_ROOT;
+  return checkoutPaths()[0] ?? REPO_ROOT;
 }
 
 /**

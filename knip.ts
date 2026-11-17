@@ -81,6 +81,9 @@ const config: KnipConfig = {
         // Policy: live operator/dev scripts run by hand or spawned by path (the
         // e2e global setup spawns `e2e-seed.ts`), so they are entry points.
         'scripts/qa-issue.ts',
+        // `scripts/spin` spawns this by path to seed a new worktree's cache
+        // (ADR-0014); a bash caller is invisible to knip's import graph.
+        'scripts/env/seed-cache.ts',
         'scripts/storage-orphan-sweep.ts',
         // `scripts/e2e-seed.ts` is also a live entry, but knip already derives
         // it from `verify.yml` (`bun scripts/e2e-seed.ts …`); listing it here

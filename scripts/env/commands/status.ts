@@ -3,6 +3,7 @@ import { collectSnapshot } from '../lib/snapshot';
 import { printJson, writeLine } from '../lib/output';
 import type { StatusSnapshot } from '../lib/json';
 import { formatBuildSlots } from '../lib/locks';
+import type { SnapshotStatus } from '../lib/build-cache';
 
 function orDash(value: string | number | boolean | null): string {
   if (value === null) return '-';
@@ -20,6 +21,32 @@ function buildFingerprintLabel(build: StatusSnapshot['build']): string {
   if (build.state === 'current') return ` ${build.fingerprint.slice(0, 12)}`;
   if (build.state === 'stale') return ` (recorded ${build.fingerprint.slice(0, 12)})`;
   return '';
+}
+
+function megabytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * The snapshot by the numbers the manifest already carries: never a `du`, never a
+ * live commit distance, and `unknown` where a field could not be read.
+ */
+function snapshotLines(snapshot: SnapshotStatus | null): string[] {
+  if (snapshot === null) {
+    return ['snapshot    none (no published snapshot; every worktree builds cold)'];
+  }
+  const size = snapshot.sizeBytes === null ? 'unknown' : megabytes(snapshot.sizeBytes);
+  const files = snapshot.fileCount === null ? 'unknown' : `${snapshot.fileCount} files`;
+  const commit = snapshot.commit ?? 'unknown';
+  const age = snapshot.ageDays === null ? 'unknown' : `${snapshot.ageDays.toFixed(1)} days old`;
+  const lines = [
+    `snapshot    ${size}, ${files}, commit ${commit} (at publish), ${age}`,
+    `turbopack   ${snapshot.turbopack === null ? 'unknown' : snapshot.turbopack.join(', ') || 'none'}`,
+  ];
+  if (snapshot.behindCommits !== null) {
+    lines.push(`behind      ${snapshot.behindCommits} commits behind origin/main (at publish)`);
+  }
+  return lines;
 }
 
 function printHuman(snapshot: StatusSnapshot): void {
@@ -53,6 +80,7 @@ function printHuman(snapshot: StatusSnapshot): void {
     `build       ${snapshot.build.state ?? 'unknown'}${buildFingerprintLabel(snapshot.build)}`,
   );
   writeLine(`slots       ${formatBuildSlots(snapshot.build.slots)}`);
+  for (const line of snapshotLines(snapshot.snapshot)) writeLine(line);
   // Only when there is one: a failed build moves its artifact aside instead of
   // deleting it, and this is how an agent learns the directory exists.
   for (const failed of snapshot.build.failed) writeLine(`failed      ${failed}`);

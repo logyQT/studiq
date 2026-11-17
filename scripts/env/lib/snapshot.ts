@@ -6,6 +6,7 @@ import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
 import { readBuildSlots } from './locks';
+import { readSnapshotStatus } from './build-cache';
 import { readRegistry, findEntry, registryPathExists } from './registry';
 import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
@@ -204,6 +205,8 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
       : webHttp >= 200 && webHttp < 400 && supabaseHttp === 200;
   const record = readBuildState();
   const artifactDir = options.artifactDir ?? buildArtifactDir();
+  const cacheSnapshot = readSnapshotStatus();
+  warnings.push(...(cacheSnapshot?.warnings ?? []));
 
   return shapeStatus({
     contract,
@@ -225,6 +228,7 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     buildState: artifactState(record, artifactDir),
     buildFailed: failedBuildArtifacts(artifactDir).map((path) => relative(REPO_ROOT, path)),
     buildSlots: readBuildSlots(),
+    snapshot: cacheSnapshot,
     profile,
     cold: options.cold ?? state?.cold ?? null,
     buildFingerprint: record?.fingerprint ?? null,
