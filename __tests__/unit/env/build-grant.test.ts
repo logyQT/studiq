@@ -39,6 +39,8 @@ interface BuildModule {
       readWebPid(): number | null;
       spawnBuild(slot: unknown, options: ProductionBuildOptions): Promise<SpawnOutcome>;
       artifactDir?: string;
+      /** Test seam onto the slot clock, so a measured wait is exact. */
+      slots?: { now?: () => number };
     },
     options: ProductionBuildOptions,
   ): Promise<BuildResult>;
@@ -186,6 +188,32 @@ describe('runProductionBuild mints the single-use grant', () => {
     expect(slotToken).not.toBe('');
     expect(during?.['token']).toBe(slotToken);
     expect(result.slot).toBe(1);
+  });
+
+  it('carries the measured slot wait into the grant the guard reads', async () => {
+    // The clock seam makes the wait exact: `withBuildSlots` reads it once at
+    // entry and once when it hands the slot over, so the difference is the
+    // measured queue. A real clock can return 0 for a free slot, which would
+    // pin nothing.
+    let ticks = 0;
+    let during: Record<string, unknown> | null = null;
+
+    await build.runProductionBuild(
+      'env-hash',
+      {
+        readWebPid: () => null,
+        artifactDir,
+        slots: { now: () => (ticks++ === 0 ? 1_000_000 : 1_000_250) },
+        spawnBuild: () => {
+          during = readGrant();
+          return Promise.resolve(ok());
+        },
+      },
+      { app: 'web', admission: 'slot' },
+    );
+
+    // `queuedMs` is what the failed-build tail renders as `, after N.Ns`.
+    expect(during?.['queuedMs']).toBeGreaterThan(0);
   });
 
   it('mints a grant the real prebuild guard accepts', async () => {

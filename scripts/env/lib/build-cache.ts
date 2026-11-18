@@ -12,7 +12,7 @@ import {
   statfsSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { BUILD_MODE } from './fingerprint';
 import { atomicWriteFile } from './atomic-file';
 import { pidAlive } from './locks';
@@ -35,8 +35,32 @@ import { REPO_ROOT, canon, checkoutPaths, isPrimaryCheckout } from './repo';
 
 /** The only entries a snapshot body may contain; every other name is skipped by name. */
 const CACHE_ALLOWLIST = ['turbopack'] as const;
-/** Known `.next/cache` entries that are deliberately not copied (decision 3). */
-export const CACHE_KNOWN_EXCLUSIONS = ['fetch-cache', 'config.json', '.tsbuildinfo'] as const;
+/**
+ * Known `.next/cache` entries that are deliberately not copied (decision 3).
+ *
+ * `_events_*` is Next's telemetry batch (`_events_<pid>_<hex>.json`, written by
+ * `next dev` and by any build that flushes); it names a process, not cache
+ * identity, and it must never be copied into a snapshot. It is matched as a
+ * pattern only because the pid in the name changes with every process.
+ */
+export const CACHE_KNOWN_EXCLUSIONS = [
+  'fetch-cache',
+  'config.json',
+  '.tsbuildinfo',
+  '_events_*',
+] as const;
+/** The varying names behind {@link CACHE_KNOWN_EXCLUSIONS}'s glob entries. */
+const CACHE_KNOWN_PATTERNS: ReadonlyArray<(name: string) => boolean> = [
+  (name) => name.startsWith('_events_') && name.endsWith('.json'),
+];
+
+function isKnownExclusion(name: string): boolean {
+  return (
+    (CACHE_KNOWN_EXCLUSIONS as readonly string[]).includes(name) ||
+    CACHE_KNOWN_PATTERNS.some((matches) => matches(name))
+  );
+}
+
 /**
  * Names the snapshot, so an admin cache and a web cache can never match.
  * @public Exercised by the unit tests, which load this module by computed URL.
@@ -415,6 +439,21 @@ export async function collectIdentityFacts(
 
 // ── `.next/cache` layout and measurement ────────────────────────────────────
 
+/**
+ * This checkout's Turbopack cache root; `apps/admin` has its own and is not covered.
+ *
+ * `STUDIQ_WORKTREE_CACHE_DIR` points doctor and the snapshot step at the same
+ * cache. It exists for tests and isolated runs: without it, `env doctor` — and
+ * its tests — classify whatever the developer's checkout happens to hold.
+ */
+export function worktreeCacheDir(
+  repoRoot: string = REPO_ROOT,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = env['STUDIQ_WORKTREE_CACHE_DIR'] ?? '';
+  return override ? resolve(repoRoot, override) : join(repoRoot, 'apps', 'web', '.next', 'cache');
+}
+
 export interface CacheLayout {
   root: string;
   entries: string[];
@@ -442,10 +481,8 @@ export function classifyCacheLayout(cacheDir: string): CacheLayout | null {
   const allowlisted = entries.filter((name) =>
     (CACHE_ALLOWLIST as readonly string[]).includes(name),
   );
-  const known = entries.filter((name) =>
-    (CACHE_KNOWN_EXCLUSIONS as readonly string[]).includes(name),
-  );
-  const unknown = entries.filter((name) => !allowlisted.includes(name) && !known.includes(name));
+  const known = entries.filter(isKnownExclusion);
+  const unknown = entries.filter((name) => !allowlisted.includes(name) && !isKnownExclusion(name));
   let turbopackDirs: string[] = [];
   if (allowlisted.includes('turbopack')) {
     try {
@@ -1152,6 +1189,12 @@ export type SeedResult =
 export interface SeedInput {
   worktreeRoot: string;
   cacheRoot?: string;
+  /**
+   * The `.next/cache` to create; defaults to `<worktreeRoot>/apps/web/.next/cache`.
+   * `env build` passes {@link worktreeCacheDir}, so the seed and the snapshot
+   * agree when this checkout's cache is redirected.
+   */
+  cacheDir?: string;
   /** Recorded only; the seed never matches on it. */
   envHash?: string | null;
   deps?: SeedDeps;
@@ -1200,8 +1243,8 @@ export async function seedWorktreeCache(input: SeedInput): Promise<SeedResult> {
   });
   if (refused !== null) return { status: 'refused', reason: refused };
 
-  const cacheDir = join(worktreeRoot, 'apps', 'web', '.next', 'cache');
-  const nextDir = join(worktreeRoot, 'apps', 'web', '.next');
+  const cacheDir = input.cacheDir ?? join(worktreeRoot, 'apps', 'web', '.next', 'cache');
+  const nextDir = dirname(cacheDir);
   if (existsSync(cacheDir)) return { status: 'skipped', reason: `${cacheDir} already exists` };
   removeStaleSeedDirs(nextDir);
 

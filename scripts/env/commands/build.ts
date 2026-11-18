@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
@@ -53,6 +52,7 @@ import {
   seedWorktreeCache,
   stageSnapshot,
   staticProducerReason,
+  worktreeCacheDir,
   type PublishResult,
 } from '../lib/build-cache';
 import type { BuildApp } from '../lib/grant';
@@ -119,7 +119,7 @@ async function publishSnapshotRun(input: SnapshotRunInput): Promise<SnapshotRunS
       const identity = await collectIdentityFacts(REPO_ROOT, input.envHash);
       const copy = await stageSnapshot({
         cacheRoot: resolveCacheDir(),
-        worktreeCacheDir: join(REPO_ROOT, 'apps', 'web', '.next', 'cache'),
+        worktreeCacheDir: worktreeCacheDir(),
         identity,
         nextVersion: identity.next ?? '',
       });
@@ -192,13 +192,14 @@ function seedNone(): SeedRunStatus {
  */
 async function seedIfMissing(envHash: string): Promise<SeedRunStatus> {
   if ((process.env['STUDIQ_CACHE_SEED'] ?? '1') === '0') return seedNone();
-  if (existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'cache'))) return seedNone();
+  const cacheDir = worktreeCacheDir();
+  if (existsSync(cacheDir)) return seedNone();
   // The checkout lock is free while a build runs, so the mutex is the only fact
   // that says this `.next` is quiescent enough to copy into.
   if (buildInProgress() !== null) {
     return { outcome: 'skipped', id: null, reason: 'a build holds this worktree’s build mutex' };
   }
-  const result = await seedWorktreeCache({ worktreeRoot: REPO_ROOT, envHash });
+  const result = await seedWorktreeCache({ worktreeRoot: REPO_ROOT, cacheDir, envHash });
   if (result.status === 'seeded') return { outcome: 'seeded', id: result.id, reason: null };
   return { outcome: result.status, id: null, reason: result.reason };
 }

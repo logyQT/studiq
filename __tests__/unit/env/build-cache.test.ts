@@ -555,8 +555,16 @@ describe('cache layout reporting', () => {
     mkdirSync(join(cacheDir, 'fetch-cache'));
     writeFileSync(join(cacheDir, 'config.json'), '{}');
     writeFileSync(join(cacheDir, '.tsbuildinfo'), '');
+    // Next names its telemetry batches `_events_<pid>_<hex>.json`; a dev server
+    // or a build leaves one behind and it is not cache identity.
+    writeFileSync(join(cacheDir, '_events_4242_0487b99c35c29ae3.json'), '[]');
     const layout = cache.classifyCacheLayout(cacheDir);
-    expect(layout?.known.toSorted()).toEqual(['.tsbuildinfo', 'config.json', 'fetch-cache']);
+    expect(layout?.known.toSorted()).toEqual([
+      '.tsbuildinfo',
+      '_events_4242_0487b99c35c29ae3.json',
+      'config.json',
+      'fetch-cache',
+    ]);
     expect(layout?.unknown).toEqual([]);
     expect(layout?.turbopackDirs).toEqual([TEMP_TURBOPACK]);
     expect(cache.cacheLayoutRecognised(layout)).toBe(true);
@@ -565,6 +573,16 @@ describe('cache layout reporting', () => {
     const unknown = cache.classifyCacheLayout(cacheDir);
     expect(unknown?.unknown).toEqual(['surprise']);
     expect(cache.cacheLayoutRecognised(unknown)).toBe(false);
+  });
+
+  it('excludes only Next’s batch shape, not every name starting with _events_', () => {
+    const cacheDir = join(tempRoot(), 'cache');
+    mkdirSync(join(cacheDir, 'turbopack', TEMP_TURBOPACK), { recursive: true });
+    writeFileSync(join(cacheDir, '_events_notes.txt'), '');
+    const layout = cache.classifyCacheLayout(cacheDir);
+    expect(layout?.known).toEqual([]);
+    expect(layout?.unknown).toEqual(['_events_notes.txt']);
+    expect(cache.cacheLayoutRecognised(layout)).toBe(false);
   });
 
   it('treats a cache root without turbopack/ as unrecognised', () => {

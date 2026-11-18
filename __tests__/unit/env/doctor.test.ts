@@ -8,6 +8,7 @@ import {
   findConflictPort,
   firstBindablePort,
   nonLoopbackIPv4,
+  objectField,
   parseJsonObject,
   stackStatusFixture,
   startGrafanaServer,
@@ -40,6 +41,20 @@ function newHarness(): Harness {
   const harness = createHarness();
   harnesses.push(harness);
   return harness;
+}
+
+/**
+ * A `.next/cache` fixture under this harness, independent of the checkout.
+ *
+ * `entries` are written beside a real `turbopack/` so the layout is the one a
+ * build leaves behind; `env:dev` writes Next's telemetry batch as well, and that
+ * is the entry these fixtures exist to reproduce.
+ */
+function writeCacheFixture(harness: Harness, entries: readonly string[]): string {
+  const cacheDir = join(harness.dir, 'apps', 'web', '.next', 'cache');
+  mkdirSync(join(cacheDir, 'turbopack', 'v16.4.5-4e5335a0'), { recursive: true });
+  for (const name of entries) writeFileSync(join(cacheDir, name), '');
+  return cacheDir;
 }
 
 /** The errno code of a wildcard bind attempt, or null when it succeeds. */
@@ -213,6 +228,32 @@ describe('env:doctor', () => {
     const report = parseJsonObject(result.stdout);
     // A missing registry is normal: no warning at all here.
     expect(stringList(report.warnings)).toHaveLength(0);
+  });
+
+  it('reports a dev-server telemetry batch as a known exclusion, not an unknown entry', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const batch = '_events_4242_0487b99c35c29ae3.json';
+    writeCacheFixture(harness, ['config.json', batch]);
+
+    const json = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+    expect(json.status).toBe(0);
+    const report = parseJsonObject(json.stdout);
+    expect(stringList(report.problems)).toEqual([]);
+    // An extra file in `.next/cache` is not a warning when it is a known
+    // exclusion; only an unrecognised entry is.
+    expect(stringList(report.warnings)).toEqual([]);
+    expect(objectField(report, 'cache')).toHaveProperty('layoutRecognised', true);
+    expect(stringList(objectField(report, 'cache').layout)).toContain(batch);
+
+    const text = await harness.run(['doctor'], { APP_PORT: String(appPort) });
+    expect(text.status).toBe(0);
+    const layoutLine = text.stdout.split('\n').find((line) => line.includes('  layout')) ?? '';
+    // The file is reported, not hidden, and named as excluded from snapshots.
+    expect(layoutLine).toContain(batch);
+    expect(layoutLine).toContain('recognised');
+    expect(layoutLine).toContain('not snapshotted:');
   });
 
   it('warns when an existing registry directory is untrusted', async () => {

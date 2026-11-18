@@ -214,6 +214,10 @@ export function createHarness(): Harness {
     // Hermetic: a real `qa/env.json` in the developer's checkout must not leak
     // into doctor warnings or a `share --write`.
     STUDIQ_QA_POINTER: join(dir, 'qa', 'env.json'),
+    // Hermetic: doctor classifies `apps/web/.next/cache`, and `env:dev` leaves
+    // Next telemetry batches in the developer's real one. Point every harness at
+    // its own fixture so the reported layout never depends on the checkout.
+    STUDIQ_WORKTREE_CACHE_DIR: join(dir, 'apps', 'web', '.next', 'cache'),
     // Hermetic by default: the ensure hook must never mint against a real stack
     // that happens to be running on the host. Tests that need Grafana override it.
     GRAFANA_URL: 'http://127.0.0.1:1',

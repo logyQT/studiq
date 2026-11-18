@@ -25,6 +25,8 @@ import {
   readLastPublish,
   readSnapshotStatus,
   resolveCacheDir,
+  worktreeCacheDir,
+  type CacheLayout,
 } from '../lib/build-cache';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
@@ -89,6 +91,24 @@ function orDash(value: string | number | null): string {
 
 function httpLabel(value: number): string {
   return value > 0 ? String(value) : '-';
+}
+
+/**
+ * The layout line: the entries on disk, and what a snapshot would leave out.
+ *
+ * An excluded entry is reported rather than hidden — "this file is here and will
+ * not be copied" is the fact an operator needs when the snapshot step behaves
+ * differently than the directory contents suggest.
+ */
+function layoutLabel(layout: CacheLayout | null): string {
+  if (layout === null) return 'none (no apps/web/.next/cache yet)';
+  const entries = layout.entries.join(', ');
+  if (!cacheLayoutRecognised(layout)) {
+    return `${entries} (unrecognised; known exclusions: ${CACHE_KNOWN_EXCLUSIONS.join(', ')})`;
+  }
+  return layout.known.length === 0
+    ? `${entries} (recognised)`
+    : `${entries} (recognised; not snapshotted: ${layout.known.join(', ')})`;
 }
 
 /**
@@ -179,7 +199,7 @@ async function buildReport(): Promise<DoctorReport> {
       ? cacheRootHasSnapshots(cacheRoot)
       : false;
   const lastPublish = readLastPublish(cacheRoot);
-  const worktreeCacheLayout = classifyCacheLayout(join(REPO_ROOT, 'apps', 'web', '.next', 'cache'));
+  const worktreeCacheLayout = classifyCacheLayout(worktreeCacheDir());
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
   // Same probe `env:ports` uses: a bind failure includes a listener on any
@@ -418,9 +438,7 @@ async function buildReport(): Promise<DoctorReport> {
       `  turbopack  ${cacheSnapshot.turbopack === null ? 'unknown' : cacheSnapshot.turbopack.join(', ') || 'none'}`,
     );
   }
-  lines.push(
-    `  layout     ${worktreeCacheLayout === null ? 'none (no apps/web/.next/cache yet)' : `${worktreeCacheLayout.entries.join(', ')} (${cacheLayoutRecognised(worktreeCacheLayout) ? 'recognised' : `unrecognised; known exclusions: ${CACHE_KNOWN_EXCLUSIONS.join(', ')}`})`}`,
-  );
+  lines.push(`  layout     ${layoutLabel(worktreeCacheLayout)}`);
   if (lastPublish !== null) {
     lines.push(
       `  last       ${lastPublish.outcome}${lastPublish.reason ? ` (${lastPublish.reason})` : ''} at ${lastPublish.at}`,

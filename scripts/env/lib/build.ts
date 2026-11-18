@@ -20,6 +20,7 @@ import {
   pruneForeignVersions,
   resolveCacheDir,
   stageSnapshot,
+  worktreeCacheDir,
   type StagedSnapshot,
 } from './build-cache';
 import { stripAnsi, writeStderrLine } from './output';
@@ -407,11 +408,6 @@ function invalidateFailedArtifact(deps: ProductionBuildDeps): string | null {
   return invalidateBuildArtifact(
     deps.artifactDir === undefined ? {} : { artifactDir: deps.artifactDir },
   );
-}
-
-/** This checkout's Turbopack cache root; `apps/admin` has its own and is not covered. */
-function worktreeCacheDir(): string {
-  return join(REPO_ROOT, 'apps', 'web', '.next', 'cache');
 }
 
 /**
