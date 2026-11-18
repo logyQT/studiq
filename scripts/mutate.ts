@@ -19,6 +19,9 @@
  * without the mutation; a **periodic** flake (green and red alternating) can
  * still read as a kill, so a kill that does not reproduce is not proof.
  *
+ * An error is never proof: a missing dependency, a timeout or a broken harness
+ * is `ERROR`, never `SURVIVED` and never `KILLED`.
+ *
  * Usage:
  *   bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \
  *                         --test <test file> --name "<exact test title>" [--all] [--json] [--keep]
