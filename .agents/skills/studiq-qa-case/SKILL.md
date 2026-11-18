@@ -215,7 +215,7 @@ Rules that the gates and reviewers actually enforce:
   Do not resolve it from the app's i18n catalogue — that compares the app with
   itself and cannot catch a missing translation (`NFR-01`). Hard-coded copy in a
   spec is not a finding on its own.
-- **Waits**: the shared 3 s action / assertion budget and 6 s navigation budget
+- **Waits**: the shared 4 s action / assertion budget and 6 s navigation budget
   from `playwright/base.ts`. Override a single call with a comment when the
   behaviour genuinely needs longer (autosave debounce, `expect.poll` across
   several round trips). Never a fixed sleep.

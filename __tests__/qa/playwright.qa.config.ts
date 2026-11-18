@@ -19,7 +19,7 @@ export default defineSuiteConfig({
   workers: Number(process.env.QA_WORKERS ?? 1),
   // The per-test budget for a whole long flow stays generous (this box also
   // hosts Supabase and the Next app). Per-action and per-assertion waits are the
-  // shared 3 s default from `defineSuiteConfig`, navigation 6 s: a broken step
+  // shared 4 s default from `defineSuiteConfig`, navigation 6 s: a broken step
   // must fail fast, so a spec that needs longer overrides that call explicitly.
   timeout: 90_000,
   // `defineSuiteConfig` owns the CI-only retry budget and `forbidOnly`. Local
