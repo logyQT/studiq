@@ -204,9 +204,10 @@ differ in, so the seed adds nothing a rebuild does not already change.
 
    **Consequence, stated plainly.** A fresh worktree's own port no longer costs
    the seed, so the first build of a new worktree is the case the seed now
-   covers; the −30 % measured on a real 12-file branch across different ports
-   (Evidence §5) is the representative number, and the −48.3 % same-tree arm with
-   one inlined value changed is the upper bound.
+   covers; the saving is the compile work the cache removes — ≈0.24× cold compile
+   and ≈16 MB written against ≈297 MB (Evidence §5). The §5 wall percentages
+   (−30 % branch, −48.3 % same-tree) are one-off, include slot-queue waiting and
+   can invert, so they are context, not the expected speedup (Evidence §5 †).
    The lockfile remains the only matched input that a worktree can plausibly
    differ in; when it differs the seed is skipped and the build is cold.
 
