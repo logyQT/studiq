@@ -159,9 +159,9 @@ other; a duplicate is cheap, a hole is not.
 
 ## Worked example — the ADR-0014 arc
 
-Six guards across four reviewed PRs (#1314–#1317) looked covered and were not.
-Each row is one line of production code, the mutation, and the test that should
-have died but did not:
+The arc's mutation tables kept finding guards that looked covered and were not.
+Each row below is one line of production code, the mutation, and the test that
+should have died but did not — #1316, #1317 and #1362:
 
 | #    | mutation                                                                                  | what happened                                                                                                                    |
 | ---- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -181,9 +181,9 @@ have produced for free.
 
 The same arc is where the harness trap bit twice: two hand-rolled harnesses
 classified `vitest run -t "<title>"` by its exit code, so a title that matched
-nothing read as a survivor until a reviewer happened to test the tooling — and
-all of them were git-ignored (the one that got it right says so: "kept out of the
-commit"), so no reviewer could audit the method. Hence `scripts/mutate.ts`.
+nothing read as a survivor until a reviewer happened to test the tooling. None of
+the harnesses could be audited afterwards: #1316's receipt notes that its script
+was "kept out of the commit". Hence `scripts/mutate.ts`.
 
 ## What it does not prove
 
