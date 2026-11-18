@@ -68,6 +68,8 @@ Write `C1..Cn`, one per promise a reader could falsify:
 
 Keep claims behavioural ("a teacher can publish a quiz to one group only"), not
 structural ("adds a service"); structural claims need a code check, not QA.
+**"This is now pinned / covered / tested" is a behavioural claim**, and it implies
+its own check: the regression must turn the named test red.
 
 ## Step 3 — Verify each claim in three places
 
@@ -83,6 +85,19 @@ Check the shape a StudiQ change must keep: route → controller → model → se
 `Permission` + `accessibleFilter`/RLS for data scoping, `usePermission`/
 `useFeature` for UI gating, keys in **both** `pl.json` and `en.json`, a migration in
 `supabase/migrations/` for every schema change.
+
+**If the PR claims a fix is pinned, prove the pin.** In the review worktree, on a
+clean tree:
+
+```bash
+bun run mutate -- --file <source> --find "<the guarded line>" --replace "<the regression>" \
+  --test <test file> --name "<exact test title>"
+```
+
+`KILLED` is the evidence; `SURVIVED` is a finding ("tests added" is not evidence);
+`ERROR` is never proof — fix the command before judging the PR. A `-t` title that
+matches nothing is `ERROR`, not a survivor. Method and recipes:
+`.agents/skills/mutation-gate/SKILL.md`.
 
 **Docs** — every factual statement must match the repo: `AGENTS.md`, `docs/`,
 `docs/decisions/`, `README.md`, `qa/`, command tables in `package.json`,
@@ -171,6 +186,7 @@ bun run env:status --json         # APP_URL, stackId, health — the agent contr
 ```
 
 - `bun run review:static -- --changed origin/main` → exit ≠ 0 is a finding; cite the rule id. Only oxlint is diff-scoped: the ast-grep rules scan the whole tree, so a hit outside the PR's files is the repo's ratchet — check `git diff` before citing it against the change.
+- `bun run mutate -- --file … --find … --replace … --test … --name "…"` → `KILLED` / `SURVIVED` / `ERROR` for one mutation, on a clean tree (Step 3).
 
 Never run `env:dev`/`next dev` (human-only) or bare `bun test`. A green suite on a
 broken app is a `FAIL` whose finding names the gap (a service test mocking the
