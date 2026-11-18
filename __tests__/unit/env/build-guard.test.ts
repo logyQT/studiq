@@ -80,6 +80,7 @@ interface GrantFixture {
   slot?: number | null;
   launcherPid?: number;
   launcherStart?: string | null;
+  queuedMs?: number | null;
   expiresAt?: string;
 }
 
@@ -99,6 +100,7 @@ function writeGrant(stateDir: string, record: GrantFixture = {}): string {
           record.launcherStart === undefined
             ? locks.processStartTime(process.pid)
             : record.launcherStart,
+        queuedMs: record.queuedMs ?? null,
         mintedAt: new Date().toISOString(),
         expiresAt: record.expiresAt ?? new Date(Date.now() + 60_000).toISOString(),
       },
@@ -164,12 +166,15 @@ describe('build guard', () => {
       start: locks.processStartTime(process.pid),
       token: 'slot-token',
     });
-    writeGrant(paths.stateDir, { token: 'slot-token', slot: 1 });
+    writeGrant(paths.stateDir, { token: 'slot-token', slot: 1, queuedMs: 12_300 });
 
     const result = runGuard('web', paths);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('build: admitted apps/web (slot 1');
+    // The launcher's queue wait travels with the grant, so the line can be read
+    // as build-plus-queue rather than as a build time.
+    expect(result.stderr).toContain('after 12.3s');
   });
 
   it('refuses an expired grant', () => {

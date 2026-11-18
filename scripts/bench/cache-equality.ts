@@ -19,8 +19,11 @@
  *
  * The timings are reported beside that verdict, with the three indicators that
  * distinguish a cache hit from a faster machine (compile span, cache bytes
- * written, the `turbopack-compaction` span). A seeded arm that did not actually
- * hit is reported as INCONCLUSIVE, never as a pass.
+ * written, the `turbopack-compaction` span). The wall column is spawn-to-exit and
+ * includes any wait for a build slot, so it is context, not evidence: the queue
+ * wait is reported and subtracted, and the reproducible form of the claim is the
+ * compile ratio and the bytes written. A seeded arm that did not actually hit is
+ * reported as INCONCLUSIVE, never as a pass.
  *
  * Usage:
  *   bun scripts/bench/cache-equality.ts [--work-dir <path>] [--keep] [--json]
@@ -33,16 +36,16 @@
  * serving, and this script removes `.next` before each arm.
  *
  * Writes only `apps/web/.next` (what it measures) and the work dir (one per
- * checkout by default, under the temp root); the build it drives also writes its
- * own `.dev` record and runtime-registry slot. `STUDIQ_CACHE_DIR` — the published
- * snapshot root — is redirected inside the work dir, so a run never writes to
- * `${XDG_CACHE_HOME}/studiq`; the Turbopack cache under test is
- * `apps/web/.next/cache/turbopack`, which every arm deletes. The
- * published-snapshot seed is disabled, so a "cold" arm is really cold.
+ * checkout by default, `<tmp>/studiq-cache-equality-<checkout>-<hash8>`); the
+ * build it drives also writes its own `.dev` record and runtime-registry slot.
+ * `STUDIQ_CACHE_DIR` — the published snapshot root — is redirected inside the
+ * work dir, so a run never writes to `${XDG_CACHE_HOME}/studiq`; the Turbopack
+ * cache under test is `apps/web/.next/cache/turbopack`, which every arm deletes.
+ * The published-snapshot seed is disabled, so a "cold" arm is really cold.
  *
  * The work dir is deleted at the start of a run, so a value that is this
- * checkout, contains it, sits inside it, or is outside the temp root is refused
- * before anything is touched.
+ * checkout, contains it, sits inside it, is the temp root itself, or is outside
+ * the temp root is refused before anything is touched.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -133,7 +136,10 @@ interface TraceSpan {
 
 interface ArmMetrics {
   arm: string;
+  /** Spawn-to-exit of `env:build`: includes any wait for a build slot. */
   wallMs: number;
+  /** That wait, from the build's admitted line; null when the log has none. */
+  queuedMs: number | null;
   buildId: string;
   nextBuildMs: number | null;
   compileMs: number | null;
@@ -197,10 +203,11 @@ cold on a 16 vCPU box), so expect about a minute and a half.
 
 Options:
   --work-dir <path>  where arm copies and logs go (default
-                     <tmp>/studiq-cache-equality-<checkout>). The directory is
-                     deleted at the start of the run, so a value that is this
-                     checkout, contains it, is inside it, or is outside <tmp> is
-                     refused before anything is deleted.
+                     <tmp>/studiq-cache-equality-<checkout>-<hash8>). The
+                     directory is deleted at the start of the run, so a value
+                     that is this checkout, contains it, is inside it, is the
+                     temp root itself, or is outside <tmp> is refused before
+                     anything is deleted.
   --keep             keep the copied .next trees; a failing run keeps them anyway
   --json             machine-readable report on stdout
   --help             this text
@@ -537,6 +544,7 @@ async function measureArm(input: ArmInput): Promise<ArmMetrics> {
   const metrics: ArmMetrics = {
     arm: input.name,
     wallMs: outcome.wallMs,
+    queuedMs: readQueuedMs(outcome.logPath),
     buildId,
     nextBuildMs: spanMillis(spans, 'next-build'),
     compileMs: spanMillis(spans, 'run-turbopack'),
@@ -560,6 +568,28 @@ function readFailureTail(logPath: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * `build: building|admitted apps/web (… after 12.3s)` is the only place the
+ * slot wait is stated; the last match is the arm that just ran.
+ */
+const QUEUED_LINE =
+  /build: (?:admitted|building) apps\/(?:web|admin) \([^)]*\bafter (\d+(?:\.\d+)?)s\)/g;
+
+function readQueuedMs(logPath: string): number | null {
+  let text: string;
+  try {
+    text = readFileSync(logPath, 'utf8');
+  } catch {
+    return null;
+  }
+  let queuedMs: number | null = null;
+  for (const match of text.matchAll(QUEUED_LINE)) {
+    const seconds = Number(match[1]);
+    if (Number.isFinite(seconds)) queuedMs = Math.round(seconds * 1000);
+  }
+  return queuedMs;
 }
 
 /** Replace this tree's `BUILD_ID` so the `static/<id>/` directory name compares. */
@@ -676,38 +706,59 @@ function formatRatio(value: number | null): string {
   return value === null ? '-' : `${value.toFixed(2)}×`;
 }
 
+/** The build itself, once the wait for a slot is taken out of the wall time. */
+function wallExcludingQueue(arm: ArmMetrics): number | null {
+  return arm.queuedMs === null ? null : Math.max(0, arm.wallMs - arm.queuedMs);
+}
+
+const ARM_COLUMNS: ReadonlyArray<{ title: string; width: number }> = [
+  { title: 'arm', width: 7 },
+  { title: 'wall (incl. queue)', width: 18 },
+  { title: 'wall−queue', width: 11 },
+  { title: 'queued', width: 8 },
+  { title: 'next-build', width: 10 },
+  { title: 'compile', width: 8 },
+  { title: 'tsc', width: 9 },
+  { title: 'cache written', width: 13 },
+  { title: 'cache on disk', width: 13 },
+  { title: 'files', width: 5 },
+  { title: 'compaction', width: 10 },
+];
+
 function armRow(arm: ArmMetrics): string {
-  return [
-    arm.arm.padEnd(7),
-    formatSeconds(arm.wallMs).padStart(8),
-    formatSeconds(arm.nextBuildMs).padStart(10),
-    formatSeconds(arm.compileMs).padStart(8),
-    formatSeconds(arm.typescriptMs).padStart(9),
-    formatMegabytes(arm.cacheBytesWritten).padStart(13),
-    formatMegabytes(arm.cacheBytes).padStart(13),
-    String(arm.cacheFiles).padStart(5),
-    formatSeconds(arm.compactionMs).padStart(10),
-  ].join('  ');
+  const cells = [
+    arm.arm,
+    formatSeconds(arm.wallMs),
+    formatSeconds(wallExcludingQueue(arm)),
+    formatSeconds(arm.queuedMs),
+    formatSeconds(arm.nextBuildMs),
+    formatSeconds(arm.compileMs),
+    formatSeconds(arm.typescriptMs),
+    formatMegabytes(arm.cacheBytesWritten),
+    formatMegabytes(arm.cacheBytes),
+    String(arm.cacheFiles),
+    formatSeconds(arm.compactionMs),
+  ];
+  return cells
+    .map((cell, index) => {
+      const column = ARM_COLUMNS[index];
+      const width = column?.width ?? 0;
+      return index === 0 ? cell.padEnd(width) : cell.padStart(width);
+    })
+    .join('  ');
 }
 
 function printTextReport(report: Report): void {
   const lines: string[] = [];
   lines.push('cache-equality: three production builds (cold, seeded, cold)');
   lines.push('');
-  lines.push(
-    [
-      'arm'.padEnd(7),
-      'wall'.padStart(8),
-      'next-build'.padStart(10),
-      'compile'.padStart(8),
-      'tsc'.padStart(9),
-      'cache written'.padStart(13),
-      'cache on disk'.padStart(13),
-      'files'.padStart(5),
-      'compaction'.padStart(10),
-    ].join('  '),
-  );
+  lines.push(ARM_COLUMNS.map((column) => column.title.padStart(column.width)).join('  '));
   for (const arm of report.arms) lines.push(armRow(arm));
+  lines.push('');
+  lines.push('wall is context, not evidence: it includes any wait for a build slot (`queued`).');
+  lines.push(
+    '`wall−queue` is the build itself; the reproducible claim is the compile ratio and the cache bytes written.',
+  );
   lines.push('');
   lines.push(
     'compared: every file under apps/web/.next except cache/, trace, trace-build and BUILD_ID',

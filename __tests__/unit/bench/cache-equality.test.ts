@@ -252,7 +252,10 @@ describe('cache equality verdict', () => {
 describe('cache equality work dir', () => {
   it('refuses an empty value instead of resolving it to the current directory', () => {
     const { tmpRoot, repoRoot } = workDirLab();
-    expect(bench.chooseWorkDir({ raw: '', repoRoot, tmpRoot }).ok).toBe(false);
+    expect(bench.chooseWorkDir({ raw: '', repoRoot, tmpRoot })).toEqual({
+      ok: false,
+      reason: 'an empty value would resolve to the current directory',
+    });
   });
 
   it('refuses the checkout itself', () => {
@@ -268,6 +271,27 @@ describe('cache equality work dir', () => {
     const choice = bench.chooseWorkDir({ raw: tmpRoot, repoRoot, tmpRoot });
     expect(choice.ok).toBe(false);
     if (!choice.ok) expect(choice.reason).toBe('it contains this checkout');
+  });
+
+  it('refuses a path inside the checkout', () => {
+    const { tmpRoot, repoRoot } = workDirLab();
+    expect(bench.chooseWorkDir({ raw: join(repoRoot, 'evidence'), repoRoot, tmpRoot })).toEqual({
+      ok: false,
+      reason: 'it is inside this checkout',
+    });
+  });
+
+  it('refuses the temp root itself when the checkout sits outside it', () => {
+    const base = mkdtempSync(join(tmpdir(), 'cache-equality-work-'));
+    roots.push(base);
+    const tmpRoot = join(base, 'tmp');
+    const repoRoot = join(base, 'checkout');
+    mkdirSync(tmpRoot, { recursive: true });
+    mkdirSync(repoRoot, { recursive: true });
+    expect(bench.chooseWorkDir({ raw: tmpRoot, repoRoot, tmpRoot })).toEqual({
+      ok: false,
+      reason: 'it is the temp root itself',
+    });
   });
 
   it('refuses a path outside the temp root', () => {

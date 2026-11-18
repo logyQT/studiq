@@ -891,9 +891,12 @@ byte size, and main-only identifiers appeared in zero files. The seed changes
 speed, not content.
 
 † The same-tree **wall** figure is the original one-off measurement (a 29.5 s
-cold arm). `bun scripts/bench/cache-equality.ts` reproduces the equality verdict,
-the noise floor and the cache/compile indicators; its wall times move with machine
-load, so it does not reproduce that percentage (Reproduce).
+cold arm). Wall here is spawn-to-exit and includes the wait for a build slot, so
+it is context rather than evidence and can **invert**: one run on this tree
+measured cold1 43.4 s against cold2 23.5 s while `next-build` moved only
+23.3 s → 21.7 s. The reproducible form of the claim is the compile ratio (≈0.24×)
+and the bytes written (≈16 MB against ≈297 MB), not a wall percentage
+(Reproduce).
 
 **The allowlist is exactly right, and the typecheck is not weakened.** Excluding
 `fetch-cache/`, `config.json` and `.tsbuildinfo` reproduced the cold output above.
@@ -947,9 +950,12 @@ experiment, not a number.
 ## Consequences
 
 - **The seed saves a measured fraction of the build, not a promise.** Measured
-  seeded-against-cold: **−63.5 %** on the same tree (29.5 s → 10.75 s), **−48.3 %**
-  with a different `NEXT_PUBLIC_SITE_URL`, and **−30 % wall / −46 % compile** on a
-  real 12-file branch seeded from `main` across different ports (Evidence §5).
+  seeded-against-cold: **−63.5 % wall** (one-off, idle box; the stable form is
+  compile ≈0.24× and ~16 MB written against ~297 MB), **−48.3 %** with a
+  different `NEXT_PUBLIC_SITE_URL`, and **−30 % wall / −46 % compile** on a real
+  12-file branch seeded from `main` across different ports (Evidence §5).
+  Wall includes slot-queue waiting and can invert on a loaded machine, so it is
+  not the form to quote (Reproduce).
   Because the env hash is recorded rather than matched, a fresh worktree's own
   port no longer costs the seed; the only matched input it can plausibly differ
   in is `bun.lock`, and a changed lockfile skips the seed (unmeasured, and stated
@@ -1182,19 +1188,24 @@ It runs three production builds in this checkout through `bun run env:build
 **seeded** with that seed copied into `.next/cache`, and **cold2** — the noise
 floor. Each arm removes `.next` first, and the run disables the published-snapshot
 seed, so a cold arm is really cold; the script writes only `apps/web/.next` and
-`--work-dir` (default `<tmp>/studiq-cache-equality-<checkout>`, deleted at the
-start of a run and refused when it is this checkout, contains it, is inside it, or
-sits outside `<tmp>`), never the published cache root. It requires the checkout's
-Supabase stack up and no running web server
+`--work-dir` (default `<tmp>/studiq-cache-equality-<checkout>-<hash8>`, one per
+checkout; deleted at the start of a run and refused when it is this checkout,
+contains it, is inside it, is the temp root itself, or sits outside `<tmp>`),
+never the published cache root. It requires the checkout's Supabase stack up and
+no running web server
 (`bun run env:down`), because the build refuses to overwrite an artifact a server
 is serving. Start the stack with `bun run env:ensure --profile api`: after a stack
 started that way, `bun run env:ensure --profile web` refuses with `running stack
 lacks capability: mail`, because a running stack cannot gain a capability in
 place — run `bun run env:down --all --yes` first.
 
-It prints, per arm, the wall time, the `next-build` and compile (Turbopack) spans
-from `.next/trace-build`, the TypeScript span, cache bytes written
-(`turbopack-persistence`) and the cache's size on disk. Then it prints the
+It prints, per arm, the wall time, the queue wait, `wall−queue`, the `next-build`
+and compile (Turbopack) spans from `.next/trace-build`, the TypeScript span, cache
+bytes written (`turbopack-persistence`) and the cache's size on disk. The wall
+column is context, not evidence: it is spawn-to-exit of `env:build` and includes
+any wait for a build slot (`queued`, taken from the build's `after N.Ns` admitted
+line), so it is `wall−queue`, the compile span and the cache bytes that compare
+builds. Then it prints the
 cold-vs-cold noise floor and the seeded-vs-cold diff — every differing file named
 with the normalisation rule that explains it — the diff-of-diffs, the three
 cache-hit indicators (bytes written, compile ratio, `turbopack-compaction`) and a
@@ -1206,11 +1217,13 @@ The accepted numbers are reproducible by that command on the benchmark box
 (16 vCPU / 19.9 GB): the equality result is exact — 14 differing files out of
 4,573 in **both** the noise floor and the seeded diff, 0 unexplained — as is the
 cache cost (16 MB written against 297 MB) and the compile span (about 0.24× of
-cold). The **wall** percentage is the load-sensitive number: the accepted
-−63.5 % came from a 29.5 s cold arm, and a re-run whose cold arm took 22–25 s
-showed −47 % to −52 % for the same ~12 s seeded build. Tuning the harness to
-print the accepted percentage would mean fitting it to one measurement; the
-compile and bytes-written ratios are the stable form of the same claim.
+cold). The **wall** number is not reproducible, and quoting it as if it were is
+wrong: it includes the wait for a build slot, so it can even **invert**. One run
+on the same tree measured cold1 43.4 s against cold2 23.5 s while `next-build`
+moved only 23.3 s → 21.7 s; about 20 s of the swing was admission-queue waiting,
+and a PASS run here showed seeded 38.8 s > cold1 31.4 s while `next-build` went
+27.2 s → 9.9 s. The reproducible form of the claim is the compile ratio (≈0.24×)
+and the bytes written (≈16 MB against ≈297 MB), not the wall saving.
 
 §1–§4's benchmark scripts and CSVs were run from this workspace, outside the repo:
 `/home/node/.cache/cache-bench/` (`bench.sh`, `staleness.sh`, `churn.sh`,

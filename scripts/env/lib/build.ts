@@ -5,6 +5,7 @@ import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure 
 import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { grantPath, mintBuildGrant, type BuildAdmission, type BuildApp } from './grant';
 import {
+  formatAdmissionWait,
   formatBuildSlots,
   formatDuration,
   killProcessGroup,
@@ -560,8 +561,19 @@ export async function runProductionBuild(
 ): Promise<BuildResult> {
   if (options.admission === 'slot') {
     return withBuildSlots(async (slot) => {
-      mintBuildGrant({ app: options.app, admission: 'slot', slot: slot.number, token: slot.token });
-      writeStderrLine(`build: building apps/${options.app} (slot ${slot.number})`);
+      mintBuildGrant({
+        app: options.app,
+        admission: 'slot',
+        slot: slot.number,
+        token: slot.token,
+        queuedMs: slot.queuedMs,
+      });
+      // The wait belongs on the line rather than only in the timestamp: the
+      // build's wall time includes it, so a wall comparison from two builds on a
+      // busy machine is not a build-speed comparison.
+      writeStderrLine(
+        `build: building apps/${options.app} (slot ${slot.number}, after ${formatAdmissionWait(slot.queuedMs)})`,
+      );
       return buildOnce(envHash, deps, options, slot);
     }, deps.slots);
   }

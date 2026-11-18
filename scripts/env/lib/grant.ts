@@ -29,6 +29,11 @@ export interface BuildGrant {
   slot: number | null;
   launcherPid: number;
   launcherStart: string | null;
+  /**
+   * How long the launcher waited for its slot before minting this grant. Quoted
+   * on the admitted line so a wall time can be read as build-plus-queue.
+   */
+  queuedMs: number | null;
   mintedAt: string;
   expiresAt: string;
 }
@@ -76,6 +81,12 @@ function parseGrant(text: string): BuildGrant | null {
     slot,
     launcherPid: record.launcherPid,
     launcherStart: typeof record.launcherStart === 'string' ? record.launcherStart : null,
+    queuedMs:
+      typeof record.queuedMs === 'number' &&
+      Number.isFinite(record.queuedMs) &&
+      record.queuedMs >= 0
+        ? record.queuedMs
+        : null,
     mintedAt: typeof record.mintedAt === 'string' ? record.mintedAt : '',
     expiresAt: record.expiresAt,
   };
@@ -93,6 +104,8 @@ export function mintBuildGrant(input: {
   slot: number | null;
   /** The slot's token in slot mode; a fresh one otherwise. */
   token?: string | null;
+  /** How long the launcher queued for its slot, or absent outside slot mode. */
+  queuedMs?: number | null;
 }): BuildGrant {
   ensureDevDir();
   const now = Date.now();
@@ -103,6 +116,7 @@ export function mintBuildGrant(input: {
     slot: input.slot,
     launcherPid: process.pid,
     launcherStart: processStartTime(process.pid),
+    queuedMs: input.queuedMs ?? null,
     mintedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + GRANT_TTL_MS).toISOString(),
   };
