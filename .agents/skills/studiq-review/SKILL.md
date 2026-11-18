@@ -96,8 +96,15 @@ bun run mutate -- --file <source> --find "<the guarded line>" --replace "<the re
 
 `KILLED` is the evidence; `SURVIVED` is a finding ("tests added" is not evidence);
 `ERROR` is never proof — fix the command before judging the PR. A `-t` title that
-matches nothing is `ERROR`, not a survivor. Method and recipes:
+matches nothing is `ERROR`, not a survivor. The tool re-runs a killed test
+unmutated, so a flake comes back as `ERROR`, not as a pass. Method and recipes:
 `.agents/skills/mutation-gate/SKILL.md`.
+
+For a **Playwright claim** (`__tests__/e2e/`, `__tests__/qa/`) the driver is
+different: `bun run mutate` refuses a spec, and the spec needs a rebuilt app —
+run the mutation loop in `.agents/skills/studiq-qa-case/SKILL.md` Step 5 instead
+(`env:down` → `env:build` → `env:serve` → `env:run -- bun run test:qa …`, then
+restore and confirm green). Same recipes, same judgement, one method.
 
 **Docs** — every factual statement must match the repo: `AGENTS.md`, `docs/`,
 `docs/decisions/`, `README.md`, `qa/`, command tables in `package.json`,

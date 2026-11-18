@@ -9,8 +9,14 @@
  * `numPassedTests + numFailedTests` and reports zero executed as `ERROR`.
  *
  * The proof is only worth as much as the revert, so the tool refuses to start
- * on a dirty tree, refuses to mutate a test, and fails loudly if the tree is
- * dirty after `git checkout --`.
+ * on a dirty tree, refuses to mutate a test, refuses a file git cannot restore
+ * (untracked or ignored — no pre-image), and proves each revert with the
+ * checkout's exit code *and* a diff, not with `git status` alone (which cannot
+ * see an ignored file).
+ *
+ * A `KILLED` is re-checked: the test is run again without the mutation, and a
+ * red re-run is `ERROR` / "flake suspected" — a flake must never read as a
+ * proof.
  *
  * Usage:
  *   bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \
@@ -19,18 +25,30 @@
  *
  * `--spec` reads a JSON array of `{ "file", "find", "replace", "test", "name", "all"? }`
  * — one PR's mutation table, reproducible from the body. The spec file must be
- * committed or outside the worktree: a dirty tree is refused, by design.
+ * committed, git-ignored, or outside the worktree: a dirty tree is refused, by
+ * design. A row that comes back `ERROR` does not stop the table (its value is
+ * the whole table); a row whose `--find` is malformed does, because the table is
+ * wrong.
  *
  * `--json` writes one NDJSON line per mutation on stdout and nothing else:
  *   {"file":"…","find":"…","test":"…","title":"…","outcome":"KILLED|SURVIVED|ERROR","executed":<n>,"detail":"…"}
  *
  * Exit: 0 = no ERROR, 1 = at least one ERROR, 2 = usage/precondition failure.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const CWD = process.cwd();
+/** The worktree with symlinks resolved, so a link cannot smuggle a path out. */
+const REAL_CWD = realpathSync(CWD);
 /** One hung mutation must not hang a review; a test-level timeout usually fires first. */
 const RUN_TIMEOUT_MS = 180_000;
 const DETAIL_LIMIT = 240;
@@ -95,6 +113,19 @@ function usage(message: string): never {
   process.exit(2);
 }
 
+const HELP = `mutate — break one line, run one named test, revert
+
+  bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \\
+                        --test <test file> --name "<exact test title>" [--all] [--json] [--keep]
+  bun scripts/mutate.ts --spec <mutations.json> [--json]
+
+  --find must match exactly once in the file, or pass --all.
+  The mutated file must be tracked by git: a mutation needs a pre-image to revert.
+  After a KILLED the test is re-run unmutated; a red re-run is ERROR (a flake).
+  In --spec mode a row that comes back ERROR does not stop the table.
+  Exit: 0 = no ERROR, 1 = at least one ERROR, 2 = usage/precondition.
+`;
+
 function parseArgs(argv: string[]): { values: Map<string, string>; boolean: Set<string> } {
   const values = new Map<string, string>();
   const boolean = new Set<string>();
@@ -102,6 +133,10 @@ function parseArgs(argv: string[]): { values: Map<string, string>; boolean: Set<
   const switches = new Set(['--json', '--keep', '--all']);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
+    if (arg === '--help' || arg === '-h') {
+      process.stdout.write(HELP);
+      process.exit(0);
+    }
     const eq = arg.indexOf('=');
     const flag = eq > 0 ? arg.slice(0, eq) : arg;
     if (switches.has(flag)) {
@@ -287,15 +322,65 @@ function classify(
 }
 
 function relativeToCwd(file: string): string {
-  const rel = resolve(CWD, file).slice(CWD.length + 1);
-  if (rel.startsWith('..')) usage(`'${file}' is outside the worktree; the revert runs here`);
+  const rel = relative(CWD, resolve(CWD, file));
+  if (outside(rel)) usage(`'${file}' is outside the worktree; the revert runs here`);
   return rel;
 }
 
-/** The mutator proves tests; editing them is the coordinator's job (TRIM), not this tool's. */
-function assertNotATest(file: string): void {
+/** `..`, `../x` or an absolute path (a different drive on Windows) — not a path inside. */
+function outside(rel: string): boolean {
+  return isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`);
+}
+
+/**
+ * The only path this tool may write. Lexical containment is not enough — the
+ * previous version sliced `CWD.length + 1`, so `../<cwd-basename>-probe/x`
+ * lost its `../` and read as inside — and a symlink can point out even when the
+ * lexical path is inside, so the real path is checked too.
+ */
+function locate(file: string): { rel: string; abs: string } {
   const rel = relativeToCwd(file);
-  const isTest = rel.split('/').includes('__tests__') || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
+  const abs = resolve(CWD, file);
+  if (existsSync(abs)) {
+    const real = relative(REAL_CWD, realpathSync(abs));
+    if (outside(real)) {
+      usage(`'${file}' resolves outside the worktree; the revert runs here`);
+    }
+  }
+  return { rel, abs };
+}
+
+/**
+ * A mutation is only revertible if git has a pre-image for the path. An ignored
+ * or untracked file has none — and `git status` cannot even see it afterwards,
+ * so the mutation would silently outlive the run.
+ */
+function requireTracked(rel: string): void {
+  const result = git(['ls-files', '--error-unmatch', '--', rel]);
+  if (result.code !== 0) {
+    usage(
+      `'${rel}' is not tracked by git: a mutation there has no pre-image to revert. ` +
+        'Commit it, or mutate a tracked file.',
+    );
+  }
+}
+
+/** Restore one path and prove it: the checkout's exit code, then a diff of that path. */
+function revertPath(rel: string): string | null {
+  const checkout = git(['checkout', '--', rel]);
+  if (checkout.code !== 0) {
+    return `git checkout -- ${rel} failed (exit ${checkout.code}): ${firstLine(checkout.err || checkout.out)}`;
+  }
+  const diff = git(['diff', '--quiet', '--', rel]);
+  if (diff.code !== 0) {
+    return `git checkout -- ${rel} left a diff (exit ${diff.code}); the mutation may still be applied`;
+  }
+  return null;
+}
+
+/** The mutator proves tests; editing them is the coordinator's job (TRIM), not this tool's. */
+function assertNotATest(rel: string): void {
+  const isTest = rel.split(sep).includes('__tests__') || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
   if (isTest) {
     usage(
       `refusing to mutate the test file '${rel}'. This tool breaks production code and reverts it; ` +
@@ -304,26 +389,47 @@ function assertNotATest(file: string): void {
   }
 }
 
-function mutate(
-  bin: string,
-  mutation: Mutation,
-  original: string,
-): { report: Report; reverted: boolean } {
-  const rel = relativeToCwd(mutation.file);
-  const base = {
-    file: rel,
-    find: mutation.find,
-    test: relativeToCwd(mutation.test),
-    title: mutation.name,
-  };
+interface Planned {
+  mutation: Mutation;
+  /** Worktree-relative path of the mutated file. */
+  rel: string;
+  /** Absolute path written to; never derived by string slicing. */
+  abs: string;
+  /** Worktree-relative test path. */
+  test: string;
+}
+
+/**
+ * A kill has to survive its own unmutated re-run. A test that is red under the
+ * mutation and red again without it did not prove the mutation — it was flaky,
+ * and a flake manufactures a `KILLED` that no automated consumer can tell apart.
+ */
+function confirmFlake(result: RunResult, test: string): string | null {
+  if (!result.report) return result.note || 'the unmutated re-run produced no report';
+  if (result.executed !== 1) {
+    return `the unmutated re-run executed ${result.executed} tests in ${test}, not one`;
+  }
+  if (result.failed > 0) {
+    return `the test fails without the mutation (${result.failure ?? 'no message'})`;
+  }
+  return null;
+}
+
+function mutate(bin: string, planned: Planned): { report: Report; reverted: boolean } {
+  const { rel, abs, test, mutation } = planned;
+  const base = { file: rel, find: mutation.find, test, title: mutation.name };
   const report = (outcome: Outcome, executed: number, detail: string): Report => ({
     ...base,
     outcome,
     executed,
     detail,
   });
-  const failed = (detail: string) => ({ report: report('ERROR', 0, detail), reverted: !keep });
+  const error = (executed: number, detail: string) => ({
+    report: report('ERROR', executed, detail),
+    reverted: !keep,
+  });
 
+  const original = readFileSync(abs, 'utf8');
   const occurrences = countOccurrences(original, mutation.find);
   if (occurrences === 0) usage(`--find matched 0 times in ${rel}: nothing was mutated`);
   if (occurrences > 1 && !mutation.all) {
@@ -335,33 +441,58 @@ function mutate(
   // The mutated run can only be read against a green baseline: a test that was
   // already red would "kill" every mutant, and a name that matches nothing
   // would "survive" all of them.
-  const before = runTest(bin, base.test, mutation.name);
-  const blocker = baselineError(before, mutation.name, base.test);
-  if (blocker) return failed(`baseline: ${blocker}; an error is never proof`);
+  const before = runTest(bin, test, mutation.name);
+  const blocker = baselineError(before, mutation.name, test);
+  if (blocker) return error(before.executed, `baseline: ${blocker}; an error is never proof`);
 
-  writeFileSync(mutation.file, original.split(mutation.find).join(mutation.replace));
-  let after: RunResult;
+  writeFileSync(abs, original.split(mutation.find).join(mutation.replace));
+  let after: RunResult | null = null;
+  let revertFailure: string | null = null;
   try {
-    after = runTest(bin, base.test, mutation.name);
+    after = runTest(bin, test, mutation.name);
   } finally {
     if (keep) {
       process.stderr.write(
         `mutate: --keep left ${rel} mutated; restore it with git checkout -- ${rel}\n`,
       );
     } else {
-      git(['checkout', '--', rel]);
-      const leftover = status();
-      if (leftover !== '') {
-        process.stderr.write(
-          `mutate: REVERT FAILED — the worktree is dirty after git checkout -- ${rel}:\n${leftover}\n`,
-        );
-        return failed(`revert failed, the worktree is dirty: ${firstLine(leftover)}`);
+      revertFailure = revertPath(rel);
+      if (revertFailure === null) {
+        const leftover = status();
+        if (leftover !== '') revertFailure = `the worktree is dirty after the revert:\n${leftover}`;
       }
+      if (revertFailure !== null)
+        process.stderr.write(`mutate: REVERT FAILED — ${revertFailure}\n`);
     }
   }
 
-  const { outcome, detail } = classify(after, mutation.name, base.test);
-  return { report: report(outcome, after.executed, detail), reverted: !keep };
+  if (revertFailure !== null) {
+    return {
+      report: report('ERROR', after?.executed ?? 0, `REVERT FAILED — ${revertFailure}`),
+      reverted: false,
+    };
+  }
+  if (after === null)
+    return error(0, 'the mutated run produced no result; an error is never proof');
+
+  const { outcome, detail } = classify(after, mutation.name, test);
+  if (outcome !== 'KILLED')
+    return { report: report(outcome, after.executed, detail), reverted: !keep };
+  if (keep) {
+    return {
+      report: report(
+        'KILLED',
+        after.executed,
+        `${detail} (flake check skipped: --keep left the mutation applied)`,
+      ),
+      reverted: false,
+    };
+  }
+
+  const confirm = runTest(bin, test, mutation.name);
+  const flake = confirmFlake(confirm, test);
+  if (flake) return error(confirm.executed, `flake suspected: ${flake}; an error is never proof`);
+  return { report: report('KILLED', after.executed, detail), reverted: true };
 }
 
 function loadSpec(path: string): Mutation[] {
@@ -417,26 +548,31 @@ function main(): void {
         },
       ];
 
-  for (const mutation of mutations) {
-    if (mutation.find === mutation.replace)
+  const planned: Planned[] = mutations.map((mutation) => {
+    if (mutation.find === mutation.replace) {
       usage('--find and --replace are identical: that is not a mutation');
-    if (!existsSync(resolve(CWD, mutation.file))) usage(`no such file: ${mutation.file}`);
-    if (!existsSync(resolve(CWD, mutation.test))) usage(`no such test file: ${mutation.test}`);
-    assertNotATest(mutation.file);
-  }
+    }
+    const file = locate(mutation.file);
+    const test = locate(mutation.test);
+    if (!existsSync(file.abs)) usage(`no such file: ${mutation.file}`);
+    if (!existsSync(test.abs)) usage(`no such test file: ${mutation.test}`);
+    assertNotATest(file.rel);
+    requireTracked(file.rel);
+    return { mutation, rel: file.rel, abs: file.abs, test: test.rel };
+  });
 
   requireClean('before the first mutation');
   const bin = vitestBin();
   const reports: Report[] = [];
 
-  for (const [index, mutation] of mutations.entries()) {
-    const original = readFileSync(resolve(CWD, mutation.file), 'utf8');
-    say(`\n[${index + 1}/${mutations.length}] ${relativeToCwd(mutation.file)}`);
+  for (const [index, row] of planned.entries()) {
+    const { mutation, rel, test } = row;
+    say(`\n[${index + 1}/${planned.length}] ${rel}`);
     say(`  find:    ${mutation.find.split('\n')[0]}`);
     say(`  replace: ${mutation.replace.split('\n')[0]}`);
-    say(`  test:    ${relativeToCwd(mutation.test)}`);
+    say(`  test:    ${test}`);
     say(`  title:   ${mutation.name}`);
-    const result = mutate(bin, mutation, original);
+    const result = mutate(bin, row);
     const { report } = result;
     reports.push(report);
     if (json) {
@@ -445,11 +581,33 @@ function main(): void {
       say(`  outcome: ${report.outcome} (${report.executed} executed) — ${report.detail}`);
       if (result.reverted) say('  revert:  clean');
     }
-    if (report.outcome === 'ERROR') break;
+    if (report.outcome === 'ERROR' && status() !== '') {
+      // A dirty tree is the one ERROR a table cannot continue past, but every
+      // row still gets a line: a missing row reads as "fine" to a consumer.
+      const remaining = planned.slice(index + 1);
+      if (remaining.length > 0) {
+        say('  stopping the table: the worktree is dirty after a failed revert');
+      }
+      for (const rest of remaining) {
+        const skipped: Report = {
+          file: rest.rel,
+          find: rest.mutation.find,
+          test: rest.test,
+          title: rest.mutation.name,
+          outcome: 'ERROR',
+          executed: 0,
+          detail: 'not run: a previous row left the worktree dirty',
+        };
+        reports.push(skipped);
+        if (json) process.stdout.write(`${JSON.stringify(skipped)}\n`);
+        else say(`[${reports.length}/${planned.length}] ${rest.rel}: not run — dirty worktree`);
+      }
+      break;
+    }
   }
 
   const counts = { KILLED: 0, SURVIVED: 0, ERROR: 0 };
-  for (const result of reports) counts[result.outcome] += 1;
+  for (const report of reports) counts[report.outcome] += 1;
   say(
     `\n${reports.length} mutation(s): ${counts.KILLED} KILLED, ${counts.SURVIVED} SURVIVED, ${counts.ERROR} ERROR`,
   );

@@ -44,23 +44,36 @@ bun run mutate -- --spec .tmp/mutations.json --json
 ```
 
 - `outcome` is `KILLED` (the test caught it), `SURVIVED` (it did not), or
-  `ERROR` (**never proof** — see the trap below).
+  `ERROR` (**never proof** — see the trap below). `executed` counts the tests
+  that actually ran in the run that decided the outcome.
 - `--json` writes NDJSON on stdout and progress on stderr, so the table is
   pasteable. Exit is non-zero when any mutation is `ERROR`, so CI can gate on a
   broken harness.
 - `--all` mutates every occurrence of `--find`; without it, an ambiguous match is
   a usage error rather than a guess.
 - `--keep` leaves the mutation applied for inspection. Human-only, single
-  mutation only, and it leaves the tree dirty on purpose.
-- The tool refuses to mutate anything under `__tests__/` or named `*.test.ts`:
-  removing an assertion is a `TRIM`, which belongs to whoever owns the suite, not
-  to a mutator.
+  mutation only, and it leaves the tree dirty on purpose — which is why it also
+  skips the post-kill flake re-run.
+- The tool refuses to mutate anything under `__tests__/` or named `*.test.ts` /
+  `*.spec.ts`: removing an assertion is a `TRIM`, which belongs to whoever owns
+  the suite, not to a mutator.
+- The mutated file must be **tracked by git**. An ignored or untracked file has no
+  pre-image, so a mutation there could never be reverted (and `git status` cannot
+  even see it) — the tool refuses before writing, with a message that says why.
+- Every revert is proved: the `git checkout --` exit code **and** a diff of that
+  path, then the whole tree. A failure is `ERROR` / `REVERT FAILED`, never
+  `revert: clean`. A path outside the worktree (lexically or through a symlink)
+  is refused before anything is written.
 - It runs the named test **once before mutating** (the baseline), so a red test or
-  a mistyped title is `ERROR` rather than a false kill or a false survivor. Budget
-  two runs per mutation.
+  a mistyped title is `ERROR` rather than a false kill or a false survivor, and
+  **once more after a `KILLED`** (unmutated): a test that is red without the
+  mutation is a flake, and a flake manufactures a kill. Budget three runs per
+  kill.
 - `--spec` reads its JSON from a committed file, a git-ignored one (`.tmp/`) or
   outside the worktree: an untracked spec makes the tree dirty, and a dirty tree
-  is refused.
+  is refused. A row that comes back `ERROR` does not stop the table; a row whose
+  `--find` is malformed does, because the table itself is wrong. A table stopped
+  by a failed revert still emits a line per remaining row ("not run").
 
 **The trap, stated once.** `vitest run <file> -t "<title>"` where the title
 matches nothing **exits 0** and reports the test as *skipped*. Two harnesses in
@@ -117,6 +130,10 @@ mutation targets**, not somewhere upstream:
 - Read the `detail` line (`scripts/mutate.ts` quotes the first failure message).
   `expected 6 to be 0` on a status-code assertion is the kill you wanted; a
   `TypeError` from a fixture that no longer imports is not.
+- **A flake must not read as a kill.** `scripts/mutate.ts` re-runs the named test
+  unmutated after a `KILLED`; a red re-run is `ERROR` / `flake suspected`. If you
+  hand-roll a run, you own that check: a test that is red without the mutation
+  proves nothing about the mutation.
 - If you cannot attribute the failure, re-run the *unmutated* test, confirm it is
   green, and treat the mutation as `ERROR`. **An error is never proof** — not a
   compile error, not a missing module, not a timeout, not a database that was

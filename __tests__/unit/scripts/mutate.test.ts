@@ -6,8 +6,18 @@
  * not mocked.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -63,6 +73,48 @@ const KILL: string[] = [
   'clamps a negative value to zero',
 ];
 
+/** A test that sabotages the revert once the mutation is in place. */
+const SABOTAGE = `import { chmodSync, readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+describe('sabotage', () => {
+  it('sabotages the revert', () => {
+    // A read-only directory makes git's unlink fail: the one deterministic way
+    // to force \`git checkout --\` to fail from inside the test run.
+    if (readFileSync(join(here, 'guard.ts'), 'utf8').includes('value < -10')) {
+      chmodSync(join(here, 'guard.ts'), 0o444);
+      chmodSync(here, 0o555);
+    }
+    expect(1 + 1).toBe(2);
+  });
+});
+`;
+
+/** A test that fails on every run after the first, i.e. a flake. */
+const FLAKY = `import { existsSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+// Outside the checkout, so the marker cannot make the tree dirty; unique per
+// fixture, so parallel runs cannot see each other's.
+const here = dirname(fileURLToPath(import.meta.url));
+const marker = join(tmpdir(), \`studiq-flaky-\${basename(join(here, '..'))}\`);
+
+describe('flaky', () => {
+  it('fails on its second run', () => {
+    if (existsSync(marker)) throw new Error('flaky: this run is not the first');
+    writeFileSync(marker, 'ran');
+    expect(1 + 1).toBe(2);
+  });
+});
+`;
+
 // Curated, never inherited: a parent VITEST/GIT_DIR would leak into the child
 // vitest run or redirect the fixture's git commands at this checkout.
 const ENV: NodeJS.ProcessEnv = {
@@ -81,14 +133,38 @@ const ENV: NodeJS.ProcessEnv = {
 
 const dirs: string[] = [];
 
+/** The sabotage test leaves a read-only directory behind; make it removable. */
+function unlock(dir: string): void {
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) unlock(join(dir, entry.name));
+    }
+    chmodSync(dir, 0o755);
+  } catch {
+    // Best effort: the directory may already be gone.
+  }
+}
+
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) {
+    unlock(dir);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 function write(root: string, path: string, content: string): void {
   const full = join(root, path);
   mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, content);
+}
+
+function git(root: string, ...args: string[]): void {
+  execFileSync('git', args, { cwd: root, env: ENV });
+}
+
+function commit(root: string, message = 'fixture'): void {
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', message);
 }
 
 function fixture(): string {
@@ -100,9 +176,8 @@ function fixture(): string {
   write(root, '.gitignore', 'node_modules/\n');
   write(root, 'src/guard.ts', GUARD);
   write(root, 'src/guard.test.ts', TEST);
-  execFileSync('git', ['init', '-q'], { cwd: root, env: ENV });
-  execFileSync('git', ['add', '-A'], { cwd: root, env: ENV });
-  execFileSync('git', ['commit', '-qm', 'fixture'], { cwd: root, env: ENV });
+  git(root, 'init', '-q');
+  commit(root);
   return root;
 }
 
@@ -127,6 +202,7 @@ interface Line {
   detail: string;
 }
 
+/** Pins the NDJSON contract a PR body quotes: seven keys, `outcome` in the vocabulary. */
 function isLine(value: unknown): value is Line {
   if (typeof value !== 'object' || value === null) return false;
   if (!('file' in value) || typeof value.file !== 'string') return false;
@@ -139,11 +215,14 @@ function isLine(value: unknown): value is Line {
   return value.outcome === 'KILLED' || value.outcome === 'SURVIVED' || value.outcome === 'ERROR';
 }
 
-/** Pins the NDJSON contract a PR body quotes: seven keys, `outcome` in the vocabulary. */
+/**
+ * Every stdout line in `--json` mode is one NDJSON record — progress belongs on
+ * stderr. A line that is not JSON throws here rather than being filtered out.
+ */
 function lines(out: string): Line[] {
   return out
     .split('\n')
-    .filter((line) => line.startsWith('{'))
+    .filter((line) => line !== '')
     .map((line) => {
       const parsed: unknown = JSON.parse(line);
       if (!isLine(parsed)) throw new Error(`not a mutation line: ${line}`);
@@ -226,8 +305,16 @@ describe('scripts/mutate.ts', () => {
       executed: 1,
     });
     expect(line?.detail).toMatch(/expected -5 to be \+0/);
+    // stdout is NDJSON only; progress (including the revert line) is on stderr.
+    expect(result.out.trim().split('\n')).toHaveLength(1);
+    expect(result.err).toMatch(/\[1\/1\] src\/guard\.ts/);
+    expect(result.err).toMatch(/1 mutation\(s\): 1 KILLED, 0 SURVIVED, 0 ERROR/);
     expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
     expect(gitStatus(root)).toBe('');
+    expect(
+      spawnSync('git', ['diff', '--quiet', 'HEAD', '--', 'src/guard.ts'], { cwd: root, env: ENV })
+        .status,
+    ).toBe(0);
   }, 60_000);
 
   it('reports a mutant the named test does not notice as SURVIVED', () => {
@@ -254,7 +341,7 @@ describe('scripts/mutate.ts', () => {
     expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
   }, 60_000);
 
-  it('runs a spec table and emits one NDJSON line per mutation', () => {
+  it('runs a spec table and continues past a row that comes back ERROR', () => {
     const root = fixture();
     const specDir = mkdtempSync(join(TMP, 'mutate-spec-'));
     dirs.push(specDir);
@@ -262,6 +349,13 @@ describe('scripts/mutate.ts', () => {
     writeFileSync(
       spec,
       JSON.stringify([
+        {
+          file: 'src/guard.ts',
+          find: 'if (value < 0) return 0;',
+          replace: 'if (value < -10) return 0;',
+          test: 'src/guard.test.ts',
+          name: 'clamps a negative value to zreo',
+        },
         {
           file: 'src/guard.ts',
           find: 'if (value < 0) return 0;',
@@ -281,8 +375,10 @@ describe('scripts/mutate.ts', () => {
 
     const result = mutate(root, ['--spec', spec, '--json']);
 
-    expect(result.status).toBe(0);
-    expect(lines(result.out).map((line) => line.outcome)).toEqual(['KILLED', 'SURVIVED']);
+    // A table's value is the whole table: the bad first row does not hide the
+    // other two. The ERROR still decides the exit code.
+    expect(result.status).toBe(1);
+    expect(lines(result.out).map((line) => line.outcome)).toEqual(['ERROR', 'KILLED', 'SURVIVED']);
     expect(gitStatus(root)).toBe('');
   }, 90_000);
 
@@ -305,5 +401,124 @@ describe('scripts/mutate.ts', () => {
     expect(result.status).toBe(2);
     expect(result.err).toMatch(/refusing to mutate the test file/);
     expect(readFileSync(join(root, 'src/guard.test.ts'), 'utf8')).toBe(TEST);
+  }, 60_000);
+
+  it('refuses a file git cannot revert, before mutating it', () => {
+    // An ignored file has no pre-image, and `git status` cannot even see it
+    // afterwards — mutating it would leave the mutation in place silently.
+    const root = fixture();
+    write(root, '.gitignore', 'node_modules/\nsrc/ignored/\n');
+    commit(root, 'ignore src/ignored');
+    write(root, 'src/ignored/probe.ts', GUARD);
+
+    const result = mutate(root, [
+      ...KILL,
+      '--file',
+      'src/ignored/probe.ts',
+      '--test',
+      'src/guard.test.ts',
+    ]);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/not tracked by git/);
+    expect(readFileSync(join(root, 'src/ignored/probe.ts'), 'utf8')).toBe(GUARD);
+    expect(gitStatus(root)).toBe('');
+  }, 60_000);
+
+  it('refuses a path outside the worktree', () => {
+    // The sibling's name extends the checkout's name, which is what made the
+    // old `slice(CWD.length + 1)` read it as an inside path.
+    const root = fixture();
+    const sibling = `${root}-probe`;
+    dirs.push(sibling);
+    write(sibling, 'guard.ts', GUARD);
+
+    const result = mutate(root, [
+      ...KILL,
+      '--file',
+      join(sibling, 'guard.ts'),
+      '--test',
+      'src/guard.test.ts',
+    ]);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/' is outside the worktree/);
+    expect(readFileSync(join(sibling, 'guard.ts'), 'utf8')).toBe(GUARD);
+    expect(gitStatus(root)).toBe('');
+  }, 60_000);
+
+  it('refuses a path whose symlink resolves outside the worktree', () => {
+    const root = fixture();
+    // The target is throwaway: if the real-path check regresses, this test
+    // mutates .tmp instead of a real source file.
+    const target = join(TMP, `escape-${basename(root)}.ts`);
+    dirs.push(target);
+    writeFileSync(target, GUARD);
+    symlinkSync(target, join(root, 'src', 'escape.ts'));
+    commit(root, 'track the escape symlink');
+
+    const result = mutate(root, [...KILL, '--file', 'src/escape.ts']);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/resolves outside the worktree/);
+    expect(readFileSync(target, 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('surfaces a failed git checkout as REVERT FAILED, never as clean', () => {
+    const root = fixture();
+    write(root, 'src/sabotage.test.ts', SABOTAGE);
+    commit(root, 'add the sabotage test');
+
+    const result = mutate(root, [
+      '--file',
+      'src/guard.ts',
+      '--find',
+      'if (value < 0) return 0;',
+      '--replace',
+      'if (value < -10) return 0;',
+      '--test',
+      'src/sabotage.test.ts',
+      '--name',
+      'sabotages the revert',
+      '--json',
+    ]);
+
+    expect(result.status).not.toBe(0);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('ERROR');
+    expect(line?.detail).toMatch(/REVERT FAILED/);
+    expect(result.err).toMatch(/REVERT FAILED/);
+    // The mutation is still on disk: the report must not claim otherwise.
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toContain('value < -10');
+  }, 60_000);
+
+  it('treats a test that is red without the mutation as a flake, not a kill', () => {
+    const root = fixture();
+    write(root, 'src/flaky.test.ts', FLAKY);
+    commit(root, 'add the flaky test');
+    const marker = join(tmpdir(), `studiq-flaky-${basename(root)}`);
+    rmSync(marker, { force: true });
+    dirs.push(marker);
+
+    const result = mutate(root, [
+      '--file',
+      'src/guard.ts',
+      '--find',
+      'if (value < 0) return 0;',
+      '--replace',
+      'if (value < -10) return 0;',
+      '--test',
+      'src/flaky.test.ts',
+      '--name',
+      'fails on its second run',
+      '--json',
+    ]);
+
+    expect(result.status).not.toBe(0);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('ERROR');
+    expect(line?.detail).toMatch(/flake suspected/);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+    expect(gitStatus(root)).toBe('');
   }, 60_000);
 });
