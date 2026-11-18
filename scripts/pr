@@ -4,6 +4,7 @@
 # Usage:
 #   scripts/pr                        # create PR with auto-generated title/body
 #   scripts/pr "fix: resolve login bug"  # create PR with custom title
+#   scripts/pr --base feat/parent     # target a base branch other than main
 #   scripts/pr --draft                # create as draft PR
 #   scripts/pr --list                 # list open PRs for this repo
 #   scripts/pr --view                 # open the PR page in browser
@@ -42,12 +43,16 @@ ACTION="create"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --draft|-d) DRAFT=true; shift ;;
+    --base)
+      [ $# -ge 2 ] || fail "--base requires a branch name"
+      BASE_BRANCH="$2"; shift 2 ;;
     --list|-l)  ACTION="list"; shift ;;
     --view|-v)  ACTION="view"; shift ;;
     --help|-h)
-      echo "Usage: scripts/pr [title] [--draft] [--list] [--view]"
+      echo "Usage: scripts/pr [title] [--base <branch>] [--draft] [--list] [--view]"
       echo ""
       echo "  [title]      PR title (auto-generated from commits if omitted)"
+      echo "  --base <branch>  Branch to merge into (default: main)"
       echo "  --draft, -d  Create as draft PR"
       echo "  --list, -l   List open PRs for this repo"
       echo "  --view, -v   Open PR page in browser"
@@ -75,6 +80,21 @@ if [ "$ACTION" = "view" ]; then
   exit 0
 fi
 
+# ── Resolve the base ───────────────────────────────────────────
+# gh resolves --base against the base repository, never your local refs, so a
+# local-only branch cannot be a PR base. Fetch first, then compare against
+# origin/<base> — the ref GitHub will use.
+[ -n "$BASE_BRANCH" ] || fail "--base requires a branch name"
+git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+if ! git rev-parse --verify --quiet "refs/remotes/origin/$BASE_BRANCH^{commit}" >/dev/null; then
+  fail "Base branch '$BASE_BRANCH' is not on origin, so it cannot be a PR base.
+  Push it first:  git push -u origin '$BASE_BRANCH'
+  Pass the branch name as it exists on origin; a local-only branch or an
+  origin/<branch> ref will not do."
+fi
+
+BASE_MERGE_REF="origin/$BASE_BRANCH"
+
 # ── Ensure branch is pushed ────────────────────────────────────
 if ! git ls-remote --exit-code origin "$CURRENT_BRANCH" >/dev/null 2>&1; then
   warn "Branch not pushed yet — pushing now"
@@ -95,7 +115,7 @@ fi
 # ── Generate title from commits if not provided ────────────────
 if [ -z "${TITLE:-}" ]; then
   # Get commit messages since diverging from base
-  MERGE_BASE=$(git merge-base "$BASE_BRANCH" "$CURRENT_BRANCH" 2>/dev/null || echo "")
+  MERGE_BASE=$(git merge-base "$BASE_MERGE_REF" "$CURRENT_BRANCH" 2>/dev/null || echo "")
   if [ -n "$MERGE_BASE" ]; then
     TITLE=$(git log --pretty=format:"%s" "$MERGE_BASE..$CURRENT_BRANCH" | head -1)
   fi
@@ -103,7 +123,7 @@ if [ -z "${TITLE:-}" ]; then
 fi
 
 # ── Generate body from commit list ─────────────────────────────
-MERGE_BASE=$(git merge-base "$BASE_BRANCH" "$CURRENT_BRANCH" 2>/dev/null || echo "")
+MERGE_BASE=$(git merge-base "$BASE_MERGE_REF" "$CURRENT_BRANCH" 2>/dev/null || echo "")
 if [ -n "$MERGE_BASE" ]; then
   BODY=$(git log --pretty=format:"- %s (%h)" "$MERGE_BASE..$CURRENT_BRANCH")
 else
@@ -116,9 +136,7 @@ fi
 SIZE_LABEL=""
 LIMIT_LINES="${PR_SIZE_LIMIT:-400}"
 
-git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
-TRIAGE_BASE="origin/$BASE_BRANCH"
-git rev-parse --verify --quiet "$TRIAGE_BASE" >/dev/null || TRIAGE_BASE="$BASE_BRANCH"
+TRIAGE_BASE="$BASE_MERGE_REF"
 
 if command -v jq >/dev/null 2>&1 \
   && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --limit "$LIMIT_LINES" --json 2>/dev/null); then

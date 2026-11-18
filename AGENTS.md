@@ -417,16 +417,18 @@ Add the commit hash to that file in the same PR when you land a formatting-only 
 
 These scripts help devs (and agents) work with feature branches and isolated worktrees:
 
-| Script                            | What it does                                                                                       |
-| --------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `scripts/switch-branch [branch]`  | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty                                |
-| `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it                                                   |
-| `scripts/spin <branch>`           | Create `../<branch>` (slashes flattened) + branch off fetched `origin/main`, stamping `.spin-base` |
-| `scripts/spin --list`             | List all active worktrees and the base each one was cut from                                       |
-| `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                                                  |
-| `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                                                       |
-| `scripts/pr --draft`              | Create a draft PR                                                                                  |
-| `scripts/pr --list`               | List open PRs for this repo                                                                        |
+| Script                                  | What it does                                                                                       |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `scripts/switch-branch [branch]`        | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty                                |
+| `scripts/switch-branch -c <name>`       | Create a new branch from main, then switch to it                                                   |
+| `scripts/spin <branch>`                 | Create `../<branch>` (slashes flattened) + branch off fetched `origin/main`, stamping `.spin-base` |
+| `scripts/spin --list`                   | List all active worktrees and the base each one was cut from                                       |
+| `scripts/spin <branch> --clean`         | Remove worktree and delete branch; refuses when it has uncommitted changes                         |
+| `scripts/spin <branch> --clean --force` | Remove it even with uncommitted changes (git-ignored files are removed either way)                 |
+| `scripts/pr [title]`                    | Create a PR from current branch via `gh` CLI                                                       |
+| `scripts/pr --base <branch>`            | Create the PR against a base other than `main`; the base must exist on `origin`                    |
+| `scripts/pr --draft`                    | Create a draft PR                                                                                  |
+| `scripts/pr --list`                     | List open PRs for this repo                                                                        |
 
 `scripts/spin` records the full base SHA in `<worktree>/.spin-base` (git-ignored).
 It is the branch's intended fork point even after `origin/main` moves; read it
