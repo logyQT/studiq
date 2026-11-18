@@ -106,12 +106,23 @@ async function terminate(child: ChildProcess): Promise<void> {
   });
 }
 
+export interface FollowRun {
+  /** Everything the process has printed so far. */
+  output(): RunResult;
+  /** Resolve once `predicate` holds over the output printed so far. */
+  until(predicate: (output: RunResult) => boolean, seen: string): Promise<void>;
+  /** Kill the process tree and resolve with everything it printed. */
+  stop(): Promise<RunResult>;
+}
+
 export interface Harness {
   dir: string;
   registryDir: string;
   stateDir: string;
   env: NodeJS.ProcessEnv;
   run(args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<RunResult>;
+  /** Start a command that must not exit (a follow loop) and inspect it live. */
+  follow(args: string[], extraEnv?: NodeJS.ProcessEnv): FollowRun;
   setStatusFixture(value: unknown): void;
   setRawStatus(text: string): void;
   setListFixture(value: unknown): void;
@@ -204,6 +215,52 @@ export function createHarness(): Harness {
   const closers: Array<() => Promise<void> | void> = [];
   const children = new Set<ChildProcess>();
 
+  interface StartedCli {
+    child: ChildProcess;
+    output(): RunResult;
+    closed: Promise<RunResult>;
+  }
+
+  function startCli(args: string[], extraEnv: NodeJS.ProcessEnv): StartedCli {
+    const child = spawn(BUN, [CLI_PATH, ...args], {
+      cwd: dir,
+      env: { ...env, ...extraEnv },
+      // Detached makes the child a process-group leader, so a timeout or
+      // cleanup can SIGKILL the whole tree (CLI + bunx + supabase).
+      detached: true,
+    });
+    children.add(child);
+
+    let stdout = '';
+    let stderr = '';
+    let result: RunResult | null = null;
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+    const closed = new Promise<RunResult>((resolvePromise) => {
+      child.on('error', (error) => {
+        children.delete(child);
+        resolvePromise({
+          status: null,
+          stdout,
+          stderr: `${stderr}spawn error: ${error.message}\n`,
+        });
+      });
+      child.on('close', (code) => {
+        children.delete(child);
+        resolvePromise({ status: code, stdout, stderr });
+      });
+    }).then((settled) => {
+      result = settled;
+      return settled;
+    });
+
+    return { child, output: () => result ?? { status: null, stdout, stderr }, closed };
+  }
+
   const env: NodeJS.ProcessEnv = {
     PATH: `${binDir}:${process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin'}`,
     HOME: dir,
@@ -236,43 +293,32 @@ export function createHarness(): Harness {
     stateDir,
     env,
     run(args, extraEnv = {}) {
-      return new Promise<RunResult>((resolvePromise) => {
-        const child = spawn(BUN, [CLI_PATH, ...args], {
-          cwd: dir,
-          env: { ...env, ...extraEnv },
-          // Detached makes the child a process-group leader, so a timeout or
-          // cleanup can SIGKILL the whole tree (CLI + bunx + supabase).
-          detached: true,
-        });
-        children.add(child);
-
-        // Own timer (instead of spawn's `timeout`) so the whole group dies, not
-        // just `bun`, and so cleanup() cannot race a hung grandchild.
-        const timer = setTimeout(() => killTree(child), 20_000);
-
-        let stdout = '';
-        let stderr = '';
-        child.stdout.on('data', (chunk: Buffer | string) => {
-          stdout += String(chunk);
-        });
-        child.stderr.on('data', (chunk: Buffer | string) => {
-          stderr += String(chunk);
-        });
-        child.on('error', (error) => {
-          clearTimeout(timer);
-          children.delete(child);
-          resolvePromise({
-            status: null,
-            stdout,
-            stderr: `${stderr}spawn error: ${error.message}\n`,
-          });
-        });
-        child.on('close', (code) => {
-          clearTimeout(timer);
-          children.delete(child);
-          resolvePromise({ status: code, stdout, stderr });
-        });
-      });
+      const cli = startCli(args, extraEnv);
+      // Own timer (instead of spawn's `timeout`) so the whole group dies, not
+      // just `bun`, and so cleanup() cannot race a hung grandchild.
+      const timer = setTimeout(() => killTree(cli.child), 20_000);
+      return cli.closed.finally(() => clearTimeout(timer));
+    },
+    follow(args, extraEnv = {}) {
+      const cli = startCli(args, extraEnv);
+      return {
+        output: cli.output,
+        async until(predicate, seen) {
+          const deadline = Date.now() + 10_000;
+          for (;;) {
+            const output = cli.output();
+            if (predicate(output)) return;
+            if (Date.now() > deadline) {
+              throw new Error(`follow never printed ${seen}; stderr so far:\n${output.stderr}`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+        },
+        async stop() {
+          await terminate(cli.child);
+          return cli.closed;
+        },
+      };
     },
     setStatusFixture(value) {
       writeFileSync(statusFile, JSON.stringify(value));
