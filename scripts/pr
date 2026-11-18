@@ -80,21 +80,20 @@ if [ "$ACTION" = "view" ]; then
   exit 0
 fi
 
-# ── Validate the base ──────────────────────────────────────────
-# gh takes a branch name in the base repository, so a local or origin branch
-# counts; a fully-qualified ref (`origin/feat/x`) does not.
-BASE_IS_LOCAL=false
-if git rev-parse --verify --quiet "refs/heads/$BASE_BRANCH^{commit}" >/dev/null; then
-  BASE_IS_LOCAL=true
-elif ! git rev-parse --verify --quiet "refs/remotes/origin/$BASE_BRANCH^{commit}" >/dev/null; then
-  fail "Base branch '$BASE_BRANCH' does not exist locally or on origin.
-  Pass a branch name (e.g. --base feat/parent), not a remote-qualified ref."
+# ── Resolve the base ───────────────────────────────────────────
+# gh resolves --base against the base repository, never your local refs, so a
+# local-only branch cannot be a PR base. Fetch first, then compare against
+# origin/<base> — the ref GitHub will use.
+[ -n "$BASE_BRANCH" ] || fail "--base requires a branch name"
+git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+if ! git rev-parse --verify --quiet "refs/remotes/origin/$BASE_BRANCH^{commit}" >/dev/null; then
+  fail "Base branch '$BASE_BRANCH' is not on origin, so it cannot be a PR base.
+  Push it first:  git push -u origin '$BASE_BRANCH'
+  Pass the branch name as it exists on origin; a local-only branch or an
+  origin/<branch> ref will not do."
 fi
 
-# merge-base needs a ref that resolves; a base that only exists on origin is
-# compared through origin/<branch>.
-BASE_MERGE_REF="$BASE_BRANCH"
-$BASE_IS_LOCAL || BASE_MERGE_REF="origin/$BASE_BRANCH"
+BASE_MERGE_REF="origin/$BASE_BRANCH"
 
 # ── Ensure branch is pushed ────────────────────────────────────
 if ! git ls-remote --exit-code origin "$CURRENT_BRANCH" >/dev/null 2>&1; then
@@ -137,9 +136,7 @@ fi
 SIZE_LABEL=""
 LIMIT_LINES="${PR_SIZE_LIMIT:-400}"
 
-git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
-TRIAGE_BASE="origin/$BASE_BRANCH"
-git rev-parse --verify --quiet "$TRIAGE_BASE" >/dev/null || TRIAGE_BASE="$BASE_BRANCH"
+TRIAGE_BASE="$BASE_MERGE_REF"
 
 if command -v jq >/dev/null 2>&1 \
   && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --limit "$LIMIT_LINES" --json 2>/dev/null); then

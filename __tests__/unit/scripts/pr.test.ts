@@ -37,7 +37,8 @@ function fakeGhEnv(parent: string): { env: NodeJS.ProcessEnv; callsFile: string 
   writeFileSync(
     join(bin, 'gh'),
     `#!/usr/bin/env bash
-printf '%s\\n' "$*" >> "$GH_CALLS"
+# One line per invocation so a multi-line --body stays on the same record.
+printf '%s\\n' "$*" | tr '\\n' ' ' >> "$GH_CALLS"; printf '\\n' >> "$GH_CALLS"
 case "$*" in
   "auth status") exit 0 ;;
   pr\\ create*) printf '%s\\n' "https://example.test/pull/1"; exit 0 ;;
@@ -123,6 +124,7 @@ describe('scripts/pr', () => {
     const { env, callsFile } = fakeGhEnv(parent);
     git(repo, 'checkout', '-q', '-b', 'feat/parent');
     commit(repo, 'feat: parent work');
+    git(repo, 'push', '-q', 'origin', 'feat/parent');
     git(repo, 'checkout', '-q', '-b', 'feat/child');
     commit(repo, 'feat: child work');
     git(repo, 'push', '-q', '-u', 'origin', 'feat/child');
@@ -134,6 +136,28 @@ describe('scripts/pr', () => {
     expect(call).toMatch(/^pr create --base feat\/parent --head feat\/child /);
     // The body is the commit range since the base; the parent's commit would
     // appear if --base were ignored.
+    expect(call).toContain('feat: child work');
+    expect(call).not.toContain('feat: parent work');
+  });
+
+  it('computes the body against origin/<base>, not a local base that is ahead', () => {
+    const { parent, repo } = makeRepo();
+    const { env, callsFile } = fakeGhEnv(parent);
+    git(repo, 'checkout', '-q', '-b', 'feat/parent');
+    commit(repo, 'feat: parent work');
+    git(repo, 'push', '-q', 'origin', 'feat/parent');
+    // Ahead of origin/feat/parent, and only on this machine: GitHub compares
+    // the PR against origin, so this commit must be listed in the body.
+    commit(repo, 'feat: parent ahead');
+    git(repo, 'checkout', '-q', '-b', 'feat/child');
+    commit(repo, 'feat: child work');
+    git(repo, 'push', '-q', '-u', 'origin', 'feat/child');
+
+    const result = runPr(repo, ['--base', 'feat/parent'], env);
+
+    expect(result.status).toBe(0);
+    const [call] = createCalls(callsFile);
+    expect(call).toContain('feat: parent ahead');
     expect(call).toContain('feat: child work');
     expect(call).not.toContain('feat: parent work');
   });
@@ -165,9 +189,26 @@ describe('scripts/pr', () => {
     const result = runPr(repo, ['--base', 'feat/nope'], env);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("Base branch 'feat/nope' does not exist");
+    expect(result.stderr).toContain("Base branch 'feat/nope' is not on origin");
     expect(createCalls(callsFile)).toHaveLength(0);
     // Validation runs before the push, so a mistyped base cannot publish the branch.
+    expect(() => git(repo, 'ls-remote', '--exit-code', 'origin', 'feat/child')).toThrow();
+  });
+
+  it('refuses a base that exists only locally, because gh resolves it on origin', () => {
+    const { parent, repo } = makeRepo();
+    const { env, callsFile } = fakeGhEnv(parent);
+    git(repo, 'checkout', '-q', '-b', 'feat/local-base');
+    commit(repo, 'feat: local base work');
+    git(repo, 'checkout', '-q', '-b', 'feat/child');
+    commit(repo, 'feat: child work');
+
+    const result = runPr(repo, ['--base', 'feat/local-base'], env);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Base branch 'feat/local-base' is not on origin");
+    expect(result.stderr).toContain("git push -u origin 'feat/local-base'");
+    expect(createCalls(callsFile)).toHaveLength(0);
     expect(() => git(repo, 'ls-remote', '--exit-code', 'origin', 'feat/child')).toThrow();
   });
 
@@ -175,10 +216,12 @@ describe('scripts/pr', () => {
     const { parent, repo } = makeRepo();
     const { env, callsFile } = fakeGhEnv(parent);
 
-    const result = runPr(repo, ['--base'], env);
+    for (const args of [['--base'], ['--base', '']]) {
+      const result = runPr(repo, args, env);
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('--base requires a branch name');
-    expect(createCalls(callsFile)).toHaveLength(0);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('--base requires a branch name');
+      expect(createCalls(callsFile)).toHaveLength(0);
+    }
   });
 });

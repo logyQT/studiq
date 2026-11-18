@@ -296,10 +296,109 @@ describe('scripts/spin', () => {
     expect(result.stderr).toContain('PRECIOUS.md');
     expect(result.stderr).toContain('tracked.txt');
     expect(result.stderr).toContain('--clean --force');
+    // The refusal says what it checks, and that ignored files go with the tree.
+    expect(result.stderr).toContain('The check covers tracked edits, staged changes');
+    expect(result.stderr).toContain('git-ignored files (.env.local, node_modules, .next)');
     // The refusal must not fall through to the branch deletion.
     expect(result.stdout).not.toContain('Deleted branch');
     expect(readFileSync(join(worktree, 'PRECIOUS.md'), 'utf8')).toBe('uncommitted work\n');
     expect(branchExists(repo, 'chore/probe')).toBe(true);
+  });
+
+  it('finds untracked files even when repo config hides them from status', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-hidden');
+
+    runSpin(repo, ['chore/hidden']);
+    writeFileSync(join(worktree, 'NOTES.md'), 'not committed\n');
+    // A repo (or user) config that turns status into a lie for this call.
+    git(repo, 'config', 'status.showUntrackedFiles', 'no');
+
+    const result = runSpinCaptured(repo, ['chore/hidden', '--clean']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('NOTES.md');
+    expect(readFileSync(join(worktree, 'NOTES.md'), 'utf8')).toBe('not committed\n');
+    expect(branchExists(repo, 'chore/hidden')).toBe(true);
+  });
+
+  it('removes a worktree whose only file is git-ignored, as the refusal states', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-ignored');
+    writeFileSync(join(repo, '.gitignore'), '.env.local\n');
+    git(repo, 'add', '.gitignore');
+    git(repo, 'commit', '-q', '-m', 'ignore the values file');
+
+    runSpin(repo, ['chore/ignored']);
+    writeFileSync(join(worktree, '.env.local'), 'SECRET=1\n');
+    // Ignored content is not inspected; the refusal text says so explicitly.
+    expect(git(worktree, 'status', '--porcelain')).not.toContain('.env.local');
+
+    const result = runSpinCaptured(repo, ['chore/ignored', '--clean']);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(worktree)).toBe(false);
+    expect(branchExists(repo, 'chore/ignored')).toBe(false);
+  });
+
+  it('inspects its own worktree even when GIT_DIR points at another checkout', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-redirected');
+
+    runSpin(repo, ['chore/redirected']);
+    writeFileSync(join(worktree, 'PRECIOUS.md'), 'uncommitted work\n');
+    // The parent checkout is clean, so an inherited GIT_DIR would report clean
+    // for the worktree about to be removed.
+    const env = { ...TEST_ENV, GIT_DIR: join(repo, '.git'), GIT_WORK_TREE: repo };
+
+    const result = runSpinCaptured(repo, ['chore/redirected', '--clean'], env);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('PRECIOUS.md');
+    expect(readFileSync(join(worktree, 'PRECIOUS.md'), 'utf8')).toBe('uncommitted work\n');
+    expect(branchExists(repo, 'chore/redirected')).toBe(true);
+  });
+
+  it('treats a hand-written .spin-base as dirt, not as its stamp', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-fake-stamp');
+
+    runSpin(repo, ['chore/fake-stamp']);
+    writeFileSync(join(worktree, '.spin-base'), 'notes I care about\n');
+
+    const result = runSpinCaptured(repo, ['chore/fake-stamp', '--clean']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('.spin-base');
+    expect(existsSync(join(worktree, '.spin-base'))).toBe(true);
+    expect(branchExists(repo, 'chore/fake-stamp')).toBe(true);
+  });
+
+  it('refuses when the worktree cannot be inspected', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-unreadable');
+
+    runSpin(repo, ['chore/unreadable']);
+    const env = failingGitEnv(parent, 'status');
+
+    const result = runSpinCaptured(repo, ['chore/unreadable', '--clean'], env);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Could not inspect worktree for uncommitted changes');
+    expect(existsSync(worktree)).toBe(true);
+    expect(branchExists(repo, 'chore/unreadable')).toBe(true);
+  });
+
+  it('warns that --force means nothing without --clean', () => {
+    const { repo, root } = makeRepo('studiq');
+
+    const result = runSpinCaptured(repo, ['chore/force-alone', '--force']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('--force only applies to --clean');
+    expect(existsSync(join(root, 'chore-force-alone'))).toBe(true);
+
+    runSpin(repo, ['chore/force-alone', '--clean']);
   });
 
   it('caps the dirty-path list and says how many paths are affected', () => {
