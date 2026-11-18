@@ -304,10 +304,17 @@ export function createHarness(): Harness {
       return {
         output: cli.output,
         async until(predicate, seen) {
-          const deadline = Date.now() + 10_000;
+          // Under the 5 s test timeout on purpose: a wait that lasts longer is
+          // reported as this failure, not as an anonymous vitest timeout.
+          const deadline = Date.now() + 4_000;
           for (;;) {
             const output = cli.output();
             if (predicate(output)) return;
+            if (output.status !== null) {
+              throw new Error(
+                `follow exited (status ${output.status}) before printing ${seen}; stderr so far:\n${output.stderr}`,
+              );
+            }
             if (Date.now() > deadline) {
               throw new Error(`follow never printed ${seen}; stderr so far:\n${output.stderr}`);
             }
