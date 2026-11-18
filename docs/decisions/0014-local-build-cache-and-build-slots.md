@@ -563,10 +563,11 @@ differ in, so the seed adds nothing a rebuild does not already change.
      through a wrapper that may overwrite `.next` deletes `.dev/build.json`
      before it starts — `env build` with a slot, `--no-slot` and `--no-lock`
      alike — so an interrupted or failed build can never inherit the previous
-     run's "current" claim. Only a successful, fingerprinted `env build` (slot or
-     `--no-slot`) writes the record back; `--no-lock` never does. A direct
-     `next build` cannot delete the file, so decision 8 makes its artifact read
-     as unrecorded instead of current.
+     run's "current" claim. Only a successful `env build` (slot or `--no-slot`)
+     whose tree did not move while it ran writes the record back; `--no-lock`
+     never does, and `env ensure`'s rebuild follows the same rule (#1365, decision
+     7). A direct `next build` cannot delete the file, so decision 8 makes its
+     artifact read as unrecorded instead of current.
      **Where the delete happens.** Immediately before the spawn, not before the
      slot wait: a build that waits out its 30-minute budget and exits 7 has not
      touched `.next`, so the previous artifact's claim is still true and is
@@ -668,8 +669,31 @@ differ in, so the seed adds nothing a rebuild does not already change.
      `build.failed` (repo-relative) and as a `failed` line, because the artifact
      is the only copy of what the failed build wrote.
      **A spawn that throws counts as a failed build** (`child.on('error')`), and
-     so does a zero exit without `BUILD_ID` or with a fingerprint that moved
-     during the build — the same `ok` test that decides the exit code.
+     so does a clean exit without `BUILD_ID`. A build whose process was signalled
+     **after** it printed its route table is kept instead: the artifact is
+     complete, and `BUILD_ID` must be fresher than the spawn for that to hold, so
+     a failed build over an existing artifact is never misread as one.
+     **The fingerprint decides recording, never success** (#1365). The tree can
+     move under a build through no fault of the build — a commit, an editor, any
+     process writing a non-ignored path — and the fingerprint is a property of
+     the tree, not of `next build`. A build that exited cleanly and wrote
+     `BUILD_ID` is therefore `ok` even when the tree moved; it is simply **not
+     recorded**: `fingerprintMoved` says so, no `.dev/build.json` is written, the
+     artifact is left in place (it is a real build) and Next's own `unrecorded`
+     state is what `env status` reports. Only an artifact that is actually broken
+     — a nonzero or timed-out build with no completed build behind it — is moved
+     aside. Treating a moved fingerprint as a build failure is how a clean 25 s
+     build became `exit 4` with its output discarded.
+     **What an unrecorded artifact can and cannot do.** `env:ensure` serves it
+     (exit 0, `web … http=200`): it just built it and the artifact is complete. A
+     later `env serve` refuses it — exit 4, `unrecorded (no build record covers
+it: …)` — because `serve` starts a server for an artifact it can prove is
+     current, and no record describes this one. `bun run env:build` is the
+     command that closes the gap: it rebuilds (a record cannot be invented for
+     an artifact whose source tree is not provable), writes the record, and then
+     `env status` reads `current` and `env serve` starts it. That split is
+     deliberate: `ensure` owns the environment it just built, `serve` only ever
+     adopts a recorded artifact.
 
 **Platform behaviour (decisions 5 and 7).** The native matrix is ADR-0011 §12's
 and is not changed here: Linux x86_64/arm64 and macOS arm64 are native, Windows is

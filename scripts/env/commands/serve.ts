@@ -10,13 +10,14 @@ import {
   identityKey,
   appendEnvLog,
   artifactStateLabel,
+  buildFingerprintOrNull,
   classifyBuildArtifact,
   readStackState,
 } from '../lib/state';
 import { leaseProjectId, readLease, touchLease, writeLease } from '../lib/lease';
 import { readRegistry } from '../lib/registry';
 import { currentBranchRef, REPO_ROOT } from '../lib/repo';
-import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
+import { buildEnvHash } from '../lib/fingerprint';
 import {
   readWebPid,
   recordedWebReadiness,
@@ -173,7 +174,7 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
         refuseBuildInProgress();
         const previous = readWebPid();
         if (previous !== null) stopWebServer();
-        const built = computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
+        const built = buildFingerprintOrNull(envHash);
         // A fingerprint match is not enough: the artifact must also be the one
         // `.dev/build.json` describes, and a raw `next build` (or a `--no-lock`
         // one) moves `BUILD_ID` past that record. Only `current` may be served.

@@ -754,7 +754,14 @@ export async function rebuildWithRecovery(
       previousPid,
       backup,
       code: error instanceof EnvFailure ? error.exitCode : EXIT_START_FAILED,
-      message: `build failed (${error instanceof Error ? error.message : String(error)})`,
+      // An `EnvFailure` already says what failed (a refused admission, a
+      // fingerprint that could not be read before building); prefixing it with
+      // "build failed" is how a run that never spawned a compiler reads as a
+      // failed build.
+      message:
+        error instanceof EnvFailure
+          ? error.message
+          : `build failed (${error instanceof Error ? error.message : String(error)})`,
       cause: error,
     });
   }

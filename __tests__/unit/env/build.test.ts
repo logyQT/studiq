@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -42,7 +43,11 @@ interface BuildResult {
   ok: boolean;
   timedOut: boolean;
   output: string;
+  fingerprintBefore?: string;
   fingerprintAfter: string;
+  /** True when the tree moved while the build ran: built, but not recordable. */
+  fingerprintMoved?: boolean;
+  invalidated?: string | null;
 }
 
 interface BuildModule {
@@ -59,11 +64,25 @@ interface ProductionBuildModule {
       readWebPid(): number | null;
       spawnBuild(slot: unknown): Promise<{
         status: number | null;
+        signal?: string | null;
         timedOut: boolean;
         output: string;
+        durationMs?: number;
       }>;
+      artifactDir?: string;
+      /** Test seam: the tree fingerprint, so a test can move the tree mid-build. */
+      fingerprint?(input: { root: string; mode: string; envHash: string }): string;
     },
+    options?: { app: 'web' | 'admin'; admission: 'slot' | 'no-slot' | 'no-lock' },
   ): Promise<BuildResult>;
+  describeBuildVerdict(facts: {
+    status: number | null;
+    signal: string | null;
+    timedOut: boolean;
+    artifact: 'missing' | 'fresh' | 'left-over' | null;
+    fingerprintBefore: string;
+    fingerprintAfter: string;
+  }): string[];
 }
 
 interface StateModule {
@@ -655,5 +674,285 @@ describe('runProductionBuild refuses a server that appeared while it queued', ()
     expect(spawned).toBe(0);
     // The refused build released its slot on the way out.
     expect(existsSync(join(registryDir, 'build-slots', '1'))).toBe(false);
+  });
+});
+
+/** The `.next.failed-*` directories a build left beside its artifact. */
+function failedArtifacts(dir: string): string[] {
+  return readdirSync(dir).filter((name) => name.startsWith('.next.failed-'));
+}
+
+/**
+ * A finished build's output, exactly as the spawn produces it: `bun run
+ * --filter` prefixes every child line with `@studiq/web build:`, and the route
+ * table is the last thing Next prints.
+ */
+const COMPLETE_BUILD_OUTPUT = [
+  '@studiq/web build: ✓ Compiled successfully in 25.7s',
+  '@studiq/web build: Route (app)                              Size  First Load JS',
+  '@studiq/web build: ┌ ○ /                                      1.2 kB         110 kB',
+  '@studiq/web build: ○  (Static)   prerendered as static content',
+  '',
+].join('\n');
+
+interface SpawnOutcome {
+  status: number | null;
+  signal?: string | null;
+  timedOut: boolean;
+  output: string;
+}
+
+/**
+ * One production build against a temporary artifact directory, with the tree
+ * moving between the two fingerprint reads when `fingerprints` differ.
+ */
+async function runOneBuild(
+  artifactDir: string,
+  spawnFake: () => Promise<SpawnOutcome>,
+  fingerprints: Array<string | Error> = ['fingerprint-before', 'fingerprint-after'],
+): Promise<{ result: BuildResult; stderr: string }> {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  let reads = 0;
+  try {
+    const result = await productionBuildModule.runProductionBuild(
+      'env-hash',
+      {
+        readWebPid: () => null,
+        artifactDir,
+        // The tree moves between the two reads, exactly like a commit, an editor
+        // or a neighbouring process landing mid-build; an `Error` entry is a
+        // read that cannot answer at all.
+        fingerprint: () => {
+          const next = fingerprints[Math.min(reads++, fingerprints.length - 1)];
+          if (next instanceof Error) throw next;
+          return next ?? '';
+        },
+        spawnBuild: () => spawnFake().then((outcome) => ({ ...outcome, durationMs: 1 })),
+      },
+      { app: 'web', admission: 'no-slot' },
+    );
+    return { result, stderr: chunks.join('') };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+/**
+ * #1365: `env:ensure` exited 4 on a build whose own output was a clean success,
+ * because the *tree* moved while the build ran and the fingerprint comparison
+ * was part of `ok`. The build is the build; the fingerprint is evidence about
+ * recording it.
+ */
+describe('a build whose tree moved while it ran', () => {
+  it('is built and kept, and says it is not recorded as current', async () => {
+    const { dir, artifactDir } = newCase();
+    const { result, stderr } = await runOneBuild(artifactDir, () => {
+      mkdirSync(artifactDir, { recursive: true });
+      writeFileSync(join(artifactDir, 'BUILD_ID'), 'fresh-build');
+      return Promise.resolve({
+        status: 0,
+        signal: null,
+        timedOut: false,
+        output: COMPLETE_BUILD_OUTPUT,
+      });
+    });
+
+    expect(result.ok).toBe(true);
+    // The evidence the caller must not record: the artifact is real, but the
+    // tree it would be recorded for is not the tree it was built from.
+    expect(result.fingerprintMoved).toBe(true);
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('fresh-build');
+    expect(failedArtifacts(dir)).toEqual([]);
+    expect(result.invalidated ?? null).toBeNull();
+    expect(stderr).toContain('is NOT recorded as current');
+  });
+
+  it('still fails — and moves the artifact aside — when the build itself failed', async () => {
+    const { dir, artifactDir } = newCase();
+    // A previous artifact: a failed build leaves its `BUILD_ID` untouched.
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'previous-build');
+
+    const { result } = await runOneBuild(artifactDir, () =>
+      Promise.resolve({
+        status: 1,
+        signal: null,
+        timedOut: false,
+        output: 'Failed to compile.\n\n./src/x.tsx:36:12\nError: Expression expected',
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(artifactDir)).toBe(false);
+    expect(result.invalidated).not.toBeNull();
+    expect(failedArtifacts(dir)).toHaveLength(1);
+    // #1316: nothing claims a failed build as current.
+    expect(stateModule.readBuildState()).toBeNull();
+  });
+
+  it('keeps a build whose process was signalled after it printed its route table', async () => {
+    const { dir, artifactDir } = newCase();
+    const { result, stderr } = await runOneBuild(artifactDir, () => {
+      mkdirSync(artifactDir, { recursive: true });
+      writeFileSync(join(artifactDir, 'BUILD_ID'), 'fresh-build');
+      return Promise.resolve({
+        status: null,
+        signal: 'SIGKILL',
+        timedOut: false,
+        output: COMPLETE_BUILD_OUTPUT,
+      });
+    }, ['fingerprint-stable', 'fingerprint-stable']);
+
+    expect(result.ok).toBe(true);
+    expect(result.fingerprintMoved).toBe(false);
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('fresh-build');
+    expect(failedArtifacts(dir)).toEqual([]);
+    // The anomalous exit is named rather than swallowed.
+    expect(stderr).toContain('signal SIGKILL');
+  });
+
+  it('warns once when the post-build fingerprint cannot be read', async () => {
+    const { dir, artifactDir } = newCase();
+    const { result, stderr } = await runOneBuild(artifactDir, () => {
+      mkdirSync(artifactDir, { recursive: true });
+      writeFileSync(join(artifactDir, 'BUILD_ID'), 'fresh-build');
+      return Promise.resolve({
+        status: 0,
+        signal: null,
+        timedOut: false,
+        output: COMPLETE_BUILD_OUTPUT,
+      });
+    }, ['fingerprint-before', new Error('git status timed out')]);
+
+    // A git failure is an unprovable record, never a failed build.
+    expect(result.ok).toBe(true);
+    expect(result.fingerprintMoved).toBe(true);
+    expect(failedArtifacts(dir)).toEqual([]);
+    const warnings = stderr.split('\n').filter((line) => line.includes('fingerprint'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('could not be read after the build');
+  });
+
+  it('does not read a numeric non-zero exit after the route table as complete', async () => {
+    const { dir, artifactDir } = newCase();
+    // A `next build` that throws after `printTreeView` (route-bundle stats,
+    // telemetry/flush, shutdown) exits 1 with the table already printed and a
+    // fresh BUILD_ID. Only a *signal* may leave a finished build behind.
+    const { result, stderr } = await runOneBuild(artifactDir, () => {
+      mkdirSync(artifactDir, { recursive: true });
+      writeFileSync(join(artifactDir, 'BUILD_ID'), 'fresh-build');
+      return Promise.resolve({
+        status: 1,
+        signal: null,
+        timedOut: false,
+        output: COMPLETE_BUILD_OUTPUT,
+      });
+    }, ['fingerprint-stable', 'fingerprint-stable']);
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(artifactDir)).toBe(false);
+    expect(failedArtifacts(dir)).toHaveLength(1);
+    expect(stateModule.readBuildState()).toBeNull();
+    // The verdict names the exit, while the artifact evidence says the build did
+    // finish: a numeric exit is the compiler's own answer, not a kill.
+    expect(stderr).toContain('exit 1; expected a clean exit 0');
+    expect(stderr).toContain('apps/web/.next/BUILD_ID is present and this build wrote it');
+  });
+
+  it('does not read a failed build over an old BUILD_ID as complete', async () => {
+    const { dir, artifactDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    const buildId = join(artifactDir, 'BUILD_ID');
+    writeFileSync(buildId, 'previous-build');
+    // Old enough that it cannot be this build's own write.
+    utimesSync(buildId, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+
+    const { result, stderr } = await runOneBuild(
+      artifactDir,
+      () =>
+        Promise.resolve({
+          status: null,
+          signal: 'SIGKILL',
+          timedOut: false,
+          output: COMPLETE_BUILD_OUTPUT,
+        }),
+      ['fingerprint-stable', 'fingerprint-stable'],
+    );
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(artifactDir)).toBe(false);
+    expect(failedArtifacts(dir)).toHaveLength(1);
+    // The verdict names the stale file instead of letting "BUILD_ID present"
+    // read as a finished build.
+    expect(stderr).toContain('was written before this build');
+  });
+});
+
+describe('describeBuildVerdict', () => {
+  it('names every condition that failed, with the evidence it was judged on', () => {
+    expect(
+      productionBuildModule.describeBuildVerdict({
+        status: 1,
+        signal: null,
+        timedOut: false,
+        artifact: 'missing',
+        fingerprintBefore: 'aaaaaaaa1111',
+        fingerprintAfter: 'bbbbbbbb2222',
+      }),
+    ).toEqual([
+      'exit 1; expected a clean exit 0',
+      'apps/web/.next/BUILD_ID is missing: the build never wrote it',
+      'tree fingerprint moved (aaaaaaaa… → bbbbbbbb…)',
+    ]);
+  });
+
+  it('names a timeout and an unreadable fingerprint', () => {
+    expect(
+      productionBuildModule.describeBuildVerdict({
+        status: null,
+        signal: 'SIGKILL',
+        timedOut: true,
+        artifact: 'fresh',
+        fingerprintBefore: 'aaaaaaaa1111',
+        fingerprintAfter: '',
+      }),
+    ).toEqual([
+      'no exit status (signal SIGKILL); the build exceeded its budget and was killed',
+      'apps/web/.next/BUILD_ID is present and this build wrote it',
+      'tree fingerprint unreadable after the build (before aaaaaaaa…)',
+    ]);
+  });
+
+  it('makes no artifact or fingerprint claim for apps/admin', () => {
+    expect(
+      productionBuildModule.describeBuildVerdict({
+        status: 2,
+        signal: null,
+        timedOut: false,
+        artifact: null,
+        fingerprintBefore: '',
+        fingerprintAfter: '',
+      }),
+    ).toEqual(['exit 2; expected a clean exit 0']);
+  });
+});
+
+describe('env:build records nothing for a build whose tree moved', () => {
+  it('exits 0 and writes no record', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+
+    const code = await buildModule.runBuild(parsedBuild(), {
+      producerReason: () => 'not the primary checkout (a linked worktree never publishes)',
+      build: () => Promise.resolve({ ...buildResult(), fingerprintMoved: true }),
+    });
+
+    expect(code).toBe(0);
+    expect(stateModule.readBuildState()).toBeNull();
   });
 });

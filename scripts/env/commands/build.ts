@@ -18,10 +18,11 @@ import { collectSnapshot } from '../lib/snapshot';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
-import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
+import { buildEnvHash } from '../lib/fingerprint';
 import {
   appendEnvLog,
   buildArtifactPresent,
+  buildFingerprintOrNull,
   classifyBuildArtifact,
   readBuildState,
   readStackState,
@@ -314,10 +315,8 @@ export async function runBuild(
     const previous = web ? readBuildState() : null;
     const current =
       web &&
-      classifyBuildArtifact({
-        fingerprint: computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }),
-        envHash,
-      }) === 'current';
+      classifyBuildArtifact({ fingerprint: buildFingerprintOrNull(envHash), envHash }) ===
+        'current';
     const built = !current || options.force;
     // Decided before the build so a checkout that can never publish (a linked
     // worktree, a dirty tree, main ahead) does not pay for a 300 MB copy on
@@ -362,8 +361,10 @@ export async function runBuild(
         throw new EnvFailure(failure.code, failure.message);
       }
       // `--no-lock` never records: a bypassed artifact is not reported as
-      // current by construction (ADR-0014, decision 6).
-      if (web && options.admission !== 'no-lock') {
+      // current by construction (ADR-0014, decision 6). A tree that moved while
+      // it built is the same kind of fact: the artifact is real, but recording
+      // `fingerprintAfter` would claim it for a tree it was not built from.
+      if (web && options.admission !== 'no-lock' && !result.fingerprintMoved) {
         builtAt = new Date().toISOString();
         writeBuildState({
           fingerprint: result.fingerprintAfter,
@@ -405,7 +406,15 @@ export async function runBuild(
       grant: result === null ? null : (result.grant ?? 'unconsumed'),
       built,
       ok: result?.ok ?? true,
-      fingerprint: web ? (result?.fingerprintAfter ?? previous?.fingerprint ?? null) : null,
+      // A moved fingerprint describes the tree after the build, not the source
+      // the artifact was made from; nothing claims it, so nothing reports it.
+      fingerprint: !web
+        ? null
+        : result === null
+          ? (previous?.fingerprint ?? null)
+          : result.fingerprintMoved
+            ? null
+            : result.fingerprintAfter,
       builtAt,
       snapshot: snapshotRun,
       seed: seedRun,

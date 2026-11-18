@@ -34,7 +34,7 @@ import {
   profileSeeds,
   type Capability,
 } from '../profiles';
-import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
+import { buildEnvHash } from '../lib/fingerprint';
 import {
   rebuildWithRecovery,
   recoverHandover,
@@ -70,6 +70,7 @@ import { appPortCandidates, chooseAppPort } from '../lib/app-port';
 import { readCachedStack, writeCachedStack, type CachedStack } from '../lib/stack-cache';
 import {
   appendEnvLog,
+  buildFingerprintOrNull,
   classifyBuildArtifact,
   identityKey,
   readStackState,
@@ -99,6 +100,7 @@ import { collectSnapshot } from '../lib/snapshot';
 import { assertSeedingAllowed, runSeeder } from '../lib/seed';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
 import { printJson, writeStderrLine } from '../lib/output';
+import type { BuildResult } from '../lib/build';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const healthy = (code: number) => code >= 200 && code < 400;
@@ -146,6 +148,79 @@ function withPort(contract: Contract, appPort: number): Contract {
   process.env.APP_URL = next.appUrl;
   process.env.NEXT_PUBLIC_SITE_URL ||= next.appUrl;
   return next;
+}
+
+/**
+ * Record the build this run just made, unless its tree moved while it built.
+ *
+ * A moved fingerprint describes the tree *after* the build, not the source the
+ * artifact was made from: recording it would claim the artifact for a tree that
+ * never built it, and `.dev/build.json` is the only thing `env serve` trusts.
+ * The artifact itself is kept and served; it simply reads as `unrecorded`, so
+ * the next build rebuilds and records it.
+ */
+function recordBuiltArtifact(build: BuildResult, envHash: string): void {
+  if (build.fingerprintMoved) return;
+  writeBuildState({
+    fingerprint: build.fingerprintAfter,
+    envHash,
+    builtAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Make the leased port serve this run's artifact.
+ *
+ * A server the rebuild already proved healthy is adopted as-is. Otherwise the
+ * port is probed, and a replacement is started only when this run serves and the
+ * recorded server is not (healthy and) serving the leased port. `beforeStart`
+ * runs only on that path: the local-stack branch re-reads a warm stack there,
+ * because the warm path carries no keys.
+ */
+async function serveLeasedPort(input: {
+  appPort: number;
+  appUrl: string;
+  serve: boolean;
+  webPid: number | null;
+  webHttp: number;
+  webStarted: boolean;
+  beforeStart?: () => void;
+}): Promise<{ webPid: number | null; webHttp: number }> {
+  let { webPid, webHttp } = input;
+  if (input.webStarted) return { webPid, webHttp };
+  const warmWeb = recordedWebReadiness(input.appPort);
+  webHttp = await probeHttp(input.appUrl);
+  if (!input.serve || (healthy(webHttp) && warmWeb.ready)) return { webPid, webHttp };
+  input.beforeStart?.();
+  // A port that already answers without a provable owner is refused, and a
+  // server that survives its stop would race the replacement for the port; both
+  // abort instead of starting a second server.
+  refuseAnsweringPort(input.appPort, webHttp, warmWeb);
+  const started = await startWebReplacement({
+    appPort: input.appPort,
+    appUrl: input.appUrl,
+    env: process.env,
+    webPid,
+  });
+  return { webPid: started.pid, webHttp: started.http };
+}
+
+/**
+ * Adopt a finished rebuild: record what it built and take over the server it
+ * started, re-probing when this run has to serve.
+ */
+async function adoptRebuild(
+  outcome: RebuildRecoveryResult,
+  envHash: string,
+  appUrl: string,
+  serve: boolean,
+): Promise<{ webPid: number | null; webHttp: number; webStarted: boolean }> {
+  recordBuiltArtifact(outcome.build, envHash);
+  return {
+    webPid: outcome.webPid,
+    webHttp: serve ? await probeHttp(appUrl) : outcome.webHttp,
+    webStarted: outcome.webStarted,
+  };
 }
 
 /**
@@ -263,11 +338,7 @@ async function rebuildIfNeeded(
 ): Promise<RebuildRecoveryResult | null> {
   const current =
     classifyBuildArtifact({
-      fingerprint: computeBuildFingerprint({
-        root: REPO_ROOT,
-        mode: BUILD_MODE,
-        envHash: input.envHash,
-      }),
+      fingerprint: buildFingerprintOrNull(input.envHash),
       envHash: input.envHash,
     }) === 'current';
   if (!input.force && current) return null;
@@ -660,11 +731,7 @@ async function warmFromCache(input: {
   if (input.build) {
     const current =
       classifyBuildArtifact({
-        fingerprint: computeBuildFingerprint({
-          root: REPO_ROOT,
-          mode: BUILD_MODE,
-          envHash: cached.envHash,
-        }),
+        fingerprint: buildFingerprintOrNull(cached.envHash),
         envHash: cached.envHash,
       }) === 'current';
     if (!current || cached.appUrl !== input.contract.appUrl) return null;
@@ -841,36 +908,22 @@ export async function runEnsure(
           if (!fenced) {
             await revalidateSharedStack({ dir, projectId, contract, requested, envHash });
           }
-          writeBuildState({
-            fingerprint: outcome.build.fingerprintAfter,
+          ({ webPid, webHttp, webStarted } = await adoptRebuild(
+            outcome,
             envHash,
-            builtAt: new Date().toISOString(),
-          });
-          webPid = outcome.webPid;
-          webHttp = outcome.webHttp;
-          webStarted = outcome.webStarted;
-          if (options.serve) webHttp = await probeHttp(contract.appUrl);
+            contract.appUrl,
+            options.serve,
+          ));
         }
       }
-      if (!webStarted) {
-        const warmWeb = recordedWebReadiness(contract.appPort);
-        webHttp = await probeHttp(contract.appUrl);
-        if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
-          // Any owned server that is not (healthy and) serving the leased port is
-          // replaced, so a foreign listener on the port cannot be mistaken for it.
-          // A port that already answers without a provable owner is refused, and
-          // a stop that leaves the old server alive aborts the replacement.
-          refuseAnsweringPort(contract.appPort, webHttp, warmWeb);
-          const started = await startWebReplacement({
-            appPort: contract.appPort,
-            appUrl: contract.appUrl,
-            env: process.env,
-            webPid,
-          });
-          webPid = started.pid;
-          webHttp = started.http;
-        }
-      }
+      ({ webPid, webHttp } = await serveLeasedPort({
+        appPort: contract.appPort,
+        appUrl: contract.appUrl,
+        serve: options.serve,
+        webPid,
+        webHttp,
+        webStarted,
+      }));
       writeLease(touchLease(lease.lease, { appPort: contract.appPort, ownerPid: webPid ?? 0 }));
       // There is no local stack to describe, but the served web process still
       // needs attribution so a second shared ensure (or a later build) is not
@@ -1040,52 +1093,41 @@ export async function runEnsure(
           appEnv,
           stackId: verified.status.id,
         });
-        writeBuildState({
-          fingerprint: outcome.build.fingerprintAfter,
+        ({ webPid, webHttp, webStarted } = await adoptRebuild(
+          outcome,
           envHash,
-          builtAt: new Date().toISOString(),
-        });
-        webPid = outcome.webPid;
-        webHttp = outcome.webHttp;
-        webStarted = outcome.webStarted;
-        if (options.serve) webHttp = await probeHttp(contract.appUrl);
+          contract.appUrl,
+          options.serve,
+        ));
       }
     }
 
-    if (!webStarted) {
-      const warmWeb = recordedWebReadiness(contract.appPort);
-      webHttp = await probeHttp(contract.appUrl);
-      if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
-        if (warm) {
-          // The warm path carries no keys, so it may not start a replacement.
-          // The server stopped after the warm probes: re-read the stack (it is
-          // still up — the capability probes just passed) and relay its values.
-          const refreshed = readStack(cliStackName);
-          if (!refreshed) {
-            throw new EnvFailure(
-              EXIT_START_FAILED,
-              `stack '${cliStackName || 'default'}' changed while serving; re-run 'env:ensure'`,
-            );
-          }
-          assertOwnedStack(refreshed, cliStackName);
-          stack = refreshed;
-          warm = null;
-          applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
-        }
-        // A port that already answers without a provable owner is refused, and a
-        // server that survives its stop would race the replacement for the port;
-        // both abort instead of starting a second server.
-        refuseAnsweringPort(contract.appPort, webHttp, warmWeb);
-        const started = await startWebReplacement({
-          appPort: contract.appPort,
-          appUrl: contract.appUrl,
-          env: process.env,
-          webPid,
-        });
-        webPid = started.pid;
-        webHttp = started.http;
+    // The warm path carries no keys, so it may not start a replacement: a server
+    // that stopped after the warm probes is re-read here (the stack is still up —
+    // the capability probes just passed) and its values relayed.
+    const refreshWarmStack = (): void => {
+      if (!warm) return;
+      const refreshed = readStack(cliStackName);
+      if (!refreshed) {
+        throw new EnvFailure(
+          EXIT_START_FAILED,
+          `stack '${cliStackName || 'default'}' changed while serving; re-run 'env:ensure'`,
+        );
       }
-    }
+      assertOwnedStack(refreshed, cliStackName);
+      stack = refreshed;
+      warm = null;
+      applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
+    };
+    ({ webPid, webHttp } = await serveLeasedPort({
+      appPort: contract.appPort,
+      appUrl: contract.appUrl,
+      serve: options.serve,
+      webPid,
+      webHttp,
+      webStarted,
+      beforeStart: refreshWarmStack,
+    }));
 
     const ready =
       (!options.serve || healthy(webHttp)) &&

@@ -235,17 +235,28 @@ export function classifyRecordedArtifact(
   // `next build` after a wrapper build is the headline `unrecorded` case, and it
   // must not cost two `git` calls to answer.
   if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
-  let fingerprint: string | null;
+  return classifyBuildArtifact(
+    { fingerprint: buildFingerprintOrNull(record.envHash), envHash: record.envHash },
+    artifactDir,
+  );
+}
+
+/**
+ * The tree fingerprint for `envHash`, or `null` when git cannot answer.
+ *
+ * `classifyBuildArtifact` reads `null` as "cannot be computed", which is never
+ * `current`: an unprovable fingerprint costs a rebuild (`env build`, `ensure`) or
+ * a refusal (`env serve`), never a thrown git error before the command has
+ * decided anything.
+ *
+ * @public Exercised by the unit tests through `env:build` and `env:serve`.
+ */
+export function buildFingerprintOrNull(envHash: string): string | null {
   try {
-    fingerprint = computeBuildFingerprint({
-      root: REPO_ROOT,
-      mode: BUILD_MODE,
-      envHash: record.envHash,
-    });
+    return computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
   } catch {
-    fingerprint = null;
+    return null;
   }
-  return classifyBuildArtifact({ fingerprint, envHash: record.envHash }, artifactDir);
 }
 
 /** One line an agent can act on, for a state the classifier returned. */
@@ -253,7 +264,7 @@ const ARTIFACT_STATE_LABELS: Record<BuildArtifactState, string> = {
   current: 'current',
   stale: 'stale (the tree or the inlined environment changed since the recorded build)',
   unrecorded:
-    'unrecorded (no build record covers it: a raw next build or a --no-lock build leaves none)',
+    'unrecorded (no build record covers it: a raw next build or a --no-lock build leaves none, and a build whose tree moved while it ran is deliberately not recorded)',
   missing: 'missing (apps/web/.next has no BUILD_ID)',
 };
 
