@@ -474,6 +474,25 @@ describe('scripts/mutate.ts', () => {
     expect(readFileSync(target, 'utf8')).toBe(GUARD);
   }, 60_000);
 
+  it('refuses a tracked symlink whose target is ignored', () => {
+    // The link is in the index, so checking the link alone passes; the bytes
+    // `writeFileSync` touches are not, so `git checkout` would restore the link
+    // and leave the mutation in place behind a clean `git status`.
+    const root = fixture();
+    write(root, '.gitignore', 'node_modules/\n.tmp/\n');
+    commit(root, 'ignore .tmp');
+    write(root, '.tmp/hidden.ts', GUARD);
+    symlinkSync('../.tmp/hidden.ts', join(root, 'src', 'inlink.ts'));
+    commit(root, 'track the link');
+
+    const result = mutate(root, [...KILL, '--file', 'src/inlink.ts']);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/resolves to '\.tmp\/hidden\.ts', which is not tracked/);
+    expect(readFileSync(join(root, '.tmp/hidden.ts'), 'utf8')).toBe(GUARD);
+    expect(gitStatus(root)).toBe('');
+  }, 60_000);
+
   it('surfaces a failed git checkout as REVERT FAILED, never as clean', () => {
     const root = fixture();
     write(root, 'src/sabotage.test.ts', SABOTAGE);

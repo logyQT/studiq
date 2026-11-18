@@ -15,8 +15,9 @@
  * see an ignored file).
  *
  * A `KILLED` is re-checked: the test is run again without the mutation, and a
- * red re-run is `ERROR` / "flake suspected" — a flake must never read as a
- * proof.
+ * red re-run is `ERROR` / "flake suspected". That catches a test that is red
+ * without the mutation; a **periodic** flake (green and red alternating) can
+ * still read as a kill, so a kill that does not reproduce is not proof.
  *
  * Usage:
  *   bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \
@@ -336,30 +337,32 @@ function outside(rel: string): boolean {
  * The only path this tool may write. Lexical containment is not enough — the
  * previous version sliced `CWD.length + 1`, so `../<cwd-basename>-probe/x`
  * lost its `../` and read as inside — and a symlink can point out even when the
- * lexical path is inside, so the real path is checked too.
+ * lexical path is inside, so the real path is checked too. `real` is the path
+ * `writeFileSync` will actually touch.
  */
-function locate(file: string): { rel: string; abs: string } {
+function locate(file: string): { rel: string; abs: string; real: string } {
   const rel = relativeToCwd(file);
   const abs = resolve(CWD, file);
-  if (existsSync(abs)) {
-    const real = relative(REAL_CWD, realpathSync(abs));
-    if (outside(real)) {
-      usage(`'${file}' resolves outside the worktree; the revert runs here`);
-    }
+  const exists = existsSync(abs);
+  const real = exists ? relative(REAL_CWD, realpathSync(abs)) : rel;
+  if (outside(real)) {
+    usage(`'${file}' resolves outside the worktree; the revert runs here`);
   }
-  return { rel, abs };
+  return { rel, abs, real };
 }
 
 /**
  * A mutation is only revertible if git has a pre-image for the path. An ignored
  * or untracked file has none — and `git status` cannot even see it afterwards,
- * so the mutation would silently outlive the run.
+ * so the mutation would silently outlive the run. `via` names the link when the
+ * path under test is a symlink's target.
  */
-function requireTracked(rel: string): void {
+function requireTracked(rel: string, via?: string): void {
   const result = git(['ls-files', '--error-unmatch', '--', rel]);
   if (result.code !== 0) {
+    const subject = via ? `${via} resolves to '${rel}', which is` : `'${rel}' is`;
     usage(
-      `'${rel}' is not tracked by git: a mutation there has no pre-image to revert. ` +
+      `${subject} not tracked by git: a mutation there has no pre-image to revert. ` +
         'Commit it, or mutate a tracked file.',
     );
   }
@@ -403,6 +406,8 @@ interface Planned {
  * A kill has to survive its own unmutated re-run. A test that is red under the
  * mutation and red again without it did not prove the mutation — it was flaky,
  * and a flake manufactures a `KILLED` that no automated consumer can tell apart.
+ * One confirm run catches this class only: a periodic (green/red) flake still
+ * needs the reviewer to re-run the kill.
  */
 function confirmFlake(result: RunResult, test: string): string | null {
   if (!result.report) return result.note || 'the unmutated re-run produced no report';
@@ -558,6 +563,10 @@ function main(): void {
     if (!existsSync(test.abs)) usage(`no such test file: ${mutation.test}`);
     assertNotATest(file.rel);
     requireTracked(file.rel);
+    // A tracked symlink can still point at an ignored file: the path is in the
+    // index, but the bytes `writeFileSync` touches are not, so `git checkout`
+    // restores the link and the mutation outlives a clean `git status`.
+    if (file.real !== file.rel) requireTracked(file.real, `'${file.rel}'`);
     return { mutation, rel: file.rel, abs: file.abs, test: test.rel };
   });
 

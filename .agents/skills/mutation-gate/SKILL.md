@@ -67,8 +67,9 @@ bun run mutate -- --spec .tmp/mutations.json --json
 - It runs the named test **once before mutating** (the baseline), so a red test or
   a mistyped title is `ERROR` rather than a false kill or a false survivor, and
   **once more after a `KILLED`** (unmutated): a test that is red without the
-  mutation is a flake, and a flake manufactures a kill. Budget three runs per
-  kill.
+  mutation is `ERROR`, not a kill. Budget three runs per kill. One confirm run
+  cannot see a **periodic** flake (green and red alternating) — re-run a
+  surprising kill by hand.
 - `--spec` reads its JSON from a committed file, a git-ignored one (`.tmp/`) or
   outside the worktree: an untracked spec makes the tree dirty, and a dirty tree
   is refused. A row that comes back `ERROR` does not stop the table; a row whose
@@ -130,10 +131,12 @@ mutation targets**, not somewhere upstream:
 - Read the `detail` line (`scripts/mutate.ts` quotes the first failure message).
   `expected 6 to be 0` on a status-code assertion is the kill you wanted; a
   `TypeError` from a fixture that no longer imports is not.
-- **A flake must not read as a kill.** `scripts/mutate.ts` re-runs the named test
-  unmutated after a `KILLED`; a red re-run is `ERROR` / `flake suspected`. If you
-  hand-roll a run, you own that check: a test that is red without the mutation
-  proves nothing about the mutation.
+- **A flake must not read as a kill — and one confirm run is not a flake
+  detector.** After a `KILLED`, `scripts/mutate.ts` re-runs the named test
+  unmutated; a red re-run is `ERROR` / `flake suspected`. A **periodic** flake
+  (green and red alternating) can still read as a kill, so re-run a suspicious
+  `KILLED` by hand: **a kill that does not reproduce is not a proof.** If you
+  hand-roll a run, you own both checks.
 - If you cannot attribute the failure, re-run the *unmutated* test, confirm it is
   green, and treat the mutation as `ERROR`. **An error is never proof** — not a
   compile error, not a missing module, not a timeout, not a database that was

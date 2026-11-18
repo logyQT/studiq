@@ -97,8 +97,9 @@ bun run mutate -- --file <source> --find "<the guarded line>" --replace "<the re
 `KILLED` is the evidence; `SURVIVED` is a finding ("tests added" is not evidence);
 `ERROR` is never proof — fix the command before judging the PR. A `-t` title that
 matches nothing is `ERROR`, not a survivor. The tool re-runs a killed test
-unmutated, so a flake comes back as `ERROR`, not as a pass. Method and recipes:
-`.agents/skills/mutation-gate/SKILL.md`.
+unmutated, so a test that is red without the mutation comes back as `ERROR`; a
+**periodic** flake can still read as a kill, so a kill you cannot reproduce is
+not evidence. Method and recipes: `.agents/skills/mutation-gate/SKILL.md`.
 
 For a **Playwright claim** (`__tests__/e2e/`, `__tests__/qa/`) the driver is
 different: `bun run mutate` refuses a spec, and the spec needs a rebuilt app —
