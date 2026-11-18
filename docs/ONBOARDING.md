@@ -117,8 +117,9 @@ The project ships helper scripts that wrap `gh` for common workflows:
 scripts/spin feat/my-feature
 ```
 
-This creates a new git worktree beside the repo (grouped by branch prefix)
-with its own branch cut from a freshly fetched `origin/main`; the base commit
+This creates a new git worktree directly in the repo's parent directory, one
+directory per branch with `/` flattened to `-`, and its own branch cut from a
+freshly fetched `origin/main`; the base commit
 is recorded in the worktree's `.spin-base`. Each worktree gets its own Supabase
 stack and its own app port (CLI-assigned): **one environment per checkout**, so
 a second stack or server for a different stack/profile in the same checkout is
@@ -126,7 +127,7 @@ refused (exit 6) — spin another worktree instead. Move your agent session into
 it:
 
 ```bash
-cd ../studiq-worktrees/feat/my-feature
+cd ../feat-my-feature
 ```
 
 #### Committing and pushing
@@ -156,7 +157,7 @@ scripts/pr --view                   # open PR in browser
 scripts/spin feat/my-feature
 
 # 2. Move into the worktree
-cd ../studiq-worktrees/feat/my-feature
+cd ../feat-my-feature
 
 # 3. Install dependencies (first time in a new worktree)
 bun install
@@ -179,10 +180,12 @@ scripts/spin --list                 # see all active worktrees
 scripts/spin feat/my-feature --clean  # remove worktree + delete branch
 ```
 
-Worktrees are created beside the repo as `../<repo>-worktrees/<branch>`, so the
-branch hierarchy stays visible (`feat/my-feature` →
-`../studiq-worktrees/feat/my-feature`). `--clean` only removes worktrees that
-`scripts/spin` created.
+Worktrees are created directly in the repo's parent directory, one per branch
+with `/` flattened to `-` (`feat/my-feature` → `../feat-my-feature`);
+`SPIN_WORKTREE_ROOT=<dir>` relocates that root. `--clean` only removes worktrees that
+`scripts/spin` created: it locates the worktree by its branch registration and
+authorises on the provenance lock, so one that has been moved is still the one
+cleaned.
 
 ### 6. Troubleshooting
 

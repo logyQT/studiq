@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -53,6 +53,16 @@ function runSpinCaptured(cwd: string, args: string[], env: NodeJS.ProcessEnv = T
 
 function branchExists(repo: string, branch: string): boolean {
   return git(repo, 'branch', '--list', '--', branch).trim() !== '';
+}
+
+// A worktree created outside scripts/spin, optionally locked with the given
+// reason. This is how the refusal cases present a foreign worktree.
+function addWorktree(repo: string, worktree: string, branch: string, lockReason?: string): void {
+  mkdirSync(dirname(worktree), { recursive: true });
+  git(repo, 'worktree', 'add', '-q', worktree, '-b', branch, 'main');
+  if (lockReason !== undefined) {
+    git(repo, 'worktree', 'lock', '--reason', lockReason, worktree);
+  }
 }
 
 function spinStderr(cwd: string, args: string[], env: NodeJS.ProcessEnv = TEST_ENV): string {
@@ -135,13 +145,93 @@ describe('scripts/spin', () => {
     }
 
     git(repo, 'commit', '-q', '--allow-empty', '-m', 'init');
-    return { parent, repo, root: join(parent, `${name}-worktrees`) };
+    // The default worktree root is the checkout's parent directory.
+    return { parent, repo, root: parent };
   }
+
+  it('creates a worktree directly in the parent directory', () => {
+    const { repo, root } = makeRepo('studiq');
+
+    runSpin(repo, ['release-candidate']);
+
+    expect(existsSync(join(root, 'release-candidate'))).toBe(true);
+    expect(branchExists(repo, 'release-candidate')).toBe(true);
+
+    runSpin(repo, ['release-candidate', '--clean']);
+  });
+
+  it('flattens branch slashes so a worktree never adds a directory level', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'feat-x-y');
+
+    runSpin(repo, ['feat/x/y']);
+    expect(existsSync(worktree)).toBe(true);
+    expect(existsSync(join(root, 'feat'))).toBe(false);
+
+    runSpin(repo, ['feat/x/y', '--clean']);
+    expect(existsSync(worktree)).toBe(false);
+  });
+
+  it('refuses a second branch that flattens to an occupied directory', () => {
+    const { repo, root } = makeRepo('studiq');
+
+    runSpin(repo, ['feat-x']);
+
+    const stderr = spinStderr(repo, ['feat/x']);
+    expect(stderr).toMatch(/Directory already exists/);
+    expect(stderr).toContain(join(root, 'feat-x'));
+    expect(stderr).toContain("checkout of branch 'feat-x'");
+    expect(stderr).not.toContain('Remove it manually');
+    expect(branchExists(repo, 'feat/x')).toBe(false);
+
+    runSpin(repo, ['feat-x', '--clean']);
+  });
+
+  it('names the primary checkout when the branch name matches it', () => {
+    const { repo } = makeRepo('studiq');
+
+    const stderr = spinStderr(repo, ['studiq']);
+
+    expect(stderr).toMatch(/Directory already exists/);
+    expect(stderr).toContain('It is the primary checkout');
+    expect(stderr).not.toContain('Remove it manually');
+    expect(stderr).not.toContain('SPIN_WORKTREE_ROOT');
+    expect(branchExists(repo, 'studiq')).toBe(false);
+  });
+
+  it('refuses a worktree root that exists as a file, before creating a branch', () => {
+    const { parent, repo } = makeRepo('studiq');
+    const fileRoot = join(parent, 'afile');
+    writeFileSync(fileRoot, '');
+    const env = { ...TEST_ENV, SPIN_WORKTREE_ROOT: fileRoot };
+
+    const result = runSpinCaptured(repo, ['feat/file'], env);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/not a directory/);
+    expect(result.stdout).not.toContain('Created branch');
+    expect(branchExists(repo, 'feat/file')).toBe(false);
+  });
+
+  it('deletes the branch when the worktree directory cannot be created', () => {
+    const { parent, repo } = makeRepo('studiq');
+    const bin = join(parent, 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(bin, 'mkdir'),
+      '#!/usr/bin/env bash\necho "simulated mkdir failure" >&2\nexit 1\n',
+      { mode: 0o755 },
+    );
+    const env = { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}` };
+
+    expect(spinStderr(repo, ['feat/nodir'], env)).toMatch(/simulated mkdir failure/);
+    expect(branchExists(repo, 'feat/nodir')).toBe(false);
+  });
 
   it('creates and cleans a worktree when the repo path contains unusual characters', () => {
     const name = 'stüdiq repo\nname';
     const { parent, repo } = makeRepo(name);
-    const worktree = join(parent, `${name}-worktrees`, 'feat', 'x');
+    const worktree = join(parent, 'feat-x');
 
     runSpin(repo, ['feat/x']);
     expect(existsSync(worktree)).toBe(true);
@@ -150,30 +240,6 @@ describe('scripts/spin', () => {
     runSpin(repo, ['feat/x', '--clean']);
     expect(existsSync(worktree)).toBe(false);
     expect(branchExists(repo, 'feat/x')).toBe(false);
-  });
-
-  it('preserves the branch hierarchy and keeps similar prefixes apart', () => {
-    const { repo, root } = makeRepo('studiq');
-
-    runSpin(repo, ['feat/x']);
-    runSpin(repo, ['feat-x']);
-
-    expect(existsSync(join(root, 'feat', 'x'))).toBe(true);
-    expect(existsSync(join(root, 'feat-x'))).toBe(true);
-
-    runSpin(repo, ['feat/x', '--clean']);
-    runSpin(repo, ['feat-x', '--clean']);
-  });
-
-  it('supports multi-slash branches', () => {
-    const { repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'x', 'y');
-
-    runSpin(repo, ['feat/x/y']);
-    expect(existsSync(worktree)).toBe(true);
-
-    runSpin(repo, ['feat/x/y', '--clean']);
-    expect(existsSync(worktree)).toBe(false);
   });
 
   it.skipIf(IS_ROOT)('fails before creating a branch when the parent is not writable', () => {
@@ -187,7 +253,7 @@ describe('scripts/spin', () => {
 
   it('deletes the branch when the worktree directory was removed by hand', () => {
     const { repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'gone');
+    const worktree = join(root, 'feat-gone');
 
     runSpin(repo, ['feat/gone']);
     rmSync(worktree, { recursive: true, force: true });
@@ -196,24 +262,160 @@ describe('scripts/spin', () => {
     expect(branchExists(repo, 'feat/gone')).toBe(false);
   });
 
-  it('refuses to clean a worktree without scripts/spin provenance', () => {
+  it('cleans a worktree at the default path', () => {
     const { repo, root } = makeRepo('studiq');
-    const foreign = join(root, 'feat', 'foreign');
+    const worktree = join(root, 'feat-cleaned');
 
-    mkdirSync(join(root, 'feat'), { recursive: true });
-    git(repo, 'worktree', 'add', '-q', foreign, '-b', 'feat/foreign', 'main');
-    writeFileSync(join(foreign, 'local.txt'), 'dirty');
+    runSpin(repo, ['feat/cleaned']);
+    expect(existsSync(worktree)).toBe(true);
 
-    expect(spinStderr(repo, ['feat/foreign', '--clean'])).toMatch(
-      /without scripts\/spin provenance/,
-    );
-    expect(existsSync(join(foreign, 'local.txt'))).toBe(true);
-    expect(branchExists(repo, 'feat/foreign')).toBe(true);
+    const result = runSpinCaptured(repo, ['feat/cleaned', '--clean']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`Removed worktree: ${worktree}`);
+    expect(existsSync(worktree)).toBe(false);
+    expect(branchExists(repo, 'feat/cleaned')).toBe(false);
+  });
+
+  // The locator is the branch registration, never the path recomputed from
+  // the name, so a worktree that moved is still the one its branch owns.
+  it('cleans a worktree registered at a path other than the computed one', () => {
+    const { parent, repo } = makeRepo('studiq');
+    const moved = join(parent, 'moved', 'feat-moved');
+
+    runSpin(repo, ['feat/moved']);
+    mkdirSync(dirname(moved), { recursive: true });
+    git(repo, 'worktree', 'move', '-f', '-f', join(parent, 'feat-moved'), moved);
+
+    const result = runSpinCaptured(repo, ['feat/moved', '--clean']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`Removed worktree: ${moved}`);
+    expect(existsSync(moved)).toBe(false);
+    expect(branchExists(repo, 'feat/moved')).toBe(false);
+  });
+
+  it('creates beneath SPIN_WORKTREE_ROOT and cleans it by provenance', () => {
+    const { parent, repo } = makeRepo('studiq');
+    const env = { ...TEST_ENV, SPIN_WORKTREE_ROOT: join(parent, 'builds') };
+    const worktree = join(parent, 'builds', 'feat-relocated');
+
+    runSpin(repo, ['feat/relocated'], env);
+    expect(existsSync(worktree)).toBe(true);
+    expect(existsSync(join(parent, 'feat-relocated'))).toBe(false);
+
+    const result = runSpinCaptured(repo, ['feat/relocated', '--clean'], env);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`Removed worktree: ${worktree}`);
+    expect(existsSync(worktree)).toBe(false);
+    expect(branchExists(repo, 'feat/relocated')).toBe(false);
+  });
+
+  it('rejects a relative SPIN_WORKTREE_ROOT', () => {
+    const { repo } = makeRepo('studiq');
+    const env = { ...TEST_ENV, SPIN_WORKTREE_ROOT: 'relative/builds' };
+
+    expect(spinStderr(repo, ['feat/rel'], env)).toMatch(/must be an absolute path/);
+    expect(branchExists(repo, 'feat/rel')).toBe(false);
+  });
+
+  it.each([
+    ['default', null, 'found ""'],
+    ['default', 'kept-for-review', 'kept-for-review'],
+    ['moved', null, 'found ""'],
+    ['moved', 'kept-for-review', 'kept-for-review'],
+  ])('refuses a %s worktree whose lock reason is %s', (layout, lockReason, found) => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const branch = 'feat/foreign';
+    const worktree =
+      layout === 'moved' ? join(parent, 'moved', 'feat-foreign') : join(root, 'feat-foreign');
+    addWorktree(repo, worktree, branch, lockReason ?? undefined);
+    writeFileSync(join(worktree, 'local.txt'), 'dirty');
+
+    const stderr = spinStderr(repo, [branch, '--clean']);
+
+    expect(stderr).toMatch(/without scripts\/spin provenance/);
+    expect(stderr).toContain(worktree);
+    expect(stderr).toContain(found);
+    expect(stderr).toContain('worktree remove -f -f');
+    expect(existsSync(join(worktree, 'local.txt'))).toBe(true);
+    expect(branchExists(repo, branch)).toBe(true);
+  });
+
+  it('names the occupant instead of advising removal when clean hits its path', () => {
+    const { repo, root } = makeRepo('studiq');
+    const occupant = join(root, 'feat-x');
+    runSpin(repo, ['feat-x']);
+    writeFileSync(join(occupant, 'work-in-progress.txt'), 'uncommitted');
+
+    const result = runSpinCaptured(repo, ['feat/x', '--clean']);
+
+    expect(result.stdout).toContain('another branch');
+    expect(result.stdout).toContain("Branch 'feat-x' is checked out there");
+    expect(result.stdout).not.toContain('rm -rf');
+    expect(existsSync(join(occupant, 'work-in-progress.txt'))).toBe(true);
+    expect(branchExists(repo, 'feat-x')).toBe(true);
+    expect(branchExists(repo, 'feat/x')).toBe(false);
+
+    runSpin(repo, ['feat-x', '--clean']);
+  });
+
+  it('cleans a worktree even when SPIN_WORKTREE_ROOT is relative', () => {
+    const { repo, root } = makeRepo('studiq');
+    runSpin(repo, ['feat/rel-clean']);
+    const env = { ...TEST_ENV, SPIN_WORKTREE_ROOT: 'relative/builds' };
+
+    const result = runSpinCaptured(repo, ['feat/rel-clean', '--clean'], env);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(join(root, 'feat-rel-clean'))).toBe(false);
+    expect(branchExists(repo, 'feat/rel-clean')).toBe(false);
+  });
+
+  it('names a detached worktree instead of advising removal', () => {
+    const { repo, root } = makeRepo('studiq');
+    const detached = join(root, 'feat-det');
+
+    git(repo, 'worktree', 'add', '-q', '--detach', detached, 'main');
+    writeFileSync(join(detached, 'work-in-progress.txt'), 'uncommitted');
+
+    const result = runSpinCaptured(repo, ['feat/det', '--clean']);
+
+    expect(result.stdout).toContain('detached worktree');
+    expect(result.stdout).not.toContain('rm -rf');
+    expect(result.stdout).not.toContain('not a registered worktree');
+    expect(existsSync(join(detached, 'work-in-progress.txt'))).toBe(true);
+    expect(git(repo, 'worktree', 'list', '--porcelain')).toContain(detached);
+  });
+
+  it('keeps the manual hint for a directory with no registration', () => {
+    const { repo, root } = makeRepo('studiq');
+    const stray = join(root, 'feat-stray');
+    mkdirSync(stray);
+
+    const result = runSpinCaptured(repo, ['feat/stray', '--clean']);
+
+    expect(result.stdout).toContain('not a registered worktree');
+    expect(result.stdout).toContain(`rm -rf "${stray}"`);
+    expect(existsSync(stray)).toBe(true);
+  });
+
+  it('prunes and deletes a branch that has no worktree', () => {
+    const { repo } = makeRepo('studiq');
+    git(repo, 'branch', 'feat/orphan', 'main');
+
+    const result = runSpinCaptured(repo, ['feat/orphan', '--clean']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Pruned stale worktree entries');
+    expect(result.stdout).toContain('Deleted branch: feat/orphan');
+    expect(branchExists(repo, 'feat/orphan')).toBe(false);
   });
 
   it('marks created worktrees with its provenance lock', () => {
     const { repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'locked');
+    const worktree = join(root, 'feat-locked');
 
     runSpin(repo, ['feat/locked']);
     const porcelain = git(repo, 'worktree', 'list', '--porcelain', '-z');
@@ -233,7 +435,7 @@ describe('scripts/spin', () => {
 
   it('keeps the provenance lock when worktree removal fails', () => {
     const { parent, repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'stuck');
+    const worktree = join(root, 'feat-stuck');
     runSpin(repo, ['feat/stuck']);
 
     const env = failingGitEnv(parent, 'worktree remove');
@@ -251,7 +453,7 @@ describe('scripts/spin', () => {
 
   it('refuses to clean the primary checkout from a linked worktree', () => {
     const { repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'x');
+    const worktree = join(root, 'feat-x');
 
     runSpin(repo, ['feat/x']);
 
@@ -266,7 +468,7 @@ describe('scripts/spin', () => {
     runSpin(repo, ['feat/dup']);
     expect(spinStderr(repo, ['feat/dup'])).toMatch(/already exists/);
 
-    mkdirSync(join(root, 'chore', 'pre'), { recursive: true });
+    mkdirSync(join(root, 'chore-pre'), { recursive: true });
     expect(spinStderr(repo, ['chore/pre'])).toMatch(/Directory already exists/);
 
     runSpin(repo, ['feat/dup', '--clean']);
@@ -274,7 +476,7 @@ describe('scripts/spin', () => {
 
   it('installs dependencies in the new worktree unless --no-install is passed', () => {
     const { parent, repo, root } = makeRepo('studiq');
-    const installed = join(root, 'feat', 'installed');
+    const installed = join(root, 'feat-installed');
     const marker = join(parent, 'bun-install-marker');
 
     // The temp repo has no lockfile by default; commit one so the install path runs.
@@ -308,7 +510,7 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
 
   it('keeps the worktree when dependency install fails', () => {
     const { parent, repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'install-failed');
+    const worktree = join(root, 'feat-install-failed');
 
     writeFileSync(join(repo, 'bun.lock'), '');
     git(repo, 'add', 'bun.lock');
@@ -328,13 +530,14 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
 
   it('lists worktrees and describes the layout in --help', () => {
     const { repo, root } = makeRepo('studiq');
-    const worktree = join(root, 'feat', 'listed');
+    const worktree = join(root, 'feat-listed');
 
     runSpin(repo, ['feat/listed']);
     const base = git(repo, 'rev-parse', 'feat/listed').trim().slice(0, 12);
     expect(runSpin(repo, ['--list'])).toContain(worktree);
     expect(runSpin(repo, ['--list'])).toContain(`base ${base}`);
-    expect(runSpin(repo, ['--help'])).toContain('-worktrees/feat/my-feature');
+    expect(runSpin(repo, ['--help'])).toContain('feat-my-feature');
+    expect(runSpin(repo, ['--help'])).toContain('SPIN_WORKTREE_ROOT');
     expect(runSpin(repo, ['--help'])).toContain('--no-install');
 
     runSpin(repo, ['feat/listed', '--clean']);
@@ -357,7 +560,7 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
     const remoteMain = git(clone, 'rev-parse', 'HEAD').trim();
 
     runSpin(repo, ['feat/fresh']);
-    const worktree = join(root, 'feat', 'fresh');
+    const worktree = join(root, 'feat-fresh');
 
     expect(git(repo, 'rev-parse', 'feat/fresh').trim()).toBe(remoteMain);
     expect(git(repo, 'rev-parse', 'main').trim()).toBe(staleMain);
@@ -375,7 +578,7 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('branching from local main');
     expect(result.stdout).toContain('Fetch failed:');
-    const worktree = join(root, 'feat', 'offline');
+    const worktree = join(root, 'feat-offline');
 
     expect(git(repo, 'rev-parse', 'feat/offline').trim()).toBe(localMain);
     expect(readFileSync(join(worktree, '.spin-base'), 'utf8').trim()).toBe(localMain);
@@ -404,7 +607,7 @@ printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('using the last fetched origin/main');
     expect(git(repo, 'rev-parse', 'feat/cached').trim()).toBe(cached);
-    expect(readFileSync(join(root, 'feat', 'cached', '.spin-base'), 'utf8').trim()).toBe(cached);
+    expect(readFileSync(join(root, 'feat-cached', '.spin-base'), 'utf8').trim()).toBe(cached);
 
     runSpin(repo, ['feat/cached', '--clean']);
   });

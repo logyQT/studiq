@@ -223,7 +223,7 @@ run, trimmed):
 ```json
 {
   "ready": true,
-  "worktree": "/workspaces/studiq-worktrees/feat/env-build-cache",
+  "worktree": "/workspaces/feat-env-build-cache",
   "branch": "refs/heads/feat/env-build-cache",
   "commit": "93ab8a71",
   "web": { "url": "http://localhost:3007", "pid": 12345, "http": 200 },
@@ -417,16 +417,16 @@ Add the commit hash to that file in the same PR when you land a formatting-only 
 
 These scripts help devs (and agents) work with feature branches and isolated worktrees:
 
-| Script                            | What it does                                                                |
-| --------------------------------- | --------------------------------------------------------------------------- |
-| `scripts/switch-branch [branch]`  | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty         |
-| `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it                            |
-| `scripts/spin <branch>`           | Create a worktree + branch off fetched `origin/main`, stamping `.spin-base` |
-| `scripts/spin --list`             | List all active worktrees and the base each one was cut from                |
-| `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                           |
-| `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                                |
-| `scripts/pr --draft`              | Create a draft PR                                                           |
-| `scripts/pr --list`               | List open PRs for this repo                                                 |
+| Script                            | What it does                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `scripts/switch-branch [branch]`  | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty                                |
+| `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it                                                   |
+| `scripts/spin <branch>`           | Create `../<branch>` (slashes flattened) + branch off fetched `origin/main`, stamping `.spin-base` |
+| `scripts/spin --list`             | List all active worktrees and the base each one was cut from                                       |
+| `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                                                  |
+| `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                                                       |
+| `scripts/pr --draft`              | Create a draft PR                                                                                  |
+| `scripts/pr --list`               | List open PRs for this repo                                                                        |
 
 `scripts/spin` records the full base SHA in `<worktree>/.spin-base` (git-ignored).
 It is the branch's intended fork point even after `origin/main` moves; read it
@@ -442,7 +442,7 @@ Use worktrees to run parallel tasks (e.g. multiple agents, or an app server + te
 scripts/spin feat/quiz-ui
 
 # Move your session into it
-cd ../studiq-worktrees/feat/quiz-ui
+cd ../feat-quiz-ui
 
 # Do work, commit, push
 git add -A && git commit -m "feat: add quiz UI"
@@ -455,7 +455,7 @@ scripts/pr
 scripts/spin feat/quiz-ui --clean
 ```
 
-Each worktree gets its own branch and working directory. Agents must not run `next dev` (`env:dev` is human-only and OOMs under agents); to check the app in a browser, use `bun run env:build` + `bun run env:serve` (or `bun run env:ensure --profile web`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created beside the repo, preserving the branch hierarchy: `feat/quiz-ui` → `../studiq-worktrees/feat/quiz-ui`.
+Each worktree gets its own branch and working directory. Agents must not run `next dev` (`env:dev` is human-only and OOMs under agents); to check the app in a browser, use `bun run env:build` + `bun run env:serve` (or `bun run env:ensure --profile web`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created directly in the repo's parent directory, one per branch with `/` flattened to `-`: `feat/quiz-ui` → `../feat-quiz-ui`. `SPIN_WORKTREE_ROOT=<absolute dir>` relocates that root (e.g. `/tmp/builds/feat-quiz-ui`), for a harness or operator that keeps checkouts elsewhere.
 
 ### Running a single test
 
