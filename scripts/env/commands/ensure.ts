@@ -34,7 +34,7 @@ import {
   profileSeeds,
   type Capability,
 } from '../profiles';
-import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
+import { buildEnvHash } from '../lib/fingerprint';
 import {
   rebuildWithRecovery,
   recoverHandover,
@@ -70,6 +70,7 @@ import { appPortCandidates, chooseAppPort } from '../lib/app-port';
 import { readCachedStack, writeCachedStack, type CachedStack } from '../lib/stack-cache';
 import {
   appendEnvLog,
+  buildFingerprintOrNull,
   classifyBuildArtifact,
   identityKey,
   readStackState,
@@ -337,11 +338,7 @@ async function rebuildIfNeeded(
 ): Promise<RebuildRecoveryResult | null> {
   const current =
     classifyBuildArtifact({
-      fingerprint: computeBuildFingerprint({
-        root: REPO_ROOT,
-        mode: BUILD_MODE,
-        envHash: input.envHash,
-      }),
+      fingerprint: buildFingerprintOrNull(input.envHash),
       envHash: input.envHash,
     }) === 'current';
   if (!input.force && current) return null;
@@ -734,11 +731,7 @@ async function warmFromCache(input: {
   if (input.build) {
     const current =
       classifyBuildArtifact({
-        fingerprint: computeBuildFingerprint({
-          root: REPO_ROOT,
-          mode: BUILD_MODE,
-          envHash: cached.envHash,
-        }),
+        fingerprint: buildFingerprintOrNull(cached.envHash),
         envHash: cached.envHash,
       }) === 'current';
     if (!current || cached.appUrl !== input.contract.appUrl) return null;

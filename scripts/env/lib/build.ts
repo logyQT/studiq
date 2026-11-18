@@ -131,23 +131,32 @@ export function formatBuildDuration(ms: number): string {
 }
 
 /**
- * ANSI-free build output, one entry per line, with Bun's filter label removed.
+ * ANSI-free output with Bun's filter label removed.
  *
  * `bun run --filter` writes `@studiq/<app> build:` / `@studiq/<app> prebuild:`
  * as a label, sometimes on its own line and sometimes in front of the child's
- * line. Those labels are our own commands, not the compiler's output, so they
- * are dropped before the tool's single `build: ` prefix is applied. The
- * `prebuild` child is this tool's own guard, so its `build:` / `env:` /
+ * line, so the child's own first line reads `@studiq/web build: Route (app)`.
+ * Those labels are our own commands, not the compiler's output: anything that
+ * looks for a line the compiler wrote has to strip them first, which is why the
+ * completion marker is matched against this and not against the raw spawn.
+ */
+function stripBuildLabels(output: string, app: BuildApp): string {
+  const label = new RegExp(`^@studiq/${app} (?:pre)?build:(?: |$)`, 'gm');
+  return stripAnsi(output).replace(label, '');
+}
+
+/**
+ * ANSI-free build output, one entry per line, with Bun's filter label removed.
+ *
+ * The `prebuild` child is this tool's own guard, so its `build:` / `env:` /
  * `build slots:` tag is dropped too — otherwise a successful build logs
  * `build: build: admitted …`.
  */
 function buildOutputLines(output: string, app: BuildApp): string[] {
-  const label = new RegExp(`^@studiq/${app} (?:pre)?build:(?: |$)`);
   const toolTag = /^(?:build slots|build|env): /;
-  return stripAnsi(output)
+  return stripBuildLabels(output, app)
     .split('\n')
     .map((line) => line.trimEnd())
-    .map((line) => line.replace(label, ''))
     .map((line) => line.replace(toolTag, ''))
     .filter((line) => line !== '' && !BUN_LIFECYCLE_EXIT_RE.test(line));
 }
@@ -487,7 +496,7 @@ type FingerprintReader = (input: FingerprintInput) => string;
  * been built yet, so it says that instead of surfacing later as a "build failed"
  * that never ran a compiler. After it, the fingerprint only decides whether the
  * finished artifact may be recorded, so a git failure (a timeout under load)
- * degrades to "unrecorded" instead of failing a build that succeeded.
+ * degrades to `''` ("unprovable") instead of failing a build that succeeded.
  */
 function readTreeFingerprint(
   read: FingerprintReader,
@@ -498,12 +507,9 @@ function readTreeFingerprint(
     return read(input);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    if (phase === 'after') {
-      writeStderrLine(
-        `warning: build: could not read the tree fingerprint after the build (${reason}); the artifact is kept and not recorded as current`,
-      );
-      return '';
-    }
+    // After the build, `''` means "unprovable": the caller reports it once, in
+    // the place that also says what the artifact's state therefore is.
+    if (phase === 'after') return '';
     throw new EnvFailure(
       EXIT_START_FAILED,
       `could not read the build fingerprint before building (${reason}); nothing was built`,
@@ -533,15 +539,24 @@ function buildIdState(artifactDir: string, startedAt: number): 'missing' | 'fres
  * `next build` writes `.next/BUILD_ID` only after static generation succeeded and
  * then prints the route table as its final action, so a fresh `BUILD_ID` plus
  * that table is the compiler's own completion evidence — an OOM kill (the build
- * runs at `oom_score_adj=1000`) or a group kill racing the exit lands here.
+ * runs at `oom_score_adj=1000`) or a group kill racing the exit lands here. The
+ * table is matched on label-stripped output: `bun run --filter` prefixes every
+ * child line with `@studiq/<app> build:`, so the raw spawn never starts a line
+ * with `Route (`.
  */
 function completedDespiteExit(
   outcome: SpawnOutcome,
   artifactDir: string,
   startedAt: number,
+  app: BuildApp,
 ): boolean {
   if (outcome.timedOut) return false;
-  if (!BUILD_COMPLETE_RE.test(stripAnsi(outcome.output))) return false;
+  // Only a *signal* can end a finished build without a clean exit: a numeric
+  // exit is the compiler's own answer — a `next build` that throws after
+  // `printTreeView` (route-bundle stats, telemetry/flush, shutdown) exits 1 with
+  // the table already printed — and must never be read as success.
+  if (outcome.status !== null || !outcome.signal) return false;
+  if (!BUILD_COMPLETE_RE.test(stripBuildLabels(outcome.output, app))) return false;
   return buildIdState(artifactDir, startedAt) === 'fresh';
 }
 
@@ -720,7 +735,8 @@ async function buildOnce(
   const artifactPresent = !web || buildArtifactPresent(artifactDir);
   const artifact = web ? buildIdState(artifactDir, startedAt) : null;
   const completed =
-    outcome.status === 0 || (web && completedDespiteExit(outcome, artifactDir, startedAt));
+    outcome.status === 0 ||
+    (web && completedDespiteExit(outcome, artifactDir, startedAt, options.app));
   const ok = !outcome.timedOut && completed && artifactPresent;
   const fingerprintMoved =
     web && (fingerprintAfter === '' || fingerprintAfter !== fingerprintBefore);

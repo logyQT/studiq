@@ -18,10 +18,11 @@ import { collectSnapshot } from '../lib/snapshot';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
-import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
+import { buildEnvHash } from '../lib/fingerprint';
 import {
   appendEnvLog,
   buildArtifactPresent,
+  buildFingerprintOrNull,
   classifyBuildArtifact,
   readBuildState,
   readStackState,
@@ -314,10 +315,8 @@ export async function runBuild(
     const previous = web ? readBuildState() : null;
     const current =
       web &&
-      classifyBuildArtifact({
-        fingerprint: computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }),
-        envHash,
-      }) === 'current';
+      classifyBuildArtifact({ fingerprint: buildFingerprintOrNull(envHash), envHash }) ===
+        'current';
     const built = !current || options.force;
     // Decided before the build so a checkout that can never publish (a linked
     // worktree, a dirty tree, main ahead) does not pay for a 300 MB copy on

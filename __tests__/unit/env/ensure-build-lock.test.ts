@@ -441,12 +441,14 @@ describe('env:ensure releases the checkout lock for the build', () => {
     }
   });
 
-  it('serves a build whose tree moved but records nothing for it (#1365)', async () => {
+  it('adopts a rebuild whose tree moved but writes no record for it (#1365)', async () => {
     const harness = newHarness();
     const app = await healthyStack(harness);
     applyHarnessEnv(harness);
     writeLease(harness, app.port);
 
+    // `webStarted: true`: the rebuild's own server is adopted, so this pins the
+    // *recording* rule rather than the serve path (which `serveLeasedPort` owns).
     const deps: EnsureDeps = {
       rebuild() {
         return Promise.resolve({
@@ -456,16 +458,31 @@ describe('env:ensure releases the checkout lock for the build', () => {
       },
     };
 
-    const code = await ensureModule.runEnsure(
-      parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(app.port)]),
-      deps,
-    );
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      const code = await ensureModule.runEnsure(
+        parse([
+          'ensure',
+          '--profile',
+          'web',
+          '--no-seed',
+          '--app-port',
+          String(app.port),
+          '--json',
+        ]),
+        deps,
+      );
 
-    // The artifact is real and is served; the *record* is what a moved
-    // fingerprint forbids, because `fingerprintAfter` describes a tree that did
-    // not build it.
-    expect(code).toBe(0);
-    expect(stateModule.readBuildState()).toBeNull();
+      // The artifact is real and the server the rebuild started is adopted; the
+      // *record* is what a moved fingerprint forbids, because `fingerprintAfter`
+      // describes a tree that did not build it.
+      expect(code).toBe(0);
+      const emitted = stdout.mock.calls.map((call) => String(call[0])).join('');
+      expect(objectField(parseJsonObject(emitted), 'web').http).toBe(200);
+      expect(stateModule.readBuildState()).toBeNull();
+    } finally {
+      stdout.mockRestore();
+    }
   });
 });
 
