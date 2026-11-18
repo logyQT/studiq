@@ -99,6 +99,19 @@ interface RunResult {
   note: string;
 }
 
+const HELP = `mutate — break one line, run one named test, revert
+
+  bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \\
+                        --test <test file> --name "<exact test title>" [--all] [--json] [--keep]
+  bun scripts/mutate.ts --spec <mutations.json> [--json]
+
+  --find must match exactly once in the file, or pass --all.
+  The mutated file must be tracked by git: a mutation needs a pre-image to revert.
+  After a KILLED the test is re-run unmutated; a red re-run is ERROR (a flake).
+  In --spec mode a row that comes back ERROR does not stop the table.
+  Exit: 0 = no ERROR, 1 = at least one ERROR, 2 = usage/precondition.
+`;
+
 const flags = parseArgs(process.argv.slice(2));
 const json = flags.boolean.has('--json');
 const keep = flags.boolean.has('--keep');
@@ -112,19 +125,6 @@ function usage(message: string): never {
   process.stderr.write(`mutate: ${message}\n`);
   process.exit(2);
 }
-
-const HELP = `mutate — break one line, run one named test, revert
-
-  bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \\
-                        --test <test file> --name "<exact test title>" [--all] [--json] [--keep]
-  bun scripts/mutate.ts --spec <mutations.json> [--json]
-
-  --find must match exactly once in the file, or pass --all.
-  The mutated file must be tracked by git: a mutation needs a pre-image to revert.
-  After a KILLED the test is re-run unmutated; a red re-run is ERROR (a flake).
-  In --spec mode a row that comes back ERROR does not stop the table.
-  Exit: 0 = no ERROR, 1 = at least one ERROR, 2 = usage/precondition.
-`;
 
 function parseArgs(argv: string[]): { values: Map<string, string>; boolean: Set<string> } {
   const values = new Map<string, string>();

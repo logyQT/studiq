@@ -235,6 +235,16 @@ function gitStatus(root: string): string {
 }
 
 describe('scripts/mutate.ts', () => {
+  it('prints usage for --help without touching the tree', () => {
+    const root = fixture();
+
+    const result = mutate(root, ['--help']);
+
+    expect(result.status).toBe(0);
+    expect(result.out).toMatch(/bun scripts\/mutate\.ts --file/);
+    expect(gitStatus(root)).toBe('');
+  }, 60_000);
+
   it('refuses to start on a dirty tree and mutates nothing', () => {
     const root = fixture();
     write(root, 'stray.txt', 'uncommitted\n');
