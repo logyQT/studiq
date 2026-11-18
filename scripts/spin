@@ -9,10 +9,14 @@
 #   scripts/spin feat/my-feature --clean      # remove worktree + branch
 #   scripts/spin --list                       # list all worktrees
 #
-# The worktree is created beside the repository, preserving the branch
-# hierarchy so feature/fix/chore groups stay visible:
-#   ../studiq-worktrees/feat/my-feature/
-#   ../studiq-worktrees/fix/login-bug/
+# The worktree is created directly in the checkout's parent directory, one
+# directory per branch, with '/' flattened to '-' so the path stays one level
+# deep:
+#   ../feat-my-feature/   (branch feat/my-feature)
+#   ../fix-login-bug/     (branch fix/login-bug)
+#
+# SPIN_WORKTREE_ROOT=<absolute dir> relocates that root (same flattening), e.g.
+# SPIN_WORKTREE_ROOT=/tmp/builds → /tmp/builds/feat-my-feature.
 #
 # The branch is cut from a freshly fetched origin/main (falling back to the
 # last fetched origin/main, then local main) and the base commit it was cut
@@ -73,6 +77,23 @@ worktree_path_for_branch() {
   return 0
 }
 
+# Print the branch checked out at a worktree path, if any.
+worktree_branch_at_path() {
+  local want="$1" record path=""
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) path="${record#worktree }" ;;
+      "branch "*)
+        if [ "$path" = "$want" ]; then
+          printf '%s\n' "${record#branch refs/heads/}"
+          return 0
+        fi
+        ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
+  return 0
+}
+
 # Print the git lock reason of a worktree, if it is locked.
 worktree_lock_reason() {
   local want="$1" record path=""
@@ -96,9 +117,8 @@ worktree_lock_reason() {
 PRIMARY_ROOT="$(primary_checkout_path)"
 [ -n "$PRIMARY_ROOT" ] || PRIMARY_ROOT="$REPO_ROOT"
 
-# Sibling paths derive from the primary checkout, so running the script from
-# inside a linked worktree still targets the documented layout.
-REPO_NAME=$(basename "$PRIMARY_ROOT")
+# The worktree root derives from the primary checkout, so running the script
+# from inside a linked worktree still targets the same parent directory.
 REPO_PARENT=$(dirname "$PRIMARY_ROOT")
 
 # ── Parse flags ────────────────────────────────────────────────
@@ -131,14 +151,21 @@ case "${1:-}" in
     echo "  --no-seed-cache  Skip seeding .next/cache from the local snapshot"
     echo "  --list, -l       List all worktrees"
     echo ""
-    echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
-    echo "  ../${REPO_NAME}-worktrees/feat/my-feature"
+    echo "Worktrees are created directly in the repo's parent directory, one per"
+    echo "branch, with '/' flattened to '-':"
+    echo "  ../feat-my-feature   (branch feat/my-feature)"
+    echo "  ../review-pr1377     (branch review/pr1377)"
+    echo ""
+    echo "SPIN_WORKTREE_ROOT=<absolute dir> relocates the root (same flattening),"
+    echo "e.g. /tmp/builds/feat-my-feature."
     echo ""
     echo "Branches are cut from a freshly fetched origin/main (the last fetched"
     echo "origin/main when the fetch fails, local main when none is cached); the"
     echo "base commit is stamped into <worktree>/.spin-base and shown by --list."
     echo ""
     echo "--clean only removes worktrees that scripts/spin created."
+    echo "It finds them by branch registration, not by path, so a worktree that"
+    echo "has been moved is still the one cleaned."
     exit 0
     ;;
   "") fail "Missing branch name. Usage: scripts/spin <branch-name>" ;;
@@ -164,10 +191,14 @@ if ! ref_error=$(git check-ref-format --branch "$BRANCH" 2>&1); then
 fi
 
 # ── Derive worktree path ───────────────────────────────────────
-# Worktrees live beside the repo, grouped by branch prefix:
-# feat/my-feature → ../<repo>-worktrees/feat/my-feature
-WORKTREE_ROOT="${REPO_PARENT}/${REPO_NAME}-worktrees"
-WORKTREE_PATH="${WORKTREE_ROOT}/${BRANCH}"
+# One directory per branch, directly in the checkout's parent: the branch's
+# slashes are flattened so a branch never adds nesting. SPIN_WORKTREE_ROOT
+# relocates the root; the flattening is unchanged beneath it. Strip a trailing
+# slash so no printed path has `//`; "/" itself must survive.
+WORKTREE_ROOT="${SPIN_WORKTREE_ROOT:-${REPO_PARENT}}"
+[ "$WORKTREE_ROOT" = "/" ] || WORKTREE_ROOT="${WORKTREE_ROOT%/}"
+WORKTREE_DIR="$(printf '%s' "$BRANCH" | tr '/' '-')"
+WORKTREE_PATH="${WORKTREE_ROOT}/${WORKTREE_DIR}"
 
 # ── Clean mode ─────────────────────────────────────────────────
 if $CLEAN; then
@@ -180,14 +211,9 @@ if $CLEAN; then
       fail "Refusing to remove the primary checkout: $PRIMARY_ROOT"
     fi
 
-    if [ "$REGISTERED_PATH" != "$WORKTREE_PATH" ]; then
-      fail "Refusing to clean a worktree scripts/spin did not create: $REGISTERED_PATH
-  Expected $WORKTREE_PATH.
-  Left untouched. To remove it manually:
-    git -C \"$PRIMARY_ROOT\" worktree remove --force \"$REGISTERED_PATH\"
-    git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
-    fi
-
+    # Authorisation is the lock reason alone, never the path. The locator is
+    # the branch registration, so the registered path is whatever git says it
+    # is; recomputing the path and comparing would only re-derive the layout.
     lock_reason="$(worktree_lock_reason "$REGISTERED_PATH")"
     if [ "$lock_reason" != "$PROVENANCE_REASON" ]; then
       fail "Refusing to clean a worktree without scripts/spin provenance: $REGISTERED_PATH
@@ -205,17 +231,33 @@ if $CLEAN; then
       fi
       info "Removed worktree: $REGISTERED_PATH"
     else
+      branch_sha="$(git -C "$PRIMARY_ROOT" rev-parse --quiet --verify "refs/heads/$BRANCH" 2>/dev/null || true)"
       warn "Worktree directory is missing: $REGISTERED_PATH"
+      if [ -n "$branch_sha" ]; then
+        warn "Branch '$BRANCH' stays at ${branch_sha:0:12}. A directory moved outside git is not tracked; its uncommitted work is not in that commit."
+      fi
       # A locked registration is skipped by prune; drop the lock so the stale
       # entry can be pruned before the branch is deleted.
       if ! unlock_error=$(git -C "$PRIMARY_ROOT" worktree unlock "$REGISTERED_PATH" 2>&1); then
         fail "Could not unlock stale worktree $REGISTERED_PATH: $unlock_error"
       fi
     fi
+  # No registration and no spin-provenance worktree: a directory at the path
+  # this layout computes is only a hint, never a target. Removing it by path
+  # would bypass the provenance check above.
   elif [ -d "$WORKTREE_PATH" ]; then
-    warn "Found a directory that is not a registered worktree: $WORKTREE_PATH"
-    warn "Left it untouched. Remove it manually, then re-run this command:"
-    echo "    rm -rf \"$WORKTREE_PATH\""
+    occupant_branch="$(worktree_branch_at_path "$WORKTREE_PATH")"
+    if [ -n "$occupant_branch" ]; then
+      # Flattening maps feat/x onto feat-x; the directory is live and owned by
+      # another branch, so it must never be presented as removable.
+      warn "Found another branch's worktree at this path: $WORKTREE_PATH"
+      warn "Branch '$occupant_branch' is checked out there; left untouched."
+      warn "Pick a different branch name, or relocate with SPIN_WORKTREE_ROOT=<dir>."
+    else
+      warn "Found a directory that is not a registered worktree: $WORKTREE_PATH"
+      warn "Left it untouched. Remove it manually, then re-run this command:"
+      echo "    rm -rf \"$WORKTREE_PATH\""
+    fi
   else
     warn "No worktree found for '$BRANCH' (expected $WORKTREE_PATH)"
   fi
@@ -244,12 +286,30 @@ if $CLEAN; then
   exit 0
 fi
 
-# ── Preflight: the sibling root must be writable (create mode only) ──
-if [ ! -d "$REPO_PARENT" ] || [ ! -w "$REPO_PARENT" ] || [ ! -x "$REPO_PARENT" ]; then
-  fail "Cannot create a worktree: parent directory is not writable: $REPO_PARENT"
+# Clean resolves by registration and provenance, so it never reads the root;
+# validate the override only where a create will use it.
+case "$WORKTREE_ROOT" in
+  /*) ;;
+  *) fail "SPIN_WORKTREE_ROOT must be an absolute path: $WORKTREE_ROOT" ;;
+esac
+
+# ── Preflight: the worktree root must be writable (create mode only) ──
+# A root that exists as something other than a directory can never hold a
+# worktree, and the ancestor walk below would walk straight past it.
+if [ -e "$WORKTREE_ROOT" ] && [ ! -d "$WORKTREE_ROOT" ]; then
+  fail "Cannot create a worktree: worktree root is not a directory: $WORKTREE_ROOT"
 fi
-if ! probe_error=$(mktemp -d "${REPO_PARENT}/.spin-write-test.XXXXXX" 2>&1); then
-  fail "Cannot create a worktree: parent directory is not writable: $REPO_PARENT ($probe_error)"
+# With SPIN_WORKTREE_ROOT set, the root may not exist yet; probe its nearest
+# existing ancestor so a create fails before the branch is made.
+PROBE_DIR="$WORKTREE_ROOT"
+while [ ! -d "$PROBE_DIR" ] && [ "$PROBE_DIR" != "/" ]; do
+  PROBE_DIR=$(dirname "$PROBE_DIR")
+done
+if [ ! -w "$PROBE_DIR" ] || [ ! -x "$PROBE_DIR" ]; then
+  fail "Cannot create a worktree: parent directory is not writable: $PROBE_DIR"
+fi
+if ! probe_error=$(mktemp -d "${PROBE_DIR}/.spin-write-test.XXXXXX" 2>&1); then
+  fail "Cannot create a worktree: parent directory is not writable: $PROBE_DIR ($probe_error)"
 fi
 rmdir "$probe_error" 2>/dev/null || true
 
@@ -259,8 +319,23 @@ if git -C "$PRIMARY_ROOT" branch --list -- "$BRANCH" | grep -q .; then
 fi
 
 # ── Check worktree path doesn't already exist ──────────────────
+# Flattening means two branch names can map to one directory (feat/x and
+# feat-x), and a branch named after the repo maps to the primary checkout.
 if [ -e "$WORKTREE_PATH" ]; then
-  fail "Directory already exists: $WORKTREE_PATH. Remove it or pick a different branch name."
+  if [ "$WORKTREE_PATH" = "$PRIMARY_ROOT" ]; then
+    fail "Directory already exists: $WORKTREE_PATH
+  It is the primary checkout. Branch '$BRANCH' flattens to '$WORKTREE_DIR' under $WORKTREE_ROOT.
+  Pick a different branch name."
+  fi
+  occupant="$(worktree_branch_at_path "$WORKTREE_PATH")"
+  if [ -n "$occupant" ]; then
+    detail="it is the checkout of branch '$occupant'"
+  else
+    detail="it is not a registered worktree"
+  fi
+  fail "Directory already exists: $WORKTREE_PATH
+  Branch '$BRANCH' flattens to '$WORKTREE_DIR' under $WORKTREE_ROOT, and $detail.
+  Pick a different branch name, or relocate with SPIN_WORKTREE_ROOT=<dir>."
 fi
 
 # ── Resolve the base commit ────────────────────────────────────
@@ -305,8 +380,11 @@ fi
 info "Created branch '$BRANCH'"
 
 header "Creating worktree"
-mkdir -p "$(dirname "$WORKTREE_PATH")" \
-  || fail "Could not create worktree directory: $(dirname "$WORKTREE_PATH")"
+WORKTREE_PARENT="$(dirname "$WORKTREE_PATH")"
+if ! mkdir_error=$(mkdir -p "$WORKTREE_PARENT" 2>&1); then
+  git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
+  fail "Could not create worktree directory: $WORKTREE_PARENT: $mkdir_error (branch '$BRANCH' was deleted)"
+fi
 if ! add_error=$(git -C "$PRIMARY_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>&1); then
   git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
   fail "Could not create worktree at $WORKTREE_PATH: $add_error (branch '$BRANCH' was deleted)"
