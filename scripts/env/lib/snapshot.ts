@@ -2,24 +2,29 @@ import { relative } from 'node:path';
 import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
 import { envPort } from './env-port';
-import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
-import { readBuildSlots } from './locks';
+import { buildInProgress, readBuildSlots } from './locks';
 import { readSnapshotStatus } from './build-cache';
+import { manifestReport } from './manifest';
 import { readRegistry, findEntry, registryPathExists } from './registry';
-import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from './repo';
+import {
+  REPO_ROOT,
+  canon,
+  currentBranchName,
+  currentCommit,
+  deriveProjectId,
+  sanitizeProjectId,
+} from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import {
-  artifactOutlivesRecord,
   buildArtifactDir,
   buildArtifactPresent,
-  classifyBuildArtifact,
+  classifyRecordedArtifact,
   failedBuildArtifacts,
   readBuildState,
   readStackState,
-  type BuildArtifactState,
   type StackState,
 } from './state';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
@@ -112,43 +117,6 @@ function sharedProjectId(): string | null {
   return deriveProjectId() || null;
 }
 
-/**
- * The artifact's state, judged against the record it should match.
- *
- * Status does not read the stack's keys, so it compares the tree with the
- * recorded build's **own** env hash: `current` here means "this is the recorded
- * build of this tree". `env serve` and `env build` compare the inlined
- * environment too, so an env change reads as `stale` there and is rebuilt.
- *
- * The cheap answers come first: no `BUILD_ID` is `missing`, and an artifact a
- * raw `next build` moved past the record is `unrecorded`, both decided from the
- * filesystem. Only `current` and `stale` pay for the fingerprint (two `git`
- * calls).
- */
-function artifactState(
-  record: ReturnType<typeof readBuildState>,
-  artifactDir: string,
-): BuildArtifactState | null {
-  if (!record || !buildArtifactPresent(artifactDir)) {
-    return classifyBuildArtifact({ fingerprint: null, envHash: null }, artifactDir);
-  }
-  // The same mtime rule the classifier applies, ahead of the fingerprint: a raw
-  // `next build` after a wrapper build is the headline `unrecorded` case, and it
-  // must not cost two `git` calls to answer.
-  if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
-  let fingerprint: string | null;
-  try {
-    fingerprint = computeBuildFingerprint({
-      root: REPO_ROOT,
-      mode: BUILD_MODE,
-      envHash: record.envHash,
-    });
-  } catch {
-    fingerprint = null;
-  }
-  return classifyBuildArtifact({ fingerprint, envHash: record.envHash }, artifactDir);
-}
-
 export async function collectSnapshot(options: SnapshotOptions = {}): Promise<StatusSnapshot> {
   const contract = options.contract ?? contractWithLease(readContractLenient());
   const registry = readRegistry();
@@ -207,6 +175,14 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
   const artifactDir = options.artifactDir ?? buildArtifactDir();
   const cacheSnapshot = readSnapshotStatus();
   warnings.push(...(cacheSnapshot?.warnings ?? []));
+  const buildState = classifyRecordedArtifact(artifactDir);
+  const slots = readBuildSlots();
+  const runtime = statusStack?.runtime ?? listedRuntime;
+  // The status call failed: its id/running answers are unknown, not "absent".
+  // The runtime can still be known when the separate `stack list` answered.
+  const stackProbeFailed = !contract.shared && probeError !== null;
+  const commit = currentCommit();
+  const branch = currentBranchName();
 
   return shapeStatus({
     contract,
@@ -224,16 +200,38 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     },
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
+    commit,
     buildPresent: buildArtifactPresent(artifactDir),
-    buildState: artifactState(record, artifactDir),
+    buildState,
     buildFailed: failedBuildArtifacts(artifactDir).map((path) => relative(REPO_ROOT, path)),
-    buildSlots: readBuildSlots(),
+    buildSlots: slots,
     snapshot: cacheSnapshot,
     profile,
     cold: options.cold ?? state?.cold ?? null,
     buildFingerprint: record?.fingerprint ?? null,
     warnings: [...new Set(warnings)],
     ready: options.ready ?? fallbackReady,
-    runtime: statusStack?.runtime ?? listedRuntime,
+    runtime,
+    // The manifest is the cheap path an agent reads without running anything;
+    // this report is the reconciler. Status never writes the file (ADR-0011 §1).
+    manifest: manifestReport({
+      appPort: contract.appPort,
+      appUrl: contract.appUrl,
+      webPid,
+      stackId: contract.shared
+        ? projectId
+        : stackProbeFailed
+          ? undefined
+          : (statusStack?.id ?? null),
+      // A failed probe is unknown, never "the stack is down". This is the call
+      // (#1360) the file exists to avoid, so its failure cannot be its accuser.
+      stackRunning: contract.shared ? true : stackProbeFailed ? null : statusStack !== null,
+      runtime: stackProbeFailed && listedRuntime === null ? undefined : runtime,
+      buildState,
+      fingerprint: record?.fingerprint ?? null,
+      building: buildInProgress(),
+      branch,
+      commit,
+    }),
   });
 }

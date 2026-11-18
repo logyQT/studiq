@@ -7,6 +7,7 @@ import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { resolveLocalAppEnv } from '../lib/app-env';
 import { startDevServer, stopWebServer, webLogPath } from '../lib/web';
+import { writeEnvManifest } from '../lib/manifest';
 import { liveServerConflict } from '../lib/web-owner';
 import { appendEnvLog } from '../lib/state';
 import { printJson, writeStderrLine } from '../lib/output';
@@ -95,77 +96,91 @@ export async function runDev(parsed: ParsedCommand): Promise<number> {
   applyContractEnv(contract);
 
   const handle = await withCheckoutLock(async () => {
-    // HMR writes the same `apps/web/.next` a build does, and the build's mutex is
-    // free for it, so a build in this worktree owns the artifact HMR would
-    // overwrite (and HMR would serve a tree the build is rewriting).
-    const build = buildInProgress();
-    if (build) throw buildInProgressFailure(build);
-    const conflict = liveServerConflict(
-      { stackName: stackName ?? 'default', profile: 'full' },
-      'start',
-    );
-    if (conflict) throw new EnvFailure(EXIT_CONFLICT, conflict);
-    // One environment per checkout: HMR replaces the recorded server.
-    stopWebServer();
-    const bind = await probePortBind(contract.appPort);
-    if (bind.state !== 'free') {
-      throw new EnvFailure(
-        bind.state === 'in-use' ? EXIT_CONFLICT : EXIT_START_FAILED,
-        `port ${contract.appPort} cannot be bound (${bind.error ?? bind.state}); free it or use a separate worktree`,
+    try {
+      // HMR writes the same `apps/web/.next` a build does, and the build's mutex is
+      // free for it, so a build in this worktree owns the artifact HMR would
+      // overwrite (and HMR would serve a tree the build is rewriting).
+      const build = buildInProgress();
+      if (build) throw buildInProgressFailure(build);
+      const conflict = liveServerConflict(
+        { stackName: stackName ?? 'default', profile: 'full' },
+        'start',
       );
+      if (conflict) throw new EnvFailure(EXIT_CONFLICT, conflict);
+      // One environment per checkout: HMR replaces the recorded server.
+      stopWebServer();
+      const bind = await probePortBind(contract.appPort);
+      if (bind.state !== 'free') {
+        throw new EnvFailure(
+          bind.state === 'in-use' ? EXIT_CONFLICT : EXIT_START_FAILED,
+          `port ${contract.appPort} cannot be bound (${bind.error ?? bind.state}); free it or use a separate worktree`,
+        );
+      }
+      return startDevServer({
+        appPort: contract.appPort,
+        appUrl: contract.appUrl,
+        env: process.env,
+        foreground: !parsed.json,
+      });
+    } finally {
+      // A refusal (build mutex, port, foreign server) or a failed start both
+      // happen after this command may have stopped the recorded server; the
+      // writer re-derives `serving` from the live files.
+      writeEnvManifest({ contract });
     }
-    return startDevServer({
-      appPort: contract.appPort,
-      appUrl: contract.appUrl,
-      env: process.env,
-      foreground: !parsed.json,
-    });
   });
 
-  const deadline = Date.now() + 180_000;
-  let http = 0;
-  while (Date.now() < deadline) {
-    if (!pidAlive(handle.pid)) {
+  try {
+    const deadline = Date.now() + 180_000;
+    let http = 0;
+    while (Date.now() < deadline) {
+      if (!pidAlive(handle.pid)) {
+        stopWebServer();
+        throw new EnvFailure(
+          EXIT_START_FAILED,
+          `HMR exited before answering on ${contract.appUrl}; see ${webLogPath()}`,
+        );
+      }
+      http = await probeHttp(contract.appUrl);
+      if (http >= 200 && http < 400) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (http < 200 || http >= 400) {
       stopWebServer();
       throw new EnvFailure(
         EXIT_START_FAILED,
-        `HMR exited before answering on ${contract.appUrl}; see ${webLogPath()}`,
+        `HMR did not answer on ${contract.appUrl} within 180s; see ${webLogPath()}`,
       );
     }
-    http = await probeHttp(contract.appUrl);
-    if (http >= 200 && http < 400) break;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  if (http < 200 || http >= 400) {
-    stopWebServer();
-    throw new EnvFailure(
-      EXIT_START_FAILED,
-      `HMR did not answer on ${contract.appUrl} within 180s; see ${webLogPath()}`,
-    );
-  }
+    writeEnvManifest({ contract });
 
-  if (parsed.json) {
-    printJson({
-      ready: true,
-      target: 'web',
-      profile: 'full',
-      url: contract.appUrl,
-      pid: handle.pid,
-      log: '.dev/web.log',
-      humanOnly: true,
-    });
-  } else if (!parsed.quiet) {
-    writeStderrLine(`env: dev ready — ${contract.appUrl} (pid ${handle.pid}, web HMR)`);
-    writeStderrLine('  human-only: agents use `bun run env:build` + `bun run env:serve`');
-  }
+    if (parsed.json) {
+      printJson({
+        ready: true,
+        target: 'web',
+        profile: 'full',
+        url: contract.appUrl,
+        pid: handle.pid,
+        log: '.dev/web.log',
+        humanOnly: true,
+      });
+    } else if (!parsed.quiet) {
+      writeStderrLine(`env: dev ready — ${contract.appUrl} (pid ${handle.pid}, web HMR)`);
+      writeStderrLine('  human-only: agents use `bun run env:build` + `bun run env:serve`');
+    }
 
-  const cleanup = (): void => {
-    stopWebServer();
-  };
-  process.once('SIGINT', cleanup);
-  process.once('SIGTERM', cleanup);
-  const code = await handle.exit;
-  process.removeListener('SIGINT', cleanup);
-  process.removeListener('SIGTERM', cleanup);
-  return code ?? 0;
+    const cleanup = (): void => {
+      stopWebServer();
+      writeEnvManifest({ contract });
+    };
+    process.once('SIGINT', cleanup);
+    process.once('SIGTERM', cleanup);
+    const code = await handle.exit;
+    process.removeListener('SIGINT', cleanup);
+    process.removeListener('SIGTERM', cleanup);
+    return code ?? 0;
+  } finally {
+    // The HMR process is gone either way: `serving` must not outlive it.
+    writeEnvManifest({ contract });
+  }
 }

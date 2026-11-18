@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -37,13 +37,39 @@ export function isThisCheckoutWorkdir(workdir: string): boolean {
 }
 
 function runGit(args: string[], input?: string): string | null {
-  const result = spawnSync('git', ['-C', REPO_ROOT, ...args], {
+  return runGitAt(REPO_ROOT, args, input);
+}
+
+function runGitAt(root: string, args: string[], input?: string): string | null {
+  const result = spawnSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
     input,
     timeout: 10_000,
   });
   if (result.status !== 0) return null;
   return (result.stdout ?? '').trim();
+}
+
+/** `git rev-parse` with an absolute answer where git is new enough to offer one. */
+function gitPath(root: string, flag: string): string | null {
+  const absolute = runGitAt(root, ['rev-parse', '--path-format=absolute', flag]);
+  if (absolute) return canon(absolute);
+  const relative = runGitAt(root, ['rev-parse', flag]);
+  return relative === null ? null : canon(resolve(root, relative));
+}
+
+/**
+ * Whether this checkout is the primary one: its git dir **is** the common dir.
+ *
+ * A linked worktree's git dir is `<common>/worktrees/<name>`, so the comparison
+ * is the whole test. It lives here because two callers must answer the same
+ * question: the cache publish gate (ADR-0014, decision 2) and the environment
+ * manifest's `checkout.primary`.
+ */
+export function isPrimaryCheckout(root: string = REPO_ROOT): boolean {
+  const gitDir = gitPath(root, '--git-dir');
+  const commonDir = gitPath(root, '--git-common-dir');
+  return gitDir !== null && commonDir !== null && gitDir === commonDir;
 }
 
 /** `refs/heads/<branch>` (the CLI's `branch_context`), or `detached`. */

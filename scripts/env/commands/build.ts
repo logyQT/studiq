@@ -8,6 +8,12 @@ import { probeHttp } from '../lib/health';
 import { readStack } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
 import { readWebPid } from '../lib/web';
+import {
+  writeEnvManifest,
+  sharedStackFacts,
+  stackFacts,
+  type ManifestStack,
+} from '../lib/manifest';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot } from '../lib/snapshot';
 import { liveServerConflict } from '../lib/web-owner';
@@ -224,6 +230,8 @@ export async function runBuild(
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'build options are missing');
   const app = options.app;
   const web = app === 'web';
+  // The stack facts this run proved, so the manifest's last write is not a guess.
+  let manifestStack: ManifestStack | undefined;
 
   // The checkout lock also covers the lease read this build adopts. It is
   // released for the build itself and always taken back (see the build block).
@@ -272,6 +280,7 @@ export async function runBuild(
     if (!contract.shared && !stack) {
       throw new EnvFailure(EXIT_START_FAILED, 'no running Supabase stack; run env:ensure first');
     }
+    manifestStack = stack ? stackFacts(stack.status) : sharedStackFacts();
     const stackEnv = contract.shared ? sharedStackEnv() : stack!.env;
     if (contract.shared && !stackEnv.apiUrl) {
       throw new EnvFailure(EXIT_START_FAILED, 'SUPABASE_SHARED=1 needs SUPABASE_URL and keys');
@@ -372,6 +381,10 @@ export async function runBuild(
       result,
       built,
     });
+    // Publish this run's result before reconciling: the snapshot compares the
+    // file with the live probe, and the `finally` write lands after it — so
+    // without this, `--json` reports the pre-build file as stale.
+    writeEnvManifest({ stack: manifestStack });
     const snapshot = await collectSnapshot({
       contract,
       stack: stack?.status ?? null,
@@ -402,6 +415,9 @@ export async function runBuild(
     }
     return 0;
   } finally {
+    // Every exit path — a no-op build, a refusal after the lease moved, a failed
+    // build — leaves `.dev/env.json` describing what this checkout now is.
+    writeEnvManifest({ stack: manifestStack });
     await lock.release();
   }
 }

@@ -53,6 +53,9 @@ interface StateModule {
     expected: { fingerprint: string | null; envHash: string | null },
     artifactDir?: string,
   ): 'current' | 'stale' | 'unrecorded' | 'missing' | null;
+  classifyRecordedArtifact(
+    artifactDir?: string,
+  ): 'current' | 'stale' | 'unrecorded' | 'missing' | null;
 }
 
 interface ProductionBuildModule {
@@ -772,7 +775,9 @@ describe('status and serve report the record, not just the fingerprint', () => {
     applyHarnessEnv(harness);
 
     for (const state of ['current', 'stale', 'unrecorded', 'missing'] as const) {
-      vi.spyOn(stateModule, 'classifyBuildArtifact').mockReturnValue(state);
+      // The one classifier status (and the manifest) call, so the four reported
+      // answers are the shipped vocabulary and not a second decision.
+      vi.spyOn(stateModule, 'classifyRecordedArtifact').mockReturnValue(state);
       const json = await captureStdout(() => statusModule.runStatus(parse(['status', '--json'])));
       expect(objectField(parseJsonObject(json), 'build').state).toBe(state);
       const text = await captureStdout(() => statusModule.runStatus(parse(['status'])));

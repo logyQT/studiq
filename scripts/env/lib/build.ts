@@ -23,6 +23,7 @@ import {
   type StagedSnapshot,
 } from './build-cache';
 import { stripAnsi, writeStderrLine } from './output';
+import { writeEnvManifest } from './manifest';
 import { REPO_ROOT } from './repo';
 import {
   appendEnvLog,
@@ -559,30 +560,39 @@ export async function runProductionBuild(
   deps: ProductionBuildDeps = defaultProductionBuildDeps,
   options: ProductionBuildOptions = defaultBuildOptions,
 ): Promise<BuildResult> {
-  if (options.admission === 'slot') {
-    return withBuildSlots(async (slot) => {
-      mintBuildGrant({
-        app: options.app,
-        admission: 'slot',
-        slot: slot.number,
-        token: slot.token,
-        queuedMs: slot.queuedMs,
-      });
-      // The wait belongs on the line rather than only in the timestamp: the
-      // build's wall time includes it, so a wall comparison from two builds on a
-      // busy machine is not a build-speed comparison.
-      writeStderrLine(
-        `build: building apps/${options.app} (slot ${slot.number}, after ${formatAdmissionWait(slot.queuedMs)})`,
-      );
-      return buildOnce(envHash, deps, options, slot);
-    }, deps.slots);
+  try {
+    if (options.admission === 'slot') {
+      return await withBuildSlots(async (slot) => {
+        mintBuildGrant({
+          app: options.app,
+          admission: 'slot',
+          slot: slot.number,
+          token: slot.token,
+          queuedMs: slot.queuedMs,
+        });
+        // The wait belongs on the line rather than only in the timestamp: the
+        // build's wall time includes it, so a wall comparison from two builds on a
+        // busy machine is not a build-speed comparison.
+        writeStderrLine(
+          `build: building apps/${options.app} (slot ${slot.number}, after ${formatAdmissionWait(slot.queuedMs)})`,
+        );
+        // The worktree mutex and the slot are held from here on, so the manifest
+        // can name this build. `env:ensure`'s rebuild reaches this same seam.
+        writeEnvManifest();
+        return buildOnce(envHash, deps, options, slot);
+      }, deps.slots);
+    }
+    if (options.admission === 'no-slot') {
+      writeStderrLine('build: --no-slot: no build slot or lease claimed (CI/Playwright mode)');
+    } else {
+      writeStderrLine('warning: build: --no-lock bypasses build admission on this machine');
+    }
+    mintBuildGrant({ app: options.app, admission: options.admission, slot: null });
+    writeStderrLine(`build: building apps/${options.app} (${options.admission})`);
+    return await buildOnce(envHash, deps, options, null);
+  } finally {
+    // The mutex is released by now, so this clears `building` even when the
+    // build failed or was killed; the caller records the new build afterwards.
+    writeEnvManifest();
   }
-  if (options.admission === 'no-slot') {
-    writeStderrLine('build: --no-slot: no build slot or lease claimed (CI/Playwright mode)');
-  } else {
-    writeStderrLine('warning: build: --no-lock bypasses build admission on this machine');
-  }
-  mintBuildGrant({ app: options.app, admission: options.admission, slot: null });
-  writeStderrLine(`build: building apps/${options.app} (${options.admission})`);
-  return buildOnce(envHash, deps, options, null);
 }

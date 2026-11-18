@@ -1,6 +1,7 @@
 import { UsageError, type DownOptions, type ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContractLenient, readStackName } from '../lib/contract';
+import { contractWithLease } from '../lib/contract-lease';
 import { appendEnvLog, identityKey, readStackState, removeStackState } from '../lib/state';
 import { removeCachedStack } from '../lib/stack-cache';
 import { ensureRegistryDir, pidAlive, withCheckoutLock } from '../lib/locks';
@@ -8,6 +9,7 @@ import { leaseProjectId, readLease, releaseProjectClaims, removeLease } from '..
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
 import { readStackList, readStackStatus, stackAbsenceConfirmed } from '../lib/stack';
 import { stopStack } from '../lib/stack-lifecycle';
+import { writeEnvManifest, sharedStackFacts, stoppedStackFacts, stackFacts } from '../lib/manifest';
 import { stopWebServer, type StopWebResult } from '../lib/web';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot } from '../lib/snapshot';
@@ -134,6 +136,7 @@ export async function runDown(
       removeStackState();
       removeCachedStack();
       lines.push('Released the app-port lease (shared stack).');
+      writeEnvManifest({ stack: sharedStackFacts() });
       if (parsed.json) {
         printJson(
           await collectSnapshot({
@@ -161,9 +164,18 @@ export async function runDown(
         const lease = readLease(dir, projectId);
         if (lease) lines.push(`Kept the app-port lease on ${lease.appPort}.`);
       }
+      const manifestContract = contractWithLease(snapshotContract);
+      writeEnvManifest({
+        contract: manifestContract,
+        stack: stack ? stackFacts(stack) : stoppedStackFacts(),
+      });
       if (parsed.json) {
         printJson(
-          await collectSnapshot({ contract: snapshotContract, stack, state: readStackState() }),
+          await collectSnapshot({
+            contract: manifestContract,
+            stack,
+            state: readStackState(),
+          }),
         );
       } else for (const line of lines) writeStderrLine(line);
       // Plain `down` over a live stack keeps the lease anyway and reports the
@@ -204,10 +216,12 @@ export async function runDown(
     removeStackState();
     removeCachedStack();
     lines.push('Released the app-port lease.');
+    const manifestContract = contractWithLease(snapshotContract);
+    writeEnvManifest({ contract: manifestContract, stack: stoppedStackFacts() });
     if (parsed.json) {
       printJson(
         await collectSnapshot({
-          contract: snapshotContract,
+          contract: manifestContract,
           stack: readStackStatus(cliStackName),
           state: null,
         }),

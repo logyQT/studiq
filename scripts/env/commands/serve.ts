@@ -28,6 +28,13 @@ import {
 import { probeHttp } from '../lib/health';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot } from '../lib/snapshot';
+import {
+  writeEnvManifest,
+  sharedStackFacts,
+  stackFacts,
+  stoppedStackFacts,
+  type ManifestStack,
+} from '../lib/manifest';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
@@ -96,112 +103,134 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
     applyContractEnv(contract);
     appendEnvLog(`serve: stack=${stackName ?? 'default'} shared=${contract.shared}`);
 
-    const state = readStackState();
-    const conflict = liveServerConflict(
-      { stackName: stackName ?? 'default', profile: state?.profile ?? 'web' },
-      'start',
-    );
-    if (conflict) return refuseConflict(parsed, contract, conflict);
+    // The stack facts this run proves, so a refusal after a mutation still
+    // publishes what it learned. Undefined means "not proved" — the writer then
+    // derives a claim from `.dev/stack.json`, which `status` reconciles.
+    let manifestStack: ManifestStack | undefined;
+    try {
+      const state = readStackState();
+      const conflict = liveServerConflict(
+        { stackName: stackName ?? 'default', profile: state?.profile ?? 'web' },
+        'start',
+      );
+      if (conflict) return refuseConflict(parsed, contract, conflict);
 
-    const stack = contract.shared ? null : readStack(stackName);
-    if (!contract.shared && !stack) {
-      throw new EnvFailure(
-        EXIT_START_FAILED,
-        "no running Supabase stack for this checkout; run 'env:ensure --profile api' first",
-      );
-    }
-    if (stack) assertOwnedStack(stack, stackName);
-    const stackEnv = contract.shared ? sharedStackEnv() : stack!.env;
-    if (contract.shared) {
-      const missing = ['SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'].filter(
-        (name) => !process.env[name],
-      );
-      if (missing.length > 0) {
+      const stack = contract.shared ? null : readStack(stackName);
+      if (!contract.shared && !stack) {
+        manifestStack = stoppedStackFacts();
         throw new EnvFailure(
           EXIT_START_FAILED,
-          `SUPABASE_SHARED=1 needs ${missing.join(', ')} in .env.local (or the process environment)`,
+          "no running Supabase stack for this checkout; run 'env:ensure --profile api' first",
         );
       }
-      if ((await probeHttp(`${stackEnv.apiUrl}/auth/v1/health`)) !== 200) {
-        throw new EnvFailure(EXIT_START_FAILED, 'the shared Supabase stack is not healthy');
+      if (stack) {
+        assertOwnedStack(stack, stackName);
+        manifestStack = stackFacts(stack.status);
+      } else {
+        manifestStack = sharedStackFacts();
       }
-    }
-    applyStackEnv(stackEnv, {
-      appUrl: contract.appUrl,
-      appEnv,
-      stackId: stack?.status.id,
-    });
-
-    const envHash = buildEnvHash({
-      supabaseUrl: stackEnv.apiUrl,
-      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
-      anonKey: stackEnv.anonKey ?? '',
-    });
-    let webPid = readWebPid();
-    let webHttp = await probeHttp(contract.appUrl);
-    if (healthy(webHttp)) {
-      const readiness = recordedWebReadiness(contract.appPort);
-      if (!readiness.ready) {
-        throw new EnvFailure(
-          EXIT_CONFLICT,
-          `${contract.appUrl} answers but is not this checkout's server on ${portSource}; run 'env:down' first`,
+      const stackEnv = contract.shared ? sharedStackEnv() : stack!.env;
+      if (contract.shared) {
+        const missing = ['SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'].filter(
+          (name) => !process.env[name],
         );
+        if (missing.length > 0) {
+          throw new EnvFailure(
+            EXIT_START_FAILED,
+            `SUPABASE_SHARED=1 needs ${missing.join(', ')} in .env.local (or the process environment)`,
+          );
+        }
+        if ((await probeHttp(`${stackEnv.apiUrl}/auth/v1/health`)) !== 200) {
+          throw new EnvFailure(EXIT_START_FAILED, 'the shared Supabase stack is not healthy');
+        }
       }
-    } else {
-      // The stack read above takes hundreds of milliseconds, and the build takes
-      // its mutex only after releasing the checkout lock this command waited on.
-      // This is the check that decides: it must name the build, not report the
-      // artifact the build is rewriting as missing.
-      refuseBuildInProgress();
-      const previous = readWebPid();
-      if (previous !== null) stopWebServer();
-      const built = computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
-      // A fingerprint match is not enough: the artifact must also be the one
-      // `.dev/build.json` describes, and a raw `next build` (or a `--no-lock`
-      // one) moves `BUILD_ID` past that record. Only `current` may be served.
-      const state = classifyBuildArtifact({ fingerprint: built, envHash });
-      if (state !== 'current') {
-        throw new EnvFailure(
-          EXIT_START_FAILED,
-          `no current production build for this stack — ${artifactStateLabel(state)}; run 'bun run env:build' (or 'env:ensure --profile web')`,
-        );
-      }
-      // Fingerprinting the tree takes long enough for a build to start, so the
-      // mutex is read once more at the point of no return.
-      refuseBuildInProgress();
-      webPid = startWebServer({
-        appPort: contract.appPort,
+      applyStackEnv(stackEnv, {
         appUrl: contract.appUrl,
-        env: process.env,
+        appEnv,
+        stackId: stack?.status.id,
       });
-      if (lease) writeLease(touchLease(lease, { appPort: contract.appPort, ownerPid: webPid }));
-      const waited = await waitForWeb(contract.appUrl, webPid, 120, contract.appPort);
-      webHttp = waited.http;
-      if (!waited.ok) {
-        stopWebServer();
-        throw new EnvFailure(
-          EXIT_START_FAILED,
-          `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
-        );
-      }
-    }
 
-    const snapshot = await collectSnapshot({
-      contract,
-      stack: stack?.status ?? null,
-      state,
-      skipStackLookup: true,
-      web: { pid: webPid, http: webHttp },
-      supabaseHttp: 200,
-      ready: true,
-      profile: state?.profile ?? 'web',
-      cold: false,
-    });
-    if (parsed.json) printJson(snapshot);
-    else if (!parsed.quiet) {
-      writeStderrLine(`env: serve ready — ${contract.appUrl} (pid ${webPid ?? '-'})`);
-      writeStderrLine('  log      .dev/web.log');
+      const envHash = buildEnvHash({
+        supabaseUrl: stackEnv.apiUrl,
+        siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
+        anonKey: stackEnv.anonKey ?? '',
+      });
+      let webPid = readWebPid();
+      let webHttp = await probeHttp(contract.appUrl);
+      if (healthy(webHttp)) {
+        const readiness = recordedWebReadiness(contract.appPort);
+        if (!readiness.ready) {
+          throw new EnvFailure(
+            EXIT_CONFLICT,
+            `${contract.appUrl} answers but is not this checkout's server on ${portSource}; run 'env:down' first`,
+          );
+        }
+      } else {
+        // The stack read above takes hundreds of milliseconds, and the build takes
+        // its mutex only after releasing the checkout lock this command waited on.
+        // This is the check that decides: it must name the build, not report the
+        // artifact the build is rewriting as missing.
+        refuseBuildInProgress();
+        const previous = readWebPid();
+        if (previous !== null) stopWebServer();
+        const built = computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
+        // A fingerprint match is not enough: the artifact must also be the one
+        // `.dev/build.json` describes, and a raw `next build` (or a `--no-lock`
+        // one) moves `BUILD_ID` past that record. Only `current` may be served.
+        const state = classifyBuildArtifact({ fingerprint: built, envHash });
+        if (state !== 'current') {
+          throw new EnvFailure(
+            EXIT_START_FAILED,
+            `no current production build for this stack — ${artifactStateLabel(state)}; run 'bun run env:build' (or 'env:ensure --profile web')`,
+          );
+        }
+        // Fingerprinting the tree takes long enough for a build to start, so the
+        // mutex is read once more at the point of no return.
+        refuseBuildInProgress();
+        webPid = startWebServer({
+          appPort: contract.appPort,
+          appUrl: contract.appUrl,
+          env: process.env,
+        });
+        if (lease) writeLease(touchLease(lease, { appPort: contract.appPort, ownerPid: webPid }));
+        const waited = await waitForWeb(contract.appUrl, webPid, 120, contract.appPort);
+        webHttp = waited.http;
+        if (!waited.ok) {
+          stopWebServer();
+          throw new EnvFailure(
+            EXIT_START_FAILED,
+            `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+          );
+        }
+      }
+
+      // Publish before reconciling: the snapshot's `manifest` field compares the
+      // file with this probe, so writing it only in the `finally` would make the
+      // command's own output report the pre-serve file as stale.
+      writeEnvManifest({ contract, stack: manifestStack });
+      const snapshot = await collectSnapshot({
+        contract,
+        stack: stack?.status ?? null,
+        state,
+        skipStackLookup: true,
+        web: { pid: webPid, http: webHttp },
+        supabaseHttp: 200,
+        ready: true,
+        profile: state?.profile ?? 'web',
+        cold: false,
+      });
+      if (parsed.json) printJson(snapshot);
+      else if (!parsed.quiet) {
+        writeStderrLine(`env: serve ready — ${contract.appUrl} (pid ${webPid ?? '-'})`);
+        writeStderrLine('  log      .dev/web.log');
+      }
+      return 0;
+    } finally {
+      // Every exit after the contract is resolved republishes the file: a
+      // refusal, a stopped server whose artifact turned out unservable, a start
+      // that never became healthy. `serving` is re-derived from `readWebPid()`,
+      // so it cannot keep naming the pid this command stopped.
+      writeEnvManifest({ contract, stack: manifestStack });
     }
-    return 0;
   });
 }

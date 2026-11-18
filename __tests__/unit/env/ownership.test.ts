@@ -6,6 +6,8 @@ import {
   appPortBase,
   createHarness,
   firstFreePort,
+  objectField,
+  parseJsonObject,
   REPO_ROOT,
   stackStatusFixture,
   type Harness,
@@ -63,7 +65,15 @@ const webModule = await loadEnvModule<{
     timeoutSeconds: number,
     appPort: number,
   ): Promise<{ ok: boolean; reason: string; http: number }>;
+  readWebPid(): number | null;
+  stopWebServer(): { pid: number | null; stopped: boolean };
 }>('lib/web.ts');
+const healthModule = await loadEnvModule<{
+  probeHttp(url: string, timeoutMs?: number): Promise<number>;
+}>('lib/health.ts');
+const webOwnerModule = await loadEnvModule<{
+  liveServerConflict(input: unknown, action: string): string | null;
+}>('lib/web-owner.ts');
 const locksModule = await loadEnvModule<{
   worktreeKey(root?: string): string;
   processStartTime(pid: number): string | null;
@@ -189,6 +199,21 @@ describe('env:reset-db refuses a stack this checkout does not own', () => {
   });
 });
 
+/** Run one command and return what it wrote to stdout. */
+async function captureStdout(run: () => Promise<unknown>): Promise<string> {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  try {
+    await run();
+  } finally {
+    spy.mockRestore();
+  }
+  return chunks.join('');
+}
+
 /** The per-worktree mutex record a live build leaves behind. */
 function writeBuildMutex(registryDir: string): void {
   const mutex = join(registryDir, 'build-slots', 'worktrees', locksModule.worktreeKey(REPO_ROOT));
@@ -258,6 +283,32 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     expect(input?.env.NEXT_PUBLIC_SUPABASE_URL).toBe('http://localhost:20041');
     expect(input?.env.NEXT_PUBLIC_SUPABASE_ANON_KEY).toBe('sentinel-anon-key-value');
     expect(input?.env.SUPABASE_SERVICE_ROLE_KEY).toBe('sentinel-service-role-value');
+  });
+
+  it('reports its own write in --json, not the pre-serve file', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+    applyHarnessEnv(harness);
+    process.env.APP_PORT = String(await firstFreePort(appPortBase()));
+    vi.spyOn(fingerprintModule, 'computeBuildFingerprint').mockReturnValue('built');
+    vi.spyOn(stateModule, 'classifyBuildArtifact').mockReturnValue('current');
+    // The listener facts are injected. `readWebPid` is the same record the
+    // manifest writer derives `serving` from, so the file and the probe agree.
+    vi.spyOn(webModule, 'readWebPid').mockReturnValue(process.pid);
+    vi.spyOn(webModule, 'stopWebServer').mockReturnValue({ pid: process.pid, stopped: true });
+    // The stubbed pid is this checkout's own server, not a foreign one.
+    vi.spyOn(webOwnerModule, 'liveServerConflict').mockReturnValue(null);
+    vi.spyOn(webModule, 'startWebServer').mockReturnValue(process.pid);
+    vi.spyOn(webModule, 'waitForWeb').mockResolvedValue({ ok: true, reason: 'ready', http: 200 });
+    vi.spyOn(healthModule, 'probeHttp').mockResolvedValue(0);
+
+    const stdout = await captureStdout(() => serveModule.runServe(parse(['serve', '--json'])));
+    // The snapshot is both the command's output and the reconciler: a write that
+    // lands only in the `finally` reports the pre-serve file as stale.
+    const snapshot = parseJsonObject(stdout);
+    expect(objectField(snapshot, 'manifest')).toMatchObject({ agrees: true, differences: [] });
   });
 
   it('refuses while a build holds this worktree mutex, before reading the stack', async () => {

@@ -17,7 +17,7 @@ import { BUILD_MODE } from './fingerprint';
 import { atomicWriteFile } from './atomic-file';
 import { pidAlive } from './locks';
 import { writeStderrLine } from './output';
-import { REPO_ROOT, canon, checkoutPaths } from './repo';
+import { REPO_ROOT, canon, checkoutPaths, isPrimaryCheckout } from './repo';
 
 /**
  * The Turbopack build-cache snapshot (ADR-0014, decisions 1–4).
@@ -614,14 +614,6 @@ function git(repoRoot: string, args: string[]): string | null {
   return result.status === 0 ? (result.stdout ?? '').trim() : null;
 }
 
-/** `git rev-parse` with absolute paths where git is new enough to offer them. */
-function gitPath(repoRoot: string, flag: string): string | null {
-  const absolute = git(repoRoot, ['rev-parse', '--path-format=absolute', flag]);
-  if (absolute) return canon(absolute);
-  const relative = git(repoRoot, ['rev-parse', flag]);
-  return relative === null ? null : canon(resolve(repoRoot, relative));
-}
-
 /**
  * The `record`-role facts of a publish: HEAD, tree state and commit distance.
  *
@@ -647,10 +639,8 @@ export interface GateInput {
 
 /** Read the gates from git and the checkout; `null` git answers stay null. */
 export function readPublishGates(input: GateInput): PublishGates {
-  const gitDir = gitPath(input.repoRoot, '--git-dir');
-  const commonDir = gitPath(input.repoRoot, '--git-common-dir');
   return {
-    primary: gitDir !== null && commonDir !== null && gitDir === commonDir,
+    primary: isPrimaryCheckout(input.repoRoot),
     branch: git(input.repoRoot, ['symbolic-ref', '-q', '--short', 'HEAD']),
     head: git(input.repoRoot, ['rev-parse', 'HEAD']),
     originMain: git(input.repoRoot, ['rev-parse', '--verify', 'origin/main^{commit}']),
@@ -670,9 +660,7 @@ export function readPublishGates(input: GateInput): PublishGates {
  * keeps the refusal from costing IO.
  */
 export function staticProducerReason(repoRoot: string): string | null {
-  const gitDir = gitPath(repoRoot, '--git-dir');
-  const commonDir = gitPath(repoRoot, '--git-common-dir');
-  if (gitDir === null || commonDir === null || gitDir !== commonDir) {
+  if (!isPrimaryCheckout(repoRoot)) {
     return 'not the primary checkout (a linked worktree never publishes)';
   }
   const branch = git(repoRoot, ['symbolic-ref', '-q', '--short', 'HEAD']);
