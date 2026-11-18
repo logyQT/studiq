@@ -713,10 +713,18 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --areas "${{ join(matrix.shard.areas, ',') }}" --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
-        run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright-${{ matrix.shard.name }}.json
+        run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line,json ${{ matrix.shard.paths }}
+
+      - name: Flaky tests (this shard)
+        # A QA case that only passes on retry is a defect in the case, not in the
+        # app; the summary names it without blocking the shard.
+        if: always()
+        run: bun run flaky -- --summary
 
       - name: Upload report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: qa-suite-report-${{ matrix.shard.name }}
@@ -875,10 +883,16 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --areas AI --run "ci${{ github.run_id }}"
 
       - name: Run the AI suite
-        run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line __tests__/qa/AI
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright-ai.json
+        run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line,json __tests__/qa/AI
+
+      - name: Flaky tests (this suite)
+        if: always()
+        run: bun run flaky -- --summary
 
       - name: Upload report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: ai-suite-report
@@ -1094,10 +1108,24 @@ jobs:
 
       - name: Run Playwright (${{ matrix.project }})
         if: needs.scope.outputs.app == 'true'
-        run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
+        # `json` alongside `line`: a test that fails and is rescued by a retry is
+        # green here and invisible in the line output, but it is `flaky` in the
+        # machine report. `scripts/flaky-report.ts` reads those reports.
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright-${{ matrix.project }}.json
+        run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line,json
+
+      - name: Flaky tests (this leg)
+        # Reports, never gates: a retry that rescued a test leaves the leg green,
+        # and this is where that cost becomes visible instead of a log line.
+        if: always() && needs.scope.outputs.app == 'true'
+        run: bun run flaky -- --summary
 
       - name: Upload report
-        if: failure()
+        # `always()`, not `failure()`: a clean leg's JSON report is the ledger's
+        # baseline, and a flaky attempt's trace lands in `test-results/` because
+        # `trace: 'on-first-retry'` writes it for exactly those runs.
+        if: always() && needs.scope.outputs.app == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.project }}

@@ -50,6 +50,47 @@ CI runs its own Supabase instance per job with the native runtime; see the
 `env:` block and the Supabase steps in `verify.yml`. It is not the local
 `bun dev:up` stack.
 
+## Flaky tests
+
+A test that fails and then passes on retry is a **green leg**, so nothing used to
+record it: the `line` reporter put a count in the job log and artifacts were
+uploaded only `if: failure()`. Every Playwright step now runs
+`--reporter=line,json` with `PLAYWRIGHT_JSON_OUTPUT_NAME`, uploads `test-results/`
+with `always()`, and writes a **Flaky tests** table to the job summary — a flaky
+attempt's trace is in the artifact too, because `trace: 'on-first-retry'` writes
+it for exactly those runs.
+
+`bun run flaky` (`scripts/flaky-report.ts`) reads those reports and ranks what
+wobbles. It is built to be called by an agent, so the exit code is the verdict and
+stdout is data:
+
+```bash
+bun run flaky                       # this checkout's test-results/ → JSON verdict
+bun run flaky -- --text             # same, as a table
+bun run flaky -- --runs 20          # last 20 verify runs, downloaded via gh
+bun run flaky -- --dir path/to/dir  # any directory of reports (combines with --runs)
+bun run flaky -- --summary          # GitHub step summary (what CI runs)
+```
+
+| exit | meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| `0`  | no flakes in anything it could read                                        |
+| `1`  | at least one flaky or still-failing test (details on stdout)               |
+| `2`  | bad usage, or `--runs` could not list or download runs                     |
+| `3`  | no Playwright report found — "clean" would be a lie, so it does not say it |
+
+Each entry carries `flaky`/`failed` counts per `seenIn` runs, the slowest failed
+attempt (the signal that separates a slow-but-legitimate wait from a race) and a
+`reproduce` command with `--repeat-each=5 --retries=0`, since the ledger already
+knows the test is unreliable and the replay is for reproducing the failure. QA
+cases replay through `-c __tests__/qa/playwright.qa.config.ts`; without it the
+root config's `testDir` would not find the spec. Downloads are cached in
+`.tmp/flaky/<runId>/`, so a repeat call re-reads instead of re-downloading.
+
+Raising the shared action budget (see `playwright/base.ts`) moves the threshold,
+it does not remove flakes — the ledger's counts across runs are what tell you
+whether a spec is genuinely fast with a slow tail or waiting on something real.
+
 ## Duplication
 
 [jscpd](https://jscpd.dev) (pinned in `devDependencies`, configured by
@@ -153,6 +194,7 @@ bun run dup:base
 | `qa-suite`    | `bun run test:qa`                                                                                    |
 | `ai-suite`    | `bun run mock:llm`, then `bun run test:qa __tests__/qa/AI` (the `LLM_*` values in root `.env.local`) |
 | `pr-triage`   | `bun run pr:size`                                                                                    |
+| flake report  | `bun run flaky` (or `-- --runs 20` for the last CI runs)                                             |
 
 `bun run pr:size` measures committed changes only (`git diff <base>...HEAD`), so
 commit before checking — uncommitted work is invisible to it.
