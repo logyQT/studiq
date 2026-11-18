@@ -109,6 +109,9 @@ interface CacheModule {
     turbopackDirs: string[];
   } | null;
   cacheLayoutRecognised(layout: unknown): boolean;
+  knownCacheExclusionLabels(): string[];
+  worktreeCacheDir(repoRoot?: string, env?: NodeJS.ProcessEnv): string;
+  isWithin(path: string, root: string): boolean;
   stageSnapshot(input: {
     cacheRoot: string;
     worktreeCacheDir: string;
@@ -139,6 +142,7 @@ interface CacheModule {
   seedWorktreeCache(input: {
     worktreeRoot: string;
     cacheRoot: string;
+    cacheDir?: string;
     envHash?: string | null;
     deps?: {
       identity?: (worktreeRoot: string) => Promise<Identity>;
@@ -555,8 +559,16 @@ describe('cache layout reporting', () => {
     mkdirSync(join(cacheDir, 'fetch-cache'));
     writeFileSync(join(cacheDir, 'config.json'), '{}');
     writeFileSync(join(cacheDir, '.tsbuildinfo'), '');
+    // Next names its telemetry batches `_events_<pid>_<hex>.json`; a dev server
+    // or a build leaves one behind and it is not cache identity.
+    writeFileSync(join(cacheDir, '_events_4242_0487b99c35c29ae3.json'), '[]');
     const layout = cache.classifyCacheLayout(cacheDir);
-    expect(layout?.known.toSorted()).toEqual(['.tsbuildinfo', 'config.json', 'fetch-cache']);
+    expect(layout?.known.toSorted()).toEqual([
+      '.tsbuildinfo',
+      '_events_4242_0487b99c35c29ae3.json',
+      'config.json',
+      'fetch-cache',
+    ]);
     expect(layout?.unknown).toEqual([]);
     expect(layout?.turbopackDirs).toEqual([TEMP_TURBOPACK]);
     expect(cache.cacheLayoutRecognised(layout)).toBe(true);
@@ -565,6 +577,30 @@ describe('cache layout reporting', () => {
     const unknown = cache.classifyCacheLayout(cacheDir);
     expect(unknown?.unknown).toEqual(['surprise']);
     expect(cache.cacheLayoutRecognised(unknown)).toBe(false);
+  });
+
+  it('applies every exclusion it advertises', () => {
+    const cacheDir = join(tempRoot(), 'cache');
+    mkdirSync(join(cacheDir, 'turbopack', TEMP_TURBOPACK), { recursive: true });
+    // A label's `*` stands for the part that varies; a name of that shape must be
+    // classified as known, or doctor advertises an exclusion it does not apply.
+    const names = cache
+      .knownCacheExclusionLabels()
+      .map((label) => label.replace('*', '4242_0487b99c35c29ae3'));
+    for (const name of names) writeFileSync(join(cacheDir, name), '');
+    const layout = cache.classifyCacheLayout(cacheDir);
+    expect(layout?.known.toSorted()).toEqual(names.toSorted());
+    expect(layout?.unknown).toEqual([]);
+  });
+
+  it('excludes only Next’s batch shape, not every name starting with _events_', () => {
+    const cacheDir = join(tempRoot(), 'cache');
+    mkdirSync(join(cacheDir, 'turbopack', TEMP_TURBOPACK), { recursive: true });
+    writeFileSync(join(cacheDir, '_events_notes.txt'), '');
+    const layout = cache.classifyCacheLayout(cacheDir);
+    expect(layout?.known).toEqual([]);
+    expect(layout?.unknown).toEqual(['_events_notes.txt']);
+    expect(cache.cacheLayoutRecognised(layout)).toBe(false);
   });
 
   it('treats a cache root without turbopack/ as unrecognised', () => {
@@ -975,7 +1011,59 @@ describe('retention is bounded', () => {
   });
 });
 
+describe('the read seam', () => {
+  it('resolves the default cache and both override forms', () => {
+    expect(cache.worktreeCacheDir('/repo')).toBe('/repo/apps/web/.next/cache');
+    expect(cache.worktreeCacheDir('/repo', { STUDIQ_WORKTREE_CACHE_DIR: 'fixtures/cache' })).toBe(
+      '/repo/fixtures/cache',
+    );
+    expect(cache.worktreeCacheDir('/repo', { STUDIQ_WORKTREE_CACHE_DIR: '/elsewhere/cache' })).toBe(
+      '/elsewhere/cache',
+    );
+  });
+
+  it('places a path by real location, not by string prefix', () => {
+    const root = tempRoot();
+    expect(cache.isWithin(join(root, 'apps', 'web', '.next', 'cache'), root)).toBe(true);
+    expect(cache.isWithin(root, root)).toBe(true);
+    expect(cache.isWithin(join(root, '..', 'sibling'), root)).toBe(false);
+    // A shared prefix is not containment: `/root-copy` is not inside `/root`.
+    expect(cache.isWithin(`${root}-copy`, root)).toBe(false);
+
+    const outside = tempRoot();
+    const link = join(root, 'linked');
+    try {
+      symlinkSync(outside, link);
+    } catch {
+      return; // a platform without symlink permission: the prefix cases still ran
+    }
+    expect(cache.isWithin(join(link, 'cache'), root)).toBe(false);
+  });
+});
+
 describe('seed containment', () => {
+  it('refuses a resolved cache outside the worktree before deleting or creating anything', async () => {
+    const cacheRoot = tempRoot();
+    // No published snapshot: the refusal must come before the snapshot read, as
+    // the delete it guards does.
+    const worktreeRoot = writeWorktree();
+    const outside = tempRoot();
+    const cacheDir = join(outside, 'cache');
+    const stale = join(outside, 'cache.seed-424242-abcd');
+    mkdirSync(stale, { recursive: true });
+    writeFileSync(join(stale, 'operator-file'), 'keep me');
+
+    const result = await seedFromCache(cacheRoot, worktreeRoot, { cacheDir });
+
+    expect(result.status).toBe('skipped');
+    if (result.status !== 'skipped') return;
+    expect(result.reason).toContain('outside');
+    // Neither the stale seed directory beside the target nor the target itself.
+    expect(readFileSync(join(stale, 'operator-file'), 'utf8')).toBe('keep me');
+    expect(existsSync(cacheDir)).toBe(false);
+    expect(existsSync(join(worktreeRoot, 'apps', 'web', '.next', 'cache'))).toBe(false);
+  });
+
   it('refuses a root inside the repository even when it seeds a sibling worktree', async () => {
     const worktreeRoot = writeWorktree();
     const inside = join(REPO_ROOT_FOR_TEST, '.tmp', 'cache-root-should-not-exist');

@@ -16,10 +16,12 @@ import {
 } from './locks';
 import {
   collectIdentityFacts,
+  isWithin,
   nextVersionOf,
   pruneForeignVersions,
   resolveCacheDir,
   stageSnapshot,
+  worktreeCacheDir,
   type StagedSnapshot,
 } from './build-cache';
 import { stripAnsi, writeStderrLine } from './output';
@@ -409,9 +411,32 @@ function invalidateFailedArtifact(deps: ProductionBuildDeps): string | null {
   );
 }
 
-/** This checkout's Turbopack cache root; `apps/admin` has its own and is not covered. */
-function worktreeCacheDir(): string {
-  return join(REPO_ROOT, 'apps', 'web', '.next', 'cache');
+/**
+ * Prune foreign Turbopack version directories — only while the cache is inside
+ * this checkout.
+ *
+ * `STUDIQ_WORKTREE_CACHE_DIR` redirects what a snapshot *reads*; it must never
+ * redirect a recursive delete. A redirected cache outside the worktree is left
+ * alone (ADR-0014: a bad override costs a cold build, not a file the operator
+ * did not nominate), and the line says so instead of pruning in silence.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function pruneCacheVersions(
+  nextVersion: string | null,
+  keepDirectory?: string | null,
+): string[] {
+  if (nextVersion === null || nextVersion === '') return [];
+  const cacheDir = worktreeCacheDir();
+  if (!isWithin(cacheDir, REPO_ROOT)) {
+    writeStderrLine(
+      `build: not pruning ${cacheDir} (outside this checkout; STUDIQ_WORKTREE_CACHE_DIR is a read override)`,
+    );
+    return [];
+  }
+  // The resolved directory is passed explicitly: a pre-release version compares
+  // on its numeric prefix, and this name must never be the thing deleted.
+  return pruneForeignVersions(join(cacheDir, 'turbopack'), nextVersion, keepDirectory);
 }
 
 /**
@@ -427,17 +452,9 @@ async function stageInsideBuild(
 ): Promise<{ staged: StagedSnapshot | null; skipped: string | null }> {
   const identity = await collectIdentityFacts(REPO_ROOT, envHash);
   const nextVersion = identity.next ?? '';
-  if (nextVersion !== '') {
-    // The resolved directory is passed explicitly: a pre-release version compares
-    // on its numeric prefix, and this name must never be the thing deleted.
-    const pruned = pruneForeignVersions(
-      join(worktreeCacheDir(), 'turbopack'),
-      nextVersion,
-      identity.turbopackDir,
-    );
-    if (pruned.length > 0) {
-      writeStderrLine(`build: pruned foreign Turbopack cache director(ies): ${pruned.join(', ')}`);
-    }
+  const pruned = pruneCacheVersions(nextVersion, identity.turbopackDir);
+  if (pruned.length > 0) {
+    writeStderrLine(`build: pruned foreign Turbopack cache director(ies): ${pruned.join(', ')}`);
   }
   const result = await stageSnapshot({
     cacheRoot: resolveCacheDir(),
@@ -518,8 +535,7 @@ async function buildOnce(
       staged = snapshot.staged;
       snapshotSkipped = snapshot.skipped;
     } else {
-      const next = nextVersionOf(REPO_ROOT);
-      if (next !== null) pruneForeignVersions(join(worktreeCacheDir(), 'turbopack'), next);
+      pruneCacheVersions(nextVersionOf(REPO_ROOT));
     }
   }
   // The finish line belongs here, not in `commands/build.ts`: `env ensure`'s

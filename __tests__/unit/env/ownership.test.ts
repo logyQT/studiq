@@ -36,6 +36,12 @@ interface ServeModule {
   runServe(parsed: ParsedCommand): Promise<number>;
 }
 
+/** The registry lease `env:ensure` writes; `serve` adopts its `appPort`. */
+interface AppLease {
+  projectId: string;
+  appPort: number;
+}
+
 // `state.ts` captures DEV_DIR at import time, so point it at a temp dir before
 // loading any `scripts/env` module (the suite must never write the real `.dev/`).
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-ownership-'));
@@ -49,11 +55,27 @@ const fingerprintModule = await loadEnvModule<{
   computeBuildFingerprint(input: { root: string; mode: string; envHash: string }): string;
 }>('lib/fingerprint.ts');
 const stateModule = await loadEnvModule<{
+  identityKey(projectRoot: string, branch: string, stackName: string): string;
   classifyBuildArtifact(expected: {
     fingerprint: string | null;
     envHash: string | null;
   }): 'current' | 'stale' | 'unrecorded' | 'missing' | null;
 }>('lib/state.ts');
+const leaseModule = await loadEnvModule<{
+  leaseProjectId(identityKey: string): string;
+  newLease(input: {
+    projectId: string;
+    projectRoot: string;
+    branch: string;
+    stackName: string;
+    appPort: number;
+    shared: boolean;
+    sharedOwner: string | null;
+    mode: 'dev' | 'prod';
+  }): AppLease;
+  writeLease(lease: AppLease): void;
+}>('lib/lease.ts');
+const repoModule = await loadEnvModule<{ currentBranchRef(): string }>('lib/repo.ts');
 const lifecycleModule = await loadEnvModule<{
   applyStackEnv(env: unknown, extras: { appUrl: string; appEnv: string; stackId?: string }): void;
 }>('lib/stack-lifecycle.ts');
@@ -224,6 +246,29 @@ function writeBuildMutex(registryDir: string): void {
   writeFileSync(join(mutex, 'worktree'), `${REPO_ROOT}\n`);
 }
 
+/**
+ * The app-port lease `env:ensure` leaves in the registry.
+ *
+ * It is the only input that can name this checkout's port while `APP_PORT` and
+ * `APP_URL` stay unset, which is the state `serve` reads its contract in.
+ */
+function writeAppLease(appPort: number): void {
+  const stackName = process.env.SUPABASE_STACK ?? '';
+  const branch = repoModule.currentBranchRef();
+  leaseModule.writeLease(
+    leaseModule.newLease({
+      projectId: leaseModule.leaseProjectId(stateModule.identityKey(REPO_ROOT, branch, stackName)),
+      projectRoot: REPO_ROOT,
+      branch,
+      stackName,
+      appPort,
+      shared: false,
+      sharedOwner: null,
+      mode: 'prod',
+    }),
+  );
+}
+
 describe('env:serve refuses another checkout’s stack and keys', () => {
   it('refuses a foreign SUPABASE_WORKDIR before reading the stack', async () => {
     const harness = newHarness();
@@ -363,6 +408,33 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
     if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
     expect(failure.message).toContain(`pid ${process.pid}`);
+    expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe('env:serve names the port its contract adopted', () => {
+  it('blames the leased port, not APP_PORT, when a foreign listener answers', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+    applyHarnessEnv(harness);
+    const appPort = await firstFreePort(appPortBase());
+    // `serve` adopts the lease only while APP_PORT and APP_URL name nothing.
+    writeAppLease(appPort);
+    // The 200 comes from a listener that is not this checkout's server.
+    vi.spyOn(healthModule, 'probeHttp').mockResolvedValue(200);
+    const start = vi.spyOn(webModule, 'startWebServer');
+
+    const failure = await serveModule.runServe(parse(['serve'])).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain(`http://localhost:${appPort}`);
+    // #1362: the source is read before `applyContractEnv` writes APP_PORT/APP_URL,
+    // so the refusal can still name the lease. Read afterwards, every refusal
+    // says APP_PORT — a lease the operator never set.
+    expect(failure.message).toContain('the leased port');
     expect(start).not.toHaveBeenCalled();
   });
 });

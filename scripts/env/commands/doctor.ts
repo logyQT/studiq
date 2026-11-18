@@ -16,15 +16,17 @@ import {
 import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
 import { formatBuildSlots, readBuildSlots } from '../lib/locks';
 import {
-  CACHE_KNOWN_EXCLUSIONS,
   cacheLayoutRecognised,
   cacheMaxBytes,
   checkCacheRoot,
   classifyCacheLayout,
+  knownCacheExclusionLabels,
   readCurrentSnapshotId,
   readLastPublish,
   readSnapshotStatus,
   resolveCacheDir,
+  worktreeCacheDir,
+  type CacheLayout,
 } from '../lib/build-cache';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
@@ -89,6 +91,24 @@ function orDash(value: string | number | null): string {
 
 function httpLabel(value: number): string {
   return value > 0 ? String(value) : '-';
+}
+
+/**
+ * The layout line: the entries on disk, and what a snapshot would leave out.
+ *
+ * An excluded entry is reported rather than hidden — "this file is here and will
+ * not be copied" is the fact an operator needs when the snapshot step behaves
+ * differently than the directory contents suggest.
+ */
+function layoutLabel(layout: CacheLayout | null, cacheDir: string): string {
+  if (layout === null) return `none (${cacheDir} does not exist)`;
+  const entries = layout.entries.join(', ');
+  if (!cacheLayoutRecognised(layout)) {
+    return `${entries} (unrecognised; known exclusions: ${knownCacheExclusionLabels().join(', ')})`;
+  }
+  return layout.known.length === 0
+    ? `${entries} (recognised)`
+    : `${entries} (recognised; not snapshotted: ${layout.known.join(', ')})`;
 }
 
 /**
@@ -179,7 +199,8 @@ async function buildReport(): Promise<DoctorReport> {
       ? cacheRootHasSnapshots(cacheRoot)
       : false;
   const lastPublish = readLastPublish(cacheRoot);
-  const worktreeCacheLayout = classifyCacheLayout(join(REPO_ROOT, 'apps', 'web', '.next', 'cache'));
+  const cacheDirToClassify = worktreeCacheDir();
+  const worktreeCacheLayout = classifyCacheLayout(cacheDirToClassify);
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
   // Same probe `env:ports` uses: a bind failure includes a listener on any
@@ -311,7 +332,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (worktreeCacheLayout !== null && !cacheLayoutRecognised(worktreeCacheLayout)) {
     warnings.push(
-      `apps/web/.next/cache layout is unrecognised (${worktreeCacheLayout.entries.join(', ')}); the snapshot step and seeds are skipped until the allowlist matches`,
+      `${worktreeCacheLayout.root} layout is unrecognised (${worktreeCacheLayout.entries.join(', ')}); the snapshot step and seeds are skipped until the allowlist matches`,
     );
   }
   if (slots?.degraded) {
@@ -418,9 +439,7 @@ async function buildReport(): Promise<DoctorReport> {
       `  turbopack  ${cacheSnapshot.turbopack === null ? 'unknown' : cacheSnapshot.turbopack.join(', ') || 'none'}`,
     );
   }
-  lines.push(
-    `  layout     ${worktreeCacheLayout === null ? 'none (no apps/web/.next/cache yet)' : `${worktreeCacheLayout.entries.join(', ')} (${cacheLayoutRecognised(worktreeCacheLayout) ? 'recognised' : `unrecognised; known exclusions: ${CACHE_KNOWN_EXCLUSIONS.join(', ')}`})`}`,
-  );
+  lines.push(`  layout     ${layoutLabel(worktreeCacheLayout, cacheDirToClassify)}`);
   if (lastPublish !== null) {
     lines.push(
       `  last       ${lastPublish.outcome}${lastPublish.reason ? ` (${lastPublish.reason})` : ''} at ${lastPublish.at}`,

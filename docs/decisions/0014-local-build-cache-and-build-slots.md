@@ -213,8 +213,8 @@ differ in, so the seed adds nothing a rebuild does not already change.
 
    **What is seeded.** The snapshot body, and therefore the seed, is exactly one
    entry: `turbopack/`. Every other entry under `.next/cache` is skipped by name
-   by the snapshot writer, and the list is closed — an entry that is neither
-   allowlisted nor named below is treated as unrecognised:
+   by the snapshot writer, and the list is closed — an entry that matches neither
+   the allowlist nor an exclusion below is treated as unrecognised:
 
    - `fetch-cache/` — build-time HTTP responses (in this repo, the
      `next/font/google` response from the root layout). The fingerprint covers
@@ -229,6 +229,12 @@ differ in, so the seed adds nothing a rebuild does not already change.
      `turbopack/v*` prune never touches it. Keeping it would need a
      cold-vs-seeded diagnostics comparison that has not been run, so it is
      excluded until one exists.
+   - `_events_*.json` — Next's telemetry batch
+     (`_events_<pid>_<hex>.json`, written by `next dev` and by any build that
+     flushes; `node_modules/next/dist/telemetry/storage.js`). It names a
+     **process**, not cache identity, and it must never be copied into a
+     snapshot. It is the one exclusion matched as a **pattern** rather than a
+     name, because the pid changes with every process that flushes.
 
    **`apps/admin` is not covered by v1.** It is a second Next app with its own
    `apps/admin/.next/cache` under the same Next version, so a web snapshot can
@@ -239,12 +245,14 @@ differ in, so the seed adds nothing a rebuild does not already change.
    `apps/admin/.next` (whose peak RSS is also still unmeasured, decision 5), and
    its build has no fingerprint or build record to key on.
 
-   An **unrecognised cache root** — an entry under `.next/cache` that is neither
-   the allowlist nor one of those three, or no `turbopack/` at all — is a reason
-   to build cold, never a reason to copy: that snapshot is skipped and
-   `env doctor` reports the layout, so a Next layout change cannot silently
-   degrade every worktree. The three entries above are known exclusions, not
-   unrecognised roots, and never trigger a skip.
+   An **unrecognised cache root** — an entry under `.next/cache` that matches
+   neither the allowlist nor one of the exclusions above, or no `turbopack/` at
+   all — is a reason to build cold, never a reason to copy: that snapshot is
+   skipped and `env doctor` reports the layout, so a Next layout change cannot
+   silently degrade every worktree. The entries above are known exclusions, not
+   unrecognised roots, and never trigger a skip. Classification and the list
+   `env doctor` prints come from the same table, so an exclusion cannot be
+   advertised without being applied.
 
    **The snapshot body is never empty.** `fileCount` is written from the staging
    copy and verified before a publish, and a body with no files is refused at
@@ -993,7 +1001,12 @@ experiment, not a number.
 - **The cache root is trusted like the registry.** The only paths the seed writes
   or deletes are the snapshot and staging paths under a guarded cache root, plus
   the seed temp directory inside this worktree's `.next`; a bad cache-root
-  override costs a cold build, not a repository.
+  override costs a cold build, not a repository. The same holds for the
+  `.next/cache` the snapshot **reads**: `STUDIQ_WORKTREE_CACHE_DIR` (tests and
+  isolated runs) redirects what is classified and read, never what is written or
+  deleted — a seed whose target resolves outside the worktree is skipped before
+  it deletes or creates anything, and the foreign-version prune leaves a cache
+  outside the checkout untouched.
 - **Concurrency:** a memory-derived cap with a measured per-slot reservation
   keeps the benchmark configuration out of swap — three builds peak at ~11.7 GB
   (Evidence §4), a smaller cgroup admits fewer, and a native stack reserves one
