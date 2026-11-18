@@ -7,6 +7,8 @@
 #   scripts/spin feat/my-feature --no-seed-cache
 #                                             # create without seeding .next/cache
 #   scripts/spin feat/my-feature --clean      # remove worktree + branch
+#   scripts/spin feat/my-feature --clean --force
+#                                             # remove even if it has uncommitted changes
 #   scripts/spin --list                       # list all worktrees
 #
 # The worktree is created directly in the checkout's parent directory, one
@@ -151,11 +153,12 @@ case "${1:-}" in
     exit 0
     ;;
   --help|-h)
-    echo "Usage: scripts/spin <branch-name> [--clean] [--no-install] [--no-seed-cache]"
+    echo "Usage: scripts/spin <branch-name> [--clean [--force]] [--no-install] [--no-seed-cache]"
     echo "       scripts/spin --list"
     echo ""
     echo "  <branch-name>   Feature branch name (e.g. feat/my-feature)"
     echo "  --clean          Remove the worktree and delete the branch"
+    echo "  --force          With --clean: remove even if the worktree has uncommitted changes"
     echo "  --no-install     Skip bun install in the new worktree"
     echo "  --no-seed-cache  Skip seeding .next/cache from the local snapshot"
     echo "  --list, -l       List all worktrees"
@@ -175,6 +178,8 @@ case "${1:-}" in
     echo "--clean only removes worktrees that scripts/spin created."
     echo "It finds them by branch registration, not by path, so a worktree that"
     echo "has been moved is still the one cleaned."
+    echo "It refuses to remove a worktree with uncommitted changes (tracked or"
+    echo "untracked); --force is the only way past that, and it deletes them."
     exit 0
     ;;
   "") fail "Missing branch name. Usage: scripts/spin <branch-name>" ;;
@@ -182,12 +187,14 @@ esac
 
 BRANCH="$1"
 CLEAN=false
+FORCE=false
 NO_INSTALL=false
 NO_SEED_CACHE=false
 shift
 for arg in "$@"; do
   case "$arg" in
     --clean) CLEAN=true ;;
+    --force) FORCE=true ;;
     --no-install) NO_INSTALL=true ;;
     --no-seed-cache) NO_SEED_CACHE=true ;;
     *) fail "Unknown option: $arg" ;;
@@ -233,8 +240,36 @@ if $CLEAN; then
     fi
 
     if [ -d "$REGISTERED_PATH" ]; then
-      # Two force flags: the provenance lock must survive a failed removal, so
-      # remove the locked worktree directly instead of unlocking it first.
+      # `--clean` is the end of the agent flow and is called non-interactively,
+      # so there is no prompt to fall back on: refuse instead of discarding
+      # work. --force is the only way past this; a dirty check that prompted
+      # would hang the harness.
+      if ! $FORCE; then
+        # `.spin-base` is this script's own stamp, not user work. Excluding it
+        # keeps a pristine worktree clean even when the branch predates the
+        # .gitignore entry.
+        if ! dirty_paths=$(git -C "$REGISTERED_PATH" status --porcelain -- . ':(exclude).spin-base' 2>&1); then
+          fail "Could not inspect worktree for uncommitted changes: $REGISTERED_PATH
+  $dirty_paths
+  Left untouched; re-run once the worktree is readable."
+        fi
+        if [ -n "$dirty_paths" ]; then
+          dirty_count=$(printf '%s\n' "$dirty_paths" | wc -l | tr -d ' ')
+          fail "Refusing to clean '$BRANCH': the worktree has uncommitted changes.
+  $REGISTERED_PATH
+$(printf '%s\n' "$dirty_paths" | head -n 20 | sed 's/^/    /')
+  $dirty_count path(s) affected$([ "$dirty_count" -gt 20 ] && printf ' (showing the first 20)'): tracked edits, staged changes and untracked files.
+  Commit or stash it, then re-run:
+    scripts/spin $BRANCH --clean
+  To delete that work and remove the worktree and branch anyway:
+    scripts/spin $BRANCH --clean --force"
+        fi
+      fi
+
+      # Two force flags: this is for the provenance lock, not for bypassing the
+      # dirty check above (which `worktree remove` would otherwise satisfy).
+      # The lock must survive a failed removal, so remove the locked worktree
+      # directly instead of unlocking it first. Do not "simplify" this back.
       if ! remove_error=$(git -C "$PRIMARY_ROOT" worktree remove --force --force "$REGISTERED_PATH" 2>&1); then
         fail "Could not remove worktree $REGISTERED_PATH: $remove_error"
       fi

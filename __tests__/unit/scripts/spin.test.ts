@@ -277,6 +277,78 @@ describe('scripts/spin', () => {
     expect(branchExists(repo, 'feat/cleaned')).toBe(false);
   });
 
+  it('refuses to clean a worktree with uncommitted changes', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-probe');
+    writeFileSync(join(repo, 'tracked.txt'), 'committed\n');
+    git(repo, 'add', 'tracked.txt');
+    git(repo, 'commit', '-q', '-m', 'tracked file');
+
+    runSpin(repo, ['chore/probe']);
+    // Untracked work and an in-place edit are both lost by a removal.
+    writeFileSync(join(worktree, 'PRECIOUS.md'), 'uncommitted work\n');
+    writeFileSync(join(worktree, 'tracked.txt'), 'edited\n');
+
+    const result = runSpinCaptured(repo, ['chore/probe', '--clean']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Refusing to clean 'chore/probe'");
+    expect(result.stderr).toContain('PRECIOUS.md');
+    expect(result.stderr).toContain('tracked.txt');
+    expect(result.stderr).toContain('--clean --force');
+    // The refusal must not fall through to the branch deletion.
+    expect(result.stdout).not.toContain('Deleted branch');
+    expect(readFileSync(join(worktree, 'PRECIOUS.md'), 'utf8')).toBe('uncommitted work\n');
+    expect(branchExists(repo, 'chore/probe')).toBe(true);
+  });
+
+  it('caps the dirty-path list and says how many paths are affected', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-many');
+
+    runSpin(repo, ['chore/many']);
+    for (let i = 0; i < 25; i++) {
+      writeFileSync(join(worktree, `dirty-${String(i).padStart(2, '0')}.txt`), 'x');
+    }
+
+    const stderr = spinStderr(repo, ['chore/many', '--clean']);
+
+    expect(stderr).toContain('25 path(s) affected');
+    expect(stderr).toContain('(showing the first 20)');
+    expect(stderr.match(/^ {4}\?\? dirty-/gm)).toHaveLength(20);
+    expect(branchExists(repo, 'chore/many')).toBe(true);
+  });
+
+  it('removes a dirty worktree with --force', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-forced');
+
+    runSpin(repo, ['chore/forced']);
+    writeFileSync(join(worktree, 'PRECIOUS.md'), 'uncommitted work\n');
+
+    const result = runSpinCaptured(repo, ['chore/forced', '--clean', '--force']);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(worktree)).toBe(false);
+    expect(branchExists(repo, 'chore/forced')).toBe(false);
+  });
+
+  it('does not treat its own .spin-base stamp as uncommitted work', () => {
+    // The temp repo has no .gitignore entry for the stamp, so this pins the
+    // explicit exclusion rather than the ignore file doing the work.
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'chore-stamped');
+
+    runSpin(repo, ['chore/stamped']);
+    expect(git(worktree, 'status', '--porcelain')).toContain('.spin-base');
+
+    const result = runSpinCaptured(repo, ['chore/stamped', '--clean']);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(worktree)).toBe(false);
+    expect(branchExists(repo, 'chore/stamped')).toBe(false);
+  });
+
   // The locator is the branch registration, never the path recomputed from
   // the name, so a worktree that moved is still the one its branch owns.
   it('cleans a worktree registered at a path other than the computed one', () => {
@@ -358,7 +430,8 @@ describe('scripts/spin', () => {
     expect(branchExists(repo, 'feat-x')).toBe(true);
     expect(branchExists(repo, 'feat/x')).toBe(false);
 
-    runSpin(repo, ['feat-x', '--clean']);
+    // Cleanup: the occupant is deliberately dirty, so removal needs --force.
+    runSpin(repo, ['feat-x', '--clean', '--force']);
   });
 
   it('cleans a worktree even when SPIN_WORKTREE_ROOT is relative', () => {
