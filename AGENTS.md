@@ -163,16 +163,19 @@ output worth reading. Everything reached through `bun run …` fails before
 (see the local-dev note below).
 
 - **What a build prints.** A start line before the spawn —
-  `build: building apps/web (slot 1)`, or `(no-slot)`/`(no-lock)` — then one of
-  two finishes: `Build complete (apps/web, slot) in 12.4s` with up to 10 warning
-  lines above it, or the last 40 lines of the failed build on stderr followed by
-  `env: build failed (exit 4); full log: .dev/env.log`. A clean build is three to
-  five lines, not two; a build with warnings shows them.
+  `build: building apps/web (slot 1, after 0.0s)`, or `(no-slot)`/`(no-lock)` —
+  then one of two finishes: `Build complete (apps/web, slot) in 12.4s` with up to
+  10 warning lines above it, or the last 40 lines of the failed build on stderr
+  followed by `env: build failed (exit 4); full log: .dev/env.log`. The `after`
+  value is the wait for a build slot, and this start line is the observable copy
+  of it. A clean build is three to five lines, not two; a build with warnings
+  shows them.
 - **Informational lines.** Besides the start and finish, a successful build may
   print `build: no cgroup limit; using host MemAvailable`, and — on a worktree
   with no cache — `build: seed skipped: …` and `build: snapshot skipped: …`,
-  including on the `Build is already current.` short-circuit. The guard's
-  `build: admitted apps/web (slot 1, launcher pid …)` goes to `.dev/env.log` and
+  including on the `Build is already current.` short-circuit. The prebuild
+  guard's `build: admitted apps/web (slot 1, launcher pid …, after N.Ns)` is not
+  re-printed by a successful build and is not appended to `.dev/env.log`; it
   appears in a failed build's tail.
 - **`.dev/env.log`** is this checkout's env/build log: the env command lines,
   every warning from a successful build, and the full output of a failed one.
