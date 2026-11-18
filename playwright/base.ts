@@ -13,9 +13,13 @@ import { defineConfig, type PlaywrightTestConfig } from '@playwright/test';
  * explaining the budget.
  *
  * It is 4 s rather than 3 s because a miss costs a whole test, not the missing
- * second: a step that needed 3.2 s under CI load replays the entire test to
- * recover, and firefox's slower path hit that often enough that retries — not
- * the tests — dominated its leg. The extra second is free on a passing test.
+ * second: a step that needed 3.2 s under load replays the entire test to recover,
+ * and the firefox leg spent enough of its wall clock on those replays that
+ * retries, not the tests, dominated it (the operator's observation when this
+ * budget was 3 s; `bun run flaky` now measures it instead of asserting it).
+ * A passing test never spends the extra second, but a genuinely broken step
+ * spends one of them per miss out of the per-test budget below — the trade is
+ * "slow tests get their real duration, broken tests still fail".
  */
 const ACTION_TIMEOUT_MS = 4_000;
 

@@ -14,6 +14,9 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 export async function loadFlakyReport(): Promise<{
   parseReport: (raw: unknown) => ObservedTest[];
   aggregate: (reports: { tests: ObservedTest[] }[]) => FlakeEntry[];
+  verdictOf: (entries: FlakeEntry[], reportCount: number) => Verdict;
+  exitCode: (verdict: Verdict, summary: boolean) => number;
+  windowOf: (reports: { tests: ObservedTest[]; startedAt?: string }[]) => Window;
 }> {
   // The dynamic import is `any`; binding it to the caller's structural type keeps
   // the unsafe value at this module boundary instead of every call site.
@@ -40,4 +43,11 @@ interface FlakeEntry {
   slowestFailureMs?: number;
   lastError?: string;
   reproduce: string;
+}
+
+type Verdict = 'clean' | 'flaky' | 'failing' | 'no-data';
+
+interface Window {
+  earliest?: string;
+  latest?: string;
 }

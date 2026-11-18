@@ -31,7 +31,14 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { relative, resolve, join } from 'node:path';
 
 type Json = Record<string, unknown>;
@@ -71,6 +78,27 @@ export type Verdict = 'clean' | 'flaky' | 'failing' | 'no-data';
 
 interface Report {
   tests: ObservedTest[];
+  /** `stats.startTime` from the report, so a verdict can be dated. */
+  startedAt?: string;
+}
+
+/** The span the reports cover. Undated reports are reported as such, not guessed. */
+export interface Window {
+  earliest?: string;
+  latest?: string;
+}
+
+/**
+ * Which runs a verdict covers. Without this, "failing" read from `--runs 20` looks
+ * like "red now" even when the last failure was three weeks ago.
+ */
+export function windowOf(reports: Report[]): Window {
+  const times = reports
+    .map((report) => report.startedAt)
+    .filter((value): value is string => value !== undefined)
+    .sort();
+  if (times.length === 0) return {};
+  return { earliest: times[0], latest: times[times.length - 1] };
 }
 
 const SCHEMA = 1;
@@ -171,6 +199,11 @@ export function parseReport(raw: unknown): ObservedTest[] {
   return tests;
 }
 
+function reportStartTime(raw: unknown): string | undefined {
+  if (!isRecord(raw) || !isRecord(raw.stats)) return undefined;
+  return asString(raw.stats.startTime);
+}
+
 function jsonFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const found: string[] = [];
@@ -199,13 +232,15 @@ function jsonFiles(dir: string): string[] {
 export function readReports(dir: string): Report[] {
   const reports: Report[] = [];
   for (const path of jsonFiles(dir)) {
+    let raw: unknown;
     let tests: ObservedTest[];
     try {
-      tests = parseReport(JSON.parse(readFileSync(path, 'utf8')));
+      raw = JSON.parse(readFileSync(path, 'utf8'));
+      tests = parseReport(raw);
     } catch {
       continue;
     }
-    if (tests.length > 0) reports.push({ tests });
+    if (tests.length > 0) reports.push({ tests, startedAt: reportStartTime(raw) });
   }
   return reports;
 }
@@ -309,6 +344,14 @@ function gh(args: string[]): string {
 }
 
 /** Download the last `limit` verify runs' artifacts into `.tmp/flaky/<runId>/`. */
+// Only this repo's Playwright artifacts are worth downloading: a run also carries
+// the 90-day duplication dashboard, which the ledger cannot read.
+const ARTIFACT_PATTERNS = ['playwright-report-*', 'qa-suite-report-*', 'ai-suite-report'];
+
+// Marks a download that finished. `jsonFiles(dir).length > 0` would also accept a
+// half-finished one and then cache the gap forever.
+const DOWNLOAD_MARKER = '.complete';
+
 function fetchRuns(
   limit: number,
   branch: string | undefined,
@@ -340,18 +383,23 @@ function fetchRuns(
     if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') continue;
     requested += 1;
 
-    const dir = join(root, String(run.databaseId));
-    if (jsonFiles(dir).length > 0) {
+    const id = String(run.databaseId);
+    const dir = join(root, id);
+    if (existsSync(join(dir, DOWNLOAD_MARKER))) {
       dirs.push(dir);
       continue;
     }
+
+    const downloadArgs = ['run', 'download', id, '--dir', dir];
+    for (const pattern of ARTIFACT_PATTERNS) downloadArgs.push('-p', pattern);
+
     // A run whose e2e/QA legs were scoped out has no artifacts at all; that is a
     // miss in the ledger's coverage, not a reason to abort the report.
-    const download = spawnSync('gh', ['run', 'download', String(run.databaseId), '--dir', dir], {
-      encoding: 'utf8',
-    });
-    if (download.status === 0 && jsonFiles(dir).length > 0) dirs.push(dir);
-    else failed.push(run.databaseId);
+    const download = spawnSync('gh', downloadArgs, { encoding: 'utf8' });
+    if (download.status === 0 && jsonFiles(dir).length > 0) {
+      writeFileSync(join(dir, DOWNLOAD_MARKER), '');
+      dirs.push(dir);
+    } else failed.push(run.databaseId);
   }
 
   return { dirs, runs: { requested, collected: dirs.length, failed } };
@@ -380,10 +428,27 @@ function parseCount(raw: string): number {
   return Number(raw);
 }
 
-function verdictOf(entries: FlakeEntry[]): Verdict {
+/**
+ * The verdict for one read. `no-data` is its own answer: a missing report is not
+ * a clean suite, and reporting it as one is the single most misleading thing this
+ * tool could do.
+ */
+export function verdictOf(entries: FlakeEntry[], reportCount: number): Verdict {
+  if (reportCount === 0) return 'no-data';
   if (entries.some((entry) => entry.failed > 0)) return 'failing';
   if (entries.length > 0) return 'flaky';
   return 'clean';
+}
+
+/**
+ * The agent contract: the exit code *is* the verdict. `--summary` is the one
+ * exception — it is a GitHub step summary on a leg that may already be red for an
+ * unrelated reason, so it displays without ever deciding.
+ */
+export function exitCode(verdict: Verdict, summary: boolean): number {
+  if (summary) return 0;
+  if (verdict === 'no-data') return 3;
+  return verdict === 'clean' ? 0 : 1;
 }
 
 function renderTable(entries: FlakeEntry[]): string {
@@ -403,14 +468,23 @@ function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|');
 }
 
+function spanLabel(window: Window): string {
+  if (window.earliest === undefined) return '';
+  if (window.latest === undefined || window.latest === window.earliest) {
+    return ` — run started ${window.earliest}`;
+  }
+  return ` — runs from ${window.earliest} to ${window.latest}`;
+}
+
 function renderMarkdown(
   entries: FlakeEntry[],
   runs: RunsResult | undefined,
   parsed: number,
+  window: Window,
 ): string {
   const shown = entries.slice(0, SUMMARY_ROW_LIMIT);
   const lines = [
-    `### Flaky tests (${entries.length} in ${parsed} report${parsed === 1 ? '' : 's'})`,
+    `### Flaky tests (${entries.length} in ${parsed} report${parsed === 1 ? '' : 's'}${spanLabel(window)})`,
     '',
     '| test | browser | flaky | failed | slowest failure | last error |',
     '| --- | --- | --- | --- | --- | --- |',
@@ -462,45 +536,42 @@ function main(): number {
   const scanDirs = roots.length > 0 ? roots : ['test-results'];
   const reports = scanDirs.flatMap((dir) => readReports(dir));
   const entries = aggregate(reports);
+  const verdict = verdictOf(entries, reports.length);
+  const window = windowOf(reports);
 
-  if (reports.length === 0) {
-    const message = `flaky-report: no Playwright JSON report under ${scanDirs.join(', ')} — nothing was checked`;
+  if (verdict === 'no-data') {
+    // Name the fix rather than only the symptom: an agent that has just run a local
+    // suite has no report, and "nothing was checked" alone leaves it guessing.
+    const message = `flaky-report: no Playwright JSON report under ${scanDirs.join(', ')} — nothing was checked. CI writes one; locally add --reporter=line,json with PLAYWRIGHT_JSON_OUTPUT_DIR=test-results and PLAYWRIGHT_JSON_OUTPUT_NAME=<name>.json, or read the last CI runs with --runs N.`;
     process.stderr.write(`${message}\n`);
-    // `--summary` is a display surface on a CI leg that may already be red for an
-    // unrelated reason; the strict "no data" verdict belongs to the query modes.
-    if (summary) {
-      writeSummary(`> ${message}\n`);
-      return 0;
-    }
-    return 3;
+    if (summary) writeSummary(`> ${message}\n`);
+    return exitCode(verdict, summary);
   }
 
   if (summary) {
-    // A reporting surface never fails a green leg on a flake: the ledger's job is
-    // to make it visible, and the exit codes below belong to the query modes.
-    if (entries.length > 0) writeSummary(renderMarkdown(entries, runs, reports.length));
-    return 0;
+    if (entries.length > 0) {
+      writeSummary(renderMarkdown(entries, runs, reports.length, window));
+    }
+    return exitCode(verdict, summary);
   }
-
-  const verdict = verdictOf(entries);
 
   if (text) {
     process.stdout.write(
-      `flaky-report: ${verdict} — ${entries.length} problem test(s) in ${reports.length} report(s)\n`,
+      `flaky-report: ${verdict} — ${entries.length} problem test(s) in ${reports.length} report(s)${spanLabel(window)}\n`,
     );
     if (entries.length > 0) process.stdout.write(`${renderTable(entries)}\n`);
   } else {
     const payload = {
       schema: SCHEMA,
       verdict,
-      reports: { parsed: reports.length, roots: scanDirs },
+      reports: { parsed: reports.length, roots: scanDirs, ...window },
       ...(runs === undefined ? {} : { runs }),
       entries,
     };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   }
 
-  return verdict === 'clean' ? 0 : 1;
+  return exitCode(verdict, summary);
 }
 
 if (import.meta.main) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadFlakyReport } from '#test/unit/flaky-report/load';
 
-const { parseReport, aggregate } = await loadFlakyReport();
+const { parseReport, aggregate, verdictOf, exitCode, windowOf } = await loadFlakyReport();
 
 const ROOT = '/ci/checkout';
 
@@ -132,7 +132,7 @@ describe('parseReport', () => {
 });
 
 describe('aggregate', () => {
-  it('counts a retried pass and a still-red test separately, and stays silent on green', () => {
+  it('counts a retried pass and a still-red test separately', () => {
     const entries = aggregate([
       { tests: parseReport(FLAKY_REPORT) },
       { tests: parseReport(RED_REPORT) },
@@ -260,6 +260,9 @@ describe('aggregate', () => {
     // not find the spec at all.
     expect(entry.reproduce).toContain('-c __tests__/qa/playwright.qa.config.ts');
     expect(entry.reproduce).not.toContain('--project=');
+    // Shell-quoted, not bare: a path with a space or a glob character would
+    // otherwise be split by the caller's shell.
+    expect(entry.reproduce).toContain("'__tests__/qa/STU/STU-03.spec.ts'");
   });
 
   it('escapes regex metacharacters in the title so -g matches the literal case', () => {
@@ -281,5 +284,104 @@ describe('aggregate', () => {
     const [entry] = aggregate([{ tests: parseReport(parens) }]);
 
     expect(entry.reproduce).toContain('\\(v2\\)');
+  });
+
+  it('quote-escapes an apostrophe so the replay command still runs', () => {
+    // Polish UI copy uses typographic quotes, but a title with an ASCII `'` is
+    // routine too — unescaped it would close the shell quote and break the command.
+    const apostrophe = report([
+      {
+        suites: [
+          {
+            file: 'manage-invites.spec.ts',
+            specs: [
+              spec('manage-invites.spec.ts', "the admin's „Odrzuć” row", [
+                test('firefox', 'flaky', [timedOut(1, 'x'), passed(1)]),
+              ]),
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = aggregate([{ tests: parseReport(apostrophe) }]);
+
+    expect(entry.reproduce).toContain(`admin'\\''s`);
+    expect(entry.reproduce).toContain('„Odrzuć”');
+  });
+
+  it('reports the slowest failed attempt, not the last one', () => {
+    // The timing is the triage signal: a 4.0 s miss is a slow tail, a 0.4 s miss
+    // is a race. Taking the last attempt instead would pick either at random.
+    const twoFails = report([
+      {
+        suites: [
+          {
+            file: 'a.spec.ts',
+            specs: [
+              spec('a.spec.ts', 'wobbles', [
+                test('firefox', 'unexpected', [timedOut(400, 'fast'), timedOut(4_100, 'slow')]),
+              ]),
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = aggregate([{ tests: parseReport(twoFails) }]);
+
+    expect(entry.slowestFailureMs).toBe(4_100);
+  });
+
+  it('returns nothing when every report is green', () => {
+    // The filter is the whole point of the ledger: a green suite must produce an
+    // empty list, not a list of tests that happened to run.
+    expect(aggregate([{ tests: parseReport(GREEN_REPORT) }])).toEqual([]);
+  });
+});
+
+describe('windowOf', () => {
+  it('dates the verdict so an old failure cannot read as a current one', () => {
+    expect(
+      windowOf([
+        { tests: [], startedAt: '2026-11-10T03:00:00.000Z' },
+        { tests: [], startedAt: '2026-11-17T03:00:00.000Z' },
+        { tests: [] },
+      ]),
+    ).toEqual({ earliest: '2026-11-10T03:00:00.000Z', latest: '2026-11-17T03:00:00.000Z' });
+  });
+
+  it('stays empty when no report carries a start time', () => {
+    expect(windowOf([{ tests: [] }])).toEqual({});
+  });
+});
+
+describe('verdict and exit code (the documented agent contract)', () => {
+  it('maps each verdict to the exit code the docs promise', () => {
+    expect(exitCode('clean', false)).toBe(0);
+    expect(exitCode('flaky', false)).toBe(1);
+    expect(exitCode('failing', false)).toBe(1);
+    // A missing report is its own answer: reporting it as clean would be a lie.
+    expect(exitCode('no-data', false)).toBe(3);
+  });
+
+  it('never fails a leg in summary mode', () => {
+    expect(exitCode('no-data', true)).toBe(0);
+    expect(exitCode('flaky', true)).toBe(0);
+    expect(exitCode('failing', true)).toBe(0);
+  });
+
+  it('calls a read with no reports no-data even when the entries are empty', () => {
+    expect(verdictOf([], 0)).toBe('no-data');
+    expect(verdictOf([], 3)).toBe('clean');
+  });
+
+  it('prefers failing over flaky when both are present', () => {
+    const entries = aggregate([
+      { tests: parseReport(FLAKY_REPORT) },
+      { tests: parseReport(RED_REPORT) },
+    ]);
+
+    expect(verdictOf(entries, 2)).toBe('failing');
   });
 });

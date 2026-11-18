@@ -713,8 +713,12 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --areas "${{ join(matrix.shard.areas, ',') }}" --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
+        # `PLAYWRIGHT_JSON_OUTPUT_DIR` is not optional here: this config lives in
+        # `__tests__/qa`, and a bare NAME resolves against the config's directory,
+        # so the report would land in a folder no step reads.
         env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright-${{ matrix.shard.name }}.json
+          PLAYWRIGHT_JSON_OUTPUT_DIR: test-results
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-${{ matrix.shard.name }}.json
         run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line,json ${{ matrix.shard.paths }}
 
       - name: Flaky tests (this shard)
@@ -728,9 +732,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: qa-suite-report-${{ matrix.shard.name }}
-          path: |
-            playwright-report
-            test-results
+          path: test-results
+          retention-days: 7
           if-no-files-found: ignore
 
       - name: Stop Supabase
@@ -883,8 +886,10 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --areas AI --run "ci${{ github.run_id }}"
 
       - name: Run the AI suite
+        # Same config-directory rule as the QA shards: NAME alone is not enough.
         env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright-ai.json
+          PLAYWRIGHT_JSON_OUTPUT_DIR: test-results
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-ai.json
         run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line,json __tests__/qa/AI
 
       - name: Flaky tests (this suite)
@@ -897,10 +902,10 @@ jobs:
         with:
           name: ai-suite-report
           path: |
-            playwright-report
             test-results
             /tmp/fake-llm.log
             /tmp/qa-app.log
+          retention-days: 7
           if-no-files-found: ignore
 
       - name: Stop Supabase
@@ -1111,8 +1116,13 @@ jobs:
         # `json` alongside `line`: a test that fails and is rescued by a retry is
         # green here and invisible in the line output, but it is `flaky` in the
         # machine report. `scripts/flaky-report.ts` reads those reports.
+        #
+        # Both variables are required: `PLAYWRIGHT_JSON_OUTPUT_NAME` alone resolves
+        # against the config file's directory, so a config outside the repo root
+        # (`__tests__/qa`) would write its report where no step reads it — silently.
         env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright-${{ matrix.project }}.json
+          PLAYWRIGHT_JSON_OUTPUT_DIR: test-results
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-${{ matrix.project }}.json
         run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line,json
 
       - name: Flaky tests (this leg)
@@ -1129,9 +1139,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.project }}
-          path: |
-            playwright-report/
-            test-results/
+          path: test-results/
           retention-days: 7
           if-no-files-found: ignore
 
