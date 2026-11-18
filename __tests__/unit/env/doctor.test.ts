@@ -256,6 +256,23 @@ describe('env:doctor', () => {
     expect(layoutLine).toContain('not snapshotted:');
   });
 
+  it('names the cache directory it read, not a hard-coded path', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const cacheDir = join(harness.dir, 'apps', 'web', '.next', 'cache');
+
+    const missing = await harness.run(['doctor'], { APP_PORT: String(appPort) });
+    expect(missing.status).toBe(0);
+    expect(missing.stdout).toContain(`none (${cacheDir} does not exist)`);
+
+    writeCacheFixture(harness, ['surprise']);
+    const unknown = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+    const warnings = stringList(parseJsonObject(unknown.stdout).warnings).join('\n');
+    // The warning names the directory that was classified, not `apps/web/.next/cache`.
+    expect(warnings).toContain(`${cacheDir} layout is unrecognised`);
+  });
+
   it('warns when an existing registry directory is untrusted', async () => {
     const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();

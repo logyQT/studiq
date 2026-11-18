@@ -189,8 +189,11 @@ function seedNone(): SeedRunStatus {
  * after the snapshot was published (or before one existed) gets the same start as
  * a `scripts/spin` worktree. It is best-effort: every refusal is reported and the
  * build runs cold. `STUDIQ_CACHE_SEED=0` opts out.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL and
+ * pin that the resolved cache directory reaches the seed.
  */
-async function seedIfMissing(envHash: string): Promise<SeedRunStatus> {
+export async function seedIfMissing(envHash: string): Promise<SeedRunStatus> {
   if ((process.env['STUDIQ_CACHE_SEED'] ?? '1') === '0') return seedNone();
   const cacheDir = worktreeCacheDir();
   if (existsSync(cacheDir)) return seedNone();
@@ -206,7 +209,7 @@ async function seedIfMissing(envHash: string): Promise<SeedRunStatus> {
 
 function writeSeedLine(run: SeedRunStatus): void {
   if (run.outcome === 'seeded') {
-    writeStderrLine(`build: seeded ${run.id} into apps/web/.next/cache`);
+    writeStderrLine(`build: seeded ${run.id} into ${worktreeCacheDir()}`);
   } else if (run.outcome !== 'none') {
     writeStderrLine(`build: seed ${run.outcome}: ${run.reason}`);
   }

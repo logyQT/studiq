@@ -12,7 +12,7 @@ import {
   statfsSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { BUILD_MODE } from './fingerprint';
 import { atomicWriteFile } from './atomic-file';
 import { pidAlive } from './locks';
@@ -35,30 +35,51 @@ import { REPO_ROOT, canon, checkoutPaths, isPrimaryCheckout } from './repo';
 
 /** The only entries a snapshot body may contain; every other name is skipped by name. */
 const CACHE_ALLOWLIST = ['turbopack'] as const;
+
+/** One name a snapshot leaves out, and the label `env doctor` prints for it. */
+interface CacheExclusion {
+  /** The exact name, or a glob (`_events_*.json`) when the name varies per process. */
+  label: string;
+  matches(name: string): boolean;
+}
+
+function exactExclusion(name: string): CacheExclusion {
+  return { label: name, matches: (candidate) => candidate === name };
+}
+
 /**
  * Known `.next/cache` entries that are deliberately not copied (decision 3).
  *
- * `_events_*` is Next's telemetry batch (`_events_<pid>_<hex>.json`, written by
- * `next dev` and by any build that flushes); it names a process, not cache
- * identity, and it must never be copied into a snapshot. It is matched as a
- * pattern only because the pid in the name changes with every process.
+ * One structure serves both jobs on purpose: classification and the list `env
+ * doctor` prints. A glob added to a display list only would be advertised and
+ * silently not applied — the failure this shape makes unrepresentable.
+ *
+ * `_events_*.json` is Next's telemetry batch (`_events_<pid>_<hex>.json`,
+ * written by `next dev` and by any build that flushes); it names a process, not
+ * cache identity, and it must never be copied into a snapshot. It is matched as
+ * a pattern only because the pid in the name changes with every process.
  */
-export const CACHE_KNOWN_EXCLUSIONS = [
-  'fetch-cache',
-  'config.json',
-  '.tsbuildinfo',
-  '_events_*',
-] as const;
-/** The varying names behind {@link CACHE_KNOWN_EXCLUSIONS}'s glob entries. */
-const CACHE_KNOWN_PATTERNS: ReadonlyArray<(name: string) => boolean> = [
-  (name) => name.startsWith('_events_') && name.endsWith('.json'),
+const CACHE_KNOWN_EXCLUSIONS: readonly CacheExclusion[] = [
+  exactExclusion('fetch-cache'),
+  exactExclusion('config.json'),
+  exactExclusion('.tsbuildinfo'),
+  {
+    label: '_events_*.json',
+    matches: (name) => name.startsWith('_events_') && name.endsWith('.json'),
+  },
 ];
 
 function isKnownExclusion(name: string): boolean {
-  return (
-    (CACHE_KNOWN_EXCLUSIONS as readonly string[]).includes(name) ||
-    CACHE_KNOWN_PATTERNS.some((matches) => matches(name))
-  );
+  return CACHE_KNOWN_EXCLUSIONS.some((entry) => entry.matches(name));
+}
+
+/**
+ * The exclusion labels in the order `env doctor` prints them.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function knownCacheExclusionLabels(): string[] {
+  return CACHE_KNOWN_EXCLUSIONS.map((entry) => entry.label);
 }
 
 /**
@@ -443,8 +464,9 @@ export async function collectIdentityFacts(
  * This checkout's Turbopack cache root; `apps/admin` has its own and is not covered.
  *
  * `STUDIQ_WORKTREE_CACHE_DIR` points doctor and the snapshot step at the same
- * cache. It exists for tests and isolated runs: without it, `env doctor` — and
- * its tests — classify whatever the developer's checkout happens to hold.
+ * cache. It is a **read** seam for tests and isolated runs — what is classified,
+ * snapshotted, and reported. Writes and recursive deletes never follow it; see
+ * {@link isWithin} and `seedWorktreeCache`.
  */
 export function worktreeCacheDir(
   repoRoot: string = REPO_ROOT,
@@ -452,6 +474,42 @@ export function worktreeCacheDir(
 ): string {
   const override = env['STUDIQ_WORKTREE_CACHE_DIR'] ?? '';
   return override ? resolve(repoRoot, override) : join(repoRoot, 'apps', 'web', '.next', 'cache');
+}
+
+/**
+ * A path's real location, resolving the deepest ancestor that exists.
+ *
+ * `canon` alone leaves a missing path unchanged, so `link/cache` under a
+ * symlinked `link` would pass a prefix test and the delete would land outside
+ * the tree the test names. The missing tail is re-joined onto the resolved
+ * ancestor.
+ */
+function realLocation(path: string): string {
+  let missing = '';
+  let current = resolve(path);
+  for (;;) {
+    const real = canon(current);
+    if (real !== current) return missing === '' ? real : join(real, missing);
+    const parent = dirname(current);
+    if (parent === current) return resolve(path);
+    missing = missing === '' ? basename(current) : join(basename(current), missing);
+    current = parent;
+  }
+}
+
+/**
+ * Whether `path` is `root` or inside it, by real location.
+ *
+ * The gate for every write and delete the cache seam can reach: a resolved
+ * directory outside the worktree costs a cold build, never a file the operator
+ * did not nominate.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function isWithin(path: string, root: string): boolean {
+  const target = realLocation(path);
+  const base = realLocation(root);
+  return target === base || target.startsWith(`${base}/`);
 }
 
 export interface CacheLayout {
@@ -1244,6 +1302,16 @@ export async function seedWorktreeCache(input: SeedInput): Promise<SeedResult> {
   if (refused !== null) return { status: 'refused', reason: refused };
 
   const cacheDir = input.cacheDir ?? join(worktreeRoot, 'apps', 'web', '.next', 'cache');
+  // `STUDIQ_WORKTREE_CACHE_DIR` may redirect what a reader classifies, but a seed
+  // writes into the cache and deletes stale seed directories beside it. Both must
+  // stay inside the worktree being seeded (ADR-0014: a bad override costs a cold
+  // build, not a file the operator did not nominate).
+  if (!isWithin(cacheDir, worktreeRoot)) {
+    return {
+      status: 'skipped',
+      reason: `refusing to seed ${cacheDir}: it is outside ${worktreeRoot} (STUDIQ_WORKTREE_CACHE_DIR is a read override)`,
+    };
+  }
   const nextDir = dirname(cacheDir);
   if (existsSync(cacheDir)) return { status: 'skipped', reason: `${cacheDir} already exists` };
   removeStaleSeedDirs(nextDir);
