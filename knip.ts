@@ -33,9 +33,9 @@ const config: KnipConfig = {
   // interfaces and types are covered here.
   ignoreExportsUsedInFile: { interface: true, type: true },
 
-  // Policy: `flock` is an OS binary invoked by the build lock and `tail` prints
-  // logs; neither is an npm dependency.
-  ignoreBinaries: ['flock', 'tail'],
+  // Policy: `flock` is an OS binary invoked by the build lock, not an npm
+  // dependency.
+  ignoreBinaries: ['flock'],
 
   // Policy: ast-grep is spawned by path from `scripts/review-static.ts`; knip
   // cannot follow a runtime-resolved binary, but the dependency is the binary.

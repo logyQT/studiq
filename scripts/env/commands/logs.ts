@@ -1,5 +1,4 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import type { ParsedCommand } from '../atoms';
 import { readContractLenient } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
@@ -16,15 +15,78 @@ interface LogsHeader {
   log: string;
 }
 
-function tail(path: string, follow: boolean): void {
+/** How often `follow` looks for bytes appended since the last read. */
+const FOLLOW_POLL_MS = 250;
+/** Lines printed before following starts. */
+const FOLLOW_LINES = 50;
+/** Lines printed by `--no-follow`. */
+const SNAPSHOT_LINES = 100;
+
+/** The last `count` lines, without the empty element a trailing newline leaves. */
+function lastLines(text: string, count: number): string[] {
+  const lines = text.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines.slice(-count);
+}
+
+function writeLines(lines: string[]): void {
+  for (const line of lines) writeStderrLine(line);
+}
+
+/** Bytes `[start, start + length)` of `path`; a shorter file yields what it has. */
+function readRange(path: string, start: number, length: number): Buffer {
+  const fd = openSync(path, 'r');
+  try {
+    const buffer = Buffer.alloc(length);
+    const read = readSync(fd, buffer, 0, length, start);
+    return buffer.subarray(0, read);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function sizeOf(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Print the last `count` lines, then stream appended bytes until interrupted.
+ *
+ * In-process instead of `spawnSync('tail', ['-f', …])`: `tail` is coreutils, so
+ * the CLI would refuse to follow logs on a host without it, and a spawned child
+ * survives the Ctrl-C that ends the CLI.
+ */
+async function follow(path: string, count: number): Promise<void> {
+  const head = readFileSync(path);
+  writeLines(lastLines(head.toString('utf8'), count));
+  let offset = head.length;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, FOLLOW_POLL_MS));
+    const size = sizeOf(path);
+    // A truncated or replaced log starts over; an append never shrinks the file.
+    if (size < offset) offset = 0;
+    if (size === offset) continue;
+    const chunk = readRange(path, offset, size - offset);
+    if (chunk.length === 0) continue;
+    // Human log lines are diagnostics: route them to stderr so `--json` stdout
+    // stays exactly one JSON object.
+    process.stderr.write(chunk);
+    offset += chunk.length;
+  }
+}
+
+async function tail(path: string, followOutput: boolean): Promise<number> {
   if (!existsSync(path)) {
     writeStderrLine(`env:logs: no log at ${path}`);
-    return;
+    return 0;
   }
-  const args = follow ? ['-n', '50', '-f', path] : ['-n', '100', path];
-  // Human log lines are diagnostics: route both child streams to our stderr so
-  // `--json` stdout stays exactly one JSON object.
-  spawnSync('tail', args, { stdio: ['inherit', 2, 2] });
+  if (followOutput) await follow(path, FOLLOW_LINES);
+  else writeLines(lastLines(readFileSync(path, 'utf8'), SNAPSHOT_LINES));
+  return 0;
 }
 
 /**
@@ -72,6 +134,5 @@ export async function runLogs(parsed: ParsedCommand): Promise<number> {
   }
 
   writeStderrLine(`\n──── ${webLogPath()} ────`);
-  tail(webLogPath(), options.follow);
-  return 0;
+  return tail(webLogPath(), options.follow);
 }
