@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -29,6 +29,11 @@ interface CacheHit {
 
 interface BenchModule {
   compareTrees(aRoot: string, aId: string, bRoot: string, bId: string): TreeDiff;
+  chooseWorkDir(input: {
+    raw: string | null;
+    repoRoot: string;
+    tmpRoot: string;
+  }): { ok: true; path: string } | { ok: false; reason: string };
   verdictOf(
     noise: TreeDiff,
     subject: TreeDiff,
@@ -88,6 +93,23 @@ function emptyDiff(): TreeDiff {
   return { comparedFiles: 2, onlyA: [], onlyB: [], differing: [], unexplained: [] };
 }
 
+interface WorkDirLab {
+  tmpRoot: string;
+  repoRoot: string;
+  outside: string;
+}
+
+function workDirLab(): WorkDirLab {
+  const base = mkdtempSync(join(tmpdir(), 'cache-equality-work-'));
+  roots.push(base);
+  const tmpRoot = join(base, 'tmp');
+  const repoRoot = join(tmpRoot, 'checkout');
+  const outside = join(base, 'outside');
+  mkdirSync(repoRoot, { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  return { tmpRoot, repoRoot, outside };
+}
+
 describe('cache equality comparison', () => {
   it('explains a BUILD_ID derivation and a per-build random value', () => {
     const a = tree(
@@ -138,6 +160,26 @@ describe('cache equality comparison', () => {
     expect(diff.onlyB).toEqual(['static/stale-chunk.js']);
     expect(diff.unexplained).toEqual(['static/stale-chunk.js']);
   });
+
+  it('leaves a 64-hex value under another key and an ISO timestamp unexplained', () => {
+    const a = tree(
+      {
+        'server/session.json': `{"sessionToken":"${'a'.repeat(64)}"}`,
+        'server/build-note.txt': '2026-11-18T10:00:00.000Z',
+      },
+      COLD_ID,
+    );
+    const b = tree(
+      {
+        'server/session.json': `{"sessionToken":"${'b'.repeat(64)}"}`,
+        'server/build-note.txt': '2026-11-18T10:00:01.000Z',
+      },
+      SEEDED_ID,
+    );
+
+    const diff = bench.compareTrees(a, COLD_ID, b, SEEDED_ID);
+    expect(diff.unexplained).toEqual(['server/build-note.txt', 'server/session.json']);
+  });
 });
 
 describe('cache equality verdict', () => {
@@ -183,9 +225,74 @@ describe('cache equality verdict', () => {
     ).toBe('INCONCLUSIVE');
   });
 
+  it('fails when two cold builds were identical', () => {
+    expect(
+      bench.verdictOf(emptyDiff(), randomNoise, [], [COLD_ID, SEEDED_ID, 'third-id'], hit).verdict,
+    ).toBe('FAIL');
+  });
+
+  it('fails when the noise floor itself has an unexplained difference', () => {
+    const noise: TreeDiff = {
+      ...emptyDiff(),
+      differing: [{ path: 'server/app/page.html', kinds: [], explained: false }],
+      unexplained: ['server/app/page.html'],
+    };
+    expect(
+      bench.verdictOf(noise, randomNoise, [], [COLD_ID, SEEDED_ID, 'third-id'], hit).verdict,
+    ).toBe('FAIL');
+  });
+
   it('fails when two arms share a BUILD_ID', () => {
     expect(
       bench.verdictOf(randomNoise, randomNoise, [], [COLD_ID, COLD_ID, 'third-id'], hit).verdict,
     ).toBe('FAIL');
+  });
+});
+
+describe('cache equality work dir', () => {
+  it('refuses an empty value instead of resolving it to the current directory', () => {
+    const { tmpRoot, repoRoot } = workDirLab();
+    expect(bench.chooseWorkDir({ raw: '', repoRoot, tmpRoot }).ok).toBe(false);
+  });
+
+  it('refuses the checkout itself', () => {
+    const { tmpRoot, repoRoot } = workDirLab();
+    expect(bench.chooseWorkDir({ raw: repoRoot, repoRoot, tmpRoot })).toEqual({
+      ok: false,
+      reason: 'it is this checkout',
+    });
+  });
+
+  it('refuses an ancestor of the checkout', () => {
+    const { tmpRoot, repoRoot } = workDirLab();
+    const choice = bench.chooseWorkDir({ raw: tmpRoot, repoRoot, tmpRoot });
+    expect(choice.ok).toBe(false);
+    if (!choice.ok) expect(choice.reason).toBe('it contains this checkout');
+  });
+
+  it('refuses a path outside the temp root', () => {
+    const { tmpRoot, repoRoot, outside } = workDirLab();
+    const choice = bench.chooseWorkDir({ raw: outside, repoRoot, tmpRoot });
+    expect(choice.ok).toBe(false);
+    if (!choice.ok) expect(choice.reason).toContain('outside');
+  });
+
+  it('accepts a path inside the temp root that is not the checkout', () => {
+    const { tmpRoot, repoRoot } = workDirLab();
+    const choice = bench.chooseWorkDir({ raw: join(tmpRoot, 'evidence'), repoRoot, tmpRoot });
+    expect(choice.ok).toBe(true);
+  });
+
+  it('gives two checkouts distinct defaults', () => {
+    const { tmpRoot, repoRoot } = workDirLab();
+    const first = bench.chooseWorkDir({ raw: null, repoRoot, tmpRoot });
+    const second = bench.chooseWorkDir({ raw: null, repoRoot: join(tmpRoot, 'other'), tmpRoot });
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(first.path.startsWith(realpathSync(tmpRoot))).toBe(true);
+      expect(second.path.startsWith(realpathSync(tmpRoot))).toBe(true);
+      expect(first.path).not.toBe(second.path);
+    }
   });
 });

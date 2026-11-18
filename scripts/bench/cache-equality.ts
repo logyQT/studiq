@@ -32,11 +32,17 @@
  * (`bun run env:down`): the build refuses to overwrite the artifact a server is
  * serving, and this script removes `.next` before each arm.
  *
- * Writes only `apps/web/.next` (what it measures) and `--work-dir` (default
- * `<tmp>/studiq-cache-equality`); the build it drives also writes its own `.dev`
- * record and runtime-registry slot. The Turbopack cache root is redirected inside
- * `--work-dir`, so a run never writes to `${XDG_CACHE_HOME}/studiq`, and the
- * published-snapshot seed is disabled so a "cold" arm is really cold.
+ * Writes only `apps/web/.next` (what it measures) and the work dir (one per
+ * checkout by default, under the temp root); the build it drives also writes its
+ * own `.dev` record and runtime-registry slot. `STUDIQ_CACHE_DIR` — the published
+ * snapshot root — is redirected inside the work dir, so a run never writes to
+ * `${XDG_CACHE_HOME}/studiq`; the Turbopack cache under test is
+ * `apps/web/.next/cache/turbopack`, which every arm deletes. The
+ * published-snapshot seed is disabled, so a "cold" arm is really cold.
+ *
+ * The work dir is deleted at the start of a run, so a value that is this
+ * checkout, contains it, sits inside it, or is outside the temp root is refused
+ * before anything is touched.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -50,12 +56,13 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // `fileURLToPath`, not `import.meta.dir`: the unit test imports this module
@@ -112,7 +119,8 @@ const RANDOM_RULES: ReadonlyArray<{ kind: string; pattern: RegExp; replacement: 
 ];
 
 interface Options {
-  workDir: string;
+  /** The operator's `--work-dir`, or null for the per-checkout default. */
+  workDir: string | null;
   keep: boolean;
   json: boolean;
 }
@@ -189,14 +197,19 @@ cold on a 16 vCPU box), so expect about a minute and a half.
 
 Options:
   --work-dir <path>  where arm copies and logs go (default
-                     <tmp>/studiq-cache-equality)
+                     <tmp>/studiq-cache-equality-<checkout>). The directory is
+                     deleted at the start of the run, so a value that is this
+                     checkout, contains it, is inside it, or is outside <tmp> is
+                     refused before anything is deleted.
   --keep             keep the copied .next trees; a failing run keeps them anyway
   --json             machine-readable report on stdout
   --help             this text
 
 Requirements: this checkout's Supabase stack is up (bun run env:ensure --profile
 api) and no web server is running (bun run env:down), because each arm removes
-apps/web/.next before it builds.
+apps/web/.next before it builds. If the stack was started with --profile api,
+'bun run env:ensure --profile web' afterwards needs 'bun run env:down --all --yes'
+first: a running stack cannot gain the mail capability in place.
 
 Verdicts, and the exit codes:
   0  PASS          every seeded-vs-cold difference is one two cold builds also
@@ -208,8 +221,85 @@ Verdicts, and the exit codes:
 `);
 }
 
+/**
+ * One work dir per checkout: two worktrees running at once must not delete each
+ * other's evidence.
+ *
+ * @public Exercised by the unit test through a computed file URL.
+ */
+export function defaultWorkDir(tmpRoot: string, repoRoot: string): string {
+  const slug = basename(repoRoot)
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+  const label = slug === '' ? 'checkout' : slug;
+  const id = createHash('sha256').update(repoRoot).digest('hex').slice(0, 8);
+  return join(tmpRoot, `studiq-cache-equality-${label}-${id}`);
+}
+
+/** `path` with symlinks in its existing ancestors resolved, for containment tests. */
+function canonicalPath(path: string): string {
+  const resolved = resolve(path);
+  const rest: string[] = [];
+  let probe = resolved;
+  for (;;) {
+    try {
+      return join(realpathSync(probe), ...rest.reverse());
+    } catch {
+      const parent = dirname(probe);
+      if (parent === probe) return resolved;
+      rest.push(basename(probe));
+      probe = parent;
+    }
+  }
+}
+
+/** `child` is `parent` or inside it. */
+function isWithin(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/**
+ * Why `workDir` is not a safe place to delete and rebuild, or null.
+ *
+ * A run's first statement removes the work dir, so a typo must not reach the
+ * checkout or anything outside the temp root — `--work-dir .` from the repo root
+ * is the checkout itself, and `--work-dir ..` is its parent.
+ */
+function workDirRefusal(workDir: string, repoRoot: string, tmpRoot: string): string | null {
+  if (workDir === repoRoot) return 'it is this checkout';
+  if (isWithin(workDir, repoRoot)) return 'it contains this checkout';
+  if (isWithin(repoRoot, workDir)) return 'it is inside this checkout';
+  if (workDir === tmpRoot) return 'it is the temp root itself';
+  if (!isWithin(tmpRoot, workDir)) return `it is outside ${tmpRoot}`;
+  return null;
+}
+
+export type WorkDirChoice = { ok: true; path: string } | { ok: false; reason: string };
+
+/**
+ * The directory a run may delete: the operator's `--work-dir`, or one per
+ * checkout. An empty value is refused before it can resolve to the cwd.
+ *
+ * @public Exercised by the unit test through a computed file URL.
+ */
+export function chooseWorkDir(input: {
+  raw: string | null;
+  repoRoot: string;
+  tmpRoot: string;
+}): WorkDirChoice {
+  if (input.raw !== null && input.raw.trim() === '') {
+    return { ok: false, reason: 'an empty value would resolve to the current directory' };
+  }
+  const candidate =
+    input.raw === null ? defaultWorkDir(input.tmpRoot, input.repoRoot) : resolve(input.raw);
+  const path = canonicalPath(candidate);
+  const reason = workDirRefusal(path, canonicalPath(input.repoRoot), canonicalPath(input.tmpRoot));
+  return reason === null ? { ok: true, path } : { ok: false, reason };
+}
+
 function parseOptions(argv: readonly string[]): Options | null {
-  let workDir = join(tmpdir(), 'studiq-cache-equality');
+  let workDir: string | null = null;
   let keep = false;
   let json = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -227,12 +317,12 @@ function parseOptions(argv: readonly string[]): Options | null {
     if (arg === '--work-dir') {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('-')) usageError('--work-dir needs a path');
-      workDir = resolve(value);
+      workDir = value;
       index += 1;
       continue;
     }
     if (arg.startsWith('--work-dir=')) {
-      workDir = resolve(arg.slice('--work-dir='.length));
+      workDir = arg.slice('--work-dir='.length);
       continue;
     }
     usageError(`unknown argument '${arg}'`);
@@ -716,41 +806,48 @@ async function main(): Promise<number> {
     printHelp();
     return 0;
   }
+  const chosen = chooseWorkDir({
+    raw: options.workDir,
+    repoRoot: REPO_ROOT,
+    tmpRoot: tmpdir(),
+  });
+  if (!chosen.ok) usageError(`refusing --work-dir: ${chosen.reason}`);
+  const workDir = chosen.path;
   assertNoWebServer();
-  rmSync(options.workDir, { recursive: true, force: true });
-  mkdirSync(options.workDir, { recursive: true, mode: 0o700 });
-  const seedDir = join(options.workDir, 'seed', 'turbopack');
+  rmSync(workDir, { recursive: true, force: true });
+  mkdirSync(workDir, { recursive: true, mode: 0o700 });
+  const seedDir = join(workDir, 'seed', 'turbopack');
 
   const cold1 = await measureArm({
     name: 'cold1',
     seed: null,
-    workDir: options.workDir,
+    workDir,
     keepTurbopackAsSeed: true,
   });
   const seeded = await measureArm({
     name: 'seeded',
     seed: seedDir,
-    workDir: options.workDir,
+    workDir,
     keepTurbopackAsSeed: false,
   });
   const cold2 = await measureArm({
     name: 'cold2',
     seed: null,
-    workDir: options.workDir,
+    workDir,
     keepTurbopackAsSeed: false,
   });
   const arms = [cold1, seeded, cold2];
 
   const noiseDiff = compareTrees(
-    join(options.workDir, 'cold1'),
+    join(workDir, 'cold1'),
     cold1.buildId,
-    join(options.workDir, 'cold2'),
+    join(workDir, 'cold2'),
     cold2.buildId,
   );
   const subjectDiff = compareTrees(
-    join(options.workDir, 'cold1'),
+    join(workDir, 'cold1'),
     cold1.buildId,
-    join(options.workDir, 'seeded'),
+    join(workDir, 'seeded'),
     seeded.buildId,
   );
   const noisePaths = differencePaths(noiseDiff);
@@ -778,7 +875,7 @@ async function main(): Promise<number> {
   const report: Report = {
     ok: verdict.ok,
     verdict: verdict.verdict,
-    workDir: options.workDir,
+    workDir,
     arms,
     noise: noiseDiff,
     subject: subjectDiff,
@@ -790,7 +887,7 @@ async function main(): Promise<number> {
   if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else printTextReport(report);
 
-  if (report.ok && !options.keep) rmSync(options.workDir, { recursive: true, force: true });
+  if (report.ok && !options.keep) rmSync(workDir, { recursive: true, force: true });
   return report.ok ? 0 : report.verdict === 'INCONCLUSIVE' ? 4 : 1;
 }
 

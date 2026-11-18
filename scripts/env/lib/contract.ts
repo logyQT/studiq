@@ -83,6 +83,10 @@ function readAppPort(appUrl: string): number {
 export function appPortSource(contractPort: number, leasePort: number | null): string {
   const named = envAppPort(process.env.APP_URL ?? '');
   if (named !== null) return named.source;
+  // A portless `APP_URL` still counts as the environment naming the port: it
+  // stops `contractWithLease` from adopting the lease, so the contract keeps the
+  // default even when a lease happens to hold that same number.
+  if ((process.env.APP_URL ?? '') !== '') return 'the default port';
   if (leasePort !== null && leasePort === contractPort) return 'the leased port';
   return 'the default port';
 }

@@ -344,4 +344,9 @@ describe('app port source in a refusal message', () => {
     process.env.APP_URL = 'https://studiq.example.com';
     expect(contract.appPortSource(3000, 3011)).toBe('the default port');
   });
+
+  it('keeps the default when a portless APP_URL masks a lease holding that same port', () => {
+    process.env.APP_URL = 'https://studiq.example.com';
+    expect(contract.appPortSource(3000, 3000)).toBe('the default port');
+  });
 });

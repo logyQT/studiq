@@ -876,19 +876,24 @@ After normalising those, the comparison is meaningful. A seeded build is **byte
 identical to a cold build of the same tree, modulo that noise**: 0 differences.
 Seeding adds nothing a rebuild does not already change, and it removes nothing.
 
-| Arm (seeded from a snapshot, cold in a second worktree)                                                                             | Differences after normalisation | Stale inlined value in output | Wall (cold → seeded)           |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------- | ------------------------------ |
-| same tree                                                                                                                           | 0                               | —                             | 29.5 s → **10.75 s (−63.5 %)** |
-| different `NEXT_PUBLIC_SITE_URL` (`:3002`→`:3999`)                                                                                  | 0                               | **0** in 3 inlining files     | **−48.3 %**                    |
-| different `NEXT_PUBLIC_SUPABASE_URL` (`:30222`→`:30299`)                                                                            | 0                               | **0** in 22 inlining files    | not timed separately           |
-| different `NEXT_PUBLIC_SUPABASE_ANON_KEY`                                                                                           | 0                               | **0** in 5 inlining files     | not timed separately           |
-| real branch diff (12 files in `apps/web/src`, +58/−193, identical `bun.lock`), seeded from `main`'s cache (`efd4b57a` → `f1226053`) | 0                               | 0                             | **−30 % wall, −46 % compile**  |
+| Arm (seeded from a snapshot, cold in a second worktree)                                                                             | Differences after normalisation | Stale inlined value in output | Wall (cold → seeded)             |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------- | -------------------------------- |
+| same tree                                                                                                                           | 0                               | —                             | 29.5 s → **10.75 s (−63.5 %)** † |
+| different `NEXT_PUBLIC_SITE_URL` (`:3002`→`:3999`)                                                                                  | 0                               | **0** in 3 inlining files     | **−48.3 %**                      |
+| different `NEXT_PUBLIC_SUPABASE_URL` (`:30222`→`:30299`)                                                                            | 0                               | **0** in 22 inlining files    | not timed separately             |
+| different `NEXT_PUBLIC_SUPABASE_ANON_KEY`                                                                                           | 0                               | **0** in 5 inlining files     | not timed separately             |
+| real branch diff (12 files in `apps/web/src`, +58/−193, identical `bun.lock`), seeded from `main`'s cache (`efd4b57a` → `f1226053`) | 0                               | 0                             | **−30 % wall, −46 % compile**    |
 
 The branch arm is the load-bearing one, because it is the real use case: the
 emitted tree was the **branch's**, not `main`'s — the deleted `seat-pools-table`
 chunk was absent, the shrunk `en.json` chunk was present at the branch's exact
 byte size, and main-only identifiers appeared in zero files. The seed changes
 speed, not content.
+
+† The same-tree **wall** figure is the original one-off measurement (a 29.5 s
+cold arm). `bun scripts/bench/cache-equality.ts` reproduces the equality verdict,
+the noise floor and the cache/compile indicators; its wall times move with machine
+load, so it does not reproduce that percentage (Reproduce).
 
 **The allowlist is exactly right, and the typecheck is not weakened.** Excluding
 `fetch-cache/`, `config.json` and `.tsbuildinfo` reproduced the cold output above.
@@ -1177,10 +1182,15 @@ It runs three production builds in this checkout through `bun run env:build
 **seeded** with that seed copied into `.next/cache`, and **cold2** — the noise
 floor. Each arm removes `.next` first, and the run disables the published-snapshot
 seed, so a cold arm is really cold; the script writes only `apps/web/.next` and
-`--work-dir` (default `<tmp>/studiq-cache-equality`), never the published cache
-root. It requires the checkout's Supabase stack up and no running web server
+`--work-dir` (default `<tmp>/studiq-cache-equality-<checkout>`, deleted at the
+start of a run and refused when it is this checkout, contains it, is inside it, or
+sits outside `<tmp>`), never the published cache root. It requires the checkout's
+Supabase stack up and no running web server
 (`bun run env:down`), because the build refuses to overwrite an artifact a server
-is serving.
+is serving. Start the stack with `bun run env:ensure --profile api`: after a stack
+started that way, `bun run env:ensure --profile web` refuses with `running stack
+lacks capability: mail`, because a running stack cannot gain a capability in
+place — run `bun run env:down --all --yes` first.
 
 It prints, per arm, the wall time, the `next-build` and compile (Turbopack) spans
 from `.next/trace-build`, the TypeScript span, cache bytes written
