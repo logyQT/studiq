@@ -17,6 +17,8 @@ import { loadEnvModule } from '#test/unit/env/load';
 interface BuildSlotHandle {
   number: number;
   token: string;
+  /** Time from process entry to admission; the build's wall time includes it. */
+  queuedMs: number;
   setProcessGroup(pgid: number): void;
   heartbeat(): void;
 }
@@ -246,6 +248,28 @@ describe('build slots', () => {
     expect(Number(readFileSync(join(slotsDir(dir), 'capacity'), 'utf8').trim())).toBe(during?.cap);
     expect(existsSync(join(slotsDir(dir), '1'))).toBe(false);
     expect(locks.readBuildSlots()).toMatchObject({ busy: 0, stale: 0, waiting: 0 });
+  });
+
+  it('reports the wait for the slot, which the build wall time includes', async () => {
+    registry();
+    let clock = 1_000_000;
+    let queued: number | null = null;
+    await locks.withBuildSlots(
+      (slot) => {
+        queued = slot.queuedMs;
+        return Promise.resolve();
+      },
+      {
+        decide: () => {
+          clock += 12_300;
+          return admitOne();
+        },
+        now: () => clock,
+        invalidate: () => {},
+      },
+    );
+
+    expect(queued).toBe(12_300);
   });
 
   it('counts only numeric slot directories, and reports stale ones without dropping them', () => {

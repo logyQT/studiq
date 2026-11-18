@@ -84,6 +84,9 @@ const config: KnipConfig = {
         // `scripts/spin` spawns this by path to seed a new worktree's cache
         // (ADR-0014); a bash caller is invisible to knip's import graph.
         'scripts/env/seed-cache.ts',
+        // ADR-0014 §5's reproducible harness: run by hand from the ADR's
+        // Reproduce section, never imported by product code.
+        'scripts/bench/cache-equality.ts',
         'scripts/storage-orphan-sweep.ts',
         // `scripts/e2e-seed.ts` is also a live entry, but knip already derives
         // it from `verify.yml` (`bun scripts/e2e-seed.ts …`); listing it here

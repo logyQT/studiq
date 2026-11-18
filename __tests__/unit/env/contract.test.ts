@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface StatusSnapshot {
@@ -44,6 +44,7 @@ interface ContractModule {
     appPort: number;
     appUrl: string;
   };
+  appPortSource(contractPort: number, leasePort: number | null): string;
 }
 
 const json = await loadEnvModule<JsonModule>('lib/json.ts');
@@ -301,5 +302,51 @@ describe('JSON contract and exit codes (spec §2.1, §9)', () => {
       if (savedUrl === undefined) delete process.env.APP_URL;
       else process.env.APP_URL = savedUrl;
     }
+  });
+});
+
+describe('app port source in a refusal message', () => {
+  const saved = {
+    APP_PORT: process.env.APP_PORT,
+    APP_URL: process.env.APP_URL,
+  };
+
+  beforeEach(() => {
+    delete process.env.APP_PORT;
+    delete process.env.APP_URL;
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it('names APP_PORT when the operator set it, even if a lease holds the same port', () => {
+    for (const port of ['3000', '3011']) {
+      process.env.APP_PORT = port;
+      expect(contract.appPortSource(Number(port), Number(port))).toBe('APP_PORT');
+      expect(contract.appPortSource(Number(port), null)).toBe('APP_PORT');
+    }
+  });
+
+  it('names APP_URL when only the URL named the port', () => {
+    process.env.APP_URL = 'http://localhost:3005';
+    expect(contract.appPortSource(3005, null)).toBe('APP_URL');
+  });
+
+  it('names the leased port when no environment variable did', () => {
+    expect(contract.appPortSource(3011, 3011)).toBe('the leased port');
+  });
+
+  it('names the default port when an APP_URL carries no port of its own', () => {
+    process.env.APP_URL = 'https://studiq.example.com';
+    expect(contract.appPortSource(3000, 3011)).toBe('the default port');
+  });
+
+  it('keeps the default when a portless APP_URL masks a lease holding that same port', () => {
+    process.env.APP_URL = 'https://studiq.example.com';
+    expect(contract.appPortSource(3000, 3000)).toBe('the default port');
   });
 });

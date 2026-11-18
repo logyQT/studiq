@@ -28,6 +28,7 @@ import { consumeBuildGrant, type BuildApp } from './lib/grant';
 import {
   describeSlotHolders,
   findSlotByToken,
+  formatAdmissionWait,
   formatBuildSlots,
   pidAlive,
   processStartTime,
@@ -71,6 +72,11 @@ function refuse(reason: string): never {
     `build slots: ${formatBuildSlots(readBuildSlots())}${holders === '' ? '' : `; ${holders}`}`,
   );
   process.exit(EXIT_CONFLICT);
+}
+
+/** `, after 12.3s` when the launcher recorded its wait, otherwise nothing. */
+function queuedSuffix(queuedMs: number | null): string {
+  return queuedMs === null ? '' : `, after ${formatAdmissionWait(queuedMs)}`;
 }
 
 function launcherGone(
@@ -137,13 +143,13 @@ function main(): void {
       );
     }
     writeStderrLine(
-      `build: admitted apps/${app} (slot ${slot.slot}, launcher pid ${grant.launcherPid})`,
+      `build: admitted apps/${app} (slot ${slot.slot}, launcher pid ${grant.launcherPid}${queuedSuffix(grant.queuedMs)})`,
     );
     return;
   }
 
   writeStderrLine(
-    `build: admitted apps/${app} (no slot, ${grant.admission}, launcher pid ${grant.launcherPid})`,
+    `build: admitted apps/${app} (no slot, ${grant.admission}, launcher pid ${grant.launcherPid}${queuedSuffix(grant.queuedMs)})`,
   );
 }
 

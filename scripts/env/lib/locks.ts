@@ -795,6 +795,12 @@ export interface BuildSlotHandle {
   readonly number: number;
   readonly token: string;
   /**
+   * How long this build waited for the slot and the worktree mutex, in ms. The
+   * build's wall time includes it, so a wall comparison between two builds on a
+   * busy machine is not a build-speed comparison; `wall − queued` is.
+   */
+  readonly queuedMs: number;
+  /**
    * Record the spawned build's process group so a reclaim can find it. The
    * leader's start time is recorded with it: the reclaim signals the group only
    * while that identity still matches.
@@ -841,6 +847,17 @@ interface SlotContext {
 export function formatDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * `12.4s` — the admission wait, which can exceed a minute and must stay one
+ * number the build's log and the bench can both quote.
+ *
+ * @public Used by the build's admitted line and its guard, and exercised by the
+ * unit tests.
+ */
+export function formatAdmissionWait(ms: number): string {
+  return `${Math.max(0, ms / 1000).toFixed(1)}s`;
 }
 
 /** `build: <state>, 0:42 elapsed, 29:18 left` — the 30-second progress contract. */
@@ -1003,6 +1020,7 @@ function handleFor(record: SlotRecord, context: SlotContext): BuildSlotHandle {
   return {
     number: record.slot,
     token: record.token,
+    queuedMs: Math.max(0, context.now() - context.startedAt),
     setProcessGroup(pgid: number) {
       if (!owned()) return;
       writeField(record.path, 'pgid', String(pgid));

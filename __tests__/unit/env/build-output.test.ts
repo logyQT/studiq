@@ -271,11 +271,13 @@ describe('a successful build', () => {
 });
 
 describe('the start line', () => {
-  it('names the slot before the spawn', async () => {
+  it('names the slot and the queue wait before the spawn', async () => {
     const stderr = captureStderr();
     await run(outcome(), { app: 'admin', admission: 'slot' });
 
-    expect(stderr.join('')).toContain('build: building apps/admin (slot 1)');
+    // The wait is on the line because the wall time includes it; a line without
+    // it would read as build time.
+    expect(stderr.join('')).toMatch(/build: building apps\/admin \(slot 1, after \d+\.\d+s\)/);
   });
 
   it('names the mode when there is no slot', async () => {

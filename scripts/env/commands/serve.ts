@@ -1,6 +1,6 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
-import { readContract } from '../lib/contract';
+import { appPortSource, readContract } from '../lib/contract';
 import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
 import { buildInProgress, buildInProgressFailure, withCheckoutLock } from '../lib/locks';
 import { readStack } from '../lib/stack';
@@ -88,6 +88,11 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
     const base = readContract();
     const stackName = options.stack ?? base.stackName;
     const contract = contractWithLease({ ...base, stackName });
+    const projectId = leaseProjectId(identityKey(REPO_ROOT, currentBranchRef(), stackName ?? ''));
+    const lease = readLease(readRegistry().dir, projectId);
+    // Resolved here, before `applyContractEnv` writes APP_PORT/APP_URL for the
+    // child: afterwards only the value survives, not which input named it.
+    const portSource = appPortSource(contract.appPort, lease?.appPort ?? null);
     applyContractEnv(contract);
     appendEnvLog(`serve: stack=${stackName ?? 'default'} shared=${contract.shared}`);
 
@@ -132,13 +137,6 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
       anonKey: stackEnv.anonKey ?? '',
     });
-    const projectId = leaseProjectId(identityKey(REPO_ROOT, currentBranchRef(), stackName ?? ''));
-    const lease = readLease(readRegistry().dir, projectId);
-
-    // Where this port came from: `contractWithLease` adopts the lease when one
-    // exists, and falls back to APP_PORT when it does not. Naming the wrong one
-    // sends an agent looking for a lease that was never taken.
-    const portSource = lease?.appPort === contract.appPort ? 'the leased port' : 'APP_PORT';
     let webPid = readWebPid();
     let webHttp = await probeHttp(contract.appUrl);
     if (healthy(webHttp)) {
