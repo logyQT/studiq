@@ -668,8 +668,21 @@ differ in, so the seed adds nothing a rebuild does not already change.
      `build.failed` (repo-relative) and as a `failed` line, because the artifact
      is the only copy of what the failed build wrote.
      **A spawn that throws counts as a failed build** (`child.on('error')`), and
-     so does a zero exit without `BUILD_ID` or with a fingerprint that moved
-     during the build — the same `ok` test that decides the exit code.
+     so does a clean exit without `BUILD_ID`. A build whose process was signalled
+     **after** it printed its route table is kept instead: the artifact is
+     complete, and `BUILD_ID` must be fresher than the spawn for that to hold, so
+     a failed build over an existing artifact is never misread as one.
+     **The fingerprint decides recording, never success** (#1365). The tree can
+     move under a build through no fault of the build — a commit, an editor, any
+     process writing a non-ignored path — and the fingerprint is a property of
+     the tree, not of `next build`. A build that exited cleanly and wrote
+     `BUILD_ID` is therefore `ok` even when the tree moved; it is simply **not
+     recorded**: `fingerprintMoved` says so, no `.dev/build.json` is written, the
+     artifact is left in place (it is a real build) and Next's own `unrecorded`
+     state is what `env status` reports. Only an artifact that is actually broken
+     — a nonzero or timed-out build with no completed build behind it — is moved
+     aside. Treating a moved fingerprint as a build failure is how a clean 25 s
+     build became `exit 4` with its output discarded.
 
 **Platform behaviour (decisions 5 and 7).** The native matrix is ADR-0011 §12's
 and is not changed here: Linux x86_64/arm64 and macOS arm64 are native, Windows is

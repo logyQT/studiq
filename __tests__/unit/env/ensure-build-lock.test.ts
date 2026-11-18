@@ -64,7 +64,14 @@ interface RebuildRequest {
 }
 
 interface RebuildOutcome {
-  build: { ok: boolean; timedOut: boolean; output: string; fingerprintAfter: string };
+  build: {
+    ok: boolean;
+    timedOut: boolean;
+    output: string;
+    fingerprintAfter: string;
+    /** The tree moved while it built: served, but never recorded as current. */
+    fingerprintMoved?: boolean;
+  };
   webPid: number | null;
   webHttp: number;
   webStarted: boolean;
@@ -432,6 +439,33 @@ describe('env:ensure releases the checkout lock for the build', () => {
     } finally {
       stdout.mockRestore();
     }
+  });
+
+  it('serves a build whose tree moved but records nothing for it (#1365)', async () => {
+    const harness = newHarness();
+    const app = await healthyStack(harness);
+    applyHarnessEnv(harness);
+    writeLease(harness, app.port);
+
+    const deps: EnsureDeps = {
+      rebuild() {
+        return Promise.resolve({
+          ...buildOutcome(),
+          build: { ...buildOutcome().build, fingerprintMoved: true },
+        });
+      },
+    };
+
+    const code = await ensureModule.runEnsure(
+      parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(app.port)]),
+      deps,
+    );
+
+    // The artifact is real and is served; the *record* is what a moved
+    // fingerprint forbids, because `fingerprintAfter` describes a tree that did
+    // not build it.
+    expect(code).toBe(0);
+    expect(stateModule.readBuildState()).toBeNull();
   });
 });
 

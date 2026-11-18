@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
-import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
+import { BUILD_MODE, computeBuildFingerprint, type FingerprintInput } from './fingerprint';
 import { grantPath, mintBuildGrant, type BuildAdmission, type BuildApp } from './grant';
 import {
   formatAdmissionWait,
@@ -70,10 +70,25 @@ const DIAGNOSTIC_RE = /\b(?:warning|warn|error|deprecated)\b|failed to compile|�
 const BUN_LIFECYCLE_EXIT_RE = /^Exited with code \d+$/;
 
 export interface BuildResult {
+  /**
+   * Whether the build itself succeeded: a clean exit (or a completed build whose
+   * process was signalled afterwards) that left `BUILD_ID` behind. The tree
+   * fingerprint is not part of this — a tree that moved is a *recording* problem,
+   * never a failed build (#1365).
+   */
   ok: boolean;
   timedOut: boolean;
   output: string;
+  /** The tree fingerprint before the build; `''` for `apps/admin`. */
+  fingerprintBefore: string;
+  /** The tree fingerprint after the build; `''` for admin or when git could not answer. */
   fingerprintAfter: string;
+  /**
+   * Whether the tree moved while the build ran, so `fingerprintAfter` describes
+   * a tree that did not build the artifact. `ok` stays true; no caller may
+   * record it as current (Next's `unrecorded` is the honest answer).
+   */
+  fingerprintMoved: boolean;
   /**
    * The slot the build held, or null in `--no-slot`/`--no-lock` mode. Optional
    * so a caller that only cares about `ok` (the rebuild transaction) can fake a
@@ -264,6 +279,8 @@ export function buildCommand(app: BuildApp): BuildCommand {
 
 interface SpawnOutcome {
   status: number | null;
+  /** The signal that killed the build, when one did. */
+  signal: NodeJS.Signals | null;
   timedOut: boolean;
   output: string;
   /** Wall time from spawn to exit, for the finish line. */
@@ -313,6 +330,13 @@ export interface ProductionBuildDeps {
    * Production uses the defaults in `withBuildSlots`.
    */
   slots?: BuildSlotsOptions;
+  /**
+   * Test seam: the tree fingerprint reader. Production reads the working tree
+   * (two `git` calls); a test that needs the tree to move *during* the build —
+   * the reported false failure — returns a different value on the second call
+   * without touching this checkout.
+   */
+  fingerprint?: FingerprintReader;
 }
 
 const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild };
@@ -377,12 +401,13 @@ function spawnBuild(
     }, BUILD_PROGRESS_MS);
     progress.unref?.();
 
-    const finish = (status: number | null): void => {
+    const finish = (status: number | null, signal: NodeJS.Signals | null): void => {
       clearTimeout(timer);
       clearInterval(progress);
       void killProcessGroup(pgid ?? 0).then(() => {
         resolve({
           status,
+          signal,
           timedOut,
           output: truncated ? `${output}\n[build output truncated]` : output,
           durationMs: Date.now() - startedAt,
@@ -437,6 +462,179 @@ export function pruneCacheVersions(
   // The resolved directory is passed explicitly: a pre-release version compares
   // on its numeric prefix, and this name must never be the thing deleted.
   return pruneForeignVersions(join(cacheDir, 'turbopack'), nextVersion, keepDirectory);
+}
+
+/** Clock/mtime granularity allowance for "this build wrote `BUILD_ID`". */
+const BUILD_ID_FRESH_SLOP_MS = 2_000;
+
+/**
+ * Next prints the route table as the last thing a successful build does, after
+ * every file it writes. Its header is the compiler's own completion marker.
+ */
+const BUILD_COMPLETE_RE = /^\s*Route \((?:app|pages)\)/m;
+
+function shortFingerprint(value: string): string {
+  return value === '' ? 'unreadable' : `${value.slice(0, 8)}…`;
+}
+
+/** How the fingerprint is read; production reads the working tree via git. */
+type FingerprintReader = (input: FingerprintInput) => string;
+
+/**
+ * The tree fingerprint, before or after the build.
+ *
+ * Before the build a failure is an honest precondition failure — nothing has
+ * been built yet, so it says that instead of surfacing later as a "build failed"
+ * that never ran a compiler. After it, the fingerprint only decides whether the
+ * finished artifact may be recorded, so a git failure (a timeout under load)
+ * degrades to "unrecorded" instead of failing a build that succeeded.
+ */
+function readTreeFingerprint(
+  read: FingerprintReader,
+  input: FingerprintInput,
+  phase: 'before' | 'after',
+): string {
+  try {
+    return read(input);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (phase === 'after') {
+      writeStderrLine(
+        `warning: build: could not read the tree fingerprint after the build (${reason}); the artifact is kept and not recorded as current`,
+      );
+      return '';
+    }
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `could not read the build fingerprint before building (${reason}); nothing was built`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Which `BUILD_ID` a build left: none, one this spawn wrote, or the previous
+ * run's. A failed build over an existing artifact leaves the old file untouched,
+ * so presence alone is not evidence — the mtime has to fall inside this spawn's
+ * window (a small slop covers clock granularity).
+ */
+function buildIdState(artifactDir: string, startedAt: number): 'missing' | 'fresh' | 'left-over' {
+  try {
+    const written = statSync(join(artifactDir, 'BUILD_ID')).mtimeMs;
+    return written >= startedAt - BUILD_ID_FRESH_SLOP_MS ? 'fresh' : 'left-over';
+  } catch {
+    return 'missing';
+  }
+}
+
+/**
+ * Whether a build whose process did not exit 0 still finished.
+ *
+ * `next build` writes `.next/BUILD_ID` only after static generation succeeded and
+ * then prints the route table as its final action, so a fresh `BUILD_ID` plus
+ * that table is the compiler's own completion evidence — an OOM kill (the build
+ * runs at `oom_score_adj=1000`) or a group kill racing the exit lands here.
+ */
+function completedDespiteExit(
+  outcome: SpawnOutcome,
+  artifactDir: string,
+  startedAt: number,
+): boolean {
+  if (outcome.timedOut) return false;
+  if (!BUILD_COMPLETE_RE.test(stripAnsi(outcome.output))) return false;
+  return buildIdState(artifactDir, startedAt) === 'fresh';
+}
+
+export interface BuildVerdictFacts {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  /**
+   * The artifact's `BUILD_ID` as evidence: `missing`, `fresh` (written by this
+   * build) or `left-over` (the previous run's). `null` for `apps/admin`, which
+   * makes no artifact claim.
+   */
+  artifact: 'missing' | 'fresh' | 'left-over' | null;
+  fingerprintBefore: string;
+  fingerprintAfter: string;
+}
+
+/**
+ * Why a build was reported as failed, one fact per condition.
+ *
+ * `build failed` cannot tell "the compiler said no" from "the compiler said yes
+ * and the wrapper could not verify it", and those need opposite responses. Each
+ * condition behind `ok` is named with the evidence it was judged on, so the next
+ * occurrence is diagnosable from the terminal.
+ *
+ * @public Exercised by the unit tests, which assert the evidence lines.
+ */
+export function describeBuildVerdict(facts: BuildVerdictFacts): string[] {
+  const exit =
+    facts.status === null
+      ? `no exit status${facts.signal === null ? '' : ` (signal ${facts.signal})`}`
+      : `exit ${facts.status}${facts.signal === null ? '' : ` (signal ${facts.signal})`}`;
+  const lines = [
+    facts.timedOut
+      ? `${exit}; the build exceeded its budget and was killed`
+      : `${exit}; expected a clean exit 0`,
+  ];
+  if (facts.artifact === 'missing') {
+    lines.push('apps/web/.next/BUILD_ID is missing: the build never wrote it');
+  } else if (facts.artifact === 'left-over') {
+    lines.push('apps/web/.next/BUILD_ID is present but was written before this build');
+  } else if (facts.artifact === 'fresh') {
+    lines.push('apps/web/.next/BUILD_ID is present and this build wrote it');
+  }
+  if (facts.fingerprintBefore !== '' || facts.fingerprintAfter !== '') {
+    lines.push(
+      facts.fingerprintAfter === ''
+        ? `tree fingerprint unreadable after the build (before ${shortFingerprint(facts.fingerprintBefore)})`
+        : facts.fingerprintAfter === facts.fingerprintBefore
+          ? `tree fingerprint unchanged (${shortFingerprint(facts.fingerprintBefore)})`
+          : `tree fingerprint moved (${shortFingerprint(facts.fingerprintBefore)} → ${shortFingerprint(facts.fingerprintAfter)})`,
+    );
+  }
+  return lines;
+}
+
+function reportBuildVerdict(facts: BuildVerdictFacts): void {
+  for (const line of describeBuildVerdict(facts)) {
+    writeStderrLine(`build: ${line}`);
+    appendEnvLog(`build: ${line}`);
+  }
+}
+
+/**
+ * A finished build the tree no longer matches: not a failure and not a record.
+ * `.next` is kept (it is a real build), nothing claims it is current, and the
+ * next `env build` rebuilds and records it.
+ */
+function reportUnrecordedBuild(before: string, after: string): void {
+  const reason =
+    after === ''
+      ? 'the tree fingerprint could not be read after the build'
+      : `the tree changed while it built (${shortFingerprint(before)} → ${shortFingerprint(after)})`;
+  writeStderrLine(
+    `warning: build: ${reason}; apps/web/.next is kept and is NOT recorded as current — run 'bun run env:build' again to record this tree`,
+  );
+  appendEnvLog(`build: not recorded — ${reason}`);
+}
+
+/**
+ * A warning, not a failure: the artifact is complete but its process did not end
+ * cleanly, so the exit is named rather than thrown away with the build.
+ */
+function reportCompletedAfterSignal(outcome: SpawnOutcome): void {
+  const signal = outcome.signal ?? null;
+  const how =
+    outcome.status === null
+      ? `signal ${signal ?? 'unknown'}`
+      : `exit ${outcome.status}${signal === null ? '' : ` (signal ${signal})`}`;
+  writeStderrLine(
+    `warning: build: the build process ended with ${how} after printing its route table; the artifact is complete and is kept`,
+  );
+  appendEnvLog(`build: kept a completed artifact after ${how}`);
 }
 
 /**
@@ -494,11 +692,18 @@ async function buildOnce(
     }
   }
   const input = { root: REPO_ROOT, mode: BUILD_MODE, envHash };
-  const fingerprintBefore = web ? computeBuildFingerprint(input) : '';
+  // The fingerprint is evidence for *recording*, never a success condition: a
+  // tree that moves under a build (a commit, a neighbour writing a file, an
+  // editor) says nothing about whether `next build` worked. Failing to read it
+  // before the build is still an honest precondition failure — nothing has been
+  // built yet — but after the build it degrades to "unrecorded".
+  const readFingerprint = deps.fingerprint ?? computeBuildFingerprint;
+  const fingerprintBefore = web ? readTreeFingerprint(readFingerprint, input, 'before') : '';
   // From here on the build may overwrite `.next`, so the previous run's
   // "current" claim must already be gone: an interrupted or failed build never
   // inherits it (ADR-0014, decision 6). `apps/admin` has no record to delete.
   if (web) removeBuildState();
+  const startedAt = Date.now();
   let outcome: SpawnOutcome;
   let invalidated: string | null = null;
   try {
@@ -511,15 +716,31 @@ async function buildOnce(
     }
     throw error;
   }
-  const fingerprintAfter = web ? computeBuildFingerprint(input) : '';
-  const ok =
-    outcome.status === 0 &&
-    (!web || (buildArtifactPresent(artifactDir) && fingerprintAfter === fingerprintBefore));
+  const fingerprintAfter = web ? readTreeFingerprint(readFingerprint, input, 'after') : '';
+  const artifactPresent = !web || buildArtifactPresent(artifactDir);
+  const artifact = web ? buildIdState(artifactDir, startedAt) : null;
+  const completed =
+    outcome.status === 0 || (web && completedDespiteExit(outcome, artifactDir, startedAt));
+  const ok = !outcome.timedOut && completed && artifactPresent;
+  const fingerprintMoved =
+    web && (fingerprintAfter === '' || fingerprintAfter !== fingerprintBefore);
   // Before the slot is released: a nonzero or timed-out build leaves an
-  // artifact no serve path may report as current (ADR-0014, decision 7).
-  if (!ok && web) {
-    invalidated = invalidateFailedArtifact(deps);
-    deps.onInvalidate?.();
+  // artifact no serve path may report as current (ADR-0014, decision 7). Only an
+  // artifact that is actually broken is moved aside — a build that finished is
+  // kept even when its fingerprint could not be recorded.
+  if (!ok) {
+    if (web) {
+      invalidated = invalidateFailedArtifact(deps);
+      deps.onInvalidate?.();
+    }
+    reportBuildVerdict({
+      status: outcome.status,
+      signal: outcome.signal ?? null,
+      timedOut: outcome.timedOut,
+      artifact,
+      fingerprintBefore,
+      fingerprintAfter,
+    });
   }
   // A green build is when the previous corpse stops being evidence: the tree it
   // described has been replaced by one that builds.
@@ -540,12 +761,18 @@ async function buildOnce(
   }
   // The finish line belongs here, not in `commands/build.ts`: `env ensure`'s
   // rebuild reaches the same seam and must report the build it ran.
-  if (ok) reportBuildSuccess(options, outcome.output, outcome.durationMs);
+  if (ok) {
+    reportBuildSuccess(options, outcome.output, outcome.durationMs);
+    if (fingerprintMoved) reportUnrecordedBuild(fingerprintBefore, fingerprintAfter);
+    else if (outcome.status !== 0) reportCompletedAfterSignal(outcome);
+  }
   return {
     ok,
     timedOut: outcome.timedOut,
     output: outcome.output,
+    fingerprintBefore,
     fingerprintAfter,
+    fingerprintMoved,
     slot: slot?.number ?? null,
     grant: existsSync(grantPath()) ? 'unconsumed' : 'consumed',
     invalidated,

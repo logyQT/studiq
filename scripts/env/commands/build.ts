@@ -362,8 +362,10 @@ export async function runBuild(
         throw new EnvFailure(failure.code, failure.message);
       }
       // `--no-lock` never records: a bypassed artifact is not reported as
-      // current by construction (ADR-0014, decision 6).
-      if (web && options.admission !== 'no-lock') {
+      // current by construction (ADR-0014, decision 6). A tree that moved while
+      // it built is the same kind of fact: the artifact is real, but recording
+      // `fingerprintAfter` would claim it for a tree it was not built from.
+      if (web && options.admission !== 'no-lock' && !result.fingerprintMoved) {
         builtAt = new Date().toISOString();
         writeBuildState({
           fingerprint: result.fingerprintAfter,
@@ -405,7 +407,15 @@ export async function runBuild(
       grant: result === null ? null : (result.grant ?? 'unconsumed'),
       built,
       ok: result?.ok ?? true,
-      fingerprint: web ? (result?.fingerprintAfter ?? previous?.fingerprint ?? null) : null,
+      // A moved fingerprint describes the tree after the build, not the source
+      // the artifact was made from; nothing claims it, so nothing reports it.
+      fingerprint: !web
+        ? null
+        : result === null
+          ? (previous?.fingerprint ?? null)
+          : result.fingerprintMoved
+            ? null
+            : result.fingerprintAfter,
       builtAt,
       snapshot: snapshotRun,
       seed: seedRun,
