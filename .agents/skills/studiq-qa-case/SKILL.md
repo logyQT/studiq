@@ -243,6 +243,15 @@ axes, in a throwaway commit or with `git stash`, one mutation at a time:
 | **product** | break what the case protects — drop the ownership filter, the permission check, the redirect rule, a field from the `select()` | the spec, on the assertion that names that behaviour |
 | **test**    | delete the step that does the work, or the assertion that proves it                                                            | the spec — otherwise the step was scenery            |
 
+These are the **same recipes and the same judgement** as
+`.agents/skills/mutation-gate/SKILL.md`, which owns the method for unit and
+integration tests through `scripts/mutate.ts`. Read it before choosing a
+mutation; the only difference here is the driver — a rebuilt app plus a Playwright
+spec instead of one test in a clean tree. `KILLED`/`SURVIVED`/`ERROR` mean what
+they mean there: a spec that stays green under the product mutation is unproven,
+and an error (login timeout, missing fixture, a step that never ran) is never
+proof.
+
 The app under test is a production build, so a server mutation needs a rebuild
 before the spec can see it. The rebuild commands need no contract; the spec run
 does, so it goes through `env:run` like every other run:

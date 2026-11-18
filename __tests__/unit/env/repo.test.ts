@@ -27,6 +27,9 @@ describe('checkout identity', () => {
     expect(repo.canon(link)).toBe(repo.REPO_ROOT);
     expect(repo.isThisCheckout(link)).toBe(true);
     expect(repo.isThisCheckout(`${link}/..`)).toBe(false);
+    // A path inside the checkout is still another stack's root: identity is
+    // equality, not a prefix.
+    expect(repo.isThisCheckout(join(repo.REPO_ROOT, 'apps', 'web'))).toBe(false);
     expect(repo.isThisCheckout('/tmp/some-other-checkout')).toBe(false);
     expect(repo.isThisCheckout(null)).toBe(false);
     expect(repo.isThisCheckout(undefined)).toBe(false);
