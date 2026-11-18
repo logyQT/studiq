@@ -55,12 +55,36 @@ export function readStackName(): string | null {
   return raw;
 }
 
-function readAppPort(appUrl: string): number {
+/**
+ * The port the environment names, and which variable named it. One precedence
+ * for both readers below, so a refusal message cannot disagree with the port the
+ * contract actually resolved.
+ */
+function envAppPort(appUrl: string): { port: number; source: 'APP_PORT' | 'APP_URL' } | null {
   const explicit = process.env.APP_PORT ?? '';
-  if (explicit) return parsePort(explicit, 'APP_PORT');
+  if (explicit) return { port: parsePort(explicit, 'APP_PORT'), source: 'APP_PORT' };
   const fromUrl = urlPort(appUrl);
-  if (fromUrl) return parsePort(fromUrl, 'APP_URL');
-  return 3000;
+  if (fromUrl) return { port: parsePort(fromUrl, 'APP_URL'), source: 'APP_URL' };
+  return null;
+}
+
+function readAppPort(appUrl: string): number {
+  return envAppPort(appUrl)?.port ?? 3000;
+}
+
+/**
+ * Where `contractPort` came from, for a refusal message.
+ *
+ * `contractWithLease` adopts the lease only when neither `APP_PORT` nor
+ * `APP_URL` is set, so the environment wins first and the lease is the fallback
+ * — not a coincidence of matching numbers. Naming the wrong source sends an
+ * agent looking for a lease that was never taken.
+ */
+export function appPortSource(contractPort: number, leasePort: number | null): string {
+  const named = envAppPort(process.env.APP_URL ?? '');
+  if (named !== null) return named.source;
+  if (leasePort !== null && leasePort === contractPort) return 'the leased port';
+  return 'the default port';
 }
 
 export function readContract(): Contract {
