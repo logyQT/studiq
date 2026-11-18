@@ -1202,8 +1202,12 @@ describe('env:ensure keeps a live stack on its derived APP_URL port', () => {
     const status = parseJsonObject(result.stdout);
     expect(objectField(status, 'ports').app).toBe(3999);
     // `ensure` is a state change, so it leaves `.dev/env.json` describing what it
-    // just proved — and its own snapshot reports that file as reconciled.
-    expect(readFileSync(join(harness.stateDir, 'env.json'), 'utf8')).toContain('"schema": 1');
+    // just proved — and its own snapshot reports that file as reconciled. The
+    // final write reuses the stack facts it proved, not a cache record that may
+    // have aged out, so the id survives the exit write.
+    const manifest = parseJsonObject(readFileSync(join(harness.stateDir, 'env.json'), 'utf8'));
+    expect(manifest.schema).toBe(1);
+    expect(objectField(manifest, 'stack').id).toMatch(/^fixture-stack-id-0+$/);
     expect(objectField(status, 'manifest').agrees).toBe(true);
   });
 

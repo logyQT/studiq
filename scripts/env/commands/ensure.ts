@@ -89,7 +89,12 @@ import {
 } from '../lib/web';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
-import { writeEnvManifest, sharedStackFacts, stackFacts } from '../lib/manifest';
+import {
+  writeEnvManifest,
+  sharedStackFacts,
+  stackFacts,
+  type ManifestStack,
+} from '../lib/manifest';
 import { collectSnapshot } from '../lib/snapshot';
 import { assertSeedingAllowed, runSeeder } from '../lib/seed';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
@@ -705,6 +710,10 @@ export async function runEnsure(
     shared: baseContract.shared,
   });
   appendEnvLog(`ensure: profile=${options.profile} stack=${cliStackName ?? 'default'}`);
+  // The facts this run proves, so the manifest's exit write does not re-derive
+  // them from a stack-cache record that may have aged past its TTL.
+  let manifestContract: Contract | undefined;
+  let manifestStack: ManifestStack | undefined;
 
   // One lock per checkout: the app-port lease and the web claim are authoritative
   // while it is held. The build's slot and per-worktree mutex are taken later,
@@ -773,6 +782,7 @@ export async function runEnsure(
       warmStack: warm !== null,
     });
     const contract = { ...lease.contract, stackName: cliStackName };
+    manifestContract = contract;
     const { dir, projectId } = lease;
     if (warm && contract.appPort !== warmContract.appPort) {
       // The lease moved between the warm proof and the claim: the web evidence
@@ -872,7 +882,8 @@ export async function runEnsure(
         serve: options.serve,
       });
       if (stackState) writeStackState(stackState);
-      writeEnvManifest({ contract, stack: sharedStackFacts() });
+      manifestStack = sharedStackFacts();
+      writeEnvManifest({ contract: manifestContract, stack: manifestStack });
       const snapshot = await collectSnapshot({
         contract,
         stack: null,
@@ -967,6 +978,7 @@ export async function runEnsure(
 
     // The warm path carries no keys and needs none: it only reuses a server that
     // is already running. Every other path relays the discovered values.
+    manifestStack = stackFacts(stack.status);
     if (!warm) {
       applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
     }
@@ -1113,7 +1125,8 @@ export async function runEnsure(
         appUrl: contract.appUrl,
       });
     }
-    writeEnvManifest({ contract, stack: stackFacts(stack.status) });
+    manifestStack = stackFacts(stack.status);
+    writeEnvManifest({ contract: manifestContract, stack: manifestStack });
     const snapshot = await collectSnapshot({
       contract,
       stack: stack.status,
@@ -1130,8 +1143,9 @@ export async function runEnsure(
     return 0;
   } finally {
     // A refused or failed ensure still changed something (a stopped stack, a
-    // started one, a new lease), so the file is refreshed on every exit.
-    writeEnvManifest();
+    // started one, a new lease), so the file is refreshed on every exit — with
+    // the facts this run proved, when it got far enough to prove any.
+    writeEnvManifest({ contract: manifestContract, stack: manifestStack });
     await lock.release();
   }
 }
