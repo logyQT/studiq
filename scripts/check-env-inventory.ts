@@ -45,15 +45,26 @@ const CODE_ROOTS = ['apps/web/src', 'apps/admin/src', 'packages', 'scripts', '__
 const AMBIENT_ALLOWLIST = new Set(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_TIME', 'TZ']);
 
 /**
- * Path-scoped ambient names: OS-owned values one narrow scope may read without
- * declaring them. `scripts/env/**` needs the runtime-directory roots to locate
- * the cross-checkout dev registry (the same fallback `env`'s lease/lock code
- * uses); no other scope may read them undeclared.
+ * Path-scoped ambient names: execution-environment values one narrow scope may
+ * read without declaring them. `scripts/env/**` needs the runtime-directory roots
+ * to locate the cross-checkout dev registry (the same fallback `env`'s lease/lock
+ * code uses); no other scope may read them undeclared.
+ *
+ * A CI platform's own variables belong here rather than in the schema: they are
+ * the execution environment's, not this repository's, and they are not portable
+ * (a local run leaves them unset, and another CI vendor uses different names).
+ * Scope them to the one file that reads them.
  */
 const SCOPED_AMBIENT_ALLOWLIST: ReadonlyArray<{ scope: string; keys: ReadonlySet<string> }> = [
   {
     scope: 'scripts/env/',
     keys: new Set(['TMPDIR', 'XDG_RUNTIME_DIR']),
+  },
+  {
+    // GitHub Actions' per-step summary file. GitHub-only: no local equivalent and
+    // no other vendor's name, so `scripts/flaky-report.ts` falls back to stdout.
+    scope: 'scripts/flaky-report.ts',
+    keys: new Set(['GITHUB_STEP_SUMMARY']),
   },
 ];
 

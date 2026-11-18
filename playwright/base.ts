@@ -11,12 +11,21 @@ import { defineConfig, type PlaywrightTestConfig } from '@playwright/test';
  * A spec whose wait is coupled to a 5 s autosave debounce, or an `expect.poll`
  * that spans several API round trips, overrides that single call with a comment
  * explaining the budget.
+ *
+ * It is 4 s rather than 3 s because a miss costs a whole test, not the missing
+ * second: a step that needed 3.2 s under load replays the entire test to recover,
+ * and the firefox leg spent enough of its wall clock on those replays that
+ * retries, not the tests, dominated it (the operator's observation when this
+ * budget was 3 s; `bun run flaky` now measures it instead of asserting it).
+ * A passing test never spends the extra second, but a genuinely broken step
+ * spends one of them per miss out of the per-test budget below — the trade is
+ * "slow tests get their real duration, broken tests still fail".
  */
-const ACTION_TIMEOUT_MS = 3_000;
+const ACTION_TIMEOUT_MS = 4_000;
 
 /**
  * Navigation is one document request through the proxy's session refresh plus
- * the redirect to the dashboard, so it gets 6 s instead of 3 s.
+ * the redirect to the dashboard, so it gets 6 s instead of 4 s.
  *
  * Measured on a quiet 16-vCPU box with eight browser contexts in parallel: an
  * authenticated `/login` → dashboard arrival is 0.65 s at p50 and 1.2 s at p99;

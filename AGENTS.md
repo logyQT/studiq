@@ -146,6 +146,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run test:coverage` | `vitest run --coverage` |
 | `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
 | `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count (committed changes only) vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
+| `bun run flaky` | `scripts/flaky-report.ts` — flaky-test ledger over Playwright JSON reports (see [docs/ci.md](docs/ci.md#flaky-tests)). Agent contract: exit `0` clean, `1` flaky/failing, `2` bad usage, `3` no report found; stdout is the JSON verdict. `-- --text` for a table, `-- --runs N` for the last N `verify` runs via `gh`, `-- --summary` for the GitHub step summary CI writes |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
@@ -708,7 +709,8 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 - **Mock**: `vi.mock('@studiq/server/lib/supabase/server')` is registered in `__tests__/setup.ts` — unit tests override via the `mockSupabaseClient()` helper
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
-- **Playwright wait budgets** come from `playwright/base.ts` (`defineSuiteConfig`), merged into both the e2e and QA runners: 3 s per action and per `expect`, 6 s per navigation (a document load through the proxy's session refresh plus the dashboard redirect, measured at p99 2.2 s under load; CI's 4-vCPU runner exceeded 3 s). The per-test `timeout` (Playwright's 30 s in e2e, 90 s in QA) is a whole-flow budget, not a wait budget — a step that genuinely needs longer (a 5 s autosave debounce, a poll across several API round trips) overrides that single call with `{ timeout: … }` and a comment.
+- **Playwright wait budgets** come from `playwright/base.ts` (`defineSuiteConfig`), merged into both the e2e and QA runners: 4 s per action and per `expect`, 6 s per navigation (a document load through the proxy's session refresh plus the dashboard redirect, measured at p99 2.2 s under load; CI's 4-vCPU runner exceeded 3 s). The per-test `timeout` (Playwright's 30 s in e2e, 90 s in QA) is a whole-flow budget, not a wait budget — a step that genuinely needs longer (a 5 s autosave debounce, a poll across several API round trips) overrides that single call with `{ timeout: … }` and a comment.
+- **Flakes are recorded, not discovered by memory**: every Playwright step writes a JSON report and uploads it whether the leg was green or red, and `bun run flaky` ranks what wobbled across runs ([docs/ci.md](docs/ci.md#flaky-tests)). Ask it before "hunting for flaky tests" by reading logs.
 - Tests run sequentially within files (`sequence.concurrent: false`); file-level parallelism is on (`fileParallelism: true`)
 - Coverage targets `packages/server/src/**/*.ts` (excludes `routes.config.ts`)
 - **Load testing**: `scripts/load-test/` — `seed.ts` provisions accounts via the Supabase Admin API; `bots.ts` drives concurrent role-based journeys (`--shards` spreads them over CPU cores). See `scripts/load-test/README.md`

@@ -50,6 +50,77 @@ CI runs its own Supabase instance per job with the native runtime; see the
 `env:` block and the Supabase steps in `verify.yml`. It is not the local
 `bun dev:up` stack.
 
+## Flaky tests
+
+A test that fails and then passes on retry is a **green leg**, so nothing used to
+record it: the `line` reporter put a count in the job log and artifacts were
+uploaded only `if: failure()`. Every Playwright step now runs
+`--reporter=line,json` and uploads `test-results/` with `always()`, and writes a
+**Flaky tests** table to the job summary — a flaky attempt's trace is in the
+artifact too, because `trace: 'on-first-retry'` writes it for exactly those runs.
+
+Both `PLAYWRIGHT_JSON_OUTPUT_DIR` and `PLAYWRIGHT_JSON_OUTPUT_NAME` are set, and
+that is not redundant: Playwright resolves a bare `..._NAME` against the **config
+file's** directory, so the QA runner (`__tests__/qa/playwright.qa.config.ts`)
+would write its report to `__tests__/qa/test-results/`, where neither the summary
+step nor the upload looks. `..._DIR` is resolved against the working directory.
+
+`bun run flaky` (`scripts/flaky-report.ts`) reads those reports and ranks what
+wobbles. It is built to be called by an agent, so the exit code is the verdict and
+stdout is data:
+
+```bash
+bun run flaky                       # this checkout's test-results/ → JSON verdict
+bun run flaky -- --text             # same, as a table
+bun run flaky -- --runs 20          # last 20 verify runs, downloaded via gh
+bun run flaky -- --runs 20 --branch main   # same, restricted to one branch
+bun run flaky -- --dir path/to/dir  # any directory of reports (combines with --runs)
+bun run flaky -- --summary          # GitHub step summary (what CI runs)
+```
+
+| exit | meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| `0`  | no flakes in anything it could read                                        |
+| `1`  | at least one flaky test, or a test that **failed** in the reports read     |
+| `2`  | bad usage, or `--runs` could not list or download runs                     |
+| `3`  | no Playwright report found — "clean" would be a lie, so it does not say it |
+
+`--summary` always exits `0`: it displays on a leg that may already be red for an
+unrelated reason, and it must not decide. The table above describes the query
+modes (`--text`, and the default JSON).
+
+"Failed" means the test was still red after every retry **in at least one of the
+reports read** — with `--runs 20`, that can be a run from three weeks ago. The
+payload dates the read: `reports.earliest`/`reports.latest` are the reports'
+`stats.startTime`, and the text and summary modes print the same span. Read
+`failed`/`seenIn` and `lastError` for when, rather than treating `verdict:
+"failing"` as "red right now". For the same reason, a stale `test-results/` left
+by an earlier run is read as current — check the span before believing a verdict.
+
+**No local run produces a report by default** (`test:e2e` keeps the html reporter,
+`test:qa` uses `list`), so a local `bun run flaky` answers `3`: nothing was
+checked. Either read CI (`--runs N`, the better signal — flakes need CI's load) or
+replay the suite with `--reporter=line,json` and
+
+```bash
+PLAYWRIGHT_JSON_OUTPUT_DIR=test-results PLAYWRIGHT_JSON_OUTPUT_NAME=e2e.json \
+  bunx playwright test --reporter=line,json
+```
+
+Each entry carries `flaky`/`failed` counts per `seenIn` runs, the slowest failed
+attempt (the signal that separates a slow-but-legitimate wait from a race) and a
+`reproduce` command with `--repeat-each=5 --retries=0`, since the ledger already
+knows the test is unreliable and the replay is for reproducing the failure. QA
+cases replay through `-c __tests__/qa/playwright.qa.config.ts`; without it the
+root config's `testDir` would not find the spec. Downloads are cached in
+`.tmp/flaky/<runId>/` (only this repo's `playwright-report-*`/`qa-suite-report-*`/
+`ai-suite-report` artifacts, marked complete when the download finishes so a
+partial one is retried), so a repeat call re-reads instead of re-downloading.
+
+Raising the shared action budget (see `playwright/base.ts`) moves the threshold,
+it does not remove flakes — the ledger's counts across runs are what tell you
+whether a spec is genuinely fast with a slow tail or waiting on something real.
+
 ## Duplication
 
 [jscpd](https://jscpd.dev) (pinned in `devDependencies`, configured by
@@ -153,6 +224,7 @@ bun run dup:base
 | `qa-suite`    | `bun run test:qa`                                                                                    |
 | `ai-suite`    | `bun run mock:llm`, then `bun run test:qa __tests__/qa/AI` (the `LLM_*` values in root `.env.local`) |
 | `pr-triage`   | `bun run pr:size`                                                                                    |
+| flake report  | `bun run flaky` (or `-- --runs 20` for the last CI runs)                                             |
 
 `bun run pr:size` measures committed changes only (`git diff <base>...HEAD`), so
 commit before checking — uncommitted work is invisible to it.
