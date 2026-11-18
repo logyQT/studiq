@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { atomicWriteFile } from './atomic-file';
 import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
-import type { BuildSlotsStatus, ManifestReport } from './json';
+import type { ManifestReport } from './json';
 import { buildInProgress, readBuildSlots, type BuildInProgress } from './locks';
 import { writeStderrLine } from './output';
 import {
@@ -46,9 +46,12 @@ import { readWebPid } from './web';
  * - **`status` and `doctor` never write it** (ADR-0011 §1). Status *reconciles*
  *   it: `manifestReport` compares the file with the live probe and reports the
  *   differences instead of echoing the file back.
- * - **Absent means nothing is set up**, not "unknown".
+ * - **Absent means no command has recorded state here yet**, not "unknown".
  * - **Schema-versioned**, so a file written by another version is reported as
  *   such rather than silently misread.
+ * - **`writtenAt` is the last write, not the last change.** A refused or no-op
+ *   command rewrites the document with the same facts and a newer timestamp, so
+ *   a later timestamp bounds freshness but never proves something changed.
  */
 const MANIFEST_SCHEMA = 1;
 
@@ -113,6 +116,7 @@ export interface ManifestNext {
 
 export interface EnvManifest {
   schema: number;
+  /** Last write, not last change: a refusal or a no-op still refreshes it. */
   writtenAt: string;
   checkout: ManifestCheckout;
   app: ManifestApp;
@@ -128,7 +132,10 @@ export interface EnvManifest {
 const NEXT_COMMANDS: ManifestNext = {
   build: 'bun run env:build',
   serve: 'bun run env:serve',
-  down: 'bun run env:down --all --yes',
+  // Plain `down`, not `--all`: `build` refuses while the server runs and asks
+  // for `env:down`, and `--all` leaves no stack for the next `build`. These
+  // three have to compose in the order an agent reads them.
+  down: 'bun run env:down',
 };
 
 /** The stack facts an ensure/serve/build has just read authoritatively. */
@@ -380,23 +387,29 @@ function readEnvManifest(): ManifestRead {
 /**
  * The live facts a manifest is judged against.
  *
- * Deliberately not every field: `slots` are machine-wide counts that move
- * without any change to this checkout, so a difference there would mark the
- * file stale for another worktree's build. `writtenAt` plus the pids the file
- * names already make its age visible.
+ * An unobserved fact is unknown — `null` for `stackRunning`, `undefined` for the
+ * id/runtime — never `true`/`false` by default: a probe that failed must not
+ * turn into "the file disagrees". Deliberately not every field:
+ * `slots` are machine-wide counts that move without any change to this
+ * checkout, so a difference there would mark the file stale for another
+ * worktree's build; `stack.name` and `build.builtAt` are identity and age, not
+ * state. `writtenAt` plus the pids the file names make its age visible.
  */
 export interface ManifestFacts {
   appPort: number;
   appUrl: string;
   webPid: number | null;
-  shared: boolean;
-  stackId: string | null;
-  stackRunning: boolean;
-  runtime: string | null;
+  /** Undefined when the stack probe failed: unknown, not "no id". */
+  stackId: string | null | undefined;
+  /** Null when the `supabase stack status` probe failed: unknown, not stopped. */
+  stackRunning: boolean | null;
+  /** Undefined when nothing observed it: unknown, not "no runtime". */
+  runtime: string | null | undefined;
   buildState: BuildArtifactState | null;
   fingerprint: string | null;
-  slots: BuildSlotsStatus | null;
   building: BuildInProgress | null;
+  /** Short branch name, the form `checkout.branch` is written in. */
+  branch: string | null;
   commit: string | null;
 }
 
@@ -422,15 +435,19 @@ function compareManifest(manifest: EnvManifest, facts: ManifestFacts): string[] 
     note('app.pid', manifest.app.pid, facts.webPid);
   }
 
-  if (manifest.stack.running !== facts.stackRunning) {
+  // A failed probe is unknown: comparing it would blame the file for #1360.
+  if (facts.stackRunning !== null && manifest.stack.running !== facts.stackRunning) {
     note('stack.running', manifest.stack.running, facts.stackRunning);
   }
-  // A null claim is "unknown at write time", never a disagreement.
-  if (manifest.stack.id !== null && manifest.stack.id !== facts.stackId) {
-    note('stack.id', manifest.stack.id, facts.stackId);
+  // A null claim is "unknown at write time", never a disagreement — and an
+  // unobserved fact (`undefined`) is equally not evidence against the file.
+  if (facts.stackId !== undefined && manifest.stack.id !== null) {
+    if (manifest.stack.id !== facts.stackId) note('stack.id', manifest.stack.id, facts.stackId);
   }
-  if (manifest.stack.runtime !== null && manifest.stack.runtime !== facts.runtime) {
-    note('stack.runtime', manifest.stack.runtime, facts.runtime);
+  if (facts.runtime !== undefined && manifest.stack.runtime !== null) {
+    if (manifest.stack.runtime !== facts.runtime) {
+      note('stack.runtime', manifest.stack.runtime, facts.runtime);
+    }
   }
 
   if (manifest.build.state !== facts.buildState) {
@@ -459,6 +476,13 @@ function compareManifest(manifest: EnvManifest, facts: ManifestFacts): string[] 
     note('building.pid', manifest.building.pid, live.pid);
   }
 
+  // A wrong branch is actively misleading (a `git checkout -b` onto the same
+  // commit leaves the commit equal), and one `git` call answers it.
+  if (manifest.checkout.branch !== '' && facts.branch !== null) {
+    if (manifest.checkout.branch !== facts.branch) {
+      note('checkout.branch', manifest.checkout.branch, facts.branch);
+    }
+  }
   if (manifest.checkout.commit !== null && facts.commit !== null) {
     if (manifest.checkout.commit !== facts.commit) {
       note('checkout.commit', manifest.checkout.commit, facts.commit);

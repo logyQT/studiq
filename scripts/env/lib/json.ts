@@ -104,9 +104,10 @@ export interface BuildRunStatus {
  *
  * The manifest is the cheap path an agent reads without running anything;
  * status is the reconciler and the authority. `agrees` is null when there is no
- * file (nothing is set up) or it could not be read, false when a field
- * disagrees or the schema is not this tool's, and never a claim the file is
- * trustworthy — the differences say why.
+ * file (no command has recorded state here yet) or it could not be read, false
+ * when a field disagrees or the schema is not this tool's, and never a claim the
+ * file is trustworthy — the differences say why. `writtenAt` is the last write,
+ * not the last change.
  */
 export interface ManifestReport {
   present: boolean;

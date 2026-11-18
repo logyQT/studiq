@@ -26,10 +26,14 @@ decision and is not built. The tool leases only the app port and discovers stack
    written atomically by every mutating command (`ensure`, `build` — at start and finish, `serve`, `dev`, `down`) and
    read with no subprocess and no `supabase` call. It is **derived state**: never hand-maintained, schema-versioned
    (`schema: 1`) so a future shape is detectable rather than misread, and secret-free (no key, token or database URL —
-   the same rule as `qa/env.json`). Absence means "nothing is set up here", not "unknown". It is **never authority**:
-   `status` and `doctor` still do not write it (read-only, above), and `status --json` gains a `manifest` field that
-   reconciles the file against its own live probe and reports the differences — a disagreeing file is reported as
-   stale, never echoed back.
+   the same rule as `qa/env.json`). Absence means "no command has recorded state here yet", not "unknown". It is
+   **never authority**: `status` and `doctor` still do not write it (read-only, above), and `status --json` gains a
+   `manifest` field that reconciles the file against its own live probe and reports the differences — a disagreeing
+   file is reported as stale, never echoed back, and a failed probe is reported as unknown rather than as a
+   disagreement. The reconciler covers app port/url/pid, stack id/runtime/running, `build.state`/fingerprint,
+   `building`, and the checkout branch/commit; machine-wide `slots`, `stack.name` and `build.builtAt` are not
+   reconciled (they move without this checkout changing). `writtenAt` is the last write, not the last change: a
+   refused or no-op command still refreshes it.
 2. **Delete `scripts/dev` and the `dev:*` wrappers that call it** (`dev:up`, `dev:serve`, `dev:status`, `dev:down`,
    `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`) in the cutover; no aliases for
    them. The standalone human shortcuts `dev:web` (raw `next dev`) and `dev:admin` (`apps/admin` HMR) never called

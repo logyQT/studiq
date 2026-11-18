@@ -56,7 +56,7 @@ function snapshotLines(snapshot: SnapshotStatus | null): string[] {
  */
 function manifestLine(manifest: ManifestReport): string {
   if (!manifest.present) {
-    return `absent (nothing is set up here; run 'bun run env:ensure --profile web')`;
+    return `absent (no command has recorded state here yet; run 'bun run env:ensure --profile web')`;
   }
   if (manifest.error !== null) {
     return `unreadable: ${manifest.error} (rewrite it with 'bun run env:ensure --profile web')`;

@@ -248,10 +248,8 @@ export function classifyRecordedArtifact(
   return classifyBuildArtifact({ fingerprint, envHash: record.envHash }, artifactDir);
 }
 
-/** One line an agent can act on, for a state the classifier returned. */ const ARTIFACT_STATE_LABELS: Record<
-  BuildArtifactState,
-  string
-> = {
+/** One line an agent can act on, for a state the classifier returned. */
+const ARTIFACT_STATE_LABELS: Record<BuildArtifactState, string> = {
   current: 'current',
   stale: 'stale (the tree or the inlined environment changed since the recorded build)',
   unrecorded:

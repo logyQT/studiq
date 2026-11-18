@@ -8,7 +8,14 @@ import { buildInProgress, readBuildSlots } from './locks';
 import { readSnapshotStatus } from './build-cache';
 import { manifestReport } from './manifest';
 import { readRegistry, findEntry, registryPathExists } from './registry';
-import { REPO_ROOT, canon, currentCommit, deriveProjectId, sanitizeProjectId } from './repo';
+import {
+  REPO_ROOT,
+  canon,
+  currentBranchName,
+  currentCommit,
+  deriveProjectId,
+  sanitizeProjectId,
+} from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import {
@@ -171,7 +178,11 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
   const buildState = classifyRecordedArtifact(artifactDir);
   const slots = readBuildSlots();
   const runtime = statusStack?.runtime ?? listedRuntime;
+  // The status call failed: its id/running answers are unknown, not "absent".
+  // The runtime can still be known when the separate `stack list` answered.
+  const stackProbeFailed = !contract.shared && probeError !== null;
   const commit = currentCommit();
+  const branch = currentBranchName();
 
   return shapeStatus({
     contract,
@@ -207,14 +218,19 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
       appPort: contract.appPort,
       appUrl: contract.appUrl,
       webPid,
-      shared: contract.shared,
-      stackId: contract.shared ? projectId : (statusStack?.id ?? null),
-      stackRunning: contract.shared ? true : statusStack !== null,
-      runtime,
+      stackId: contract.shared
+        ? projectId
+        : stackProbeFailed
+          ? undefined
+          : (statusStack?.id ?? null),
+      // A failed probe is unknown, never "the stack is down". This is the call
+      // (#1360) the file exists to avoid, so its failure cannot be its accuser.
+      stackRunning: contract.shared ? true : stackProbeFailed ? null : statusStack !== null,
+      runtime: stackProbeFailed && listedRuntime === null ? undefined : runtime,
       buildState,
       fingerprint: record?.fingerprint ?? null,
-      slots,
       building: buildInProgress(),
+      branch,
       commit,
     }),
   });

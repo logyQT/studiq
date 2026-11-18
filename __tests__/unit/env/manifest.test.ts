@@ -118,7 +118,9 @@ describe('.dev/env.json is written by a state change and never by a read', () =>
     expect(objectField(manifest, 'next')).toEqual({
       build: 'bun run env:build',
       serve: 'bun run env:serve',
-      down: 'bun run env:down --all --yes',
+      // Plain `down`: `build` refuses while a server runs, and `--all` would
+      // leave no stack for the next `build`.
+      down: 'bun run env:down',
     });
 
     // Read-only commands reconcile, they never rewrite: the same bytes and the
@@ -133,7 +135,45 @@ describe('.dev/env.json is written by a state change and never by a read', () =>
     expect(statSync(manifestPath(harness)).mtimeMs).toBe(beforeMtime);
   });
 
-  it('reports an absent file as nothing set up, not as unknown state', async () => {
+  it('is written by a serve that refuses after resolving the stack', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+
+    // `serve` can stop a recorded server before it discovers the artifact is not
+    // servable (or that the port belongs to another process). The write has to
+    // survive that exit, or `app.serving` keeps naming a server this command
+    // stopped — the exact false belief the file exists to prevent.
+    const result = await harness.run(['serve']);
+    expect(result.status, result.stderr).not.toBe(0);
+
+    expect(existsSync(manifestPath(harness))).toBe(true);
+    const manifest = readManifestFile(harness);
+    expect(manifest.schema).toBe(1);
+    expect(objectField(manifest, 'app').serving).toBe(false);
+    expect(objectField(manifest, 'app').pid).toBeNull();
+    expect(manifest.building).toBeNull();
+  });
+
+  it('names a next command that is valid in the state it describes', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    expect((await harness.run(['down'])).status).toBe(0);
+
+    const next = objectField(readManifestFile(harness), 'next');
+    expect(next).toEqual({
+      build: 'bun run env:build',
+      serve: 'bun run env:serve',
+      down: 'bun run env:down',
+    });
+    // `next.down` is the command the tool actually asks for (`build` refuses
+    // while a server runs), and running it must be accepted in this state.
+    const again = await harness.run(['down']);
+    expect(again.status, again.stderr).toBe(0);
+  });
+
+  it('reports an absent file as never recorded, not as unknown state', async () => {
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());
 
@@ -151,7 +191,7 @@ describe('.dev/env.json is written by a state change and never by a read', () =>
 
     const text = await harness.run(['status']);
     expect(text.status).toBe(0);
-    expect(text.stdout).toContain('nothing is set up here');
+    expect(text.stdout).toContain('no command has recorded state here yet');
     expect(text.stdout).toContain('env:ensure --profile web');
   });
 });
@@ -199,6 +239,51 @@ describe('.dev/env.json is reconciled by status, never echoed', () => {
 
     const text = await harness.run(['status']);
     expect(text.stdout).toContain('manifest    unreadable:');
+  });
+
+  it('reports a failed stack probe as unknown, not as a disagreement', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    expect((await harness.run(['down'])).status).toBe(0);
+
+    // A lie the probe cannot check: with a working probe this is stale. The
+    // probe is the call that motivated the file (#1360), so its failure must be
+    // reported as unknown instead of accusing the file of being wrong — for
+    // every stack fact, not just `running`.
+    const tampered = readManifestFile(harness);
+    Object.assign(objectField(tampered, 'stack'), {
+      id: 'stale-id-from-the-file',
+      runtime: 'docker',
+      running: true,
+    });
+    writeManifestFile(harness, tampered);
+    harness.setRawStatus('{"identity":');
+
+    const result = await harness.run(['status', '--json']);
+    expect(result.status, result.stderr).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    const manifest = objectField(status, 'manifest');
+    expect(stringList(manifest.differences).join('\n')).not.toContain('stack.');
+    expect(manifest.agrees).toBe(true);
+    expect(stringList(status.warnings).join('\n')).toContain("cannot read 'supabase stack status'");
+  });
+
+  it('reports a wrong checkout branch even when the commit matches', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    expect((await harness.run(['down'])).status).toBe(0);
+
+    const tampered = readManifestFile(harness);
+    objectField(tampered, 'checkout').branch = 'feat/not-this-branch';
+    writeManifestFile(harness, tampered);
+
+    const result = await harness.run(['status', '--json']);
+    expect(result.status, result.stderr).toBe(0);
+    const manifest = objectField(parseJsonObject(result.stdout), 'manifest');
+    expect(manifest.agrees).toBe(false);
+    expect(stringList(manifest.differences).join('\n')).toContain(
+      'checkout.branch: the file says feat/not-this-branch',
+    );
   });
 
   it('refuses to read a newer schema as if it were this one', async () => {
