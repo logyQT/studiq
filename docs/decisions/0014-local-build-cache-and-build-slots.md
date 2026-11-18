@@ -856,11 +856,11 @@ workers + compiler). RAM, not cores, is the limit; one build already saturates
 ### 5. Cold vs seeded output equality (the safety claim, measured)
 
 Next 16.4.5 Turbo with cache directory `v16.4.5-4e5335a0`, Bun 1.4.4, same
-benchmark box. A controlled harness compared every file under `.next`
-byte-for-byte (`cmp.py` over the two trees) and searched every emitted file for
-the stale inlined value. Raw arms and scripts:
-`/workspaces/lucky-harbor/.tmp/cache-eq-evidence/` (`arms3.jsonl`), git-ignored
-and local-only.
+benchmark box. The same-tree comparison is reproducible from the repo:
+`bun scripts/bench/cache-equality.ts` builds the tree cold, seeded from that cold
+build's `turbopack/`, cold again, and compares every emitted file (Reproduce).
+The env-override rows and the branch pair were one-off runs of the same method and
+are not reproducible from the repo (Not measured).
 
 **The noise floor.** Two **cold** builds of the same tree are not identical to
 each other. Exactly 14 of 4,573 files differ, and every difference is a per-build
@@ -910,9 +910,18 @@ the app.
 
 ### Not measured
 
-Everything above times builds; none of it compares what a seeded build _emits_,
-or measures the cases the decisions now depend on. Each item below is an
+§1–§4 time builds; §5 compares what a seeded build emits, but only through the
+same-tree arm that `scripts/bench/cache-equality.ts` runs. Each item below is an
 experiment, not a number.
+
+- **The cross-tree (branch-seeded) arm, reproducibly.** §5's branch row (12 files
+  in `apps/web/src`, `efd4b57a` → `f1226053`, −30 % wall) was measured once with
+  the same method, from a real branch pair, and is **not** reproducible from the
+  repo: the harness implements the same-tree arm only, because seeding from
+  another ref needs a second checkout with its own installed dependencies (and
+  therefore the network). Experiment: add `--from <ref>` to the harness, prepare
+  a scratch worktree at that ref with `bun install`, build it there, seed the
+  current tree from its `turbopack/` and diff as §5 does.
 
 - **A changed `bun.lock`.** Every arm held the lockfile constant, so the match is
   precaution, not evidence: no run shows whether a seeded build across a changed
@@ -1156,17 +1165,48 @@ builds.
 
 ## Reproduce
 
-The benchmark scripts and CSVs were run from this workspace, outside the repo:
+§5's same-tree equality check is in the repo:
+
+```bash
+bun scripts/bench/cache-equality.ts          # text report
+bun scripts/bench/cache-equality.ts --json   # machine report
+```
+
+It runs three production builds in this checkout through `bun run env:build
+--force`: **cold1** with no `.next` (its `turbopack/` becomes the seed),
+**seeded** with that seed copied into `.next/cache`, and **cold2** — the noise
+floor. Each arm removes `.next` first, and the run disables the published-snapshot
+seed, so a cold arm is really cold; the script writes only `apps/web/.next` and
+`--work-dir` (default `<tmp>/studiq-cache-equality`), never the published cache
+root. It requires the checkout's Supabase stack up and no running web server
+(`bun run env:down`), because the build refuses to overwrite an artifact a server
+is serving.
+
+It prints, per arm, the wall time, the `next-build` and compile (Turbopack) spans
+from `.next/trace-build`, the TypeScript span, cache bytes written
+(`turbopack-persistence`) and the cache's size on disk. Then it prints the
+cold-vs-cold noise floor and the seeded-vs-cold diff — every differing file named
+with the normalisation rule that explains it — the diff-of-diffs, the three
+cache-hit indicators (bytes written, compile ratio, `turbopack-compaction`) and a
+verdict: **PASS**, **FAIL** or **INCONCLUSIVE** (the seeded arm did not actually
+hit). A difference no rule explains, or one two cold builds did not also have,
+exits non-zero so the check can gate a change to the allowlist or the identity.
+
+The accepted numbers are reproducible by that command on the benchmark box
+(16 vCPU / 19.9 GB): the equality result is exact — 14 differing files out of
+4,573 in **both** the noise floor and the seeded diff, 0 unexplained — as is the
+cache cost (16 MB written against 297 MB) and the compile span (about 0.24× of
+cold). The **wall** percentage is the load-sensitive number: the accepted
+−63.5 % came from a 29.5 s cold arm, and a re-run whose cold arm took 22–25 s
+showed −47 % to −52 % for the same ~12 s seeded build. Tuning the harness to
+print the accepted percentage would mean fitting it to one measurement; the
+compile and bytes-written ratios are the stable form of the same claim.
+
+§1–§4's benchmark scripts and CSVs were run from this workspace, outside the repo:
 `/home/node/.cache/cache-bench/` (`bench.sh`, `staleness.sh`, `churn.sh`,
 `fanarm.sh`, plus `results.csv`, `staleness.csv`, `churn.csv`, `fanout.csv`).
-They are local-only; commit a trimmed `scripts/bench/` harness only if the team
-wants the numbers to be re-runnable.
-
-§5's harness is local-only too, beside the experiment's worktrees:
-`/workspaces/lucky-harbor/.tmp/cache-eq-evidence/` (`cmp.py`, `arms3.jsonl`, the
-arm scripts). It builds one arm cold and one from a copied `turbopack/` root,
-normalises the 14 per-build random files and compares every remaining file
-byte-for-byte. The branch arm used a real branch pair (`efd4b57a` → `f1226053`).
+They remain local-only. §5's env-override and branch arms were one-off runs of the
+same method and are not reproducible from the repo either (Not measured).
 
 ## References
 

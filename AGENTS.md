@@ -147,6 +147,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
 | `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count (committed changes only) vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
 | `bun run flaky` | `scripts/flaky-report.ts` — flaky-test ledger over Playwright JSON reports (see [docs/ci.md](docs/ci.md#flaky-tests)). Agent contract: exit `0` clean, `1` flaky/failing, `2` bad usage, `3` no report found; stdout is the JSON verdict. `-- --text` for a table, `-- --runs N` for the last N `verify` runs via `gh`, `-- --summary` for the GitHub step summary CI writes |
+| `bun scripts/bench/cache-equality.ts` | ADR-0014 §5, re-runnable: cold vs seeded build equality (three production builds, ~90 s). Needs the stack up and `bun run env:down` first; `--json` for machines |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
