@@ -77,6 +77,15 @@ worktree_path_for_branch() {
   return 0
 }
 
+# Succeed when git has a worktree registration at a path, on a branch or not.
+worktree_registered_at_path() {
+  local want="$1" record
+  while IFS= read -r -d '' record; do
+    if [ "$record" = "worktree $want" ]; then return 0; fi
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
+  return 1
+}
+
 # Print the branch checked out at a worktree path, if any.
 worktree_branch_at_path() {
   local want="$1" record path=""
@@ -234,7 +243,7 @@ if $CLEAN; then
       branch_sha="$(git -C "$PRIMARY_ROOT" rev-parse --quiet --verify "refs/heads/$BRANCH" 2>/dev/null || true)"
       warn "Worktree directory is missing: $REGISTERED_PATH"
       if [ -n "$branch_sha" ]; then
-        warn "Branch '$BRANCH' stays at ${branch_sha:0:12}. A directory moved outside git is not tracked; its uncommitted work is not in that commit."
+        warn "Branch '$BRANCH' is recoverable at ${branch_sha:0:12}; a directory moved outside git is not tracked, so its uncommitted work is not in that commit."
       fi
       # A locked registration is skipped by prune; drop the lock so the stale
       # entry can be pruned before the branch is deleted.
@@ -246,14 +255,21 @@ if $CLEAN; then
   # this layout computes is only a hint, never a target. Removing it by path
   # would bypass the provenance check above.
   elif [ -d "$WORKTREE_PATH" ]; then
-    occupant_branch="$(worktree_branch_at_path "$WORKTREE_PATH")"
-    if [ -n "$occupant_branch" ]; then
-      # Flattening maps feat/x onto feat-x; the directory is live and owned by
-      # another branch, so it must never be presented as removable.
-      warn "Found another branch's worktree at this path: $WORKTREE_PATH"
-      warn "Branch '$occupant_branch' is checked out there; left untouched."
+    if worktree_registered_at_path "$WORKTREE_PATH"; then
+      occupant_branch="$(worktree_branch_at_path "$WORKTREE_PATH")"
+      if [ -n "$occupant_branch" ]; then
+        # Flattening maps feat/x onto feat-x; the directory is live and owned
+        # by another branch, so it must never be presented as removable.
+        warn "Found another branch's worktree at this path: $WORKTREE_PATH"
+        warn "Branch '$occupant_branch' is checked out there; left untouched."
+      else
+        warn "Found a detached worktree at this path: $WORKTREE_PATH"
+        warn "It is a registered worktree with no branch; left untouched."
+      fi
       warn "Pick a different branch name, or relocate with SPIN_WORKTREE_ROOT=<dir>."
     else
+      # No registration at all: the only case where removing the directory by
+      # hand is true advice.
       warn "Found a directory that is not a registered worktree: $WORKTREE_PATH"
       warn "Left it untouched. Remove it manually, then re-run this command:"
       echo "    rm -rf \"$WORKTREE_PATH\""

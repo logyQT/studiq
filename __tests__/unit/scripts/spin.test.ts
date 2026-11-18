@@ -373,6 +373,34 @@ describe('scripts/spin', () => {
     expect(branchExists(repo, 'feat/rel-clean')).toBe(false);
   });
 
+  it('names a detached worktree instead of advising removal', () => {
+    const { repo, root } = makeRepo('studiq');
+    const detached = join(root, 'feat-det');
+
+    git(repo, 'worktree', 'add', '-q', '--detach', detached, 'main');
+    writeFileSync(join(detached, 'work-in-progress.txt'), 'uncommitted');
+
+    const result = runSpinCaptured(repo, ['feat/det', '--clean']);
+
+    expect(result.stdout).toContain('detached worktree');
+    expect(result.stdout).not.toContain('rm -rf');
+    expect(result.stdout).not.toContain('not a registered worktree');
+    expect(existsSync(join(detached, 'work-in-progress.txt'))).toBe(true);
+    expect(git(repo, 'worktree', 'list', '--porcelain')).toContain(detached);
+  });
+
+  it('keeps the manual hint for a directory with no registration', () => {
+    const { repo, root } = makeRepo('studiq');
+    const stray = join(root, 'feat-stray');
+    mkdirSync(stray);
+
+    const result = runSpinCaptured(repo, ['feat/stray', '--clean']);
+
+    expect(result.stdout).toContain('not a registered worktree');
+    expect(result.stdout).toContain(`rm -rf "${stray}"`);
+    expect(existsSync(stray)).toBe(true);
+  });
+
   it('prunes and deletes a branch that has no worktree', () => {
     const { repo } = makeRepo('studiq');
     git(repo, 'branch', 'feat/orphan', 'main');
