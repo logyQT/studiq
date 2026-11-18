@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { BUILD_MODE, computeBuildFingerprint } from './fingerprint';
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 
@@ -206,8 +207,51 @@ export function classifyBuildArtifact(
   return record.fingerprint === expected.fingerprint ? 'current' : 'stale';
 }
 
-/** One line an agent can act on, for a state the classifier returned. */
-const ARTIFACT_STATE_LABELS: Record<BuildArtifactState, string> = {
+/**
+ * The artifact state `env status` reports for this checkout's recorded build,
+ * judged against the record it should match.
+ *
+ * Status does not read the stack's keys, so it compares the tree with the
+ * recorded build's **own** env hash: `current` here means "this is the recorded
+ * build of this tree". `env serve` and `env build` compare the inlined
+ * environment too, so an env change reads as `stale` there and is rebuilt.
+ *
+ * The cheap answers come first: no `BUILD_ID` is `missing`, and an artifact a
+ * raw `next build` moved past the record is `unrecorded`, both decided from the
+ * filesystem. Only `current` and `stale` pay for the fingerprint (two `git`
+ * calls). The environment manifest reports the same answer, so it calls this
+ * rather than growing a second classifier (ADR-0014, decision 8).
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function classifyRecordedArtifact(
+  artifactDir: string = buildArtifactDir(),
+): BuildArtifactState | null {
+  const record = readBuildState();
+  if (!record || !buildArtifactPresent(artifactDir)) {
+    return classifyBuildArtifact({ fingerprint: null, envHash: null }, artifactDir);
+  }
+  // The same mtime rule the classifier applies, ahead of the fingerprint: a raw
+  // `next build` after a wrapper build is the headline `unrecorded` case, and it
+  // must not cost two `git` calls to answer.
+  if (artifactOutlivesRecord(record, artifactDir) !== false) return 'unrecorded';
+  let fingerprint: string | null;
+  try {
+    fingerprint = computeBuildFingerprint({
+      root: REPO_ROOT,
+      mode: BUILD_MODE,
+      envHash: record.envHash,
+    });
+  } catch {
+    fingerprint = null;
+  }
+  return classifyBuildArtifact({ fingerprint, envHash: record.envHash }, artifactDir);
+}
+
+/** One line an agent can act on, for a state the classifier returned. */ const ARTIFACT_STATE_LABELS: Record<
+  BuildArtifactState,
+  string
+> = {
   current: 'current',
   stale: 'stale (the tree or the inlined environment changed since the recorded build)',
   unrecorded:

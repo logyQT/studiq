@@ -7,6 +7,7 @@ import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { resolveLocalAppEnv } from '../lib/app-env';
 import { startDevServer, stopWebServer, webLogPath } from '../lib/web';
+import { writeEnvManifest } from '../lib/manifest';
 import { liveServerConflict } from '../lib/web-owner';
 import { appendEnvLog } from '../lib/state';
 import { printJson, writeStderrLine } from '../lib/output';
@@ -143,6 +144,7 @@ export async function runDev(parsed: ParsedCommand): Promise<number> {
       `HMR did not answer on ${contract.appUrl} within 180s; see ${webLogPath()}`,
     );
   }
+  writeEnvManifest({ contract });
 
   if (parsed.json) {
     printJson({
@@ -161,11 +163,14 @@ export async function runDev(parsed: ParsedCommand): Promise<number> {
 
   const cleanup = (): void => {
     stopWebServer();
+    writeEnvManifest({ contract });
   };
   process.once('SIGINT', cleanup);
   process.once('SIGTERM', cleanup);
   const code = await handle.exit;
   process.removeListener('SIGINT', cleanup);
   process.removeListener('SIGTERM', cleanup);
+  // The HMR process is gone either way: `serving` must not outlive it.
+  writeEnvManifest({ contract });
   return code ?? 0;
 }

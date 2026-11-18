@@ -1,7 +1,7 @@
 import type { ParsedCommand } from '../atoms';
 import { collectSnapshot } from '../lib/snapshot';
 import { printJson, writeLine } from '../lib/output';
-import type { StatusSnapshot } from '../lib/json';
+import type { ManifestReport, StatusSnapshot } from '../lib/json';
 import { formatBuildSlots } from '../lib/locks';
 import type { SnapshotStatus } from '../lib/build-cache';
 
@@ -49,6 +49,24 @@ function snapshotLines(snapshot: SnapshotStatus | null): string[] {
   return lines;
 }
 
+/**
+ * One line for `.dev/env.json`: the cheap path's agreement with this probe, or
+ * the command that creates it. Status is the authority, so a disagreement is
+ * reported as staleness rather than as the file's claim.
+ */
+function manifestLine(manifest: ManifestReport): string {
+  if (!manifest.present) {
+    return `absent (nothing is set up here; run 'bun run env:ensure --profile web')`;
+  }
+  if (manifest.error !== null) {
+    return `unreadable: ${manifest.error} (rewrite it with 'bun run env:ensure --profile web')`;
+  }
+  if (manifest.agrees === false) {
+    return `stale: ${manifest.differences.join('; ')} (run 'bun run env:ensure --profile web')`;
+  }
+  return `current (written ${orDash(manifest.writtenAt)})`;
+}
+
 function printHuman(snapshot: StatusSnapshot): void {
   let project: string;
   if (snapshot.shared) {
@@ -84,6 +102,7 @@ function printHuman(snapshot: StatusSnapshot): void {
   // Only when there is one: a failed build moves its artifact aside instead of
   // deleting it, and this is how an agent learns the directory exists.
   for (const failed of snapshot.build.failed) writeLine(`failed      ${failed}`);
+  writeLine(`manifest    ${manifestLine(snapshot.manifest)}`);
   writeLine(`registry    ${snapshot.registry}`);
   if (snapshot.owner) writeLine(`owner       ${snapshot.owner}`);
   for (const warning of snapshot.warnings) writeLine(`warning     ${warning}`);

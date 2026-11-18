@@ -20,6 +20,16 @@ decision and is not built. The tool leases only the app port and discovers stack
 1. **Adopt `env` as the single local-environment command.** Surface: `ensure`, `status`, `down`, `build`, `serve`,
    `dev`, `supa`, `reset-db`, `logs`, `setup`, `verify`, `ports`, `doctor`; `ensure` is the blessed agent path and
    `status`/`ports`/`doctor` are read-only. `prepull` and `recreate` are deferred (spec §14).
+   **The environment manifest.** `status` being the only way to ask also made every answer a subprocess:
+   `supabase stack status` costs ~650 ms and has failed under load (issue #1360), so an agent that only needed its
+   port had to depend on the tool's least reliable call. `.dev/env.json` is the cheap path instead: one small file,
+   written atomically by every mutating command (`ensure`, `build` — at start and finish, `serve`, `dev`, `down`) and
+   read with no subprocess and no `supabase` call. It is **derived state**: never hand-maintained, schema-versioned
+   (`schema: 1`) so a future shape is detectable rather than misread, and secret-free (no key, token or database URL —
+   the same rule as `qa/env.json`). Absence means "nothing is set up here", not "unknown". It is **never authority**:
+   `status` and `doctor` still do not write it (read-only, above), and `status --json` gains a `manifest` field that
+   reconciles the file against its own live probe and reports the differences — a disagreeing file is reported as
+   stale, never echoed back.
 2. **Delete `scripts/dev` and the `dev:*` wrappers that call it** (`dev:up`, `dev:serve`, `dev:status`, `dev:down`,
    `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`) in the cutover; no aliases for
    them. The standalone human shortcuts `dev:web` (raw `next dev`) and `dev:admin` (`apps/admin` HMR) never called

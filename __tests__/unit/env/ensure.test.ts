@@ -1199,7 +1199,12 @@ describe('env:ensure keeps a live stack on its derived APP_URL port', () => {
     ]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(objectField(parseJsonObject(result.stdout), 'ports').app).toBe(3999);
+    const status = parseJsonObject(result.stdout);
+    expect(objectField(status, 'ports').app).toBe(3999);
+    // `ensure` is a state change, so it leaves `.dev/env.json` describing what it
+    // just proved — and its own snapshot reports that file as reconciled.
+    expect(readFileSync(join(harness.stateDir, 'env.json'), 'utf8')).toContain('"schema": 1');
+    expect(objectField(status, 'manifest').agrees).toBe(true);
   });
 
   it('still allows a different --app-port when APP_URL is explicit', async () => {

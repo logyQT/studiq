@@ -28,6 +28,7 @@ import {
 import { probeHttp } from '../lib/health';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot } from '../lib/snapshot';
+import { writeEnvManifest, sharedStackFacts, stackFacts } from '../lib/manifest';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
@@ -186,6 +187,10 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       }
     }
 
+    writeEnvManifest({
+      contract,
+      stack: stack ? stackFacts(stack.status) : sharedStackFacts(),
+    });
     const snapshot = await collectSnapshot({
       contract,
       stack: stack?.status ?? null,

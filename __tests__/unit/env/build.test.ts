@@ -205,6 +205,11 @@ describe('env:build does not hold the checkout lock while it builds', () => {
 
     expect(code).toBe(0);
     if (flockAvailable) expect(lockFreeDuringBuild).toBe(true);
+    // The build command is a state change and clears `building` on the way out;
+    // `runProductionBuild` (bypassed by the injected build above) sets it.
+    const manifest = parseJsonObject(readFileSync(join(stateDir, 'env.json'), 'utf8'));
+    expect(manifest.building).toBeNull();
+    expect(objectField(manifest, 'next').build).toBe('bun run env:build');
   });
 });
 

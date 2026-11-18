@@ -89,6 +89,7 @@ import {
 } from '../lib/web';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
+import { writeEnvManifest, sharedStackFacts, stackFacts } from '../lib/manifest';
 import { collectSnapshot } from '../lib/snapshot';
 import { assertSeedingAllowed, runSeeder } from '../lib/seed';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
@@ -871,6 +872,7 @@ export async function runEnsure(
         serve: options.serve,
       });
       if (stackState) writeStackState(stackState);
+      writeEnvManifest({ contract, stack: sharedStackFacts() });
       const snapshot = await collectSnapshot({
         contract,
         stack: null,
@@ -1111,6 +1113,7 @@ export async function runEnsure(
         appUrl: contract.appUrl,
       });
     }
+    writeEnvManifest({ contract, stack: stackFacts(stack.status) });
     const snapshot = await collectSnapshot({
       contract,
       stack: stack.status,
@@ -1126,6 +1129,9 @@ export async function runEnsure(
     emit(parsed, snapshot, options.profile, cold, contract.appUrl);
     return 0;
   } finally {
+    // A refused or failed ensure still changed something (a stopped stack, a
+    // started one, a new lease), so the file is refreshed on every exit.
+    writeEnvManifest();
     await lock.release();
   }
 }

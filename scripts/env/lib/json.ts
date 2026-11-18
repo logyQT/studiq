@@ -99,6 +99,34 @@ export interface BuildRunStatus {
   seed: SeedRunStatus;
 }
 
+/**
+ * How `.dev/env.json` compares with the live probe `env status` just made.
+ *
+ * The manifest is the cheap path an agent reads without running anything;
+ * status is the reconciler and the authority. `agrees` is null when there is no
+ * file (nothing is set up) or it could not be read, false when a field
+ * disagrees or the schema is not this tool's, and never a claim the file is
+ * trustworthy — the differences say why.
+ */
+export interface ManifestReport {
+  present: boolean;
+  schema: number | null;
+  writtenAt: string | null;
+  agrees: boolean | null;
+  differences: string[];
+  /** Why the file could not be read, when it exists; null otherwise. */
+  error: string | null;
+}
+
+const NO_MANIFEST: ManifestReport = {
+  present: false,
+  schema: null,
+  writtenAt: null,
+  agrees: null,
+  differences: [],
+  error: null,
+};
+
 export interface StatusSnapshot {
   ready: boolean;
   projectId: string | null;
@@ -155,6 +183,7 @@ export interface StatusSnapshot {
   };
   /** The published cache snapshot this machine would seed from; null when none. */
   snapshot: SnapshotStatus | null;
+  manifest: ManifestReport;
   warnings: string[];
   log: string;
 }
@@ -191,6 +220,10 @@ export interface StatusInputs {
   runtime?: string | null;
   stackId?: string | null;
   branch?: string | null;
+  /** Short HEAD, when the caller already read it (status would repeat a git call). */
+  commit?: string | null;
+  /** The reconciliation report; a pure caller gets "absent". */
+  manifest?: ManifestReport;
   /** CLI/probe warnings, plumbed by every snapshot builder. */
   warnings: string[];
 }
@@ -218,7 +251,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
     stackId: inputs.stackId ?? stack?.id ?? null,
     runtime: inputs.runtime ?? stack?.runtime ?? null,
     branch: inputs.branch ?? stack?.branch ?? null,
-    commit: currentCommit(),
+    commit: inputs.commit === undefined ? currentCommit() : inputs.commit,
     ports: {
       app: contract.appPort,
       api: inputs.ports.api,
@@ -264,6 +297,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
       slots: inputs.buildSlots ?? null,
     },
     snapshot: inputs.snapshot ?? null,
+    manifest: inputs.manifest ?? NO_MANIFEST,
     warnings: inputs.warnings,
     log: '.dev/env.log',
   };

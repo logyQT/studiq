@@ -250,7 +250,24 @@ run, trimmed):
 
 `build.state` is `current`, `stale`, `unrecorded` or `missing` (`null` when the
 fingerprint cannot be computed), `build.failed` lists `.next.failed-*`
-leftovers, and `snapshot: null` means no snapshot has been published.
+leftovers, and `snapshot: null` means no snapshot has been published. `manifest`
+reconciles `.dev/env.json` with that same probe: `present`, `schema`,
+`writtenAt`, `agrees` (`null` when the file is absent or unreadable),
+`differences` and `error`.
+
+> **Read `.dev/env.json` first.** Every mutating command (`ensure`, `build`,
+> `serve`, `dev`, `down`) writes this file, so an agent can learn this checkout's
+> state without running anything — one small file, no subprocess, no `supabase`
+> call. It holds the worktree/branch/commit (and whether this is the primary
+> checkout), the app URL and **leased** port plus whether a server is serving it,
+> the stack's id/name/runtime, `build.state` (the same four answers above), the
+> build slots, `building` (pid/start/slot while a build holds this worktree's
+> mutex, `null` otherwise) and the command for each intent under `next`. It is
+> **derived**: never hand-maintain it, and it is **never authoritative** —
+> `bun run env:status` is, and it reports the file as `stale` (with the
+> differences) when the two disagree. It never contains a key, a token or a
+> database URL. **If it is missing, nothing is set up here: run
+> `bun run env:ensure --profile web`.**
 
 > **One values file: root `.env.local`.** It is the only hand-edited env file
 > (Git-ignored; never commit it) and it is optional for a single checkout —
