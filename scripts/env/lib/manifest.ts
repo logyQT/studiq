@@ -406,10 +406,12 @@ function show(value: string | number | boolean | null): string {
 
 function compareManifest(manifest: EnvManifest, facts: ManifestFacts): string[] {
   const differences: string[] = [];
-  const note = (field: string, claimed: string | number | boolean | null, live: unknown) => {
-    differences.push(
-      `${field}: the file says ${show(claimed)}, live says ${show(live as string | number | boolean | null)}`,
-    );
+  const note = (
+    field: string,
+    claimed: string | number | boolean | null,
+    live: string | number | boolean | null,
+  ) => {
+    differences.push(`${field}: the file says ${show(claimed)}, live says ${show(live)}`);
   };
 
   if (manifest.app.port !== facts.appPort) note('app.port', manifest.app.port, facts.appPort);
