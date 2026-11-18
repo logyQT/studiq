@@ -381,6 +381,10 @@ export async function runBuild(
       result,
       built,
     });
+    // Publish this run's result before reconciling: the snapshot compares the
+    // file with the live probe, and the `finally` write lands after it — so
+    // without this, `--json` reports the pre-build file as stale.
+    writeEnvManifest({ stack: manifestStack });
     const snapshot = await collectSnapshot({
       contract,
       stack: stack?.status ?? null,

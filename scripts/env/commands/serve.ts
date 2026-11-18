@@ -204,6 +204,10 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
         }
       }
 
+      // Publish before reconciling: the snapshot's `manifest` field compares the
+      // file with this probe, so writing it only in the `finally` would make the
+      // command's own output report the pre-serve file as stale.
+      writeEnvManifest({ contract, stack: manifestStack });
       const snapshot = await collectSnapshot({
         contract,
         stack: stack?.status ?? null,

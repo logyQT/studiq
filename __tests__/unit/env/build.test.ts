@@ -181,6 +181,21 @@ function parsedJson(): ParsedCommand {
   return atomsModule.parseCommand(['build', '--json']);
 }
 
+/** Run one command and return what it wrote to stdout. */
+async function captureStdout(run: () => Promise<unknown>): Promise<string> {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  try {
+    await run();
+  } finally {
+    spy.mockRestore();
+  }
+  return chunks.join('');
+}
+
 describe('env:build does not hold the checkout lock while it builds', () => {
   it('lets another env process take the checkout lock during the build', async () => {
     const harness = newHarness();
@@ -210,6 +225,25 @@ describe('env:build does not hold the checkout lock while it builds', () => {
     const manifest = parseJsonObject(readFileSync(join(stateDir, 'env.json'), 'utf8'));
     expect(manifest.building).toBeNull();
     expect(objectField(manifest, 'next').build).toBe('bun run env:build');
+  });
+
+  it('reports its own write in --json, not the pre-build file', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+
+    const stdout = await captureStdout(() =>
+      buildModule.runBuild(parsedJson(), {
+        build() {
+          return Promise.resolve(buildResult());
+        },
+      }),
+    );
+
+    // The printed snapshot reconciles the file, so the success path writes
+    // before collecting it; the `finally` write lands after the snapshot.
+    const snapshot = parseJsonObject(stdout);
+    expect(objectField(snapshot, 'manifest')).toMatchObject({ agrees: true, differences: [] });
   });
 });
 
