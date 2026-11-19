@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   cleanupOrganizationDeep,
@@ -26,6 +28,32 @@ const PASSWORD = 'RoleManageRls!';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const MIGRATION = 'supabase/migrations/20261119190000_org_role_manage_rls.sql';
+
+const localDatabaseUrl = (() => {
+  const raw = process.env.SUPABASE_DB_URL;
+  if (!raw) return null;
+  const { hostname } = new URL(raw);
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ? raw : null;
+})();
+
+/**
+ * Install the shipped migration the way a reset would. The mutation gate edits
+ * the migration file, and without this the suite would keep asserting against the
+ * policies a previous run applied — a reverted predicate would survive the
+ * mutation. The migration is idempotent (`create or replace function`,
+ * `alter policy`).
+ */
+async function installShippedPolicies(): Promise<void> {
+  if (!localDatabaseUrl) return;
+  const sql = postgres(localDatabaseUrl, { max: 1, onnotice: () => {} });
+  try {
+    await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
+  } finally {
+    await sql.end();
+  }
+}
 
 function newClient(): SupabaseClient<Database> {
   return createClient<Database>(url, anonKey, {
@@ -115,6 +143,9 @@ describe('org.role.manage RLS predicate', () => {
   }
 
   beforeAll(async () => {
+    // The shipped policies first: every fixture below is scoped by them.
+    await installShippedPolicies();
+
     const org = await seedOrganization(`role-manage-${tag}`);
     orgId = org.org.id;
     const foreignOrg = await seedOrganization(`role-manage-foreign-${tag}`);
