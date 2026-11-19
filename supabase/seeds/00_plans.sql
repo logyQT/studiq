@@ -74,7 +74,6 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('launch', 'quiz'),
   ('launch', 'group.manage'),
   ('launch', 'member.manage'),
-  ('launch', 'documents'),
   ('launch', 'org.manage')
 ON CONFLICT DO NOTHING;
 
@@ -91,8 +90,7 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('team', 'quiz'),
   ('team', 'quiz.builder'),
   ('team', 'group.manage'),
-  ('team', 'member.manage'),
-  ('team', 'documents')
+  ('team', 'member.manage')
 ON CONFLICT DO NOTHING;
 
 -- Premium tier
@@ -108,7 +106,6 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('creator', 'group.manage'),
   ('creator', 'member.manage'),
   ('creator', 'advanced.stats'),
-  ('creator', 'documents'),
   ('hub', 'flashcards'),
   ('hub', 'quiz'),
   ('hub', 'ai.chat'),
@@ -117,7 +114,6 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('hub', 'member.manage'),
   ('hub', 'role.builder'),
   ('hub', 'advanced.stats'),
-  ('hub', 'documents'),
   ('hub', 'branding')
 ON CONFLICT DO NOTHING;
 
@@ -127,7 +123,6 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('pro', 'quiz'),
   ('pro', 'ai.chat'),
   ('pro', 'advanced.stats'),
-  ('pro', 'documents'),
   ('master', 'flashcards'),
   ('master', 'quiz'),
   ('master', 'ai.chat'),
@@ -136,7 +131,6 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('master', 'member.manage'),
   ('master', 'role.builder'),
   ('master', 'advanced.stats'),
-  ('master', 'documents'),
   ('campus', 'flashcards'),
   ('campus', 'quiz'),
   ('campus', 'ai.chat'),
@@ -145,7 +139,6 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('campus', 'member.manage'),
   ('campus', 'role.builder'),
   ('campus', 'advanced.stats'),
-  ('campus', 'documents'),
   ('campus', 'branding')
 ON CONFLICT DO NOTHING;
 

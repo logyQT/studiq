@@ -9,6 +9,11 @@ reads this file first; nothing here is replaced by chat history.
 - Evidence: [audit §0](../audits/features-perms-weak-spots.md)
 - Operating contract: [role-authority-orchestrator.md](role-authority-orchestrator.md)
 
+**Context recovery.** This ledger is the authoritative memory. An orchestrator
+session can be scoured with `opencode session list` and
+`opencode session export <id>` (grep for decisions, command pairs and PR
+numbers); chat history is never the source of truth.
+
 ## 1. Status
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
@@ -18,19 +23,22 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162 | —   | checks                    | 2026-11-19 |
 | 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387 | —   | checks, unit, integration | 2026-11-19 |
 | 1a    | database types regenerated with the pinned CLI | merged  | #1388 | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | pr-open | —     | —   | checks, unit, integration | 2026-11-19 |
-| 1     | catalog cutover                                | pending | —     | —   | PUB, ADM, LIM, BIL        |            |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389 | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | pr-open | —     | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
 | 2     | authority cutover + control-plane RLS          | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
 | 3     | entitlements and limits                        | pending | —     | —   | LIM, BIL, STU             |            |
 | 4     | seats and personal plans                       | pending | —     | —   | MGR, BIL, LIM             |            |
 | 5     | enforcement closure                            | pending | —     | —   | STU, EDU, MGR, PUB        |            |
 | 6     | UI and cache                                   | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —     | —   | all 188 + E2E             | 2026-11-19 |
 
-**Next action:** phase 0b (#1387) and phase 1a (#1388) are merged; phase 1b
-(the behaviour-neutral catalog rename) is in PR. Phase 1's catalog cutover
-deletes `FEATURES`, the denylists and `documents`; the four legacy management
-keys stay until phase 2, which replaces their gates.
+**Next action:** phases 0b (#1387), 1a (#1388) and 1b (#1389) are merged.
+Phase 1c (the catalog cutover) is in PR: `FEATURES`, `ADMIN_ONLY_FEATURES` and
+`ORG_SCOPED_FEATURES` are replaced by `ENTITLEMENTS`/`ADMIN_ONLY_ENTITLEMENTS`/
+`ORG_SCOPED_ENTITLEMENTS`, `LIMITS` moved into `@studiq/authz`, and `documents`
+is absent until its surface ships (open catalog, D22). The four legacy
+management keys stay until phase 2, which replaces their gates.
 
 ## 2. How to update this file
 
@@ -88,6 +96,13 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                      |
 | D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
 | D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                         |
+| D17 | Role templates are editor presets, not extra org rows: every org keeps admin/teacher/member; Assistant/Billing/Read-only/Blank are created from a template via POST /organization/roles. ADR §4.2 is amended to match §9.                                                                                  |
+| D18 | Teacher profile 'all' means the org ceiling minus the four legacy management markers; markers resolve only from org_role_features rows, so a Teacher never inherits member.manage/role.builder.                                                                                                            |
+| D19 | entitlement_profile is authoritative for non-marker entitlement keys; legacy rows are read only for marker grants and explicit is_enabled=false revokes. Phase 3 deletes the legacy writer.                                                                                                                |
+| D20 | Role changes are logged (actor, role, before, after) through @studiq/server/lib/log until an audit table exists; no audit subsystem is invented in phase 2.                                                                                                                                                |
+| D21 | Changing or removing a grant requires authority over the current scope as well as the target; org.admin holders are exempt from 'no self-edit', or a single-admin org could never edit its own Admin role.                                                                                                 |
+| D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                         |
+| D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                  |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -311,7 +326,7 @@ file — a hand edit only survives until the next regeneration.
 
 ### Phase 1b — catalog rename (behaviour-neutral)
 
-**Shipped in PR (pr-open):**
+**Shipped (#1389):**
 
 - One migration, `20261119140000_catalog_rename.sql`: `limit_catalog` (the eight
   `LIMITS` keys with their scopes), `entitlement_catalog` (the eleven `FEATURES`
@@ -360,10 +375,10 @@ file — a hand edit only survives until the next regeneration.
 
 **Follow-ups this phase creates (for the next readers):**
 
-- **1c** re-pins `catalog-invariants` from `FEATURES` to
-  `ENTITLEMENTS ∪ {org.manage, group.manage, member.manage, role.builder}` and
+- **1c** re-pins `catalog-invariants` from `FEATURES` to `ENTITLEMENTS` and
   starts asserting entitlement metadata (`category`, `scope`, `seat_eligible`,
-  `personal_portable`, `quota_limit_key`), which nothing checks in 1b.
+  `personal_portable`, `quota_limit_key`), which nothing checks in 1b. **Done in
+  phase 1c.**
 - **Phase 2** must delete `plan_entitlements` rows **before** catalog rows:
   `plan_entitlements_entitlement_key_fkey` has no `ON DELETE CASCADE`, so
   removing a legacy management marker from `entitlement_catalog` first fails
@@ -444,11 +459,132 @@ Fix: `seatEligible` is true for the six personal-scope keys (baseline
 Rule: derive metadata from the constraint it will serve, and record the
 derivation where the next phase reads it.
 
-### Phase 1 — catalog
+### Phase 1c — catalog cutover
 
-_Not started._
+**Shipped in PR (pr-open):**
+
+- `packages/authz/src/entitlements.ts` replaces `features.ts` (deleted, no
+  alias): `ENTITLEMENTS` with the metadata the DB row carries (`category`,
+  `scope`, `seatEligible`, `personalPortable`, `quota`), the ten keys the 1b
+  catalog holds minus `documents`, plus `EntitlementKey`, `isEntitlementKey`,
+  `ENTITLEMENT_KEYS`, `SURFACE_ENTITLEMENT_KEYS`, `ADMIN_ONLY_ENTITLEMENTS`
+  (the three markers) and `ORG_SCOPED_ENTITLEMENTS` (derived from
+  `scope === 'org'`, so the second denylist can no longer drift from metadata).
+  The four legacy management markers stay; phase 2 deletes them.
+- `packages/authz/src/limits.ts` receives `LIMITS` and its helpers from
+  `packages/server/src/services/limit.catalog.ts` (deleted, no shim); every
+  importer reads `@studiq/authz`.
+- `20261119160000_documents_removed.sql` removes `documents` (absent until its
+  surface ships) in dependency order: `plan_entitlements` (the catalog FK has no
+  cascade), then `org_role_features` (no foreign key on `feature_key` at all, so
+  nothing cascades and the delete is load-bearing; phase 2 must constrain the
+  column or remove it with the table), then `user_feature_overrides` (its flag
+  FK cascades, but the delete is explicit), then `entitlement_catalog` and
+  `entitlement_flags`. It also re-creates `handle_new_organization()` and
+  `apply_org_plan()` with `documents` removed from their member allowlists, so a
+  future data-only re-entry cannot be silently granted to `member`. The catalog
+  is open (D22): re-entry is catalog metadata, a flag row and the plan/seed rows
+  that should carry it — no resolver change, because the resolver resolves keys
+  from the catalog.
+- Seeds: `documents` removed from every plan's entitlement list in
+  `00_plans.sql`; nothing else.
+- Readers: `FeatureResolver` orders by `ENTITLEMENT_KEYS`, guards with
+  `isEntitlementKey`, and uses the two new sets; `lib/features.ts`,
+  `features.controller.ts` and `subscription-plan.service.ts` speak
+  entitlement types; the admin flag/plan-feature override models validate with
+  `isEntitlementKey` and name the request field `entitlementKey`; the admin
+  feature-flags page lists `ENTITLEMENT_KEYS`; `pricing-benefits.ts` drops
+  `documents` from `FEATURE_PRIORITY`; `pricing-ladders.ts` keeps
+  `ROLE_MARKER_FEATURES`. The API payload key `features` and its field names
+  are unchanged until phase 6.
+- `catalog-invariants` now pins `entitlement_catalog` to `ENTITLEMENTS`
+  including `category`/`scope`/`seat_eligible`/`personal_portable`/
+  `quota_limit_key` (1b pinned the key set only) and narrows the flag assertion
+  to `SURFACE_ENTITLEMENT_KEYS`; `limit_catalog` still equals `LIMITS` key and
+  scope from its new home. `org-features` and `org-role-features-rls` pin the
+  member set to `['flashcards', 'quiz']`; the resolver, pricing and
+  subscription-plan fixtures drop `documents`.
+- Docs: this ledger, the rollout phase-1 block, `docs/limits.md` (catalog paths,
+  key list, member set), the STU-03 case text/spec comment and the
+  `EDU-GRP-01`/`EDU-GRP-05` spec premise comments are corrected. No spec
+  assertion changed.
+
+**Follow-ups this phase creates:**
+
+- **Phase 2** still deletes the four management markers, and must keep the 1b
+  delete order: plan rows before catalog rows.
+- `docs/audits/features-perms-weak-spots.md` keeps the pre-cutover identifiers
+  on purpose: it records the state the ADR was written against.
+
+**Difficulty log**
+
+#### 2026-11-19 — the catalog's declaration order is the API payload order
+
+What: the 1b `entitlement_catalog` insert lists keys in ADR §5.1 order (paid
+surfaces first); declaring `ENTITLEMENTS` in that order and letting
+`ENTITLEMENT_KEYS` order the resolver would have reordered `/features/me` for
+every user. The DB order has no reader, so the two orders were free to differ.
+Why: `FEATURES`' order had become the de-facto payload contract without any
+test asserting the catalog order — the resolver unit tests assert exact arrays.
+Fix: declared `ENTITLEMENTS` in the legacy order minus `documents` (appending a
+key is the only reordering), and pinned metadata rather than order in
+`catalog-invariants`.
+Rule: a catalog array a resolver emits is an API contract, not a set — reordering
+it is a behaviour change and needs its own PR.
+
+#### 2026-11-19 — one key, two foreign keys, opposite delete rules
+
+What: `documents` is a child of both `entitlement_catalog` (1b's FK, no
+cascade) and `entitlement_flags` (the original FK, `ON DELETE CASCADE`).
+Deleting the flag first would have removed the plan/role/override rows through
+the cascade while the catalog FK's rule would have rejected the same delete in
+the other order.
+Why: 1b added a restrictive FK beside a cascading one; nothing records which is
+authoritative for a removal.
+Fix: the migration deletes explicitly in dependency order (`plan_entitlements`
+first) and deletes the role/override rows itself, so it does not depend on
+either constraint's rule; the comment names the two rules.
+Rule: when two constraints disagree about a delete, delete explicitly in
+dependency order; never rely on one constraint's CASCADE to satisfy another.
+
+**Correction (2026-11-19, review).** The second "foreign key" does not exist:
+`pg_constraint` shows only `org_role_id` and the unique pair on
+`org_role_features`, so nothing cascades and the explicit delete is what removes
+the rows. `user_feature_overrides.feature_key` does keep its cascading flag FK.
+The rule stands; the unconstrained column is phase-2 debt.
+
+#### 2026-11-19 — the membership set is prose in the docs and the QA corpus
+
+What: after dropping `documents` from the catalog and the seeds, `docs/limits.md`
+and STU-03's case text still told a reader the member role receives it, and the
+`EDU-GRP-01`/`EDU-GRP-05` spec premise comments repeat the set.
+Why: the set is written out in prose instead of being derived from
+`ENTITLEMENTS`/`LEARNER_ENTITLEMENTS`.
+Fix: corrected `docs/limits.md` and STU-03 (in the pre-approved 37-case map, its
+assertions unchanged) here, plus the two spec premise comments (no assertion
+changes).
+Rule: grep a removed key in `docs/` and `qa/cases/`, not only in code — the case
+text is the product spec.
 
 ### Phase 2 — authority
+
+**Settled 2026-11-19 — five slices on one short-lived branch.** Phase 2 starts
+only after 1c merges; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from
+`@studiq/authz`.
+
+- **2a-1** `entitlement_profile` + trigger/seed/backfill + profile-driven
+  resolver + RLS fallback (~260 lines). **This slice closes the RLS twin of
+  FP-01 in the same PR**: `has_org_feature`'s zero-row fallback reads
+  `org_roles.entitlement_profile`, so PostgREST cannot escalate between 2a and
+  2b.
+- **2a-2** role templates + `requirePermission('org.role.manage')` + editor gate
+  (~200; rewrites MGR-ROL-01, deletes the out-of-map e2e
+  `manage-roles-plan-gate`).
+- **2a-3** closed-catalog editor + complete payload + audit log (~400,
+  `size:exception`).
+- **2a-4** `ctx.groupRoles` + org-scoped group query (~90; closes the cross-org
+  group union).
+- **2a-5** fail-closed scope defaults (~110).
 
 _Not started._
 
@@ -471,3 +607,9 @@ _Not started._
 ### Phase 7 — delete and close
 
 _Not started._
+
+### Phase 8 — extendability (release gate)
+
+_Not started._ Specified in
+[role-authority-rollout.md](role-authority-rollout.md#8--extendability-audit-post-phase-7-release-gate);
+phase 7 is not closed until it passes (D23).

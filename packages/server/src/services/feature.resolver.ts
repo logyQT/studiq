@@ -1,5 +1,11 @@
-import type { FeatureKey, FeatureResolution, RequestContext } from '@studiq/authz';
-import { ADMIN_ONLY_FEATURES, FEATURES, isFeatureKey, rolloutBucket } from '@studiq/authz';
+import type { EntitlementKey, EntitlementResolution, RequestContext } from '@studiq/authz';
+import {
+  ADMIN_ONLY_ENTITLEMENTS,
+  ENTITLEMENT_KEYS,
+  isEntitlementKey,
+  ORG_SCOPED_ENTITLEMENTS,
+  rolloutBucket,
+} from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -7,19 +13,6 @@ import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
-
-/**
- * Features describing control *over the organization* (structure, membership,
- * roles, branding) rather than the member's own study surface. A personal plan
- * never grants these inside an org: they are an org-role decision, so a free
- * `lite` educator plan (which does include `group.manage`) cannot hand a
- * `member` role group management just by being the member's personal plan.
- */
-const ORG_SCOPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
-  ...ADMIN_ONLY_FEATURES,
-  'group.manage',
-  'branding',
-]);
 
 /**
  * A user override only applies while it has no expiry or its expiry is still in
@@ -70,9 +63,9 @@ export class FeatureResolver {
    *   5. Global flag      — `entitlement_flags.is_enabled = false` is a hard
    *      kill switch ("Stop now") regardless of any entitlement layer.
    */
-  async resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {
+  async resolveFeatures(ctx: RequestContext): Promise<EntitlementResolution> {
     const supabase = await this.clientFactory();
-    const enabled = new Set<FeatureKey>();
+    const enabled = new Set<EntitlementKey>();
 
     // ── 1. Plan entitlement (base set) ───────────────────────────────────
     if (ctx.activeOrgId) {
@@ -88,9 +81,9 @@ export class FeatureResolver {
       }
 
       // `org.manage` marks an org admin. Only they may hold the structure
-      // privileges in ADMIN_ONLY_FEATURES through a seat; everyone else gets
+      // privileges in ADMIN_ONLY_ENTITLEMENTS through a seat; everyone else gets
       // them stripped once the seat plan is applied. (The personal layer is
-      // bounded separately by ORG_SCOPED_FEATURES — see step 2 below.)
+      // bounded separately by ORG_SCOPED_ENTITLEMENTS — see step 2 below.)
       const isOrgAdmin = orgRoleFeatures.some(
         (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
       );
@@ -148,7 +141,7 @@ export class FeatureResolver {
       const orgEntitled = new Set(enabled);
       await this.addPlanFeatures(enabled, profile.personal_plan_key, supabase);
       if (ctx.activeOrgId) {
-        for (const key of ORG_SCOPED_FEATURES) {
+        for (const key of ORG_SCOPED_ENTITLEMENTS) {
           if (!orgEntitled.has(key)) enabled.delete(key);
         }
       }
@@ -179,7 +172,7 @@ export class FeatureResolver {
       string,
       { is_enabled: boolean | null; rollout_percentage: number | null }
     >((flags ?? []).map((f) => [f.key, f]));
-    const rollout: FeatureResolution['rollout'] = {};
+    const rollout: EntitlementResolution['rollout'] = {};
 
     for (const key of Array.from(enabled)) {
       const flag = flagMap.get(key);
@@ -199,17 +192,17 @@ export class FeatureResolver {
       }
     }
 
-    return { features: FEATURES.filter((k) => enabled.has(k)), rollout };
+    return { features: ENTITLEMENT_KEYS.filter((k) => enabled.has(k)), rollout };
   }
 
-  async getEnabledFeatures(ctx: RequestContext): Promise<FeatureKey[]> {
+  async getEnabledFeatures(ctx: RequestContext): Promise<EntitlementKey[]> {
     const { features } = await this.resolveFeatures(ctx);
     return features;
   }
 
   async requireFeature(
     ctx: RequestContext,
-    key: FeatureKey,
+    key: EntitlementKey,
   ): Promise<ServiceResult<void, 'FORBIDDEN'>> {
     const enabled = await this.getEnabledFeatures(ctx);
     if (!enabled.includes(key)) {
@@ -219,7 +212,7 @@ export class FeatureResolver {
   }
 
   private async addPlanFeatures(
-    enabled: Set<FeatureKey>,
+    enabled: Set<EntitlementKey>,
     planKey: string,
     supabase: SupabaseClient<Database>,
   ): Promise<void> {
@@ -232,15 +225,15 @@ export class FeatureResolver {
   }
 
   /** Plan rows carry no `is_enabled`: presence in the plan is the grant. */
-  private applyPlanRows(enabled: Set<FeatureKey>, rows: PlanEntitlementRow[]): void {
+  private applyPlanRows(enabled: Set<EntitlementKey>, rows: PlanEntitlementRow[]): void {
     for (const row of rows) {
-      if (isFeatureKey(row.entitlement_key)) enabled.add(row.entitlement_key);
+      if (isEntitlementKey(row.entitlement_key)) enabled.add(row.entitlement_key);
     }
   }
 
-  private applyRows(enabled: Set<FeatureKey>, rows: FeatureRow[]): void {
+  private applyRows(enabled: Set<EntitlementKey>, rows: FeatureRow[]): void {
     for (const row of rows) {
-      if (!isFeatureKey(row.feature_key)) continue;
+      if (!isEntitlementKey(row.feature_key)) continue;
       // Explicit `is_enabled: false` removes; true/undefined adds.
       if (row.is_enabled === false) {
         enabled.delete(row.feature_key);
@@ -255,9 +248,9 @@ export class FeatureResolver {
    * plan layer inside an org, so neither a seat nor a personal purchase can
    * escalate a non-admin role.
    */
-  private stripAdminOnlyForNonAdmin(enabled: Set<FeatureKey>, isOrgAdmin: boolean): void {
+  private stripAdminOnlyForNonAdmin(enabled: Set<EntitlementKey>, isOrgAdmin: boolean): void {
     if (isOrgAdmin) return;
-    for (const key of ADMIN_ONLY_FEATURES) {
+    for (const key of ADMIN_ONLY_ENTITLEMENTS) {
       enabled.delete(key);
     }
   }

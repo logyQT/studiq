@@ -149,8 +149,9 @@ describe(`Org Features (trigger)`, () => {
       .eq('org_role_id', memberRole!.id);
 
     const featureKeys = features?.map((f) => f.feature_key) ?? [];
-    // launch plan includes flashcards, quiz, documents
-    expect(featureKeys).toEqual(['flashcards', 'quiz', 'documents']);
+    // `launch` includes flashcards and quiz; `documents` left the catalog in
+    // phase 1c (ADR-0015 §5.1).
+    expect(featureKeys).toEqual(['flashcards', 'quiz']);
     expect(features?.every((f) => f.is_enabled)).toBe(true);
   });
 

@@ -99,9 +99,9 @@ export type FeatureRows = {
 
 /**
  * Features that are not plan entitlements. `org.manage` marks an org admin —
- * `feature.resolver.ts:87` reads it that way, and `apply_org_plan` strips it
- * from the plan before an org's seat features are applied — so the seed maps it
- * to the free Launch plan alone. Tabulating it would print the paid ladder below
+ * `feature.resolver.ts` reads it that way, and `apply_org_plan` strips it from
+ * the plan before an org's seat features are applied — so the seed maps it to
+ * the free Launch plan alone. Tabulating it would print the paid ladder below
  * its own free tier.
  */
 const ROLE_MARKER_FEATURES: readonly string[] = ['org.manage'];

@@ -55,8 +55,10 @@ tej funkcji”_ — instead of mutating a global admin setting.
   group `G1` (all three enrolled, the manager as its group `teacher`).
 - Why that profile: `group.manage` is an org-role entitlement, not a personal plan. The org
   trigger seeds `org_role_features` per role, and the `member` role only gets `flashcards`,
-  `quiz`, `ai.chat`, `documents` and `branding` — so the `content` profile's educator is
-  exactly „konto bez tej funkcji”, with no admin-panel override and no write to
+  `quiz`, `ai.chat` and `branding` — the v1 learner set intersected with the plan
+  (`launch` carries `flashcards` and `quiz`; `documents` is absent until its surface ships,
+  open catalog, ADR §5.1) — so the `content` profile's educator is exactly „konto bez tej
+  funkcji”, with no admin-panel override and no write to
   `user_feature_overrides`, `entitlement_flags` or any other global row. The manager of the same
   tenant keeps `group.manage` (org `admin`), which is what the spec's contrast check uses.
 - Seed: `bun scripts/qa-tenant.ts EDU-GRP-05 --fresh` — a fresh run suffix per independent

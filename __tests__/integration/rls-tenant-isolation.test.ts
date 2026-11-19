@@ -1058,7 +1058,7 @@ describe('RLS tenant isolation (#191)', () => {
   it('a seated custom role cannot resolve manager authority (RLS mirrors FeatureResolver)', async () => {
     // A custom role from the role builder has ZERO org_role_features rows, so
     // the org-plan fallback used to grant every plan capability. FeatureResolver
-    // strips ADMIN_ONLY_FEATURES (org.manage/member.manage/role.builder) for a
+    // strips ADMIN_ONLY_ENTITLEMENTS (org.manage/member.manage/role.builder) for a
     // seated non-admin role; RLS must not be wider (review-1-r2 B1).
     const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
     const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;

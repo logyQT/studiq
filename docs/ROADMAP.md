@@ -97,9 +97,9 @@ Implemented with a `visibility` column (`personal | group`) plus junction tables
 
 ### Subphase 3C: Documents 📋
 
-| Item                                    | Status | Notes                                                                                               |
-| --------------------------------------- | ------ | --------------------------------------------------------------------------------------------------- |
-| Documents library (upload, list, share) | 📋     | [#653](https://github.com/logyQT/studiq/issues/653); the `documents` feature flag is already seeded |
+| Item                                    | Status | Notes                                                                                                                                 |
+| --------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Documents library (upload, list, share) | 📋     | [#653](https://github.com/logyQT/studiq/issues/653); `documents` re-enters as catalog + flag + plan rows when its surface ships (D22) |
 
 ### Subphase 3D: Teacher Dashboard 📋
 

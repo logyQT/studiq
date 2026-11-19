@@ -1,7 +1,7 @@
 # Role-authority rollout — a PR queue into `main`
 
 **Status:** In progress — phase 0 merged (#1162), 0b merged (#1387), 1a
-merged (#1388), 1b in PR.
+merged (#1388), 1b merged (#1389), 1c in PR.
 **Date:** 2026-11-13. Supersedes the 2026-10-31 integration-branch draft.
 **Decision record:** [ADR-0015](../decisions/0015-role-based-authority.md)
 **Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (originally verified against `b4186312`; re-verified 2026-11-19 at `8aab828e`).
@@ -61,10 +61,14 @@ conductor, the second environment and the flag. Each phase is a PR into `main`.
 | **5**  | `feat(enforcement)`: `requireEntitlement` / `requirePermission` on every paid and management surface | FP-10, FP-22                                                   | `STU`, `EDU`, `MGR`, `PUB`        | 2, 3    |
 | **6**  | `feat(ui)`: `/me/entitlements`, `/me/permissions`, permission nav, org-keyed cache                   | FP-17                                                          | `PUB`, `AUT`, `MGR`, `STU`, `EDU` | 2, 3, 5 |
 | **7**  | `chore(authority)`: delete the legacy surface, full QA + E2E                                         | FP-18, FP-11                                                   | **all 188** + E2E                 | 1–6     |
+| **8**  | `docs(authority)`: extendability audit (post-phase-7 release gate)                                   | — (release gate, D23)                                          | **all 188** + E2E                 | 7       |
 
-Critical path: `0 → 0b → 1 → 2 → 3 → {4, 5} → 6 → 7`. Phases 4 and 5 may start
-once 3 is in; 6 merges after 5. Phase 2 is the largest and should be a stack of 2–3 PRs
-(permission catalog seeding; route gates; control-plane RLS) merged as one tip.
+Critical path: `0 → 0b → 1 → 2 → 3 → {4, 5} → 6 → 7 → 8`. Phases 4 and 5 may
+start once 3 is in; 6 merges after 5. Phase 2 is the largest and should be a
+stack of 2–3 PRs (permission catalog seeding; route gates; control-plane RLS)
+merged as one tip. Phase 8 depends on 7 and gates 7's close (D23): 7's deletion
+work merges first, then the audit proves the model is extendable before the
+programme is called done.
 
 ## 4. QA map — the 37 at-risk specs
 
@@ -165,18 +169,22 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 
 ### 1 — catalog cutover
 
-> **Delivered 2026-11-19, PR 1 of 2 (phase 1b).** The table renames, the
+> **Delivered 2026-11-19, PR 1 of 2 (phase 1b, #1389).** The table renames, the
 > `limit_catalog` and `entitlement_catalog` tables, the 44-key `PERMISSIONS`
-> catalog and the `org_role_permissions` rewrite are merged-or-in-PR and
-> behaviour-neutral. Still open in this phase (PR 2): export `ENTITLEMENTS`,
-> delete `FEATURES`, `ADMIN_ONLY_FEATURES` and `ORG_SCOPED_FEATURES`, cut the
-> admin/UI catalogs over, and remove `documents` from `plan_entitlements` —
-> except that the four legacy management keys and everything reading them stay
-> until phase 2 (below).
+> catalog and the `org_role_permissions` rewrite are merged and
+> behaviour-neutral.
+>
+> **Delivered 2026-11-19, PR 2 of 2 (phase 1c, in PR).** `ENTITLEMENTS` is
+> exported, `FEATURES`, `ADMIN_ONLY_FEATURES` and `ORG_SCOPED_FEATURES` are
+> deleted (no alias), `LIMITS` lives in `@studiq/authz`, the admin/UI catalogs
+> are cut over, and `documents` is excluded from `entitlement_catalog`,
+> `entitlement_flags` and `plan_entitlements` until its surface ships. The four
+> legacy management keys and everything reading them stay until phase 2
+> (below).
 
 - `@studiq/authz` exports `ENTITLEMENTS` and `PERMISSIONS` with metadata
-  (`kind`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES` is
-  deleted, not aliased.
+  (`category`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES`
+  is deleted, not aliased.
 - DB: `feature_flags` → `entitlement_flags`; `plan_features` →
   `plan_entitlements`; `permissions` contents replaced; `limit_catalog` added.
 - Rewrite the live `org_role_permissions.permission_name` rows to the new keys in
@@ -185,9 +193,9 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 - **The four management keys stay** in `ENTITLEMENTS` and `plan_entitlements`
   until phase 2: `requireFeature('role.builder' | 'member.manage' |
 'group.manage')` and `is_org_manager()` still read them, and phase 2 is where
-  those gates become permissions. `documents` leaves `ENTITLEMENTS` and
-  `plan_entitlements` here — no gate depends on it, and ADR §5.1 keeps it out
-  until it has a surface.
+  those gates become permissions. `documents` is excluded from `ENTITLEMENTS`
+  and `plan_entitlements` in phase 1c **until its surface ships** — there is
+  nothing to gate today, and re-entry is data-only (ADR §5.1, open catalog).
 - Update `__tests__/integration/catalog-invariants.test.ts` to the new names
   (`FEATURES` → `ENTITLEMENTS`, `feature_flags` → `entitlement_flags`); the
   `permissions` assertions stay.
@@ -285,7 +293,8 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 ### 5 — enforcement closure
 
 - `requireEntitlement` on AI, quiz builder, advanced stats; `documents` is
-  deleted rather than gated.
+  excluded from the catalog and plans **until its surface ships** — there is
+  nothing to gate today, and re-entry is data-only (ADR §5.1, open catalog).
 - Branding write = `org.settings.manage` **and** the `branding` entitlement.
 - `requirePermission` on members, roles, seats, billing, invitations, settings,
   groups — replacing the remaining four mechanisms.
@@ -319,6 +328,46 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
   `legacyOnly`, `nextOnly`, `shadow`, `org_role_features`, `has_org_feature`,
   `FEATURES`, `org.manage`.
 
+### 8 — extendability audit (post-phase-7 release gate)
+
+**Normative. Phase 7 is not closed until this audit passes (D23).** Run it on a
+disposable stack with the app served and with existing orgs and users — not in a
+unit test.
+
+1. **Live-app simulation.** Add a not-yet-shipped entitlement end-to-end: use
+   `documents` (the roadmap key) or a fictional `voice.notes` if `documents`
+   muddies the sign-off. Record every step: catalog row (DB + TS constant), flag
+   row, `plan_entitlements` for named plans, admin-panel visibility,
+   `/me/entitlements` exposure, one `requireEntitlement` call at a real surface,
+   i18n copy, QA tenant seeding. Record **files touched, migrations and
+   deploy/restart steps**. Target: **one migration + one catalog constant + one
+   surface call**, zero resolver change.
+2. **Both org vintages.** A fresh org and an org created before the key existed
+   resolve it identically once they are on a plan that carries it; a plan change
+   on the existing org backfills without a prune job.
+3. **No surface breakage.** No endpoint or response field renamed; existing keys'
+   order and values unchanged; the 37 at-risk QA cases plus the shard covering
+   the surface stay green; `/me/entitlements` and enforcement agree.
+4. **Removal/retirement.** Remove the key from a plan while a user is entitled:
+   the ceiling narrows, the cache is invalidated, the UI hides it, and no
+   endpoint 404s or 500s. Retire the key data-only, keeping the catalogue row
+   until no plan references it. `documents` is the model: absent until shipped,
+   re-entry data-only (D22).
+5. **Drift detection.** Confirm CI fails when the TS catalog and the DB catalog
+   disagree (`catalog-invariants`). Decide and record whether a CI step should
+   regenerate/diff `database.ts` (the phase-1a review noted there is none); do
+   not leave it implicit.
+6. **Deliverable.** An "adding an entitlement" and a "retiring an entitlement"
+   checklist in ADR-0015 (or `docs/plans/extendability.md`, linked from the ADR),
+   each step naming the file/table and whether it is code, data or both. Any step
+   that forces a code change for a data change is a defect with an owner.
+7. **Acceptance.** Phase 7's close is gated on this audit passing. A failing
+   audit opens a phase-8 PR with the fixes; it is never a note.
+
+**Exit:** the checklist is committed; the live simulation recorded one migration,
+one catalog constant and one surface call, with zero resolver changes; both org
+vintages and the full 188-case suite + E2E are green.
+
 ## 6. Gates
 
 Per PR: required checks green; phase QA shards green with 5/5 runs on every
@@ -327,6 +376,9 @@ and `qa/coverage.md` updated together; ledger updated in the same PR; the FP
 ids named in the description; migrations reviewed by the integrator.
 
 Phase 7 only: full 188-case suite + E2E on a clean reset, and the grep gate.
+
+Phase 8 (after 7): the extendability audit passes on a live app; a failing audit
+is a phase-8 PR with the fixes, not a note.
 
 ## 7. Risks
 

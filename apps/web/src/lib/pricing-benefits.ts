@@ -10,7 +10,6 @@ export const FEATURE_PRIORITY: readonly string[] = [
   'ai.chat',
   'quiz.builder',
   'advanced.stats',
-  'documents',
   'role.builder',
   'branding',
   'group.manage',

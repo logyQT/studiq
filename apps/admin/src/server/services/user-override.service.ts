@@ -40,7 +40,7 @@ export class UserOverrideService {
       .from('user_feature_overrides')
       .insert({
         user_id: input.userId,
-        feature_key: input.featureKey,
+        feature_key: input.entitlementKey,
         is_enabled: input.isEnabled,
         reason: input.reason ?? null,
         expires_at: input.expiresAt ?? null,

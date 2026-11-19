@@ -233,7 +233,7 @@ describe('SubscriptionPlanService', () => {
         org_seat_assignments: { pool_id: 'pool-1' },
         organizations: { plan: 'hub' },
         subscription_plans: planRow('hub', 'manager'),
-        plan_entitlements: [{ entitlement_key: 'documents' }],
+        plan_entitlements: [{ entitlement_key: 'branding' }],
         plan_limits: [{ plan_key: 'hub', limit_key: 'max_groups', limit_value: 3 }],
       });
 

@@ -97,7 +97,11 @@ describe('UserOverrideService', () => {
       const ov = { id: 'ov-1', user_id: 'u-1', feature_key: 'quiz', is_enabled: true };
       const insertQb = qb(ov);
       mock.from.mockReturnValueOnce(insertQb);
-      const result = await service.create({ userId: 'u-1', featureKey: 'quiz', isEnabled: true });
+      const result = await service.create({
+        userId: 'u-1',
+        entitlementKey: 'quiz',
+        isEnabled: true,
+      });
       expect(result.success).toBe(true);
       expect(result.data).toEqual(ov);
       expect(insertQb.insert).toHaveBeenCalledWith({
@@ -110,7 +114,11 @@ describe('UserOverrideService', () => {
     });
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
-      const result = await service.create({ userId: 'u-1', featureKey: 'quiz', isEnabled: true });
+      const result = await service.create({
+        userId: 'u-1',
+        entitlementKey: 'quiz',
+        isEnabled: true,
+      });
       expect(result.success).toBe(false);
     });
   });

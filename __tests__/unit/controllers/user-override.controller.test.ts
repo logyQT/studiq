@@ -57,21 +57,21 @@ describe('UserOverrideController', () => {
       mockService.create.mockResolvedValueOnce({ success: true, data: { id: 'ov-1' } });
       const response = await controller.create({
         userId: '550e8400-e29b-41d4-a716-446655440000',
-        featureKey: 'quiz',
+        entitlementKey: 'quiz',
         isEnabled: true,
       });
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
     });
     it('returns 422 on invalid body', async () => {
-      const response = await controller.create({ userId: 'bad', featureKey: '' });
+      const response = await controller.create({ userId: 'bad', entitlementKey: '' });
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
     it('rejects non-canonical feature keys', async () => {
       const response = await controller.create({
         userId: '550e8400-e29b-41d4-a716-446655440000',
-        featureKey: 'typo.feature',
+        entitlementKey: 'typo.feature',
         isEnabled: true,
       });
       expect(response.success).toBe(false);

@@ -184,11 +184,11 @@ describe(`org_role_features RLS`, () => {
     const { features } = await resolver.resolveFeatures(ctx);
 
     // The member role's org_role_features rows are the entitlement:
-    // ['flashcards', 'quiz', 'documents'] (org trigger filters the launch
-    // plan down to basic features for this role). Without the RLS fix the
-    // query returns [], the resolver falls through to the org plan and
-    // over-grants member.manage / org.manage / group.manage instead.
-    expect(features).toEqual(['flashcards', 'quiz', 'documents']);
+    // ['flashcards', 'quiz'] (org trigger filters the launch plan down to basic
+    // features for this role; `documents` left the catalog in phase 1c).
+    // Without the RLS fix the query returns [], the resolver falls through to
+    // the org plan and over-grants member.manage / org.manage / group.manage.
+    expect(features).toEqual(['flashcards', 'quiz']);
   });
 
   it('LimitsResolver resolves org capacity from a real member session (RLS path)', async () => {

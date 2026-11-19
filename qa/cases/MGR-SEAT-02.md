@@ -82,8 +82,9 @@ seeded tenant instead:
 - The member's next login shows the seat plan: the sidebar gains the „Asystent Q” entry
   (`ai.chat`) and `/app/ai` renders the composer instead of the plan gate „Asystent Q nie
   jest dostępny w Twoim planie”. `GET /api/v1/features/me` grows from
-  `flashcards, quiz, documents` to `ai.chat, flashcards, quiz, documents, advanced.stats`
-  (the Ace additions), with no `org.manage` / `member.manage` / `role.builder`;
+  `flashcards, quiz` to `ai.chat, flashcards, quiz, advanced.stats` (the Ace
+  additions; `documents` is absent until its surface ships — open catalog,
+  ADR §5.1), with no `org.manage` / `member.manage` / `role.builder`;
   `GET /api/v1/me/plan` returns `ace`, and `GET /api/v1/ai/usage` moves from limit `0` to
   Ace's `max_ai_tokens_per_day` (200000 at seed time).
 - The guards behind the pickers hold server-side too: a second seat for the already-seated

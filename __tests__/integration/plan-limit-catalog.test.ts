@@ -1,4 +1,4 @@
-import { isLimitKey, ORG_LIMIT_KEYS, USER_LIMIT_KEYS } from '@studiq/server/services/limit.catalog';
+import { isLimitKey, ORG_LIMIT_KEYS, USER_LIMIT_KEYS } from '@studiq/authz';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeAll, describe, expect, it } from 'vitest';
