@@ -788,7 +788,10 @@ depend on the old writer.
   name `role.builder` and the permission button, so their premise is unchanged.
 - Gates: `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`,
   `review:static`, `knip`, `dup:base`, `format:check` (the coordinator runs
-  integration, QA, the build and the merge).
+  integration, QA, the build and the merge). Five mutations, one named test each,
+  all KILLED on their own assertion: the closed-catalog name check, the
+  completeness `superRefine`, the self-edit guard, both escalation directions and
+  the `org.admin` assignable guard.
 
 **Follow-ups this slice creates:**
 
