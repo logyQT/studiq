@@ -115,9 +115,9 @@ Next phase: <next in 0, 0b, 1–7> — first action
 ## 9. Worked dispatches
 
 **Phase 0b (mechanical, ~8 agents).** One agent per item: `assignment.*`
-catalog rows; `resource_permissions` drop + type regen; dead header removal;
-three invariant tests (one each); a final sweep for references. You assemble,
-submit the migration to the integrator, run `checks`+`unit`+`integration`.
+catalog rows; `resource_permissions` drop (no type regen — see R2); dead header
+removal; three invariant tests (one each); a final sweep for references. You
+assemble, submit the migration to the integrator, run `checks`+`unit`+`integration`.
 
 **Phase 3 (judgement, 3 agents).** One implementer writes
 `resolveEntitlements` and deletes the two old resolvers; one adversarial

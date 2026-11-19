@@ -1,25 +1,8 @@
 import { featuresController } from '@studiq/server/controllers/features.controller';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
-import { isFeatureKey } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {
-  return withAuth(req, async (ctx) => {
-    const result = await featuresController.myFeatures(ctx);
-    const response = toNextResponse(result);
-
-    // Surface live rollout gating so clients can show
-    // "you're in the pilot / this is rolled out to N%" to users.
-    if (result.success && result.data?.rollout) {
-      const rollout = result.data.rollout;
-      const keys = Object.keys(rollout).filter(isFeatureKey);
-      if (keys.length > 0) {
-        const header = keys.map((k) => `${k}=${rollout[k]}`).join(',');
-        response.headers.set('X-Feature-Rollout', header);
-      }
-    }
-
-    return response;
-  });
+  return withAuth(req, async (ctx) => toNextResponse(await featuresController.myFeatures(ctx)));
 }

@@ -38,10 +38,11 @@ export interface FeatureResolution {
   /** Enabled feature keys, ordered by `FEATURES`. */
   features: FeatureKey[];
   /**
-   * `X-Feature-Rollout` payload: the rollout percentage that was actually
-   * applied for each enabled feature currently gated by a live rollout
-   * (i.e. `rollout_percentage < 100`). Clients can expose this to users
-   * (e.g. "you're in the 25% pilot of ai.chat").
+   * The rollout percentage that was actually applied for each enabled feature
+   * currently gated by a live rollout (i.e. `rollout_percentage < 100`). The
+   * field still ships in the `/features/me` response body; only the
+   * `X-Feature-Rollout` header was removed (phase 0b), and phase 3 / D8 removes
+   * the field and the column.
    */
   rollout: Partial<Record<FeatureKey, number>>;
 }

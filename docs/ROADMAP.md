@@ -72,7 +72,7 @@ Implemented with a `visibility` column (`personal | group`) plus junction tables
 | Share to groups in create / edit forms         | ✅     | Group multi-select                                                                                                    |
 | Copy a resource                                | ✅     | `POST /api/v1/flashcards/[id]/copy`                                                                                   |
 | Read-only view of shared banks for non-authors | 📋     | [#152](https://github.com/logyQT/studiq/issues/152), fix in review: [#648](https://github.com/logyQT/studiq/pull/648) |
-| `resource_permissions` per-user grants         | 💤     | Table exists, unused; group sharing covers the use case                                                               |
+| `resource_permissions` per-user grants         | 💤     | Dropped in phase 0b of the role-authority programme (ADR-0015); group sharing covers the use case                     |
 
 ---
 
@@ -222,7 +222,7 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 ## Key Technical Decisions
 
 - **No backward compat layers** — pre-market, schema changes are made in place.
-- **Groups share by junction table** — a resource can be visible to several groups; `resource_permissions` stays unused.
+- **Groups share by junction table** — a resource can be visible to several groups; `resource_permissions` was dropped in phase 0b of the role-authority programme (ADR-0015).
 - **SM-2 is done** — only the 5B enhancements remain.
 - **LLM provider abstracted** — OpenAI-compatible and Ollama.
 - **Feature flags, plans and limits are DB-backed** — plan changes need no deploy.

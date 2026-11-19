@@ -65,7 +65,6 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.plan_limits,
      public.feature_flags,
      public.permissions,
-     public.resource_permissions,
      public.user_feature_overrides,
      public.profiles,
      public.payments,
