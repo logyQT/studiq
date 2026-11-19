@@ -3,6 +3,7 @@ import {
   isPermissionCatalogKey,
   PERMISSIONS,
   type PermissionCatalogKey,
+  type PermissionDefinition,
 } from '@studiq/authz';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
@@ -10,6 +11,9 @@ import { registry, z } from '@studiq/server/lib/zod';
 /** Every key of the closed permission catalog (ADR-0015 §4.1), in declaration order. */
 export const CATALOG_PERMISSION_KEYS: readonly PermissionCatalogKey[] =
   Object.keys(PERMISSIONS).filter(isPermissionCatalogKey);
+
+/** The catalog by name, `undefined` for a name the caller invented. */
+const CATALOG: Record<string, PermissionDefinition | undefined> = PERMISSIONS;
 
 const EntitlementProfileSchema = z.enum(ENTITLEMENT_PROFILES, {
   error: ValidationErrorCode.INVALID_INPUT,
@@ -90,16 +94,16 @@ export const SetRolePermissionsSchema = registry.register(
 
         // A permission name outside the catalog is located by the name itself, so
         // the 422 says which key the caller invented.
-        if (!isPermissionCatalogKey(entry.permissionName)) {
+        const definition = CATALOG[entry.permissionName];
+        const allowedScopes: readonly string[] = definition?.allowedScopes ?? [];
+        if (!definition) {
           ctx.addIssue({
             code: 'custom',
             path: ['permissions', entry.permissionName],
             message: ValidationErrorCode.INVALID_INPUT,
           });
-          return;
         }
 
-        const allowedScopes: readonly string[] = PERMISSIONS[entry.permissionName].allowedScopes;
         if (entry.scope !== null && !allowedScopes.includes(entry.scope)) {
           ctx.addIssue({
             code: 'custom',
