@@ -9,7 +9,11 @@
 
 ## Prerequisite (verbatim)
 
-Organizacja na planie Hub/Campus lub z override branding. Plik logo.png < 1 MB.
+Organizacja na planie Hub/Campus. Plik logo.png < 1 MB.
+
+Wariant „override branding” z dokumentu źródłowego nie istnieje po fazie 2a-1
+(ADR-0015): klucz nie-markerowy rozstrzyga profil roli przecięty z pułapem planu,
+więc warunkiem jest plan z brandingiem.
 
 ## Tenant fixture (QA-suite)
 
@@ -20,11 +24,14 @@ The legacy `manager@dev.local` + WSB Merito seed is replaced by this case's own
   `qa-mgr-set-02-<run-suffix>` with a manager, an educator, a student and the
   default group; every id derives from
   `tenantKey('qa/cases/MGR-SET-02.md', 'MGR-SET-02#<run-suffix>', 'qa-shared')`.
-- "Plan z brandingiem / override branding": the spec grants the tenant's own
-  `org_role_features` rows the `branding` key (the per-org entitlement override
-  the resolver treats as authoritative). The shared plan catalog and
-  `entitlement_flags` are never read or written, so no other worker's org or global
-  admin state is involved.
+- „Plan z brandingiem”: spec czyta plan organizacji tenanta i — gdy jej pułap
+  (`plan_entitlements`) nie zawiera `branding` — przenosi **tę jedną** organizację na
+  `hub` przez `apply_org_plan`, ten sam RPC, który wywołuje webhook płatności.
+  `branding` jest kluczem nie-markerowym, więc rozstrzyga go profil roli
+  (`entitlement_profile = 'all'` roli `admin` managera) przecięty z pułapem planu;
+  wiersz `org_role_features` nie przyznaje już takiego klucza i nie jest tu używany.
+  Wspólny katalog planów i `entitlement_flags` nie są zapisywane, więc żadna inna
+  organizacja ani globalny stan admina nie jest ruszany.
 - Logo fixture: a deterministic 1×1 PNG uploaded through the real "Wgraj logo"
   file chooser. The spec clears its own org's previous `logo_url` (and storage
   object) first, so every run starts from "Brak logo" without a reseed.

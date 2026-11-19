@@ -16,16 +16,18 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * a student (`tenantKey('qa/cases/MGR-SET-02.md', 'MGR-SET-02#<suffix>',
  * 'qa-shared')`).
  *
- * Branding precondition. The case asks for "an org on Hub/Campus **or with a
- * branding override**". The plan catalog and `feature_flags` are shared, mutable
- * rows, so this spec never reads or writes them. Instead it seeds the tenant's own
- * `org_role_features` rows — the per-org entitlement copy `handle_new_organization`
- * populates from the plan and FeatureResolver treats as authoritative — exactly
- * the "branding override" the case allows. Those rows belong to this tenant's
- * three org roles, so no other worker's org is touched and no global state is
- * mutated. The spec also clears the org's `logo_url` (and its own storage object)
- * so the run always starts from the case's "no logo → avatar" state, making the
- * spec repeatable without a reseed.
+ * Branding precondition. The case asks for an organization on a plan with
+ * branding. A non-marker entitlement key resolves from the role's
+ * `entitlement_profile` (the manager's Admin role is `all`) intersected with
+ * `plan_entitlements(organizations.plan)`; an `org_role_features` row no longer
+ * grants one. So this spec reads the tenant's plan and, when its ceiling lacks
+ * `branding`, calls the service-role `apply_org_plan` RPC — the same RPC the
+ * billing webhook calls — to put this tenant's own organization on `hub`. Only
+ * that organization is written: the plan catalog, `plan_entitlements` and
+ * `entitlement_flags` are shared rows and stay untouched. The spec also clears
+ * the org's `logo_url` (and its own storage object) so the run always starts
+ * from the case's "no logo → avatar" state, making the spec repeatable without a
+ * reseed.
  *
  * Nothing global is assumed beyond the migration-seeded `branding` kill switch
  * being on, which is the product's default for this surface.
@@ -88,10 +90,9 @@ async function getOrg(page: Page, orgId: string): Promise<OrgDetail> {
 }
 
 /**
- * Grant the tenant org the `branding` entitlement on all of its roles and remove
- * any logo left by an earlier run of the same tenant. Both writes are scoped to
- * this tenant's rows (org id comes from the deterministic fixture) and are
- * idempotent.
+ * Put the tenant org on a plan whose ceiling carries `branding` and remove any
+ * logo left by an earlier run of the same tenant. Both writes are scoped to this
+ * tenant's rows (org id comes from the deterministic fixture) and are idempotent.
  */
 async function prepareBrandingTenant(tenant: QaTenant): Promise<void> {
   const orgId = tenant.org?.id;
@@ -99,19 +100,28 @@ async function prepareBrandingTenant(tenant: QaTenant): Promise<void> {
 
   const db = createQaSupabase();
 
-  const { data: roles, error: rolesError } = await db
-    .from('org_roles')
-    .select('id')
-    .eq('organization_id', orgId);
-  expect(rolesError, 'read the tenant org roles').toBeNull();
-  const roleRows = (roles ?? []) as Array<{ id: string }>;
-  expect(roleRows.length, 'the org has its three system roles').toBe(3);
+  const { data: org, error: orgError } = await db
+    .from('organizations')
+    .select('plan')
+    .eq('id', orgId)
+    .maybeSingle();
+  expect(orgError, 'read the tenant plan').toBeNull();
 
-  const { error: featureError } = await db.from('org_role_features').upsert(
-    roleRows.map((role) => ({ org_role_id: role.id, feature_key: 'branding', is_enabled: true })),
-    { onConflict: 'org_role_id,feature_key' },
-  );
-  expect(featureError, 'grant branding to the tenant org roles').toBeNull();
+  const { data: ceiling, error: ceilingError } = await db
+    .from('plan_entitlements')
+    .select('entitlement_key')
+    .eq('plan_key', org?.plan ?? '')
+    .eq('entitlement_key', 'branding')
+    .maybeSingle();
+  expect(ceilingError, 'read the branding ceiling').toBeNull();
+
+  if (!ceiling) {
+    const { error: planError } = await db.rpc('apply_org_plan', {
+      p_org_id: orgId,
+      p_plan: 'hub',
+    });
+    expect(planError, 'put the tenant org on a branding plan').toBeNull();
+  }
 
   const { data: current, error: readError } = await db
     .from('organizations')
