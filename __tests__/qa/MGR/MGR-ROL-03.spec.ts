@@ -101,6 +101,22 @@ const CATALOG_SECTIONS = [
   'Organizacja',
 ] as const;
 
+/**
+ * The three scope words the editor renders, with the scope each one selects. The
+ * last one is also a section heading, so it is never asserted by text alone.
+ */
+const SCOPE_LABELS: Record<string, Scope> = {
+  Własne: 'own',
+  Grupa: 'group',
+  Organizacja: 'organization',
+};
+
+/** How many catalog keys allow a scope — the number of radios that render its label. */
+function scopeRadioCount(scope: Scope): number {
+  return Object.values(PERMISSIONS).filter((definition) => definition.allowedScopes.includes(scope))
+    .length;
+}
+
 /** Content names, one per scope family, so the UI can be asserted by name. */
 const CONTENT_NAMES = {
   deck: { own: 'deck-own', group: 'deck-group', org: 'deck-org' },
@@ -483,10 +499,16 @@ async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Pr
   await expect(dialog.locator('[data-perm-row]')).toHaveCount(CATALOG_ROWS);
   await expect(dialog.locator('input[data-perm-radio="true"]')).toHaveCount(CATALOG_RADIOS);
   for (const title of CATALOG_SECTIONS) {
-    await expect(dialog.getByText(title, { exact: true })).toBeVisible();
+    // By role, not text: „Organizacja” is the last section heading **and** a scope
+    // label, so a text match resolves to 45 elements (strict-mode violation).
+    await expect(dialog.getByRole('heading', { name: title, exact: true })).toBeVisible();
   }
-  for (const label of ['Własne', 'Grupa', 'Organizacja']) {
-    await expect(dialog.getByText(label, { exact: true }).first()).toBeVisible();
+  for (const [label, labelScope] of Object.entries(SCOPE_LABELS)) {
+    // A scope radio is named by its own label, so this counts the radios that render
+    // the word; `.first()` would let a duplicate hide one that failed to render.
+    await expect(dialog.getByRole('radio', { name: label, exact: true })).toHaveCount(
+      scopeRadioCount(labelScope),
+    );
   }
 
   await setContentSections(dialog, scope);
