@@ -36,7 +36,7 @@ const MIGRATION = 'supabase/migrations/20261119180000_authority_entitlement_prof
  * direct connection. A copy here could pass while production ships something
  * else, and a mutation to a migration has to reach the database to turn these
  * tests red. The newest definition wins, because a later migration can re-create
- * one of these functions (`20261119210000` does, for the renamed column).
+ * one of these functions (`20261119211000` does, for the renamed column).
  */
 function shippedFunction(name: string): string {
   return latestShippedFunction(name);
