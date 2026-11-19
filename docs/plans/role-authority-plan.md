@@ -26,6 +26,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 5     | enforcement closure                            | pending | —     | —   | STU, EDU, MGR, PUB        |            |
 | 6     | UI and cache                                   | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —     | —   | all 188 + E2E             | 2026-11-19 |
 
 **Next action:** phases 0b (#1387), 1a (#1388) and 1b (#1389) are merged.
 Phase 1c (the catalog cutover) is in PR: `FEATURES`, `ADMIN_ONLY_FEATURES` and
@@ -91,6 +92,7 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
 | D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                         |
 | D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                         |
+| D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                  |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -569,3 +571,9 @@ _Not started._
 ### Phase 7 — delete and close
 
 _Not started._
+
+### Phase 8 — extendability (release gate)
+
+_Not started._ Specified in
+[role-authority-rollout.md](role-authority-rollout.md#8--extendability-audit-post-phase-7-release-gate);
+phase 7 is not closed until it passes (D23).

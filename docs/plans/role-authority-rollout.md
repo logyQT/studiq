@@ -61,10 +61,14 @@ conductor, the second environment and the flag. Each phase is a PR into `main`.
 | **5**  | `feat(enforcement)`: `requireEntitlement` / `requirePermission` on every paid and management surface | FP-10, FP-22                                                   | `STU`, `EDU`, `MGR`, `PUB`        | 2, 3    |
 | **6**  | `feat(ui)`: `/me/entitlements`, `/me/permissions`, permission nav, org-keyed cache                   | FP-17                                                          | `PUB`, `AUT`, `MGR`, `STU`, `EDU` | 2, 3, 5 |
 | **7**  | `chore(authority)`: delete the legacy surface, full QA + E2E                                         | FP-18, FP-11                                                   | **all 188** + E2E                 | 1–6     |
+| **8**  | `docs(authority)`: extendability audit (post-phase-7 release gate)                                   | — (release gate, D23)                                          | **all 188** + E2E                 | 7       |
 
-Critical path: `0 → 0b → 1 → 2 → 3 → {4, 5} → 6 → 7`. Phases 4 and 5 may start
-once 3 is in; 6 merges after 5. Phase 2 is the largest and should be a stack of 2–3 PRs
-(permission catalog seeding; route gates; control-plane RLS) merged as one tip.
+Critical path: `0 → 0b → 1 → 2 → 3 → {4, 5} → 6 → 7 → 8`. Phases 4 and 5 may
+start once 3 is in; 6 merges after 5. Phase 2 is the largest and should be a
+stack of 2–3 PRs (permission catalog seeding; route gates; control-plane RLS)
+merged as one tip. Phase 8 depends on 7 and gates 7's close (D23): 7's deletion
+work merges first, then the audit proves the model is extendable before the
+programme is called done.
 
 ## 4. QA map — the 37 at-risk specs
 
@@ -324,6 +328,46 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
   `legacyOnly`, `nextOnly`, `shadow`, `org_role_features`, `has_org_feature`,
   `FEATURES`, `org.manage`.
 
+### 8 — extendability audit (post-phase-7 release gate)
+
+**Normative. Phase 7 is not closed until this audit passes (D23).** Run it on a
+disposable stack with the app served and with existing orgs and users — not in a
+unit test.
+
+1. **Live-app simulation.** Add a not-yet-shipped entitlement end-to-end: use
+   `documents` (the roadmap key) or a fictional `voice.notes` if `documents`
+   muddies the sign-off. Record every step: catalog row (DB + TS constant), flag
+   row, `plan_entitlements` for named plans, admin-panel visibility,
+   `/me/entitlements` exposure, one `requireEntitlement` call at a real surface,
+   i18n copy, QA tenant seeding. Record **files touched, migrations and
+   deploy/restart steps**. Target: **one migration + one catalog constant + one
+   surface call**, zero resolver change.
+2. **Both org vintages.** A fresh org and an org created before the key existed
+   resolve it identically once they are on a plan that carries it; a plan change
+   on the existing org backfills without a prune job.
+3. **No surface breakage.** No endpoint or response field renamed; existing keys'
+   order and values unchanged; the 37 at-risk QA cases plus the shard covering
+   the surface stay green; `/me/entitlements` and enforcement agree.
+4. **Removal/retirement.** Remove the key from a plan while a user is entitled:
+   the ceiling narrows, the cache is invalidated, the UI hides it, and no
+   endpoint 404s or 500s. Retire the key data-only, keeping the catalogue row
+   until no plan references it. `documents` is the model: absent until shipped,
+   re-entry data-only (D22).
+5. **Drift detection.** Confirm CI fails when the TS catalog and the DB catalog
+   disagree (`catalog-invariants`). Decide and record whether a CI step should
+   regenerate/diff `database.ts` (the phase-1a review noted there is none); do
+   not leave it implicit.
+6. **Deliverable.** An "adding an entitlement" and a "retiring an entitlement"
+   checklist in ADR-0015 (or `docs/plans/extendability.md`, linked from the ADR),
+   each step naming the file/table and whether it is code, data or both. Any step
+   that forces a code change for a data change is a defect with an owner.
+7. **Acceptance.** Phase 7's close is gated on this audit passing. A failing
+   audit opens a phase-8 PR with the fixes; it is never a note.
+
+**Exit:** the checklist is committed; the live simulation recorded one migration,
+one catalog constant and one surface call, with zero resolver changes; both org
+vintages and the full 188-case suite + E2E are green.
+
 ## 6. Gates
 
 Per PR: required checks green; phase QA shards green with 5/5 runs on every
@@ -332,6 +376,9 @@ and `qa/coverage.md` updated together; ledger updated in the same PR; the FP
 ids named in the description; migrations reviewed by the integrator.
 
 Phase 7 only: full 188-case suite + E2E on a clean reset, and the grep gate.
+
+Phase 8 (after 7): the extendability audit passes on a live app; a failing audit
+is a phase-8 PR with the fixes, not a note.
 
 ## 7. Risks
 
