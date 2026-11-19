@@ -13,12 +13,12 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   bun scripts/qa-tenant.ts STU-03 --fresh
  *
  * `__tests__/qa/profiles/STU-03.json` declares the default `content` profile: one
- * organization (`plan = launch`, whose member role grants `flashcards`, `quiz`
- * and `documents` but no `ai.chat`), the tenant's own manager/teacher, and the
- * `student` account this case logs in as. Every id is `tenantKey` + `tenantId`
- * from the shared e2e helpers, so a fresh run suffix gives a brand-new tenant
- * and nothing global (plan catalogue, feature flags, admin settings, platform
- * stats) is read or written.
+ * organization (`plan = launch`, whose member role grants `flashcards` and
+ * `quiz` but no `ai.chat`), the tenant's own manager/teacher, and the `student`
+ * account this case logs in as. Every id is `tenantKey` + `tenantId` from the
+ * shared e2e helpers, so a fresh run suffix gives a brand-new tenant and nothing
+ * global (plan catalogue, feature flags, admin settings, platform stats) is read
+ * or written.
  *
  * Acceptance points from the case:
  * 1. Sections and items, in order — Główne (Przegląd), Nauka (Ucz się, Wkuwaj,

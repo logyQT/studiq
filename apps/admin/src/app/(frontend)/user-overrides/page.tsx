@@ -80,7 +80,7 @@ export default function UserOverridesPage() {
     mutationFn: (data: FormData) =>
       apiPost('/user-overrides', {
         userId: data.user_id,
-        featureKey: data.feature_key,
+        entitlementKey: data.feature_key,
         isEnabled: data.isEnabled,
         reason: data.reason || undefined,
         expiresAt: data.expires_at || undefined,

@@ -89,8 +89,8 @@ const POOLS = [
   { planKey: 'campus', quantity: 1 },
 ] as const;
 
-/** Features a seat must never hand to a non-admin role (`ADMIN_ONLY_FEATURES`). */
-const ADMIN_ONLY_FEATURES = ['org.manage', 'member.manage', 'role.builder'] as const;
+/** Entitlements a seat must never hand to a non-admin role (`ADMIN_ONLY_ENTITLEMENTS`). */
+const ADMIN_ONLY_ENTITLEMENTS = ['org.manage', 'member.manage', 'role.builder'] as const;
 
 /** Polish copy the case quotes; the fixture pins `NEXT_LOCALE=pl`. */
 const COPY = {
@@ -567,11 +567,11 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       expect(afterFeatures, `additive: the member keeps ${key}`).toContain(key);
     }
     for (const key of ace.features) {
-      if ((ADMIN_ONLY_FEATURES as readonly string[]).includes(key)) continue;
+      if ((ADMIN_ONLY_ENTITLEMENTS as readonly string[]).includes(key)) continue;
       expect(afterFeatures, `the member receives the seat plan feature ${key}`).toContain(key);
     }
     expect(afterFeatures, 'the case example: AI access from the premium seat').toContain('ai.chat');
-    for (const key of ADMIN_ONLY_FEATURES) {
+    for (const key of ADMIN_ONLY_ENTITLEMENTS) {
       expect(afterFeatures, `admin-only ${key} must not be granted through a seat`).not.toContain(
         key,
       );

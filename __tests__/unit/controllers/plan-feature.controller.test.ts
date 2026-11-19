@@ -48,21 +48,21 @@ describe('PlanFeatureController', () => {
       const feature = { id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' };
       mockService.create.mockResolvedValueOnce({ success: true, data: feature });
 
-      const response = await controller.create({ planKey: 'base', featureKey: 'quiz' });
+      const response = await controller.create({ planKey: 'base', entitlementKey: 'quiz' });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
     });
 
     it('returns 422 on invalid body', async () => {
-      const response = await controller.create({ planKey: '', featureKey: '' });
+      const response = await controller.create({ planKey: '', entitlementKey: '' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
 
     it('rejects non-canonical feature keys', async () => {
-      const response = await controller.create({ planKey: 'base', featureKey: 'typo.feature' });
+      const response = await controller.create({ planKey: 'base', entitlementKey: 'typo.feature' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -71,7 +71,7 @@ describe('PlanFeatureController', () => {
     it('returns error on service failure', async () => {
       mockService.create.mockResolvedValueOnce({ success: false, error: 'CONFLICT' });
 
-      const response = await controller.create({ planKey: 'base', featureKey: 'quiz' });
+      const response = await controller.create({ planKey: 'base', entitlementKey: 'quiz' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(409);

@@ -1,4 +1,4 @@
-import { AccountType, FEATURES, type RequestContext, rolloutBucket } from '@studiq/authz';
+import { AccountType, ENTITLEMENT_KEYS, type RequestContext, rolloutBucket } from '@studiq/authz';
 import { FeatureResolver, isUserOverrideActive } from '@studiq/server/services/feature.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -27,7 +27,7 @@ function chain(result: unknown) {
 
 type FlagRow = { key: string; is_enabled: boolean; rollout_percentage: number };
 
-function allFlagsOn(keys: readonly string[] = FEATURES): FlagRow[] {
+function allFlagsOn(keys: readonly string[] = ENTITLEMENT_KEYS): FlagRow[] {
   return keys.map((key) => ({ key, is_enabled: true, rollout_percentage: 100 }));
 }
 
@@ -56,7 +56,7 @@ describe('FeatureResolver', () => {
   describe('precedence chain', () => {
     it('adds seat plan features on top of org-role base (additive upgrade)', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
-      const seatFeatures = ['flashcards', 'quiz', 'quiz.builder', 'documents', 'ai.chat'];
+      const seatFeatures = ['flashcards', 'quiz', 'quiz.builder', 'ai.chat'];
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
@@ -90,7 +90,6 @@ describe('FeatureResolver', () => {
         'flashcards',
         'quiz',
         'quiz.builder',
-        'documents',
         'ai.chat',
         'org.manage',
         'member.manage',
@@ -252,7 +251,6 @@ describe('FeatureResolver', () => {
           return chain([
             { entitlement_key: 'ai.chat' },
             { entitlement_key: 'advanced.stats' },
-            { entitlement_key: 'documents' },
             { entitlement_key: 'flashcards' },
             { entitlement_key: 'quiz' },
           ]);
@@ -263,7 +261,7 @@ describe('FeatureResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['ai.chat', 'flashcards', 'quiz', 'documents', 'advanced.stats']);
+      expect(features).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
     });
 
     it('does not let a personal plan escalate admin-only keys in an org', async () => {

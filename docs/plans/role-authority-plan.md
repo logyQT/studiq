@@ -18,8 +18,8 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162 | —   | checks                    | 2026-11-19 |
 | 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387 | —   | checks, unit, integration | 2026-11-19 |
 | 1a    | database types regenerated with the pinned CLI | merged  | #1388 | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | pr-open | —     | —   | checks, unit, integration | 2026-11-19 |
-| 1     | catalog cutover                                | pending | —     | —   | PUB, ADM, LIM, BIL        |            |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389 | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | pr-open | —     | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
 | 2     | authority cutover + control-plane RLS          | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
 | 3     | entitlements and limits                        | pending | —     | —   | LIM, BIL, STU             |            |
 | 4     | seats and personal plans                       | pending | —     | —   | MGR, BIL, LIM             |            |
@@ -27,10 +27,12 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 6     | UI and cache                                   | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
 
-**Next action:** phase 0b (#1387) and phase 1a (#1388) are merged; phase 1b
-(the behaviour-neutral catalog rename) is in PR. Phase 1's catalog cutover
-deletes `FEATURES`, the denylists and `documents`; the four legacy management
-keys stay until phase 2, which replaces their gates.
+**Next action:** phases 0b (#1387), 1a (#1388) and 1b (#1389) are merged.
+Phase 1c (the catalog cutover) is in PR: `FEATURES`, `ADMIN_ONLY_FEATURES` and
+`ORG_SCOPED_FEATURES` are replaced by `ENTITLEMENTS`/`ADMIN_ONLY_ENTITLEMENTS`/
+`ORG_SCOPED_ENTITLEMENTS`, `LIMITS` moved into `@studiq/authz`, and `documents`
+left the catalog. The four legacy management keys stay until phase 2, which
+replaces their gates.
 
 ## 2. How to update this file
 
@@ -311,7 +313,7 @@ file — a hand edit only survives until the next regeneration.
 
 ### Phase 1b — catalog rename (behaviour-neutral)
 
-**Shipped in PR (pr-open):**
+**Shipped (#1389):**
 
 - One migration, `20261119140000_catalog_rename.sql`: `limit_catalog` (the eight
   `LIMITS` keys with their scopes), `entitlement_catalog` (the eleven `FEATURES`
@@ -360,10 +362,10 @@ file — a hand edit only survives until the next regeneration.
 
 **Follow-ups this phase creates (for the next readers):**
 
-- **1c** re-pins `catalog-invariants` from `FEATURES` to
-  `ENTITLEMENTS ∪ {org.manage, group.manage, member.manage, role.builder}` and
+- **1c** re-pins `catalog-invariants` from `FEATURES` to `ENTITLEMENTS` and
   starts asserting entitlement metadata (`category`, `scope`, `seat_eligible`,
-  `personal_portable`, `quota_limit_key`), which nothing checks in 1b.
+  `personal_portable`, `quota_limit_key`), which nothing checks in 1b. **Done in
+  phase 1c.**
 - **Phase 2** must delete `plan_entitlements` rows **before** catalog rows:
   `plan_entitlements_entitlement_key_fkey` has no `ON DELETE CASCADE`, so
   removing a legacy management marker from `entitlement_catalog` first fails
@@ -444,9 +446,103 @@ Fix: `seatEligible` is true for the six personal-scope keys (baseline
 Rule: derive metadata from the constraint it will serve, and record the
 derivation where the next phase reads it.
 
-### Phase 1 — catalog
+### Phase 1c — catalog cutover
 
-_Not started._
+**Shipped in PR (pr-open):**
+
+- `packages/authz/src/entitlements.ts` replaces `features.ts` (deleted, no
+  alias): `ENTITLEMENTS` with the metadata the DB row carries (`category`,
+  `scope`, `seatEligible`, `personalPortable`, `quota`), the ten keys the 1b
+  catalog holds minus `documents`, plus `EntitlementKey`, `isEntitlementKey`,
+  `ENTITLEMENT_KEYS`, `SURFACE_ENTITLEMENT_KEYS`, `ADMIN_ONLY_ENTITLEMENTS`
+  (the three markers) and `ORG_SCOPED_ENTITLEMENTS` (derived from
+  `scope === 'org'`, so the second denylist can no longer drift from metadata).
+  The four legacy management markers stay; phase 2 deletes them.
+- `packages/authz/src/limits.ts` receives `LIMITS` and its helpers from
+  `packages/server/src/services/limit.catalog.ts` (deleted, no shim); every
+  importer reads `@studiq/authz`.
+- `20261119160000_documents_removed.sql` deletes `documents` in dependency
+  order: `plan_entitlements` (the catalog FK has no cascade), then
+  `org_role_features` and `user_feature_overrides` (the flag FK cascades, but
+  the delete is explicit), then `entitlement_catalog` and `entitlement_flags`.
+  See the ADR §5.1 reason in the migration comment: no surface, and phase 5
+  deletes it rather than gating it.
+- Seeds: `documents` removed from every plan's entitlement list in
+  `00_plans.sql`; nothing else.
+- Readers: `FeatureResolver` orders by `ENTITLEMENT_KEYS`, guards with
+  `isEntitlementKey`, and uses the two new sets; `lib/features.ts`,
+  `features.controller.ts` and `subscription-plan.service.ts` speak
+  entitlement types; the admin flag/plan-feature override models validate with
+  `isEntitlementKey` and name the request field `entitlementKey`; the admin
+  feature-flags page lists `ENTITLEMENT_KEYS`; `pricing-benefits.ts` drops
+  `documents` from `FEATURE_PRIORITY`; `pricing-ladders.ts` keeps
+  `ROLE_MARKER_FEATURES`. The API payload key `features` and its field names
+  are unchanged until phase 6.
+- `catalog-invariants` now pins `entitlement_catalog` to `ENTITLEMENTS`
+  including `category`/`scope`/`seat_eligible`/`personal_portable`/
+  `quota_limit_key` (1b pinned the key set only) and narrows the flag assertion
+  to `SURFACE_ENTITLEMENT_KEYS`; `limit_catalog` still equals `LIMITS` key and
+  scope from its new home. `org-features` and `org-role-features-rls` pin the
+  member set to `['flashcards', 'quiz']`; the resolver, pricing and
+  subscription-plan fixtures drop `documents`.
+- Docs: this ledger, the rollout phase-1 block, `docs/limits.md` (catalog paths,
+  key list, member set) and the STU-03 case text/spec comment are corrected.
+  STU-03's spec assertions are unchanged.
+
+**Follow-ups this phase creates:**
+
+- **Phase 2** still deletes the four management markers, and must keep the 1b
+  delete order: plan rows before catalog rows.
+- Two QA case texts from the pre-approved 37-case map still describe the member
+  set as including `documents` (`qa/cases/MGR-SEAT-02.md`, phase 4;
+  `qa/cases/EDU-GRP-05.md`, phase 2). Their specs derive the set from the API,
+  so only the prose is stale; the phase that rewrites each case corrects it.
+- `docs/audits/features-perms-weak-spots.md` keeps the pre-cutover identifiers
+  on purpose: it records the state the ADR was written against.
+
+**Difficulty log**
+
+#### 2026-11-19 — the catalog's declaration order is the API payload order
+
+What: the 1b `entitlement_catalog` insert lists keys in ADR §5.1 order (paid
+surfaces first); declaring `ENTITLEMENTS` in that order and letting
+`ENTITLEMENT_KEYS` order the resolver would have reordered `/features/me` for
+every user. The DB order has no reader, so the two orders were free to differ.
+Why: `FEATURES`' order had become the de-facto payload contract without any
+test asserting the catalog order — the resolver unit tests assert exact arrays.
+Fix: declared `ENTITLEMENTS` in the legacy order minus `documents` (appending a
+key is the only reordering), and pinned metadata rather than order in
+`catalog-invariants`.
+Rule: a catalog array a resolver emits is an API contract, not a set — reordering
+it is a behaviour change and needs its own PR.
+
+#### 2026-11-19 — one key, two foreign keys, opposite delete rules
+
+What: `documents` is a child of both `entitlement_catalog` (1b's FK, no
+cascade) and `entitlement_flags` (the original FK, `ON DELETE CASCADE`).
+Deleting the flag first would have removed the plan/role/override rows through
+the cascade while the catalog FK's rule would have rejected the same delete in
+the other order.
+Why: 1b added a restrictive FK beside a cascading one; nothing records which is
+authoritative for a removal.
+Fix: the migration deletes explicitly in dependency order (`plan_entitlements`
+first) and deletes the role/override rows itself, so it does not depend on
+either constraint's rule; the comment names the two rules.
+Rule: when two constraints disagree about a delete, delete explicitly in
+dependency order; never rely on one constraint's CASCADE to satisfy another.
+
+#### 2026-11-19 — the membership set is prose in the docs and the QA corpus
+
+What: after dropping `documents` from the catalog and the seeds, `docs/limits.md`
+and STU-03's case text still told a reader the member role receives it;
+MGR-SEAT-02 and EDU-GRP-05 repeat the set too.
+Why: the set is written out in prose instead of being derived from
+`ENTITLEMENTS`/`LEARNER_ENTITLEMENTS`.
+Fix: corrected `docs/limits.md` and STU-03 (in the pre-approved 37-case map, its
+assertions unchanged) here; recorded the two other case texts for the phases
+that rewrite them.
+Rule: grep a removed key in `docs/` and `qa/cases/`, not only in code — the case
+text is the product spec.
 
 ### Phase 2 — authority
 

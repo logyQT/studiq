@@ -1,6 +1,7 @@
 /**
  * Canonical limit catalog — the single source of truth for limit keys and the
- * scope each one applies to (#233).
+ * scope each one applies to (#233). `limit_catalog` is pinned to this object by
+ * `__tests__/integration/catalog-invariants.test.ts`.
  *
  * Resolution rule (enforced by `limits.resolver.ts`):
  *

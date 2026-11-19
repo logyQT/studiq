@@ -1,4 +1,4 @@
-import { LIMIT_KEYS } from '@studiq/server/services/limit.catalog';
+import { LIMIT_KEYS } from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
 import { getVisibleLimitKeys, SORTED_LIMIT_KEYS } from '@/lib/pricing-limits';
 

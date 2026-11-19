@@ -1020,6 +1020,6 @@ interpretation.
 - [`docs/audits/features-perms-weak-spots.md`](../audits/features-perms-weak-spots.md) — evidence, register, reproduction cases.
 - [`docs/limits.md`](../limits.md) — current plan/feature/limit reference.
 - [`docs/decisions/0007-manager-plan-model.md`](0007-manager-plan-model.md) — manager personal plan decision (kept; its `for_account_type` inference is superseded).
-- `packages/authz/src/features.ts`, `packages/server/src/services/feature.resolver.ts`, `limits.resolver.ts`, `seat.service.ts`, `org-role.service.ts`.
+- `packages/authz/src/entitlements.ts`, `packages/authz/src/limits.ts`, `packages/server/src/services/feature.resolver.ts`, `limits.resolver.ts`, `seat.service.ts`, `org-role.service.ts`.
 - `supabase/migrations/20261024124756_rls_all_public_tables.sql`, `20261024151122_drop_org_limits.sql`.
 - Issue #971 (personal plan inside an org), #233 (limit precedence), #799 (stale entitlement cache).

@@ -1,6 +1,6 @@
 'use client';
 
-import { FEATURES } from '@studiq/authz';
+import { ENTITLEMENT_KEYS } from '@studiq/authz';
 import {
   Button,
   Card,
@@ -84,7 +84,7 @@ export default function FeatureFlagsPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const existingKeys = new Set(flags.map((flag) => flag.key));
-  const missingKeys = FEATURES.filter((key) => !existingKeys.has(key));
+  const missingKeys = ENTITLEMENT_KEYS.filter((key) => !existingKeys.has(key));
   const canCreate = !isLoading && !isError && missingKeys.length > 0;
 
   function mapError(err: Error): string {

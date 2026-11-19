@@ -1,6 +1,12 @@
-import { FEATURES, PERMISSIONS, Permission } from '@studiq/authz';
+import {
+  ENTITLEMENT_KEYS,
+  ENTITLEMENTS,
+  LIMITS,
+  PERMISSIONS,
+  Permission,
+  SURFACE_ENTITLEMENT_KEYS,
+} from '@studiq/authz';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
-import { LIMITS } from '@studiq/server/services/limit.catalog';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -8,20 +14,22 @@ import { createServiceClient } from '#test/integration/helpers';
 
 // Catalog invariants for the role-authority programme (ADR-0015 §8.2).
 //
-// The catalogs exist in three places — TypeScript (`PERMISSIONS`, `FEATURES`,
-// `LIMITS`), the migrations and the seeds — and only the database knows whether
-// they agree. Every assertion here reads the live catalog:
+// The catalogs exist in three places — TypeScript (`PERMISSIONS`,
+// `ENTITLEMENTS`, `LIMITS`), the migrations and the seeds — and only the
+// database knows whether they agree. Every assertion here reads the live
+// catalog:
 //
 //  - `permissions` is exactly `PERMISSIONS` (key, category, allowed_scopes,
 //    assignable). Phase 0b asserted the key set against `Permission`; that is
 //    now the subset half, because the catalog is wider than the 26 keys code
 //    reads through `ctx.permissionScopes`;
-//  - `entitlement_catalog` is exactly the `FEATURES` key set;
+//  - `entitlement_catalog` is exactly `ENTITLEMENTS`, including the metadata a
+//    reader gates on (category, scope, seat/personal flags, quota key);
 //  - `limit_catalog` is exactly `LIMITS`, with the same scope per key;
-//  - `permissions` and `FEATURES` stay disjoint namespaces;
-//  - every `FEATURES` key still has an `entitlement_flags` row (the 0b
-//    assertion, kept until phase 3 makes a missing row fail closed for surface
-//    keys only).
+//  - `permissions` and `ENTITLEMENTS` stay disjoint namespaces;
+//  - every surface entitlement has an `entitlement_flags` row. Baseline keys
+//    are always on and may be absent (§8.2 #8); a missing flag row fails closed
+//    from phase 3.
 
 describe('catalog invariants', () => {
   let service: SupabaseClient<Database>;
@@ -31,7 +39,14 @@ describe('catalog invariants', () => {
     allowed_scopes: string[];
     assignable: boolean;
   }>;
-  let entitlementKeys: string[];
+  let entitlementRows: Array<{
+    key: string;
+    category: string;
+    scope: string;
+    seat_eligible: boolean;
+    personal_portable: boolean;
+    quota_limit_key: string | null;
+  }>;
   let limitRows: Array<{ key: string; scope: string }>;
   let flagKeys: string[];
 
@@ -48,11 +63,11 @@ describe('catalog invariants', () => {
 
     const { data: entitlements, error: entitlementsError } = await service
       .from('entitlement_catalog')
-      .select('key');
+      .select('key, category, scope, seat_eligible, personal_portable, quota_limit_key');
     if (entitlementsError) {
       throw new Error(`[catalog] entitlement_catalog lookup failed: ${entitlementsError.message}`);
     }
-    entitlementKeys = dbRows(entitlements).map((row) => row.key);
+    entitlementRows = dbRows(entitlements);
 
     const { data: limits, error: limitsError } = await service
       .from('limit_catalog')
@@ -72,8 +87,8 @@ describe('catalog invariants', () => {
   });
 
   it('no permission is an entitlement key, except the phase-2 management marker', () => {
-    const features = new Set<string>(FEATURES);
-    const overlap = permissionRows.map((row) => row.key).filter((key) => features.has(key));
+    const entitlements = new Set<string>(ENTITLEMENT_KEYS);
+    const overlap = permissionRows.map((row) => row.key).filter((key) => entitlements.has(key));
 
     // `group.manage` is a catalog permission (§4.1) and still a legacy
     // entitlement key: phase 2 deletes the four management markers
@@ -107,8 +122,21 @@ describe('catalog invariants', () => {
     expect(missing).toEqual([]);
   });
 
-  it('the entitlement catalog is exactly the FEATURES key set', () => {
-    expect(new Set(entitlementKeys)).toEqual(new Set(FEATURES));
+  it('the entitlement catalog is exactly ENTITLEMENTS, including its metadata', () => {
+    const catalog = new Map(entitlementRows.map((row) => [row.key, row]));
+
+    expect(new Set(catalog.keys())).toEqual(new Set(ENTITLEMENT_KEYS));
+
+    for (const [key, definition] of Object.entries(ENTITLEMENTS)) {
+      const row = catalog.get(key);
+      if (!row) throw new Error(`entitlement_catalog row missing for catalog key ${key}`);
+
+      expect(row.category, key).toBe(definition.category);
+      expect(row.scope, key).toBe(definition.scope);
+      expect(row.seat_eligible, key).toBe(definition.seatEligible);
+      expect(row.personal_portable, key).toBe(definition.personalPortable);
+      expect(row.quota_limit_key, key).toBe(definition.quota);
+    }
   });
 
   it('the limit catalog is exactly the LIMITS catalog, key and scope', () => {
@@ -121,9 +149,9 @@ describe('catalog invariants', () => {
     }
   });
 
-  it('every feature key has a flag row', () => {
+  it('every surface entitlement has a flag row', () => {
     const flags = new Set(flagKeys);
-    const missing = FEATURES.filter((key) => !flags.has(key));
+    const missing = SURFACE_ENTITLEMENT_KEYS.filter((key) => !flags.has(key));
 
     expect(missing).toEqual([]);
   });

@@ -35,7 +35,7 @@ export class PlanFeatureService {
       .from('plan_entitlements')
       .insert({
         plan_key: input.planKey,
-        entitlement_key: input.featureKey,
+        entitlement_key: input.entitlementKey,
       })
       .select()
       .single();

@@ -21,9 +21,9 @@ the legacy `student1@dev.local` / `pass` account):
   organization with the default group `G1`, its manager/teacher, and the student
   the case logs in as;
 - the organization keeps its default `launch` plan, whose member role grants
-  `flashcards`, `quiz` and `documents` but **not** `ai.chat` — the entitlement
-  behind „Asystent Q”, and the reason the item is absent for the case's Base-plan
-  S1. `/api/v1/features/me` is asserted, so the gate is tested, not the copy.
+  `flashcards` and `quiz` but **not** `ai.chat` — the entitlement behind
+  „Asystent Q”, and the reason the item is absent for the case's Base-plan S1.
+  `/api/v1/features/me` is asserted, so the gate is tested, not the copy.
 
 Every org/user/group id is `tenantId(key, entity)`; each independent run folds a
 fresh suffix into the key, and nothing global is written.

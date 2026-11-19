@@ -1,6 +1,6 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
-import { isFeatureKey } from '@studiq/authz';
+import { isEntitlementKey } from '@studiq/authz';
 
 export const CreateUserFeatureOverrideSchema = registry.register(
   'CreateUserFeatureOverrideRequest',
@@ -8,13 +8,13 @@ export const CreateUserFeatureOverrideSchema = registry.register(
     userId: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    featureKey: z
+    entitlementKey: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .regex(/^[a-z][a-z0-9.]*$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .refine((k) => isFeatureKey(k), {
+      .refine((k) => isEntitlementKey(k), {
         message: ValidationErrorCode.INVALID_INPUT,
-        path: ['featureKey'],
+        path: ['entitlementKey'],
       }),
     isEnabled: z.boolean({ error: ValidationErrorCode.BOOL }),
     reason: z

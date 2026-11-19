@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { AccountType, ORG_LIMIT_KEYS, type RequestContext, USER_LIMIT_KEYS } from '@studiq/authz';
 import { MockPaymentGateway } from '@studiq/server/lib/payment/mock-payment.gateway';
 import { SupabasePaymentHistoryWriter } from '@studiq/server/lib/payment/payment-history.repository';
 import { isRecord, readString } from '@studiq/server/lib/record';
@@ -9,7 +9,6 @@ import { SupabaseStripeBillingRepository } from '@studiq/server/lib/payment/stri
 import { SupabaseStripeWebhookRepository } from '@studiq/server/lib/payment/stripe-webhook.repository';
 import { BillingService } from '@studiq/server/services/billing.service';
 import { EntitlementService } from '@studiq/server/services/entitlement.service';
-import { ORG_LIMIT_KEYS, USER_LIMIT_KEYS } from '@studiq/server/services/limit.catalog';
 import { MockStripeService } from '@studiq/server/services/mock-stripe.service';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 import { dbRows } from '@studiq/server/lib/supabase/rows';

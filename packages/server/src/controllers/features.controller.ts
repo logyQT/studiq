@@ -2,11 +2,11 @@ import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { resolveFeatures } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
-import type { FeatureKey } from '@studiq/authz';
+import type { EntitlementKey } from '@studiq/authz';
 
 export interface MyFeaturesData {
-  features: FeatureKey[];
-  rollout: Partial<Record<FeatureKey, number>>;
+  features: EntitlementKey[];
+  rollout: Partial<Record<EntitlementKey, number>>;
 }
 
 export class FeaturesController {

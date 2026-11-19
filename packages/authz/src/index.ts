@@ -1,17 +1,30 @@
 // @studiq/authz — Authorization primitives for StudiQ.
 //
-// Pure types, constants, and evaluation logic for RBAC, feature flags,
+// Pure types, constants, and evaluation logic for RBAC, entitlement flags,
 // and permissions. No Supabase or app-specific dependencies.
 
-// ── Feature flags ───────────────────────────────────────────────────────────
+// ── Entitlement flags ───────────────────────────────────────────────────────
 export {
-  ADMIN_ONLY_FEATURES,
-  FEATURES,
-  type FeatureKey,
-  type FeatureResolution,
-  isFeatureKey,
+  ADMIN_ONLY_ENTITLEMENTS,
+  type Entitlement,
+  ENTITLEMENT_KEYS,
+  type EntitlementKey,
+  type EntitlementResolution,
+  ENTITLEMENTS,
+  isEntitlementKey,
+  ORG_SCOPED_ENTITLEMENTS,
   rolloutBucket,
-} from './features';
+  SURFACE_ENTITLEMENT_KEYS,
+} from './entitlements';
+// ── Limits ──────────────────────────────────────────────────────────────────
+export {
+  isLimitKey,
+  LIMIT_KEYS,
+  type LimitKey,
+  LIMITS,
+  ORG_LIMIT_KEYS,
+  USER_LIMIT_KEYS,
+} from './limits';
 // ── Permissions ─────────────────────────────────────────────────────────────
 export {
   type CatalogScope,

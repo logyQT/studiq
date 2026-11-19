@@ -41,7 +41,6 @@ describe('getHighlightedFeatures', () => {
       'group.manage',
       'branding',
       'role.builder',
-      'documents',
       'advanced.stats',
       'quiz.builder',
       'ai.chat',
@@ -50,8 +49,8 @@ describe('getHighlightedFeatures', () => {
       'ai.chat',
       'quiz.builder',
       'advanced.stats',
-      'documents',
       'role.builder',
+      'branding',
     ]);
   });
 
@@ -65,7 +64,7 @@ describe('getHighlightedFeatures', () => {
       'member.manage',
       'ai.chat',
       'custom.feature',
-      'documents',
+      'quiz.builder',
       'branding',
       'omega.feature',
     ];

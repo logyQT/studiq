@@ -1,6 +1,6 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
-import { isFeatureKey } from '@studiq/authz';
+import { isEntitlementKey } from '@studiq/authz';
 
 export const CreateFeatureFlagSchema = registry.register(
   'CreateFeatureFlagRequest',
@@ -11,7 +11,7 @@ export const CreateFeatureFlagSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })
-      .refine((k) => isFeatureKey(k), {
+      .refine((k) => isEntitlementKey(k), {
         message: ValidationErrorCode.INVALID_INPUT,
         path: ['key'],
       }),
@@ -46,7 +46,7 @@ export const UpdateFeatureFlagSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })
-      .refine((k) => isFeatureKey(k), {
+      .refine((k) => isEntitlementKey(k), {
         message: ValidationErrorCode.INVALID_INPUT,
         path: ['key'],
       })

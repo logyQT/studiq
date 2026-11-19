@@ -1,7 +1,7 @@
 # Role-authority rollout — a PR queue into `main`
 
 **Status:** In progress — phase 0 merged (#1162), 0b merged (#1387), 1a
-merged (#1388), 1b in PR.
+merged (#1388), 1b merged (#1389), 1c in PR.
 **Date:** 2026-11-13. Supersedes the 2026-10-31 integration-branch draft.
 **Decision record:** [ADR-0015](../decisions/0015-role-based-authority.md)
 **Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (originally verified against `b4186312`; re-verified 2026-11-19 at `8aab828e`).
@@ -165,14 +165,17 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 
 ### 1 — catalog cutover
 
-> **Delivered 2026-11-19, PR 1 of 2 (phase 1b).** The table renames, the
+> **Delivered 2026-11-19, PR 1 of 2 (phase 1b, #1389).** The table renames, the
 > `limit_catalog` and `entitlement_catalog` tables, the 44-key `PERMISSIONS`
-> catalog and the `org_role_permissions` rewrite are merged-or-in-PR and
-> behaviour-neutral. Still open in this phase (PR 2): export `ENTITLEMENTS`,
-> delete `FEATURES`, `ADMIN_ONLY_FEATURES` and `ORG_SCOPED_FEATURES`, cut the
-> admin/UI catalogs over, and remove `documents` from `plan_entitlements` —
-> except that the four legacy management keys and everything reading them stay
-> until phase 2 (below).
+> catalog and the `org_role_permissions` rewrite are merged and
+> behaviour-neutral.
+>
+> **Delivered 2026-11-19, PR 2 of 2 (phase 1c, in PR).** `ENTITLEMENTS` is
+> exported, `FEATURES`, `ADMIN_ONLY_FEATURES` and `ORG_SCOPED_FEATURES` are
+> deleted (no alias), `LIMITS` lives in `@studiq/authz`, the admin/UI catalogs
+> are cut over, and `documents` is removed from `entitlement_catalog`,
+> `entitlement_flags` and `plan_entitlements`. The four legacy management keys
+> and everything reading them stay until phase 2 (below).
 
 - `@studiq/authz` exports `ENTITLEMENTS` and `PERMISSIONS` with metadata
   (`kind`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES` is
@@ -185,9 +188,9 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 - **The four management keys stay** in `ENTITLEMENTS` and `plan_entitlements`
   until phase 2: `requireFeature('role.builder' | 'member.manage' |
 'group.manage')` and `is_org_manager()` still read them, and phase 2 is where
-  those gates become permissions. `documents` leaves `ENTITLEMENTS` and
-  `plan_entitlements` here — no gate depends on it, and ADR §5.1 keeps it out
-  until it has a surface.
+  those gates become permissions. `documents` left `ENTITLEMENTS` and
+  `plan_entitlements` in phase 1c — no gate depended on it, and ADR §5.1 keeps
+  it out until it has a surface.
 - Update `__tests__/integration/catalog-invariants.test.ts` to the new names
   (`FEATURES` → `ENTITLEMENTS`, `feature_flags` → `entitlement_flags`); the
   `permissions` assertions stay.

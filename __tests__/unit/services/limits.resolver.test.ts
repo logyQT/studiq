@@ -1,5 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
-import type { LimitKey } from '@studiq/server/services/limit.catalog';
+import { AccountType, type LimitKey, type RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';

@@ -106,7 +106,7 @@ describe('PlanFeatureService', () => {
       const insertQb = qb(feature);
       mock.from.mockReturnValueOnce(insertQb);
 
-      const result = await service.create({ planKey: 'base', featureKey: 'quiz' });
+      const result = await service.create({ planKey: 'base', entitlementKey: 'quiz' });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(feature);
@@ -119,7 +119,7 @@ describe('PlanFeatureService', () => {
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.create({ planKey: 'base', featureKey: 'quiz' });
+      const result = await service.create({ planKey: 'base', entitlementKey: 'quiz' });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');

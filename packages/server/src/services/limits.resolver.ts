@@ -1,9 +1,8 @@
-import type { RequestContext } from '@studiq/authz';
+import { isLimitKey, LIMITS, type LimitKey, type RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { isLimitKey, LIMITS, type LimitKey } from '@studiq/server/services/limit.catalog';
 import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';

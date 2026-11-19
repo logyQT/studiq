@@ -193,13 +193,13 @@ describe('splitFeatureRows', () => {
     // make every paid organization plan look worse than the free one.
     const ladder = [
       plan('launch', 'manager', 1, { features: ['flashcards', 'org.manage'] }),
-      plan('team', 'manager', 2, { features: ['flashcards', 'documents'] }),
+      plan('team', 'manager', 2, { features: ['flashcards', 'branding'] }),
     ];
 
     const rows = splitFeatureRows(ladder);
 
     expect(rows.common).toEqual(['flashcards']);
-    expect(rows.differing).toEqual(['documents']);
+    expect(rows.differing).toEqual(['branding']);
   });
 });
 

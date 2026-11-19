@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-10-25.
+> Last updated: 2026-11-19.
 
 ## Summary
 
@@ -39,13 +39,15 @@ The `base` / `launch` defaults come from the seed
 (`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
 original table migrations.
 
-Feature keys: `FEATURES` in
-`packages/authz/src/features.ts` (`ai.chat`, `flashcards`,
-`quiz`, `quiz.builder`, `documents`, `org.manage`, `group.manage`,
-`member.manage`, `role.builder`, `advanced.stats`, `branding`).
+Feature keys: `ENTITLEMENTS` in
+`packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
+`quiz`, `quiz.builder`, `org.manage`, `group.manage`,
+`member.manage`, `role.builder`, `advanced.stats`, `branding`). `documents`
+left the catalog in phase 1c — it has no surface and is deleted, not gated
+(ADR-0015 §5.1).
 
 Limit keys: `LIMITS` in
-`packages/server/src/services/limit.catalog.ts` — the single source of truth
+`packages/authz/src/limits.ts` — the single source of truth
 for both the resolver and the DB rows:
 
 | Scope                     | Keys                                                                                                                       |
@@ -62,7 +64,7 @@ for both the resolver and the DB rows:
 2. seeds their RBAC permissions;
 3. copies `plan_entitlements` for the org's plan into `org_role_features`:
    admin = all; teacher = all except `member.manage` / `role.builder`;
-   member = `flashcards`, `quiz`, `ai.chat`, `documents`, `branding`.
+   member = `flashcards`, `quiz`, `ai.chat`, `branding`.
 
 It copies **no limits** and creates **no seat pools** (pools are created
 on demand since Phase B.5).
