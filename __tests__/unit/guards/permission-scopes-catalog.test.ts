@@ -1,6 +1,6 @@
 /**
  * Guard for N1 (audit §0.1): a `ctx.permissionScopes['…']` read whose key is not
- * in the `Permission` catalog always resolves to `undefined`, so the check
+ * in the closed permission catalog always resolves to `undefined`, so the check
  * silently denies every non-creator. `teacher-assignment.service.ts` shipped
  * with `assignment.read` / `assignment.update` in exactly that state, and only
  * the `assignment-permissions-seed` integration test noticed — after a stack.
@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { Permission } from '@studiq/authz';
+import { Permission, PERMISSIONS } from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
 
 /** `ctx.permissionScopes['assignment.read']` and `resolveScope(ctx, 'deck.read')`. */
@@ -26,7 +26,9 @@ const LITERAL_READS = [
   /resolveScope\(\s*[^,()]+,\s*["']([^"']+)["']\s*\)/g,
 ];
 
+/** The code-readable set (`Permission`) and the wider closed catalog the rows carry. */
 const PERMISSION_KEYS: ReadonlySet<string> = new Set(Object.values(Permission));
+const CATALOG_KEYS: ReadonlySet<string> = new Set(Object.keys(PERMISSIONS));
 
 type ScopeRead = { file: string; key: string; line: number };
 
@@ -82,14 +84,31 @@ describe('permission scope catalog', () => {
     expect(files.has('packages/server/src/services/teacher-assignment.service.ts')).toBe(true);
   });
 
-  it('every literal permission read is a Permission catalog key', () => {
+  it('every literal permission read is a closed-catalog key', () => {
+    // `org_role_permissions` stores the 44-key catalog, which is wider than the
+    // 26-key `Permission` set code reads; a phantom key still resolves to undefined.
     const phantom = scopeReads()
-      .filter((read) => !PERMISSION_KEYS.has(read.key))
+      .filter((read) => !CATALOG_KEYS.has(read.key))
       .map((read) => `${read.file}:${read.line} ${read.key}`);
 
     expect(
       phantom,
-      'Add the key to `Permission` in packages/authz/src/lib/permissions.ts (and to the permissions catalog), or fix the typo: an unknown key resolves to undefined and denies every caller.',
+      'Add the key to `PERMISSIONS` in packages/authz/src/lib/permissions.ts, or fix the typo: an unknown key resolves to undefined and denies every caller.',
     ).toEqual([]);
+  });
+
+  // R15: a catalog key without a `Permission` entry is deliberate, so the set is
+  // pinned instead of deleted. `org.admin` is ownership only (D16) and no route
+  // gates on it through `Permission`.
+  it('pins the catalog keys read outside the Permission set', () => {
+    const outside = [
+      ...new Set(
+        scopeReads()
+          .map((read) => read.key)
+          .filter((key) => !PERMISSION_KEYS.has(key)),
+      ),
+    ].toSorted();
+
+    expect(outside).toEqual(['org.admin']);
   });
 });

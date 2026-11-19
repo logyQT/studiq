@@ -34,6 +34,8 @@ export {
 export {
   type CatalogScope,
   evaluateScope,
+  isCatalogScope,
+  isPermissionCatalogKey,
   PERMISSIONS,
   Permission,
   type PermissionCatalogKey,
@@ -42,6 +44,7 @@ export {
   type PermissionKey,
   type PermissionScope,
   type ResourceAccess,
+  scopeCovers,
 } from './lib/permissions';
 // ── Organization roles ──────────────────────────────────────────────────────
 export {

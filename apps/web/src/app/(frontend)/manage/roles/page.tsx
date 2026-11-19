@@ -1,6 +1,15 @@
 'use client';
 
 import {
+  ENTITLEMENT_PROFILES,
+  type EntitlementProfile,
+  isCatalogScope,
+  isPermissionCatalogKey,
+  PERMISSIONS,
+  type CatalogScope,
+  type PermissionCatalogKey,
+} from '@studiq/authz';
+import {
   Badge,
   Button,
   Card,
@@ -37,47 +46,60 @@ import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 import { isArrayOf } from '@/lib/unknown-value';
 
-const PERMISSION_GROUPS = [
-  {
-    key: 'section_flashcards',
-    permissions: ['flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete'],
-  },
-  {
-    key: 'section_decks',
-    permissions: ['deck.read', 'deck.create', 'deck.update', 'deck.delete'],
-  },
-  {
-    key: 'section_topics',
-    permissions: ['topic.read', 'topic.create', 'topic.update', 'topic.delete'],
-  },
-  {
-    key: 'section_question_banks',
-    permissions: [
-      'question_bank.read',
-      'question_bank.create',
-      'question_bank.update',
-      'question_bank.delete',
-    ],
-  },
-  {
-    key: 'section_questions',
-    permissions: ['question.read', 'question.create', 'question.update', 'question.delete'],
-  },
-];
+/** The closed catalog, grouped by key family: content families, then groups, then org. */
+const CATALOG_KEYS: readonly PermissionCatalogKey[] =
+  Object.keys(PERMISSIONS).filter(isPermissionCatalogKey);
 
-const SCOPES = ['own', 'group', 'organization'] as const;
+const CATALOG_SECTIONS = CATALOG_KEYS.reduce<{ family: string; keys: PermissionCatalogKey[] }[]>(
+  (sections, key) => {
+    const family = key.slice(0, key.indexOf('.'));
+    const section = sections.find((candidate) => candidate.family === family);
+    if (section) section.keys.push(key);
+    else sections.push({ family, keys: [key] });
+    return sections;
+  },
+  [],
+);
+
+/** Section heading per catalog family; a family without a message falls back to its name. */
+const SECTION_LABEL_KEYS: Record<string, string> = {
+  flashcard: 'section_flashcards',
+  deck: 'section_decks',
+  topic: 'section_topics',
+  question: 'section_questions',
+  question_bank: 'section_question_banks',
+  quiz: 'section_quizzes',
+  assignment: 'section_assignments',
+  stats: 'section_stats',
+  group: 'section_classes',
+  org: 'section_organization',
+};
+
+/** next-intl's translator, including `has` for catalog keys a locale may not name yet. */
+interface RolesTranslator {
+  (key: string, values?: Record<string, string | number>): string;
+  has: (key: string) => boolean;
+}
+
+type ScopeMap = Record<string, CatalogScope | null>;
 
 interface OrgRole {
   id: string;
   name: string;
   description: string | null;
   isSystem: boolean;
+  entitlementProfile: EntitlementProfile;
   memberCount: number;
   permissionCount: number;
 }
 
 interface OrgRoleDetail extends OrgRole {
   permissions: { permissionName: string; scope: string }[];
+}
+
+interface RolePermission {
+  permissionName: string;
+  scope: CatalogScope | null;
 }
 
 export default function RolesPage() {
@@ -157,10 +179,15 @@ export default function RolesPage() {
 
   async function handleSavePermissions(
     roleId: string,
-    permissions: { permissionName: string; scope: string }[],
+    permissions: RolePermission[],
+    entitlementProfile: EntitlementProfile | null,
   ) {
     try {
       await apiPut(`/api/v1/organization/roles/${roleId}/permissions`, { permissions });
+      // `null` = the editor does not manage this role's profile (system roles).
+      if (entitlementProfile !== null) {
+        await apiPut(`/api/v1/organization/roles/${roleId}`, { entitlementProfile });
+      }
       toast.success(t('perms_saved'));
       setPermDialogOpen(false);
       setPermRole(null);
@@ -364,25 +391,24 @@ function RoleBuilderLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
   );
 }
 
-function RoleForm({
-  initial,
-  onSave,
-  onCancel,
-  t,
-}: {
+interface RoleFormProps {
   initial?: OrgRole;
   onSave: (role: { name: string; description?: string | null }) => Promise<void>;
   onCancel: () => void;
-  t: (key: string, values?: Record<string, string | number>) => string;
-}) {
-  const [name, setName] = useState(initial?.name ?? '');
-  const [description, setDescription] = useState(initial?.description ?? '');
+  t: RolesTranslator;
+}
+
+function RoleForm({ initial, onSave, onCancel, t }: RoleFormProps) {
+  const [draft, setDraft] = useState({
+    name: initial?.name ?? '',
+    description: initial?.description ?? '',
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     await onSave({
-      name,
-      description: description || null,
+      name: draft.name,
+      description: draft.description || null,
     });
   }
 
@@ -390,11 +416,18 @@ function RoleForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label>{t('name_label')}</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        <Input
+          value={draft.name}
+          onChange={(e) => setDraft((current) => ({ ...current, name: e.target.value }))}
+          required
+        />
       </div>
       <div className="space-y-2">
         <Label>{t('description_label')}</Label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Input
+          value={draft.description}
+          onChange={(e) => setDraft((current) => ({ ...current, description: e.target.value }))}
+        />
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
@@ -416,16 +449,13 @@ function PermissionEditorDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   role: OrgRoleDetail | null;
-  t: (key: string, values?: Record<string, string | number>) => string;
+  t: RolesTranslator;
   onSave: (
     roleId: string,
-    permissions: { permissionName: string; scope: string }[],
+    permissions: RolePermission[],
+    entitlementProfile: EntitlementProfile | null,
   ) => Promise<void>;
 }) {
-  const existingPerms = role
-    ? new Map(role.permissions.map((p) => [p.permissionName, p.scope]))
-    : new Map<string, string>();
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -435,79 +465,203 @@ function PermissionEditorDialog({
         <DialogHeader>
           <DialogTitle>{t('perms_title', { name: role?.name ?? '' })}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-6 py-4">
-          {PERMISSION_GROUPS.map((group) => (
-            <div key={group.key}>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                {t(group.key)}
-              </h3>
-              <div className="space-y-2">
-                {group.permissions.map((perm) => (
-                  <PermissionRow
-                    key={perm}
-                    permissionName={perm}
-                    selected={existingPerms.get(perm) ?? ''}
-                    t={t}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t('common_cancel')}
-          </Button>
-          <Button
-            onClick={() => {
-              if (!role) return;
-              const permissions: { permissionName: string; scope: string }[] = [];
-              const radios = document.querySelectorAll<HTMLInputElement>(
-                'input[data-perm-radio="true"]:checked',
-              );
-              radios.forEach((radio) => {
-                permissions.push({
-                  permissionName: radio.name,
-                  scope: radio.value,
-                });
-              });
-              void onSave(role.id, permissions);
-            }}
-          >
-            {t('perms_save')}
-          </Button>
-        </DialogFooter>
+        {/* Radix unmounts the content on close, so the editor state is rebuilt from
+            the role the page just fetched every time the dialog opens. */}
+        {role && (
+          <PermissionEditorBody
+            role={role}
+            t={t}
+            onSave={onSave}
+            onCancel={() => onOpenChange(false)}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function PermissionRow({
-  permissionName,
-  selected,
+/** The role's current scopes, one entry per catalog key (`null` = not granted). */
+function initialScopes(role: OrgRoleDetail): ScopeMap {
+  const storedScopes = new Map(role.permissions.map((p) => [p.permissionName, p.scope]));
+  const scopes: ScopeMap = {};
+
+  for (const key of CATALOG_KEYS) {
+    const stored = storedScopes.get(key);
+    const allowed: readonly string[] = PERMISSIONS[key].allowedScopes;
+    // The old editor accepted free strings, so a stored scope can fall outside the
+    // catalog's allowed set. Such a grant falls back to revoked, never to a wider
+    // scope than the role held (the first allowed scope can be wider — e.g.
+    // `group.invite`, where `any` is not one of `own | group | organization`).
+    scopes[key] =
+      stored !== undefined && isCatalogScope(stored) && allowed.includes(stored) ? stored : null;
+  }
+
+  return scopes;
+}
+
+function actionLabel(key: string, t: RolesTranslator): string {
+  const action = key.slice(key.indexOf('.') + 1).replaceAll('.', '_');
+  const messageKey = `action_${action}`;
+  return t.has(messageKey) ? t(messageKey) : action.replaceAll('_', ' ');
+}
+
+function sectionTitle(family: string, t: RolesTranslator): string {
+  const messageKey = SECTION_LABEL_KEYS[family];
+  return messageKey && t.has(messageKey) ? t(messageKey) : family;
+}
+
+function PermissionEditorBody({
+  role,
   t,
+  onSave,
+  onCancel,
 }: {
-  permissionName: string;
-  selected: string;
-  t: (key: string, values?: Record<string, string | number>) => string;
+  role: OrgRoleDetail;
+  t: RolesTranslator;
+  onSave: (
+    roleId: string,
+    permissions: RolePermission[],
+    entitlementProfile: EntitlementProfile | null,
+  ) => Promise<void>;
+  onCancel: () => void;
 }) {
-  const label = permissionName.replace(/^[^.]*\./, '').replace(/^./, (c) => c.toUpperCase());
+  const [scopes, setScopes] = useState<ScopeMap>(() => initialScopes(role));
+  const [profile, setProfile] = useState<EntitlementProfile>(role.entitlementProfile);
+
+  function grant(key: PermissionCatalogKey, granted: boolean) {
+    // A granted key starts at its narrowest allowed scope (ADR §4.1).
+    const next = granted ? PERMISSIONS[key].allowedScopes[0] : null;
+    setScopes((current) => ({ ...current, [key]: next }));
+  }
+
+  function setScope(key: PermissionCatalogKey, scope: CatalogScope) {
+    setScopes((current) => ({ ...current, [key]: scope }));
+  }
 
   return (
-    <div className="flex items-center justify-between gap-4 text-sm">
-      <span className="flex-1 font-medium">{label}</span>
+    <>
+      <p className="text-xs text-muted-foreground">{t('perms_hint')}</p>
+      <div className="space-y-6 py-4">
+        {CATALOG_SECTIONS.map((section) => (
+          <div key={section.family}>
+            <h3 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+              {sectionTitle(section.family, t)}
+            </h3>
+            <div className="space-y-2">
+              {section.keys.map((key) => (
+                <PermissionRow
+                  key={key}
+                  permissionKey={key}
+                  scope={scopes[key] ?? null}
+                  // Ownership is not grantable through the editor (D16): a held
+                  // `org.admin` stays a no-op, an absent one stays revoked.
+                  locked={!PERMISSIONS[key].assignable}
+                  t={t}
+                  onGrant={(granted) => grant(key, granted)}
+                  onScope={(scope) => setScope(key, scope)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* A system role's profile is what its entitlement surface rests on: the
+            Admin role's `all` must not be movable from the dictionary editor. */}
+        {!role.isSystem && (
+          <fieldset className="space-y-2 border-t pt-4">
+            <legend className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+              {t('profile_title')}
+            </legend>
+            <p className="text-xs text-muted-foreground">{t('profile_hint')}</p>
+            <div className="flex flex-wrap gap-4">
+              {ENTITLEMENT_PROFILES.map((candidate) => (
+                <label key={candidate} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="entitlement-profile"
+                    value={candidate}
+                    checked={profile === candidate}
+                    onChange={() => setProfile(candidate)}
+                    data-profile-radio="true"
+                    className="size-4"
+                  />
+                  <span>{t(`profile_${candidate}`)}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel}>
+          {t('common_cancel')}
+        </Button>
+        <Button
+          onClick={() => {
+            // The payload is the role's whole set: one entry per catalog key, so a
+            // save can never delete a permission it did not render (D24).
+            const permissions: RolePermission[] = CATALOG_KEYS.map((key) => ({
+              permissionName: key,
+              scope: scopes[key] ?? null,
+            }));
+            void onSave(role.id, permissions, role.isSystem ? null : profile);
+          }}
+        >
+          {t('perms_save')}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function PermissionRow({
+  permissionKey,
+  scope,
+  locked,
+  t,
+  onGrant,
+  onScope,
+}: {
+  permissionKey: PermissionCatalogKey;
+  scope: CatalogScope | null;
+  locked: boolean;
+  t: RolesTranslator;
+  onGrant: (granted: boolean) => void;
+  onScope: (scope: CatalogScope) => void;
+}) {
+  const granted = scope !== null;
+
+  return (
+    <div className="flex items-center justify-between gap-4 text-sm" data-perm-row={permissionKey}>
+      <label className="flex flex-1 items-center gap-2 font-medium">
+        <input
+          type="checkbox"
+          name={permissionKey}
+          checked={granted}
+          disabled={locked}
+          onChange={(e) => onGrant(e.target.checked)}
+          data-perm-toggle="true"
+          className="size-4"
+        />
+        <span>{actionLabel(permissionKey, t)}</span>
+      </label>
       <div className="flex gap-4">
-        {SCOPES.map((scope) => (
-          <label key={scope} className="flex items-center gap-1.5 cursor-pointer">
+        {PERMISSIONS[permissionKey].allowedScopes.map((candidate) => (
+          <label
+            key={candidate}
+            className={`flex items-center gap-1.5 ${locked || !granted ? 'opacity-50' : 'cursor-pointer'}`}
+          >
             <input
               type="radio"
-              name={permissionName}
-              value={scope}
-              defaultChecked={selected === scope}
+              name={permissionKey}
+              value={candidate}
+              checked={scope === candidate}
+              disabled={locked || !granted}
+              onChange={() => onScope(candidate)}
               data-perm-radio="true"
               className="size-4"
             />
-            <span className="text-muted-foreground">{t(`scope_${scope}`)}</span>
+            <span className="text-muted-foreground">{t(`scope_${candidate}`)}</span>
           </label>
         ))}
       </div>

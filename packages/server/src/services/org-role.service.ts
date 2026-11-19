@@ -1,31 +1,109 @@
-import type { RequestContext } from '@studiq/authz';
+import {
+  type CatalogScope,
+  type EntitlementProfile,
+  isCatalogScope,
+  isEntitlementProfile,
+  PERMISSIONS,
+  type PermissionDefinition,
+  type RequestContext,
+  scopeCovers,
+} from '@studiq/authz';
+import { log } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  CreateOrgRoleInput,
-  SetRolePermissionsInput,
-  UpdateOrgRoleInput,
+import {
+  CATALOG_PERMISSION_KEYS,
+  type CreateOrgRoleInput,
+  isCompleteCatalogPayload,
+  type SetRolePermissionsInput,
+  type UpdateOrgRoleInput,
 } from '@studiq/server/models/org-role.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
+const CATALOG = PERMISSIONS as Record<string, PermissionDefinition | undefined>;
+
+/** `entitlement_profile` is a text column with a CHECK; read it through the catalog type. */
+function profileOf(value: string): EntitlementProfile {
+  return isEntitlementProfile(value) ? value : 'none';
+}
+
+interface OrgRoleSummary {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string | null;
+  isSystem: boolean;
+  entitlementProfile: EntitlementProfile;
+}
+
+type OrgRoleRow = Database['public']['Tables']['org_roles']['Row'];
+
+/**
+ * One reading of the role row: `is_system` is nullable (`DEFAULT false`) and
+ * `entitlement_profile` is untyped text, so a role without the flag is a custom
+ * one and an unreadable profile is the fail-closed `none`.
+ */
+function toRoleSummary(
+  role: Pick<
+    OrgRoleRow,
+    'id' | 'name' | 'display_name' | 'description' | 'is_system' | 'entitlement_profile'
+  >,
+): OrgRoleSummary {
+  return {
+    id: role.id,
+    name: role.name,
+    displayName: role.display_name,
+    description: role.description,
+    isSystem: role.is_system ?? false,
+    entitlementProfile: profileOf(role.entitlement_profile),
+  };
+}
+
 export class OrgRoleService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
-  async listRoles(ctx: RequestContext): Promise<
+  async listRoles(
+    ctx: RequestContext,
+  ): Promise<ServiceResult<(OrgRoleSummary & { memberCount: number; permissionCount: number })[]>> {
+    const supabase = await this.clientFactory();
+
+    if (!ctx.activeOrgId) {
+      return failure('FORBIDDEN');
+    }
+
+    const { data, error } = await supabase
+      .from('org_roles')
+      .select(
+        `
+        id, name, display_name, description, is_system, entitlement_profile,
+        org_members:org_members(count),
+        org_role_permissions:org_role_permissions(count)
+      `,
+      )
+      .eq('organization_id', ctx.activeOrgId)
+      .order('name');
+
+    if (error) return toDbFailure(error);
+
+    return success(
+      dbRows(data).map((r) => ({
+        ...toRoleSummary(r),
+        memberCount: dbCount(r.org_members),
+        permissionCount: dbCount(r.org_role_permissions),
+      })),
+    );
+  }
+
+  async getRole(
+    ctx: RequestContext,
+    id: string,
+  ): Promise<
     ServiceResult<
-      {
-        id: string;
-        name: string;
-        displayName: string;
-        description: string | null;
-        isSystem: boolean;
-        memberCount: number;
-        permissionCount: number;
-      }[]
+      OrgRoleSummary & { permissions: { permissionName: string; scope: CatalogScope }[] }
     >
   > {
     const supabase = await this.clientFactory();
@@ -38,58 +116,7 @@ export class OrgRoleService {
       .from('org_roles')
       .select(
         `
-        id, name, display_name, description, is_system,
-        org_members:org_members(count),
-        org_role_permissions:org_role_permissions(count)
-      `,
-      )
-      .eq('organization_id', ctx.activeOrgId)
-      .order('name');
-
-    if (error) return toDbFailure(error);
-
-    return success(
-      dbRows(data).map((r) => {
-        const memberCount = dbCount(r.org_members);
-        const permissionCount = dbCount(r.org_role_permissions);
-        return {
-          id: r.id,
-          name: r.name,
-          displayName: r.display_name,
-          description: r.description,
-          // `is_system` is nullable (`DEFAULT false`); a role without the flag is a custom one.
-          isSystem: r.is_system ?? false,
-          memberCount,
-          permissionCount,
-        };
-      }),
-    );
-  }
-
-  async getRole(
-    ctx: RequestContext,
-    id: string,
-  ): Promise<
-    ServiceResult<{
-      id: string;
-      name: string;
-      displayName: string;
-      description: string | null;
-      isSystem: boolean;
-      permissions: { permissionName: string; scope: string }[];
-    }>
-  > {
-    const supabase = await this.clientFactory();
-
-    if (!ctx.activeOrgId) {
-      return failure('FORBIDDEN');
-    }
-
-    const { data, error } = await supabase
-      .from('org_roles')
-      .select(
-        `
-        id, name, display_name, description, is_system,
+        id, name, display_name, description, is_system, entitlement_profile,
         org_role_permissions(permission_name, scope)
       `,
       )
@@ -100,29 +127,25 @@ export class OrgRoleService {
     if (error) return toDbFailure(error);
 
     return success({
-      id: data.id,
-      name: data.name,
-      displayName: data.display_name,
-      description: data.description,
-      // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
-      isSystem: data.is_system ?? false,
-      permissions: dbRows(data.org_role_permissions).map((p) => ({
-        permissionName: p.permission_name,
-        scope: p.scope,
-      })),
+      ...toRoleSummary(data),
+      permissions: dbRows(data.org_role_permissions).flatMap((p) =>
+        isCatalogScope(p.scope) ? [{ permissionName: p.permission_name, scope: p.scope }] : [],
+      ),
     });
   }
 
   async createRole(
     ctx: RequestContext,
     data: CreateOrgRoleInput,
-  ): Promise<
-    ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
-  > {
+  ): Promise<ServiceResult<OrgRoleSummary>> {
     const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
+    }
+
+    if (data.entitlementProfile !== undefined && !isEntitlementProfile(data.entitlementProfile)) {
+      return failure('UNPROCESSABLE_ENTITY');
     }
 
     const { data: role, error } = await supabase
@@ -133,29 +156,22 @@ export class OrgRoleService {
         display_name: data.name,
         description: data.description ?? null,
         is_system: false,
+        // A custom role starts with no paid surface (ADR-0015 §4.2, fail-closed).
+        entitlement_profile: data.entitlementProfile ?? 'none',
       })
-      .select('id, name, display_name, description, is_system')
+      .select('id, name, display_name, description, is_system, entitlement_profile')
       .single();
 
     if (error) return toDbFailure(error);
 
-    return success({
-      id: role.id,
-      name: role.name,
-      displayName: role.display_name,
-      description: role.description,
-      // `is_system` is nullable (`DEFAULT false`); createRole always writes `false`.
-      isSystem: role.is_system ?? false,
-    });
+    return success(toRoleSummary(role));
   }
 
   async updateRole(
     ctx: RequestContext,
     id: string,
     data: UpdateOrgRoleInput,
-  ): Promise<
-    ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
-  > {
+  ): Promise<ServiceResult<OrgRoleSummary>> {
     const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
@@ -186,6 +202,18 @@ export class OrgRoleService {
       update.display_name = data.name;
     }
     if (data.description !== undefined) update.description = data.description;
+    if (data.entitlementProfile !== undefined) {
+      update.entitlement_profile = data.entitlementProfile;
+    }
+
+    // The schema rejects a profile outside the enum; the service is a direct entry
+    // point too (tests, scripts), so it checks the catalog as well.
+    if (
+      update.entitlement_profile !== undefined &&
+      !isEntitlementProfile(update.entitlement_profile)
+    ) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
 
     if (Object.keys(update).length === 0) {
       return failure('BAD_REQUEST');
@@ -196,19 +224,12 @@ export class OrgRoleService {
       .update(update)
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
-      .select('id, name, display_name, description, is_system')
+      .select('id, name, display_name, description, is_system, entitlement_profile')
       .single();
 
     if (error) return toDbFailure(error);
 
-    return success({
-      id: role.id,
-      name: role.name,
-      displayName: role.display_name,
-      description: role.description,
-      // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
-      isSystem: role.is_system ?? false,
-    });
+    return success(toRoleSummary(role));
   }
 
   async deleteRole(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
@@ -252,6 +273,17 @@ export class OrgRoleService {
     return success(undefined);
   }
 
+  /**
+   * Replace a role's permission set (ADR-0015 §4.4, §9; D16, D20, D21, D24).
+   *
+   * The payload is the role's whole catalog set, so the write below cannot strand a
+   * permission the editor does not render (D24). It is written target-first — upsert
+   * the granted rows, then prune the rest — so a failure can only leave a superset
+   * (recoverable on the next save), never an emptied role. Everything the write would
+   * change is authorized first: no self-edit unless the caller owns the org, no
+   * ownership grant or revoke, and no change to a scope the caller does not hold —
+   * removal needs authority over what is removed, addition over what is added.
+   */
   async setPermissions(
     ctx: RequestContext,
     id: string,
@@ -266,36 +298,106 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
+    // The schema enforces this at the controller; the service is a direct entry
+    // point too (tests, scripts) and the write below relies on the guarantee.
+    if (!isCompleteCatalogPayload(data.permissions)) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
+
     // Scope the role to the active org before touching its permissions.
     // A role outside the active org is indistinguishable from a missing role
     // (PGRST116 -> NOT_FOUND, 404) so role ids cannot be probed across tenants.
-    const { error: roleError } = await supabase
+    const { data: role, error: roleError } = await supabase
       .from('org_roles')
-      .select('id')
+      .select('id, name, org_role_permissions(permission_name, scope)')
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
     if (roleError) return toDbFailure(roleError);
 
-    const { error: deleteError } = await supabase
-      .from('org_role_permissions')
-      .delete()
-      .eq('org_role_id', id);
-
-    if (deleteError) return toDbFailure(deleteError);
-
-    if (data.permissions.length > 0) {
-      const rows = data.permissions.map((p) => ({
-        org_role_id: id,
-        permission_name: p.permissionName,
-        scope: p.scope,
-      }));
-
-      const { error: insertError } = await supabase.from('org_role_permissions').insert(rows);
-
-      if (insertError) return toDbFailure(insertError);
+    const current = new Map<string, CatalogScope>();
+    for (const row of dbRows(role.org_role_permissions)) {
+      if (isCatalogScope(row.scope)) current.set(row.permission_name, row.scope);
     }
+
+    const target = new Map<string, CatalogScope | null>();
+    for (const key of CATALOG_PERMISSION_KEYS) target.set(key, null);
+    for (const entry of data.permissions) target.set(entry.permissionName, entry.scope);
+    // A stored row the payload does not mention is a removal, exactly as the
+    // write below replaces the whole set.
+    for (const key of current.keys()) {
+      if (!target.has(key)) target.set(key, null);
+    }
+
+    // D21: an org.admin holder may edit their own role — otherwise a single-admin
+    // organization could never touch its own Admin role.
+    const callerHoldsOwnership = scopeCovers(ctx.permissionScopes['org.admin'], 'organization');
+
+    if (id === ctx.orgRoleId && !callerHoldsOwnership) {
+      return failure('FORBIDDEN');
+    }
+
+    for (const [key, next] of target) {
+      const held = current.get(key) ?? null;
+      if (held === next) continue;
+
+      // D16: ownership is not a grant the role editor may hand out or withdraw.
+      if (!CATALOG[key]?.assignable) return failure('UNPROCESSABLE_ENTITY');
+
+      if (callerHoldsOwnership) continue;
+
+      const mine = ctx.permissionScopes[key];
+      if (held && !scopeCovers(mine, held)) return failure('FORBIDDEN');
+      if (next && !scopeCovers(mine, next)) return failure('FORBIDDEN');
+    }
+
+    const rows: { org_role_id: string; permission_name: string; scope: CatalogScope }[] = [];
+    for (const [permissionName, scope] of target) {
+      if (scope) rows.push({ org_role_id: id, permission_name: permissionName, scope });
+    }
+
+    // Target-first: a failed upsert leaves the previous set untouched and a failed
+    // prune leaves a superset the next save prunes. The other order (delete every
+    // row, then insert) would empty the role on a write timeout, and the Admin role
+    // could not be restored through the editor afterwards (its own `org.admin` row
+    // would be gone before the self-edit guard, and nothing else writes permissions).
+    if (rows.length > 0) {
+      const { error: upsertError } = await supabase
+        .from('org_role_permissions')
+        .upsert(rows, { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false });
+
+      if (upsertError) return toDbFailure(upsertError);
+    }
+
+    const granted = rows.map((row) => row.permission_name);
+    let prune = supabase.from('org_role_permissions').delete().eq('org_role_id', id);
+    if (granted.length > 0) {
+      // PostgREST list syntax; catalog keys are namespaced identifiers, so they
+      // carry no quote or comma that would need escaping inside the list.
+      prune = prune.not(
+        'permission_name',
+        'in',
+        `(${granted.map((name) => `"${name}"`).join(',')})`,
+      );
+    }
+
+    const { error: pruneError } = await prune;
+
+    if (pruneError) return toDbFailure(pruneError);
+
+    // D20: no audit table in phase 2 — the change is a log record with the actor,
+    // the role and both key→scope maps.
+    log('org role permissions changed', {
+      'actor.user_id': ctx.userId,
+      'org.id': ctx.activeOrgId,
+      'role.id': id,
+      'role.name': role.name,
+      'permissions.before': Object.fromEntries(current),
+      'permissions.after': Object.fromEntries(
+        rows.map((row) => [row.permission_name, row.scope] as const),
+      ),
+    });
 
     return success(undefined);
   }
