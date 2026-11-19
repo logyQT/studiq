@@ -28,9 +28,9 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
 
 **Next action:** phase 0b (#1387) and phase 1a (#1388) are merged; phase 1b
-(the behaviour-neutral catalog rename) is in PR. Phase 1's catalog cutover —
-deleting `FEATURES`, the denylists and the four legacy management keys — starts
-after 1b merges.
+(the behaviour-neutral catalog rename) is in PR. Phase 1's catalog cutover
+deletes `FEATURES`, the denylists and `documents`; the four legacy management
+keys stay until phase 2, which replaces their gates.
 
 ## 2. How to update this file
 
@@ -161,7 +161,7 @@ Rule: R8 and R9.
   catalog: `handle_new_organization` copies `permissions`, so their
   `admin`/`teacher` roles carry 32 → 26 rows and `member` 26 → 20, and a new-org
   member's `/permissions/me` no longer lists `ai.chat`/`org.manage`.
-  `org.manage` stays in `feature_flags` and `ADMIN_ONLY_FEATURES` until phase 1.
+  `org.manage` stays in `feature_flags` and `ADMIN_ONLY_FEATURES` until phase 2.
 - The dead `X-Feature-Rollout` header and its two comments deleted; the `rollout`
   field still ships in the response body, and `feature_flags.rollout_percentage`
   stays, until phase 3 / D8 removes both.
