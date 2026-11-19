@@ -734,6 +734,12 @@ The role editor is a first-class admin screen, not an API-only feature.
 - Every change is audited (`actor`, `target role`, `before`, `after`).
 - Role/permission changes invalidate `/me/permissions` for affected members.
 
+> **2026-11-19 (phase 2a-3).** The closed catalog, the no-self-edit rule and the
+> "you cannot grant what you do not hold" rule are enforced server-side in
+> `OrgRoleService.setPermissions` (422 for a payload that is not the complete
+> catalog or a scope a key does not allow, 403 for self-edit and escalation),
+> because that write replaces the role's whole permission set.
+
 ---
 
 ## 10. Class / group model

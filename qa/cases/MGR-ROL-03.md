@@ -33,6 +33,9 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
   (admin) i `seed-student-<hash>@dev.local` / `Seed4Test!` (użytkownik roli niestandardowej).
 - Rola niestandardowa `content-reader` (`is_system = false`, 0 uprawnień na starcie) —
   warunek wstępny przypadku. Użytkownik z tą rolą jest członkiem organizacji i grupy `G1`.
+  Spec zeruje uprawnienia **przez edytor** (odznaczenie wszystkich wierszy i zapis), bo
+  `PUT /organization/roles/<id>/permissions` przyjmuje teraz komplet kluczy katalogu, a
+  nie pustą listę.
 - Edycja uprawnień roli to funkcja `role.builder` z planu Hub+, a plan Launch celowo jej
   nie ma. Spec przenosi **własną** organizację na plan `hub` przez produktowe
   `apply_org_plan()` — katalog planów, flagi funkcji i inne organizacje pozostają nietknięte.
@@ -49,7 +52,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 ## Steps
 
 1. Otwórz edycję uprawnień roli.
-2. Dla sekcji Fiszki, Talie, Tematy, Banki pytań, Pytania ustaw zakres: Własne / Grupa / Organizacja.
+2. Dla sekcji Fiszki, Talie, Tematy, Banki pytań, Pytania zaznacz uprawnienia i ustaw zakres: Własne / Grupa / Organizacja.
 3. Kliknij „Zapisz uprawnienia”.
 4. Zaloguj się jako użytkownik z tą rolą i sprawdź dostęp do treści.
 
@@ -57,20 +60,36 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 
 - Toast „Uprawnienia zaktualizowane”.
 - Zakres „Własne” → widzi tylko swoje; „Grupa” → treści grupy; „Organizacja” → treści całej organizacji.
+- Zapis wysyła komplet kluczy katalogu (44 wpisy: zaznaczony klucz z wybranym zakresem,
+  odznaczony jako brak uprawnienia), więc zapis nie usuwa uprawnień, których edytor nie
+  wyświetla. Odznaczenie wszystkich wierszy to jedyny sposób wyzerowania roli.
 
-## Observations (walk 2026-10-28, shared app :3010, worker qa-env-2)
+## Observations (2026-11-19, phase 2a-3 — closed-catalog editor)
+
+Stan po przepisaniu edytora na zamknięty katalog uprawnień (ADR-0015 §4.1, §9). Poniższe
+punkty opisują to, co spec pinuje; przebieg 5/5 wykonuje koordynator programu.
 
 - `/manage/roles` na planie Hub pokazuje listę rol systemowych (`admin`, `member`,
   `teacher`) i rolę niestandardową z badge „Niestandardowa”, licznikiem członków i
   licznikiem uprawnień („0 uprawnień” przed edycją). Kolumna „Akcje” ma trzy przyciski:
   „Uprawnienia roli <nazwa>”, „Edytuj rolę <nazwa>”, „Usuń rolę <nazwa>”.
-- Edytor to dialog „Edytuj uprawnienia: <nazwa>” z pięcioma sekcjami (Fiszki, Talie,
-  Tematy, Banki pytań, Pytania). Każda sekcja ma cztery wiersze (Read/Create/Update/Delete)
-  i trzy radio-przyciski: Własne / Grupa / Organizacja — razem 20 wierszy i 60 opcji.
+- Edytor to dialog „Edytuj uprawnienia: <nazwa>” z **całym katalogem uprawnień**: 44
+  wiersze w 10 sekcjach (Fiszki, Talie, Tematy, Pytania, Banki pytań, Testy, Kartkówki,
+  Statystyki, Grupy, Organizacja). Każdy wiersz ma checkbox i zakresy ograniczone do
+  `allowed_scopes` danego klucza — łącznie 113 opcji zakresu (content 31 × 3, grupy
+  3 × 3 + „Zaproszenia” 2, organizacja 9 × 1). Sekcje treściowe mają trzy zakresy:
+  Własne / Grupa / Organizacja.
+- Wiersz `org.admin` („Właściciel organizacji”) jest zawsze nieaktywny: rola
+  niestandardowa go nie otrzymuje, a Admin ma go na stałe — edytor nigdy nie przyznaje
+  własności organizacji.
+- Pod listą znajduje się „Profil uprawnień” (Wszystkie / Uczeń / Brak). Rola
+  niestandardowa startuje z „Brak” i zapis dialogu utrwala wybór razem z uprawnieniami;
+  `GET /api/v1/organization/roles/<id>` zwraca `entitlementProfile`.
 - „Zapisz uprawnienia” pokazuje toast „Uprawnienia zaktualizowane” (sonner), zamyka
-  dialog i odświeża licznik na liście („20 uprawnień”). Ponowne otwarcie edytora pokazuje
-  zapisane zakresy jako zaznaczone; `GET /api/v1/organization/roles/<id>` zwraca dokładnie
-  20 wierszy uprawnień z wybranym zakresem.
+  dialog i odświeża licznik na liście („20 uprawnień”, bo zaznaczono 20 kluczy
+  treściowych). Ponowne otwarcie edytora pokazuje zapisane zakresy jako zaznaczone;
+  `GET /api/v1/organization/roles/<id>` zwraca dokładnie 20 wierszy uprawnień z wybranym
+  zakresem, a żądanie zapisu zawiera 44 wpisy (pozostałe z `scope: null`).
 - Zakresy działają na liście treści i w API stron (`/api/v1/flashcards/decks`,
   `/api/v1/flashcards`, `/api/v1/topics`, `/api/v1/questions/banks`,
   `/api/v1/questions`), dla wszystkich pięciu sekcji:

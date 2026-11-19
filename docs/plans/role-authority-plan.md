@@ -34,9 +34,11 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 8     | extendability audit (release gate)             | pending | —     | —   | all 188 + E2E             | 2026-11-19 |
 
 **Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389) and 1c (#1390,
-`67cfeb16`) are merged. Phase 2 is active; slice **2a-1** (the entitlement
-profile) is written on `feat/authority-2a-1`. The four legacy management keys
-stay until slice 2b, which replaces their gates with permissions.
+`67cfeb16`) are merged. Phase 2 is active: slice **2a-1** (the entitlement
+profile) is written on `feat/authority-2a-1`, and slice **2a-3** (the
+closed-catalog role editor) on `feat/authority-2a-3`, which lands **before**
+2a-2 by D24. The four legacy management keys stay until slice 2b, which replaces
+their gates with permissions.
 
 ## 2. How to update this file
 
@@ -72,36 +74,38 @@ stay until slice 2b, which replaces their gates with permissions.
 | R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable  |
 | R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                     |
 | R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                     |
+| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                        | the `org.role.manage` gate would have been deletable by one role save   |
 
 ## 4. Decisions
 
 All settled 2026-11-13; the full wording is ADR-0015 §15.
 
-| #   | Decision                                                                                                                                                                                                                                                                                                   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | `org.admin` is a real permission for ownership only; no superuser override                                                                                                                                                                                                                                 |
-| D2  | Managers get a free `solo` plan; `launch` is organization-only                                                                                                                                                                                                                                             |
-| D3  | Personal plans are portable for `personalPortable` keys and user-scope quotas only                                                                                                                                                                                                                         |
-| D4  | A seat can only raise a user-scope limit: `max(org, seat, personal)`, `-1` short-circuits                                                                                                                                                                                                                  |
-| D5  | v1 ships `entitlement_profile` (`all \| learner \| none`); allocation is deferred                                                                                                                                                                                                                          |
-| D6  | Teacher `all`, Member `learner`, Custom `none`                                                                                                                                                                                                                                                             |
-| D7  | Class invites use `group.invite` for existing org members; no external invites in v1                                                                                                                                                                                                                       |
-| D8  | Flags are a kill switch only (`is_enabled = false`); no rollout percentage                                                                                                                                                                                                                                 |
-| D9  | `flashcards` and `quiz` are baseline, always on, never gated                                                                                                                                                                                                                                               |
-| D10 | `account_type` is not renamed in this programme; the semantics change only                                                                                                                                                                                                                                 |
-| D11 | This programme fixes control-plane RLS only; content RLS is a separate security ADR                                                                                                                                                                                                                        |
-| D12 | Overrides bypass flags                                                                                                                                                                                                                                                                                     |
-| D13 | A `student` persona may hold the Admin role                                                                                                                                                                                                                                                                |
-| D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                      |
-| D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
-| D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                         |
-| D17 | Role templates are editor presets, not extra org rows: every org keeps admin/teacher/member; Assistant/Billing/Read-only/Blank are created from a template via POST /organization/roles. ADR §4.2 is amended to match §9.                                                                                  |
-| D18 | Teacher profile 'all' means the org ceiling minus the four legacy management markers; markers resolve only from org_role_features rows, so a Teacher never inherits member.manage/role.builder.                                                                                                            |
-| D19 | entitlement_profile is authoritative for non-marker entitlement keys; legacy rows are read only for marker grants and explicit is_enabled=false revokes. Phase 3 deletes the legacy writer.                                                                                                                |
-| D20 | Role changes are logged (actor, role, before, after) through @studiq/server/lib/log until an audit table exists; no audit subsystem is invented in phase 2.                                                                                                                                                |
-| D21 | Changing or removing a grant requires authority over the current scope as well as the target; org.admin holders are exempt from 'no self-edit', or a single-admin org could never edit its own Admin role.                                                                                                 |
-| D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                         |
-| D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                  |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | `org.admin` is a real permission for ownership only; no superuser override                                                                                                                                                                                                                                                                                                                                                                                         |
+| D2  | Managers get a free `solo` plan; `launch` is organization-only                                                                                                                                                                                                                                                                                                                                                                                                     |
+| D3  | Personal plans are portable for `personalPortable` keys and user-scope quotas only                                                                                                                                                                                                                                                                                                                                                                                 |
+| D4  | A seat can only raise a user-scope limit: `max(org, seat, personal)`, `-1` short-circuits                                                                                                                                                                                                                                                                                                                                                                          |
+| D5  | v1 ships `entitlement_profile` (`all \| learner \| none`); allocation is deferred                                                                                                                                                                                                                                                                                                                                                                                  |
+| D6  | Teacher `all`, Member `learner`, Custom `none`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| D7  | Class invites use `group.invite` for existing org members; no external invites in v1                                                                                                                                                                                                                                                                                                                                                                               |
+| D8  | Flags are a kill switch only (`is_enabled = false`); no rollout percentage                                                                                                                                                                                                                                                                                                                                                                                         |
+| D9  | `flashcards` and `quiz` are baseline, always on, never gated                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D10 | `account_type` is not renamed in this programme; the semantics change only                                                                                                                                                                                                                                                                                                                                                                                         |
+| D11 | This programme fixes control-plane RLS only; content RLS is a separate security ADR                                                                                                                                                                                                                                                                                                                                                                                |
+| D12 | Overrides bypass flags                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| D13 | A `student` persona may hold the Admin role                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                                                                                                                                                                              |
+| D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`.                                                                                                                                                         |
+| D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                                                                                                                                                                                 |
+| D17 | Role templates are editor presets, not extra org rows: every org keeps admin/teacher/member; Assistant/Billing/Read-only/Blank are created from a template via POST /organization/roles. ADR §4.2 is amended to match §9.                                                                                                                                                                                                                                          |
+| D18 | Teacher profile 'all' means the org ceiling minus the four legacy management markers; markers resolve only from org_role_features rows, so a Teacher never inherits member.manage/role.builder.                                                                                                                                                                                                                                                                    |
+| D19 | entitlement_profile is authoritative for non-marker entitlement keys; legacy rows are read only for marker grants and explicit is_enabled=false revokes. Phase 3 deletes the legacy writer.                                                                                                                                                                                                                                                                        |
+| D20 | Role changes are logged (actor, role, before, after) through @studiq/server/lib/log until an audit table exists; no audit subsystem is invented in phase 2.                                                                                                                                                                                                                                                                                                        |
+| D21 | Changing or removing a grant requires authority over the current scope as well as the target; org.admin holders are exempt from 'no self-edit', or a single-admin org could never edit its own Admin role.                                                                                                                                                                                                                                                         |
+| D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                                                                                                                                                                                 |
+| D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                                                                                                                                                                          |
+| D24 | **The editor lands before the gate flip.** 2a-3 (closed-catalog editor + complete payload) precedes 2a-2 (`requirePermission('org.role.manage')`): `setPermissions` deletes every row for the role and re-inserts only the payload, while the old editor rendered 20 hardcoded keys, so flipping the gate first would let one save on the Admin role delete `org.role.manage` and every `group.*`/`org.*` row and lock the org out of role management permanently. |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -573,10 +577,14 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 | Slice    | Contents                                                                                                                                          | Size                    |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | **2a-1** | `entitlement_profile` + trigger/seed/backfill + profile-driven resolver + RLS fallback. Closes the RLS twin of FP-01 in the same PR.              | ~750 (`size:exception`) |
+| **2a-3** | closed-catalog editor + complete payload + audit log. Lands **before** 2a-2 (D24).                                                                | ~400 (`size:exception`) |
 | **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | ~200                    |
-| **2a-3** | closed-catalog editor + complete payload + audit log.                                                                                             | ~400 (`size:exception`) |
 | **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                     | ~90                     |
 | **2a-5** | fail-closed scope defaults.                                                                                                                       | ~110                    |
+
+The table is in **landing order**, not the original plan's order: 2a-3 goes before
+2a-2 because the gate flip is only safe once the editor sends the complete catalog
+(D24).
 
 **2a-1 shipped on `feat/authority-2a-1` (PR pending):**
 
@@ -726,6 +734,100 @@ Rule: when a phase makes a producer non-authoritative, grep the QA corpus for
 fixtures that write to that producer **in the same PR**, and run at least one
 full shard; a smoke set chosen by case ID will miss the cases whose _fixtures_
 depend on the old writer.
+
+**2a-3 shipped on `feat/authority-2a-3` (PR pending; lands before 2a-2 — D24):**
+
+- `RolePermissionEntrySchema` is a **closed catalog**: `permissionName` is one of
+  the 44 `PERMISSIONS` keys, `scope` is `own | group | organization | null`
+  (`null` = revoke). `SetRolePermissionsSchema` adds a `superRefine` that
+  requires exactly one entry per catalog key (a missing or duplicate key is a 422
+  whose issue path names it) and a scope inside that key's `allowedScopes`
+  (`group.invite` has no `own`, `org.*` only `organization`). The schema is the
+  write contract: `orgRoleService.setPermissions` replaces the role's whole set,
+  so a partial payload is now rejected before it can delete anything.
+- `OrgRoleService.setPermissions` keeps the #263 tenant proof untouched and adds,
+  in order: the no-self-edit rule (`id === ctx.orgRoleId` → 403 unless the caller
+  holds `org.admin`, D21); a per-key authorization pass over **every** key that
+  changes (a grant needs the caller to hold the key at a scope covering the
+  target, a removal over the current scope); the D16 rule that a non-assignable
+  key may only be re-sent as a no-op (`org.admin` grant or revoke → 422); then
+  the delete-then-insert of every non-null entry. Each successful change logs
+  actor, org, role id/name and the before/after key→scope maps through
+  `@studiq/server/lib/log` (D20 — no audit table).
+- `org_roles.entitlement_profile` is read by `listRoles`/`getRole` and written by
+  `createRole` (default `none` for a custom role) and `updateRole`, guarded by
+  `isEntitlementProfile`. `CreateOrgRoleSchema`/`UpdateOrgRoleSchema` accept
+  `entitlementProfile`; there is **no** `template` field yet (2a-2).
+- `@studiq/authz` exports `scopeCovers(held, wanted)` beside `evaluateScope`
+  (own < group < organization), so the editor's authority rule and the runtime
+  evaluator share one order table.
+- `/manage/roles` renders the closed catalog instead of the hardcoded 20 keys:
+  sections are derived from `PERMISSIONS` (10 sections — the eight content
+  families then groups and org), each row has a grant checkbox and only that
+  key's allowed scope radios (113 radios in total), `org.admin` is permanently
+  disabled (held = no-op at `organization`, absent = never granted), and Save
+  sends one entry per catalog key. The entitlement-profile picker
+  (`all | learner | none`) writes `entitlementProfile` through
+  `PUT /organization/roles/:id` in the same save. The `role.builder` gate, the
+  locked card and the `featuresPending` guard are unchanged (the gate flip is
+  2a-2).
+- i18n (`pl` + `en`): the five legacy section labels stay, five new sections
+  (`section_quizzes`, `section_assignments`, `section_stats`, `section_classes`,
+  `section_organization`), the derived action labels (`action_*`) and the
+  profile strings; both locales carry the same 68 keys.
+- Tests: `__tests__/unit/models/org-role.model.test.ts` (closed catalog,
+  duplicate, missing key names, `allowedScopes`, profile enum) and
+  `__tests__/unit/controllers/org-role.controller.test.ts` (a rejected payload
+  never reaches the service) pin the schema; the service suite covers unknown
+  tenant, self-edit vs the `org.admin` exemption, grant escalation, removal
+  escalation, the `org.admin` no-op and both write failures; the integration
+  suite keeps #263 and adds "a complete payload preserves a no-op row the caller
+  cannot change" and the `entitlement_profile` round-trip. QA `MGR-ROL-03`
+  asserts 44 rows, 10 sections, the complete payload on every save and a reset as
+  "untick every row" (its case text moved with the spec); `MGR-ROL-01/02/04` only
+  name `role.builder` and the permission button, so their premise is unchanged.
+- Gates: `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`,
+  `review:static`, `knip`, `dup:base`, `format:check` (the coordinator runs
+  integration, QA, the build and the merge).
+
+**Follow-ups this slice creates:**
+
+- **2a-2** adds `org_role_permissions.permission_key` → `permissions(key)` and the
+  backfill, then flips the gate to `requirePermission('org.role.manage')`. The
+  complete payload is the prerequisite (D24); the FK's backfill must run before
+  the constraint, because existing orgs keep rows the closed catalog knows but the
+  old free-text editor could also have written unknown ones.
+- **2a-2 / phase 6** may disable rows the _caller_ cannot change. Today only
+  non-assignable keys are disabled; an escalation attempt reaches the server and
+  surfaces as the generic `perms_save_failed` toast, because the editor does not
+  read the caller's own scopes.
+- The profile write is a second request after the permission write; a failure
+  between them leaves the permissions saved and the profile unchanged, and the
+  retry is idempotent. Merging both into one endpoint is a phase-6 API change.
+- `getRole` drops a stored row whose `scope` is outside the catalog's three
+  scopes (a legacy `any` row from the old editor); the editor then shows it as
+  ungranted and a save rewrites it.
+
+**Difficulty log**
+
+#### 2026-11-19 — the gate flip would have deleted the permission that gates it
+
+What: the planned order was 2a-2 (flip writes to `org.role.manage`) then 2a-3
+(the editor). `setPermissions` deletes **every** row for the role and re-inserts
+only the payload, and the old editor rendered 20 hardcoded keys; the seeded Admin
+role holds all 44. One save on the Admin role after the flip would delete
+`org.role.manage` and every `group.*`/`org.*` row, and no member of the org could
+re-open the editor to restore them — an unrecoverable lockout written by the very
+slice that was meant to tighten authority.
+Why: the two slices were sized independently and the order came from the plan's
+numbering, not from what each write path does. A complete payload has to exist
+before the gate can safely move, because the gate is one of the rows the payload
+rewrites.
+Fix: swapped the landing order (2a-3 first, D24), kept the `role.builder` gate in
+this PR, and recorded the order in the slice table, the rollout plan and D24. The
+schema's completeness rule is what makes the delete-then-insert safe — a partial
+payload is now a 422 that writes nothing.
+Rule: R17.
 
 ### Phase 3 — entitlements and limits
 

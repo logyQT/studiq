@@ -1,10 +1,11 @@
+import { PERMISSIONS } from '@studiq/authz';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { json } from '#test/helpers/json';
+import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
 import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
 
 /**
- * MGR-ROL-03 — the role permission editor (`/manage/roles` → „Uprawnienia roli”).
+ * MGR-ROL-03 — the closed-catalog role permission editor (`/manage/roles` → „Uprawnienia roli”).
  *
  * Prerequisite (reconciled with the tenant seeder): an **existing custom role** with
  * one member. The legacy manual seed (`manager@dev.local`, password `pass`) is never
@@ -24,19 +25,28 @@ import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
  * flags and every other org are untouched.
  *
  * The spec then provisions the case's own prerequisite **through the product API**:
- * it resets any content a previous run on the same seeded tenant left behind, creates
- * the `content-reader` custom role (zero grants), creates the three content families
- * that make the scopes distinguishable — `own` by the custom-role member, `group`
- * shared with the tenant's default group, `org` at organization level — and finally
- * grants the role to the member. Nothing is written through the service role.
+ * it creates the `content-reader` custom role, clears it through the editor, creates
+ * the three content families that make the scopes distinguishable — `own` by the
+ * custom-role member, `group` shared with the tenant's default group, `org` at
+ * organization level — and finally grants the role to the member. Nothing is written
+ * through the service role.
+ *
+ * The editor renders the **closed catalog** (ADR-0015 §4.1, §9), not a hardcoded
+ * subset: 44 rows in 10 sections, with each row's scope options limited to that key's
+ * `allowed_scopes`. Saving sends one entry per catalog key — ticked rows carry the
+ * chosen scope, unticked rows `null` — so a save can never delete a permission the
+ * editor does not render. A reset is therefore "untick every row", not an empty
+ * payload.
  *
  * Acceptance points:
- * 1. „Uprawnienia roli” opens the editor with the five case sections (Fiszki, Talie,
- *    Tematy, Banki pytań, Pytania) and the three scopes (Własne / Grupa / Organizacja)
- *    for every read/create/update/delete row.
+ * 1. „Uprawnienia roli” opens the editor with the ten catalog sections and 44 rows;
+ *    the five content sections (Fiszki, Talie, Tematy, Banki pytań, Pytania) carry the
+ *    three scopes (Własne / Grupa / Organizacja) for every read/create/update/delete
+ *    row. Each save carries the complete catalog.
  * 2. „Zapisz uprawnienia” shows the toast „Uprawnienia zaktualizowane”, closes the
- *    dialog and persists exactly the 20 chosen permission scopes; reopening the
- *    editor shows them pre-selected.
+ *    dialog and persists exactly the 20 chosen content scopes; reopening the editor
+ *    shows them pre-selected. The role's entitlement profile („Profil uprawnień”) is
+ *    part of the same dialog and round-trips as `none` for this custom role.
  * 3. A user holding that role sees content according to the scope, for every section:
  *    „Własne” → only their own rows, „Grupa” → their own + group-linked rows,
  *    „Organizacja” → every row of the organization. This is checked for all five
@@ -69,6 +79,27 @@ const SECTIONS = [
 ] as const;
 
 const ACTIONS = ['read', 'create', 'update', 'delete'] as const;
+
+/**
+ * The closed catalog the editor renders (ADR-0015 §4.1): one row per key, grouped
+ * into ten sections. The arithmetic behind the counts is the catalog itself —
+ * content 31 × 3 scopes, group 3 × 3 + `group.invite` 2, org 9 × 1.
+ */
+const CATALOG_KEYS = Object.keys(PERMISSIONS);
+const CATALOG_ROWS = 44;
+const CATALOG_RADIOS = 113;
+const CATALOG_SECTIONS = [
+  'Fiszki',
+  'Talie',
+  'Tematy',
+  'Pytania',
+  'Banki pytań',
+  'Testy',
+  'Kartkówki',
+  'Statystyki',
+  'Grupy',
+  'Organizacja',
+] as const;
 
 /** Content names, one per scope family, so the UI can be asserted by name. */
 const CONTENT_NAMES = {
@@ -173,9 +204,10 @@ async function resetContent(page: Page, tenant: QaTenant): Promise<void> {
 }
 
 /**
- * The case's prerequisite: the custom role exists before the editor is opened, with
- * no permissions at all (a fresh tenant has none; a repeated run may still carry the
- * grants the previous run saved).
+ * The case's prerequisite: the custom role exists before the editor is opened.
+ * Grants are cleared through the editor itself (a repeated run on the same seeded
+ * tenant can still carry the previous run's rows), because the write endpoint now
+ * takes the complete catalog and an empty payload would be rejected.
  */
 async function ensureCustomRole(page: Page): Promise<string> {
   const roles = await getJson<Array<{ id: string; name: string; isSystem: boolean }>>(
@@ -183,14 +215,12 @@ async function ensureCustomRole(page: Page): Promise<string> {
     '/api/v1/organization/roles',
   );
   const existing = roles.find((role) => !role.isSystem && role.name === ROLE_NAME);
-  const role =
-    existing ??
-    (await postJson<{ id: string }>(page, '/api/v1/organization/roles', {
-      name: ROLE_NAME,
-      description: ROLE_DESCRIPTION,
-    }));
+  if (existing) return existing.id;
 
-  await putJson(page, `/api/v1/organization/roles/${role.id}/permissions`, { permissions: [] });
+  const role = await postJson<{ id: string }>(page, '/api/v1/organization/roles', {
+    name: ROLE_NAME,
+    description: ROLE_DESCRIPTION,
+  });
   return role.id;
 }
 
@@ -379,15 +409,22 @@ interface RolePermission {
   scope: string;
 }
 
-async function readRolePermissions(page: Page, roleId: string): Promise<RolePermission[]> {
+async function readRoleDetail(
+  page: Page,
+  roleId: string,
+): Promise<{ permissions: RolePermission[]; entitlementProfile: string }> {
   const response = await page.request.get(`/api/v1/organization/roles/${roleId}`);
   expect(response.status(), `GET /api/v1/organization/roles/${roleId}`).toBe(200);
   const body = await json<{
     success: boolean;
-    data: { permissions: RolePermission[] };
+    data: { permissions: RolePermission[]; entitlementProfile: string };
   }>(response);
   expect(body.success, 'role detail success').toBe(true);
-  return body.data.permissions;
+  return { permissions: body.data.permissions, entitlementProfile: body.data.entitlementProfile };
+}
+
+async function readRolePermissions(page: Page, roleId: string): Promise<RolePermission[]> {
+  return (await readRoleDetail(page, roleId)).permissions;
 }
 
 /** Open „Uprawnienia roli <name>” and return the editor dialog. */
@@ -398,21 +435,35 @@ async function openPermissionEditor(page: Page, roleName: string) {
   return dialog;
 }
 
-/** Set every section to one scope, the way a tester ticks the 20 radios. */
-async function setAllSections(dialog: Locator, scope: Scope) {
+/** Every ticked row back to „not granted” — the editor's reset is unticking, not an empty payload. */
+async function clearAllGrants(dialog: Locator) {
+  const ticked = dialog.locator('input[data-perm-toggle="true"]:checked');
+  while ((await ticked.count()) > 0) await ticked.first().uncheck();
+  await expect(dialog.locator('input[data-perm-toggle="true"]:checked')).toHaveCount(0);
+}
+
+/** Tick the five content sections and set each to one scope. */
+async function setContentSections(dialog: Locator, scope: Scope) {
   for (const section of SECTIONS) {
     for (const action of ACTIONS) {
+      const name = `${section.key}.${action}`;
+      await dialog.locator(`input[data-perm-toggle="true"][name="${name}"]`).check();
       await dialog
-        .locator(`input[data-perm-radio="true"][name="${section.key}.${action}"][value="${scope}"]`)
+        .locator(`input[data-perm-radio="true"][name="${name}"][value="${scope}"]`)
         .check();
     }
   }
   await expect(dialog.locator('input[data-perm-radio="true"]:checked')).toHaveCount(20);
 }
 
+/** The complete permission payload one save must send: one entry per catalog key. */
+interface SaveBody {
+  permissions: { permissionName: string; scope: string | null }[];
+}
+
 /**
- * A full manager round: sign in, open the role editor, set the five sections to
- * `scope`, save, assert the toast + persistence + readback.
+ * A full manager round: sign in, open the role editor, set the five content sections
+ * to `scope`, save, assert the toast + the complete payload + persistence + readback.
  */
 async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Promise<void> {
   await signInAs(page, context.tenant, 'manager', /\/manage$/);
@@ -427,20 +478,34 @@ async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Pr
 
   const dialog = await openPermissionEditor(page, ROLE_NAME);
 
-  // The editor always offers the five case sections and the three scopes per row.
-  for (const section of SECTIONS) {
-    await expect(dialog.getByText(section.title, { exact: true })).toBeVisible();
+  // The editor renders the closed catalog: ten sections, 44 rows, one scope option
+  // per key's `allowed_scopes` (113 radios in total).
+  await expect(dialog.locator('[data-perm-row]')).toHaveCount(CATALOG_ROWS);
+  await expect(dialog.locator('input[data-perm-radio="true"]')).toHaveCount(CATALOG_RADIOS);
+  for (const title of CATALOG_SECTIONS) {
+    await expect(dialog.getByText(title, { exact: true })).toBeVisible();
   }
-  await expect(dialog.locator('input[data-perm-radio="true"]')).toHaveCount(
-    SECTIONS.length * ACTIONS.length * 3,
-  );
   for (const label of ['Własne', 'Grupa', 'Organizacja']) {
     await expect(dialog.getByText(label, { exact: true }).first()).toBeVisible();
   }
 
-  await setAllSections(dialog, scope);
+  await setContentSections(dialog, scope);
 
+  const saveRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' &&
+      new URL(request.url()).pathname ===
+        `/api/v1/organization/roles/${context.roleId}/permissions`,
+  );
   await dialog.getByRole('button', { name: SAVE_LABEL }).click();
+
+  // The payload is the whole catalog, not just the 20 ticked rows (D24).
+  const body = asJson<SaveBody>((await saveRequest).postDataJSON());
+  expect(body.permissions, 'complete catalog payload').toHaveLength(CATALOG_ROWS);
+  expect(new Set(body.permissions.map((entry) => entry.permissionName))).toEqual(
+    new Set(CATALOG_KEYS),
+  );
+  expect(body.permissions.filter((entry) => entry.scope !== null)).toHaveLength(20);
 
   // Step 3: toast „Uprawnienia zaktualizowane”, dialog closes, list reloads.
   await expect(
@@ -579,10 +644,33 @@ test.describe('@case:MGR-ROL-03 @area:MGR @prio:P2 role permission editor', () =
     // Role and content are in place; the editor opens on the tenant's own role.
     await page.goto('/manage/roles');
     await expect(page.getByRole('heading', { level: 1, name: 'Role' })).toBeVisible();
+
+    // The prerequisite is a role with no grants. A reset is "untick every row" in
+    // the editor (the API takes the complete catalog, so `{permissions: []}` is
+    // rejected now); the save sends all 44 keys as `null`.
+    const resetDialog = await openPermissionEditor(page, ROLE_NAME);
+    await expect(resetDialog.locator('[data-perm-row]')).toHaveCount(CATALOG_ROWS);
+    await clearAllGrants(resetDialog);
+    const resetRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'PUT' &&
+        new URL(request.url()).pathname === `/api/v1/organization/roles/${roleId}/permissions`,
+    );
+    await resetDialog.getByRole('button', { name: SAVE_LABEL }).click();
+    const resetBody = asJson<SaveBody>((await resetRequest).postDataJSON());
+    expect(resetBody.permissions, 'reset sends every catalog key').toHaveLength(CATALOG_ROWS);
+    expect(resetBody.permissions.every((entry) => entry.scope === null)).toBe(true);
+    await expect(resetDialog).toHaveCount(0);
+    expect(await readRolePermissions(page, roleId), 'a reset role holds no rows').toHaveLength(0);
+
     const roleRow = page.getByRole('row', { name: new RegExp(ROLE_NAME) });
     await expect(roleRow.locator('td').nth(1).getByText('Niestandardowa')).toBeVisible();
     await expect(roleRow.locator('td').nth(2)).toHaveText('1');
     await expect(roleRow.locator('td').nth(3)).toHaveText('0 uprawnień');
+
+    // The dialog also writes the role's entitlement profile; a custom role stays on
+    // the fail-closed `none` unless a manager picks another.
+    expect((await readRoleDetail(page, roleId)).entitlementProfile).toBe('none');
 
     // „Własne” for all five sections → the member sees only their own content.
     await saveRoleScope(page, context, 'own');

@@ -327,6 +327,16 @@ export const PERMISSIONS = {
 
 export type PermissionCatalogKey = keyof typeof PERMISSIONS;
 
+/** Whether `value` is a key of the closed permission catalog. */
+export function isPermissionCatalogKey(value: string): value is PermissionCatalogKey {
+  return Object.hasOwn(PERMISSIONS, value);
+}
+
+/** Whether `value` is one of the three scopes a catalog key can carry (not `any`). */
+export function isCatalogScope(value: string): value is CatalogScope {
+  return value === 'own' || value === 'group' || value === 'organization';
+}
+
 export interface ResourceAccess {
   createdBy: string;
   orgId: string | null;
@@ -339,6 +349,19 @@ const SCOPE_ORDER: Record<PermissionScope, number> = {
   organization: 2,
   any: 3,
 };
+
+/**
+ * Whether `held` is at least as wide as `wanted` (own < group < organization <
+ * any). The role editor uses it to decide whether the caller may grant a scope
+ * or remove a grant it currently holds (ADR-0015 §4.4, D21).
+ */
+export function scopeCovers(
+  held: PermissionScope | null | undefined,
+  wanted: PermissionScope,
+): boolean {
+  if (!held) return false;
+  return SCOPE_ORDER[held] >= SCOPE_ORDER[wanted];
+}
 
 export function evaluateScope(
   scope: PermissionScope | null | undefined,

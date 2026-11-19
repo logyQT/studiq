@@ -77,45 +77,45 @@ model-neutral and only need the seeder to keep working. (The corpus has two
 counts: 176 spec files — 170 distinct cases plus 6 temporary re-runs — and 188
 case documents, 18 of which have no spec yet.)
 
-| Case        | Asserts today                                                                       | Required change                                                           | Phase |
-| ----------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----- |
-| AUT-07      | persona landing dashboards; nav excludes plan-gated items                           | shell follows the active org's permissions                                | 6     |
-| AUT-11      | `/login`, `/register` redirect by JWT `account_type`                                | redirect from role/active org                                             | 6     |
-| AUT-16      | student 3xx off `/edu`, `/manage`, `/setup`                                         | no persona gate on org routes; permission 403                             | 2     |
-| AUT-17      | teacher 3xx off `/app`, `/manage`                                                   | same                                                                      | 2     |
-| AUT-18      | manager 3xx off `/app`, `/edu`                                                      | role-derived shell                                                        | 6     |
-| AUT-19      | student 403 on `/teacher/*`, `/organization/members`                                | permission check replaces account-type gate                               | 2     |
-| BIL-01      | `/me/plan` = one plan key with `features[]` + `limits{}`                            | effective plan union + one contract                                       | 3     |
-| BIL-04      | checkout re-syncs snapshots, lifts branding/builder locks                           | profiles + atomic plan change (endpoint rename in 6)                      | 3 → 6 |
-| BIL-05      | 403 when `for_account_type` ≠ caller                                                | `scope`/`audience`; audience is a filter                                  | 4     |
-| EDU-02      | sidebar from `/features/me`; `group.manage` per role                                | `group.manage` permission from `group_members.role`                       | 2     |
-| EDU-GRP-01  | „Nowa grupa” shown from the role's feature snapshot                                 | group-scope permission                                                    | 2     |
-| EDU-GRP-03  | colleague's group locked by `created_by`                                            | teacher of the group may manage it                                        | 2     |
-| EDU-GRP-04  | plan-limited group creation                                                         | permission gate; org capacity unchanged                                   | 2     |
-| EDU-GRP-05  | no `group.manage` → nav hidden, writes 403                                          | permission denial; `group.read` still renders the list                    | 2     |
-| EDU-DECK-03 | group picker lists taught groups                                                    | group-scope read keyed on group role                                      | 2     |
-| EDU-REP-01  | educator inbox = own questions                                                      | org inbox = `org.report.manage`; teacher inbox own/group                  | 2     |
-| LIM-05      | branding 403 after Hub→Launch; admin role "has branding"                            | `org.settings.manage` **and** `branding` entitlement                      | 3     |
-| MGR-01      | teacher/student counters derived from role name                                     | `org.member.manage`; custom roles break role-name classification          | 2     |
-| MGR-02      | manager menu lacks the AI entry; chat admits student/educator                       | manager AI via entitlement                                                | 5     |
-| MGR-ACC-01  | manager „Wybierz plan” + `/me/plan` agreement                                       | `solo`; effective-plan display                                            | 4     |
-| MGR-ROL-01  | Launch lacks `role.builder`; locked card + 403                                      | `org.role.manage` permission                                              | 2     |
-| MGR-ROL-02  | role CRUD gated by `role.builder` on Hub                                            | `org.role.manage`; closed catalog                                         | 2     |
-| MGR-ROL-03  | 20 free-string scopes across 5 sections, live scope swap                            | catalog rename; group scope; no-escalation guard                          | 2     |
-| MGR-ROL-04  | system-role delete 403; role with members undeletable                               | same guards under `org.role.manage`                                       | 2     |
-| MGR-SEAT-01 | pool creation validates only the quantity floor                                     | validate the pool's `plan_key` (`scope='personal'`, `seatEligible`)       | 4     |
-| MGR-SEAT-02 | role-name tier matrix; seat plan = effective plan; 3 keys withheld; AI limit = seat | audience tier; seat ∩ ceiling; `max(org, seat, personal)`; no permissions | 4     |
-| MGR-SEAT-03 | releasing a seat returns the member to base                                         | effective plan union + `max` limits                                       | 4     |
-| MGR-SET-01  | Launch branding lock; rename unaffected                                             | entitlement + `org.settings.manage` for rename too                        | 3     |
-| MGR-SET-02  | upserts `org_role_features` to grant branding                                       | fixture `apply_org_plan(org, 'hub')`; Admin profile `all` ∩ plan ceiling  | 2a-1  |
-| MGR-SET-05  | downgrade hides the logo; `/features/me` drops branding                             | `change_org_plan`; endpoint rename in 6                                   | 3 → 6 |
-| ONB-07      | org switch keeps `/edu`; active-org content only                                    | shell follows the active org; org-keyed cache                             | 6     |
-| PUB-02      | `/features` sells „Zarządzanie Organizacją”, „Masowe Zaproszenia”                   | none — the spec asserts structure, not plan contents                      | —     |
-| PUB-03      | `?for=manager` → launch/team/hub/campus                                             | manager personal = `solo`; scope/audience                                 | 4     |
-| PUB-04      | plan cards render `features[]` incl. „Zarządzanie Grupami”                          | none — the cards derive from the API                                      | —     |
-| SEC-05      | student 403 on `/teacher/*` writes and teacher stats                                | own-scope content permissions                                             | 2     |
-| SEC-06      | student+teacher 403 on member/role writes; manager needs both keys                  | `org.member.manage` / `org.role.manage`                                   | 2     |
-| STU-03      | sidebar from `/features/me`; member role grants flashcards/quiz/documents           | `/me/entitlements`; `learner` profile without `documents`                 | 3 → 6 |
+| Case        | Asserts today                                                                       | Required change                                                              | Phase |
+| ----------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ----- |
+| AUT-07      | persona landing dashboards; nav excludes plan-gated items                           | shell follows the active org's permissions                                   | 6     |
+| AUT-11      | `/login`, `/register` redirect by JWT `account_type`                                | redirect from role/active org                                                | 6     |
+| AUT-16      | student 3xx off `/edu`, `/manage`, `/setup`                                         | no persona gate on org routes; permission 403                                | 2     |
+| AUT-17      | teacher 3xx off `/app`, `/manage`                                                   | same                                                                         | 2     |
+| AUT-18      | manager 3xx off `/app`, `/edu`                                                      | role-derived shell                                                           | 6     |
+| AUT-19      | student 403 on `/teacher/*`, `/organization/members`                                | permission check replaces account-type gate                                  | 2     |
+| BIL-01      | `/me/plan` = one plan key with `features[]` + `limits{}`                            | effective plan union + one contract                                          | 3     |
+| BIL-04      | checkout re-syncs snapshots, lifts branding/builder locks                           | profiles + atomic plan change (endpoint rename in 6)                         | 3 → 6 |
+| BIL-05      | 403 when `for_account_type` ≠ caller                                                | `scope`/`audience`; audience is a filter                                     | 4     |
+| EDU-02      | sidebar from `/features/me`; `group.manage` per role                                | `group.manage` permission from `group_members.role`                          | 2     |
+| EDU-GRP-01  | „Nowa grupa” shown from the role's feature snapshot                                 | group-scope permission                                                       | 2     |
+| EDU-GRP-03  | colleague's group locked by `created_by`                                            | teacher of the group may manage it                                           | 2     |
+| EDU-GRP-04  | plan-limited group creation                                                         | permission gate; org capacity unchanged                                      | 2     |
+| EDU-GRP-05  | no `group.manage` → nav hidden, writes 403                                          | permission denial; `group.read` still renders the list                       | 2     |
+| EDU-DECK-03 | group picker lists taught groups                                                    | group-scope read keyed on group role                                         | 2     |
+| EDU-REP-01  | educator inbox = own questions                                                      | org inbox = `org.report.manage`; teacher inbox own/group                     | 2     |
+| LIM-05      | branding 403 after Hub→Launch; admin role "has branding"                            | `org.settings.manage` **and** `branding` entitlement                         | 3     |
+| MGR-01      | teacher/student counters derived from role name                                     | `org.member.manage`; custom roles break role-name classification             | 2     |
+| MGR-02      | manager menu lacks the AI entry; chat admits student/educator                       | manager AI via entitlement                                                   | 5     |
+| MGR-ACC-01  | manager „Wybierz plan” + `/me/plan` agreement                                       | `solo`; effective-plan display                                               | 4     |
+| MGR-ROL-01  | Launch lacks `role.builder`; locked card + 403                                      | `org.role.manage` permission                                                 | 2     |
+| MGR-ROL-02  | role CRUD gated by `role.builder` on Hub                                            | `org.role.manage`; closed catalog                                            | 2     |
+| MGR-ROL-03  | 20 free-string scopes across 5 sections, live scope swap                            | closed catalog (44 keys, 10 sections); complete payload; no-escalation guard | 2     |
+| MGR-ROL-04  | system-role delete 403; role with members undeletable                               | same guards under `org.role.manage`                                          | 2     |
+| MGR-SEAT-01 | pool creation validates only the quantity floor                                     | validate the pool's `plan_key` (`scope='personal'`, `seatEligible`)          | 4     |
+| MGR-SEAT-02 | role-name tier matrix; seat plan = effective plan; 3 keys withheld; AI limit = seat | audience tier; seat ∩ ceiling; `max(org, seat, personal)`; no permissions    | 4     |
+| MGR-SEAT-03 | releasing a seat returns the member to base                                         | effective plan union + `max` limits                                          | 4     |
+| MGR-SET-01  | Launch branding lock; rename unaffected                                             | entitlement + `org.settings.manage` for rename too                           | 3     |
+| MGR-SET-02  | upserts `org_role_features` to grant branding                                       | fixture `apply_org_plan(org, 'hub')`; Admin profile `all` ∩ plan ceiling     | 2a-1  |
+| MGR-SET-05  | downgrade hides the logo; `/features/me` drops branding                             | `change_org_plan`; endpoint rename in 6                                      | 3 → 6 |
+| ONB-07      | org switch keeps `/edu`; active-org content only                                    | shell follows the active org; org-keyed cache                                | 6     |
+| PUB-02      | `/features` sells „Zarządzanie Organizacją”, „Masowe Zaproszenia”                   | none — the spec asserts structure, not plan contents                         | —     |
+| PUB-03      | `?for=manager` → launch/team/hub/campus                                             | manager personal = `solo`; scope/audience                                    | 4     |
+| PUB-04      | plan cards render `features[]` incl. „Zarządzanie Grupami”                          | none — the cards derive from the API                                         | —     |
+| SEC-05      | student 403 on `/teacher/*` writes and teacher stats                                | own-scope content permissions                                                | 2     |
+| SEC-06      | student+teacher 403 on member/role writes; manager needs both keys                  | `org.member.manage` / `org.role.manage`                                      | 2     |
+| STU-03      | sidebar from `/features/me`; member role grants flashcards/quiz/documents           | `/me/entitlements`; `learner` profile without `documents`                    | 3 → 6 |
 
 Corrections to the older guess list, recorded so they are not re-litigated:
 `LIM-02..04` are personal caps / a personal upgrade / org-scope capacity, not
@@ -227,19 +227,25 @@ Split into five slices on one short-lived branch, each independently
 reviewable. The slice list and shipped contents live in
 [role-authority-plan.md §5](role-authority-plan.md#phase-2--authority).
 
+**Landing order is 2a-1 → 2a-3 → 2a-2 → 2a-4 → 2a-5** (D24): the closed-catalog
+editor ships before the `org.role.manage` gate moves, because the write that gate
+guards replaces the role's whole permission set and the gate is one of those rows.
+
 - **2a-1** (~750, `size:exception`) — `org_roles.entitlement_profile` (`all | learner | none`),
   the trigger/seed/backfill, the profile-driven `FeatureResolver` org layer and
   the `has_org_feature` zero-row fallback. Closes the RLS twin of FP-01 in the
   same PR (R4).
+- **2a-3** (~400, `size:exception`) — closed-catalog editor, complete payload,
+  audit log **first** (D24). Acceptance criterion (F3): a save through the role
+  editor must not drop permission rows for keys the payload does not manage. The
+  payload is the whole 44-key catalog, `setPermissions` refuses anything else
+  with a 422 and the editor renders every key, so "delete every row, re-insert
+  the payload" can no longer strand a permission — pinned by the model and
+  controller unit tests, the integration no-op case and MGR-ROL-03.
 - **2a-2** (~200) — role templates (Assistant/Billing/Read-only/Blank presets),
   `requirePermission('org.role.manage')` and the editor gate; rewrites
-  MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`.
-- **2a-3** (~400, `size:exception`) — closed-catalog editor, complete payload,
-  audit log. Acceptance criterion (F3): a save through the role editor must not
-  drop permission rows for keys the payload does not manage. `setPermissions`
-  currently deletes every row for the role and re-inserts only the payload, so
-  saving a system role removes the `assignment.*` family #1256 just granted.
-  Pinned by a test that saves a role and asserts the unmanaged rows survive.
+  MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`. Runs on the
+  write path 2a-3 made safe.
 - **2a-4** (~90) — `withAuth` builds `ctx.groupRoles` from
   `group_members.role`; org-scoped group query; add a verified-org helper.
   Closes the cross-org group union.
