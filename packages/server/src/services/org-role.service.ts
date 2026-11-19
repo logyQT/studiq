@@ -220,9 +220,7 @@ export class OrgRoleService {
 
     if (fetchError) return toDbFailure(fetchError);
 
-    if (data.name !== undefined && existing.is_system) {
-      return failure('FORBIDDEN');
-    }
+    if (data.name !== undefined && existing.is_system) return failure('FORBIDDEN');
 
     const update: Database['public']['Tables']['org_roles']['Update'] = {};
     if (data.name !== undefined) update.name = data.name;
@@ -272,18 +270,15 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
-    const { data: role, error: fetchError } = await supabase
+    const { data: row, error: rowError } = await supabase
       .from('org_roles')
       .select('is_system')
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
-    if (fetchError) return toDbFailure(fetchError);
-
-    if (role.is_system) {
-      return failure('FORBIDDEN');
-    }
+    if (rowError) return toDbFailure(rowError);
+    if (row.is_system) return failure('FORBIDDEN');
 
     const { count } = await supabase
       .from('org_members')
