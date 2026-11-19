@@ -24,8 +24,9 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * `display_name`, the same label invitations use), while the case text calls the
  * same role „Member”. The case asks for the *organization's* roles in the picker,
  * so the spec pins the picker against that endpoint instead of hard-coding
- * labels. A custom role would be served by the same endpoint; this tenant's
- * `launch` plan does not include the role builder, so only system roles exist.
+ * labels. A custom role would be served by the same endpoint; this fixture
+ * creates none, so only the three system roles exist (role writes are gated by
+ * `org.role.manage` since 2a-2, not by the plan).
  *
  * The case also asks to record the confirmation copy. The walk confirmed:
  * title „Zmienić rolę?”, description „Czy na pewno chcesz zmienić Teacher?”,
