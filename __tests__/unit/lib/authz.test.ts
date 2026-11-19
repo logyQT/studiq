@@ -122,9 +122,10 @@ describe('authz (unified lib)', () => {
     });
 
     // A stored row is returned verbatim, never reconciled with the persona
-    // default: a role that holds `deck.update` at `own` keeps exactly that, and
-    // its sibling with no row stays denied. A `max(stored, 'own')` — or any other
-    // widening of the stored answer — is red on both sides of that pair.
+    // default, and a key without one stays denied inside the org that could have
+    // granted it. `deck.read`/`deck.update` are both content CRUD, so the default
+    // would answer `own` for them here if the stored row short-circuit or the
+    // in-org null were removed.
     it('returns a stored row as-is and leaves its unrowed sibling null', () => {
       const noOrgEducator: RequestContext = {
         ...baseCtx,
@@ -136,6 +137,21 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(noOrgEducator, 'deck.update')).toBe('own');
       expect(resolveScope(inOrgEducator, 'deck.update')).toBe('own');
       expect(resolveScope(inOrgEducator, 'deck.read')).toBeNull();
+    });
+
+    // The stored value is not narrowed to the persona default: a role holding a
+    // key at `group` keeps `group` even where the default would answer `own`.
+    // A `max(stored, 'own')`, a hard-coded `'own'`, or a `stored ?? default`
+    // that ignored the row are all red here.
+    it('keeps a stored scope wider than the persona default outside an org', () => {
+      const ctx: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        permissionScopes: { 'deck.update': 'group', 'deck.read': 'organization' },
+      };
+
+      expect(resolveScope(ctx, 'deck.update')).toBe('group');
+      expect(resolveScope(ctx, 'deck.read')).toBe('organization');
     });
 
     it('never gives a group or org key the persona default, with or without an org', () => {
