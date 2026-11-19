@@ -141,8 +141,11 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(baseCtx, 'group.read')).toBeNull();
     });
 
+    // `group.read` is a *group* key read: deleting the catalog test with the
+    // category guard is red here only, so the unknown-key case has to be a verb.
     it('returns null for unknown permissions', () => {
       expect(resolveScope(baseCtx, 'role.builder.manage')).toBeNull();
+      expect(resolveScope(baseCtx, 'legacy.read')).toBeNull();
     });
   });
 
