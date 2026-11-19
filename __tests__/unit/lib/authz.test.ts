@@ -102,6 +102,14 @@ describe('authz (unified lib)', () => {
       },
     );
 
+    // The table above runs one case per persona; each row alone must be able to
+    // fail — the student row is the one a "defaults inside an org" branch revives.
+    it('denies a student read inside an org whose role has no row for it', () => {
+      const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
+
+      expect(resolveScope(inOrg, 'deck.read')).toBeNull();
+    });
+
     it('keeps a stored row inside an org instead of the persona default', () => {
       const inOrg: RequestContext = {
         ...baseCtx,
