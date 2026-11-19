@@ -1,5 +1,3 @@
-export type PermissionScope = 'own' | 'group' | 'organization' | 'any';
-
 export const Permission = {
   FLASHCARD_READ: 'flashcard.read',
   FLASHCARD_CREATE: 'flashcard.create',
@@ -51,6 +49,13 @@ export type PermissionKey = (typeof Permission)[keyof typeof Permission];
 
 /** The three scopes a catalog permission can declare (ADR-0015 §4.1). */
 export type CatalogScope = 'own' | 'group' | 'organization';
+
+/**
+ * The scope a request carries for a key — the same three the `org_role_permissions`
+ * CHECK accepts. Legacy `any`/`granted` rows are dropped where a row becomes a scope
+ * (`isPermissionScope`), so nothing downstream sees a fourth value.
+ */
+export type PermissionScope = CatalogScope;
 
 export type PermissionCategory = 'content' | 'group' | 'org';
 
@@ -365,13 +370,12 @@ const SCOPE_ORDER: Record<PermissionScope, number> = {
   own: 0,
   group: 1,
   organization: 2,
-  any: 3,
 };
 
 /**
- * Whether `held` is at least as wide as `wanted` (own < group < organization <
- * any). The role editor uses it to decide whether the caller may grant a scope
- * or remove a grant it currently holds (ADR-0015 §4.4, D21).
+ * Whether `held` is at least as wide as `wanted` (own < group < organization); a
+ * `null` scope covers nothing. The role editor uses it to decide whether the caller
+ * may grant a scope or remove a grant it holds (ADR-0015 §4.4, D21).
  */
 export function scopeCovers(
   held: PermissionScope | null | undefined,

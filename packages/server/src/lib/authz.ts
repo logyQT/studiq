@@ -108,8 +108,6 @@ export function buildQueryFilter(
   }
 
   switch (scope) {
-    case 'any':
-      return {};
     case 'organization':
       return ctx.activeOrgId ? { organization_id: ctx.activeOrgId } : { _impossible: true };
     case 'group':
@@ -136,7 +134,7 @@ export function isResourceType(value: string): value is ResourceType {
 }
 
 export function isPermissionScope(value: unknown): value is PermissionScope {
-  return value === 'own' || value === 'group' || value === 'organization' || value === 'any';
+  return value === 'own' || value === 'group' || value === 'organization';
 }
 
 export function isAccountType(value: unknown): value is AccountType {
@@ -160,8 +158,6 @@ export async function can(
   if (!resource) return true;
 
   switch (scope) {
-    case 'any':
-      return true;
     case 'organization':
       return ctx.activeOrgId != null && resource.organization_id === ctx.activeOrgId;
     case 'own':
@@ -337,8 +333,6 @@ export async function accessibleFilter(
   if (!scope) return { _impossible: true };
 
   switch (scope) {
-    case 'any':
-      return {};
     case 'organization':
       return ctx.activeOrgId ? { organization_id: ctx.activeOrgId } : { _impossible: true };
     case 'own':

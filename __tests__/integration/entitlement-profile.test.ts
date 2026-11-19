@@ -16,7 +16,7 @@ import {
   seedOrgMembership,
   useRealSupabase,
 } from '#test/integration/helpers';
-import { createTypedServiceClient } from '#test/integration/test-utils';
+import { createTypedServiceClient, latestShippedFunction } from '#test/integration/test-utils';
 
 // Phase 2a-1 (ADR-0015 §5.3, D18/D19): the role profile is the entitlement
 // subject for non-marker keys, and `has_org_feature` reads it in its zero-row
@@ -32,19 +32,14 @@ const PASSWORD = 'Prof4Test!';
 const MIGRATION = 'supabase/migrations/20261119180000_authority_entitlement_profile.sql';
 
 /**
- * A shipped function, read from the migration verbatim and installed over the
+ * A shipped function, read from the migrations verbatim and installed over the
  * direct connection. A copy here could pass while production ships something
- * else, and a mutation to the migration has to reach the database to turn these
- * tests red.
+ * else, and a mutation to a migration has to reach the database to turn these
+ * tests red. The newest definition wins, because a later migration can re-create
+ * one of these functions (`20261119211000` does, for the renamed column).
  */
 function shippedFunction(name: string): string {
-  const source = readFileSync(MIGRATION, 'utf8');
-  const start = source.indexOf(`create or replace function public.${name}(`);
-  if (start < 0) throw new Error(`${MIGRATION} has no ${name}()`);
-  const bodyStart = source.indexOf('$$', start);
-  const bodyEnd = source.indexOf('$$;', bodyStart + 2);
-  if (bodyEnd < 0) throw new Error(`${MIGRATION} has an unterminated ${name}() body`);
-  return source.slice(start, bodyEnd + 3);
+  return latestShippedFunction(name);
 }
 
 const BACKFILL = (() => {
@@ -118,10 +113,10 @@ describe('org_roles.entitlement_profile', () => {
   async function roleScopes(role: SystemRoleName): Promise<Record<string, string>> {
     const { data, error } = await service
       .from('org_role_permissions')
-      .select('permission_name, scope')
+      .select('permission_key, scope')
       .eq('org_role_id', await roleId(role));
     if (error) throw new Error(`permissions read failed: ${error.message}`);
-    return Object.fromEntries(dbRows(data).map((row) => [row.permission_name, row.scope]));
+    return Object.fromEntries(dbRows(data).map((row) => [row.permission_key, row.scope]));
   }
 
   async function profileOf(roleIdToRead: string): Promise<string | null> {

@@ -36,10 +36,10 @@ describe('system-role permissions on the org roles', () => {
 
     const { data, error } = await service
       .from('org_role_permissions')
-      .select('permission_name, scope')
+      .select('permission_key, scope')
       .eq('org_role_id', role.id);
     if (error) throw new Error(`permissions read failed: ${error.message}`);
-    return Object.fromEntries(dbRows(data).map((row) => [row.permission_name, row.scope]));
+    return Object.fromEntries(dbRows(data).map((row) => [row.permission_key, row.scope]));
   }
 
   beforeAll(async () => {

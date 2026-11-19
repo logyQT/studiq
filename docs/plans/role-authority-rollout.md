@@ -269,25 +269,38 @@ guards replaces the role's whole permission set and the gate is one of those row
   grant — the QA swarms (STU, SEC-05/06, MGR-ROL-03) must expect no edits outside
   that set.
 
-The remaining phase-2 work, in slice order:
+The remaining phase-2 work, in slice order. **Phase 2b is nine slices** and only
+slice 1 is written: a merged 2b-1 does not mean phase 2 is done. The ledger's
+phase-2 row is `active` today (§1 of the
+[plan](role-authority-plan.md#1-status)) and is set to `merged` only when the last
+slice below lands.
 
-- `org_role_permissions.permission_key` FKs the permission catalog (2b; deferred
-  from 2a-2, whose scope was the gate, the RLS predicate and the presets — the FK
-  needs the old free-text names backfilled first).
-- Replace `allowedAccountTypes` on org routes with `requirePermission` —
+- **2b-1 — `org_role_permissions.permission_key` FKs the permission catalog.
+  Delivered** (slice 1 of 9) on `feat/authority-2b`: the column rename, the backfill before the
+  constraint, the foreign key with the default RESTRICT behaviour, the scope
+  CHECK narrowed to `own | group | organization`, the `plan_features_*`
+  constraint names corrected, and `database.ts` regenerated. Deferred from 2a-2,
+  whose scope was the gate, the RLS predicate and the presets — the FK needed the
+  old free-text names backfilled first.
+- 2b-2 — replace `allowedAccountTypes` on org routes with `requirePermission` —
   49 files, keeping the 2 legitimate persona exceptions
-  (org creation, classroom creation) and the 5 embedded membership checks.
-- Role editor guards: closed catalog, no self-edit, no grant beyond your own
-  authority, system roles protected, every change audited (2a-2/2a-3).
-- Remove the four legacy management keys (`org.manage`, `member.manage`,
-  `role.builder`, `group.manage`) from `ENTITLEMENTS`, `entitlement_catalog`,
-  `entitlement_flags`, `plan_entitlements` and `org_role_features` once the
-  route and RLS gates read permissions instead (2b/slice 3 boundary).
-- Class invites use `group.invite` at group scope for existing org members;
-  delete the `can_assign_org_role` teacher-name exception (2a-5).
-- **Control-plane RLS in the same PR**: `rls_caller_has_permission(org, key)`
-  replaces `is_org_manager` / `has_org_feature` on members, roles, role
-  permissions, organizations, seat pools, seat assignments and invitations.
+  (org creation, classroom creation).
+- 2b-3 — the 5 embedded membership checks the persona rule leaves in place.
+- 2b-4 — class invites use `group.invite` at group scope for existing org
+  members; delete the `can_assign_org_role` teacher-name exception (2a-5).
+- 2b-5 — **control-plane RLS**: `rls_caller_has_permission(org, key)` replaces
+  `is_org_manager` / `has_org_feature` on members, settings, seat pools, seat
+  assignments and invitations (roles and role permissions moved in 2a-2).
+- 2b-6 — the RLS half of the role editor guards: the last-`org.role.manage`
+  holder, system roles protected, no self-edit, no grant beyond your own
+  authority (the API half shipped in 2a-2/2a-3; RLS has none of it).
+- 2b-7 — remove `role.builder` from `ENTITLEMENTS`, `entitlement_catalog`,
+  `entitlement_flags`, `plan_entitlements` and `org_role_features`, in that
+  order.
+- 2b-8 — the other three legacy management keys (`org.manage`, `member.manage`,
+  `group.manage`) in the same order.
+- 2b-9 — the pricing copy and QA expectations that still advertise the removed
+  markers.
 
 **Exit:** permission matrix tests; group-teacher tests; 403 vs 404; no persona
 gate on an org resource; `AUT`, `MGR`, `EDU`, `SEC` green.

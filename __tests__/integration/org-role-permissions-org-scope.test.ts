@@ -75,9 +75,9 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   async function permissionsOf(roleIdToRead: string) {
     const { data, error } = await service
       .from('org_role_permissions')
-      .select('permission_name, scope')
+      .select('permission_key, scope')
       .eq('org_role_id', roleIdToRead)
-      .order('permission_name');
+      .order('permission_key');
     if (error) throw new Error(`permissions read failed: ${error.message}`);
     return dbRows(data);
   }
@@ -94,7 +94,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
 
   async function replaceRows(
     targetRoleId: string,
-    rows: { permission_name: string; scope: string }[],
+    rows: { permission_key: string; scope: string }[],
   ): Promise<void> {
     const { error: deleteError } = await service
       .from('org_role_permissions')
@@ -142,7 +142,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
     // caller here is org A's Admin, so its authority is read from that role.
     callerScopes = {};
     for (const row of await permissionsOf(orgARoleId)) {
-      if (isPermissionScope(row.scope)) callerScopes[row.permission_name] = row.scope;
+      if (isPermissionScope(row.scope)) callerScopes[row.permission_key] = row.scope;
     }
 
     const { data: customRole, error: customError } = await service
@@ -222,14 +222,14 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
 
     const after = await permissionsOf(orgACustomRole);
     expect(after).toEqual([
-      { permission_name: 'flashcard.read', scope: 'own' },
-      { permission_name: 'quiz.read', scope: 'group' },
+      { permission_key: 'flashcard.read', scope: 'own' },
+      { permission_key: 'quiz.read', scope: 'group' },
     ]);
   });
 
   it('keeps a no-op row the caller cannot change when the payload is complete', async () => {
     const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
-    await replaceRows(orgACustomRole, [{ permission_name: 'deck.read', scope: 'organization' }]);
+    await replaceRows(orgACustomRole, [{ permission_key: 'deck.read', scope: 'organization' }]);
 
     // The caller holds `deck.read` at `own` only and owns nothing, so it may not
     // move the grant — but re-sending it unchanged is not a change (D21).
@@ -243,13 +243,13 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
 
     expect(result.success).toBe(true);
     expect(await permissionsOf(orgACustomRole)).toEqual([
-      { permission_name: 'deck.read', scope: 'organization' },
+      { permission_key: 'deck.read', scope: 'organization' },
     ]);
   });
 
   it('refuses to lower a grant the caller cannot change and leaves the rows untouched', async () => {
     const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
-    await replaceRows(orgACustomRole, [{ permission_name: 'deck.read', scope: 'organization' }]);
+    await replaceRows(orgACustomRole, [{ permission_key: 'deck.read', scope: 'organization' }]);
     const narrowCtx = ctx({ permissionScopes: { 'deck.read': 'own' } });
 
     const result = await orgRoleService.setPermissions(
@@ -262,7 +262,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
     if (result.success) throw new Error('unreachable');
     expect(result.error).toBe('FORBIDDEN');
     expect(await permissionsOf(orgACustomRole)).toEqual([
-      { permission_name: 'deck.read', scope: 'organization' },
+      { permission_key: 'deck.read', scope: 'organization' },
     ]);
   });
 

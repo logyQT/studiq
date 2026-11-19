@@ -43,6 +43,12 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
 which replaces their remaining gates with permissions.
 
+Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
+backfill) is written on `feat/authority-2b`. It is **slice 1 of 9**: the four
+remaining work items in the rollout's phase-2 list split into nine slices, whose
+order and owner are settled when 2b-2 is dispatched. The phase-2 row stays
+`active` — a merged phase 2b-1 does not make phase 2 done.
+
 ## 2. How to update this file
 
 - One writer per phase. If two lanes run at once, each appends only to its own
@@ -1296,6 +1302,98 @@ sub-expression, so the proof is the branch rather than a phrase inside it.
 Rule: a mutation must remove the whole decision, not a phrase inside it; when one
 guard is only observable through a key another guard also refuses, give each
 guard a probe key the other one lets through, one assertion per case.
+
+### Phase 2b — authority and control-plane
+
+**Settled 2026-11-19 — nine slices.** Slice 1 is written; the rest is the
+rollout's remaining phase-2 work, split so each slice is one PR.
+
+| Slice | Contents                                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Written** on `feat/authority-2b`. |
+| 2b-2  | `requirePermission` on the org routes that still use `allowedAccountTypes` (49 files).                                                |
+| 2b-3  | The five embedded membership checks the persona rule keeps.                                                                           |
+| 2b-4  | `group.invite` at group scope; delete the `can_assign_org_role` teacher-name exception.                                               |
+| 2b-5  | `rls_caller_has_permission` on members, settings, seats and invitations (replaces `is_org_manager`).                                  |
+| 2b-6  | The last-holder and system-role guards at RLS (2a-2's recorded security debt).                                                        |
+| 2b-7  | Remove `role.builder`'s entitlement twin: `plan_entitlements` → `org_role_features` → `entitlement_flags` → `entitlement_catalog`.    |
+| 2b-8  | Remove `org.manage`, `member.manage` and `group.manage` and their plan/flag/feature rows in the same order.                           |
+| 2b-9  | The pricing copy and QA expectations that still advertise the removed markers.                                                        |
+
+**2b-1 written on `feat/authority-2b` (PR pending) — slice 1 of 9:**
+
+- `supabase/migrations/20261119211000_org_role_permission_key_fk.sql`:
+  re-creates and calls `migrate_org_role_permission_names()` **before** the
+  rename (every historical migration that writes the table names the old
+  column), renames `permission_name` → `permission_key` with its unique
+  constraint, deletes the `any`/`granted` rows and narrows the scope CHECK to
+  `own | group | organization`, adds
+  `org_role_permissions_permission_key_fkey` with the default (RESTRICT)
+  behaviour, re-creates the function against the new column plus
+  `seed_system_role_permissions` and `rls_caller_has_permission`, renames the
+  `plan_features_*` constraint leftovers on `plan_entitlements`, and ends with a
+  single `do` block that raises when the key or the narrowed CHECK is missing.
+- `with-auth.ts` (`ctx.permissionScopes`) and `org-role.service.ts` (reads,
+  upserts, prune, gate count, audit log) use the new column; the `23503` an
+  unknown key now raises maps to `BAD_REQUEST` through `toDbFailure`.
+- `database.ts` regenerated with the pinned CLI 3.1 against this checkout's
+  stack; a second regeneration is byte-identical.
+- Tests: `__tests__/integration/org-role-permission-key-fk.test.ts` pins the
+  `23503` for an unknown key, the `23514` for `any`/`granted` and a successful
+  round-trip; the service suite moves to `permission_key` and pins the mapped
+  error; `withAuth`'s suite reads the renamed column. New
+  `latestShippedFunction()` in `__tests__/integration/test-utils.ts` is what the
+  two suites that install a shipped function now use, so they install the
+  definition the schema ends up with rather than the file they were written
+  against.
+- Gates: `env:reset-db --yes` twice (a re-apply proves the file is `db push`
+  safe), the ten touched integration files serially (70 passed),
+  `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit` (4648 passed),
+  `review:static`, `knip`, `dup:base` (308 clones, one fewer than `origin/main`),
+  `format:check`, `pr:size` (355/400).
+
+**Follow-ups this slice creates:**
+
+- The last-holder guard in `setPermissions` still counts a gate row whose scope
+  the editor cannot render. This migration makes such a row unwritable, and
+  `withAuth` already refuses to serve the value (`isPermissionScope` accepts only
+  the three catalog scopes), so 2b-6 can decide whether the count keeps that
+  branch for a restored backup or drops it for the closed schema.
+- `deleteRole`'s pre-delete guard now destructures the row once; two statements
+  on those lines is what `jscpd` flagged as a new clone, and a later reader
+  touching the block should keep the shape.
+- The replay test cannot insert an out-of-catalog role row: the foreign key
+  refuses it, and the key it refuses is by definition one the catalog lacks.
+  `catalog-rename-rewrite` therefore removes one catalog row for the duration of
+  the test — the way a catalog move leaves a role row behind — and asserts the
+  sweep deletes that row; the catalog-valid rows the org trigger wrote must
+  survive both runs.
+
+**Difficulty log**
+
+#### 2026-11-19 — the rename is ordered by the migrations that write the column
+
+What: putting the rewrite after the rename (the natural reading of "backfill,
+then constrain") failed on the first `db reset`. A `create or replace function`
+body is text until its first call, so every historical writer that names the old
+column stays silent — the phase-1b trigger, 2a-1's `seed_system_role_permissions`,
+2a-2's RLS helper — and only fails when it runs. This worktree hit it: a stale
+`seed_system_role_permissions` survived a reset and failed every
+`insert into organizations` with `column "permission_name" does not exist`.
+Why: Supabase records a migration as applied from its file name, so a database
+whose ledger already lists that file skips it while later migrations run. The
+rename then never happened, and the failure landed on the first org write,
+naming a column that appears in no current migration — an absent migration,
+reported as a schema error.
+Fix: the rewrite is defined and run in the old name **before** the rename (the
+only column state every writer agrees on), re-created afterwards for a later
+replay, and the file ends by asserting the constraint it owns. The two suites
+that install a shipped function now install the newest definition from the
+migrations instead of the file they name, since replaying a pre-rename file is
+what re-installed the stale body.
+Rule: a migration is applied by file name, not by content — so a schema change
+that renames what earlier functions write must re-create those functions itself,
+and a reset that passes proves little until it has run twice.
 
 ### Phase 3 — entitlements and limits
 

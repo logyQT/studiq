@@ -37,10 +37,10 @@ function profileOf(value: string): EntitlementProfile {
 function templateRows(
   orgRoleId: string,
   template: RoleTemplate,
-): { org_role_id: string; permission_name: string; scope: CatalogScope }[] {
-  return Object.entries(template.permissions).map(([permission_name, scope]) => ({
+): { org_role_id: string; permission_key: string; scope: CatalogScope }[] {
+  return Object.entries(template.permissions).map(([permission_key, scope]) => ({
     org_role_id: orgRoleId,
-    permission_name,
+    permission_key,
     scope,
   }));
 }
@@ -131,7 +131,7 @@ export class OrgRoleService {
       .select(
         `
         id, name, display_name, description, is_system, entitlement_profile,
-        org_role_permissions(permission_name, scope)
+        org_role_permissions(permission_key, scope)
       `,
       )
       .eq('id', id)
@@ -143,7 +143,7 @@ export class OrgRoleService {
     return success({
       ...toRoleSummary(data),
       permissions: dbRows(data.org_role_permissions).flatMap((p) =>
-        isCatalogScope(p.scope) ? [{ permissionName: p.permission_name, scope: p.scope }] : [],
+        isCatalogScope(p.scope) ? [{ permissionName: p.permission_key, scope: p.scope }] : [],
       ),
     });
   }
@@ -220,9 +220,7 @@ export class OrgRoleService {
 
     if (fetchError) return toDbFailure(fetchError);
 
-    if (data.name !== undefined && existing.is_system) {
-      return failure('FORBIDDEN');
-    }
+    if (data.name !== undefined && existing.is_system) return failure('FORBIDDEN');
 
     const update: Database['public']['Tables']['org_roles']['Update'] = {};
     if (data.name !== undefined) update.name = data.name;
@@ -272,18 +270,15 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
-    const { data: role, error: fetchError } = await supabase
+    const { data: row, error: rowError } = await supabase
       .from('org_roles')
       .select('is_system')
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
-    if (fetchError) return toDbFailure(fetchError);
-
-    if (role.is_system) {
-      return failure('FORBIDDEN');
-    }
+    if (rowError) return toDbFailure(rowError);
+    if (row.is_system) return failure('FORBIDDEN');
 
     const { count } = await supabase
       .from('org_members')
@@ -342,7 +337,7 @@ export class OrgRoleService {
     // (PGRST116 -> NOT_FOUND, 404) so role ids cannot be probed across tenants.
     const { data: role, error: roleError } = await supabase
       .from('org_roles')
-      .select('id, name, org_role_permissions(permission_name, scope)')
+      .select('id, name, org_role_permissions(permission_key, scope)')
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .single();
@@ -352,7 +347,7 @@ export class OrgRoleService {
     const storedRows = dbRows(role.org_role_permissions);
     const current = new Map<string, CatalogScope>();
     for (const row of storedRows) {
-      if (isCatalogScope(row.scope)) current.set(row.permission_name, row.scope);
+      if (isCatalogScope(row.scope)) current.set(row.permission_key, row.scope);
     }
 
     const target = new Map<string, CatalogScope | null>();
@@ -391,15 +386,17 @@ export class OrgRoleService {
     // leave no role that holds `org.role.manage` — every write then 403s and
     // `org.admin` is not a fallback (ADR-0015 §4.1). Counted across the org's other
     // roles, before any write, so the answer is the state the save would leave.
-    // A legacy row (`scope = 'any'`) is absent from `current` — the editor reads the
-    // key as revoked — but it still satisfies `can()` and the RLS predicate, so it
-    // counts as a holder here.
-    const holdsGate = storedRows.some((row) => row.permission_name === 'org.role.manage');
+    // The count reads the stored rows rather than `current`, so a row read from a
+    // database older than phase 2b's scope CHECK (`scope = 'any'`, which the editor
+    // renders revoked and `withAuth` drops) still counts as the last holder: the
+    // count has no scope filter, so it agrees with the RLS predicate behind it.
+    // `org-role.service.test.ts` pins that row as a holder.
+    const holdsGate = storedRows.some((row) => row.permission_key === 'org.role.manage');
     if (holdsGate && !target.get('org.role.manage')) {
       const { count, error: gateError } = await supabase
         .from('org_role_permissions')
         .select('org_role_id, org_roles!inner(organization_id)', { count: 'exact', head: true })
-        .eq('permission_name', 'org.role.manage')
+        .eq('permission_key', 'org.role.manage')
         .eq('org_roles.organization_id', ctx.activeOrgId)
         .neq('org_role_id', id);
 
@@ -407,9 +404,9 @@ export class OrgRoleService {
       if (!count) return failure('CONFLICT');
     }
 
-    const rows: { org_role_id: string; permission_name: string; scope: CatalogScope }[] = [];
-    for (const [permissionName, scope] of target) {
-      if (scope) rows.push({ org_role_id: id, permission_name: permissionName, scope });
+    const rows: { org_role_id: string; permission_key: string; scope: CatalogScope }[] = [];
+    for (const [permissionKey, scope] of target) {
+      if (scope) rows.push({ org_role_id: id, permission_key: permissionKey, scope });
     }
 
     // Target-first: a failed upsert leaves the previous set untouched and a failed
@@ -420,18 +417,18 @@ export class OrgRoleService {
     if (rows.length > 0) {
       const { error: upsertError } = await supabase
         .from('org_role_permissions')
-        .upsert(rows, { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false });
+        .upsert(rows, { onConflict: 'org_role_id,permission_key', ignoreDuplicates: false });
 
       if (upsertError) return toDbFailure(upsertError);
     }
 
-    const granted = rows.map((row) => row.permission_name);
+    const granted = rows.map((row) => row.permission_key);
     let prune = supabase.from('org_role_permissions').delete().eq('org_role_id', id);
     if (granted.length > 0) {
       // PostgREST list syntax; catalog keys are namespaced identifiers, so they
       // carry no quote or comma that would need escaping inside the list.
       prune = prune.not(
-        'permission_name',
+        'permission_key',
         'in',
         `(${granted.map((name) => `"${name}"`).join(',')})`,
       );
@@ -450,7 +447,7 @@ export class OrgRoleService {
       'role.name': role.name,
       'permissions.before': Object.fromEntries(current),
       'permissions.after': Object.fromEntries(
-        rows.map((row) => [row.permission_name, row.scope] as const),
+        rows.map((row) => [row.permission_key, row.scope] as const),
       ),
     });
 

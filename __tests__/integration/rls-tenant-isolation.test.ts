@@ -995,7 +995,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     const { error: permError } = await studentSession.from('org_role_permissions').insert({
       org_role_id: orgA.memberRoleId,
-      permission_name: 'deck.update',
+      permission_key: 'deck.update',
       scope: 'organization',
     });
     expect(permError?.code).toBe('42501');

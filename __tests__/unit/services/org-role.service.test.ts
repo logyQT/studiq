@@ -99,7 +99,7 @@ function unknownProfile(value: string): EntitlementProfile {
 }
 
 /** The `org_roles` lookup row `setPermissions` reads before it authorizes anything. */
-function roleRow(permissions: { permission_name: string; scope: string }[] = []) {
+function roleRow(permissions: { permission_key: string; scope: string }[] = []) {
   return { id: 'r-1', name: 'editor', org_role_permissions: permissions };
 }
 
@@ -181,7 +181,7 @@ describe('OrgRoleService', () => {
         description: null,
         is_system: true,
         entitlement_profile: 'learner',
-        org_role_permissions: [{ permission_name: 'flashcard.read', scope: 'own' }],
+        org_role_permissions: [{ permission_key: 'flashcard.read', scope: 'own' }],
       };
       mock.from.mockReturnValueOnce(qb(data));
 
@@ -194,7 +194,9 @@ describe('OrgRoleService', () => {
       expect(expectSuccess(result).entitlementProfile).toBe('learner');
     });
 
-    it('drops a stored row whose scope is outside the catalog (a legacy any row)', async () => {
+    // A database older than the closed CHECK can still hold one; the read has to
+    // refuse it without the column ever reaching a client.
+    it('drops a stored row whose scope is outside the catalog', async () => {
       const data = {
         id: 'r-1',
         name: 'legacy',
@@ -203,8 +205,8 @@ describe('OrgRoleService', () => {
         is_system: false,
         entitlement_profile: 'none',
         org_role_permissions: [
-          { permission_name: 'deck.read', scope: 'any' },
-          { permission_name: 'topic.read', scope: 'own' },
+          { permission_key: 'deck.read', scope: 'any' },
+          { permission_key: 'topic.read', scope: 'own' },
         ],
       };
       mock.from.mockReturnValueOnce(qb(data));
@@ -316,9 +318,9 @@ describe('OrgRoleService', () => {
         expect.objectContaining({ is_system: false, entitlement_profile: 'none' }),
       );
       const expected = Object.entries(ROLE_TEMPLATES.assistant.permissions).map(
-        ([permission_name, scope]) => ({
+        ([permission_key, scope]) => ({
           org_role_id: 'r-1',
-          permission_name,
+          permission_key,
           scope,
         }),
       );
@@ -680,14 +682,14 @@ describe('OrgRoleService', () => {
       expect(mock.from).toHaveBeenNthCalledWith(2, 'org_role_permissions');
       expect(upsertQb.upsert).toHaveBeenCalledWith(
         [
-          { org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' },
-          { org_role_id: 'r-1', permission_name: 'deck.read', scope: 'group' },
+          { org_role_id: 'r-1', permission_key: 'flashcard.read', scope: 'own' },
+          { org_role_id: 'r-1', permission_key: 'deck.read', scope: 'group' },
         ],
-        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+        { onConflict: 'org_role_id,permission_key', ignoreDuplicates: false },
       );
       expect(pruneQb.eq).toHaveBeenCalledWith('org_role_id', 'r-1');
       expect(pruneQb.not).toHaveBeenCalledWith(
-        'permission_name',
+        'permission_key',
         'in',
         '("flashcard.read","deck.read")',
       );
@@ -712,7 +714,7 @@ describe('OrgRoleService', () => {
     });
 
     it('succeeds with a complete all-null payload and prunes every row', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'deck.read', scope: 'group' }]));
+      mockRoleLookup(roleRow([{ permission_key: 'deck.read', scope: 'group' }]));
       const pruneQb = qb(undefined);
       mock.from.mockReturnValueOnce(pruneQb); // prune
 
@@ -721,7 +723,7 @@ describe('OrgRoleService', () => {
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledTimes(2);
       expect(pruneQb.delete).toHaveBeenCalled();
-      // No grant list to keep: the delete is unscoped on permission_name.
+      // No grant list to keep: the delete is unscoped on permission_key.
       expect(pruneQb.not).not.toHaveBeenCalled();
     });
 
@@ -743,8 +745,8 @@ describe('OrgRoleService', () => {
     it('lets an org.admin holder edit the Admin role it belongs to', async () => {
       mockRoleLookup(
         roleRow([
-          { permission_name: 'org.admin', scope: 'organization' },
-          { permission_name: 'org.role.manage', scope: 'organization' },
+          { permission_key: 'org.admin', scope: 'organization' },
+          { permission_key: 'org.role.manage', scope: 'organization' },
         ]),
       );
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert
@@ -766,7 +768,7 @@ describe('OrgRoleService', () => {
       // The caller owns the org and is editing its own Admin role, so every other
       // guard passes; only the last-holder count stands between this save and an
       // org where no role can manage roles.
-      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'organization' }]));
+      mockRoleLookup(roleRow([{ permission_key: 'org.role.manage', scope: 'organization' }]));
       const gateQb = qb([], null, 0);
       mock.from.mockReturnValueOnce(gateQb); // other-holder count
       // Stubbed so a service that wrote anyway fails on the assertions below, not on
@@ -780,16 +782,17 @@ describe('OrgRoleService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('CONFLICT');
       // The count ran, and nothing was written.
-      expect(gateQb.eq).toHaveBeenCalledWith('permission_name', 'org.role.manage');
+      expect(gateQb.eq).toHaveBeenCalledWith('permission_key', 'org.role.manage');
       expect(gateQb.eq).toHaveBeenCalledWith('org_roles.organization_id', 'org-1');
       expect(gateQb.neq).toHaveBeenCalledWith('org_role_id', 'r-1');
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('counts a legacy `any` gate row as a holder', async () => {
-      // The editor renders an out-of-catalog scope as revoked, but the row still
-      // answers `can()` and the RLS predicate, so pruning it can be the last holder.
-      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'any' }]));
+    it('counts a gate row the editor cannot render as a holder', async () => {
+      // The editor renders an out-of-catalog scope as revoked, but a row read from
+      // a database older than the closed CHECK still answers `can()` and the RLS
+      // predicate, so pruning it can be the last holder.
+      mockRoleLookup(roleRow([{ permission_key: 'org.role.manage', scope: 'any' }]));
       mock.from.mockReturnValueOnce(qb([], null, 0)); // other-holder count
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert, must not run
       mock.from.mockReturnValueOnce(qb(undefined)); // prune, must not run
@@ -802,7 +805,7 @@ describe('OrgRoleService', () => {
     });
 
     it('removes org.role.manage when another role still holds it', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'organization' }]));
+      mockRoleLookup(roleRow([{ permission_key: 'org.role.manage', scope: 'organization' }]));
       mock.from.mockReturnValueOnce(qb([], null, 1)); // another holder
       const upsertQb = qb(undefined);
       const pruneQb = qb(undefined);
@@ -818,10 +821,10 @@ describe('OrgRoleService', () => {
 
       expect(result.success).toBe(true);
       expect(upsertQb.upsert).toHaveBeenCalledWith(
-        [{ org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' }],
-        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+        [{ org_role_id: 'r-1', permission_key: 'flashcard.read', scope: 'own' }],
+        { onConflict: 'org_role_id,permission_key', ignoreDuplicates: false },
       );
-      expect(pruneQb.not).toHaveBeenCalledWith('permission_name', 'in', '("flashcard.read")');
+      expect(pruneQb.not).toHaveBeenCalledWith('permission_key', 'in', '("flashcard.read")');
     });
 
     it('refuses to grant a key the caller does not hold', async () => {
@@ -844,7 +847,7 @@ describe('OrgRoleService', () => {
     });
 
     it('refuses to remove a grant the caller holds at a narrower scope', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'deck.read', scope: 'organization' }]));
+      mockRoleLookup(roleRow([{ permission_key: 'deck.read', scope: 'organization' }]));
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert
       mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
@@ -860,7 +863,7 @@ describe('OrgRoleService', () => {
     });
 
     it('lets a no-op entry through without the caller holding the key', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'org.member.manage', scope: 'organization' }]));
+      mockRoleLookup(roleRow([{ permission_key: 'org.member.manage', scope: 'organization' }]));
       const upsertQb = qb(undefined);
       mock.from.mockReturnValueOnce(upsertQb); // upsert
       mock.from.mockReturnValueOnce(qb(undefined)); // prune
@@ -873,8 +876,8 @@ describe('OrgRoleService', () => {
 
       expect(result.success).toBe(true);
       expect(upsertQb.upsert).toHaveBeenCalledWith(
-        [{ org_role_id: 'r-1', permission_name: 'org.member.manage', scope: 'organization' }],
-        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+        [{ org_role_id: 'r-1', permission_key: 'org.member.manage', scope: 'organization' }],
+        { onConflict: 'org_role_id,permission_key', ignoreDuplicates: false },
       );
     });
 
@@ -895,7 +898,7 @@ describe('OrgRoleService', () => {
     });
 
     it('refuses to revoke org.admin from the role that holds it', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'org.admin', scope: 'organization' }]));
+      mockRoleLookup(roleRow([{ permission_key: 'org.admin', scope: 'organization' }]));
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert
       mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
@@ -909,8 +912,8 @@ describe('OrgRoleService', () => {
     it('logs the actor, the role and both permission maps', async () => {
       const roleQb = mockRoleLookup(
         roleRow([
-          { permission_name: 'flashcard.read', scope: 'own' },
-          { permission_name: 'deck.read', scope: 'group' },
+          { permission_key: 'flashcard.read', scope: 'own' },
+          { permission_key: 'deck.read', scope: 'group' },
         ]),
       );
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert
@@ -924,7 +927,7 @@ describe('OrgRoleService', () => {
 
       expect(result.success).toBe(true);
       expect(roleQb.select).toHaveBeenCalledWith(
-        'id, name, org_role_permissions(permission_name, scope)',
+        'id, name, org_role_permissions(permission_key, scope)',
       );
       expect(log).toHaveBeenCalledWith('org role permissions changed', {
         'actor.user_id': 'test-user-id',
@@ -939,8 +942,8 @@ describe('OrgRoleService', () => {
     it('returns error on upsert failure and never prunes the previous rows', async () => {
       mockRoleLookup(
         roleRow([
-          { permission_name: 'deck.read', scope: 'organization' },
-          { permission_name: 'topic.read', scope: 'own' },
+          { permission_key: 'deck.read', scope: 'organization' },
+          { permission_key: 'topic.read', scope: 'own' },
         ]),
       );
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' })); // upsert
@@ -958,6 +961,23 @@ describe('OrgRoleService', () => {
       // The role keeps the rows it had; only the role lookup and the failed upsert
       // ran, so a retry starts from the previous set instead of an empty role.
       expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('maps a key the catalog rejects to BAD_REQUEST instead of a save that looks applied', async () => {
+      mockRoleLookup();
+      // The foreign key on `permission_key` answers 23503 for a name no catalog row
+      // carries. The editor's 422 already refuses one, so the only way here is a
+      // direct entry point writing outside the catalog.
+      mock.from.mockReturnValueOnce(qb(null, { code: '23503', message: 'permission_key_fkey' }));
+
+      const result = await service.setPermissions(
+        permCtx,
+        'r-1',
+        catalogPayload({ 'flashcard.read': 'own' }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
     });
 
     it('returns error on prune failure', async () => {

@@ -73,10 +73,10 @@ describe(`Org Features (trigger)`, () => {
       if (!roleId) throw new Error(`[setup] org role ${roleName} not seeded`);
       const { data: perms } = await supabase
         .from('org_role_permissions')
-        .select('permission_name, scope')
+        .select('permission_key, scope')
         .eq('org_role_id', roleId);
 
-      const actual = Object.fromEntries((perms ?? []).map((p) => [p.permission_name, p.scope]));
+      const actual = Object.fromEntries((perms ?? []).map((p) => [p.permission_key, p.scope]));
       expect(actual).toEqual(template.permissions);
     }
   });
