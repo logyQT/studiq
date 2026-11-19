@@ -131,7 +131,8 @@ describe('FlashcardDeckService', () => {
   };
   // A caller with an org role: inside an org the stored row is the whole answer
   // (ADR-0015 §6.3), so the role's content grants have to be in the context. A
-  // test that spreads one of these and omits `permissionScopes` is denied.
+  // context built without `permissionScopes` is denied — and spreading one of
+  // these and overriding the map is how a test loses the grants.
   const orgCtx: RequestContext = {
     ...ctx,
     activeOrgId: 'org-1',

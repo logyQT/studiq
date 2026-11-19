@@ -77,6 +77,19 @@ describe('PermissionsController', () => {
       expect(perms['assignment.grade']).toBeUndefined();
     });
 
+    // The category guard at the payload boundary: a content CRUD key takes the
+    // persona default, a `group.*`/`org.*` key never does, and the two are
+    // asserted together so a payload that emitted `own` for everything is red.
+    it('gives the persona default to content keys only, never group or org keys', async () => {
+      const response = await controller.listMyPermissions(mockCtx);
+
+      const perms = body(response).permissions;
+      expect(perms['deck.update']).toBe('own');
+      expect(perms['group.read']).toBeUndefined();
+      expect(perms['org.audit.read']).toBeUndefined();
+      expect(perms['org.role.manage']).toBeUndefined();
+    });
+
     it('adds own permissions for educator', async () => {
       const educatorCtx = { ...mockCtx, accountType: AccountType.EDUCATOR };
       const response = await controller.listMyPermissions(educatorCtx);

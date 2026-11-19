@@ -121,6 +121,23 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(inOrg, 'flashcard.read')).toBeNull();
     });
 
+    // A stored row is returned verbatim, never reconciled with the persona
+    // default: a role that holds `deck.update` at `own` keeps exactly that, and
+    // its sibling with no row stays denied. A `max(stored, 'own')` — or any other
+    // widening of the stored answer — is red on both sides of that pair.
+    it('returns a stored row as-is and leaves its unrowed sibling null', () => {
+      const noOrgEducator: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        permissionScopes: { 'deck.update': 'own' },
+      };
+      const inOrgEducator: RequestContext = { ...noOrgEducator, activeOrgId: 'org-1' };
+
+      expect(resolveScope(noOrgEducator, 'deck.update')).toBe('own');
+      expect(resolveScope(inOrgEducator, 'deck.update')).toBe('own');
+      expect(resolveScope(inOrgEducator, 'deck.read')).toBeNull();
+    });
+
     it('never gives a group or org key the persona default, with or without an org', () => {
       const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
 

@@ -1224,9 +1224,11 @@ forbids before accepting that nothing can.
   outside an org, only for STUDENT/EDUCATOR, only for a `.read|.create|.update|.delete`
   verb, and only when `PERMISSIONS[key].category === 'content'` — so `group.read`
   and `org.*` can never take it, and a key outside the catalog gets none.
-- **`Permission` is the whole catalog.** 27 → 44 keys (`quiz.*`, `stats.read`,
-  `group.*`, the `org.*` family), derived with a command against `PERMISSIONS`
-  (R9). The R15 pin in `__tests__/unit/guards/permission-scopes-catalog.test.ts`
+- **`Permission` is the whole catalog.** 44 keys, up from 27 at the branch point
+  `origin/main` (`0b5932a0`), which held only `org.role.manage` of the `stats.*`,
+  `quiz.*`, `group.*` and `org.*` families. Both counts are derived with
+  `git show <ref>:packages/authz/src/lib/permissions.ts | sed -n '/^export const Permission = {/,/^} as const;/p' | grep -cE "^  [A-Z_]+: '"`,
+  and equal the catalog's own 44 `PERMISSIONS` entries (R9). The R15 pin in `__tests__/unit/guards/permission-scopes-catalog.test.ts`
   ("catalog keys read outside `Permission`") is now `[]` instead of
   `['org.admin']`; the guard itself stays, and `Permission ⊆ PERMISSIONS` holds.
 - **The controller has no second default.** `permissionsController.listMyPermissions`
@@ -1236,13 +1238,16 @@ forbids before accepting that nothing can.
   UI's copy of the same function — a key it withheld from the server would be a
   second truth. Grep confirms no other definition of the default remains
   (`endsWith('.read')` survives only in `org-roles.ts` role presets).
-- **Tests.** `__tests__/unit/lib/authz.test.ts`: stored row wins inside an org; a
-  student/educator keeps `own` for content CRUD with no org; a student, educator
-  and manager are all denied content keys inside an org with no row; `group.*`/
-  `org.*` keys are null with and without an org; a verb-shaped unknown key is
-  null. `__tests__/unit/controllers/permissions.controller.test.ts`: no content
-  key is claimed inside an org without a row, a manager with no org gets `{}`, a
-  no-org educator still gets `own`, and a non-CRUD verb
+- **Tests.** `__tests__/unit/lib/authz.test.ts`: stored row wins inside an org
+  and is returned as-is (an `own` row is not widened by the persona default while
+  its unrowed sibling stays `null`); a student/educator keeps `own` for content
+  CRUD with no org; a student, educator and manager are all denied content keys
+  inside an org with no row; `group.*`/`org.*` keys are null with and without an
+  org; a verb-shaped unknown key is null.
+  `__tests__/unit/controllers/permissions.controller.test.ts`: no content key is
+  claimed inside an org without a row, a manager with no org gets `{}`, a no-org
+  educator still gets `own`, a content key gets `own` while `group.read`/`org.*`
+  stay absent (the category guard, at the payload boundary), and a non-CRUD verb
   (`assignment.publish`/`.grade`) is absent. Retargeted, not weakened: the three
   service fixtures that ran with `activeOrgId` and an empty scope map
   (question-bank, topic, flashcard-deck) now carry their role's rows, because
@@ -1252,9 +1257,13 @@ forbids before accepting that nothing can.
   is absent or narrower than `.read/.create/.update/.delete` — deck, flashcard,
   topic, question, question bank, quiz (routes and `can()` gates), plus
   `buildQueryFilter`/`accessibleFilter` reads that now answer `_impossible`.
-  Nothing outside an org changed. Also: `GET /api/v1/permissions/me` no longer
-  reports `own` for those keys, so `usePermission()`-gated buttons hide — the UI
-  and the API agree, which is the point.
+  No stored-scope resolution outside an org changed: outside an org a
+  `permissionScopes` entry still wins and the persona default is what it was.
+  `GET /api/v1/permissions/me` claims no key it did not already claim: the new
+  `Permission` keys route through `resolveScope`, which cannot resolve them for a
+  student/educator outside an org. The 403s land on org-active requests, and
+  `usePermission()`-gated buttons hide there too — the UI and the API agree,
+  which is the point.
 - **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`
   (4646 passed, 1 skipped), `review:static`, `knip`, `dup:base`, `format:check`,
   `bun run pr:size` **80/400**.
