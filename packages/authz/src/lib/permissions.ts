@@ -51,11 +51,9 @@ export type PermissionKey = (typeof Permission)[keyof typeof Permission];
 export type CatalogScope = 'own' | 'group' | 'organization';
 
 /**
- * The scope a request carries for a key. One set with `CatalogScope`: the
- * `org_role_permissions` CHECK accepts exactly these three, and `any`/`granted`
- * from older databases are dropped at the one place a row becomes a scope
- * (`isPermissionScope` in `@studiq/server/lib/authz`), so nothing downstream has
- * to consider a fourth case.
+ * The scope a request carries for a key — the same three the `org_role_permissions`
+ * CHECK accepts. Legacy `any`/`granted` rows are dropped where a row becomes a scope
+ * (`isPermissionScope`), so nothing downstream sees a fourth value.
  */
 export type PermissionScope = CatalogScope;
 
@@ -375,9 +373,9 @@ const SCOPE_ORDER: Record<PermissionScope, number> = {
 };
 
 /**
- * Whether `held` is at least as wide as `wanted` (own < group < organization).
- * `null` covers nothing, so a key the caller does not hold cannot be granted or
- * removed through the role editor (ADR-0015 §4.4, D21).
+ * Whether `held` is at least as wide as `wanted` (own < group < organization); a
+ * `null` scope covers nothing. The role editor uses it to decide whether the caller
+ * may grant a scope or remove a grant it holds (ADR-0015 §4.4, D21).
  */
 export function scopeCovers(
   held: PermissionScope | null | undefined,
