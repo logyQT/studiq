@@ -259,8 +259,15 @@ guards replaces the role's whole permission set and the gate is one of those row
   the existing `org_members`-backed `cookieOrgId` block is that helper. No
   migration. `groupIds` stays for every current reader. Consumed by 2a-5 (scope
   resolution) and 2b (group manage/invite are teacher-only).
-- **2a-5** (~110) — scope defaults: `own` only when there is no active org
-  (fail-closed fix).
+- **2a-5** (**delivered**, 80, `bun run pr:size`; planned as ~110) — scope
+  defaults: `own` only when there is no active org, only for a content key's
+  `.read/.create/.update/.delete`, so a role that withholds a content key denies
+  instead of granting; `group.*`/`org.*` never take the default. `Permission`
+  grows to the full 44-key catalog (the controller maps it through
+  `resolveScope`, so the payload cannot keep a second copy of the rule). Closing
+  the in-org default can 403 content reads/writes a member's role does not
+  grant — the QA swarms (STU, SEC-05/06, MGR-ROL-03) must expect no edits outside
+  that set.
 
 The remaining phase-2 work, in slice order:
 

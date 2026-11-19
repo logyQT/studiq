@@ -36,12 +36,12 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 **Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389) and 1c (#1390,
 `67cfeb16`) are merged. Phase 2 is active: **2a-3** (the closed-catalog editor),
 **2a-1** (the entitlement profile), **2a-2** (role presets + the
-`org.role.manage` gate and its RLS twin) and **2a-4** (org-scoped
-`ctx.groupRoles`) are written on `feat/authority-2a-3`, `feat/authority-2a-1`,
-`feat/authority-2a-2` and `feat/authority-2a-4`; 2a-3 lands before 2a-2 by D24.
-Next slice: 2a-5 (fail-closed scope defaults), which reads `ctx.groupRoles`. The
-four legacy management keys stay until slice 2b, which replaces their remaining
-gates with permissions.
+`org.role.manage` gate and its RLS twin), **2a-4** (org-scoped
+`ctx.groupRoles`) and **2a-5** (fail-closed scope defaults + the full
+`Permission` set) are written on `feat/authority-2a-3`, `feat/authority-2a-1`,
+`feat/authority-2a-2`, `feat/authority-2a-4` and `feat/authority-2a-5`; 2a-3
+lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
+which replaces their remaining gates with permissions.
 
 ## 2. How to update this file
 
@@ -586,7 +586,7 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 | **2a-3** | closed-catalog editor + complete payload + audit log. Lands **before** 2a-2 (D24).                                                                                    | ~400 (`size:exception`) |
 | **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate + the RLS predicate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | 460 (`size:exception`)  |
 | **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                                         | 59 (`bun run pr:size`)  |
-| **2a-5** | fail-closed scope defaults.                                                                                                                                           | ~110                    |
+| **2a-5** | fail-closed scope defaults (`own` only with no active org, content keys only) + the full `Permission` set.                                                            | 80 (`bun run pr:size`)  |
 
 The table is in **landing order**, not the original plan's order: 2a-3 goes before
 2a-2 because the gate flip is only safe once the editor sends the complete catalog
@@ -1214,9 +1214,78 @@ a test that cannot tell is not a test of the filter. An untestable guard is a
 claim to check, not a conclusion: ask what the code does with a value the schema
 forbids before accepting that nothing can.
 
-### Phase 3 — entitlements and limits
+**2a-5 shipped on `feat/authority-2a-5` (PR pending):**
 
-_Not started._
+- **`resolveScope` is fail-closed inside an org.** `packages/server/src/lib/authz.ts`:
+  a stored `ctx.permissionScopes[key]` still wins; with an active org and no row
+  the answer is `null` for every key, content CRUD included (ADR-0015 §6.3). This
+  closed the FP-04-shaped hole where a student whose org role withheld
+  `deck.update` was silently granted `own`. The persona default survives only
+  outside an org, only for STUDENT/EDUCATOR, only for a `.read|.create|.update|.delete`
+  verb, and only when `PERMISSIONS[key].category === 'content'` — so `group.read`
+  and `org.*` can never take it, and a key outside the catalog gets none.
+- **`Permission` is the whole catalog.** 27 → 44 keys (`quiz.*`, `stats.read`,
+  `group.*`, the `org.*` family), derived with a command against `PERMISSIONS`
+  (R9). The R15 pin in `__tests__/unit/guards/permission-scopes-catalog.test.ts`
+  ("catalog keys read outside `Permission`") is now `[]` instead of
+  `['org.admin']`; the guard itself stays, and `Permission ⊆ PERMISSIONS` holds.
+- **The controller has no second default.** `permissionsController.listMyPermissions`
+  maps `Object.values(Permission)` through `resolveScope` and materialises every
+  key that resolves. It stayed on `Permission` rather than the catalog because
+  `usePermission()` only ever looks up a `Permission` key, and the endpoint is the
+  UI's copy of the same function — a key it withheld from the server would be a
+  second truth. Grep confirms no other definition of the default remains
+  (`endsWith('.read')` survives only in `org-roles.ts` role presets).
+- **Tests.** `__tests__/unit/lib/authz.test.ts`: stored row wins inside an org; a
+  student/educator keeps `own` for content CRUD with no org; a student, educator
+  and manager are all denied content keys inside an org with no row; `group.*`/
+  `org.*` keys are null with and without an org; a verb-shaped unknown key is
+  null. `__tests__/unit/controllers/permissions.controller.test.ts`: no content
+  key is claimed inside an org without a row, a manager with no org gets `{}`, a
+  no-org educator still gets `own`, and a non-CRUD verb
+  (`assignment.publish`/`.grade`) is absent. Retargeted, not weakened: the three
+  service fixtures that ran with `activeOrgId` and an empty scope map
+  (question-bank, topic, flashcard-deck) now carry their role's rows, because
+  their subjects are content CRUD inside an org.
+- **Can now 403** (a scope that used to resolve no longer does): every content
+  CRUD/write a STUDENT/EDUCATOR performs **while an org is active** whose role row
+  is absent or narrower than `.read/.create/.update/.delete` — deck, flashcard,
+  topic, question, question bank, quiz (routes and `can()` gates), plus
+  `buildQueryFilter`/`accessibleFilter` reads that now answer `_impossible`.
+  Nothing outside an org changed. Also: `GET /api/v1/permissions/me` no longer
+  reports `own` for those keys, so `usePermission()`-gated buttons hide — the UI
+  and the API agree, which is the point.
+- **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`
+  (4646 passed, 1 skipped), `review:static`, `knip`, `dup:base`, `format:check`,
+  `bun run pr:size` **80/400**.
+
+**Difficulty log**
+
+#### 2026-11-19 — three "killed" proofs were dead tests, not live ones
+
+What: the first mutation pass over 2a-5 read `ERROR (0 executed)` for the
+in-org fail-closed case, and two more proofs came back `SURVIVED` for a guard
+that does exist. `bun run mutate` passes `--name` to `vitest run -t`, which is
+substring matching (`^…` and `$` are literal), and a table row's title is
+`<template> (student)`, not the template. Those two were cheap to fix — a
+separately named single-assertion case and titles quoted as they print.
+Why: the third was not. `category === 'content'` was pinned from two keys that
+each carry the _other_ guard: `group.read` is a read verb (the verb filter
+refuses it even with the category test deleted) and `org.role.manage` is not a
+verb at all (the same). Only the pair of them — one read, one non-read — can
+tell the two guards apart, and only with a _single_ assertion per case, because
+`toEqual`/loops report the first failing key. The `isPermissionCatalogKey`
+guard had the same shape (`role.builder.manage` is not a verb, so deleting the
+catalog test changed nothing; `legacy.read` is).
+Fix: the cases now separate the probe per key (`decides a read key by its
+category, not its verb`; a verb-shaped unknown key in `returns null for unknown
+permissions`) and the mutations rewrite the whole default instead of one
+sub-expression, so the proof is the branch rather than a phrase inside it.
+Rule: a mutation must remove the whole decision, not a phrase inside it; when one
+guard is only observable through a key another guard also refuses, give each
+guard a probe key the other one lets through, one assertion per case.
+
+### Phase 3 — entitlements and limits
 
 ### Phase 4 — seats and personal
 
