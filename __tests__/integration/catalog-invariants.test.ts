@@ -9,8 +9,9 @@ import { createServiceClient } from '#test/integration/helpers';
 // Three properties are cheaper to assert against the live catalog than to
 // reason about in review:
 //
-//  - permissions and entitlements are disjoint namespaces, so no plan, seat,
-//    personal-plan or override row can grant authority;
+//  - `permissions` and `FEATURES` are disjoint namespaces. This reads the
+//    catalog only; it does not prove that no plan/seat/override write path
+//    could still mint a permission key — those guards are phases 2 and 3;
 //  - `permissions` is exactly the `Permission` catalog — the N1 guard. A key
 //    read from `ctx.permissionScopes` but never seeded denies every caller;
 //  - every `FEATURES` key has a flag row, so the resolver cannot fail open on a
@@ -19,7 +20,7 @@ import { createServiceClient } from '#test/integration/helpers';
 // The third assertion narrows in phase 1, when `entitlement_catalog.category`
 // splits baseline keys (no flag row required) from surface keys.
 
-describe('catalog invariants (#1256, phase 0b)', () => {
+describe('catalog invariants (phase 0b)', () => {
   let service: SupabaseClient<Database>;
   let permissionNames: string[];
   let flagKeys: string[];

@@ -3,7 +3,7 @@
 **Status:** In progress — phase 0 merged (#1162), phase 0b in PR.
 **Date:** 2026-11-13. Supersedes the 2026-10-31 integration-branch draft.
 **Decision record:** [ADR-0015](../decisions/0015-role-based-authority.md)
-**Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (re-verified against `origin/main` `b4186312`).
+**Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (originally verified against `b4186312`; re-verified 2026-11-19 at `8aab828e`).
 **Live status and memory:** [role-authority-plan.md](role-authority-plan.md)
 **Orchestrator contract:** [role-authority-orchestrator.md](role-authority-orchestrator.md)
 
@@ -52,8 +52,8 @@ conductor, the second environment and the flag. Each phase is a PR into `main`.
 | Phase  | PR                                                                                                   | Closes                                                         | QA shards                         | Depends |
 | ------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------- | ------- |
 | **0**  | `docs(authority)`: audit + ADR-0015 + this plan + the ledger + the orchestrator contract             | — (FP-03 deferred, D11)                                        | `checks`                          | —       |
-| **0b** | `chore(authority)`: batch-0 cleanup, zero behaviour change                                           | N1 (catalog rows + guard), part of FP-20                       | `checks`, `unit`, `integration`   | 0       |
-| **1**  | `refactor(catalog)`: one entitlement catalog, one permission catalog, plan scope                     | FP-06, FP-13, FP-19, rest of FP-20                             | `PUB`, `ADM`, `LIM`, `BIL`        | 0b      |
+| **0b** | `chore(authority)`: batch-0 cleanup; existing orgs unchanged, new orgs get the corrected catalog     | N1 (catalog rows + guard), part of FP-20                       | `checks`, `unit`, `integration`   | 0       |
+| **1**  | `refactor(catalog)`: one entitlement catalog, one permission catalog, plan scope                     | FP-06, FP-13, FP-19, rest of FP-20                             | `PUB`, `test:admin`, `LIM`, `BIL` | 0b      |
 | **2**  | `feat(authority)`: role permissions, group scopes, route gates, control-plane RLS                    | FP-01, FP-04, FP-09, FP-11 (control plane), FP-21, N1 backfill | `AUT`, `MGR`, `EDU`, `SEC`        | 1       |
 | **3**  | `feat(entitlements)`: one resolver, entitlement profiles, `max` limits, fail-closed flags            | FP-07, FP-08, FP-12, FP-15, FP-16                              | `LIM`, `BIL`, `STU`               | 2       |
 | **4**  | `feat(seats)`: plan scope, `solo`, licences, audience                                                | FP-02, FP-05, FP-14, N3                                        | `MGR`, `BIL`, `LIM`               | 3       |
@@ -105,9 +105,9 @@ case documents, 18 of which have no spec yet.)
 | MGR-SET-02  | upserts `org_role_features` to grant branding                                       | entitlement profile ⊆ plan ceiling; no snapshot                           | 3     |
 | MGR-SET-05  | downgrade hides the logo; `/features/me` drops branding                             | `change_org_plan`; endpoint rename in 6                                   | 3 → 6 |
 | ONB-07      | org switch keeps `/edu`; active-org content only                                    | shell follows the active org; org-keyed cache                             | 6     |
-| PUB-02      | `/features` sells „Zarządzanie Organizacją”, „Masowe Zaproszenia”                   | permissions are not plan contents                                         | 1     |
+| PUB-02      | `/features` sells „Zarządzanie Organizacją”, „Masowe Zaproszenia”                   | none — the spec asserts structure, not plan contents                      | —     |
 | PUB-03      | `?for=manager` → launch/team/hub/campus                                             | manager personal = `solo`; scope/audience                                 | 4     |
-| PUB-04      | plan cards render `features[]` incl. „Zarządzanie Grupami”                          | plan entitlements only                                                    | 1     |
+| PUB-04      | plan cards render `features[]` incl. „Zarządzanie Grupami”                          | none — the cards derive from the API                                      | —     |
 | SEC-05      | student 403 on `/teacher/*` writes and teacher stats                                | own-scope content permissions                                             | 2     |
 | SEC-06      | student+teacher 403 on member/role writes; manager needs both keys                  | `org.member.manage` / `org.role.manage`                                   | 2     |
 | STU-03      | sidebar from `/features/me`; member role grants flashcards/quiz/documents           | `/me/entitlements`; `learner` profile without `documents`                 | 3 → 6 |
@@ -126,7 +126,7 @@ Deliverables: the audit with §0, ADR-0015 (renumbered, §15 settled), this
 plan, the ledger, the orchestrator contract. Nothing executable changes.
 **Exit:** `checks` green; no code touched.
 
-### 0b — batch-0 cleanup (zero behaviour change)
+### 0b — batch-0 cleanup (existing orgs unchanged; new orgs get the corrected catalog)
 
 - Add the missing `assignment.read` / `assignment.update` rows to the
   `permissions` catalog (N1). **DONE** (#1256) — and the same PR backfilled the
@@ -135,13 +135,16 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
   changed behaviour; the seeded grants do, and `withAuth` reads them. No
   `org_role_permissions` sweep for the _deleted_ keys here: phase 2 does that
   with the `permission_key` foreign key.
-- Add a unit guard that every `permissionScopes['…']` literal in code exists in
-  the catalog, so a phantom key cannot recur.
+- Add a unit guard that every **literal** permission key read through
+  `permissionScopes['…']` or `resolveScope(ctx, '…')` exists in the catalog, so
+  a phantom literal cannot recur. A key assembled at runtime is out of reach.
 - Drop `resource_permissions`. The plan said its only reference was the
   generated type file; the identifier is also in the `99_dev_grants.sql`
   `REVOKE` list (which has no `IF EXISTS`, so the drop alone breaks `db reset`)
   and the table carries its own RLS policy. Policy and grants fall with the
-  table; the seed line is removed with the drop.
+  table; the seed line is removed with the drop. The generated `database.ts`
+  keeps a dead block: the pinned `supabase gen types` cannot reproduce the
+  committed file (see R2), and nothing reads the block.
 - Delete the dead `X-Feature-Rollout` header and its two comments.
 - Add the catalog invariants as integration tests: permissions ∩ entitlements =
   ∅; `permissions` is exactly the `Permission` catalog (the N1 guard); every
@@ -151,9 +154,13 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
   and baseline keys stop needing a flag row.
 - Delete the six entitlement keys from `permissions` (`study.*`, `test.*`,
   `ai.chat`, `org.manage`); `org_role_permissions` rows are swept in phase 2.
+  Existing orgs keep their rows (and their resolution); newly created orgs stop
+  receiving the six rows from `handle_new_organization`, so their `admin`/
+  `teacher` roles carry 32 → 26 permissions and `member` 26 → 20.
 - Freeze the key list: no new features or entitlement keys until phase 1.
 
-**Exit:** `checks`, `unit`, `integration` green; no product behaviour changes.
+**Exit:** `checks`, `unit`, `integration` green; existing orgs unchanged, newly
+created orgs get the corrected catalog (6 fewer entitlement rows).
 
 ### 1 — catalog cutover
 
@@ -165,13 +172,26 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
 - Rewrite the live `org_role_permissions.permission_name` rows to the new keys in
   the same migration. Phase 2 puts a foreign key on that column; existing orgs'
   rows would otherwise block it.
-- Remove `org.manage`, `member.manage`, `role.builder`, `group.manage` from
-  plan entitlements. `documents` leaves the catalog until it has a surface.
+- **The four management keys stay** in `ENTITLEMENTS` and `plan_entitlements`
+  until phase 2: `requireFeature('role.builder' | 'member.manage' |
+'group.manage')` and `is_org_manager()` still read them, and phase 2 is where
+  those gates become permissions. `documents` leaves `ENTITLEMENTS` and
+  `plan_entitlements` here — no gate depends on it, and ADR §5.1 keeps it out
+  until it has a surface.
+- Update `__tests__/integration/catalog-invariants.test.ts` to the new names
+  (`FEATURES` → `ENTITLEMENTS`, `feature_flags` → `entitlement_flags`); the
+  `permissions` assertions stay.
 - One catalog module feeds server, admin and tests; delete the duplicate
   `FEATURES` and the two denylists' copies.
 
-**Exit:** no management key is purchasable; admin reads the new catalog;
-`PUB`, `ADM`, `LIM`, `BIL` green.
+**Exit:** admin reads the new catalog; `PUB`, `LIM`, `BIL` green and
+`bun run test:admin` green. "No management key is purchasable" moves to phase 2
+with the four legacy keys.
+
+**Settled 2026-11-19 — two PRs.** PR1 renames the tables, seeds and readers and
+is behaviour-neutral; PR2 does the catalog cutover (~300 lines) and must keep
+the four legacy management keys above. The generator cutover for
+`packages/server/src/types/database.ts` (R2) rides with PR1.
 
 ### 2 — authority cutover (the largest; stack of 2–3 PRs)
 
@@ -194,6 +214,10 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
 - Backfill `org_role_permissions` for existing orgs with the seeded template
   scopes: the system roles were backfilled by #1256; custom roles and the new
   catalog remain. The org-creation trigger only seeds new orgs.
+- Remove the four legacy management keys (`org.manage`, `member.manage`,
+  `role.builder`, `group.manage`) from `ENTITLEMENTS`, `entitlement_catalog`,
+  `entitlement_flags`, `plan_entitlements` and `org_role_features`, once the
+  route and RLS gates read permissions instead.
 - Class invites use `group.invite` at group scope for existing org members;
   delete the `can_assign_org_role` teacher-name exception.
 - **Control-plane RLS in the same PR**: `rls_caller_has_permission(org, key)`

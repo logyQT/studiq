@@ -813,7 +813,7 @@ batches. Pre-market allows a big-bang at the end if preferred.
 > 5 → phases 4 and 5. Where a batch's FP list differs from the queue, the queue
 > wins: it is the only place FP placement is authoritative.
 
-### Batch 0 — cleanup and guardrails (no behaviour change)
+### Batch 0 — cleanup and guardrails (existing orgs unchanged; new orgs get the corrected catalog)
 
 - Delete dead tables/keys: `resource_permissions`, `assignment.*` if unused,
   `feature_permissions` remnants; remove entitlement keys from `permissions`.
@@ -821,6 +821,12 @@ batches. Pre-market allows a big-bang at the end if preferred.
   limit key; every surface entitlement has a flag row.
 - Freeze the current `FEATURES` list; no new keys until Batch 1.
 - Maps to FP-13, FP-19, FP-20.
+
+> **0b correction (2026-11-19).** Batch 0 ships the stricter assertion — every
+> `FEATURES` key has a `feature_flags` row — rather than "every surface
+> entitlement", because the `category` split does not exist yet. Phase 1 adds
+> `entitlement_catalog.category` and narrows the test so baseline keys need no
+> flag row.
 
 ### Batch 1 — catalog split and plan scope
 

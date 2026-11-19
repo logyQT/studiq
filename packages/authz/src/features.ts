@@ -39,8 +39,10 @@ export interface FeatureResolution {
   features: FeatureKey[];
   /**
    * The rollout percentage that was actually applied for each enabled feature
-   * currently gated by a live rollout (i.e. `rollout_percentage < 100`). This
-   * is resolver output only; nothing reads it over the wire.
+   * currently gated by a live rollout (i.e. `rollout_percentage < 100`). The
+   * field still ships in the `/features/me` response body; only the
+   * `X-Feature-Rollout` header was removed (phase 0b), and phase 3 / D8 removes
+   * the field and the column.
    */
   rollout: Partial<Record<FeatureKey, number>>;
 }

@@ -6,8 +6,10 @@
  * the `assignment-permissions-seed` integration test noticed — after a stack.
  *
  * This is a source scan, not a behavioural test: it fails before the database
- * is needed. Keys are compared with `Object.values(Permission)`, so the catalog
- * in `@studiq/authz` stays the single place a new key is declared.
+ * is needed. It covers the **literal** forms of both reads — an indexed
+ * `permissionScopes['…']` and `resolveScope(ctx, '…')`, the function that
+ * defaults a missing key to `own` for content CRUD. A key assembled at runtime
+ * is out of reach of any source scan.
  *
  * `__tests__` is deliberately out of scope: fixtures index phantom keys on
  * purpose to prove a missing scope denies.
@@ -18,8 +20,11 @@ import path from 'node:path';
 import { Permission } from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
 
-/** `ctx.permissionScopes['assignment.read']` — the literal key only. */
-const SCOPE_READ = /permissionScopes\[\s*'([^']+)'\s*\]/g;
+/** `ctx.permissionScopes['assignment.read']` and `resolveScope(ctx, 'deck.read')`. */
+const LITERAL_READS = [
+  /permissionScopes\[\s*["']([^"']+)["']\s*\]/g,
+  /resolveScope\(\s*[^,()]+,\s*["']([^"']+)["']\s*\)/g,
+];
 
 const PERMISSION_KEYS: ReadonlySet<string> = new Set(Object.values(Permission));
 
@@ -59,20 +64,25 @@ function scopeReads(): ScopeRead[] {
       const source = fs.readFileSync(file, 'utf8');
       const relative = path.relative(process.cwd(), file).split(path.sep).join('/');
 
-      return [...source.matchAll(SCOPE_READ)].map((match) => ({
-        file: relative,
-        key: match[1] ?? '',
-        line: source.slice(0, match.index).split('\n').length,
-      }));
+      return LITERAL_READS.flatMap((pattern) =>
+        [...source.matchAll(pattern)].map((match) => ({
+          file: relative,
+          key: match[1] ?? '',
+          line: source.slice(0, match.index).split('\n').length,
+        })),
+      );
     });
 }
 
 describe('permission scope catalog', () => {
-  it('finds the scope reads it guards', () => {
+  it('finds the literal scope reads it guards', () => {
+    const files = new Set(scopeReads().map((read) => read.file));
+
     expect(scopeReads().length).toBeGreaterThan(0);
+    expect(files.has('packages/server/src/services/teacher-assignment.service.ts')).toBe(true);
   });
 
-  it('every permissionScopes literal is a Permission catalog key', () => {
+  it('every literal permission read is a Permission catalog key', () => {
     const phantom = scopeReads()
       .filter((read) => !PERMISSION_KEYS.has(read.key))
       .map((read) => `${read.file}:${read.line} ${read.key}`);

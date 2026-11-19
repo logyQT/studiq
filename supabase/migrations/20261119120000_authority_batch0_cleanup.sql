@@ -1,10 +1,11 @@
 -- Phase 0b of the role-authority programme (ADR-0015 §8.3, §13 batch 0).
 --
--- `resource_permissions` is dead: nothing writes it, per-resource sharing is
--- owned by the `*_groups` junction tables, and the only code reference is the
--- generated type file. Its own RLS policy and grants are dropped with the
--- table; the one seed reference (`99_dev_grants.sql`'s REVOKE list) is removed
--- in the same commit, because REVOKE has no IF EXISTS.
+-- `resource_permissions` is dead: nothing writes it, and per-resource sharing is
+-- owned by the `*_groups` junction tables. Three references existed: the
+-- generated type file (which keeps a dead block until the generator is pinned —
+-- phase 1), one seed REVOKE line (`99_dev_grants.sql`, removed in the same
+-- commit because REVOKE has no IF EXISTS), and this table's own RLS policy and
+-- grants, which are dropped with the table.
 drop table if exists public.resource_permissions;
 
 -- Entitlement keys are not permissions (ADR-0015 §8.2 invariant 1). These six
@@ -23,8 +24,8 @@ where name in (
   'org.manage'
 );
 
--- `org_role_permissions` rows are deliberately left dangling: no foreign key
--- ties them to `permissions` yet, the rows are inert, and `withAuth` reads that
--- table to build `ctx.permissionScopes`. Sweeping them would change scope
--- resolution for existing orgs, so phase 2 does it in the migration that adds
+-- `org_role_permissions` rows are deliberately not swept here: `withAuth` still
+-- serves them, so existing orgs keep their resolution, newly created orgs stop
+-- receiving these six rows from `handle_new_organization` (this migration
+-- changes the catalog that trigger copies), and phase 2 sweeps the rest with
 -- the `permission_key` foreign key.

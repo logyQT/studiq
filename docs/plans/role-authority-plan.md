@@ -43,20 +43,21 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
 ## 3. Rules (earned, not invented)
 
-| #   | Rule                                                                                                                    | Earned from                                                        |
-| --- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                     | `check-migration-timestamps` fails on duplicate prefixes           |
-| R2  | `packages/server/src/types/database.ts` is regenerated after merge, never hand-resolved.                                | it is generated and committed                                      |
-| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                           | both hooks run `knip --treat-config-hints-as-errors`               |
-| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                       | FP-01 is exploitable through PostgREST                             |
-| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation. | audit §0.2: 41 of 45 gates are permission checks                   |
-| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                              | the corpus is the product contract                                 |
-| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                | prose is not a verdict                                             |
-| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.             | a v1 scope change left six sections describing the deferred table  |
-| R9  | Every number in a doc is produced by a command, not by memory.                                                          | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine |
-| R10 | Re-verify every checklist line against the tree before dispatch.                                                        | a six-day-old 0b checklist cited three already-shipped items       |
-| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                 | "only reference is the generated type file" missed a seed `REVOKE` |
-| R12 | A fix is not closed until the write path that can undo it has a test.                                                   | the role save drops the `assignment.*` rows the seed grants        |
+| #   | Rule                                                                                                                                                                                                            | Earned from                                                             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                                             | `check-migration-timestamps` fails on duplicate prefixes                |
+| R2  | Regenerate `database.ts` in the same PR when the schema change is consumed by typed code; a dropped, unreferenced table may leave its block until the toolchain is pinned — phase 1 owns the generator cutover. | the pinned v3.1 generator emits a different shape and 7 RPC type errors |
+| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                                                   | both hooks run `knip --treat-config-hints-as-errors`                    |
+| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                                               | FP-01 is exploitable through PostgREST                                  |
+| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                                                         | audit §0.2: 41 of 45 gates are permission checks                        |
+| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                                                      | the corpus is the product contract                                      |
+| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                                                        | prose is not a verdict                                                  |
+| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                                                     | a v1 scope change left six sections describing the deferred table       |
+| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                                                  | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine      |
+| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                                                | a six-day-old 0b checklist cited three already-shipped items            |
+| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                                                         | "only reference is the generated type file" missed a seed `REVOKE`      |
+| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                                           | the role save drops the `assignment.*` rows the seed grants             |
+| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                                                 | the 0b regen produced a different shape and 7 RPC type errors           |
 
 ## 4. Decisions
 
@@ -141,17 +142,24 @@ Rule: R8 and R9.
 
 - `resource_permissions` dropped (`20261119120000_authority_batch0_cleanup.sql`)
   and removed from the `99_dev_grants.sql` `REVOKE` list, which has no
-  `IF EXISTS` and would otherwise break `db reset`.
+  `IF EXISTS` and would otherwise break `db reset`. The generated
+  `database.ts` still carries its block: the pinned generator cannot reproduce
+  the committed file (R2/R13), and nothing reads the block.
 - The six entitlement rows deleted from `permissions` (`study.create`,
   `study.participate`, `test.create`, `test.participate`, `ai.chat`,
-  `org.manage`). `org_role_permissions` rows are left dangling on purpose:
-  `withAuth` reads them, so the sweep lands with the phase 2 foreign key.
+  `org.manage`). Existing orgs are unchanged — their `org_role_permissions`
+  rows are left dangling on purpose because `withAuth` still serves them, so the
+  sweep lands with the phase 2 foreign key. Newly created orgs get the corrected
+  catalog: `handle_new_organization` copies `permissions`, so their
+  `admin`/`teacher` roles carry 32 → 26 rows and `member` 26 → 20, and a new-org
+  member's `/permissions/me` no longer lists `ai.chat`/`org.manage`.
   `org.manage` stays in `feature_flags` and `ADMIN_ONLY_FEATURES` until phase 1.
-- The dead `X-Feature-Rollout` header and its two comments deleted; `rollout`
-  stays in the resolver output and in `feature_flags.rollout_percentage`, which
-  phase 3 / D8 removes.
-- New unit guard: every `permissionScopes['…']` literal in `packages/server/src`
-  and `apps/*` must be a `Permission` key.
+- The dead `X-Feature-Rollout` header and its two comments deleted; the `rollout`
+  field still ships in the response body, and `feature_flags.rollout_percentage`
+  stays, until phase 3 / D8 removes both.
+- New unit guard: every literal key read through `permissionScopes['…']` or
+  `resolveScope(ctx, '…')` in `packages/server/src` and `apps/*` must be a
+  `Permission` key. Runtime-assembled keys are out of scope.
 - New integration invariants: `permissions` ∩ `FEATURES` = ∅, `permissions` is
   exactly `Permission`, and every `FEATURES` key has a `feature_flags` row
   (narrows in phase 1, when baseline keys no longer need one).
@@ -213,9 +221,32 @@ Fix: recorded here; phase 2 adds the catalogue-driven editor and the test, with
 an acceptance criterion in the rollout plan.
 Rule: a fix is not closed until the write path that can undo it has a test.
 
+#### 2026-11-19 — the type generator cannot reproduce the committed `database.ts`
+
+What: `bunx supabase gen types` at the pinned v3.1 emits a different shape and
+7 RPC-argument type errors in 4 files; the committed file came from an older
+generator that cannot parse the v3 stack config.
+Why: the 0b checklist listed "type regen" as free work, and R2 assumed
+regeneration is always available.
+Fix: `database.ts` is untouched and `resource_permissions` keeps a dead block
+that nothing reads. Phase 1 pins the toolchain or fixes the call sites.
+Rule: R13.
+
+#### 2026-11-19 — integration is green serially and red in parallel on this host
+
+What: `bun run env:run -- bun run test:integration` on this 16-core host fails
+10–20 assignment/exposure tests, different files each run;
+`bun run env:run -- bunx vitest run --no-file-parallelism` is green (813 passed,
+11 skipped, 93 files). The parallelism exceeds the 4-vCPU CI runner.
+Why: the per-file fixtures share the seeded org and are not safe at that
+concurrency; CI's smaller runner never exposed it.
+Fix: recorded here; the coordinator runs the serial form on this host.
+Rule: none — host/CI concurrency difference, not a programme rule.
+
 **Done when:** the `assignment.*` catalog rows exist (shipped, #1256),
 `resource_permissions` is dropped, the dead header is gone, and the catalog
-invariants are integration tests. All four hold; the role-editor write path is
+invariants are integration tests. The generated `database.ts` keeps the dead
+table block until the toolchain is pinned (R2/R13); the role-editor write path is
 phase 2.
 
 ### Phase 1 — catalog
