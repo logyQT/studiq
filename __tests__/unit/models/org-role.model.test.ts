@@ -60,14 +60,26 @@ describe('SetRolePermissionsSchema', () => {
     expect(issueKeys(result)).toContain('member.manage');
   });
 
-  it('rejects a duplicate key', () => {
+  it('rejects a duplicate key and names it', () => {
     const body = payload({ 'flashcard.read': 'own' });
     const result = SetRolePermissionsSchema.safeParse({
       permissions: [...body.permissions, { permissionName: 'flashcard.read', scope: 'group' }],
     });
 
     expect(result.success).toBe(false);
-    expect(issueKeys(result)).toContain('permissionName');
+    expect(issueKeys(result)).toContain('flashcard.read');
+  });
+
+  it('rejects a name that only exists on the object prototype', () => {
+    for (const name of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+      const body = payload();
+      const result = SetRolePermissionsSchema.safeParse({
+        permissions: [...body.permissions, { permissionName: name, scope: null }],
+      });
+
+      expect(result.success, `${name} must not pass as a catalog key`).toBe(false);
+      expect(issueKeys(result)).toContain(name);
+    }
   });
 
   it('names every missing catalog key', () => {

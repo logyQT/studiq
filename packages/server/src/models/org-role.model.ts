@@ -3,7 +3,6 @@ import {
   isPermissionCatalogKey,
   PERMISSIONS,
   type PermissionCatalogKey,
-  type PermissionDefinition,
 } from '@studiq/authz';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
@@ -12,8 +11,20 @@ import { registry, z } from '@studiq/server/lib/zod';
 export const CATALOG_PERMISSION_KEYS: readonly PermissionCatalogKey[] =
   Object.keys(PERMISSIONS).filter(isPermissionCatalogKey);
 
-/** The catalog by name, `undefined` for a name the caller invented. */
-const CATALOG: Record<string, PermissionDefinition | undefined> = PERMISSIONS;
+/**
+ * Whether the payload is the role's whole permission set: one entry per catalog key,
+ * no duplicates. `OrgRoleService.setPermissions` replaces every row for the role, so a
+ * partial payload would delete the keys it does not mention (D24) — the service checks
+ * this too, because it is a direct entry point (tests, scripts) and not only a route.
+ */
+export function isCompleteCatalogPayload(
+  permissions: readonly { permissionName: string }[],
+): boolean {
+  if (permissions.length !== CATALOG_PERMISSION_KEYS.length) return false;
+
+  const seen = new Set(permissions.map((entry) => entry.permissionName));
+  return seen.size === permissions.length && CATALOG_PERMISSION_KEYS.every((key) => seen.has(key));
+}
 
 const EntitlementProfileSchema = z.enum(ENTITLEMENT_PROFILES, {
   error: ValidationErrorCode.INVALID_INPUT,
@@ -83,18 +94,22 @@ export const SetRolePermissionsSchema = registry.register(
       const seen = new Set<string>();
 
       value.permissions.forEach((entry, index) => {
+        // Both the duplicate and the unknown-name issue are located by the key
+        // itself, so the 422 says which permission the payload got wrong.
         if (seen.has(entry.permissionName)) {
           ctx.addIssue({
             code: 'custom',
-            path: ['permissions', index, 'permissionName'],
+            path: ['permissions', entry.permissionName],
             message: ValidationErrorCode.INVALID_INPUT,
           });
         }
         seen.add(entry.permissionName);
 
-        // A permission name outside the catalog is located by the name itself, so
-        // the 422 says which key the caller invented.
-        const definition = CATALOG[entry.permissionName];
+        // `isPermissionCatalogKey` is an own-property check; indexing the catalog
+        // directly would accept `constructor`/`__proto__`/`toString` (ADR-0015 §4.1).
+        const definition = isPermissionCatalogKey(entry.permissionName)
+          ? PERMISSIONS[entry.permissionName]
+          : undefined;
         const allowedScopes: readonly string[] = definition?.allowedScopes ?? [];
         if (!definition) {
           ctx.addIssue({

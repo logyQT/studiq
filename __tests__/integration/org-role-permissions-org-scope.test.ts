@@ -177,9 +177,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
     const before = await permissionsOf(orgBMemberRole);
     expect(before.length).toBeGreaterThan(0);
 
-    const result = await orgRoleService.setPermissions(ctx({}), orgBMemberRole, {
-      permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
-    });
+    const result = await orgRoleService.setPermissions(ctx({}), orgBMemberRole, catalogPayload());
 
     expect(result.success).toBe(false);
     if (result.success) throw new Error('unreachable');
@@ -198,7 +196,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
     const result = await orgRoleService.setPermissions(
       ctx({ activeOrgId: orgB, orgRoleId: null }),
       orgBMemberRole,
-      { permissions: [{ permissionName: 'flashcard.read', scope: 'own' }] },
+      catalogPayload(),
     );
 
     expect(result.success).toBe(false);
@@ -212,12 +210,13 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   it('replaces permissions for a role in the caller own org (happy path preserved)', async () => {
     const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
 
-    const result = await orgRoleService.setPermissions(ctx({}), orgACustomRole, {
-      permissions: [
-        { permissionName: 'flashcard.read', scope: 'own' },
-        { permissionName: 'quiz.read', scope: 'group' },
-      ],
-    });
+    // The editor's payload is the whole catalog: every other key is a revoke, so
+    // exactly the two granted rows survive.
+    const result = await orgRoleService.setPermissions(
+      ctx({}),
+      orgACustomRole,
+      catalogPayload({ 'flashcard.read': 'own', 'quiz.read': 'group' }),
+    );
 
     expect(result.success).toBe(true);
 

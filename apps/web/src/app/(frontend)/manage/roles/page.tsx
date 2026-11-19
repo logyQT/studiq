@@ -180,11 +180,14 @@ export default function RolesPage() {
   async function handleSavePermissions(
     roleId: string,
     permissions: RolePermission[],
-    entitlementProfile: EntitlementProfile,
+    entitlementProfile: EntitlementProfile | null,
   ) {
     try {
       await apiPut(`/api/v1/organization/roles/${roleId}/permissions`, { permissions });
-      await apiPut(`/api/v1/organization/roles/${roleId}`, { entitlementProfile });
+      // `null` = the editor does not manage this role's profile (system roles).
+      if (entitlementProfile !== null) {
+        await apiPut(`/api/v1/organization/roles/${roleId}`, { entitlementProfile });
+      }
       toast.success(t('perms_saved'));
       setPermDialogOpen(false);
       setPermRole(null);
@@ -450,7 +453,7 @@ function PermissionEditorDialog({
   onSave: (
     roleId: string,
     permissions: RolePermission[],
-    entitlementProfile: EntitlementProfile,
+    entitlementProfile: EntitlementProfile | null,
   ) => Promise<void>;
 }) {
   return (
@@ -479,21 +482,18 @@ function PermissionEditorDialog({
 
 /** The role's current scopes, one entry per catalog key (`null` = not granted). */
 function initialScopes(role: OrgRoleDetail): ScopeMap {
-  const stored = new Map(role.permissions.map((p) => [p.permissionName, p.scope]));
+  const storedScopes = new Map(role.permissions.map((p) => [p.permissionName, p.scope]));
   const scopes: ScopeMap = {};
 
   for (const key of CATALOG_KEYS) {
-    const scope = stored.get(key);
+    const stored = storedScopes.get(key);
     const allowed: readonly string[] = PERMISSIONS[key].allowedScopes;
     // The old editor accepted free strings, so a stored scope can fall outside the
-    // catalog's allowed set. Render the granted key at its narrowest allowed scope;
-    // the save rewrites the row into the catalog.
+    // catalog's allowed set. Such a grant falls back to revoked, never to a wider
+    // scope than the role held (the first allowed scope can be wider — e.g.
+    // `group.invite`, where `any` is not one of `own | group | organization`).
     scopes[key] =
-      scope === undefined
-        ? null
-        : isCatalogScope(scope) && allowed.includes(scope)
-          ? scope
-          : PERMISSIONS[key].allowedScopes[0];
+      stored !== undefined && isCatalogScope(stored) && allowed.includes(stored) ? stored : null;
   }
 
   return scopes;
@@ -521,7 +521,7 @@ function PermissionEditorBody({
   onSave: (
     roleId: string,
     permissions: RolePermission[],
-    entitlementProfile: EntitlementProfile,
+    entitlementProfile: EntitlementProfile | null,
   ) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -565,28 +565,32 @@ function PermissionEditorBody({
           </div>
         ))}
 
-        <fieldset className="space-y-2 border-t pt-4">
-          <legend className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-            {t('profile_title')}
-          </legend>
-          <p className="text-xs text-muted-foreground">{t('profile_hint')}</p>
-          <div className="flex flex-wrap gap-4">
-            {ENTITLEMENT_PROFILES.map((candidate) => (
-              <label key={candidate} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input
-                  type="radio"
-                  name="entitlement-profile"
-                  value={candidate}
-                  checked={profile === candidate}
-                  onChange={() => setProfile(candidate)}
-                  data-profile-radio="true"
-                  className="size-4"
-                />
-                <span>{t(`profile_${candidate}`)}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {/* A system role's profile is what its entitlement surface rests on: the
+            Admin role's `all` must not be movable from the dictionary editor. */}
+        {!role.isSystem && (
+          <fieldset className="space-y-2 border-t pt-4">
+            <legend className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+              {t('profile_title')}
+            </legend>
+            <p className="text-xs text-muted-foreground">{t('profile_hint')}</p>
+            <div className="flex flex-wrap gap-4">
+              {ENTITLEMENT_PROFILES.map((candidate) => (
+                <label key={candidate} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="entitlement-profile"
+                    value={candidate}
+                    checked={profile === candidate}
+                    onChange={() => setProfile(candidate)}
+                    data-profile-radio="true"
+                    className="size-4"
+                  />
+                  <span>{t(`profile_${candidate}`)}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
@@ -600,7 +604,7 @@ function PermissionEditorBody({
               permissionName: key,
               scope: scopes[key] ?? null,
             }));
-            void onSave(role.id, permissions, profile);
+            void onSave(role.id, permissions, role.isSystem ? null : profile);
           }}
         >
           {t('perms_save')}

@@ -20,9 +20,11 @@ type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
   select: Mock<(...args: unknown[]) => QueryChain>;
   insert: Mock<(...args: unknown[]) => QueryChain>;
+  upsert: Mock<(...args: unknown[]) => QueryChain>;
   update: Mock<(...args: unknown[]) => QueryChain>;
   delete: Mock<(...args: unknown[]) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
   single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
   maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
@@ -30,6 +32,11 @@ type QueryChain = {
   catch: Promise<QueryResult>['catch'];
   finally: Promise<QueryResult>['finally'];
 };
+
+/** The position of a mock's first call, `Infinity` when it never ran. */
+function callOrder(fn: Mock): number {
+  return fn.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+}
 
 /** Narrows a service result to its data, failing the test when the call failed. */
 function expectSuccess<T>(result: ServiceResult<T>): T {
@@ -44,9 +51,11 @@ function qb(data: unknown, error: unknown = null, count?: number) {
   const b: QueryChain = {
     select: vi.fn(() => b),
     insert: vi.fn(() => b),
+    upsert: vi.fn(() => b),
     update: vi.fn(() => b),
     delete: vi.fn(() => b),
     eq: vi.fn(() => b),
+    not: vi.fn(() => b),
     order: vi.fn(() => b),
     single: vi.fn().mockResolvedValue(result),
     maybeSingle: vi.fn().mockResolvedValue(result),
@@ -180,6 +189,29 @@ describe('OrgRoleService', () => {
         { permissionName: 'flashcard.read', scope: 'own' },
       ]);
       expect(expectSuccess(result).entitlementProfile).toBe('learner');
+    });
+
+    it('drops a stored row whose scope is outside the catalog (a legacy any row)', async () => {
+      const data = {
+        id: 'r-1',
+        name: 'legacy',
+        display_name: 'legacy',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+        org_role_permissions: [
+          { permission_name: 'deck.read', scope: 'any' },
+          { permission_name: 'topic.read', scope: 'own' },
+        ],
+      };
+      mock.from.mockReturnValueOnce(qb(data));
+
+      const result = await service.getRole(ctx, 'r-1');
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).permissions).toEqual([
+        { permissionName: 'topic.read', scope: 'own' },
+      ]);
     });
 
     it('returns error on DB failure', async () => {
@@ -529,43 +561,37 @@ describe('OrgRoleService', () => {
         }),
       );
 
-      const result = await service.setPermissions(permCtx, 'r-other-org', {
-        permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
-      });
+      const result = await service.setPermissions(permCtx, 'r-other-org', catalogPayload());
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
-      // Only the role lookup ran — no DELETE, no INSERT.
+      // Only the role lookup ran — no write.
       expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
-    it('scopes the role lookup to the active org and writes the granted rows', async () => {
-      const roleQb = mockRoleLookup();
-      const deleteQb = qb(undefined);
-      const insertQb = qb(undefined);
-      mock.from.mockReturnValueOnce(deleteQb);
-      mock.from.mockReturnValueOnce(insertQb);
+    it('returns UNPROCESSABLE_ENTITY for a payload that is not the whole catalog', async () => {
+      // Stubbed so a service that accepted the partial payload fails on the
+      // assertions below instead of on an unstubbed client call.
+      mockRoleLookup();
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
       const result = await service.setPermissions(permCtx, 'r-1', {
         permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
       });
 
-      expect(result.success).toBe(true);
-      expect(mock.from).toHaveBeenNthCalledWith(1, 'org_roles');
-      expect(roleQb.eq).toHaveBeenCalledWith('id', 'r-1');
-      expect(roleQb.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect(mock.from).toHaveBeenNthCalledWith(2, 'org_role_permissions');
-      expect(deleteQb.eq).toHaveBeenCalledWith('org_role_id', 'r-1');
-      expect(insertQb.insert).toHaveBeenCalledWith([
-        { org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' },
-      ]);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      // The direct entry point refuses before it reads or writes a row.
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
-    it('succeeds with a complete payload and only inserts the granted keys', async () => {
-      mockRoleLookup();
-      const insertQb = qb(undefined);
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(insertQb); // insert
+    it('scopes the role lookup to the active org and upserts the granted rows', async () => {
+      const roleQb = mockRoleLookup();
+      const upsertQb = qb(undefined);
+      const pruneQb = qb(undefined);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(pruneQb);
 
       const result = await service.setPermissions(
         permCtx,
@@ -574,27 +600,63 @@ describe('OrgRoleService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(insertQb.insert).toHaveBeenCalledWith([
-        { org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' },
-        { org_role_id: 'r-1', permission_name: 'deck.read', scope: 'group' },
-      ]);
+      expect(mock.from).toHaveBeenNthCalledWith(1, 'org_roles');
+      expect(roleQb.eq).toHaveBeenCalledWith('id', 'r-1');
+      expect(roleQb.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(mock.from).toHaveBeenNthCalledWith(2, 'org_role_permissions');
+      expect(upsertQb.upsert).toHaveBeenCalledWith(
+        [
+          { org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' },
+          { org_role_id: 'r-1', permission_name: 'deck.read', scope: 'group' },
+        ],
+        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+      );
+      expect(pruneQb.eq).toHaveBeenCalledWith('org_role_id', 'r-1');
+      expect(pruneQb.not).toHaveBeenCalledWith(
+        'permission_name',
+        'in',
+        '("flashcard.read","deck.read")',
+      );
     });
 
-    it('succeeds with an empty permissions array', async () => {
+    it('upserts the granted keys before it prunes the rest', async () => {
       mockRoleLookup();
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
+      const upsertQb = qb(undefined);
+      const pruneQb = qb(undefined);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(pruneQb);
 
-      const result = await service.setPermissions(permCtx, 'r-1', { permissions: [] });
+      const result = await service.setPermissions(
+        permCtx,
+        'r-1',
+        catalogPayload({ 'flashcard.read': 'own', 'deck.read': 'group' }),
+      );
 
       expect(result.success).toBe(true);
+      expect(callOrder(pruneQb.delete)).not.toBe(Number.POSITIVE_INFINITY);
+      expect(callOrder(upsertQb.upsert)).toBeLessThan(callOrder(pruneQb.delete));
+    });
+
+    it('succeeds with a complete all-null payload and prunes every row', async () => {
+      mockRoleLookup(roleRow([{ permission_name: 'deck.read', scope: 'group' }]));
+      const pruneQb = qb(undefined);
+      mock.from.mockReturnValueOnce(pruneQb); // prune
+
+      const result = await service.setPermissions(permCtx, 'r-1', catalogPayload());
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(pruneQb.delete).toHaveBeenCalled();
+      // No grant list to keep: the delete is unscoped on permission_name.
+      expect(pruneQb.not).not.toHaveBeenCalled();
     });
 
     it('returns FORBIDDEN when editing the caller own role without ownership', async () => {
       mockRoleLookup();
       // Stubbed so a guard that stops blocking the write fails on the assertion
       // below instead of on an unstubbed client call.
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
       const selfCtx = { ...permCtx, orgRoleId: 'r-1', permissionScopes: nonOwnerScopes() };
 
       const result = await service.setPermissions(selfCtx, 'r-1', catalogPayload());
@@ -606,8 +668,8 @@ describe('OrgRoleService', () => {
 
     it('lets an org.admin holder edit the Admin role it belongs to', async () => {
       mockRoleLookup(roleRow([{ permission_name: 'org.admin', scope: 'organization' }]));
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
       const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
 
       const result = await service.setPermissions(
@@ -621,8 +683,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to grant a key the caller does not hold', async () => {
       mockRoleLookup();
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
       const scopes = nonOwnerScopes();
       delete scopes['org.member.manage'];
 
@@ -640,8 +702,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to remove a grant the caller holds at a narrower scope', async () => {
       mockRoleLookup(roleRow([{ permission_name: 'deck.read', scope: 'organization' }]));
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
       const result = await service.setPermissions(
         { ...permCtx, permissionScopes: { 'deck.read': 'own' } },
@@ -656,9 +718,9 @@ describe('OrgRoleService', () => {
 
     it('lets a no-op entry through without the caller holding the key', async () => {
       mockRoleLookup(roleRow([{ permission_name: 'org.member.manage', scope: 'organization' }]));
-      const insertQb = qb(undefined);
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(insertQb); // insert
+      const upsertQb = qb(undefined);
+      mock.from.mockReturnValueOnce(upsertQb); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
       const result = await service.setPermissions(
         { ...permCtx, permissionScopes: {} },
@@ -667,15 +729,16 @@ describe('OrgRoleService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(insertQb.insert).toHaveBeenCalledWith([
-        { org_role_id: 'r-1', permission_name: 'org.member.manage', scope: 'organization' },
-      ]);
+      expect(upsertQb.upsert).toHaveBeenCalledWith(
+        [{ org_role_id: 'r-1', permission_name: 'org.member.manage', scope: 'organization' }],
+        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+      );
     });
 
     it('refuses to grant org.admin to a role that does not hold it', async () => {
       mockRoleLookup();
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
       const result = await service.setPermissions(
         permCtx,
@@ -690,8 +753,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to revoke org.admin from the role that holds it', async () => {
       mockRoleLookup(roleRow([{ permission_name: 'org.admin', scope: 'organization' }]));
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
       const result = await service.setPermissions(permCtx, 'r-1', catalogPayload());
 
@@ -707,8 +770,8 @@ describe('OrgRoleService', () => {
           { permission_name: 'deck.read', scope: 'group' },
         ]),
       );
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
 
       const result = await service.setPermissions(
         permCtx,
@@ -730,23 +793,40 @@ describe('OrgRoleService', () => {
       });
     });
 
-    it('returns error on delete failure', async () => {
-      mockRoleLookup();
-      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+    it('returns error on upsert failure and never prunes the previous rows', async () => {
+      mockRoleLookup(
+        roleRow([
+          { permission_name: 'deck.read', scope: 'organization' },
+          { permission_name: 'topic.read', scope: 'own' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' })); // upsert
+      // Stubbed so a service that pruned anyway fails on the assertions below,
+      // not on an unstubbed client call.
+      mock.from.mockReturnValueOnce(qb(undefined)); // a prune that must not run
 
-      const result = await service.setPermissions(permCtx, 'r-1', { permissions: [] });
+      const result = await service.setPermissions(
+        permCtx,
+        'r-1',
+        catalogPayload({ 'flashcard.read': 'own' }),
+      );
 
       expect(result.success).toBe(false);
+      // The role keeps the rows it had; only the role lookup and the failed upsert
+      // ran, so a retry starts from the previous set instead of an empty role.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('returns error on insert failure', async () => {
+    it('returns error on prune failure', async () => {
       mockRoleLookup();
-      mock.from.mockReturnValueOnce(qb(undefined));
-      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' })); // prune
 
-      const result = await service.setPermissions(permCtx, 'r-1', {
-        permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
-      });
+      const result = await service.setPermissions(
+        permCtx,
+        'r-1',
+        catalogPayload({ 'flashcard.read': 'own' }),
+      );
 
       expect(result.success).toBe(false);
     });

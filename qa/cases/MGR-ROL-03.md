@@ -84,7 +84,8 @@ punkty opisują to, co spec pinuje; przebieg 5/5 wykonuje koordynator programu.
   własności organizacji.
 - Pod listą znajduje się „Profil uprawnień” (Wszystkie / Uczeń / Brak). Rola
   niestandardowa startuje z „Brak” i zapis dialogu utrwala wybór razem z uprawnieniami;
-  `GET /api/v1/organization/roles/<id>` zwraca `entitlementProfile`.
+  `GET /api/v1/organization/roles/<id>` zwraca `entitlementProfile`. W roli systemowej
+  wybór jest ukryty — profil Admina (`all`) nie jest edytowalny z tego dialogu.
 - „Zapisz uprawnienia” pokazuje toast „Uprawnienia zaktualizowane” (sonner), zamyka
   dialog i odświeża licznik na liście („20 uprawnień”, bo zaznaczono 20 kluczy
   treściowych). Ponowne otwarcie edytora pokazuje zapisane zakresy jako zaznaczone;

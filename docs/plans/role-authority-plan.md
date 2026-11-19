@@ -742,18 +742,28 @@ depend on the old writer.
   (`null` = revoke). `SetRolePermissionsSchema` adds a `superRefine` that
   requires exactly one entry per catalog key (a missing or duplicate key is a 422
   whose issue path names it) and a scope inside that key's `allowedScopes`
-  (`group.invite` has no `own`, `org.*` only `organization`). The schema is the
-  write contract: `orgRoleService.setPermissions` replaces the role's whole set,
-  so a partial payload is now rejected before it can delete anything.
+  (`group.invite` has no `own`, `org.*` only `organization`). The name check is an
+  own-property check (`isPermissionCatalogKey`), so `constructor`/`__proto__`/
+  `toString` are rejected rather than resolved through the prototype chain. The
+  schema is the controller's write contract; `isCompleteCatalogPayload` in the
+  same model repeats the completeness rule for the service, which is a direct
+  entry point too (tests, scripts), so a partial payload is rejected before it can
+  delete anything.
 - `OrgRoleService.setPermissions` keeps the #263 tenant proof untouched and adds,
-  in order: the no-self-edit rule (`id === ctx.orgRoleId` → 403 unless the caller
-  holds `org.admin`, D21); a per-key authorization pass over **every** key that
-  changes (a grant needs the caller to hold the key at a scope covering the
+  in order: the completeness check (`isCompleteCatalogPayload` → 422, before the
+  tenant lookup); the no-self-edit rule (`id === ctx.orgRoleId` → 403 unless the
+  caller holds `org.admin`, D21); a per-key authorization pass over **every** key
+  that changes (a grant needs the caller to hold the key at a scope covering the
   target, a removal over the current scope); the D16 rule that a non-assignable
   key may only be re-sent as a no-op (`org.admin` grant or revoke → 422); then
-  the delete-then-insert of every non-null entry. Each successful change logs
-  actor, org, role id/name and the before/after key→scope maps through
-  `@studiq/server/lib/log` (D20 — no audit table).
+  the write, target-first: upsert every non-null entry on
+  `(org_role_id, permission_name)`, then prune the rows whose name is not in the
+  granted set. That order keeps a failure recoverable — a failed upsert leaves
+  the previous set untouched, a failed prune leaves a superset the next save
+  prunes, whereas delete-then-insert would empty the Admin role on a write
+  timeout and the self-edit guard would then refuse the retry. Each successful
+  change logs actor, org, role id/name and the before/after key→scope maps
+  through `@studiq/server/lib/log` (D20 — no audit table).
 - `org_roles.entitlement_profile` is read by `listRoles`/`getRole` and written by
   `createRole` (default `none` for a custom role) and `updateRole`, guarded by
   `isEntitlementProfile`. `CreateOrgRoleSchema`/`UpdateOrgRoleSchema` accept
@@ -768,30 +778,36 @@ depend on the old writer.
   disabled (held = no-op at `organization`, absent = never granted), and Save
   sends one entry per catalog key. The entitlement-profile picker
   (`all | learner | none`) writes `entitlementProfile` through
-  `PUT /organization/roles/:id` in the same save. The `role.builder` gate, the
-  locked card and the `featuresPending` guard are unchanged (the gate flip is
-  2a-2).
+  `PUT /organization/roles/:id` in the same save, and is withheld for a system
+  role — the Admin role's `all` is not movable from the permission editor. The
+  `role.builder` gate, the locked card and the `featuresPending` guard are
+  unchanged (the gate flip is 2a-2).
 - i18n (`pl` + `en`): the five legacy section labels stay, five new sections
   (`section_quizzes`, `section_assignments`, `section_stats`, `section_classes`,
   `section_organization`), the derived action labels (`action_*`) and the
   profile strings; both locales carry the same 68 keys.
 - Tests: `__tests__/unit/models/org-role.model.test.ts` (closed catalog,
-  duplicate, missing key names, `allowedScopes`, profile enum) and
-  `__tests__/unit/controllers/org-role.controller.test.ts` (a rejected payload
-  never reaches the service) pin the schema; the service suite covers unknown
-  tenant, self-edit vs the `org.admin` exemption, grant escalation, removal
+  duplicate and missing key names, prototype names, `allowedScopes`, profile
+  enum) and `__tests__/unit/controllers/org-role.controller.test.ts` (a rejected
+  payload never reaches the service) pin the schema; the service suite covers
+  unknown tenant, a payload that is not the whole catalog, the upsert-before-prune
+  order, self-edit vs the `org.admin` exemption, grant escalation, removal
   escalation, the `org.admin` no-op and both write failures; the integration
   suite keeps #263 and adds "a complete payload preserves a no-op row the caller
-  cannot change" and the `entitlement_profile` round-trip. QA `MGR-ROL-03`
-  asserts 44 rows, 10 sections, the complete payload on every save and a reset as
-  "untick every row" (its case text moved with the spec); `MGR-ROL-01/02/04` only
-  name `role.builder` and the permission button, so their premise is unchanged.
+  cannot change", a complete payload that leaves exactly its two granted rows,
+  and the `entitlement_profile` round-trip. QA `MGR-ROL-03` asserts 44 rows, 10
+  sections, the complete payload on every save and a reset as "untick every row"
+  (its case text moved with the spec); `MGR-ROL-01/02/04` only name
+  `role.builder` and the permission button, so their premise is unchanged.
 - Gates: `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`,
   `review:static`, `knip`, `dup:base`, `format:check` (the coordinator runs
-  integration, QA, the build and the merge). Five mutations, one named test each,
+  integration, QA, the build and the merge). Six mutations, one named test each,
   all KILLED on their own assertion: the closed-catalog name check, the
   completeness `superRefine`, the self-edit guard, both escalation directions and
-  the `org.admin` assignable guard.
+  the `org.admin` assignable guard. The review round added five more, all KILLED:
+  the prototype-name lookup, the service completeness guard, the
+  upsert-before-prune order, the upsert error path and the legacy-scope filter in
+  `getRole`.
 
 **Follow-ups this slice creates:**
 
@@ -799,7 +815,15 @@ depend on the old writer.
   backfill, then flips the gate to `requirePermission('org.role.manage')`. The
   complete payload is the prerequisite (D24); the FK's backfill must run before
   the constraint, because existing orgs keep rows the closed catalog knows but the
-  old free-text editor could also have written unknown ones.
+  old free-text editor could also have written unknown ones. Until that FK lands,
+  a role holding a non-catalog name is a dead end: the editor cannot save it (the
+  payload's completeness check passes, but the role's own row is neither renderable
+  nor grantable), which fails closed but cannot be repaired from the UI.
+- **2a-2 acceptance criterion**: `is_org_manager` RLS is
+  `has_org_feature(..., 'member.manage')` (the legacy row), not
+  `org.role.manage`. When the controller gate flips, a custom role holding
+  `org.role.manage` passes the app check and then has its write refused by RLS, so
+  the RLS predicate must move to the permission in the same PR (R4).
 - **2a-2 / phase 6** may disable rows the _caller_ cannot change. Today only
   non-assignable keys are disabled; an escalation attempt reaches the server and
   surfaces as the generic `perms_save_failed` toast, because the editor does not
@@ -808,8 +832,11 @@ depend on the old writer.
   between them leaves the permissions saved and the profile unchanged, and the
   retry is idempotent. Merging both into one endpoint is a phase-6 API change.
 - `getRole` drops a stored row whose `scope` is outside the catalog's three
-  scopes (a legacy `any` row from the old editor); the editor then shows it as
-  ungranted and a save rewrites it.
+  scopes. Those rows predate the current editor, which only ever wrote
+  `own | group | organization`: `any`/`granted` come from the older
+  `role_permissions` era and the DB CHECK still allows them. Nothing in the
+  product writes them now; the editor shows such a key as ungranted and a save
+  rewrites (or prunes) it.
 
 **Difficulty log**
 
@@ -828,8 +855,9 @@ before the gate can safely move, because the gate is one of the rows the payload
 rewrites.
 Fix: swapped the landing order (2a-3 first, D24), kept the `role.builder` gate in
 this PR, and recorded the order in the slice table, the rollout plan and D24. The
-schema's completeness rule is what makes the delete-then-insert safe — a partial
-payload is now a 422 that writes nothing.
+schema's completeness rule is what makes the write safe — a partial payload is now
+a 422 that writes nothing — and the write is target-first (upsert, then prune), so
+even a failed save can only leave a superset.
 Rule: R17.
 
 ### Phase 3 — entitlements and limits

@@ -238,10 +238,12 @@ guards replaces the role's whole permission set and the gate is one of those row
 - **2a-3** (~400, `size:exception`) — closed-catalog editor, complete payload,
   audit log **first** (D24). Acceptance criterion (F3): a save through the role
   editor must not drop permission rows for keys the payload does not manage. The
-  payload is the whole 44-key catalog, `setPermissions` refuses anything else
-  with a 422 and the editor renders every key, so "delete every row, re-insert
-  the payload" can no longer strand a permission — pinned by the model and
-  controller unit tests, the integration no-op case and MGR-ROL-03.
+  payload is the whole 44-key catalog and the editor renders every key, so "upsert
+  the payload, prune everything it does not mention" can no longer strand a
+  permission. A payload that is not the whole catalog is refused with a 422 at the
+  controller (`SetRolePermissionsSchema`) and again at the service
+  (`isCompleteCatalogPayload`), pinned by the model, controller and service unit
+  tests, the integration no-op case and MGR-ROL-03.
 - **2a-2** (~200) — role templates (Assistant/Billing/Read-only/Blank presets),
   `requirePermission('org.role.manage')` and the editor gate; rewrites
   MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`. Runs on the

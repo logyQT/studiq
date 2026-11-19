@@ -17,6 +17,7 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
   CATALOG_PERMISSION_KEYS,
   type CreateOrgRoleInput,
+  isCompleteCatalogPayload,
   type SetRolePermissionsInput,
   type UpdateOrgRoleInput,
 } from '@studiq/server/models/org-role.model';
@@ -273,14 +274,15 @@ export class OrgRoleService {
   }
 
   /**
-   * Replace a role's permission set (ADR-0015 §4.4, §9; D16, D20, D21).
+   * Replace a role's permission set (ADR-0015 §4.4, §9; D16, D20, D21, D24).
    *
-   * The payload is the role's whole catalog set, so the delete-then-insert below
-   * cannot strand a permission the editor does not render (D24). Everything the
-   * write would change is authorized first: no self-edit unless the caller owns
-   * the org, no ownership grant or revoke, and no change to a scope the caller
-   * does not hold — removal needs authority over what is removed, addition over
-   * what is added.
+   * The payload is the role's whole catalog set, so the write below cannot strand a
+   * permission the editor does not render (D24). It is written target-first — upsert
+   * the granted rows, then prune the rest — so a failure can only leave a superset
+   * (recoverable on the next save), never an emptied role. Everything the write would
+   * change is authorized first: no self-edit unless the caller owns the org, no
+   * ownership grant or revoke, and no change to a scope the caller does not hold —
+   * removal needs authority over what is removed, addition over what is added.
    */
   async setPermissions(
     ctx: RequestContext,
@@ -294,6 +296,12 @@ export class OrgRoleService {
     // checks are required to prove the caller belongs to the active org.
     if (!ctx.activeOrgId || !ctx.orgRoleId) {
       return failure('FORBIDDEN');
+    }
+
+    // The schema enforces this at the controller; the service is a direct entry
+    // point too (tests, scripts) and the write below relies on the guarantee.
+    if (!isCompleteCatalogPayload(data.permissions)) {
+      return failure('UNPROCESSABLE_ENTITY');
     }
 
     // Scope the role to the active org before touching its permissions.
@@ -344,23 +352,39 @@ export class OrgRoleService {
       if (next && !scopeCovers(mine, next)) return failure('FORBIDDEN');
     }
 
-    const { error: deleteError } = await supabase
-      .from('org_role_permissions')
-      .delete()
-      .eq('org_role_id', id);
-
-    if (deleteError) return toDbFailure(deleteError);
-
     const rows: { org_role_id: string; permission_name: string; scope: CatalogScope }[] = [];
     for (const [permissionName, scope] of target) {
       if (scope) rows.push({ org_role_id: id, permission_name: permissionName, scope });
     }
 
+    // Target-first: a failed upsert leaves the previous set untouched and a failed
+    // prune leaves a superset the next save prunes. The other order (delete every
+    // row, then insert) would empty the role on a write timeout, and the Admin role
+    // could not be restored through the editor afterwards (its own `org.admin` row
+    // would be gone before the self-edit guard, and nothing else writes permissions).
     if (rows.length > 0) {
-      const { error: insertError } = await supabase.from('org_role_permissions').insert(rows);
+      const { error: upsertError } = await supabase
+        .from('org_role_permissions')
+        .upsert(rows, { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false });
 
-      if (insertError) return toDbFailure(insertError);
+      if (upsertError) return toDbFailure(upsertError);
     }
+
+    const granted = rows.map((row) => row.permission_name);
+    let prune = supabase.from('org_role_permissions').delete().eq('org_role_id', id);
+    if (granted.length > 0) {
+      // PostgREST list syntax; catalog keys are namespaced identifiers, so they
+      // carry no quote or comma that would need escaping inside the list.
+      prune = prune.not(
+        'permission_name',
+        'in',
+        `(${granted.map((name) => `"${name}"`).join(',')})`,
+      );
+    }
+
+    const { error: pruneError } = await prune;
+
+    if (pruneError) return toDbFailure(pruneError);
 
     // D20: no audit table in phase 2 — the change is a log record with the actor,
     // the role and both key→scope maps.
