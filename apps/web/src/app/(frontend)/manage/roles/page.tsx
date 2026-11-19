@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  ENTITLEMENT_PROFILES,
+  type EntitlementProfile,
   isCatalogScope,
   isPermissionCatalogKey,
   PERMISSIONS,
@@ -72,10 +74,6 @@ const SECTION_LABEL_KEYS: Record<string, string> = {
   group: 'section_classes',
   org: 'section_organization',
 };
-
-const PROFILES = ['all', 'learner', 'none'] as const;
-
-type EntitlementProfile = (typeof PROFILES)[number];
 
 /** next-intl's translator, including `has` for catalog keys a locale may not name yet. */
 interface RolesTranslator {
@@ -573,7 +571,7 @@ function PermissionEditorBody({
           </legend>
           <p className="text-xs text-muted-foreground">{t('profile_hint')}</p>
           <div className="flex flex-wrap gap-4">
-            {PROFILES.map((candidate) => (
+            {ENTITLEMENT_PROFILES.map((candidate) => (
               <label key={candidate} className="flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
                   type="radio"
