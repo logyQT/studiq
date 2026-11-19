@@ -1,6 +1,5 @@
 import {
   AccountType,
-  DEFAULT_ROLE_PERMISSIONS,
   evaluateScope,
   Permission,
   type PermissionKey,
@@ -13,7 +12,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 
 export type { PermissionKey, PermissionScope, ResourceAccess };
 // ── Re-exports (single frontend + backend surface) ────────────────────────
-export { DEFAULT_ROLE_PERMISSIONS, evaluateScope, Permission };
+export { evaluateScope, Permission };
 
 // ── Pure evaluation (client + server) ──────────────────────────────────────
 export function evaluate(args: {

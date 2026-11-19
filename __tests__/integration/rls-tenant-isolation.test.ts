@@ -1111,23 +1111,32 @@ describe('RLS tenant isolation (#191)', () => {
       const unseatedSession = await signIn(unseatedEmail);
       const seatedSession = await signIn(seatedEmail);
 
-      // Control: a NON-seated custom role keeps today's plan entitlements.
+      // Control: a NON-seated custom role is on the `none` profile, so it holds
+      // no plan entitlement at all (ADR-0015 §5.3, D6).
       const { data: unseatedManager } = await unseatedSession.rpc('rls_caller_is_org_manager', {
         p_organization_id: orgA.orgId,
       });
-      expect(unseatedManager).toBe(true);
+      expect(unseatedManager).toBe(false);
 
       const { data: unseatedGroupManage } = await unseatedSession.rpc(
         'rls_caller_has_org_feature',
         { p_organization_id: orgA.orgId, p_feature: 'group.manage' },
       );
-      expect(unseatedGroupManage).toBe(true);
+      expect(unseatedGroupManage).toBe(false);
 
-      // A seat must not add management authority the app withholds.
+      // A seat must not add management authority the app withholds. The seat
+      // plan is additive, so it does hand over `group.manage` (not one of the
+      // three admin-only markers); org management stays stripped.
       const { data: seatedManager } = await seatedSession.rpc('rls_caller_is_org_manager', {
         p_organization_id: orgA.orgId,
       });
       expect(seatedManager).toBe(false);
+
+      const { data: seatedGroupManage } = await seatedSession.rpc('rls_caller_has_org_feature', {
+        p_organization_id: orgA.orgId,
+        p_feature: 'group.manage',
+      });
+      expect(seatedGroupManage).toBe(true);
 
       // Peer promotion is filtered out by the org_members UPDATE policy.
       const { data: promoted, error: promoteError } = await seatedSession
@@ -1284,12 +1293,12 @@ describe('RLS tenant isolation (#191)', () => {
       expect(groupsReadError).toBeNull();
       expect(readableGroups?.length ?? 0).toBeGreaterThan(0);
 
-      // Unseated custom roles keep the org-plan fallback.
+      // An unseated custom role is on the `none` profile and holds nothing.
       const { data: controlGroupManage } = await controlSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
         p_feature: 'group.manage',
       });
-      expect(controlGroupManage).toBe(true);
+      expect(controlGroupManage).toBe(false);
 
       const { data: controlAdvancedStats } = await controlSession.rpc(
         'rls_caller_has_org_feature',
@@ -1297,7 +1306,8 @@ describe('RLS tenant isolation (#191)', () => {
       );
       expect(controlAdvancedStats).toBe(false);
 
-      // Losing the seat restores the org-plan fallback for the same user.
+      // Losing the seat leaves the same user with nothing: the seat plan, not
+      // the org plan, was the only entitlement source.
       const { error: unassignError } = await service
         .from('org_seat_assignments')
         .delete()
@@ -1309,7 +1319,7 @@ describe('RLS tenant isolation (#191)', () => {
         p_organization_id: orgA.orgId,
         p_feature: 'group.manage',
       });
-      expect(unseatedGroupManage).toBe(true);
+      expect(unseatedGroupManage).toBe(false);
     } finally {
       await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);

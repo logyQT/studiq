@@ -24,8 +24,8 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387 | —   | checks, unit, integration | 2026-11-19 |
 | 1a    | database types regenerated with the pinned CLI | merged  | #1388 | —   | checks, unit, integration | 2026-11-19 |
 | 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389 | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | pr-open | —     | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390 | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | active  | —     | —   | AUT, MGR, EDU, SEC        | 2026-11-19 |
 | 3     | entitlements and limits                        | pending | —     | —   | LIM, BIL, STU             |            |
 | 4     | seats and personal plans                       | pending | —     | —   | MGR, BIL, LIM             |            |
 | 5     | enforcement closure                            | pending | —     | —   | STU, EDU, MGR, PUB        |            |
@@ -33,12 +33,10 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
 | 8     | extendability audit (release gate)             | pending | —     | —   | all 188 + E2E             | 2026-11-19 |
 
-**Next action:** phases 0b (#1387), 1a (#1388) and 1b (#1389) are merged.
-Phase 1c (the catalog cutover) is in PR: `FEATURES`, `ADMIN_ONLY_FEATURES` and
-`ORG_SCOPED_FEATURES` are replaced by `ENTITLEMENTS`/`ADMIN_ONLY_ENTITLEMENTS`/
-`ORG_SCOPED_ENTITLEMENTS`, `LIMITS` moved into `@studiq/authz`, and `documents`
-is absent until its surface ships (open catalog, D22). The four legacy
-management keys stay until phase 2, which replaces their gates.
+**Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389) and 1c (#1390,
+`67cfeb16`) are merged. Phase 2 is active; slice **2a-1** (the entitlement
+profile) is written on `feat/authority-2a-1`. The four legacy management keys
+stay until slice 2b, which replaces their gates with permissions.
 
 ## 2. How to update this file
 
@@ -73,6 +71,7 @@ management keys stay until phase 2, which replaces their gates.
 | R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors           |
 | R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable  |
 | R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                     |
+| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                     |
 
 ## 4. Decisions
 
@@ -461,7 +460,7 @@ derivation where the next phase reads it.
 
 ### Phase 1c — catalog cutover
 
-**Shipped in PR (pr-open):**
+**Shipped (#1390):**
 
 - `packages/authz/src/entitlements.ts` replaces `features.ts` (deleted, no
   alias): `ENTITLEMENTS` with the metadata the DB row carries (`category`,
@@ -568,25 +567,165 @@ text is the product spec.
 
 ### Phase 2 — authority
 
-**Settled 2026-11-19 — five slices on one short-lived branch.** Phase 2 starts
-only after 1c merges; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from
-`@studiq/authz`.
+**Settled 2026-11-19 — five slices on one short-lived branch.** Phase 2 started
+after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 
-- **2a-1** `entitlement_profile` + trigger/seed/backfill + profile-driven
-  resolver + RLS fallback (~260 lines). **This slice closes the RLS twin of
-  FP-01 in the same PR**: `has_org_feature`'s zero-row fallback reads
-  `org_roles.entitlement_profile`, so PostgREST cannot escalate between 2a and
-  2b.
-- **2a-2** role templates + `requirePermission('org.role.manage')` + editor gate
-  (~200; rewrites MGR-ROL-01, deletes the out-of-map e2e
-  `manage-roles-plan-gate`).
-- **2a-3** closed-catalog editor + complete payload + audit log (~400,
-  `size:exception`).
-- **2a-4** `ctx.groupRoles` + org-scoped group query (~90; closes the cross-org
-  group union).
-- **2a-5** fail-closed scope defaults (~110).
+| Slice    | Contents                                                                                                                                          | Size                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **2a-1** | `entitlement_profile` + trigger/seed/backfill + profile-driven resolver + RLS fallback. Closes the RLS twin of FP-01 in the same PR.              | ~750 (`size:exception`) |
+| **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | ~200                    |
+| **2a-3** | closed-catalog editor + complete payload + audit log.                                                                                             | ~400 (`size:exception`) |
+| **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                     | ~90                     |
+| **2a-5** | fail-closed scope defaults.                                                                                                                       | ~110                    |
 
-_Not started._
+**2a-1 shipped on `feat/authority-2a-1` (PR pending):**
+
+- `supabase/migrations/20261119180000_authority_entitlement_profile.sql`:
+  `org_roles.entitlement_profile` (`all | learner | none`, NOT NULL, CHECK,
+  fail-closed default), a one-time backfill (`is_system is true` and an explicit
+  name predicate, so a NULL `is_system` keeps `none`), and
+  `public.seed_system_role_permissions(p_org_id)` (SECURITY DEFINER, service-role
+  only, `ON CONFLICT DO NOTHING`) as the callable seed matrix.
+  `handle_new_organization` writes the profile and calls the function; the
+  `org_role_features` plan loop is untouched (D19). `has_org_feature`'s zero-row
+  fallback now reads the profile and unions the seat plan instead of inheriting
+  `plan_entitlements(organizations.plan)`, closing FP-01 on PostgREST.
+- `@studiq/authz`: `LEARNER_ENTITLEMENTS`, `LEGACY_MANAGEMENT_ENTITLEMENTS`,
+  `ENTITLEMENT_PROFILES`/`EntitlementProfile`/`isEntitlementProfile`, and
+  `SYSTEM_ROLE_TEMPLATES` (the three seeded roles, profile + permission map, the
+  source the SQL matrix is pinned to). `ADMIN_ONLY_ENTITLEMENTS` stays the three
+  keys. `DEFAULT_ROLE_PERMISSIONS` is deleted with both re-exports.
+- `FeatureResolver`: org layer is profile → legacy rows (markers grant,
+  `is_enabled = false` revokes) → seat (additive, admin-only strip) → personal →
+  overrides → flags. `ctx.orgRoleId === null` resolves ∅ with no plan read.
+- `supabase/seeds/09_perms.sql` calls the function for every seeded organization
+  (the org-creation trigger already created their roles and profiles).
+- Tests: a table-driven resolver truth table (admin/teacher/member/custom,
+  hub/launch, no role, seated non-admin), a new
+  `__tests__/integration/entitlement-profile.test.ts` (trigger profiles, CHECK,
+  idempotence, `SYSTEM_ROLE_TEMPLATES` pin with literal spot checks, and the
+  user-session RLS fallback for all three profiles), plus rewrites of
+  `org-features`, `assignment-permissions-seed` and the two custom-role
+  RLS-tenant-isolation premises that encoded zero-row inheritance. QA:
+  MGR-SET-02's fixture now takes branding from the plan ceiling through
+  `apply_org_plan(org, 'hub')` instead of an `org_role_features` upsert (5/5
+  independent runs + LIM-05).
+- `database.ts` regenerated with the pinned CLI 3.1 (column + RPC only).
+
+**Follow-ups this slice creates:**
+
+- **Phase 4** closes the seat-parity gap in `has_org_feature`: the seat `OR` sits
+  inside the `NOT EXISTS(org_role_features)` block, so a role that owns any row
+  never sees its seat plan while the resolver applies it unconditionally. Hoist
+  the `OR` out of the zero-row block, or guarantee every seat-eligible key is
+  reachable through the row branch — required once `org_seat_pools.plan_key` is
+  all-`seatEligible` (D15). No user-visible gap today.
+- **Phase 5** must not assume Teacher `stats.read` is `own`: `SYSTEM_ROLE_TEMPLATES`
+  and `seed_system_role_permissions` grant `group` (ADR §4.2), but existing
+  organizations keep the `own` row the old matrix wrote, because the function's
+  `ON CONFLICT DO NOTHING` cannot rewrite it.
+
+**Difficulty log**
+
+#### 2026-11-19 — the profile governs surfaces, the rows still govern the markers
+
+What: the org layer now grants non-marker entitlement keys from
+`org_roles.entitlement_profile`, but the four legacy management markers
+(`org.manage`, `member.manage`, `role.builder`, `group.manage`) still resolve
+only from an enabled `org_role_features` row. The `all` profile is therefore
+the ceiling **minus** those four, not the ceiling.
+Why: `handle_new_organization` seeds Teacher rows as "the plan except
+`member.manage` and `role.builder`", so a Teacher profile of `all` would
+otherwise hand back exactly the two keys the row filter exists to withhold —
+FP-04, the reason 2a-1 was split from 2b. Markers become permissions in 2b;
+until then the row is the only authority over them.
+Fix: `LEGACY_MANAGEMENT_ENTITLEMENTS` is a named constant consumed by the
+resolver, and `ADMIN_ONLY_ENTITLEMENTS` stays the three-key seat strip so
+`group.manage` is not accidentally denied to a Teacher. The truth table asserts
+`teacher/all` equals `admin/all` minus `member.manage` and `role.builder`.
+Rule: when one column becomes authoritative, scope it to the keys whose writers
+are gone; anything a legacy writer still owns stays row-sourced until that
+writer is deleted.
+
+#### 2026-11-19 — the RLS fallback had to be a union, not a substitution
+
+What: `has_org_feature`'s zero-row branch reads the profile, then **unions** the
+seat plan, rather than choosing one. Selecting the seat plan when seated (the
+pre-2a-1 shape) or the profile otherwise would be narrower than the API for a
+seated learner: `FeatureResolver` composes `profile base ∪ seat plan`, and the
+admin-only strip runs after both.
+Why: the resolver's seat layer is additive by design (a seat is an upgrade, not
+a replacement), and RLS must never be narrower than the API or a request that
+passes `requireEntitlement` fails at the table. A substitution also silently
+dropped the profile's `ai.chat` for a seated member on a plan without it.
+Fix: the branch is `CASE profile … END OR (seat-plan EXISTS …)` with the same
+three-key strip the resolver applies. The seated custom-role RLS test now pins
+`group.manage` (a seat-plan key that is not admin-only) and `advanced.stats`.
+Rule: when the resolver unions two layers, its SQL twin unions them too — a
+fallback that picks one is a parity bug even when both are plausible.
+
+#### 2026-11-19 — the backfill is a no-op in every reset, so the function is the contract
+
+What: the one-time profile backfill writes only organizations that exist when
+the migration runs, and a `db reset` executes migrations before `01_seed.sql`
+creates any organization. Production (`db push`) is the only place the inline
+statement does work.
+Why: this is the phase-1b failure mode repeating one layer up — a data fix
+evaluated only in production is not evidence, and the org-creation trigger only
+covers organizations created after the migration.
+Fix: the matrix ships as `public.seed_system_role_permissions(p_org_id)`
+(SECURITY DEFINER, service-role only) and the trigger, the seed and the
+integration suite all call it; the suite proves idempotence and equality with
+`SYSTEM_ROLE_TEMPLATES`.
+Rule: a data fix that runs where no data exists yet needs a callable form,
+because "it ran in the migration" is not evidence.
+
+#### 2026-11-19 — the seeded organizations never touch the org-creation trigger
+
+What: `01_seed.sql` inserts organizations and their three `org_roles` rows
+directly, so `handle_new_organization` — the only writer of
+`entitlement_profile` — never runs for the dev/QA tenants. A reset therefore
+left every seeded role on the fail-closed `none` default, and the seeded
+students resolved nothing.
+Why: the dispatch note said "the trigger does cover it, prefer no duplicate",
+which is true only for the organizations the trigger creates.
+Fix: `09_perms.sql` also sets the profile for the seeded system roles, guarded
+by `entitlement_profile = 'none'` so a re-run cannot overwrite a profile an
+admin changes later. The trigger stays the writer for real org creation.
+Rule: a column written by a trigger needs a seed-side value too whenever the
+seed inserts its rows directly instead of going through the trigger.
+
+**Correction (2026-11-19, review).** The premise above is false.
+`handle_new_organization` fires `AFTER INSERT ON public.organizations`
+(`20260707000006_handle_new_organization_trigger.sql`) and `01_seed.sql` inserts
+the organizations with a plain `INSERT`, so the trigger creates the three roles —
+profiles and permissions included — before the seed's own `org_roles` rows
+conflict on `(organization_id, name)` and do nothing. The observation was taken
+before the migration had been applied on that stack, so the roles looked
+trigger-less. The seed's profile guard was unnecessary and is deleted, and the
+seeded-org assertion now pins the trigger write (`all`/`all`/`learner`). R10
+already covers this — re-verify every checklist line against the tree before
+dispatch — so the correction yields no new rule.
+
+#### 2026-11-19 — a QA fixture still wrote to the layer this phase retires
+
+What: CI's `qa-suite (mgr-sec-bil)` caught MGR-SET-02 — its fixture granted
+`branding` by upserting `org_role_features`, the non-marker writer 2a-1 makes
+non-authoritative. The case passed on 2a-1's own tree and failed only in CI's
+full shard; the coordinator's local smoke set (MGR-ROL-*, SEC-06, STU-03,
+LIM-05, BIL-01) did not include it, and the rollout map scheduled the fixture
+change at phase 3, one phase late.
+Why: a phase that changes which layer is authoritative changes the meaning of
+every fixture that writes to the retired layer, and those fixtures live in the QA
+corpus, not next to the resolver.
+Fix: the fixture uses the case's own "plan with branding" alternative —
+`apply_org_plan(org, 'hub')` — and branding resolves from the Admin profile `all`
+∩ the plan ceiling; the case text moved with the spec (R6). 5/5 independent
+MGR-SET-02 runs plus LIM-05 green.
+Rule: when a phase makes a producer non-authoritative, grep the QA corpus for
+fixtures that write to that producer **in the same PR**, and run at least one
+full shard; a smoke set chosen by case ID will miss the cases whose _fixtures_
+depend on the old writer.
 
 ### Phase 3 — entitlements and limits
 

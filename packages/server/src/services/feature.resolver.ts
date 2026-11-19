@@ -1,8 +1,16 @@
-import type { EntitlementKey, EntitlementResolution, RequestContext } from '@studiq/authz';
+import type {
+  EntitlementKey,
+  EntitlementProfile,
+  EntitlementResolution,
+  RequestContext,
+} from '@studiq/authz';
 import {
   ADMIN_ONLY_ENTITLEMENTS,
   ENTITLEMENT_KEYS,
   isEntitlementKey,
+  isEntitlementProfile,
+  LEARNER_ENTITLEMENTS,
+  LEGACY_MANAGEMENT_ENTITLEMENTS,
   ORG_SCOPED_ENTITLEMENTS,
   rolloutBucket,
 } from '@studiq/authz';
@@ -41,77 +49,57 @@ export class FeatureResolver {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
-   * Resolve the feature set with the full precedence chain:
+   * Resolve the entitlement set with the documented precedence:
    *
-   *   1. Plan entitlement  — seat plan (seated in org) → org role features
-   *      (the role's plan-seeded entitlement; authoritative when present) →
-   *      org plan (active org whose role has no feature rows, e.g. custom
-   *      roles).
-   *   2. Personal plan    — always applied as an additive layer on top of the
-   *      org entitlement: a plan the member pays for personally must not be
-   *      shadowed by an org that never bought the feature (a student on StudiQ
-   *      Pro inside a `launch` org still gets `ai.chat`). Inside an org only
-   *      personal-use keys are added: an org-scoped key survives only when the
-   *      org layer above already entitled it (role rows, the seat plan, or the
-   *      org plan for a role with no rows), so a purchase cannot escalate
-   *      structure privileges.
-   *   3. User override    — `user_feature_overrides` rows are the strongest
-   *      layer: add/remove anything. Rows whose `expires_at` is in the past are
-   *      ignored (they stay in the table for audit only).
-   *   4. Rollout %        — `entitlement_flags.rollout_percentage < 100` gates
-   *      deterministically per (key, user_id).
-   *   5. Global flag      — `entitlement_flags.is_enabled = false` is a hard
-   *      kill switch ("Stop now") regardless of any entitlement layer.
+   *   1. Role profile      — `org_roles.entitlement_profile` intersected with
+   *      the org plan ceiling: `all` → ceiling minus the four legacy management
+   *      markers, `learner` → `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` → nothing.
+   *      A member with no verified role (`orgRoleId: null`) resolves nothing.
+   *   2. Legacy rows       — `org_role_features` is read only for the four
+   *      management markers (an enabled row adds one) and for explicit
+   *      `is_enabled = false` revokes (a row removes any key). The profile is
+   *      authoritative for non-marker keys (D18/D19), so a Teacher's `all`
+   *      profile cannot pick up `member.manage`/`role.builder` from a row.
+   *   3. Seat plan         — additive on top, then the three admin-only markers
+   *      stripped for a non-admin role.
+   *   4. Personal plan     — additive, inside an org only for personal-use keys
+   *      (a purchase must not escalate structure privileges).
+   *   5. User override     — add/remove anything; expired rows are ignored.
+   *   6. Rollout % + flag  — `entitlement_flags.rollout_percentage < 100` gates
+   *      deterministically per (key, user_id); `is_enabled = false` is a hard
+   *      kill switch.
    */
   async resolveFeatures(ctx: RequestContext): Promise<EntitlementResolution> {
     const supabase = await this.clientFactory();
     const enabled = new Set<EntitlementKey>();
 
-    // ── 1. Plan entitlement (base set) ───────────────────────────────────
-    if (ctx.activeOrgId) {
-      // Load org-role features first (the role-based entitlement).
-      let orgRoleFeatures: FeatureRow[] = [];
-      if (ctx.orgRoleId) {
-        const { data: roleFeatures } = await supabase
-          .from('org_role_features')
-          .select('feature_key, is_enabled')
-          .eq('org_role_id', ctx.orgRoleId);
+    // ── 1 + 2 + 3. Org layer ─────────────────────────────────────────────
+    if (ctx.activeOrgId && ctx.orgRoleId) {
+      const { data: role } = await supabase
+        .from('org_roles')
+        .select('entitlement_profile')
+        .eq('id', ctx.orgRoleId)
+        .maybeSingle();
 
-        orgRoleFeatures = roleFeatures ?? [];
-      }
+      const entitlementProfile: EntitlementProfile =
+        role && isEntitlementProfile(role.entitlement_profile) ? role.entitlement_profile : 'none';
+
+      const { data: roleFeatures } = await supabase
+        .from('org_role_features')
+        .select('feature_key, is_enabled')
+        .eq('org_role_id', ctx.orgRoleId);
+
+      const rows: FeatureRow[] = roleFeatures ?? [];
 
       // `org.manage` marks an org admin. Only they may hold the structure
       // privileges in ADMIN_ONLY_ENTITLEMENTS through a seat; everyone else gets
       // them stripped once the seat plan is applied. (The personal layer is
-      // bounded separately by ORG_SCOPED_ENTITLEMENTS — see step 2 below.)
-      const isOrgAdmin = orgRoleFeatures.some(
-        (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
-      );
+      // bounded separately by ORG_SCOPED_ENTITLEMENTS — see below.)
+      const isOrgAdmin = rows.some((r) => r.feature_key === 'org.manage' && r.is_enabled !== false);
 
-      const seatPlanKey = await getSeatPlanKey(ctx, supabase);
-
-      if (seatPlanKey) {
-        // Seated user: org-role features are the base, seat plan is an
-        // additive upgrade.
-        if (orgRoleFeatures.length > 0) {
-          this.applyRows(enabled, orgRoleFeatures);
-        }
-        await this.addPlanFeatures(enabled, seatPlanKey, supabase);
-        this.stripAdminOnlyForNonAdmin(enabled, isOrgAdmin);
-      } else if (orgRoleFeatures.length > 0) {
-        // Not seated: the org role's features are the entitlement. Rows are
-        // seeded by the org trigger from the org's plan with role filtering,
-        // so this layer encodes plan gating AND role restrictions. When a
-        // role has rows they are authoritative (missing keys = disabled).
-        this.applyRows(enabled, orgRoleFeatures);
-      } else {
-        // Behavior change: custom org roles (OrgRoleService.createRole seeds
-        // no org_role_features rows) previously fell through to the personal
-        // plan and never received the org's entitlements (e.g. `branding`).
-        // A role with zero rows now inherits the org's plan entitlements,
-        // consistent with system-role holders. The personal-plan fallback
-        // below still applies when there is no active org, or when the org's
-        // plan has no feature rows.
+      // A `none` profile has no ceiling read at all: custom roles resolve
+      // nothing by construction.
+      if (entitlementProfile !== 'none') {
         const { data: org } = await supabase
           .from('organizations')
           .select('plan')
@@ -119,27 +107,41 @@ export class FeatureResolver {
           .maybeSingle();
 
         if (org?.plan) {
-          await this.addPlanFeatures(enabled, org.plan, supabase);
+          this.applyProfile(
+            enabled,
+            entitlementProfile,
+            await this.planEntitlements(org.plan, supabase),
+          );
         }
+      }
+
+      // Legacy rows come after the profile so an explicit revoke wins over a
+      // profile grant, exactly as the row first-semantics always did.
+      this.applyRows(enabled, rows, 'markers');
+
+      const seatPlanKey = await getSeatPlanKey(ctx, supabase);
+      if (seatPlanKey) {
+        await this.addPlanFeatures(enabled, seatPlanKey, supabase);
+        this.stripAdminOnlyForNonAdmin(enabled, isOrgAdmin);
       }
     }
 
-    // ── 2. Personal plan (additive) ──────────────────────────────────────
+    // ── 4. Personal plan (additive) ──────────────────────────────────────
     // Deliberately not a fallback: an org on the free `launch` tier grants no
     // `ai.chat`, and that must not silently void a StudiQ Pro the member paid
-    // for. The union keeps the org's role rows authoritative for what the org
+    // for. The union keeps the role layer authoritative for what the org
     // bought, while the personal plan adds what the member bought.
-    const { data: profile } = await supabase
+    const { data: personalProfile } = await supabase
       .from('profiles')
       .select('personal_plan_key')
       .eq('id', ctx.userId)
       .maybeSingle();
 
-    if (profile?.personal_plan_key && personalPlanApplies(ctx, Boolean(ctx.activeOrgId))) {
+    if (personalProfile?.personal_plan_key && personalPlanApplies(ctx, Boolean(ctx.activeOrgId))) {
       // Snapshot what the org itself entitled, so the personal layer can only
       // add personal-use features inside an org.
       const orgEntitled = new Set(enabled);
-      await this.addPlanFeatures(enabled, profile.personal_plan_key, supabase);
+      await this.addPlanFeatures(enabled, personalProfile.personal_plan_key, supabase);
       if (ctx.activeOrgId) {
         for (const key of ORG_SCOPED_ENTITLEMENTS) {
           if (!orgEntitled.has(key)) enabled.delete(key);
@@ -147,7 +149,7 @@ export class FeatureResolver {
       }
     }
 
-    // ── 2 + 3. User overrides (strongest layer) ─────────────────────────
+    // ── 5. User overrides (strongest layer) ─────────────────────────────
     const { data: overrides } = await supabase
       .from('user_feature_overrides')
       .select('feature_key, is_enabled, expires_at')
@@ -161,9 +163,9 @@ export class FeatureResolver {
       isUserOverrideActive(row.expires_at, nowMs),
     );
 
-    this.applyRows(enabled, activeOverrides);
+    this.applyRows(enabled, activeOverrides, 'any');
 
-    // ── 4 + 5. Rollout % + global flag gate ──────────────────────────────
+    // ── 6. Rollout % + global flag gate ──────────────────────────────────
     const { data: flags } = await supabase
       .from('entitlement_flags')
       .select('key, is_enabled, rollout_percentage');
@@ -211,17 +213,49 @@ export class FeatureResolver {
     return success(undefined);
   }
 
+  /** `plan_entitlements` for one plan, as a set of catalog keys. */
+  private async planEntitlements(
+    planKey: string,
+    supabase: SupabaseClient<Database>,
+  ): Promise<Set<EntitlementKey>> {
+    const { data } = await supabase
+      .from('plan_entitlements')
+      .select('entitlement_key')
+      .eq('plan_key', planKey);
+
+    const ceiling = new Set<EntitlementKey>();
+    this.applyPlanRows(ceiling, data ?? []);
+    return ceiling;
+  }
+
+  /**
+   * The profile layer: `all` is the ceiling minus the four legacy management
+   * markers, `learner` is the fixed member set. Both intersect the plan ceiling,
+   * so a plan change narrows every role with no prune step.
+   */
+  private applyProfile(
+    enabled: Set<EntitlementKey>,
+    profile: Exclude<EntitlementProfile, 'none'>,
+    ceiling: ReadonlySet<EntitlementKey>,
+  ): void {
+    const keys =
+      profile === 'all'
+        ? ENTITLEMENT_KEYS.filter((key) => !LEGACY_MANAGEMENT_ENTITLEMENTS.includes(key))
+        : LEARNER_ENTITLEMENTS;
+
+    for (const key of keys) {
+      if (ceiling.has(key)) enabled.add(key);
+    }
+  }
+
   private async addPlanFeatures(
     enabled: Set<EntitlementKey>,
     planKey: string,
     supabase: SupabaseClient<Database>,
   ): Promise<void> {
-    const { data: planEntitlements } = await supabase
-      .from('plan_entitlements')
-      .select('entitlement_key')
-      .eq('plan_key', planKey);
-
-    this.applyPlanRows(enabled, planEntitlements ?? []);
+    for (const key of await this.planEntitlements(planKey, supabase)) {
+      enabled.add(key);
+    }
   }
 
   /** Plan rows carry no `is_enabled`: presence in the plan is the grant. */
@@ -231,13 +265,23 @@ export class FeatureResolver {
     }
   }
 
-  private applyRows(enabled: Set<EntitlementKey>, rows: FeatureRow[]): void {
+  /**
+   * Applies `is_enabled` rows. A `false` row always revokes (a per-role revoke is
+   * a role decision); what an enabled row may grant depends on the writer —
+   * overrides may add anything, `org_role_features` only a management marker
+   * until phase 3 removes that writer (D19).
+   */
+  private applyRows(
+    enabled: Set<EntitlementKey>,
+    rows: FeatureRow[],
+    grant: 'any' | 'markers',
+  ): void {
     for (const row of rows) {
       if (!isEntitlementKey(row.feature_key)) continue;
       // Explicit `is_enabled: false` removes; true/undefined adds.
       if (row.is_enabled === false) {
         enabled.delete(row.feature_key);
-      } else {
+      } else if (grant === 'any' || LEGACY_MANAGEMENT_ENTITLEMENTS.includes(row.feature_key)) {
         enabled.add(row.feature_key);
       }
     }

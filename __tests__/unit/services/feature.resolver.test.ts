@@ -61,13 +61,10 @@ describe('FeatureResolver', () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
         if (table === 'org_seat_pools') return chain({ plan_key: 'team' });
+        if (table === 'org_roles') return chain({ entitlement_profile: 'none' });
         if (table === 'org_role_features') {
           // Admin role has org.manage, so isSeatedAdmin = true
-          return chain([
-            { feature_key: 'org.manage', is_enabled: true },
-            { feature_key: 'flashcards', is_enabled: true },
-            { feature_key: 'quiz', is_enabled: true },
-          ]);
+          return chain([{ feature_key: 'org.manage', is_enabled: true }]);
         }
         if (table === 'plan_entitlements') {
           return chain(seatFeatures.map((f) => ({ entitlement_key: f })));
@@ -99,6 +96,7 @@ describe('FeatureResolver', () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
         if (table === 'org_seat_pools') return chain({ plan_key: 'campus' });
+        if (table === 'org_roles') return chain({ entitlement_profile: 'none' });
         if (table === 'org_role_features') {
           // Teacher role: no org.manage → not admin
           return chain([
@@ -125,13 +123,14 @@ describe('FeatureResolver', () => {
       expect(features).toContain('flashcards');
     });
 
-    it('gives seat plan features when user has no org-role features', async () => {
+    it('gives seat plan features when the role has no rows and the none profile', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-orphan' };
       const seatFeatures = ['flashcards', 'quiz', 'ai.chat'];
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
         if (table === 'org_seat_pools') return chain({ plan_key: 'ace' });
+        if (table === 'org_roles') return chain({ entitlement_profile: 'none' });
         if (table === 'org_role_features') return chain([]);
         if (table === 'plan_entitlements') {
           return chain(seatFeatures.map((f) => ({ entitlement_key: f })));
@@ -145,17 +144,35 @@ describe('FeatureResolver', () => {
       expect(features).toEqual(['ai.chat', 'flashcards', 'quiz']);
     });
 
-    it('treats org role features as the authoritative entitlement in org context', async () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
+    it('lets the profile grant non-marker keys and rows add or revoke only markers', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-teacher' };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'all' });
         if (table === 'org_role_features') {
+          // An enabled marker row is the only thing a row may add; the revoked
+          // row must win over the profile.
           return chain([
             { feature_key: 'group.manage', is_enabled: true },
             { feature_key: 'member.manage', is_enabled: false },
-            { feature_key: 'ai.chat', is_enabled: true },
           ]);
+        }
+        if (table === 'organizations') return chain({ plan: 'hub' });
+        if (table === 'plan_entitlements') {
+          return chain(
+            [
+              'flashcards',
+              'quiz',
+              'ai.chat',
+              'quiz.builder',
+              'group.manage',
+              'member.manage',
+              'role.builder',
+              'advanced.stats',
+              'branding',
+            ].map((key) => ({ entitlement_key: key })),
+          );
         }
         if (table === 'user_feature_overrides') return chain([]);
         if (table === 'entitlement_flags') return chain(allFlagsOn());
@@ -163,14 +180,25 @@ describe('FeatureResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['ai.chat', 'group.manage']);
+      expect(features).toEqual([
+        'ai.chat',
+        'flashcards',
+        'quiz',
+        'quiz.builder',
+        'group.manage',
+        'advanced.stats',
+        'branding',
+      ]);
+      expect(features).not.toContain('member.manage');
+      expect(features).not.toContain('role.builder');
     });
 
-    it('falls back to personal plan when org role features are empty', async () => {
+    it('applies the personal plan when the none profile grants nothing', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'none' });
         if (table === 'org_role_features') return chain([]);
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'plan_entitlements') {
@@ -211,19 +239,16 @@ describe('FeatureResolver', () => {
       expect(features).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
     });
 
-    it('falls back to the org plan when the org role has zero rows (custom role)', async () => {
+    it('resolves nothing for a custom role on the none profile', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-custom' };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'none' });
         if (table === 'org_role_features') return chain([]);
         if (table === 'organizations') return chain({ plan: 'hub' });
         if (table === 'plan_entitlements') {
-          return chain([
-            { entitlement_key: 'flashcards' },
-            { entitlement_key: 'quiz' },
-            { entitlement_key: 'branding' },
-          ]);
+          return chain([{ entitlement_key: 'flashcards' }, { entitlement_key: 'branding' }]);
         }
         if (table === 'user_feature_overrides') return chain([]);
         if (table === 'entitlement_flags') return chain(allFlagsOn());
@@ -231,18 +256,19 @@ describe('FeatureResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['flashcards', 'quiz', 'branding']);
-      // The personal plan is layered on top, but this profile has none set.
-      expect(mock.from).toHaveBeenCalledWith('profiles');
+      expect(features).toEqual([]);
+      // Fail-closed: the profile read already decided, so the ceiling is skipped.
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
     it('adds a student personal plan on top of the org entitlement (paid PRO in a free org)', async () => {
-      // `student1` in the seed: personal `pro`, org on free `launch` whose
-      // member role has no `ai.chat`. The purchase must still grant it.
+      // A `member` role on `launch` gets `flashcards`/`quiz`; a personal `pro`
+      // must still grant `ai.chat`.
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'learner' });
         if (table === 'org_role_features') {
           return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
         }
@@ -269,6 +295,7 @@ describe('FeatureResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'learner' });
         if (table === 'org_role_features') {
           return chain([{ feature_key: 'flashcards', is_enabled: true }]);
         }
@@ -287,7 +314,7 @@ describe('FeatureResolver', () => {
 
       const features = await resolver.getEnabledFeatures(ctx);
       // `member` is not an org admin: the structure privileges are stripped.
-      expect(features).toEqual(['ai.chat', 'flashcards']);
+      expect(features).toEqual(['ai.chat']);
     });
 
     it('does not let a personal plan grant org-scoped capability inside an org', async () => {
@@ -298,6 +325,7 @@ describe('FeatureResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'learner' });
         if (table === 'org_role_features') {
           return chain([{ feature_key: 'flashcards', is_enabled: true }]);
         }
@@ -324,11 +352,9 @@ describe('FeatureResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'all' });
         if (table === 'org_role_features') {
-          return chain([
-            { feature_key: 'flashcards', is_enabled: true },
-            { feature_key: 'group.manage', is_enabled: true },
-          ]);
+          return chain([{ feature_key: 'group.manage', is_enabled: true }]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'lite' });
         if (table === 'plan_entitlements') {
@@ -340,8 +366,8 @@ describe('FeatureResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      // group.manage survives because the org role granted it.
-      expect(features).toEqual(['flashcards', 'quiz', 'group.manage']);
+      // group.manage survives because the role holds the marker row.
+      expect(features).toEqual(['quiz', 'group.manage']);
     });
 
     it('ignores a manager mirrored personal plan inside an org (#228)', async () => {
@@ -354,11 +380,13 @@ describe('FeatureResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'learner' });
         if (table === 'org_role_features') {
           return chain([{ feature_key: 'flashcards', is_enabled: true }]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'campus' });
-        if (table === 'plan_entitlements') return chain([{ entitlement_key: 'ai.chat' }]);
+        if (table === 'organizations') return chain({ plan: 'hub' });
+        if (table === 'plan_entitlements') return chain([{ entitlement_key: 'flashcards' }]);
         if (table === 'user_feature_overrides') return chain([]);
         if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
@@ -381,34 +409,30 @@ describe('FeatureResolver', () => {
 
       const features = await resolver.getEnabledFeatures(baseCtx);
       expect(features).toEqual(['flashcards', 'branding']);
-      // No active org → the org-plan layer is skipped entirely.
-      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+      // No active org → the org layer is skipped entirely.
+      expect(mock.from).not.toHaveBeenCalledWith('org_roles');
     });
 
-    it('keeps role rows authoritative over the org plan when present', async () => {
+    it('lets an explicit revoke row beat the profile ceiling', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_roles') return chain({ entitlement_profile: 'all' });
         if (table === 'org_role_features') {
-          return chain([
-            { feature_key: 'flashcards', is_enabled: true },
-            { feature_key: 'quiz', is_enabled: true },
-          ]);
+          return chain([{ feature_key: 'quiz', is_enabled: false }]);
         }
-        // The org plan would grant branding — role rows must still win.
-        if (table === 'organizations') return chain({ plan: 'hub' });
-        if (table === 'plan_entitlements') return chain([{ entitlement_key: 'branding' }]);
+        if (table === 'organizations') return chain({ plan: 'launch' });
+        if (table === 'plan_entitlements') {
+          return chain([{ entitlement_key: 'flashcards' }, { entitlement_key: 'quiz' }]);
+        }
         if (table === 'user_feature_overrides') return chain([]);
         if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['flashcards', 'quiz']);
-      expect(features).not.toContain('branding');
-      // Role rows are non-empty → the org-plan layer is never consulted.
-      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+      expect(features).toEqual(['flashcards']);
     });
 
     it('applies user_feature_overrides as the strongest layer', async () => {
