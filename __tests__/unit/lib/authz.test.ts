@@ -124,10 +124,21 @@ describe('authz (unified lib)', () => {
     it('never gives a group or org key the persona default, with or without an org', () => {
       const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
 
-      for (const key of ['group.read', 'group.invite', 'org.role.manage', 'org.audit.read']) {
+      // `group.read` reads: a category guard deleted with the default deleted
+      // (route A) or with the verb filter deleted (route B) is either red here
+      // (B) or green here and red in the read case below (A).
+      expect(resolveScope(baseCtx, 'group.read')).toBeNull();
+      for (const key of ['group.invite', 'org.role.manage', 'org.audit.read']) {
         expect(resolveScope(baseCtx, key)).toBeNull();
+      }
+      for (const key of ['group.read', 'group.invite', 'org.role.manage', 'org.audit.read']) {
         expect(resolveScope(inOrg, key)).toBeNull();
       }
+    });
+
+    it('decides a read key by its category, not by its verb', () => {
+      expect(resolveScope(baseCtx, 'flashcard.read')).toBe('own');
+      expect(resolveScope(baseCtx, 'group.read')).toBeNull();
     });
 
     it('returns null for unknown permissions', () => {
