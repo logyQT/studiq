@@ -72,11 +72,13 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 ## Notatka z przejścia (QA-suite, 2026-10-28, zaktualizowana 2026-11-16)
 
 - Limity nie są wypisane przy planach — znajdują się w tabeli „Porównaj plany” pod planami
-  sekcji. Tabela uczniów ma wiersze: Zaawansowane statystyki, Asystent AI, Obsługa dokumentów,
-  Maks. fiszki, Maks. talie, Maks. pytania, Maks. banki pytań, Próby dziennie, Tokeny AI / dzień.
+  sekcji. Tabela uczniów ma wiersze: Zaawansowane statystyki, Asystent AI, Maks. fiszki,
+  Maks. talie, Maks. pytania, Maks. banki pytań, Próby dziennie, Tokeny AI / dzień.
   Limity organizacyjne (Maks. studentów, Maks. grup) pojawiają się tylko w sekcji edukatorów
   i organizacji.
 - „Zalecany” to stała per sekcja (Ace / Creator / Hub), a nie pole w katalogu planów.
 - Ceny i funkcje są globalną konfiguracją planów, więc spec nie wpisuje ich na sztywno:
   pobiera katalog przez `GET /api/v1/subscription-plans` i sprawdza, że plany, tabele i akcje
   renderują dokładnie tę konfigurację (grosze → zł, -1 → „∞”, brak → „—”).
+  `documents` jest nieobecny w katalogu do czasu wdrożenia jego powierzchni (open catalog,
+  ADR §5.1 / D22), więc tabela go nie zawiera.
