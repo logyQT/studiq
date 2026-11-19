@@ -30,6 +30,7 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const MIGRATION = 'supabase/migrations/20261119190000_org_role_manage_rls.sql';
+const SEED_GRANTS = 'supabase/seeds/99_dev_grants.sql';
 
 const localDatabaseUrl = (() => {
   const raw = process.env.SUPABASE_DB_URL;
@@ -58,16 +59,22 @@ function requireLocalDatabaseUrl(): string {
 }
 
 /**
- * Install the shipped migration the way a reset would. The mutation gate edits
- * the migration file, and without this the suite would keep asserting against the
- * policies a previous run applied — a reverted predicate would survive the
- * mutation. The migration is idempotent (`create or replace function`,
- * `alter policy`).
+ * Install the shipped migration the way a reset would, then the dev seed's grant
+ * state.
+ *
+ * The mutation gate edits the migration file, and without the install the suite
+ * would keep asserting against the policies a previous run applied — a reverted
+ * predicate would survive. The seed must follow it: `db reset` runs
+ * `seeds/99_dev_grants.sql` after every migration, and its blanket
+ * `REVOKE ALL ON ALL FUNCTIONS … FROM authenticated` removes whatever a migration
+ * granted unless the seed re-grants the function. Installing only the migration
+ * would restore execute and hide exactly that gap.
  */
-async function installShippedPolicies(): Promise<void> {
+async function installShippedSql(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
+    await sql.unsafe(readFileSync(SEED_GRANTS, 'utf8'));
   } finally {
     await sql.end();
   }
@@ -161,8 +168,9 @@ describe('org.role.manage RLS predicate', () => {
   }
 
   beforeAll(async () => {
-    // The shipped policies first: every fixture below is scoped by them.
-    await installShippedPolicies();
+    // The shipped policies and their grants first: every fixture below is scoped
+    // by them.
+    await installShippedSql();
 
     const org = await seedOrganization(`role-manage-${tag}`);
     orgId = org.org.id;
@@ -239,6 +247,27 @@ describe('org.role.manage RLS predicate', () => {
 
     const { error: deleteError } = await roleHolder.from('org_roles').delete().eq('id', roleId);
     expect(deleteError, 'DELETE is allowed by the permission predicate').toBeNull();
+  });
+
+  it('lets an authenticated session execute the RLS helper the policies call', async () => {
+    // The dev seed revokes EXECUTE on every public function from `authenticated`
+    // and re-grants an explicit list, so a helper the policies call but the seed
+    // forgets answers 42501 — the reset-only 403 on role writes. Both directions
+    // prove it is a real predicate call: true for the permission holder, false for
+    // the role that only holds the legacy manager feature.
+    const holder = await roleHolder.rpc('rls_caller_has_permission', {
+      p_organization_id: orgId,
+      p_permission: 'org.role.manage',
+    });
+    expect(holder.error, 'authenticated may execute rls_caller_has_permission').toBeNull();
+    expect(holder.data, 'the holder satisfies its own predicate').toBe(true);
+
+    const control = await managerFeatureHolder.rpc('rls_caller_has_permission', {
+      p_organization_id: orgId,
+      p_permission: 'org.role.manage',
+    });
+    expect(control.error, 'the control may execute it too').toBeNull();
+    expect(control.data, 'the control does not hold org.role.manage').toBe(false);
   });
 
   it('lets an org.role.manage holder write the role permission rows', async () => {

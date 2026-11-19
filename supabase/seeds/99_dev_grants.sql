@@ -139,6 +139,8 @@ GRANT EXECUTE ON FUNCTION public.submit_quiz_attempt(uuid, uuid, integer, jsonb)
 GRANT EXECUTE ON FUNCTION public.rls_caller_org_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_org_user_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_has_org_feature(uuid, text) TO authenticated;
+-- 2a-2's org_roles / org_role_permissions write policies call this helper.
+GRANT EXECUTE ON FUNCTION public.rls_caller_has_permission(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_is_org_manager(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_can_assign_org_role(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_can_read_assignment_items(uuid) TO authenticated;
