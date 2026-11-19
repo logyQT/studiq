@@ -1,8 +1,28 @@
+import postgres from 'postgres';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
+
+const localDatabaseUrl = (() => {
+  const raw = process.env.SUPABASE_DB_URL;
+  if (!raw) return null;
+  const { hostname } = new URL(raw);
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ? raw : null;
+})();
+
+/** The catalog check reads `pg_constraint`, so it needs the direct connection. */
+function requireLocalDatabaseUrl(): string {
+  if (!localDatabaseUrl) {
+    throw new Error(
+      "org-role-permission-key-fk needs SUPABASE_DB_URL pointing at this checkout's local " +
+        'Supabase to read the foreign key. Run the suite through ' +
+        '`bun run env:run -- bun run test:integration`.',
+    );
+  }
+  return localDatabaseUrl;
+}
 
 // Phase 2b renames `org_role_permissions.permission_name` to `permission_key` and
 // points it at `permissions(key)`. Two things about that are invisible from the
@@ -16,9 +36,9 @@ import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/
 //   2. The scope CHECK accepts only the three scopes the editor can send, so a
 //      write that worked before (`any`/`granted`, which nothing resolved) now fails.
 //
-// Everything else the rename touches — the column name in every reader and writer,
-// the backfill's re-created body, the grants — is pinned by the type check, the
-// service suites and `grant-parity`.
+// Every refusal names the constraint it came from: `23503` alone is what a dropped
+// `org_role_id` foreign key also returns, so a constraint that silently stopped
+// being enforced would otherwise pass this suite.
 
 describe('org_role_permissions.permission_key', () => {
   const service: SupabaseClient<Database> = createServiceClient();
@@ -62,6 +82,7 @@ describe('org_role_permissions.permission_key', () => {
 
     // The service maps this to BAD_REQUEST; `org-role.service.test.ts` pins that.
     expect(error?.code).toBe('23503');
+    expect(error?.message).toMatch(/org_role_permissions_permission_key_fkey/);
   });
 
   it('refuses a scope outside own | group | organization', async () => {
@@ -72,6 +93,9 @@ describe('org_role_permissions.permission_key', () => {
         scope,
       });
       expect(error?.code, `${scope} is outside the closed set`).toBe('23514');
+      expect(error?.message, `${scope} is refused by the scope CHECK`).toMatch(
+        /org_role_permissions_scope_check/,
+      );
     }
   });
 
@@ -89,5 +113,23 @@ describe('org_role_permissions.permission_key', () => {
       .eq('org_role_id', customRoleId);
     expect(readError).toBeNull();
     expect(dbRows(data)).toEqual([{ permission_key: 'deck.read', scope: 'group' }]);
+  });
+
+  // The two refusals above are only about the catalog while the foreign key is the
+  // thing pointing at it: a constraint dropped from the schema would leave both
+  // tests' `23503`/`23514` codes to the other constraint and the suite green.
+  it('keeps the foreign key pointing at public.permissions', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      const rows = await sql.unsafe<{ confrelid: string; confdeltype: string }[]>(
+        `select confrelid::regclass::text as confrelid, confdeltype
+           from pg_constraint
+          where conname = 'org_role_permissions_permission_key_fkey'
+            and conrelid = 'public.org_role_permissions'::regclass`,
+      );
+      expect(rows).toEqual([{ confrelid: 'permissions', confdeltype: 'a' }]);
+    } finally {
+      await sql.end();
+    }
   });
 });

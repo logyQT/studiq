@@ -48,7 +48,9 @@ export function requiredEntry<T>(record: Record<string, T>, key: string, what: s
  * function against a renamed column, and installing the earlier body then leaves
  * the database with a function that fails on its first write — which is how the
  * phase-2b rename broke every suite that replayed `20261119180000`. Ordering is by
- * file name, the order `db reset` applies them in.
+ * file name, the order `db reset` applies them in, and by position inside a file:
+ * one migration may re-create a function twice (phase 2b's does, before and after
+ * its rename), so the definition that counts is the last one the pipeline reads.
  */
 export function latestShippedFunction(name: string, migrationsDir = 'supabase/migrations'): string {
   const files = readdirSync(migrationsDir)
@@ -57,12 +59,15 @@ export function latestShippedFunction(name: string, migrationsDir = 'supabase/mi
   let latest: string | null = null;
   for (const file of files) {
     const source = readFileSync(join(migrationsDir, file), 'utf8');
-    const start = source.indexOf(`create or replace function public.${name}(`);
-    if (start < 0) continue;
-    const bodyStart = source.indexOf('$$', start);
-    const bodyEnd = source.indexOf('$$;', bodyStart + 2);
-    if (bodyEnd < 0) throw new Error(`${file} has an unterminated ${name}() body`);
-    latest = source.slice(start, bodyEnd + 3);
+    const needle = `create or replace function public.${name}(`;
+    let start = source.indexOf(needle);
+    while (start >= 0) {
+      const bodyStart = source.indexOf('$$', start);
+      const bodyEnd = source.indexOf('$$;', bodyStart + 2);
+      if (bodyEnd < 0) throw new Error(`${file} has an unterminated ${name}() body`);
+      latest = source.slice(start, bodyEnd + 3);
+      start = source.indexOf(needle, bodyEnd);
+    }
   }
   if (latest === null) throw new Error(`no migration defines public.${name}()`);
   return latest;
