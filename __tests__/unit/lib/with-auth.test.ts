@@ -23,17 +23,20 @@ function queryStub(result: { data: unknown; error?: unknown }) {
   return builder;
 }
 
+/**
+ * `group_members` is never answered from a flat list: every test that expects
+ * group rows goes through `groupMembersStub`, so a read that drops the
+ * `groups.organization_id` filter cannot pass on rows the stub hands over
+ * regardless of the query.
+ */
 function stubTables(opts: {
   membership: { org_role_id: string } | null;
-  groups?: { group_id: string; role?: string; groups?: { organization_id: string } }[];
   permissions?: { permission_name: string; scope: string }[];
 }) {
   return (table: string) => {
     switch (table) {
       case 'org_members':
         return queryStub({ data: opts.membership, error: null });
-      case 'group_members':
-        return queryStub({ data: opts.groups ?? [], error: null });
       case 'org_role_permissions':
         return queryStub({ data: opts.permissions ?? [], error: null });
       default:
@@ -42,14 +45,16 @@ function stubTables(opts: {
   };
 }
 
+const CALLER_ID = 'u1';
+
 /**
- * Answers `group_members` from a real row list by applying the embedded
- * `groups.organization_id` filter, so a row from another org is dropped exactly
- * as PostgREST's `groups!inner(...)` embed drops it. Records the builder so a
- * test can assert the filter was requested at all.
+ * Answers `group_members` from a real row list by applying the filters the read
+ * asks for, so a row from another org — or another user — is dropped exactly as
+ * PostgREST's `groups!inner(...)` embed and the `user_id` filter drop it.
+ * Records the builder so a test can assert the org filter was requested at all.
  */
-function orgScopedGroupStub(
-  rows: { group_id: string; role: string; groups: { organization_id: string } }[],
+function groupMembersStub(
+  rows: { user_id: string; group_id: string; role: string; groups: { organization_id: string } }[],
 ) {
   const groupBuilders: ReturnType<typeof queryStub>[] = [];
   const from = (table: string) => {
@@ -62,13 +67,15 @@ function orgScopedGroupStub(
         return builder;
       }),
       then: (onFulfilled: (value: unknown) => unknown) => {
-        const data = rows.filter((row) =>
-          filters.every(([column, value]) =>
-            column === 'groups.organization_id'
-              ? row.groups.organization_id === value
-              : column === 'user_id',
-          ),
-        );
+        const data = rows
+          .filter((row) =>
+            filters.every(([column, value]) =>
+              column === 'groups.organization_id'
+                ? row.groups.organization_id === value
+                : row[column] === value,
+            ),
+          )
+          .map(({ group_id, role, groups }) => ({ group_id, role, groups }));
         return Promise.resolve({ data, error: null }).then(onFulfilled);
       },
     };
@@ -76,6 +83,17 @@ function orgScopedGroupStub(
     return builder;
   };
   return { from, groupBuilders };
+}
+
+/** The `from` for a test whose org_members answer is `membership` and group rows are `rows`. */
+function mockedFrom(
+  membership: { org_role_id: string } | null,
+  rows: Parameters<typeof groupMembersStub>[0],
+  permissions?: { permission_name: string; scope: string }[],
+) {
+  const groups = groupMembersStub(rows);
+  const tables = stubTables({ membership, permissions });
+  return (table: string) => (table === 'group_members' ? groups.from(table) : tables(table));
 }
 
 const OK = { success: true as const, statusCode: 200, data: { ok: true } };
@@ -152,11 +170,18 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
 
   it('honours the cookie org when the caller has an org_members row', async () => {
     mock.from.mockImplementation(
-      stubTables({
-        membership: { org_role_id: 'role-1' },
-        groups: [{ group_id: 'g1', role: 'member', groups: { organization_id: 'org-1' } }],
-        permissions: [{ permission_name: 'deck.read', scope: 'organization' }],
-      }),
+      mockedFrom(
+        { org_role_id: 'role-1' },
+        [
+          {
+            user_id: CALLER_ID,
+            group_id: 'g1',
+            role: 'member',
+            groups: { organization_id: 'org-1' },
+          },
+        ],
+        [{ permission_name: 'deck.read', scope: 'organization' }],
+      ),
     );
 
     let ctx: RequestContext | undefined;
@@ -171,11 +196,12 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
     expect(ctx?.activeOrgId).toBe('org-1');
     expect(ctx?.orgRoleId).toBe('role-1');
     expect(ctx?.groupIds).toEqual(['g1']);
+    expect(ctx?.groupRoles).toEqual({ g1: 'member' });
     expect(ctx?.permissionScopes).toEqual({ 'deck.read': 'organization' });
   });
 
   it('drops the cookie org when there is no org_members row (forged / stale / removed)', async () => {
-    mock.from.mockImplementation(stubTables({ membership: null, groups: [{ group_id: 'g1' }] }));
+    mock.from.mockImplementation(mockedFrom(null, []));
 
     let ctx: RequestContext | undefined;
     await withAuth(request('org-1'), (c) => {
@@ -217,9 +243,19 @@ describe('withAuth — group roles are org-scoped (ADR-0015 §7.1)', () => {
   });
 
   it('leaves out a group that belongs to another org', async () => {
-    const stub = orgScopedGroupStub([
-      { group_id: 'g-org-a', role: 'teacher', groups: { organization_id: 'org-a' } },
-      { group_id: 'g-org-b', role: 'member', groups: { organization_id: 'org-b' } },
+    const stub = groupMembersStub([
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-org-a',
+        role: 'teacher',
+        groups: { organization_id: 'org-a' },
+      },
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-org-b',
+        role: 'member',
+        groups: { organization_id: 'org-b' },
+      },
     ]);
     mock.from.mockImplementation((table: string) =>
       table === 'group_members'
@@ -234,10 +270,20 @@ describe('withAuth — group roles are org-scoped (ADR-0015 §7.1)', () => {
     expect(stub.groupBuilders[0]?.eq).toHaveBeenCalledWith('groups.organization_id', 'org-a');
   });
 
-  it('carries each in-org group role, and groupIds is exactly the keys of groupRoles', async () => {
-    const stub = orgScopedGroupStub([
-      { group_id: 'g-1', role: 'teacher', groups: { organization_id: 'org-a' } },
-      { group_id: 'g-2', role: 'member', groups: { organization_id: 'org-a' } },
+  it('leaves out a group the caller is not a member of', async () => {
+    const stub = groupMembersStub([
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-mine',
+        role: 'teacher',
+        groups: { organization_id: 'org-a' },
+      },
+      {
+        user_id: 'u2',
+        group_id: 'g-theirs',
+        role: 'member',
+        groups: { organization_id: 'org-a' },
+      },
     ]);
     mock.from.mockImplementation((table: string) =>
       table === 'group_members'
@@ -247,15 +293,72 @@ describe('withAuth — group roles are org-scoped (ADR-0015 §7.1)', () => {
 
     const ctx = await captureContext();
 
-    expect(ctx?.groupRoles).toEqual({ 'g-1': 'teacher', 'g-2': 'member' });
-    expect([...(ctx?.groupIds ?? [])].toSorted()).toEqual(
-      Object.keys(ctx?.groupRoles ?? {}).toSorted(),
+    expect(ctx?.groupIds).toEqual(['g-mine']);
+    expect(ctx?.groupRoles).toEqual({ 'g-mine': 'teacher' });
+  });
+
+  it('carries each in-org group role', async () => {
+    const stub = groupMembersStub([
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-1',
+        role: 'teacher',
+        groups: { organization_id: 'org-a' },
+      },
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-2',
+        role: 'member',
+        groups: { organization_id: 'org-a' },
+      },
+    ]);
+    mock.from.mockImplementation((table: string) =>
+      table === 'group_members'
+        ? stub.from(table)
+        : stubTables({ membership: { org_role_id: 'role-a' } })(table),
     );
+
+    const ctx = await captureContext();
+
+    expect(ctx?.groupIds).toEqual(['g-1', 'g-2']);
+    expect(ctx?.groupRoles).toEqual({ 'g-1': 'teacher', 'g-2': 'member' });
+  });
+
+  it('reports a group whose role it does not recognise as a group without a role', async () => {
+    const stub = groupMembersStub([
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-known',
+        role: 'teacher',
+        groups: { organization_id: 'org-a' },
+      },
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-unknown',
+        role: 'staff',
+        groups: { organization_id: 'org-a' },
+      },
+    ]);
+    mock.from.mockImplementation((table: string) =>
+      table === 'group_members'
+        ? stub.from(table)
+        : stubTables({ membership: { org_role_id: 'role-a' } })(table),
+    );
+
+    const ctx = await captureContext();
+
+    expect(ctx?.groupIds).toEqual(['g-known', 'g-unknown']);
+    expect(ctx?.groupRoles).toEqual({ 'g-known': 'teacher' });
   });
 
   it('keeps no group ids or roles when the cookie org is not a membership', async () => {
-    const stub = orgScopedGroupStub([
-      { group_id: 'g-org-b', role: 'teacher', groups: { organization_id: 'org-b' } },
+    const stub = groupMembersStub([
+      {
+        user_id: CALLER_ID,
+        group_id: 'g-org-b',
+        role: 'teacher',
+        groups: { organization_id: 'org-b' },
+      },
     ]);
     mock.from.mockImplementation((table: string) =>
       table === 'group_members' ? stub.from(table) : stubTables({ membership: null })(table),

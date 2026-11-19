@@ -1103,37 +1103,50 @@ prove reset-vs-deploy parity with a test that reads the catalog.
   the column value is narrowed by `isGroupRole` (the table's CHECK allows those two
   values; nothing is cast). No active org, or a cookie org with no `org_members`
   row, leaves both empty — the membership rule is untouched.
-- **The verified-org helper the slice was scoped for is not needed.** The org
-  scoping rides the existing `cookieOrgId` block, which already is the verified-org
-  helper: `activeOrgId` becomes the cookie only when an `org_members` row exists.
-  A second helper would be a second rule about what "active org" means.
+- **No new verified-org helper.** The org scoping rides the `cookieOrgId` block
+  that already is the verified-org helper: `activeOrgId` becomes the cookie only
+  when an `org_members` row exists (lines above the group read, unchanged). No
+  second rule about what "active org" means was added; the block was not
+  rewritten for this phase.
 - **Deleted** `packages/server/src/lib/request-context.ts`: a dead duplicate of the
   `@studiq/authz` interface (grep across `packages/`, `apps/`, `__tests__/`,
   `scripts/` found no importer; only two archived docs mention the path). No shim.
   `group.service#canShareContentToGroups`'s "Do NOT use ctx.groupIds: withAuth
   resolves memberships without an org filter" comment was false after this change
-  and now says why the ids are still not a tenant authority (they are the caller's
-  own memberships, not every group of `contentOrgId`).
-- **Tests.** `__tests__/unit/lib/with-auth.test.ts` (6 → 10 cases) adds an
-  org-filtering stub that applies `groups.organization_id` the way the PostgREST
-  embed does, and three cases: another org's group is absent from both `groupIds`
-  and `groupRoles` (and the filter is requested); in-org `teacher`/`member` rows
-  arrive with their roles and `groupIds` is exactly `groupRoles`' keys; a cookie org
-  without a membership row leaves both empty — the no-cookie case that already
-  existed now also asserts both are empty.
+  and now says `ctx.groupIds` answers a different question from the tenant check
+  (it is the caller's own active-org memberships, not every group of
+  `contentOrgId`).
+- **Tests.** `__tests__/unit/lib/with-auth.test.ts` (6 cases before this branch, 10
+  at the 2a-4 commit, 12 after the correction below) adds an org-filtering stub
+  that applies `groups.organization_id` the way the PostgREST embed does and
+  applies `user_id` to the row list, and six cases: another org's group is absent
+  from both `groupIds` and `groupRoles` (and the filter is requested); a group the
+  caller is not a member of is absent; in-org `teacher`/`member` rows arrive with
+  their roles; an unrecognised `role` keeps the group id but adds no role; a cookie
+  org without a membership row leaves both empty; no cookie leaves both empty. The
+  three legacy cases were extended rather than left alone: "honours the cookie org
+  …" now also asserts `groupIds` and `groupRoles` (through the same org filter)
+  alongside its permission scopes; the forged-cookie case and the no-cookie case
+  also assert both empty.
   `__tests__/integration/group-roles-org-scope.test.ts` drives the same through
   real signed-in sessions: a user who is `teacher` in org A's group and `member`
   in org B's group sees exactly one group per active org, with that org's role, and
-  nothing with no active org.
+  nothing with no active org. A second group in org A, whose only member is another
+  user, is absent from both contexts — without it the file passed with the org
+  filter deleted (correction entry below).
 - **Consumers.** 2a-5 reads `groupRoles` for scope resolution; 2b's group manage
   and invite are teacher-only. `groupIds` stays for every current reader.
 - **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit` (4632
-  passed, 1 skipped), `review:static`, `knip`, `dup:base`, `format:check`, and the
-  new integration file against this branch's stack (2 passed — the coordinator
-  runs the full serial suite). Two mutations KILLED on the unit file (the org
-  filter; the role value); the integration file was proven red by the same
-  filter removal, applied by hand because `bun run mutate` refuses to edit a test
-  file. `bun run pr:size` **59/400**.
+  passed, 1 skipped — before the fix below), `review:static`, `knip`, `dup:base`,
+  `format:check`, and the new integration file against this branch's stack (2
+  passed — the coordinator runs the full serial suite). Two mutations KILLED on
+  the unit file (the org filter; the role value); the integration file was proven
+  red by the same filter removal, applied by hand because `bun run mutate` refuses
+  to edit a test file. `bun run pr:size` **59/400** at that commit. Both
+  red-proofs were weaker than they read and were re-done after review — see the
+  difficulty-log entry below for what actually failed to fail. Re-run after the
+  correction: `test:unit` 4634 passed, 1 skipped; the integration file 2 passed;
+  `bun run pr:size` **59/400** (the correction is all tests and Markdown).
 
 **Difficulty log**
 
@@ -1155,6 +1168,51 @@ future write path that widens the CHECK must widen `GroupRole` with it — TypeS
 fails there, which is the cheaper gate.
 Rule: none — this is the "a test must be able to fail" check returning an honest
 negative, already covered by AGENTS.md's mutation-gate section.
+
+##### Correction (same day, before merge) — the negative was wrong in two places
+
+The entry above is left as written; two of its facts did not survive review.
+
+The guard. The claim "cannot be killed from a unit test" assumed the test may only
+hand `withAuth` rows the CHECK allows. That is one question — _can the database
+hold a `'staff'` row?_ — and the handler's behaviour is another: _given a row whose
+`role` is not one of the two, what reaches the context?_ The stub is a fake, not a
+database, and the handler's answer is observable: the group stays in `groupIds`
+and gets no entry in `groupRoles`. That is what keeps the record's type honest at
+the boundary, and it is exactly what a later write path that widens the CHECK
+without widening `GroupRole` would first break. `__tests__/unit/lib/with-auth.test.ts`
+now pins it ("reports a group whose role it does not recognise as a group without a
+role": two in-org rows, one `teacher`, one `staff`). Both recorded mutations are
+KILLED by that one case, nothing else: `groupRoles[row.group_id] = row.role as
+GroupRole` (the original unguarded cast) and `groupRoles[row.group_id] =
+isGroupRole(row.role) ? row.role : 'member'`. The CHECK argument above is still
+true and still worth having — it is simply not the reason the guard is untestable,
+because the guard is not untestable.
+
+The org filter. The 2a-4 entry above says the unit file kills the filter removal.
+It did not. Two legacy cases (`honours the cookie org …`, `drops the cookie org …`)
+answered `group_members` from a flat per-test list that ignored both the org and
+`user_id`, so with the org filter deleted they still got their rows. Only the
+newer org-scoped cases were real, and the integration file had the opposite
+defect: every user in it was a member of every group it asserted on, so deleting
+`.eq('groups.organization_id', cookieOrgId)` left it green as well. A filter that
+can be dropped without a failure is not tested, and a stub that ignores the query
+is a fixture that asserts nothing about it.
+
+Fix: `group_members` has one stub in the unit file (`groupMembersStub`) and it
+applies every filter the read sends — `groups.organization_id` and `user_id` —
+so the legacy cases can no longer be answered independently of the query. The
+integration file seeds a second group in org A whose only member is another user:
+readable through "Org members read group members" RLS, outside the caller's own
+membership. Derivative assertion ("`groupIds` is exactly the keys of `groupRoles`")
+deleted — both are filled in one loop, so nothing inside the handler can make them
+disagree; the guard case above is what that line was pretending to be.
+
+Rule: a stub answers the query it is given, never a fixture the test prepared
+apart from it — otherwise the mutation that deletes a filter changes nothing, and
+a test that cannot tell is not a test of the filter. An untestable guard is a
+claim to check, not a conclusion: ask what the code does with a value the schema
+forbids before accepting that nothing can.
 
 ### Phase 3 — entitlements and limits
 

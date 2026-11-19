@@ -81,6 +81,8 @@ describe('withAuth — group roles are scoped to the active org', () => {
   let teacherUser: TestUserFixture;
   let groupAId: string;
   let groupBId: string;
+  /** A second group in org A. The caller is not a member of it. */
+  let otherGroupAId: string;
   let otherUser: TestUserFixture;
 
   beforeAll(async () => {
@@ -116,7 +118,19 @@ describe('withAuth — group roles are scoped to the active org', () => {
     });
     await seedGroupMembership({ groupId: groupAId, userId: teacherUser.id, role: 'teacher' });
     await seedGroupMembership({ groupId: groupBId, userId: teacherUser.id, role: 'member' });
-    await seedGroupMembership({ groupId: groupAId, userId: otherUser.id, role: 'member' });
+
+    // Org A holds a group the caller is not in, and `otherUser` is. It is
+    // readable through the "Org members read group members" RLS policy but the
+    // caller's `user_id` filter must keep it out of the context.
+    const { data: otherGroup, error: otherGroupError } = await service
+      .from('groups')
+      .insert({ organization_id: orgAId, name: `group-roles-2a4-other-${tag}` })
+      .select('id')
+      .single();
+    if (otherGroupError)
+      throw new Error(`Failed to create second group: ${otherGroupError.message}`);
+    otherGroupAId = otherGroup.id;
+    await seedGroupMembership({ groupId: otherGroupAId, userId: otherUser.id, role: 'member' });
 
     teacher = await signIn(teacherUser.email);
   });
@@ -129,14 +143,16 @@ describe('withAuth — group roles are scoped to the active org', () => {
     }
   });
 
-  it('reports a group only while its own org is the active one, with its role', async () => {
+  it('reports the caller’s groups in the active org only, with their roles', async () => {
     const inA = await contextFor(teacher, orgAId);
     expect(inA.groupIds).toEqual([groupAId]);
     expect(inA.groupRoles).toEqual({ [groupAId]: 'teacher' });
+    expect(inA.groupIds).not.toContain(otherGroupAId);
 
     const inB = await contextFor(teacher, orgBId);
     expect(inB.groupIds).toEqual([groupBId]);
     expect(inB.groupRoles).toEqual({ [groupBId]: 'member' });
+    expect(inB.groupIds).not.toContain(otherGroupAId);
   });
 
   it('reports no group ids or roles without an active org', async () => {

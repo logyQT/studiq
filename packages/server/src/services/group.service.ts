@@ -369,8 +369,10 @@ export class GroupService {
    * created now, and `existing.organization_id ?? ctx.activeOrgId` for an update
    * of legacy personal content with a NULL org.
    *
-   * Do NOT use ctx.groupIds as the tenant authority: it lists the caller's own
-   * group memberships in the active org, not every group of `contentOrgId`.
+   * `ctx.groupIds` answers a different question: it is the caller's own
+   * membership list for the active org, not every group of `contentOrgId`, so it
+   * cannot stand in for the tenant check below a group id from another org's
+   * content arrives in.
    */
   async canShareContentToGroups(
     ctx: RequestContext,
