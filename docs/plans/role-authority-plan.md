@@ -71,6 +71,7 @@ stay until slice 2b, which replaces their gates with permissions.
 | R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors           |
 | R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable  |
 | R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                     |
+| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                     |
 
 ## 4. Decisions
 
@@ -605,7 +606,10 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
   idempotence, `SYSTEM_ROLE_TEMPLATES` pin with literal spot checks, and the
   user-session RLS fallback for all three profiles), plus rewrites of
   `org-features`, `assignment-permissions-seed` and the two custom-role
-  RLS-tenant-isolation premises that encoded zero-row inheritance.
+  RLS-tenant-isolation premises that encoded zero-row inheritance. QA:
+  MGR-SET-02's fixture now takes branding from the plan ceiling through
+  `apply_org_plan(org, 'hub')` instead of an `org_role_features` upsert (5/5
+  independent runs + LIM-05).
 - `database.ts` regenerated with the pinned CLI 3.1 (column + RPC only).
 
 **Follow-ups this slice creates:**
@@ -702,6 +706,26 @@ trigger-less. The seed's profile guard was unnecessary and is deleted, and the
 seeded-org assertion now pins the trigger write (`all`/`all`/`learner`). R10
 already covers this — re-verify every checklist line against the tree before
 dispatch — so the correction yields no new rule.
+
+#### 2026-11-19 — a QA fixture still wrote to the layer this phase retires
+
+What: CI's `qa-suite (mgr-sec-bil)` caught MGR-SET-02 — its fixture granted
+`branding` by upserting `org_role_features`, the non-marker writer 2a-1 makes
+non-authoritative. The case passed on 2a-1's own tree and failed only in CI's
+full shard; the coordinator's local smoke set (MGR-ROL-*, SEC-06, STU-03,
+LIM-05, BIL-01) did not include it, and the rollout map scheduled the fixture
+change at phase 3, one phase late.
+Why: a phase that changes which layer is authoritative changes the meaning of
+every fixture that writes to the retired layer, and those fixtures live in the QA
+corpus, not next to the resolver.
+Fix: the fixture uses the case's own "plan with branding" alternative —
+`apply_org_plan(org, 'hub')` — and branding resolves from the Admin profile `all`
+∩ the plan ceiling; the case text moved with the spec (R6). 5/5 independent
+MGR-SET-02 runs plus LIM-05 green.
+Rule: when a phase makes a producer non-authoritative, grep the QA corpus for
+fixtures that write to that producer **in the same PR**, and run at least one
+full shard; a smoke set chosen by case ID will miss the cases whose _fixtures_
+depend on the old writer.
 
 ### Phase 3 — entitlements and limits
 

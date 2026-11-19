@@ -107,7 +107,7 @@ case documents, 18 of which have no spec yet.)
 | MGR-SEAT-02 | role-name tier matrix; seat plan = effective plan; 3 keys withheld; AI limit = seat | audience tier; seat ∩ ceiling; `max(org, seat, personal)`; no permissions | 4     |
 | MGR-SEAT-03 | releasing a seat returns the member to base                                         | effective plan union + `max` limits                                       | 4     |
 | MGR-SET-01  | Launch branding lock; rename unaffected                                             | entitlement + `org.settings.manage` for rename too                        | 3     |
-| MGR-SET-02  | upserts `org_role_features` to grant branding                                       | entitlement profile ⊆ plan ceiling; no snapshot                           | 3     |
+| MGR-SET-02  | upserts `org_role_features` to grant branding                                       | fixture `apply_org_plan(org, 'hub')`; Admin profile `all` ∩ plan ceiling  | 2a-1  |
 | MGR-SET-05  | downgrade hides the logo; `/features/me` drops branding                             | `change_org_plan`; endpoint rename in 6                                   | 3 → 6 |
 | ONB-07      | org switch keeps `/edu`; active-org content only                                    | shell follows the active org; org-keyed cache                             | 6     |
 | PUB-02      | `/features` sells „Zarządzanie Organizacją”, „Masowe Zaproszenia”                   | none — the spec asserts structure, not plan contents                      | —     |
