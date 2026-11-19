@@ -46,10 +46,11 @@ export function resolveScope(ctx: RequestContext, action: string): PermissionSco
   if (ctx.accountType !== AccountType.STUDENT && ctx.accountType !== AccountType.EDUCATOR) {
     return null;
   }
-  if (!isPermissionCatalogKey(action)) return null;
   if (!PERSONA_DEFAULT_VERBS.some((verb) => action.endsWith(verb))) return null;
 
-  return PERMISSIONS[action].category === 'content' ? 'own' : null;
+  return isPermissionCatalogKey(action) && PERMISSIONS[action].category === 'content'
+    ? 'own'
+    : null;
 }
 
 // ── Permission checks (server, synchronous — no DB round-trips) ────────────

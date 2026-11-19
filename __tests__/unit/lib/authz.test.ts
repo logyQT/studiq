@@ -122,10 +122,6 @@ describe('authz (unified lib)', () => {
       }
     });
 
-    it('gives no default to a key outside the catalog', () => {
-      expect(resolveScope(baseCtx, 'role.builder.manage')).toBeNull();
-    });
-
     it('returns null for unknown permissions', () => {
       expect(resolveScope(baseCtx, 'role.builder.manage')).toBeNull();
     });
