@@ -8,14 +8,13 @@ import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/
 // #1256 pinned the `assignment.*` family on the org-creation trigger and on
 // `09_perms.sql`. Phase 2a-1 makes both call `seed_system_role_permissions()`,
 // so this asserts the stronger contract: a freshly created organization
-// (trigger) and the organizations `01_seed.sql` created (then `09_perms.sql`)
-// carry exactly the `SYSTEM_ROLE_TEMPLATES` matrix — content, group and org
-// keys alike. The TypeScript matrix is the pin; the SQL mirror is what could
-// drift from it.
+// (trigger) and the organizations `01_seed.sql` inserts carry exactly the
+// `SYSTEM_ROLE_TEMPLATES` matrix — content, group and org keys alike. The
+// TypeScript matrix is the pin; the SQL mirror is what could drift from it.
 
 const ROLES: readonly SystemRoleName[] = SYSTEM_ROLE_NAMES;
 
-/** An organization `01_seed.sql` inserts (and `09_perms.sql` then grants). */
+/** An organization `01_seed.sql` inserts, so the trigger creates its roles. */
 const SEEDED_ORG_ID = '00000000-0000-4000-8000-000000000001';
 
 describe('system-role permissions on the org roles', () => {
@@ -65,9 +64,10 @@ describe('system-role permissions on the org roles', () => {
     expect(await roleScopes(SEEDED_ORG_ID, role)).toEqual(SYSTEM_ROLE_TEMPLATES[role].permissions);
   });
 
-  it('gives the seeded organizations their profiles from 09_perms.sql', async () => {
-    // The seed inserts organizations and roles directly, so the org-creation
-    // trigger never writes these; 09_perms.sql is the only writer on a reset.
+  it('gives the seeded organizations the profiles the trigger wrote', async () => {
+    // `01_seed.sql` inserts organizations with a plain INSERT and the trigger is
+    // AFTER INSERT, so the trigger creates the three roles — and their profiles
+    // — before the seed's own `org_roles` rows conflict and do nothing.
     const { data, error } = await service
       .from('org_roles')
       .select('name, entitlement_profile')
@@ -76,10 +76,6 @@ describe('system-role permissions on the org roles', () => {
 
     expect(
       Object.fromEntries(dbRows(data).map((row) => [row.name, row.entitlement_profile])),
-    ).toEqual({
-      admin: SYSTEM_ROLE_TEMPLATES.admin.entitlementProfile,
-      teacher: SYSTEM_ROLE_TEMPLATES.teacher.entitlementProfile,
-      member: SYSTEM_ROLE_TEMPLATES.member.entitlementProfile,
-    });
+    ).toEqual({ admin: 'all', teacher: 'all', member: 'learner' });
   });
 });

@@ -57,7 +57,8 @@ function scoped(keys: PermissionKeyList, scope: CatalogScope): Record<string, Ca
  * a catalog key added here without a matching SQL predicate fails the suite.
  *
  * The member row grants `stats.read` at `own` rather than `group`, following
- * §4.2's matrix; nothing reads the key until phase 5.
+ * §4.2's matrix; the Teacher row grants it at `group`. Nothing reads the key
+ * until phase 5, so neither scope is load-bearing yet.
  */
 export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, SystemRoleTemplate> = {
   admin: {
@@ -74,9 +75,14 @@ export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, SystemRoleTemplate> =
     displayName: 'Teacher',
     description: 'Educator — CRUD over own content',
     entitlementProfile: 'all',
-    // Every content key, `assignment.*` included, stays at own scope.
+    // Every content key, `assignment.*` included, stays at own scope — except
+    // `stats.read`, which ADR §4.2 gives at group scope.
     permissions: {
-      ...scoped(CONTENT_KEYS, 'own'),
+      ...scoped(
+        CONTENT_KEYS.filter((key) => key !== 'stats.read'),
+        'own',
+      ),
+      'stats.read': 'group',
       ...scoped(GROUP_KEYS, 'group'),
     },
   },

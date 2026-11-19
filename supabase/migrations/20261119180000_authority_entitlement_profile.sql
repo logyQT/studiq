@@ -58,11 +58,15 @@ BEGIN
     AND r.name = 'admin'
   ON CONFLICT DO NOTHING;
 
-  -- teacher: every content key (assignment.* included) at own scope; the four
-  -- group keys at group scope.
+  -- teacher: every content key (assignment.* included) at own scope, except
+  -- `stats.read` (ADR §4.2: group scope); the four group keys at group scope.
   INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
   SELECT r.id, p.key,
-    CASE WHEN p.category = 'content' THEN 'own' ELSE 'group' END
+    CASE
+      WHEN p.key = 'stats.read' THEN 'group'
+      WHEN p.category = 'content' THEN 'own'
+      ELSE 'group'
+    END
   FROM public.org_roles r
   JOIN public.permissions p ON p.category IN ('content', 'group')
   WHERE r.organization_id = p_org_id
@@ -193,11 +197,20 @@ $$;
 --   profile 'all'     → ceiling minus the four legacy markers
 --   profile 'learner' → LEARNER_ENTITLEMENTS ∩ ceiling
 --   profile 'none'    → nothing
---   + seat plan keys  → minus the three admin-only markers (a seated non-admin
---                       is stripped by `stripAdminOnlyForNonAdmin`)
+--   + seat plan keys  → zero-row roles only, minus the three admin-only markers
+--                       (a seated non-admin is stripped by
+--                       `stripAdminOnlyForNonAdmin`)
 --
--- The union matters: the resolver composes profile base + seat plan, so a
--- substitution would be narrower than the API for a seated learner.
+-- The union matters inside this branch: the resolver composes profile base + seat
+-- plan, so a substitution would be narrower than the API for a zero-row seated
+-- learner.
+--
+-- It is not full seat parity: the seat `OR` sits inside `NOT EXISTS(rows)`, so a
+-- role that owns any `org_role_features` row never sees its seat plan while the
+-- resolver applies it unconditionally. No user-visible gap today (every
+-- seat-eligible key is reachable through the row branch for such a role); phase 4
+-- closes it when `org_seat_pools.plan_key` becomes all-`seatEligible` (D15) — see
+-- this slice's follow-up in the phase-2 ledger.
 -- ==========================================
 create or replace function public.has_org_feature(
   p_actor uuid,
@@ -220,6 +233,8 @@ as $$
     WHERE om.user_id = p_actor
       AND om.organization_id = p_organization_id
       AND (
+        -- Equivalent to the resolver's enabled `org.manage` row: the trigger
+        -- grants it to the admin role and `apply_org_plan` never revokes it.
         (r.is_system AND r.name = 'admin')
         OR EXISTS (
           SELECT 1

@@ -68,15 +68,8 @@ ON CONFLICT DO NOTHING;
 -- trigger-created one carry identical rows.
 -- ==========================================
 
--- `01_seed.sql` inserts organizations and their roles directly, so the
--- org-creation trigger (which writes the profile) never runs for them. The
--- migration backfill only covers organizations that existed when it ran, and a
--- reset has none. This is a no-op on an already-seeded database.
-UPDATE public.org_roles
-SET entitlement_profile = CASE WHEN name = 'member' THEN 'learner' ELSE 'all' END
-WHERE is_system IS TRUE
-  AND name IN ('admin', 'teacher', 'member')
-  AND entitlement_profile = 'none';
-
+-- Idempotent on an already-seeded database: the trigger created every seeded
+-- organization's roles and their permission rows when `01_seed.sql` inserted the
+-- organizations, so this only repairs rows an older organization is missing.
 SELECT public.seed_system_role_permissions(id) FROM public.organizations;
 

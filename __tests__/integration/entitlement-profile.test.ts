@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import {
   ENTITLEMENT_KEYS,
+  LEARNER_ENTITLEMENTS,
   SYSTEM_ROLE_NAMES,
   SYSTEM_ROLE_TEMPLATES,
   type SystemRoleName,
@@ -31,10 +32,10 @@ const PASSWORD = 'Prof4Test!';
 const MIGRATION = 'supabase/migrations/20261119180000_authority_entitlement_profile.sql';
 
 /**
- * The shipped `has_org_feature` and backfill statement, read from the migration
- * verbatim and installed over the direct connection. A copy here could pass
- * while production ships something else, and a mutation to the migration has to
- * reach the database to turn these tests red.
+ * A shipped function, read from the migration verbatim and installed over the
+ * direct connection. A copy here could pass while production ships something
+ * else, and a mutation to the migration has to reach the database to turn these
+ * tests red.
  */
 function shippedFunction(name: string): string {
   const source = readFileSync(MIGRATION, 'utf8');
@@ -146,8 +147,14 @@ describe('org_roles.entitlement_profile', () => {
     useRealSupabase();
     service = createTypedServiceClient();
 
-    // Install the shipped definition over the direct connection (see above).
-    if (localDatabaseUrl) await runDirect(shippedFunction('has_org_feature'));
+    // Install the shipped definitions over the direct connection (see above).
+    // The trigger is installed too, so a migration mutation to the profile write
+    // reaches the organization created below.
+    if (localDatabaseUrl) {
+      await runDirect(shippedFunction('has_org_feature'));
+      await runDirect(shippedFunction('seed_system_role_permissions'));
+      await runDirect(shippedFunction('handle_new_organization'));
+    }
 
     const { data: org, error: orgError } = await service
       .from('organizations')
@@ -272,6 +279,10 @@ describe('org_roles.entitlement_profile', () => {
     expect(member['group.read']).toBe('group');
     expect(member['flashcard.read']).toBe('group');
     expect(member['flashcard.create']).toBe('own');
+
+    const teacher = await roleScopes('teacher');
+    expect(teacher['stats.read']).toBe('group');
+    expect(teacher['flashcard.read']).toBe('own');
   });
 
   it('RLS: a zero-row none role has no hub entitlement, FP-01 closed', async () => {
@@ -310,7 +321,7 @@ describe('org_roles.entitlement_profile', () => {
     expect(await hasOrgFeature('branding')).toBe(true);
 
     for (const key of ENTITLEMENT_KEYS.filter(
-      (entitlement) => !['flashcards', 'quiz', 'ai.chat', 'branding'].includes(entitlement),
+      (entitlement) => !LEARNER_ENTITLEMENTS.includes(entitlement),
     )) {
       expect(await hasOrgFeature(key), key).toBe(false);
     }

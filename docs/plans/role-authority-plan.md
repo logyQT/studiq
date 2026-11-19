@@ -597,8 +597,8 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 - `FeatureResolver`: org layer is profile → legacy rows (markers grant,
   `is_enabled = false` revokes) → seat (additive, admin-only strip) → personal →
   overrides → flags. `ctx.orgRoleId === null` resolves ∅ with no plan read.
-- `supabase/seeds/09_perms.sql` calls the function for every seeded organization;
-  it also sets the profile on seeded orgs, which bypass the trigger (below).
+- `supabase/seeds/09_perms.sql` calls the function for every seeded organization
+  (the org-creation trigger already created their roles and profiles).
 - Tests: a table-driven resolver truth table (admin/teacher/member/custom,
   hub/launch, no role, seated non-admin), a new
   `__tests__/integration/entitlement-profile.test.ts` (trigger profiles, CHECK,
@@ -607,6 +607,19 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
   `org-features`, `assignment-permissions-seed` and the two custom-role
   RLS-tenant-isolation premises that encoded zero-row inheritance.
 - `database.ts` regenerated with the pinned CLI 3.1 (column + RPC only).
+
+**Follow-ups this slice creates:**
+
+- **Phase 4** closes the seat-parity gap in `has_org_feature`: the seat `OR` sits
+  inside the `NOT EXISTS(org_role_features)` block, so a role that owns any row
+  never sees its seat plan while the resolver applies it unconditionally. Hoist
+  the `OR` out of the zero-row block, or guarantee every seat-eligible key is
+  reachable through the row branch — required once `org_seat_pools.plan_key` is
+  all-`seatEligible` (D15). No user-visible gap today.
+- **Phase 5** must not assume Teacher `stats.read` is `own`: `SYSTEM_ROLE_TEMPLATES`
+  and `seed_system_role_permissions` grant `group` (ADR §4.2), but existing
+  organizations keep the `own` row the old matrix wrote, because the function's
+  `ON CONFLICT DO NOTHING` cannot rewrite it.
 
 **Difficulty log**
 
@@ -677,6 +690,18 @@ by `entitlement_profile = 'none'` so a re-run cannot overwrite a profile an
 admin changes later. The trigger stays the writer for real org creation.
 Rule: a column written by a trigger needs a seed-side value too whenever the
 seed inserts its rows directly instead of going through the trigger.
+
+**Correction (2026-11-19, review).** The premise above is false.
+`handle_new_organization` fires `AFTER INSERT ON public.organizations`
+(`20260707000006_handle_new_organization_trigger.sql`) and `01_seed.sql` inserts
+the organizations with a plain `INSERT`, so the trigger creates the three roles —
+profiles and permissions included — before the seed's own `org_roles` rows
+conflict on `(organization_id, name)` and do nothing. The observation was taken
+before the migration had been applied on that stack, so the roles looked
+trigger-less. The seed's profile guard was unnecessary and is deleted, and the
+seeded-org assertion now pins the trigger write (`all`/`all`/`learner`). R10
+already covers this — re-verify every checklist line against the tree before
+dispatch — so the correction yields no new rule.
 
 ### Phase 3 — entitlements and limits
 

@@ -227,7 +227,7 @@ Split into five slices on one short-lived branch, each independently
 reviewable. The slice list and shipped contents live in
 [role-authority-plan.md §5](role-authority-plan.md#phase-2--authority).
 
-- **2a-1** (~260) — `org_roles.entitlement_profile` (`all | learner | none`),
+- **2a-1** (~750, `size:exception`) — `org_roles.entitlement_profile` (`all | learner | none`),
   the trigger/seed/backfill, the profile-driven `FeatureResolver` org layer and
   the `has_org_feature` zero-row fallback. Closes the RLS twin of FP-01 in the
   same PR (R4).
