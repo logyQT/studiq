@@ -53,7 +53,7 @@ interface NewNotification {
   organizationId: string | null;
   type: NotificationType;
   /** Rendered by the client; the `jsonb` column accepts exactly this shape. */
-  payload: Json;
+  payload: NonNullable<Json>;
 }
 
 /** The `notifications` row `list()` projects; `type` is narrowed by `toItem`. */

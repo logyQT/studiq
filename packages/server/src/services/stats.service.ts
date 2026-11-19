@@ -171,10 +171,10 @@ export class StatsService {
     const { data: problematicQuestions, error: problematicQuestionsError } = await supabase.rpc(
       'get_teacher_problematic_questions',
       {
-        // Explicit NULLs (never omitted): the RPC keys on their presence.
+        // `undefined` omits an argument whose SQL default is already NULL.
         p_user_id: ctx.userId,
-        p_organization_id: ctx.activeOrgId,
-        p_bank_id: subjectId ?? null,
+        p_organization_id: ctx.activeOrgId ?? undefined,
+        p_bank_id: subjectId,
       },
     );
 

@@ -193,6 +193,12 @@ is behaviour-neutral; PR2 does the catalog cutover (~300 lines) and must keep
 the four legacy management keys above. The generator cutover for
 `packages/server/src/types/database.ts` (R2) rides with PR1.
 
+**Prerequisite (phase 1a, separate PR):** regenerate
+`packages/server/src/types/database.ts` with the pinned CLI first — the shape
+cutover (no `graphql_public`, `ComputedFields`, nullable RPC args as `?: T`,
+`resource_permissions` gone) is what lets the typed call sites read the renamed
+tables.
+
 ### 2 — authority cutover (the largest; stack of 2–3 PRs)
 
 - `org_role_permissions.permission_key` FKs the permission catalog; seed the

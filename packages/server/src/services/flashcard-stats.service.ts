@@ -58,14 +58,13 @@ export class FlashcardStatsService {
     // #460: always call the RPC — a brand-new organization has no flashcards
     // yet, but the class roster (`rosterStudents`) must still be returned.
     // The generated RPC arg types represent nullable SQL parameters as optional
-    // (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
-    // keep sending it: callers/tests rely on the parameter being present as NULL.
+    // (`?: T`). Omitting one applies its `DEFAULT NULL`, so `undefined` sends the
+    // same NULL an explicit `null` would.
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
       p_flashcard_ids: flashcardIds,
       p_user_id: ctx.userId,
-      // Sent as an explicit NULL (never omitted): the SQL function keys on it.
-      p_deck_id: filters?.deckId ?? null,
-      p_organization_id: ctx.activeOrgId ?? null,
+      p_deck_id: filters?.deckId,
+      p_organization_id: ctx.activeOrgId ?? undefined,
     });
 
     if (rpcError) return toDbFailure(rpcError);

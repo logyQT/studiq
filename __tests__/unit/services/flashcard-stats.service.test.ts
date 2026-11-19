@@ -151,12 +151,12 @@ describe('FlashcardStatsService', () => {
       expect(mock.rpc).toHaveBeenCalledWith('get_teacher_stats', {
         p_flashcard_ids: ['fc-1'],
         p_user_id: 'teacher-1',
-        p_deck_id: null,
+        p_deck_id: undefined,
         p_organization_id: 'org-1',
       });
     });
 
-    it('passes a null organization id outside an org scope', async () => {
+    it('sends no organization filter outside an org scope', async () => {
       const ownCtx: RequestContext = { ...ctx, activeOrgId: null };
       mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
       mock.rpc.mockResolvedValueOnce({ data: emptyRpcResult, error: null });
@@ -167,8 +167,8 @@ describe('FlashcardStatsService', () => {
       expect(mock.rpc).toHaveBeenCalledWith('get_teacher_stats', {
         p_flashcard_ids: ['fc-1'],
         p_user_id: 'teacher-1',
-        p_deck_id: null,
-        p_organization_id: null,
+        p_deck_id: undefined,
+        p_organization_id: undefined,
       });
     });
 
@@ -190,7 +190,7 @@ describe('FlashcardStatsService', () => {
       expect(mock.rpc).toHaveBeenCalledWith('get_teacher_stats', {
         p_flashcard_ids: [],
         p_user_id: 'teacher-1',
-        p_deck_id: null,
+        p_deck_id: undefined,
         p_organization_id: 'org-1',
       });
       expect(expectSuccess(result).summary.totalFlashcards).toBe(0);
