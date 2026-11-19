@@ -195,9 +195,11 @@ the four legacy management keys above. The generator cutover for
 
 **Prerequisite (phase 1a, separate PR):** regenerate
 `packages/server/src/types/database.ts` with the pinned CLI first — the shape
-cutover (no `graphql_public`, `ComputedFields`, nullable RPC args as `?: T`,
+cutover (no `graphql_public`, nullable RPC args as `?: T`,
 `resource_permissions` gone) is what lets the typed call sites read the renamed
-tables.
+tables. It reflects only the current table names, so phase 1b regenerates the
+file again after its `plan_features` → `plan_entitlements` and `feature_flags`
+→ `entitlement_flags` rename.
 
 ### 2 — authority cutover (the largest; stack of 2–3 PRs)
 
