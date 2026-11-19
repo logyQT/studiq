@@ -55,7 +55,7 @@ describe('PlanFeatureService', () => {
 
   describe('getAll', () => {
     it('returns all plan features', async () => {
-      const features = [{ id: 'f-1', plan_key: 'base', feature_key: 'quiz' }];
+      const features = [{ id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' }];
       const listQb = qb(features);
       mock.from.mockReturnValueOnce(listQb);
 
@@ -63,6 +63,7 @@ describe('PlanFeatureService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(features);
+      expect(mock.from).toHaveBeenCalledWith('plan_entitlements');
       expect(listQb.order).toHaveBeenCalledWith('plan_key', { ascending: true });
     });
 
@@ -78,7 +79,7 @@ describe('PlanFeatureService', () => {
 
   describe('getByPlanKey', () => {
     it('returns features for plan key', async () => {
-      const features = [{ id: 'f-1', plan_key: 'base', feature_key: 'quiz' }];
+      const features = [{ id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' }];
       const listQb = qb(features);
       mock.from.mockReturnValueOnce(listQb);
 
@@ -101,7 +102,7 @@ describe('PlanFeatureService', () => {
 
   describe('create', () => {
     it('creates a plan feature', async () => {
-      const feature = { id: 'f-1', plan_key: 'base', feature_key: 'quiz' };
+      const feature = { id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' };
       const insertQb = qb(feature);
       mock.from.mockReturnValueOnce(insertQb);
 
@@ -109,7 +110,10 @@ describe('PlanFeatureService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(feature);
-      expect(insertQb.insert).toHaveBeenCalledWith({ plan_key: 'base', feature_key: 'quiz' });
+      expect(insertQb.insert).toHaveBeenCalledWith({
+        plan_key: 'base',
+        entitlement_key: 'quiz',
+      });
     });
 
     it('returns error on DB failure', async () => {

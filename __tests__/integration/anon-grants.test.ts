@@ -6,7 +6,7 @@ import { asJson } from '#test/helpers/json';
 // browser) could read AND write most public tables through PostgREST without a
 // login. Only the public pricing data may be visible to an unauthenticated caller.
 
-const PUBLIC_TABLES = ['plan_features', 'plan_limits', 'subscription_plans'];
+const PUBLIC_TABLES = ['plan_entitlements', 'plan_limits', 'subscription_plans'];
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -40,7 +40,7 @@ describe('anon role grants (#191)', () => {
     'org_roles',
     'org_role_permissions',
     'user_daily_activity',
-    'feature_flags',
+    'entitlement_flags',
     'profiles',
     'invitations',
     'payments',

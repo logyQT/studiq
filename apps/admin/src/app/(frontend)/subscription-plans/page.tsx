@@ -402,7 +402,7 @@ function PlanDetails({ planKey }: { planKey: string }) {
 
   const { data: features = [], error: featuresError } = useQuery({
     queryKey: [...queryKeys.planFeatures.all, planKey],
-    queryFn: () => apiGet<Array<{ id: string; feature_key: string }>>('/plan-features'),
+    queryFn: () => apiGet<Array<{ id: string; entitlement_key: string }>>('/plan-features'),
   });
 
   const planFeatures = features.filter((f) => (f as Record<string, unknown>).plan_key === planKey);
@@ -426,7 +426,7 @@ function PlanDetails({ planKey }: { planKey: string }) {
                 key={f.id}
                 className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
               >
-                {f.feature_key}
+                {f.entitlement_key}
               </span>
             ))}
           </div>

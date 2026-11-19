@@ -41,6 +41,9 @@ export function isUserOverrideActive(
 
 type FeatureRow = { feature_key: string; is_enabled?: boolean; expires_at?: string | null };
 
+/** A `plan_entitlements` row; `org_role_features` owns the `feature_key` name. */
+type PlanEntitlementRow = { entitlement_key: string };
+
 export class FeatureResolver {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
@@ -62,9 +65,9 @@ export class FeatureResolver {
    *   3. User override    — `user_feature_overrides` rows are the strongest
    *      layer: add/remove anything. Rows whose `expires_at` is in the past are
    *      ignored (they stay in the table for audit only).
-   *   4. Rollout %        — `feature_flags.rollout_percentage < 100` gates
+   *   4. Rollout %        — `entitlement_flags.rollout_percentage < 100` gates
    *      deterministically per (key, user_id).
-   *   5. Global flag      — `feature_flags.is_enabled = false` is a hard
+   *   5. Global flag      — `entitlement_flags.is_enabled = false` is a hard
    *      kill switch ("Stop now") regardless of any entitlement layer.
    */
   async resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {
@@ -169,7 +172,7 @@ export class FeatureResolver {
 
     // ── 4 + 5. Rollout % + global flag gate ──────────────────────────────
     const { data: flags } = await supabase
-      .from('feature_flags')
+      .from('entitlement_flags')
       .select('key, is_enabled, rollout_percentage');
 
     const flagMap = new Map<
@@ -220,19 +223,25 @@ export class FeatureResolver {
     planKey: string,
     supabase: SupabaseClient<Database>,
   ): Promise<void> {
-    const { data: pf } = await supabase
-      .from('plan_features')
-      .select('feature_key')
+    const { data: planEntitlements } = await supabase
+      .from('plan_entitlements')
+      .select('entitlement_key')
       .eq('plan_key', planKey);
 
-    this.applyRows(enabled, pf ?? []);
+    this.applyPlanRows(enabled, planEntitlements ?? []);
+  }
+
+  /** Plan rows carry no `is_enabled`: presence in the plan is the grant. */
+  private applyPlanRows(enabled: Set<FeatureKey>, rows: PlanEntitlementRow[]): void {
+    for (const row of rows) {
+      if (isFeatureKey(row.entitlement_key)) enabled.add(row.entitlement_key);
+    }
   }
 
   private applyRows(enabled: Set<FeatureKey>, rows: FeatureRow[]): void {
     for (const row of rows) {
       if (!isFeatureKey(row.feature_key)) continue;
-      // Explicit `is_enabled: false` removes; true/undefined (plan_features
-      // rows carry no is_enabled) adds.
+      // Explicit `is_enabled: false` removes; true/undefined adds.
       if (row.is_enabled === false) {
         enabled.delete(row.feature_key);
       } else {

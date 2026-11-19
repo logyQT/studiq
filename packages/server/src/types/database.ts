@@ -368,6 +368,76 @@ export type Database = {
           },
         ];
       };
+      entitlement_catalog: {
+        Row: {
+          category: string;
+          key: string;
+          personal_portable: boolean;
+          quota_limit_key: string | null;
+          scope: string;
+          seat_eligible: boolean;
+        };
+        ComputedFields: never;
+        Insert: {
+          category: string;
+          key: string;
+          personal_portable?: boolean;
+          quota_limit_key?: string | null;
+          scope: string;
+          seat_eligible?: boolean;
+        };
+        Update: {
+          category?: string;
+          key?: string;
+          personal_portable?: boolean;
+          quota_limit_key?: string | null;
+          scope?: string;
+          seat_eligible?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'entitlement_catalog_quota_limit_key_fkey';
+            columns: ['quota_limit_key'];
+            isOneToOne: false;
+            referencedRelation: 'limit_catalog';
+            referencedColumns: ['key'];
+          },
+        ];
+      };
+      entitlement_flags: {
+        Row: {
+          created_at: string | null;
+          description: string | null;
+          id: string;
+          is_enabled: boolean | null;
+          key: string;
+          name: string;
+          rollout_percentage: number | null;
+          updated_at: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string | null;
+          description?: string | null;
+          id?: string;
+          is_enabled?: boolean | null;
+          key: string;
+          name: string;
+          rollout_percentage?: number | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          description?: string | null;
+          id?: string;
+          is_enabled?: boolean | null;
+          key?: string;
+          name?: string;
+          rollout_percentage?: number | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
       exposure_events: {
         Row: {
           created_at: string;
@@ -420,40 +490,6 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
-      };
-      feature_flags: {
-        Row: {
-          created_at: string | null;
-          description: string | null;
-          id: string;
-          is_enabled: boolean | null;
-          key: string;
-          name: string;
-          rollout_percentage: number | null;
-          updated_at: string | null;
-        };
-        ComputedFields: never;
-        Insert: {
-          created_at?: string | null;
-          description?: string | null;
-          id?: string;
-          is_enabled?: boolean | null;
-          key: string;
-          name: string;
-          rollout_percentage?: number | null;
-          updated_at?: string | null;
-        };
-        Update: {
-          created_at?: string | null;
-          description?: string | null;
-          id?: string;
-          is_enabled?: boolean | null;
-          key?: string;
-          name?: string;
-          rollout_percentage?: number | null;
-          updated_at?: string | null;
-        };
-        Relationships: [];
       };
       flashcard_decks: {
         Row: {
@@ -926,6 +962,22 @@ export type Database = {
           },
         ];
       };
+      limit_catalog: {
+        Row: {
+          key: string;
+          scope: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          key: string;
+          scope: string;
+        };
+        Update: {
+          key?: string;
+          scope?: string;
+        };
+        Relationships: [];
+      };
       notifications: {
         Row: {
           created_at: string;
@@ -1312,46 +1364,62 @@ export type Database = {
       };
       permissions: {
         Row: {
-          id: string;
-          name: string;
+          allowed_scopes: string[];
+          assignable: boolean;
+          category: string;
+          description: string | null;
+          key: string;
         };
         ComputedFields: never;
         Insert: {
-          id?: string;
-          name: string;
+          allowed_scopes?: string[];
+          assignable?: boolean;
+          category?: string;
+          description?: string | null;
+          key: string;
         };
         Update: {
-          id?: string;
-          name?: string;
+          allowed_scopes?: string[];
+          assignable?: boolean;
+          category?: string;
+          description?: string | null;
+          key?: string;
         };
         Relationships: [];
       };
-      plan_features: {
+      plan_entitlements: {
         Row: {
           created_at: string | null;
-          feature_key: string;
+          entitlement_key: string;
           id: string;
           plan_key: string;
         };
         ComputedFields: never;
         Insert: {
           created_at?: string | null;
-          feature_key: string;
+          entitlement_key: string;
           id?: string;
           plan_key: string;
         };
         Update: {
           created_at?: string | null;
-          feature_key?: string;
+          entitlement_key?: string;
           id?: string;
           plan_key?: string;
         };
         Relationships: [
           {
-            foreignKeyName: 'plan_features_feature_key_fkey';
-            columns: ['feature_key'];
+            foreignKeyName: 'plan_entitlements_entitlement_key_fkey';
+            columns: ['entitlement_key'];
             isOneToOne: false;
-            referencedRelation: 'feature_flags';
+            referencedRelation: 'entitlement_catalog';
+            referencedColumns: ['key'];
+          },
+          {
+            foreignKeyName: 'plan_features_feature_key_fkey';
+            columns: ['entitlement_key'];
+            isOneToOne: false;
+            referencedRelation: 'entitlement_flags';
             referencedColumns: ['key'];
           },
           {
@@ -1387,6 +1455,13 @@ export type Database = {
           plan_key?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: 'plan_limits_limit_key_fkey';
+            columns: ['limit_key'];
+            isOneToOne: false;
+            referencedRelation: 'limit_catalog';
+            referencedColumns: ['key'];
+          },
           {
             foreignKeyName: 'plan_limits_plan_key_fkey';
             columns: ['plan_key'];
@@ -2451,7 +2526,7 @@ export type Database = {
             foreignKeyName: 'user_feature_overrides_feature_key_fkey';
             columns: ['feature_key'];
             isOneToOne: false;
-            referencedRelation: 'feature_flags';
+            referencedRelation: 'entitlement_flags';
             referencedColumns: ['key'];
           },
           {
@@ -2719,6 +2794,7 @@ export type Database = {
         Returns: boolean;
       };
       is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
+      migrate_org_role_permission_names: { Args: Record<PropertyKey, never>; Returns: undefined };
       question_bank_counts: {
         Args: { p_bank_ids: string[] };
         Returns: {

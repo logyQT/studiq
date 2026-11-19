@@ -23,7 +23,7 @@ The legacy `manager@dev.local` + WSB Merito seed is replaced by this case's own
 - "Plan z brandingiem / override branding": the spec grants the tenant's own
   `org_role_features` rows the `branding` key (the per-org entitlement override
   the resolver treats as authoritative). The shared plan catalog and
-  `feature_flags` are never read or written, so no other worker's org or global
+  `entitlement_flags` are never read or written, so no other worker's org or global
   admin state is involved.
 - Logo fixture: a deterministic 1×1 PNG uploaded through the real "Wgraj logo"
   file chooser. The spec clears its own org's previous `logo_url` (and storage

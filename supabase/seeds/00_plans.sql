@@ -12,7 +12,7 @@ ALTER TABLE public.organizations ALTER COLUMN plan SET DEFAULT 'launch';
 -- ==========================================================
 -- 3. Add new feature flags
 -- ==========================================================
-INSERT INTO public.feature_flags (key, name, description) VALUES
+INSERT INTO public.entitlement_flags (key, name, description) VALUES
   ('group.manage', 'Group Management', 'Create and manage groups'),
   ('member.manage', 'Member Management', 'Change member roles and remove members'),
   ('role.builder', 'Role Builder', 'Create custom roles with custom permissions'),
@@ -23,7 +23,7 @@ ON CONFLICT DO NOTHING;
 -- 4. Remove old plan data (order matters for FKs)
 -- ==========================================================
 DELETE FROM public.plan_limits;
-DELETE FROM public.plan_features;
+DELETE FROM public.plan_entitlements;
 DELETE FROM public.subscription_plans;
 
 -- ==========================================================
@@ -63,7 +63,7 @@ ON CONFLICT DO NOTHING;
 -- ==========================================================
 
 -- Free tier
-INSERT INTO public.plan_features (plan_key, feature_key) VALUES
+INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('base', 'flashcards'),
   ('base', 'quiz'),
   ('lite', 'flashcards'),
@@ -79,7 +79,7 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Basic tier
-INSERT INTO public.plan_features (plan_key, feature_key) VALUES
+INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('spark', 'flashcards'),
   ('spark', 'quiz'),
   ('guide', 'flashcards'),
@@ -96,7 +96,7 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Premium tier
-INSERT INTO public.plan_features (plan_key, feature_key) VALUES
+INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('ace', 'flashcards'),
   ('ace', 'quiz'),
   ('ace', 'ai.chat'),
@@ -122,7 +122,7 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Advanced tier
-INSERT INTO public.plan_features (plan_key, feature_key) VALUES
+INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('pro', 'flashcards'),
   ('pro', 'quiz'),
   ('pro', 'ai.chat'),

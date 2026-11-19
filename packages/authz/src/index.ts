@@ -14,9 +14,14 @@ export {
 } from './features';
 // ── Permissions ─────────────────────────────────────────────────────────────
 export {
+  type CatalogScope,
   DEFAULT_ROLE_PERMISSIONS,
   evaluateScope,
+  PERMISSIONS,
   Permission,
+  type PermissionCatalogKey,
+  type PermissionCategory,
+  type PermissionDefinition,
   type PermissionKey,
   type PermissionScope,
   type ResourceAccess,

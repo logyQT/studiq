@@ -45,7 +45,7 @@ describe('PlanFeatureController', () => {
 
   describe('create', () => {
     it('creates a plan feature', async () => {
-      const feature = { id: 'f-1', plan_key: 'base', feature_key: 'quiz' };
+      const feature = { id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' };
       mockService.create.mockResolvedValueOnce({ success: true, data: feature });
 
       const response = await controller.create({ planKey: 'base', featureKey: 'quiz' });

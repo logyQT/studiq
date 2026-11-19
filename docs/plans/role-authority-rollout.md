@@ -1,6 +1,7 @@
 # Role-authority rollout — a PR queue into `main`
 
-**Status:** In progress — phase 0 merged (#1162), phase 0b in PR.
+**Status:** In progress — phase 0 merged (#1162), 0b merged (#1387), 1a
+merged (#1388), 1b in PR.
 **Date:** 2026-11-13. Supersedes the 2026-10-31 integration-branch draft.
 **Decision record:** [ADR-0015](../decisions/0015-role-based-authority.md)
 **Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (originally verified against `b4186312`; re-verified 2026-11-19 at `8aab828e`).
@@ -164,6 +165,15 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 
 ### 1 — catalog cutover
 
+> **Delivered 2026-11-19, PR 1 of 2 (phase 1b).** The table renames, the
+> `limit_catalog` and `entitlement_catalog` tables, the 44-key `PERMISSIONS`
+> catalog and the `org_role_permissions` rewrite are merged-or-in-PR and
+> behaviour-neutral. Still open in this phase (PR 2): export `ENTITLEMENTS`,
+> delete `FEATURES`, `ADMIN_ONLY_FEATURES` and `ORG_SCOPED_FEATURES`, cut the
+> admin/UI catalogs over, and remove `documents` from `plan_entitlements` —
+> except that the four legacy management keys and everything reading them stay
+> until phase 2 (below).
+
 - `@studiq/authz` exports `ENTITLEMENTS` and `PERMISSIONS` with metadata
   (`kind`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES` is
   deleted, not aliased.
@@ -188,9 +198,11 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 `bun run test:admin` green. "No management key is purchasable" moves to phase 2
 with the four legacy keys.
 
-**Settled 2026-11-19 — two PRs.** PR1 renames the tables, seeds and readers and
-is behaviour-neutral; PR2 does the catalog cutover (~300 lines) and must keep
-the four legacy management keys above. The generator cutover for
+**Settled 2026-11-19 — two PRs.** PR1 (phase 1b) renames the tables, seeds and
+readers and is behaviour-neutral; it also adds the two catalog tables and the
+expanded permission catalog, because the renames and the catalog share one
+migration. PR2 does the catalog cutover (~300 lines) and must keep the four
+legacy management keys above. The generator cutover for
 `packages/server/src/types/database.ts` (R2) rides with PR1.
 
 **Prerequisite (phase 1a, separate PR):** regenerate

@@ -15,7 +15,7 @@ export class FeatureFlagService {
   async getAll() {
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
-      .from('feature_flags')
+      .from('entitlement_flags')
       .select('*')
       .order('key', { ascending: true });
     if (error) return toDbFailure(error);
@@ -25,7 +25,7 @@ export class FeatureFlagService {
   async getById(id: string) {
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
-      .from('feature_flags')
+      .from('entitlement_flags')
       .select('*')
       .eq('id', id)
       .maybeSingle();
@@ -37,7 +37,7 @@ export class FeatureFlagService {
   async create(input: CreateFeatureFlagInput) {
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
-      .from('feature_flags')
+      .from('entitlement_flags')
       .insert({
         key: input.key,
         name: input.name,
@@ -53,7 +53,7 @@ export class FeatureFlagService {
 
   async update(id: string, input: UpdateFeatureFlagInput) {
     const supabase = await this.clientFactory();
-    const updateData: Database['public']['Tables']['feature_flags']['Update'] = {};
+    const updateData: Database['public']['Tables']['entitlement_flags']['Update'] = {};
     if (input.key !== undefined) updateData.key = input.key;
     if (input.name !== undefined) updateData.name = input.name;
     if (input.description !== undefined) updateData.description = input.description;
@@ -62,7 +62,7 @@ export class FeatureFlagService {
       updateData.rollout_percentage = input.rolloutPercentage;
 
     const { data, error } = await supabase
-      .from('feature_flags')
+      .from('entitlement_flags')
       .update(updateData)
       .eq('id', id)
       .select()
@@ -73,7 +73,7 @@ export class FeatureFlagService {
 
   async delete(id: string) {
     const supabase = await this.clientFactory();
-    const { error } = await supabase.from('feature_flags').delete().eq('id', id);
+    const { error } = await supabase.from('entitlement_flags').delete().eq('id', id);
     if (error) return toDbFailure(error);
     return success({ success: true });
   }

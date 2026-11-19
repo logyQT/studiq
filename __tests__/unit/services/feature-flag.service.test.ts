@@ -54,6 +54,7 @@ describe('FeatureFlagService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(flags);
+      expect(mock.from).toHaveBeenCalledWith('entitlement_flags');
     });
 
     it('returns error on DB failure', async () => {

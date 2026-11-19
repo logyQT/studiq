@@ -220,6 +220,10 @@ granular keys: an org admin normally holds all of them because the **Admin**
 system role is seeded with all of them. Day-to-day checks use the specific key,
 never a single `isAdmin` flag.
 
+> **2026-11-19 (D16).** `org.admin` is `assignable = false`: ownership is not
+> grantable through a custom role. The system Admin template keeps it. Every
+> other catalog key is assignable.
+
 ### 4.2 Roles
 
 `org_roles` stays. A role has:

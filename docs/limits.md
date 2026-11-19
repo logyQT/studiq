@@ -6,7 +6,7 @@
 
 ## Summary
 
-A plan is a **template**: `plan_features` and `plan_limits` rows keyed by
+A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 `plan_key`. Users and orgs _point at_ a plan (`profiles.personal_plan_key`,
 `organizations.plan`); they never get a private copy of its limits.
 
@@ -26,21 +26,21 @@ A plan is a **template**: `plan_features` and `plan_limits` rows keyed by
 | Table / column                                                          | Meaning                                                                                                                           |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `subscription_plans`                                                    | Plan catalog (`key`, name, price, `for_account_type`).                                                                            |
-| `plan_features (plan_key, feature_key)`                                 | Feature template for a plan.                                                                                                      |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                      |
 | `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                      |
 | `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228). |
 | `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                        |
 | `org_role_features (org_role_id, feature_key, is_enabled)`              | Per-org-role feature snapshot.                                                                                                    |
 | `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` is the seat plan.                                                                     |
 | `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                |
-| `feature_flags (key, is_enabled, rollout_percentage)`                   | Global kill switch + rollout gate.                                                                                                |
+| `entitlement_flags (key, is_enabled, rollout_percentage)`               | Global kill switch + rollout gate.                                                                                                |
 
 The `base` / `launch` defaults come from the seed
 (`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
 original table migrations.
 
 Feature keys: `FEATURES` in
-`packages/server/src/services/feature.resolver.ts` (`ai.chat`, `flashcards`,
+`packages/authz/src/features.ts` (`ai.chat`, `flashcards`,
 `quiz`, `quiz.builder`, `documents`, `org.manage`, `group.manage`,
 `member.manage`, `role.builder`, `advanced.stats`, `branding`).
 
@@ -56,11 +56,11 @@ for both the resolver and the DB rows:
 ## Plan-template propagation
 
 `handle_new_organization()` — org creation
-(`supabase/migrations/20261024151122_drop_org_limits.sql`):
+(`supabase/migrations/20261119140000_catalog_rename.sql`):
 
 1. creates the `admin` / `teacher` / `member` system roles;
 2. seeds their RBAC permissions;
-3. copies `plan_features` for the org's plan into `org_role_features`:
+3. copies `plan_entitlements` for the org's plan into `org_role_features`:
    admin = all; teacher = all except `member.manage` / `role.builder`;
    member = `flashcards`, `quiz`, `ai.chat`, `documents`, `branding`.
 
@@ -77,7 +77,7 @@ on demand since Phase B.5).
 
 Limits need no step: the next check already reads the new plan's rows.
 
-Because features are snapshotted, editing `plan_features` does **not** change
+Because features are snapshotted, editing `plan_entitlements` does **not** change
 existing orgs until `apply_org_plan()` runs; editing `plan_limits` does.
 Personal plans are never snapshotted — features and limits both resolve from
 the template on every request.
@@ -90,15 +90,15 @@ the template on every request.
 1. **Plan entitlement**
    - No `activeOrgId` → skip to the personal fallback.
    - Seated (`org_seat_assignments` via `getSeatPlanKey`): start from the role's
-     `org_role_features` (if any), then add the seat plan's `plan_features`.
+     `org_role_features` (if any), then add the seat plan's `plan_entitlements`.
      Strip `org.manage`, `member.manage`, `role.builder` unless the role already
      has `org.manage`.
    - Not seated, role has `org_role_features` rows: those rows are
      authoritative (a missing key is off).
    - Not seated, role has no rows (custom role): `organizations.plan` →
-     `plan_features`.
+     `plan_entitlements`.
 2. **Personal plan** — always applied on top of the entitlement above:
-   `profiles.personal_plan_key` → `plan_features`. A plan the member pays for
+   `profiles.personal_plan_key` → `plan_entitlements`. A plan the member pays for
    personally is never shadowed by an org on a lower tier — a student on StudiQ
    Pro inside a free `launch` org keeps `ai.chat`.
    Inside an org the personal layer only adds _personal-use_ features: the
@@ -113,9 +113,9 @@ the template on every request.
 3. **User overrides** — active `user_feature_overrides` rows add/remove keys.
    Rows with `expires_at` in the past stay in the table for audit but are
    ignored.
-4. **Rollout** — `feature_flags.rollout_percentage < 100` gates
+4. **Rollout** — `entitlement_flags.rollout_percentage < 100` gates
    deterministically per `(key, user_id)`.
-5. **Kill switch** — `feature_flags.is_enabled = false` removes the key for
+5. **Kill switch** — `entitlement_flags.is_enabled = false` removes the key for
    everyone.
 
 ## Limit resolution
@@ -175,7 +175,7 @@ resolved from, so it follows the same precedence as the resolvers:
 
 1. **Seated student/educator in the active org** → the seat plan
    (`getSeatPlanKey` → `org_seat_pools.plan_key`). The page then shows that
-   plan's `plan_features` / `plan_limits`, matching the seat's per-member limit
+   plan's `plan_entitlements` / `plan_limits`, matching the seat's per-member limit
    resolution (#233) and the seat feature upgrade (#270).
 2. **Manager in the active org** → `organizations.plan`, falling back to the
    manager's personal plan when the org has no plan row. Managers are the org's
@@ -231,7 +231,7 @@ refetches. Resolution itself is immediate.
 ## Where to change plan data
 
 - **Templates** — `supabase/seeds/00_plans.sql`. `bun run env:reset-db --yes` rewrites
-  `plan_features` / `plan_limits`, discarding runtime edits.
+  `plan_entitlements` / `plan_limits`, discarding runtime edits.
 - **Runtime** — admin app: `GET/POST /api/v1/plan-limits`,
   `PUT/DELETE /api/v1/plan-limits/[id]` (id, not plan key). For
   `plan-features` the routes are `GET/POST /api/v1/plan-features` and

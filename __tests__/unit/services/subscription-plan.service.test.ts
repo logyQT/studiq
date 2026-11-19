@@ -124,7 +124,7 @@ describe('SubscriptionPlanService', () => {
           is_active: true,
         },
       ];
-      const features = [{ plan_key: 'base', feature_key: 'quiz' }];
+      const features = [{ plan_key: 'base', entitlement_key: 'quiz' }];
       const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb(features));
@@ -189,7 +189,7 @@ describe('SubscriptionPlanService', () => {
         org_seat_assignments: { pool_id: 'pool-1' },
         org_seat_pools: { plan_key: 'ace' },
         subscription_plans: planRow('ace'),
-        plan_features: [{ feature_key: 'ai.chat' }, { feature_key: 'advanced.stats' }],
+        plan_entitlements: [{ entitlement_key: 'ai.chat' }, { entitlement_key: 'advanced.stats' }],
         plan_limits: [
           { plan_key: 'ace', limit_key: 'max_ai_tokens_per_day', limit_value: 200000 },
           { plan_key: 'ace', limit_key: 'max_decks', limit_value: 200 },
@@ -214,7 +214,7 @@ describe('SubscriptionPlanService', () => {
         org_seat_assignments: { pool_id: 'pool-1' },
         org_seat_pools: { plan_key: 'ace' },
         subscription_plans: planRow('ace'),
-        plan_features: [{ feature_key: 'ai.chat' }],
+        plan_entitlements: [{ entitlement_key: 'ai.chat' }],
       });
 
       const result = await service.getMyPlan({
@@ -233,7 +233,7 @@ describe('SubscriptionPlanService', () => {
         org_seat_assignments: { pool_id: 'pool-1' },
         organizations: { plan: 'hub' },
         subscription_plans: planRow('hub', 'manager'),
-        plan_features: [{ feature_key: 'documents' }],
+        plan_entitlements: [{ entitlement_key: 'documents' }],
         plan_limits: [{ plan_key: 'hub', limit_key: 'max_groups', limit_value: 3 }],
       });
 

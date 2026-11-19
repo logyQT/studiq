@@ -80,9 +80,9 @@ export class SubscriptionPlanService {
     supabase: SupabaseClient<Database>,
     plan: SubscriptionPlanRow,
   ): Promise<ServiceResult<PlanInfo>> {
-    const { data: planFeatures, error: pfError } = await supabase
-      .from('plan_features')
-      .select('feature_key')
+    const { data: planEntitlements, error: pfError } = await supabase
+      .from('plan_entitlements')
+      .select('entitlement_key')
       .eq('plan_key', plan.key);
 
     if (pfError) return toDbFailure(pfError);
@@ -92,7 +92,7 @@ export class SubscriptionPlanService {
     return success(
       this.toPlanInfo(
         plan,
-        dbRows(planFeatures).map((pf) => pf.feature_key),
+        dbRows(planEntitlements).map((pe) => pe.entitlement_key),
         limitsByPlan.get(plan.key) ?? {},
       ),
     );
@@ -105,19 +105,19 @@ export class SubscriptionPlanService {
   ): Promise<ServiceResult<PlanInfo[]>> {
     const planKeys = plans.map((p) => p.key);
 
-    const { data: planFeatures, error: pfError } = await supabase
-      .from('plan_features')
-      .select('plan_key, feature_key')
+    const { data: planEntitlements, error: pfError } = await supabase
+      .from('plan_entitlements')
+      .select('plan_key, entitlement_key')
       .in('plan_key', planKeys);
 
     if (pfError) return toDbFailure(pfError);
 
     const featuresByPlan = new Map<string, string[]>();
-    for (const pf of dbRows(planFeatures)) {
-      if (!featuresByPlan.has(pf.plan_key)) {
-        featuresByPlan.set(pf.plan_key, []);
+    for (const pe of dbRows(planEntitlements)) {
+      if (!featuresByPlan.has(pe.plan_key)) {
+        featuresByPlan.set(pe.plan_key, []);
       }
-      featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
+      featuresByPlan.get(pe.plan_key)!.push(pe.entitlement_key);
     }
 
     const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
