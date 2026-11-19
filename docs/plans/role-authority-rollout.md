@@ -270,9 +270,10 @@ guards replaces the role's whole permission set and the gate is one of those row
   that set.
 
 The remaining phase-2 work, in slice order. **Phase 2b is nine slices** and only
-slice 1 is written: a merged 2b-1 does not mean phase 2 is done, and the phase-2
-row in the [ledger](role-authority-plan.md#1-status) stays `active` until the
-last slice below is merged.
+slice 1 is written: a merged 2b-1 does not mean phase 2 is done. The ledger's
+phase-2 row is `active` today (§1 of the
+[plan](role-authority-plan.md#1-status)) and is set to `merged` only when the last
+slice below lands.
 
 - **2b-1 — `org_role_permissions.permission_key` FKs the permission catalog.
   Delivered** (slice 1 of 9) on `feat/authority-2b`: the column rename, the backfill before the

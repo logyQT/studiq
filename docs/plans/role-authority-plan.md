@@ -1331,8 +1331,8 @@ rollout's remaining phase-2 work, split so each slice is one PR.
   `org_role_permissions_permission_key_fkey` with the default (RESTRICT)
   behaviour, re-creates the function against the new column plus
   `seed_system_role_permissions` and `rls_caller_has_permission`, renames the
-  `plan_features_*` constraint leftovers on `plan_entitlements`, and ends with
-  two `do` blocks that raise when the key or the narrowed CHECK is missing.
+  `plan_features_*` constraint leftovers on `plan_entitlements`, and ends with a
+  single `do` block that raises when the key or the narrowed CHECK is missing.
 - `with-auth.ts` (`ctx.permissionScopes`) and `org-role.service.ts` (reads,
   upserts, prune, gate count, audit log) use the new column; the `23503` an
   unknown key now raises maps to `BAD_REQUEST` through `toDbFailure`.
@@ -1355,12 +1355,19 @@ rollout's remaining phase-2 work, split so each slice is one PR.
 **Follow-ups this slice creates:**
 
 - The last-holder guard in `setPermissions` still counts a gate row whose scope
-  the editor cannot render. This migration makes such a row unwritable, so 2b-6
-  can decide whether the count keeps that branch for a restored backup or drops
-  it for the closed schema.
+  the editor cannot render. This migration makes such a row unwritable, and
+  `withAuth` already refuses to serve the value (`isPermissionScope` accepts only
+  the three catalog scopes), so 2b-6 can decide whether the count keeps that
+  branch for a restored backup or drops it for the closed schema.
 - `deleteRole`'s pre-delete guard now destructures the row once; two statements
   on those lines is what `jscpd` flagged as a new clone, and a later reader
   touching the block should keep the shape.
+- The replay test cannot insert an out-of-catalog role row: the foreign key
+  refuses it, and the key it refuses is by definition one the catalog lacks.
+  `catalog-rename-rewrite` therefore removes one catalog row for the duration of
+  the test — the way a catalog move leaves a role row behind — and asserts the
+  sweep deletes that row; the catalog-valid rows the org trigger wrote must
+  survive both runs.
 
 **Difficulty log**
 
