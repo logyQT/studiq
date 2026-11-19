@@ -183,8 +183,8 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 > (below).
 
 - `@studiq/authz` exports `ENTITLEMENTS` and `PERMISSIONS` with metadata
-  (`kind`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES` is
-  deleted, not aliased.
+  (`category`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES`
+  is deleted, not aliased.
 - DB: `feature_flags` → `entitlement_flags`; `plan_features` →
   `plan_entitlements`; `permissions` contents replaced; `limit_catalog` added.
 - Rewrite the live `org_role_permissions.permission_name` rows to the new keys in

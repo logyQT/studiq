@@ -17,7 +17,9 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * sidebar item, the „Nowa grupa” button and the actions column. In the tenant model
  * that entitlement comes from the org role: the org trigger seeds
  * `org_role_features` per role, so only an educator with the org `teacher` role has
- * `group.manage` (`member` gets flashcards/quiz/ai.chat/documents only). The
+ * `group.manage` (the `member` set is `flashcards`, `quiz`, `ai.chat` and
+ * `branding`; `documents` is absent until its surface ships — open catalog,
+ * ADR §5.1 / D22). The
  * `org-limit` profile is the seeder's shape with a seeded org-`teacher` educator
  * (admin + two teachers + one member, default group `G1`), so the case runs without
  * editing the shared seeder. Every id comes from

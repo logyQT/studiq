@@ -476,11 +476,16 @@ derivation where the next phase reads it.
   importer reads `@studiq/authz`.
 - `20261119160000_documents_removed.sql` removes `documents` (absent until its
   surface ships) in dependency order: `plan_entitlements` (the catalog FK has no
-  cascade), then `org_role_features` and `user_feature_overrides` (the flag FK
-  cascades, but the delete is explicit), then `entitlement_catalog` and
-  `entitlement_flags`. The catalog is open (D22): re-entry is catalog metadata, a
-  flag row and the plan/seed rows that should carry it — no resolver change,
-  because the resolver resolves keys from the catalog.
+  cascade), then `org_role_features` (no foreign key on `feature_key` at all, so
+  nothing cascades and the delete is load-bearing; phase 2 must constrain the
+  column or remove it with the table), then `user_feature_overrides` (its flag
+  FK cascades, but the delete is explicit), then `entitlement_catalog` and
+  `entitlement_flags`. It also re-creates `handle_new_organization()` and
+  `apply_org_plan()` with `documents` removed from their member allowlists, so a
+  future data-only re-entry cannot be silently granted to `member`. The catalog
+  is open (D22): re-entry is catalog metadata, a flag row and the plan/seed rows
+  that should carry it — no resolver change, because the resolver resolves keys
+  from the catalog.
 - Seeds: `documents` removed from every plan's entitlement list in
   `00_plans.sql`; nothing else.
 - Readers: `FeatureResolver` orders by `ENTITLEMENT_KEYS`, guards with
@@ -500,17 +505,14 @@ derivation where the next phase reads it.
   member set to `['flashcards', 'quiz']`; the resolver, pricing and
   subscription-plan fixtures drop `documents`.
 - Docs: this ledger, the rollout phase-1 block, `docs/limits.md` (catalog paths,
-  key list, member set) and the STU-03 case text/spec comment are corrected.
-  STU-03's spec assertions are unchanged.
+  key list, member set), the STU-03 case text/spec comment and the
+  `EDU-GRP-01`/`EDU-GRP-05` spec premise comments are corrected. No spec
+  assertion changed.
 
 **Follow-ups this phase creates:**
 
 - **Phase 2** still deletes the four management markers, and must keep the 1b
   delete order: plan rows before catalog rows.
-- Two QA case texts from the pre-approved 37-case map still describe the member
-  set as including `documents` (`qa/cases/MGR-SEAT-02.md`, phase 4;
-  `qa/cases/EDU-GRP-05.md`, phase 2). Their specs derive the set from the API,
-  so only the prose is stale; the phase that rewrites each case corrects it.
 - `docs/audits/features-perms-weak-spots.md` keeps the pre-cutover identifiers
   on purpose: it records the state the ADR was written against.
 
@@ -545,16 +547,22 @@ either constraint's rule; the comment names the two rules.
 Rule: when two constraints disagree about a delete, delete explicitly in
 dependency order; never rely on one constraint's CASCADE to satisfy another.
 
+**Correction (2026-11-19, review).** The second "foreign key" does not exist:
+`pg_constraint` shows only `org_role_id` and the unique pair on
+`org_role_features`, so nothing cascades and the explicit delete is what removes
+the rows. `user_feature_overrides.feature_key` does keep its cascading flag FK.
+The rule stands; the unconstrained column is phase-2 debt.
+
 #### 2026-11-19 — the membership set is prose in the docs and the QA corpus
 
 What: after dropping `documents` from the catalog and the seeds, `docs/limits.md`
-and STU-03's case text still told a reader the member role receives it;
-MGR-SEAT-02 and EDU-GRP-05 repeat the set too.
+and STU-03's case text still told a reader the member role receives it, and the
+`EDU-GRP-01`/`EDU-GRP-05` spec premise comments repeat the set.
 Why: the set is written out in prose instead of being derived from
 `ENTITLEMENTS`/`LEARNER_ENTITLEMENTS`.
 Fix: corrected `docs/limits.md` and STU-03 (in the pre-approved 37-case map, its
-assertions unchanged) here; recorded the two other case texts for the phases
-that rewrite them.
+assertions unchanged) here, plus the two spec premise comments (no assertion
+changes).
 Rule: grep a removed key in `docs/` and `qa/cases/`, not only in code — the case
 text is the product spec.
 

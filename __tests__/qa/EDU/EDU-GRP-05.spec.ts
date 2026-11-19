@@ -14,7 +14,8 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *   bun scripts/qa-tenant.ts EDU-GRP-05 --fresh
  *
  * `group.manage` is an org-role entitlement: the org trigger seeds `org_role_features`
- * per role, and the `member` role gets only flashcards/quiz/ai.chat/documents/branding.
+ * per role, and the `member` set is `flashcards`, `quiz`, `ai.chat` and `branding`;
+ * `documents` is absent until its surface ships (open catalog, ADR §5.1 / D22).
  * The `content` profile's educator is an org `member`, i.e. exactly „konto bez tej
  * funkcji”; its manager (org `admin`) keeps the entitlement and is used as the contrast
  * that the nav filter is role-driven rather than broken for everyone. Every id comes from

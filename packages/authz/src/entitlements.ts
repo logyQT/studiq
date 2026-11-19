@@ -26,9 +26,9 @@ export type Entitlement = {
  * Declaration order is the `/features/me` payload order (`FeatureResolver` emits
  * it), so it is kept stable across the catalog rename: adding a key appends.
  *
- * `documents` was removed in phase 1c — it never had a surface, and ADR §5.1
- * keeps it out of the catalog until it does. Phase 5 deletes the surface rather
- * than gating it.
+ * `documents` is absent in v1 (phase 1c): it has no surface, and ADR §5.1 keeps
+ * it out of the catalog until it does. Phase 5 has no surface to gate;
+ * `documents` stays absent until its surface ships (D22).
  */
 export const ENTITLEMENTS = {
   'ai.chat': {

@@ -291,7 +291,7 @@ the hidden classroom UI dependency.
 ai.chat            personal-portable, quota max_ai_tokens_per_day
 quiz.builder       personal-portable
 advanced.stats     personal-portable
-documents          personal-portable (hidden until shipped)
+documents          absent in v1 (re-enters with its surface, D22)
 branding           org-scoped display
 flashcards         baseline (always available, quota max_flashcards)
 quiz               baseline (always available, quota max_quiz_attempts_per_day)
