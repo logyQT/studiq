@@ -74,6 +74,7 @@ describe('PermissionsController', () => {
       // Only CRUD verbs get the default: `assignment.publish` is a real Permission
       // without a CRUD suffix, so a filter widened to "every permission" would add it.
       expect(perms['assignment.publish']).toBeUndefined();
+      expect(perms['assignment.grade']).toBeUndefined();
     });
 
     it('adds own permissions for educator', async () => {
