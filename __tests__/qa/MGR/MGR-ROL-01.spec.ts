@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-ROL-01 — the role-write gate is a permission, not a plan feature.
@@ -18,13 +18,19 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *    teacher) is refused by the API with 403 and has no editor. The persona route
  *    rule still sends an educator away from `/manage`, so the absence of the
  *    editor is asserted where the permission gate lives — `/permissions/me`
- *    (no key) and the write endpoints (403).
+ *    (no key) and the write endpoints (403);
+ * 3. a **manager-account-type** member holding a custom role without the gate is
+ *    the client-gate deny case: `/manage/roles` renders (the persona rule admits a
+ *    manager), and only the permission withholds „Nowa rola”, the actions column
+ *    and the API write.
  *
  * Tenant: the `content` profile of this case
  * (`__tests__/qa/profiles/MGR-ROL-01.json`), seeded before the suite starts by
  * `bun scripts/qa-tenant.ts MGR-ROL-01 --fresh`: one organization on Launch with
- * an `admin` manager, a teacher, a student and the default group `G1`, all
- * derived from the case id + run suffix. Nothing global is written.
+ * an `admin` manager, a teacher, a student, a `roleless` manager-account-type
+ * member and the default group `G1`, all derived from the case id + run suffix.
+ * The `roleless` member is given the custom role the admin creates here, through
+ * the members API — no service-role write. Nothing global is written.
  */
 
 const CASE = 'MGR-ROL-01';
@@ -189,6 +195,63 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
       expect(teacherRoles.map((role) => role.name)).toContain(ROLE_NAME_EDITED);
     } finally {
       await teacherContext.close();
+    }
+
+    // ── A manager-account-type member holding a custom role without the gate ──
+    // The teacher above is out of /manage because of the persona rule, not the
+    // permission, so it cannot show the permission-only deny. This member has the
+    // manager account type and a custom role built from the Assistant preset: the
+    // page is theirs, and only `org.role.manage` can withhold the write UI.
+    const roleless = tenantUser(TENANT, 'roleless');
+    const assign = await page.request.put('/api/v1/organization/members', {
+      data: { targetUserId: roleless.id, newOrgRoleId: created.id },
+    });
+    expect(assign.status(), 'PUT /organization/members assigns the custom role').toBe(200);
+
+    const rolelessContext = await browser.newContext({
+      baseURL: process.env.QA_APP_URL ?? 'http://localhost:3010',
+    });
+    try {
+      const noGatePage = await rolelessContext.newPage();
+      await loginAs(noGatePage, TENANT, 'roleless', { locale: 'pl' });
+      await expect(noGatePage).toHaveURL(/\/manage$/);
+
+      const noGatePermissions = await getData<{
+        permissions: Record<string, string | null>;
+      }>(noGatePage, '/api/v1/permissions/me');
+      expect(
+        noGatePermissions.permissions['org.role.manage'],
+        'the custom role does not hold the gate',
+      ).toBeUndefined();
+
+      // A manager reaches the page and reads the list...
+      await noGatePage.goto('/manage/roles');
+      await expect(noGatePage).toHaveURL(/\/manage\/roles$/);
+      await expect(
+        noGatePage.getByRole('heading', { level: 1, name: 'Role', exact: true }),
+      ).toBeVisible();
+      await expect(roleRow(noGatePage, ROLE_NAME_EDITED)).toHaveCount(1);
+
+      // ...but the permission, not the account type, is what withholds the editor.
+      await expect(
+        noGatePage.getByRole('button', { name: 'Nowa rola', exact: true }),
+        'no create control without org.role.manage',
+      ).toHaveCount(0);
+      await expect(
+        noGatePage.getByRole('columnheader', { name: 'Akcje', exact: true }),
+        'no actions column without org.role.manage',
+      ).toHaveCount(0);
+
+      const deniedManagerCreate = await noGatePage.request.post('/api/v1/organization/roles', {
+        data: { name: 'Widmo', description: null },
+      });
+      expect(
+        deniedManagerCreate.status(),
+        'POST without org.role.manage from a manager account type',
+      ).toBe(403);
+      expect(await deniedManagerCreate.json()).toEqual({ success: false, error: 'FORBIDDEN' });
+    } finally {
+      await rolelessContext.close();
     }
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);

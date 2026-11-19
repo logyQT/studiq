@@ -39,6 +39,25 @@ const localDatabaseUrl = (() => {
 })();
 
 /**
+ * The database URL the install needs: the local stack's, from the same environment
+ * `bun run env:run` exports. A run without it must fail instead of skipping — a
+ * silent skip would keep asserting against whatever policies a previous run applied,
+ * so a reverted predicate would survive.
+ */
+function requireLocalDatabaseUrl(): string {
+  if (!localDatabaseUrl) {
+    throw new Error(
+      "org-role-manage-rls needs SUPABASE_DB_URL pointing at this checkout's local " +
+        'Supabase to install the shipped policies. Run the suite through ' +
+        '`bun run env:run -- bun run test:integration`: a bare `bun run test:integration` ' +
+        'in a fresh worktree has no database URL, and skipping the install would let a ' +
+        'reverted predicate pass.',
+    );
+  }
+  return localDatabaseUrl;
+}
+
+/**
  * Install the shipped migration the way a reset would. The mutation gate edits
  * the migration file, and without this the suite would keep asserting against the
  * policies a previous run applied — a reverted predicate would survive the
@@ -46,8 +65,7 @@ const localDatabaseUrl = (() => {
  * `alter policy`).
  */
 async function installShippedPolicies(): Promise<void> {
-  if (!localDatabaseUrl) return;
-  const sql = postgres(localDatabaseUrl, { max: 1, onnotice: () => {} });
+  const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
   } finally {

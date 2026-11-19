@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { Permission, type RequestContext } from '@studiq/authz';
 import { requirePermission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
@@ -53,7 +53,7 @@ export class OrgRoleController {
   }
 
   async createRole(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    await requirePermission(ctx, 'org.role.manage');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
     const parsed = CreateOrgRoleSchema.safeParse(body);
     if (!parsed.success) {
@@ -75,7 +75,7 @@ export class OrgRoleController {
   }
 
   async updateRole(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
-    await requirePermission(ctx, 'org.role.manage');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
     const roleId = parseRoleId(id);
     if (!roleId) return INVALID_ROLE_ID;
@@ -100,7 +100,7 @@ export class OrgRoleController {
   }
 
   async deleteRole(ctx: RequestContext, id: string): Promise<ControllerResponse> {
-    await requirePermission(ctx, 'org.role.manage');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
     const roleId = parseRoleId(id);
     if (!roleId) return INVALID_ROLE_ID;
@@ -119,7 +119,7 @@ export class OrgRoleController {
     id: string,
     body: unknown,
   ): Promise<ControllerResponse> {
-    await requirePermission(ctx, 'org.role.manage');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
     const roleId = parseRoleId(id);
     if (!roleId) return INVALID_ROLE_ID;

@@ -3,6 +3,7 @@ import pl from '@/i18n/messages/pl.json';
 import adminEn from '@admin/i18n/messages/en.json';
 import adminPl from '@admin/i18n/messages/pl.json';
 import { translateErrorCode } from '@/lib/error-messages';
+import { ROLE_TEMPLATE_NAMES } from '@studiq/authz';
 import { APP_ERRORS } from '@studiq/server/lib/errors';
 import { START_REFUSAL_CODES } from '#test/helpers/start-refusals';
 import { createTranslator } from 'next-intl';
@@ -80,15 +81,14 @@ const AI_CHAT_PLAN_GATE_KEYS = [
 
 /**
  * 2a-2 (D17) — the roles page renders the template picker's labels directly, so a
- * missing translation would show the raw key in the create dialog.
+ * missing translation would show the raw key in the create dialog. The keys are
+ * derived from the preset list, so adding or renaming a preset cannot ship one
+ * (the hyphen in `template_read-only` is the preset name).
  */
 const MANAGE_ROLES_TEMPLATE_KEYS = [
   'template_label',
   'template_hint',
-  'template_assistant',
-  'template_billing',
-  'template_read-only',
-  'template_blank',
+  ...ROLE_TEMPLATE_NAMES.map((name) => `template_${name}`),
 ] as const;
 
 /**

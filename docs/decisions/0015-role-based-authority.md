@@ -252,6 +252,9 @@ role, so it can be renamed, edited and deleted like any other custom role):
 | **Read-only** | every `content`/`group` `*.read` key plus `org.audit.read`, at `organization` (auditors)                              |
 | **Blank**     | none — a custom role built from scratch                                                                               |
 
+The `org.*` keys in a preset take effect when 2b replaces the legacy feature
+gates; the content keys are live now.
+
 Custom roles start **empty** (no permissions, `entitlement_profile = 'none'`).
 An empty role can do nothing and gets no paid surface. This is the inverse of
 today's "zero rows means inherit everything".

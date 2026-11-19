@@ -581,7 +581,7 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | **2a-1** | `entitlement_profile` + trigger/seed/backfill + profile-driven resolver + RLS fallback. Closes the RLS twin of FP-01 in the same PR.                                  | ~750 (`size:exception`) |
 | **2a-3** | closed-catalog editor + complete payload + audit log. Lands **before** 2a-2 (D24).                                                                                    | ~400 (`size:exception`) |
-| **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate + the RLS predicate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | ~200                    |
+| **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate + the RLS predicate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | 460 (`size:exception`)  |
 | **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                                         | ~90                     |
 | **2a-5** | fail-closed scope defaults.                                                                                                                                           | ~110                    |
 
@@ -874,7 +874,13 @@ Rule: R17.
   so the controller cannot forget the branch; the four write handlers
   (`createRole`, `updateRole`, `deleteRole`, `setPermissions`) use it and drop
   `requireFeature(ctx, 'role.builder')`. `getRole`/`listRoles` stay ungated: the
-  list is read by `/manage/members` and the invite picker.
+  list is read by `/manage/members` and the invite picker. `setPermissions` also
+  refuses (409) a save that would remove `org.role.manage` from the last role in
+  the org holding it: an `org.admin` holder may self-edit, so without the guard
+  the owner could untick the gate on the Admin role and leave no role able to
+  manage roles (`org.admin` is not a fallback, §4.1). The count reads the stored
+  rows, so a legacy `scope = 'any'` gate row — which the editor renders as revoked
+  but `can()` and RLS still honour — also counts as a holder.
 - **RLS twin (R4).** `20261119190000_org_role_manage_rls.sql` adds
   `public.rls_caller_has_permission(p_organization_id, p_permission)` (SECURITY
   DEFINER, `search_path = ''`, execute to `authenticated`/`service_role`) and
@@ -887,11 +893,15 @@ Rule: R17.
 - **Presets (D17).** `ROLE_TEMPLATES` in `@studiq/authz` holds Assistant / Billing
   / Read-only / Blank (`ROLE_TEMPLATE_NAMES`, `isRoleTemplateName`), each
   `entitlementProfile: 'none'`, every key/scope from `PERMISSIONS`, no
-  `org.admin`. `CreateOrgRoleSchema.template` accepts only those four and defaults
-  to `blank`; `UpdateOrgRoleSchema` has no field, so an edit cannot re-apply a
-  preset. `OrgRoleService.createRole` resolves the preset, inserts the role, then
-  its rows, and deletes the role if the row insert fails (the
-  `createAndJoin` shape).
+  `org.admin`. `CreateOrgRoleSchema.template` accepts only those four;
+  `OrgRoleService.createRole` defaults an omitted field to `blank` (the schema is
+  what rejects an unknown name, so the service needs no second check), and
+  `UpdateOrgRoleSchema` has no field, so an edit cannot re-apply a preset.
+  `createRole` resolves the preset, inserts the role, then its rows, and deletes
+  the role if the row insert fails (the `createAndJoin` shape). The `org.*` keys
+  in a preset take effect when 2b replaces the legacy feature gates; the content
+  keys are live now — an Assistant preset today gets 403 on the member/invitation
+  operations it promises.
 - **UI.** `/manage/roles` gates on `usePermission()('org.role.manage', { orgId })`
   instead of `useFeature()('role.builder')`; the locked card, the
   `featuresPending` guard, the `ORGANIZATION_PRICING_URL` import and the
@@ -903,7 +913,9 @@ Rule: R17.
   per-preset matrices), the model suite covers the enum and the create-only
   field, the controller suite pins `requirePermission(ctx, 'org.role.manage')` on
   all four writes and the ungated reads, the service suite covers preset rows,
-  the blank/omitted case, an unknown preset and the failed-insert rollback, and
+  the blank/omitted case, the failed-insert rollback, the self-edit exemption and
+  the last-`org.role.manage`-holder guard (409 refused, and the removal succeeds
+  once another role holds it), and
   two integration files prove the DB matrix equality
   (`org-role-templates.test.ts`) and the RLS predicate in both directions with
   real signed-in sessions (`org-role-manage-rls.test.ts`: an `org.role.manage`
@@ -912,10 +924,16 @@ Rule: R17.
   denied).
 - **QA/docs.** `MGR-ROL-01` is rewritten around the permission contract (a Launch
   admin creates and edits a role; a member without the key is refused 403 and has
-  no editor), `MGR-ROL-02/04` prerequisites move to `org.role.manage` +
+  no editor), and its tenant gains a manager-account-type member holding a custom
+  role without the gate — the client deny case: the page and list render, there is
+  no „Nowa rola”/actions column, and `POST /organization/roles` is 403. That is
+  the half the teacher could not prove, because the persona rule keeps an educator
+  out of `/manage`. `MGR-ROL-02/04` prerequisites move to `org.role.manage` +
   `/permissions/me`, `MGR-ROL-03`'s plan note is corrected, and the out-of-map e2e
   `manage-roles-plan-gate.spec.ts` is deleted. ADR §4.2 now separates the three
-  seeded roles from the four presets and §9's picker list drops Teacher.
+  seeded roles from the four presets and §9's picker list drops Teacher. The
+  slice measured **438** reviewable lines at review and **460** after the review
+  fixes (`bun run pr:size`); both over the 400 budget, hence `size:exception`.
 - **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`,
   `review:static`, `knip`, `dup:base`, `format:check`, the touched integration
   files serially, and the five mutations below.
@@ -929,6 +947,15 @@ Rule: R17.
 
 **Follow-ups this slice creates:**
 
+- **2b security debt (recorded, not implemented).** The last-holder guard above is
+  API-only. PostgREST can still delete the last `org.role.manage` row — the RLS
+  predicate checks that the **caller** holds the permission, not that one holder
+  remains — and can delete a system role, because system-role protection is
+  app-level (`deleteRole`). Both are reachable with a signed-in session and the
+  anon key, so the action is an RLS-side guard (a `with check`/`using` that
+  refuses a write leaving zero holders, and `is_system = false` on the role
+  delete), landed with 2b's predicate sweep. No trigger now: the app guard is the
+  editor's contract, and a trigger would freeze the SQL shape 2b has to change.
 - **2b** must delete `org.role.manage`'s entitlement twin (`role.builder`) from
   `plan_entitlements`, `org_role_features`, `entitlement_flags` and
   `entitlement_catalog` — in that order — and move `is_org_manager`'s callers

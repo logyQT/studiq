@@ -7,10 +7,7 @@ import {
   ROLE_TEMPLATES,
 } from '@studiq/authz';
 import type { ServiceResult } from '@studiq/server/lib/service-result';
-import {
-  CATALOG_PERMISSION_KEYS,
-  type CreateOrgRoleInput,
-} from '@studiq/server/models/org-role.model';
+import { CATALOG_PERMISSION_KEYS } from '@studiq/server/models/org-role.model';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
@@ -28,6 +25,7 @@ type QueryChain = {
   update: Mock<(...args: unknown[]) => QueryChain>;
   delete: Mock<(...args: unknown[]) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
+  neq: Mock<(...args: unknown[]) => QueryChain>;
   not: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
   single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
@@ -59,6 +57,7 @@ function qb(data: unknown, error: unknown = null, count?: number) {
     update: vi.fn(() => b),
     delete: vi.fn(() => b),
     eq: vi.fn(() => b),
+    neq: vi.fn(() => b),
     not: vi.fn(() => b),
     order: vi.fn(() => b),
     single: vi.fn().mockResolvedValue(result),
@@ -97,11 +96,6 @@ function catalogPayload(
 /** A profile outside the enum, the way a hand-crafted request body could carry it. */
 function unknownProfile(value: string): EntitlementProfile {
   return asJson<EntitlementProfile>(value);
-}
-
-/** A template outside the closed preset list, as a direct caller could pass it. */
-function unknownTemplate(value: string): NonNullable<CreateOrgRoleInput['template']> {
-  return asJson<NonNullable<CreateOrgRoleInput['template']>>(value);
 }
 
 /** The `org_roles` lookup row `setPermissions` reads before it authorizes anything. */
@@ -372,17 +366,6 @@ describe('OrgRoleService', () => {
       expect(result.error).toBe('BAD_REQUEST');
       expect(deleteQb.delete).toHaveBeenCalled();
       expect(deleteQb.eq).toHaveBeenCalledWith('id', 'r-1');
-    });
-
-    it('returns UNPROCESSABLE_ENTITY for a template outside the closed preset list', async () => {
-      const result = await service.createRole(ctx, {
-        name: 'editor',
-        template: unknownTemplate('teacher'),
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
-      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('returns error on DB failure', async () => {
@@ -758,18 +741,87 @@ describe('OrgRoleService', () => {
     });
 
     it('lets an org.admin holder edit the Admin role it belongs to', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'org.admin', scope: 'organization' }]));
+      mockRoleLookup(
+        roleRow([
+          { permission_name: 'org.admin', scope: 'organization' },
+          { permission_name: 'org.role.manage', scope: 'organization' },
+        ]),
+      );
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert
       mock.from.mockReturnValueOnce(qb(undefined)); // prune
+      const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
+
+      // The gate and ownership are both re-sent unchanged: the edit is a no-op for
+      // them, so it is the self-edit exemption under test, not a gate removal.
+      const result = await service.setPermissions(
+        selfCtx,
+        'r-1',
+        catalogPayload({ 'org.admin': 'organization', 'org.role.manage': 'organization' }),
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it('refuses to remove the last org.role.manage grant', async () => {
+      // The caller owns the org and is editing its own Admin role, so every other
+      // guard passes; only the last-holder count stands between this save and an
+      // org where no role can manage roles.
+      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'organization' }]));
+      const gateQb = qb([], null, 0);
+      mock.from.mockReturnValueOnce(gateQb); // other-holder count
+      // Stubbed so a service that wrote anyway fails on the assertions below, not on
+      // an unstubbed client call.
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert, must not run
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune, must not run
+      const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
+
+      const result = await service.setPermissions(selfCtx, 'r-1', catalogPayload());
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+      // The count ran, and nothing was written.
+      expect(gateQb.eq).toHaveBeenCalledWith('permission_name', 'org.role.manage');
+      expect(gateQb.eq).toHaveBeenCalledWith('org_roles.organization_id', 'org-1');
+      expect(gateQb.neq).toHaveBeenCalledWith('org_role_id', 'r-1');
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('counts a legacy `any` gate row as a holder', async () => {
+      // The editor renders an out-of-catalog scope as revoked, but the row still
+      // answers `can()` and the RLS predicate, so pruning it can be the last holder.
+      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'any' }]));
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // other-holder count
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert, must not run
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune, must not run
+      const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
+
+      const result = await service.setPermissions(selfCtx, 'r-1', catalogPayload());
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+    });
+
+    it('removes org.role.manage when another role still holds it', async () => {
+      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'organization' }]));
+      mock.from.mockReturnValueOnce(qb([], null, 1)); // another holder
+      const upsertQb = qb(undefined);
+      const pruneQb = qb(undefined);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(pruneQb);
       const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
 
       const result = await service.setPermissions(
         selfCtx,
         'r-1',
-        catalogPayload({ 'org.admin': 'organization' }),
+        catalogPayload({ 'flashcard.read': 'own' }),
       );
 
       expect(result.success).toBe(true);
+      expect(upsertQb.upsert).toHaveBeenCalledWith(
+        [{ org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' }],
+        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+      );
+      expect(pruneQb.not).toHaveBeenCalledWith('permission_name', 'in', '("flashcard.read")');
     });
 
     it('refuses to grant a key the caller does not hold', async () => {

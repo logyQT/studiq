@@ -27,7 +27,13 @@ M1, WSB Merito (Launch).
   (`POST`/`PUT`/`DELETE /api/v1/organization/roles…`) zwraca **403**
   `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna.
 - Wybrany szablon (D17) zapisuje początkowe uprawnienia roli; `org.admin` nigdy
-  nie jest przyznawany szablonem.
+  nie jest przyznawany szablonem. Klucze `org.*` szablonu zaczną działać, gdy 2b
+  zastąpi stare bramki funkcji (`member.manage`, `org.manage` itd.); klucze
+  treściowe działają już teraz.
+- Członek z **kontem typu manager** i rolą niestandardową bez `org.role.manage`
+  widzi listę ról (reguła persony go wpuszcza), ale nie ma „Nowej roli” ani
+  kolumny „Akcje”, a `POST /api/v1/organization/roles` zwraca **403** — bramką
+  jest uprawnienie, nie typ konta.
 
 ## Prerequisite context (tenant model)
 
@@ -44,8 +50,12 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
 - **Organizacja**: jedna organizacja tworzona przez trigger na planie **Launch**
   (`organizations.plan`); nie ruszamy globalnego katalogu planów ani flag.
 - **Użytkownicy** (hasło `Seed4Test!`): `manager` (manager, rola org `admin`),
-  `teacher` (educator, rola org `teacher`), `student` (student, rola org `member`).
-- **Profil**: `content` (domyślny, więc bez wpisu w `__tests__/qa/profiles/<CASE>.json`).
+  `teacher` (educator, rola org `member`), `student` (student, rola org `member`),
+  `roleless` (manager, rola org `member` — przypadek odmowy bramki klienta; rola
+  niestandardowa jest mu nadawana przez API w przebiegu).
+- **Profil**: `content` z jawnym rosterem `members` w
+  `__tests__/qa/profiles/MGR-ROL-01.json` (cztery konta powyżej; roster jest
+  deklaratywny, więc seeder nie zgaduje).
 - Plan i uprawnienia są odczytywane w tym samym przebiegu przez `/api/v1/me/plan`,
   `/api/v1/permissions/me` i `/api/v1/organization/roles` — nic nie jest zaszyte
   na sztywno.
@@ -63,6 +73,11 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   (zakres `organization`); dla roli `teacher` klucza nie ma.
 - Bezpośredni `POST /api/v1/organization/roles` jako `teacher` zwraca **403**;
   to samo dotyczy `PUT` i `DELETE`. `GET` listy ról zwraca 200 dla obu użytkowników.
+- Członek `roleless` (konto typu **manager**, rola niestandardowa „Asystent
+  organizacji” bez `org.role.manage`) widzi `/manage/roles` i listę ról, ale bez
+  przycisku „Nowa rola” i bez kolumny „Akcje”; `POST /api/v1/organization/roles`
+  z jego sesją zwraca 403. To dowód, że edytor jest bramkowany uprawnieniem, a nie
+  regułą persony.
 - Nauczyciel (account type educator) nadal jest przekierowywany z `/manage` na
   `/edu` przez regułę persony (`AUT-17`), więc edytora nie zobaczy także z tego
   powodu; bramką merytoryczną jest uprawnienie sprawdzane po stronie API.

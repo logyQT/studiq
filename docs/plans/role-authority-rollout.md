@@ -244,11 +244,12 @@ guards replaces the role's whole permission set and the gate is one of those row
   controller (`SetRolePermissionsSchema`) and again at the service
   (`isCompleteCatalogPayload`), pinned by the model, controller and service unit
   tests, the integration no-op case and MGR-ROL-03.
-- **2a-2** (~200) — role templates (Assistant/Billing/Read-only/Blank presets),
+- **2a-2** (~460, `size:exception`; 438 at review) — role templates (Assistant/Billing/Read-only/Blank presets),
   `requirePermission('org.role.manage')`, the editor gate and the RLS predicate
   (`rls_caller_has_permission` on the six role-write policies, R4); rewrites
   MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`. Runs on the
-  write path 2a-3 made safe.
+  write path 2a-3 made safe. The `org.*` keys in a preset take effect when 2b
+  replaces the legacy feature gates; the content keys are live now.
 - **2a-4** (~90) — `withAuth` builds `ctx.groupRoles` from
   `group_members.role`; org-scoped group query; add a verified-org helper.
   Closes the cross-org group union.
