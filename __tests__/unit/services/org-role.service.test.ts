@@ -591,6 +591,10 @@ describe('OrgRoleService', () => {
 
     it('returns FORBIDDEN when editing the caller own role without ownership', async () => {
       mockRoleLookup();
+      // Stubbed so a guard that stops blocking the write fails on the assertion
+      // below instead of on an unstubbed client call.
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert
       const selfCtx = { ...permCtx, orgRoleId: 'r-1', permissionScopes: nonOwnerScopes() };
 
       const result = await service.setPermissions(selfCtx, 'r-1', catalogPayload());
@@ -617,6 +621,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to grant a key the caller does not hold', async () => {
       mockRoleLookup();
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert
       const scopes = nonOwnerScopes();
       delete scopes['org.member.manage'];
 
@@ -634,6 +640,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to remove a grant the caller holds at a narrower scope', async () => {
       mockRoleLookup(roleRow([{ permission_name: 'deck.read', scope: 'organization' }]));
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert
 
       const result = await service.setPermissions(
         { ...permCtx, permissionScopes: { 'deck.read': 'own' } },
@@ -666,6 +674,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to grant org.admin to a role that does not hold it', async () => {
       mockRoleLookup();
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert
 
       const result = await service.setPermissions(
         permCtx,
@@ -680,6 +690,8 @@ describe('OrgRoleService', () => {
 
     it('refuses to revoke org.admin from the role that holds it', async () => {
       mockRoleLookup(roleRow([{ permission_name: 'org.admin', scope: 'organization' }]));
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert
 
       const result = await service.setPermissions(permCtx, 'r-1', catalogPayload());
 
