@@ -26,6 +26,7 @@ const ANSWER_KEY_COLUMNS: Array<[table: string, column: string]> = [
   ['questions', 'model_answer'], // #1173
   ['questions', 'explanation'], // #1180 — granted by 20261115120000, closed by 20261115130000
   ['questions', 'search_vector'],
+  ['assignment_questions', 'snapshot_key'], // #1171 — frozen key, service role only
 ];
 
 const localDatabaseUrl = (() => {
@@ -51,9 +52,21 @@ function requireLocalDatabaseUrl(): string {
 
 describe('reset and db push end with the same grants', () => {
   let sql: ReturnType<typeof postgres>;
+  /**
+   * Highest `pg_proc` oid at the start of this file. Other integration files run
+   * in parallel lanes and create throwaway functions (`public.test_reject_answer_insert`,
+   * `public.test_fail_group_member_*`) with later oids; those are not the
+   * migration contract and would make the catalog assertions flake.
+   */
+  let maxMigrationOid: number;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    const [ceiling] = await sql<Array<{ ceiling: string }>>`
+      select coalesce(max(oid), 0)::text as ceiling
+      from pg_proc
+      where pronamespace = 'public'::regnamespace`;
+    maxMigrationOid = Number(ceiling.ceiling);
   });
 
   afterAll(async () => {
@@ -106,18 +119,20 @@ describe('reset and db push end with the same grants', () => {
 
     // The mechanism: the table-wide grant is gone and the reader columns are
     // re-granted by name. A blanket `GRANT ALL ON ALL TABLES` restores both.
-    for (const table of ['questions', 'question_options']) {
+    for (const table of ['questions', 'question_options', 'assignment_questions']) {
       const [row] = await sql<Array<{ selectable: boolean }>>`
         select has_table_privilege('authenticated', ${`public.${table}`}, 'SELECT') as selectable`;
       expect(row.selectable, `authenticated has no table-wide SELECT on ${table}`).toBe(false);
     }
 
-    // Positive control: the same call says yes for a reader column, so the
-    // assertions above are not passing because the argument order is wrong.
-    const [content] = await sql<Array<{ selectable: boolean }>>`
-      select has_column_privilege('authenticated', 'public.questions', 'content', 'SELECT')
-             as selectable`;
-    expect(content.selectable, 'authenticated selects questions.content').toBe(true);
+    // Positive control: the same call says yes for a value column on the table
+    // whose frozen key is revoked, so the assertions above are not passing
+    // because the argument order is wrong.
+    const [value] = await sql<Array<{ selectable: boolean }>>`
+      select has_column_privilege(
+               'authenticated', 'public.assignment_questions', 'snapshot', 'SELECT'
+             ) as selectable`;
+    expect(value.selectable, 'authenticated selects assignment_questions.snapshot').toBe(true);
   });
 
   it('gives anon SELECT on the pricing tables and nothing else', async () => {
@@ -144,6 +159,7 @@ describe('reset and db push end with the same grants', () => {
       select p.oid::regprocedure::text as signature
       from pg_proc p
       where p.pronamespace = 'public'::regnamespace
+        and p.oid <= ${maxMigrationOid}
         and has_function_privilege('anon', p.oid, 'EXECUTE')
       order by 1`;
     expect(

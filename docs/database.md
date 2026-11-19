@@ -80,7 +80,7 @@ Migrations are the only definition of the schema. Every table, enum, function, t
 ```
 supabase/
 ├── migrations/        # Timestamped DDL and data changes, applied in order
-├── seeds/             # Local seed data (plans, tenants, permissions, dev grants)
+├── seeds/             # Local seed data (plans, tenants, permissions, realtime publication)
 ├── templates/         # Auth e-mail templates
 └── config.toml        # Stack configuration
 ```
@@ -92,8 +92,7 @@ A schema change is a migration. `config.toml` keeps `[db.migrations] schema_path
 Seed files are located in `supabase/seeds/` and are organized by domain. They
 run on `db reset` only — `db push` never applies them — so they carry data, never
 privileges: migrations own every grant and revoke, and
-`__tests__/integration/grant-parity.test.ts` fails if a reset and a deploy would
-disagree.
+`__tests__/integration/grant-parity.test.ts` fails if the grant contract drifts.
 
 | File              | Purpose                                            |
 | ----------------- | -------------------------------------------------- |
