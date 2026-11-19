@@ -1349,7 +1349,8 @@ rollout's remaining phase-2 work, split so each slice is one PR.
 - Gates: `env:reset-db --yes` twice (a re-apply proves the file is `db push`
   safe), the ten touched integration files serially (70 passed),
   `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit` (4648 passed),
-  `review:static`, `knip`, `dup:base`, `format:check`.
+  `review:static`, `knip`, `dup:base` (308 clones, one fewer than `origin/main`),
+  `format:check`, `pr:size` (355/400).
 
 **Follow-ups this slice creates:**
 
