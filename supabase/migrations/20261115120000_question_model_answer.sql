@@ -19,9 +19,9 @@
 --
 -- Deploy: migration first, app in the same release. Nothing selects `model_answer` before this
 -- change, so the narrowing breaks no existing path; a `questions(*)` read by an authenticated
--- caller now fails closed (42501) instead of returning the column. Mirrored in
--- `supabase/schemas/24_questions.sql` and both `99_dev_grants.sql` files, which re-apply the
--- narrowing after a `db reset`.
+-- caller now fails closed (42501) instead of returning the column. The `supabase/schemas/24_questions.sql`
+-- mirror and the `99_dev_grants.sql` seed that re-applied the narrowing after a `db reset` have both
+-- been deleted; this migration is the only source.
 -- ==========================================
 
 ALTER TABLE public.questions

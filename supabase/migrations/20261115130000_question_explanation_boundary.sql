@@ -13,8 +13,9 @@
 -- Deploy: this migration first, the app in the same release — every user-session read of
 -- `explanation` must go through `readQuestionKeys` (service role, ids from a query the caller was
 -- already authorized to run), and a `questions(*)` read by an authenticated caller now fails
--- closed (42501) instead of returning the column. Mirrored in `supabase/schemas/24_questions.sql`
--- and both `99_dev_grants.sql` files, which re-apply the narrowing after a `db reset`.
+-- closed (42501) instead of returning the column. The `supabase/schemas/24_questions.sql` mirror
+-- and the `99_dev_grants.sql` seed that re-applied the narrowing after a `db reset` have both been
+-- deleted; this migration is the only source.
 -- ==========================================
 
 REVOKE SELECT ON public.questions FROM authenticated, anon;

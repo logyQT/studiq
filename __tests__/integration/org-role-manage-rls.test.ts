@@ -30,7 +30,6 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const MIGRATION = 'supabase/migrations/20261119190000_org_role_manage_rls.sql';
-const SEED_GRANTS = 'supabase/seeds/99_dev_grants.sql';
 
 const localDatabaseUrl = (() => {
   const raw = process.env.SUPABASE_DB_URL;
@@ -59,22 +58,22 @@ function requireLocalDatabaseUrl(): string {
 }
 
 /**
- * Install the shipped migration the way a reset would, then the dev seed's grant
- * state.
+ * Install the shipped migration the way a reset would.
  *
  * The mutation gate edits the migration file, and without the install the suite
  * would keep asserting against the policies a previous run applied — a reverted
- * predicate would survive. The seed must follow it: `db reset` runs
- * `seeds/99_dev_grants.sql` after every migration, and its blanket
- * `REVOKE ALL ON ALL FUNCTIONS … FROM authenticated` removes whatever a migration
- * granted unless the seed re-grants the function. Installing only the migration
- * would restore execute and hide exactly that gap.
+ * predicate would survive. The reset's own grant is revoked first so the
+ * migration's `grant execute` is load-bearing: a reset starts from a database
+ * where the function does not exist yet, and without this the DB would keep the
+ * grant the full suite's reset applied and a deleted grant line would pass.
  */
 async function installShippedSql(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
+    await sql.unsafe(
+      'revoke all on function public.rls_caller_has_permission(uuid, text) from authenticated',
+    );
     await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
-    await sql.unsafe(readFileSync(SEED_GRANTS, 'utf8'));
   } finally {
     await sql.end();
   }
@@ -250,11 +249,12 @@ describe('org.role.manage RLS predicate', () => {
   });
 
   it('lets an authenticated session execute the RLS helper the policies call', async () => {
-    // The dev seed revokes EXECUTE on every public function from `authenticated`
-    // and re-grants an explicit list, so a helper the policies call but the seed
-    // forgets answers 42501 — the reset-only 403 on role writes. Both directions
-    // prove it is a real predicate call: true for the permission holder, false for
-    // the role that only holds the legacy manager feature.
+    // The migration grants EXECUTE to `authenticated` itself, and nothing runs
+    // after it on a reset that could repair a forgotten grant, so a helper the
+    // policies call but the migration does not grant answers 42501 — the
+    // reset-only 403 on role writes that the dev seed used to mask (R19). Both
+    // directions prove it is a real predicate call: true for the permission
+    // holder, false for the role that only holds the legacy manager feature.
     const holder = await roleHolder.rpc('rls_caller_has_permission', {
       p_organization_id: orgId,
       p_permission: 'org.role.manage',

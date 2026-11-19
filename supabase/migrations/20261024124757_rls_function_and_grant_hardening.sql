@@ -15,9 +15,10 @@
 --   * `20261020000001_revoke_anon_grants.sql` only touched tables/sequences.
 --   * `supabase/seeds/99_dev_grants.sql` re-granted everything on every
 --     `db reset`, undoing even the explicit revokes in
---     20261020000002_apply_org_plan.sql. The seed is fixed in the same PR.
+--     20261020000002_apply_org_plan.sql. It was fixed in the same PR and has
+--     since been retired: migrations own grants now.
 --
--- The grant matrix below is the contract the seed mirrors:
+-- The grant matrix below is the contract (the retired seed mirrored it):
 --   service_role     : EXECUTE on every function (backend + tests + admin)
 --   authenticated    : EXECUTE only on the RPCs the web app calls + the RLS
 --                      helpers used by the part-1 policies + the three

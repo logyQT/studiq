@@ -58,27 +58,27 @@ with permissions.
 
 ## 3. Rules (earned, not invented)
 
-| #   | Rule                                                                                                                                                                                  | Earned from                                                                                 |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                   | `check-migration-timestamps` fails on duplicate prefixes                                    |
-| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project. | the pinned v3.1 generator emits a different shape and 7 RPC type errors                     |
-| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                         | both hooks run `knip --treat-config-hints-as-errors`                                        |
-| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                     | FP-01 is exploitable through PostgREST                                                      |
-| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                               | audit §0.2: 41 of 45 gates are permission checks                                            |
-| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                            | the corpus is the product contract                                                          |
-| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                              | prose is not a verdict                                                                      |
-| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                           | a v1 scope change left six sections describing the deferred table                           |
-| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                        | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine                          |
-| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                      | a six-day-old 0b checklist cited three already-shipped items                                |
-| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                               | "only reference is the generated type file" missed a seed `REVOKE`                          |
-| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                 | the role save drops the `assignment.*` rows the seed grants                                 |
-| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors                               |
-| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable                      |
-| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                                         |
-| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                                         |
-| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                        | the `org.role.manage` gate would have been deletable by one role save                       |
-| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                     | the `org_role_permissions` predicate read its own table                                     |
-| R19 | A seed that blanket-revokes function EXECUTE must list every function an RLS policy calls; a test that installs shipped SQL must also apply the seed's grants or it masks the gap.    | 2a-2's missing seed grant 403'd every role write after a reset while the suite stayed green |
+| #   | Rule                                                                                                                                                                                  | Earned from                                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                   | `check-migration-timestamps` fails on duplicate prefixes                                                                           |
+| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project. | the pinned v3.1 generator emits a different shape and 7 RPC type errors                                                            |
+| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                         | both hooks run `knip --treat-config-hints-as-errors`                                                                               |
+| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                     | FP-01 is exploitable through PostgREST                                                                                             |
+| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                               | audit §0.2: 41 of 45 gates are permission checks                                                                                   |
+| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                            | the corpus is the product contract                                                                                                 |
+| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                              | prose is not a verdict                                                                                                             |
+| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                           | a v1 scope change left six sections describing the deferred table                                                                  |
+| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                        | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine                                                                 |
+| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                      | a six-day-old 0b checklist cited three already-shipped items                                                                       |
+| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                               | "only reference is the generated type file" missed a seed `REVOKE`                                                                 |
+| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                 | the role save drops the `assignment.*` rows the seed grants                                                                        |
+| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors                                                                      |
+| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable                                                             |
+| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                                                                                |
+| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                                                                                |
+| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                        | the `org.role.manage` gate would have been deletable by one role save                                                              |
+| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                     | the `org_role_permissions` predicate read its own table                                                                            |
+| R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                      | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit |
 
 ## 4. Decisions
 
@@ -350,9 +350,10 @@ file — a hand edit only survives until the next regeneration.
   and grants `select`. Production applies migrations (`db push`) and never runs
   the seeds, so relying on `99_dev_grants.sql` alone would leave the default
   `arwdDxtm` (TRUNCATE bypasses RLS) in place there.
-- Seeds: `00_plans.sql` and `99_dev_grants.sql` renamed; `09_perms.sql` now
-  seeds the 44-key catalog and derives the system-role grants from
-  `category = 'content'`, exactly like the org-creation trigger.
+- Seeds: `00_plans.sql` and `99_dev_grants.sql` renamed (the latter later
+  retired); `09_perms.sql` now seeds the 44-key catalog and derives the
+  system-role grants from `category = 'content'`, exactly like the org-creation
+  trigger.
 - `PERMISSIONS` (44 keys with metadata) ships beside the unchanged `Permission`
   (26) and `DEFAULT_ROLE_PERMISSIONS`; the readers (`FeatureResolver`,
   `SubscriptionPlanService`, the `feature-flag` and `plan-feature` admin
@@ -917,9 +918,10 @@ Rule: R19.
   `member.manage` feature) to `rls_caller_has_permission(…, 'org.role.manage')`,
   keeping `rls_caller_org_ids()`. The two SELECT policies and every other table
   stay as they were; `is_org_manager` still guards members, settings, seats and
-  invitations until 2b. `seeds/99_dev_grants.sql` re-grants execute on the new
-  helper after its blanket `REVOKE ALL ON ALL FUNCTIONS`, and the RLS suite now
-  applies that grant state too (R19).
+  invitations until 2b. The migration grants execute on the new helper itself:
+  the dev seed that used to blanket-revoke every function and re-grant a hand
+  list was retired in `chore(dev): retire the dev-grants seed`, so a missing
+  grant here is red in the RLS suite instead of repaired after the run (R19).
 - **Presets (D17).** `ROLE_TEMPLATES` in `@studiq/authz` holds Assistant / Billing
   / Read-only / Blank (`ROLE_TEMPLATE_NAMES`, `isRoleTemplateName`), each
   `entitlementProfile: 'none'`, every key/scope from `PERMISSIONS`, no
@@ -1043,6 +1045,46 @@ granted to `authenticated`/`service_role` only, `PUBLIC` revoked; verified by
 running the migration in a rolled-back transaction before the reset.
 Rule: an RLS helper that reads the table whose policy calls it must be SECURITY
 DEFINER — otherwise it recurses, and the error surfaces only at query time.
+
+#### 2026-11-19 — the dev seed was a second grant system
+
+What: `supabase/seeds/99_dev_grants.sql` ran after every migration on a
+`db reset` (local and CI) and never on a `db push`. It re-opened the schema with
+`GRANT ALL ON ALL TABLES`, blanket-revoked function EXECUTE and re-granted a
+hand-maintained allowlist, then repeated the column narrowings. An audit of the
+reset state with and without it found exactly two kinds of difference: three
+seed-only table grants (`MAINTAIN` on `billing_subscriptions`, `notifications`,
+`payments`, the privilege PostgreSQL 17 added to `ALL` that no revoke list
+names) and six seed-only function revokes (`question_bank_counts` and five
+triggers, all created after the 2026-10-24 hardening migration). Everything
+else — table/column/sequence/default grants, the `authenticated` RPC allowlist,
+the three `anon` pricing reads — was already identical, which is the point: the
+migrations had learned to grant what they need while the seed kept describing a
+local-only schema.
+Why: two layers wrote one privilege from opposite directions and nothing
+compared them. Locally the seed was stricter about functions and looser about
+tables than a deploy, so "works after a reset" and "works in production" were
+different claims. 2a-2 is the symptom on record: the seed's blanket function
+revoke removed the grant its own six write policies call, every role write
+answered 42501 after a reset, and the suite stayed green because it applied the
+seed's grants itself (R19). A seed that runs after migrations can also never be
+caught by one — it runs last.
+Fix: deleted the seed and moved the one real gap into
+`20261119200000_function_execute_parity.sql` (revoke `PUBLIC`/`anon` EXECUTE on
+the six, which is exactly the privilege state local and CI already ran with:
+`authenticated` keeps `question_bank_counts` and the helpers, and `service_role`
+is untouched). `__tests__/integration/grant-parity.test.ts` is the missing
+comparison: it derives the helper set from `pg_policies` and asserts EXECUTE for
+`authenticated`, pins the answer-key column revokes and the table-wide revoke
+behind them, the three `anon` pricing reads with no other table privilege and no
+executable function, and the absence of TRUNCATE/REFERENCES/TRIGGER — all from
+`pg_catalog`, so there is no list to keep in sync. `docs/database.md` now says
+seeds carry data, never privileges. The residual `MAINTAIN` grant is on both
+sides (parity) and unreachable through PostgREST, which issues none of its
+commands; recorded rather than fixed here so the change stayed a retirement.
+Rule: a seed may carry data; migrations own grants. A local-only file that
+changes a privilege is a production bug wearing a dev hat — fix the migration and
+prove reset-vs-deploy parity with a test that reads the catalog.
 
 ### Phase 3 — entitlements and limits
 

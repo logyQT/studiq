@@ -16,8 +16,9 @@
 --     takes its notifications with it.
 --   * The `type` list is a CHECK, so a new kind of notification is a migration, not a typo.
 --
--- `supabase/seeds/99_dev_grants.sql` re-grants ALL on every table after the migrations, so
--- `public.notifications` is added to its read-only list as well.
+-- `public.notifications` was also added to the dev seed's read-only list, because the seed
+-- re-granted ALL on every table after the migrations. That seed is retired; the REVOKE below is
+-- the contract on a reset and a deploy alike.
 -- ==========================================
 
 CREATE TABLE public.notifications (

@@ -22,8 +22,9 @@
 --   * `organization_id` is recorded for org-plan purchases but is never read by
 --     `/api/v1/me/payments`; an org-wide history must add a manager/org check.
 --
--- `supabase/seeds/99_dev_grants.sql` re-grants ALL on every table after the
--- migrations, so `public.payments` is added to its read-only list as well.
+-- `public.payments` was also added to the dev seed's read-only list, because the
+-- seed re-granted ALL on every table after the migrations. That seed is retired;
+-- the REVOKE in this migration is the contract on a reset and a deploy alike.
 -- ==========================================
 
 CREATE TABLE public.payments (

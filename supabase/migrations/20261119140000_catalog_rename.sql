@@ -88,7 +88,8 @@ create policy "Authenticated catalog read" on public.entitlement_catalog
 -- The schema owns the catalog write contract: production applies migrations
 -- (`db push`) and never runs the seeds, so the privileges `authenticated`
 -- receives by default (`arwdDxtm`, TRUNCATE included, which bypasses RLS) have
--- to be narrowed here, not only in `99_dev_grants.sql`.
+-- to be narrowed here; the dev seed that also narrowed them on a reset has been
+-- retired.
 revoke insert, update, delete, truncate, references, trigger
   on public.limit_catalog, public.entitlement_catalog from authenticated;
 
