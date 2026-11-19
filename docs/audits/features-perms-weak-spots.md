@@ -127,6 +127,32 @@ verified each claim. It is not current status; this section is.
   Four write paths mutate `org_role_features`; admin plan edits bypass all four,
   which is FP-15's mechanism.
 
+### 0.3 0b correction (2026-11-19)
+
+Phase 0b shipped (`feat/authority-0b`), and four claims above need dating:
+
+- **N1 is closed on read.** #1256 added the `assignment.*` catalog rows _and_
+  backfilled the system roles of existing orgs (the plan had deferred that
+  backfill to phase 2), and redefined `handle_new_organization`. Not closed
+  end-to-end: `orgRoleService.setPermissions` deletes every row for a role and
+  re-inserts only the client payload, and `/manage/roles` renders a hardcoded
+  group list without `assignment.*`, so saving a system role from the editor
+  removes the family again. Phase 2 owns the catalogue-driven editor and the
+  test.
+- **`resource_permissions` is dropped** (`20261119120000`), together with the
+  six entitlement rows in `permissions` (`study.create`, `study.participate`,
+  `test.create`, `test.participate`, `ai.chat`, `org.manage`). The seed's
+  `REVOKE` list named the table too and had to lose the line in the same PR:
+  `REVOKE` has no `IF EXISTS`, so the drop alone fails `db reset`.
+  `org_role_permissions` is untouched; phase 2 sweeps it with the FK.
+- **`X-Feature-Rollout` is removed** (FP-22's dead header). `rollout` and
+  `rollout_percentage` stay until phase 3 / D8.
+- **The `:920-922` claim below is wrong.** It says the assignment tables were
+  dropped, so `assignment.*` is unreachable. The surface returned as
+  `teacher_assignments`, the keys are declared in `Permission`, #1256 seeded
+  them, and `teacher-assignment.service.ts` reads them. It was the _catalog_
+  that was missing, not the tables.
+
 ---
 
 ## 1. Executive summary

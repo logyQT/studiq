@@ -1,6 +1,6 @@
 # Role-authority rollout — a PR queue into `main`
 
-**Status:** Planned, not started.
+**Status:** In progress — phase 0 merged (#1162), phase 0b in PR.
 **Date:** 2026-11-13. Supersedes the 2026-10-31 integration-branch draft.
 **Decision record:** [ADR-0015](../decisions/0015-role-based-authority.md)
 **Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (re-verified against `origin/main` `b4186312`).
@@ -98,7 +98,7 @@ case documents, 18 of which have no spec yet.)
 | MGR-ROL-02  | role CRUD gated by `role.builder` on Hub                                            | `org.role.manage`; closed catalog                                         | 2     |
 | MGR-ROL-03  | 20 free-string scopes across 5 sections, live scope swap                            | catalog rename; group scope; no-escalation guard                          | 2     |
 | MGR-ROL-04  | system-role delete 403; role with members undeletable                               | same guards under `org.role.manage`                                       | 2     |
-| MGR-SEAT-01 | pool creation validates only the quantity floor                                     | validate `org_seat_licenses`, `scope='personal'`, `seatEligible`          | 4     |
+| MGR-SEAT-01 | pool creation validates only the quantity floor                                     | validate the pool's `plan_key` (`scope='personal'`, `seatEligible`)       | 4     |
 | MGR-SEAT-02 | role-name tier matrix; seat plan = effective plan; 3 keys withheld; AI limit = seat | audience tier; seat ∩ ceiling; `max(org, seat, personal)`; no permissions | 4     |
 | MGR-SEAT-03 | releasing a seat returns the member to base                                         | effective plan union + `max` limits                                       | 4     |
 | MGR-SET-01  | Launch branding lock; rename unaffected                                             | entitlement + `org.settings.manage` for rename too                        | 3     |
@@ -129,16 +129,28 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
 ### 0b — batch-0 cleanup (zero behaviour change)
 
 - Add the missing `assignment.read` / `assignment.update` rows to the
-  `permissions` catalog (N1). No `org_role_permissions` backfill here —
-  `withAuth` reads that table, so a backfill changes behaviour and belongs to
-  phase 2. Do not delete the checks either: `getById` has no other guard.
+  `permissions` catalog (N1). **DONE** (#1256) — and the same PR backfilled the
+  system roles of existing orgs and redefined `handle_new_organization`, which
+  this plan had deferred to phase 2. The catalog rows alone would not have
+  changed behaviour; the seeded grants do, and `withAuth` reads them. No
+  `org_role_permissions` sweep for the _deleted_ keys here: phase 2 does that
+  with the `permission_key` foreign key.
 - Add a unit guard that every `permissionScopes['…']` literal in code exists in
   the catalog, so a phantom key cannot recur.
-- Drop `resource_permissions` (only reference is the generated type file).
+- Drop `resource_permissions`. The plan said its only reference was the
+  generated type file; the identifier is also in the `99_dev_grants.sql`
+  `REVOKE` list (which has no `IF EXISTS`, so the drop alone breaks `db reset`)
+  and the table carries its own RLS policy. Policy and grants fall with the
+  table; the seed line is removed with the drop.
 - Delete the dead `X-Feature-Rollout` header and its two comments.
 - Add the catalog invariants as integration tests: permissions ∩ entitlements =
-  ∅; every active plan defines every limit key; every `surface` entitlement has
-  a flag row.
+  ∅; `permissions` is exactly the `Permission` catalog (the N1 guard); every
+  `FEATURES` key has a `feature_flags` row. The limit-key invariant is already
+  **DONE** (#233, `plan-limit-catalog.test.ts`). The third assertion keeps
+  asserting every `FEATURES` key until phase 1 adds `entitlement_catalog.category`
+  and baseline keys stop needing a flag row.
+- Delete the six entitlement keys from `permissions` (`study.*`, `test.*`,
+  `ai.chat`, `org.manage`); `org_role_permissions` rows are swept in phase 2.
 - Freeze the key list: no new features or entitlement keys until phase 1.
 
 **Exit:** `checks`, `unit`, `integration` green; no product behaviour changes.
@@ -174,8 +186,14 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
   (org creation, classroom creation) and the 5 embedded membership checks.
 - Role editor guards: closed catalog, no self-edit, no grant beyond your own
   authority, system roles protected, every change audited.
+- Acceptance criterion (F3): a save through the role editor must not drop
+  permission rows for keys the payload does not manage. `setPermissions`
+  currently deletes every row for the role and re-inserts only the payload, so
+  saving a system role removes the `assignment.*` family #1256 just granted.
+  Pinned by a test that saves a role and asserts the unmanaged rows survive.
 - Backfill `org_role_permissions` for existing orgs with the seeded template
-  scopes (N1) — the org-creation trigger only seeds new orgs.
+  scopes: the system roles were backfilled by #1256; custom roles and the new
+  catalog remain. The org-creation trigger only seeds new orgs.
 - Class invites use `group.invite` at group scope for existing org members;
   delete the `can_assign_org_role` teacher-name exception.
 - **Control-plane RLS in the same PR**: `rls_caller_has_permission(org, key)`
@@ -208,7 +226,10 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 
 - `subscription_plans.scope` + `audience`; add `solo`; `launch` becomes
   organization-only; backfill legacy manager personal plans.
-- `plan_seat_grants`, `org_seat_licenses`, `org_seat_pools.plan_key` FK.
+- `org_seat_pools.plan_key` FK. The pool **is** the licence record (D15): an org
+  plan grants zero licences, so there is no `plan_seat_grants` and no
+  `org_seat_licenses`; one `org_seat_assignments` row is one member occupying
+  one licence.
 - `addPool` validates the licence; `assignSeat` validates `audience`, not role
   names; seats intersect the ceiling, never grant permissions, never touch org
   capacity, never lower a limit.

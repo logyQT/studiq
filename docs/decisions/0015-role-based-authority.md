@@ -384,12 +384,20 @@ editor that allocates below the ceiling. It is **not** part of v1;
 
 A seat is a per-member personal-plan grant within the org's license.
 
+> **Amended 2026-11-19 (D15).** Org plans grant **zero** licences; licences are
+> sold separately. A licence is the purchased unit: `org_seat_pools` **is** the
+> licence record, and one pool of size N is N licences. `org_seat_assignments`
+> is one member occupying one licence. `plan_seat_grants` and
+> `org_seat_licenses` are **not** in the schema — no plan includes seats, so no
+> plan change seeds a count and `POST /seats/pools` validates the pool against
+> plan metadata, not against a derived allowance.
+
 - `org_seat_pools.plan_key` FK → `subscription_plans(key)` with
-  `scope = 'personal'`, and the org must hold `org_seat_licenses` for it.
+  `scope = 'personal'`, and the plan's keys must be `seatEligible`.
   (`seatEligible` is entitlement metadata, §5.1 — it is not a plan column.)
-- The org must hold a seat license for that plan. Add
-  `org_seat_licenses (organization_id, plan_key, seats)`; plan changes seed it
-  from the org plan's included seats. `POST /seats/pools` validates against it.
+- The pool is the licence: creating a pool of N seats is buying N licences.
+  There is no per-org licence table and no plan-seeded count to validate
+  against (D15).
 - `assignSeat` validates the target's persona against the plan `audience`, not
   against a hardcoded role-name tier map. This is the **one** server-side use of
   `audience`; it does not gate a purchase (D14).
@@ -621,9 +629,9 @@ plan_entitlements ( plan_key, entitlement_key )      -- renamed from plan_featur
 plan_limits ( plan_key, limit_key, limit_value )     -- unchanged
 
 -- seats ---------------------------------------------------------------------
+-- Amended 2026-11-19 (D15): a pool is the licence record and an assignment
+-- occupies one licence. No plan-seat grants and no per-org licence table.
 org_seat_pools ( ..., plan_key text not null references subscription_plans(key) )
-plan_seat_grants  ( org_plan text, seat_plan text, seats int not null )  -- what an org plan includes
-org_seat_licenses ( organization_id, plan_key, seats int not null )      -- what this org may assign
 
 -- overrides / flags ---------------------------------------------------------
 user_entitlement_overrides ( user_id, entitlement_key, is_enabled, expires_at, ... )
@@ -643,8 +651,9 @@ invitations ( ..., group_id uuid null references groups(id), target_group_role t
 3. Every resolved entitlement is a member of
    `plan_entitlements(organizations.plan)` (intersection at resolution; v1.1
    adds the write-time check on `org_role_entitlements`).
-4. `org_seat_pools.plan_key` references a `scope='personal'` plan and the org
-   holds `org_seat_licenses` for it.
+4. `org_seat_pools.plan_key` references a `scope='personal'` plan whose keys are
+   `seatEligible` (amended 2026-11-19, D15: the pool **is** the licence record,
+   so there is no `org_seat_licenses` count to validate against).
 5. An empty custom role has zero permissions and zero entitlements.
 6. No plan/seat/personal/override row can grant a permission key.
 7. Every active plan defines every `limit_catalog` key.
@@ -664,10 +673,16 @@ invitations ( ..., group_id uuid null references groups(id), target_group_role t
 - `allowed_roles` (already dead), `feature_permissions` (already dropped).
 - `permissions` rows whose name is an entitlement key (`ai.chat`,
   `org.manage`, `study.*`, `test.*`).
-- `resource_permissions` (dead); map `assignment.*` to `teacher_assignments`
-  if that surface stays, otherwise delete it.
+- `resource_permissions` (dead; dropped in phase 0b).
 - `can_assign_org_role` teacher-role-name exception.
 - `has_org_feature` in RLS (or regenerate it from permissions only).
+
+> **Truth notes (2026-11-19, phase 0b).** `assignment.*` **stays**: the
+> assignment surface returned as `teacher_assignments`, the keys are declared in
+> `Permission`, and #1256 seeded them on the system roles — the "surface was
+> dropped, so delete the keys" reading of this list was wrong. And
+> `feature_permissions` needs no action: it was already dropped in
+> `20260915000005`.
 
 ---
 
@@ -850,8 +865,9 @@ batches. Pre-market allows a big-bang at the end if preferred.
 
 ### Batch 5 — seats and personal plans
 
-- `org_seat_pools.plan_key` FK + `org_seat_licenses`; validate `addPool`;
-  tier check by `account_kind`/audience, not role name.
+- `org_seat_pools.plan_key` FK (the pool is the licence, D15: no
+  `org_seat_licenses`); validate `addPool`; tier check by `account_kind`/
+  audience, not role name.
 - Seats intersect the org ceiling; never permissions; never org capacity.
 - Personal plans additive for `personalPortable`; managers use `solo`; backfill
   legacy `personal_plan_key` rows.
@@ -922,10 +938,21 @@ forged cookie.
 
 ### 14.3 Test layers
 
-- Unit: catalog invariants, resolver truth tables, permission scope evaluation,
+- Unit: catalog source scans, resolver truth tables, permission scope evaluation,
   entitlement profile resolution, override/flag ordering.
-- Integration: schema constraints/triggers, plan change, seat licensing, group
-  permissions, RLS parity, cache invalidation via API headers/version.
+- Integration: schema constraints/triggers, DB-backed catalog invariants, plan
+  change, seat licensing, group permissions, RLS parity, cache invalidation via
+  API headers/version.
+
+**Catalog invariants are split by what they need (2026-11-19, phase 0b).**
+Assertions that read rows — `permissions` ∩ entitlements = ∅, the `permissions`
+catalog equalling `Permission`, every `FEATURES` key having a `feature_flags`
+row — are integration tests (`__tests__/integration/catalog-invariants.test.ts`).
+The guard that every `permissionScopes['…']` literal exists in the catalog is a
+source scan and therefore a unit test
+(`__tests__/unit/guards/permission-scopes-catalog.test.ts`): a phantom key fails
+before a stack is needed, which is the failure mode N1 actually had.
+
 - E2E: teacher class management without org member management; manager creates
   a custom role and assigns it; student with personal Pro in a free org keeps
   AI; member with a free seat in a paid org does not lose the org budget.
@@ -946,22 +973,23 @@ Every question below was answered before phase 1 and is normative. An
 orchestrator that hits one of these stops and implements the answer, not an
 interpretation.
 
-| #   | Question                                                            | Decision                                                                                                                                                                          |
-| --- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Is `org.admin` a permission or just the system role?                | **A real permission for ownership only** (delete org, transfer ownership). Day-to-day checks always use the granular key; there is no superuser override.                         |
-| 2   | Do managers get a paid personal plan?                               | **No; add free `solo`.** `launch` becomes organization-only. A manager outside an org resolves baseline entitlements only. Backfill legacy paid manager rows to `solo`.           |
-| 3   | Is a personal plan portable inside an org?                          | **Yes, `personalPortable` keys only** (+ user-scope quotas). Never an org-scoped key or org capacity. This is the #971 contract.                                                  |
-| 4   | Can a seat lower a limit?                                           | **No — `max(org, seat, personal)`, `-1` short-circuits.** A seat is an upgrade; it may never downgrade a member.                                                                  |
-| 5   | Can a role allocate entitlements?                                   | **Not in v1.** Ship `org_roles.entitlement_profile` (`all \| learner \| none`); the allocation table and UI follow as a separate PR. Permissions are never allocatable by a role. |
-| 6   | Do teacher/member system roles inherit the org entitlement ceiling? | **Teacher `all`, Member `learner`, Custom `none`.** `learner` is the fixed `LEARNER_ENTITLEMENTS` set, intersected with the org ceiling.                                          |
-| 7   | Can a teacher invite students without `org.invitation.manage`?      | **Yes, via `group.invite` at group scope, existing org members only in v1.** External invites are a later phase. The `can_assign_org_role` teacher-name exception is deleted.     |
-| 8   | Can a flag remove a paid entitlement?                               | **Kill switch only: `is_enabled = false`, with an audit row.** No rollout percentage, no row deletion, missing row fails closed.                                                  |
-| 9   | Are `flashcards`/`quiz` entitlements?                               | **Baseline, always on.** Present in the catalog for pricing display, never used as a gate; only their quotas apply.                                                               |
-| 10  | Do we rename `account_type` to `account_kind`?                      | **Defer the rename.** Change the semantics now (nothing authorizes on it); keep the column and type name. The mechanical rename is separate.                                      |
-| 11  | What is the FP-03 content-RLS posture?                              | **Control-plane RLS only in this programme.** Content stays a tenant floor; service-role content access + revoked grants is a separate security ADR before launch.                |
-| 12  | Do entitlement overrides bypass flags?                              | **Yes.** A comp/trial account is a deliberate grant and is never switched off by a flag.                                                                                          |
-| 13  | Can a `student` persona hold the Admin role?                        | **Yes, if the org assigns it.** Authorization follows the role. A restriction, if product ever wants one, is a role-assignment policy — never a check inside each endpoint.       |
-| 14  | Does persona gate personal plan purchases?                          | **No — `audience` is a UI filter only.** Once permissions leave `plan_entitlements`, any persona may buy any personal plan.                                                       |
+| #   | Question                                                            | Decision                                                                                                                                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Is `org.admin` a permission or just the system role?                | **A real permission for ownership only** (delete org, transfer ownership). Day-to-day checks always use the granular key; there is no superuser override.                                                                                                                                                                |
+| 2   | Do managers get a paid personal plan?                               | **No; add free `solo`.** `launch` becomes organization-only. A manager outside an org resolves baseline entitlements only. Backfill legacy paid manager rows to `solo`.                                                                                                                                                  |
+| 3   | Is a personal plan portable inside an org?                          | **Yes, `personalPortable` keys only** (+ user-scope quotas). Never an org-scoped key or org capacity. This is the #971 contract.                                                                                                                                                                                         |
+| 4   | Can a seat lower a limit?                                           | **No — `max(org, seat, personal)`, `-1` short-circuits.** A seat is an upgrade; it may never downgrade a member.                                                                                                                                                                                                         |
+| 5   | Can a role allocate entitlements?                                   | **Not in v1.** Ship `org_roles.entitlement_profile` (`all \| learner \| none`); the allocation table and UI follow as a separate PR. Permissions are never allocatable by a role.                                                                                                                                        |
+| 6   | Do teacher/member system roles inherit the org entitlement ceiling? | **Teacher `all`, Member `learner`, Custom `none`.** `learner` is the fixed `LEARNER_ENTITLEMENTS` set, intersected with the org ceiling.                                                                                                                                                                                 |
+| 7   | Can a teacher invite students without `org.invitation.manage`?      | **Yes, via `group.invite` at group scope, existing org members only in v1.** External invites are a later phase. The `can_assign_org_role` teacher-name exception is deleted.                                                                                                                                            |
+| 8   | Can a flag remove a paid entitlement?                               | **Kill switch only: `is_enabled = false`, with an audit row.** No rollout percentage, no row deletion, missing row fails closed.                                                                                                                                                                                         |
+| 9   | Are `flashcards`/`quiz` entitlements?                               | **Baseline, always on.** Present in the catalog for pricing display, never used as a gate; only their quotas apply.                                                                                                                                                                                                      |
+| 10  | Do we rename `account_type` to `account_kind`?                      | **Defer the rename.** Change the semantics now (nothing authorizes on it); keep the column and type name. The mechanical rename is separate.                                                                                                                                                                             |
+| 11  | What is the FP-03 content-RLS posture?                              | **Control-plane RLS only in this programme.** Content stays a tenant floor; service-role content access + revoked grants is a separate security ADR before launch.                                                                                                                                                       |
+| 12  | Do entitlement overrides bypass flags?                              | **Yes.** A comp/trial account is a deliberate grant and is never switched off by a flag.                                                                                                                                                                                                                                 |
+| 13  | Can a `student` persona hold the Admin role?                        | **Yes, if the org assigns it.** Authorization follows the role. A restriction, if product ever wants one, is a role-assignment policy — never a check inside each endpoint.                                                                                                                                              |
+| 14  | Does persona gate personal plan purchases?                          | **No — `audience` is a UI filter only.** Once permissions leave `plan_entitlements`, any persona may buy any personal plan.                                                                                                                                                                                              |
+| 15  | Does an org plan include seat licences?                             | **No — org plans grant ZERO licences; licences are sold separately.** A licence is the purchased unit: `org_seat_pools` is the licence pool (its `plan_key` must be `scope='personal'` + `seatEligible`), and `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
 
 ---
 
