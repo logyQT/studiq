@@ -1,8 +1,10 @@
 -- Phase 1c of the role-authority programme (ADR-0015 §5.1, §13 batch 1).
 --
--- `documents` leaves the entitlement catalog. It never had a surface, and
--- ADR §5.1 keeps a key out of the catalog until it does; phase 5 deletes the
--- surface instead of gating it. Nothing gates on the key, so no read changes.
+-- `documents` has no surface today, so it is absent from the catalog — and from
+-- the flags, plans and role/override rows — until its surface ships. The
+-- catalog is open (ADR-0015 §5.1): re-entry is data-only — catalog metadata, a
+-- flag row and the plan/seed rows that should carry it — and the resolver needs
+-- no new code path. Nothing gates on the key today, so no read changes.
 --
 -- Delete order is forced by the foreign keys added in 20261119140000:
 --   * `plan_entitlements.entitlement_key` → `entitlement_catalog` has no

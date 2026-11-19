@@ -313,8 +313,15 @@ type Entitlement = {
 
 `baseline` keys are always enabled for any authenticated account; they stay in
 `plan_entitlements` only so pricing pages can render the plan contents. The
-resolver never gates on them. `documents` stays out of `FEATURES`/pricing until
+resolver never gates on them. `documents` stays out of the catalog/pricing until
 it has a surface.
+
+> **The catalog is open.** A new entitlement key ships when its surface does:
+> catalog metadata, a flag row, and the plan entitlements that should carry it.
+> `documents` is the known future key — it is on the roadmap but has no surface
+> in the app today, so its correct state in v1 is **absent**, not gated and not
+> permanently deleted. Re-adding it is data (catalog + flag + plan/seed rows),
+> not a resolver change.
 
 ### 5.2 Plan scope (replaces the `for_account_type` inference)
 
@@ -357,8 +364,10 @@ It contains only entitlement keys (never permissions).
 >
 > - `all` → the full org ceiling (Admin, Teacher).
 > - `learner` → the fixed `LEARNER_ENTITLEMENTS` set from `@studiq/authz`
->   (`flashcards`, `quiz`, `ai.chat`, `documents`, `branding`), intersected with
->   the org ceiling. This is the "Member explicit" decision without a table.
+>   (`flashcards`, `quiz`, `ai.chat`, `branding` in v1), intersected with the org
+>   ceiling. `documents` joins the set only when its surface ships (§5.1); it is
+>   absent in v1 for exactly that reason. This is the "Member explicit" decision
+>   without a table.
 > - `none` → nothing (custom roles; fail-closed).
 >
 > Resolution always intersects with `plan_entitlements(organizations.plan)`, so
@@ -372,8 +381,8 @@ It contains only entitlement keys (never permissions).
 
 - Admin and Teacher: `all` — the full org ceiling.
 - Member: `learner` — `LEARNER_ENTITLEMENTS ∩ ceiling` (`flashcards`, `quiz`,
-  `ai.chat`, `branding` where the plan owns them). `documents` joins the set
-  only when it has a surface (§5.1).
+  `ai.chat`, `branding` where the plan owns them). `documents` joins the set only
+  when its surface ships (§5.1); it is absent in v1 for exactly that reason.
 - Custom: `none`, empty. An empty role can do nothing and gets no paid surface.
 
 **v1.1 — per-role allocation (deferred).** The target shape, kept here so the

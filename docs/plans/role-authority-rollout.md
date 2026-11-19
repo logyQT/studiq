@@ -173,9 +173,10 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 > **Delivered 2026-11-19, PR 2 of 2 (phase 1c, in PR).** `ENTITLEMENTS` is
 > exported, `FEATURES`, `ADMIN_ONLY_FEATURES` and `ORG_SCOPED_FEATURES` are
 > deleted (no alias), `LIMITS` lives in `@studiq/authz`, the admin/UI catalogs
-> are cut over, and `documents` is removed from `entitlement_catalog`,
-> `entitlement_flags` and `plan_entitlements`. The four legacy management keys
-> and everything reading them stay until phase 2 (below).
+> are cut over, and `documents` is excluded from `entitlement_catalog`,
+> `entitlement_flags` and `plan_entitlements` until its surface ships. The four
+> legacy management keys and everything reading them stay until phase 2
+> (below).
 
 - `@studiq/authz` exports `ENTITLEMENTS` and `PERMISSIONS` with metadata
   (`kind`, `scope`, `seatEligible`, `personalPortable`, `quota`); `FEATURES` is
@@ -188,9 +189,9 @@ created orgs get the corrected catalog (6 fewer entitlement rows).
 - **The four management keys stay** in `ENTITLEMENTS` and `plan_entitlements`
   until phase 2: `requireFeature('role.builder' | 'member.manage' |
 'group.manage')` and `is_org_manager()` still read them, and phase 2 is where
-  those gates become permissions. `documents` left `ENTITLEMENTS` and
-  `plan_entitlements` in phase 1c — no gate depended on it, and ADR §5.1 keeps
-  it out until it has a surface.
+  those gates become permissions. `documents` is excluded from `ENTITLEMENTS`
+  and `plan_entitlements` in phase 1c **until its surface ships** — there is
+  nothing to gate today, and re-entry is data-only (ADR §5.1, open catalog).
 - Update `__tests__/integration/catalog-invariants.test.ts` to the new names
   (`FEATURES` → `ENTITLEMENTS`, `feature_flags` → `entitlement_flags`); the
   `permissions` assertions stay.
@@ -288,7 +289,8 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 ### 5 — enforcement closure
 
 - `requireEntitlement` on AI, quiz builder, advanced stats; `documents` is
-  deleted rather than gated.
+  excluded from the catalog and plans **until its surface ships** — there is
+  nothing to gate today, and re-entry is data-only (ADR §5.1, open catalog).
 - Branding write = `org.settings.manage` **and** the `branding` entitlement.
 - `requirePermission` on members, roles, seats, billing, invitations, settings,
   groups — replacing the remaining four mechanisms.

@@ -31,8 +31,8 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 Phase 1c (the catalog cutover) is in PR: `FEATURES`, `ADMIN_ONLY_FEATURES` and
 `ORG_SCOPED_FEATURES` are replaced by `ENTITLEMENTS`/`ADMIN_ONLY_ENTITLEMENTS`/
 `ORG_SCOPED_ENTITLEMENTS`, `LIMITS` moved into `@studiq/authz`, and `documents`
-left the catalog. The four legacy management keys stay until phase 2, which
-replaces their gates.
+is absent until its surface ships (open catalog, D22). The four legacy
+management keys stay until phase 2, which replaces their gates.
 
 ## 2. How to update this file
 
@@ -90,6 +90,7 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                      |
 | D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
 | D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                         |
+| D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                         |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -461,12 +462,13 @@ derivation where the next phase reads it.
 - `packages/authz/src/limits.ts` receives `LIMITS` and its helpers from
   `packages/server/src/services/limit.catalog.ts` (deleted, no shim); every
   importer reads `@studiq/authz`.
-- `20261119160000_documents_removed.sql` deletes `documents` in dependency
-  order: `plan_entitlements` (the catalog FK has no cascade), then
-  `org_role_features` and `user_feature_overrides` (the flag FK cascades, but
-  the delete is explicit), then `entitlement_catalog` and `entitlement_flags`.
-  See the ADR §5.1 reason in the migration comment: no surface, and phase 5
-  deletes it rather than gating it.
+- `20261119160000_documents_removed.sql` removes `documents` (absent until its
+  surface ships) in dependency order: `plan_entitlements` (the catalog FK has no
+  cascade), then `org_role_features` and `user_feature_overrides` (the flag FK
+  cascades, but the delete is explicit), then `entitlement_catalog` and
+  `entitlement_flags`. The catalog is open (D22): re-entry is catalog metadata, a
+  flag row and the plan/seed rows that should carry it — no resolver change,
+  because the resolver resolves keys from the catalog.
 - Seeds: `documents` removed from every plan's entitlement list in
   `00_plans.sql`; nothing else.
 - Readers: `FeatureResolver` orders by `ENTITLEMENT_KEYS`, guards with

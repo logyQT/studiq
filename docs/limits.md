@@ -42,9 +42,11 @@ original table migrations.
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
 `quiz`, `quiz.builder`, `org.manage`, `group.manage`,
-`member.manage`, `role.builder`, `advanced.stats`, `branding`). `documents`
-left the catalog in phase 1c — it has no surface and is deleted, not gated
-(ADR-0015 §5.1).
+`member.manage`, `role.builder`, `advanced.stats`, `branding`). `documents` is
+on the roadmap but has no surface yet, so it is absent in v1 — excluded from the
+catalog, plans and pricing until it ships; re-entry is data-only (catalog
+metadata, a flag row and the plan rows), not a resolver change (ADR-0015 §5.1,
+open catalog).
 
 Limit keys: `LIMITS` in
 `packages/authz/src/limits.ts` — the single source of truth
