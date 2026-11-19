@@ -1322,7 +1322,7 @@ rollout's remaining phase-2 work, split so each slice is one PR.
 
 **2b-1 written on `feat/authority-2b` (PR pending) — slice 1 of 9:**
 
-- `supabase/migrations/20261119210000_org_role_permission_key_fk.sql`:
+- `supabase/migrations/20261119211000_org_role_permission_key_fk.sql`:
   re-creates and calls `migrate_org_role_permission_names()` **before** the
   rename (every historical migration that writes the table names the old
   column), renames `permission_name` → `permission_key` with its unique
