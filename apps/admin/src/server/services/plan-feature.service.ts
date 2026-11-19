@@ -12,7 +12,7 @@ export class PlanFeatureService {
   async getAll(): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
-      .from('plan_features')
+      .from('plan_entitlements')
       .select('*')
       .order('plan_key', { ascending: true });
     if (error) return toDbFailure(error);
@@ -22,7 +22,7 @@ export class PlanFeatureService {
   async getByPlanKey(planKey: string): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
-      .from('plan_features')
+      .from('plan_entitlements')
       .select('*')
       .eq('plan_key', planKey);
     if (error) return toDbFailure(error);
@@ -32,10 +32,10 @@ export class PlanFeatureService {
   async create(input: CreatePlanFeatureInput): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
-      .from('plan_features')
+      .from('plan_entitlements')
       .insert({
         plan_key: input.planKey,
-        feature_key: input.featureKey,
+        entitlement_key: input.featureKey,
       })
       .select()
       .single();
@@ -46,12 +46,12 @@ export class PlanFeatureService {
   async delete(id: string): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
     const { data: exists } = await supabase
-      .from('plan_features')
+      .from('plan_entitlements')
       .select('id')
       .eq('id', id)
       .maybeSingle();
     if (!exists) return failure('NOT_FOUND');
-    const { error } = await supabase.from('plan_features').delete().eq('id', id);
+    const { error } = await supabase.from('plan_entitlements').delete().eq('id', id);
     if (error) return toDbFailure(error);
     return success(undefined);
   }

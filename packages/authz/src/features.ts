@@ -1,5 +1,5 @@
 // Canonical flat feature keys — the single source of truth for both the
-// application AND the database. `feature_flags`, `plan_features`,
+// application AND the database. `entitlement_flags`, `plan_entitlements`,
 // `org_role_features` and `user_feature_overrides` all store these exact
 // keys (no legacy snake_case aliases, no mapping layer).
 export const FEATURES = [

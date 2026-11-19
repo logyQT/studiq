@@ -61,9 +61,11 @@ GRANT SELECT (id, created_by, type, content, created_at, updated_at,
 -- ==========================================
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
   ON public.subscription_plans,
-     public.plan_features,
+     public.plan_entitlements,
      public.plan_limits,
-     public.feature_flags,
+     public.entitlement_flags,
+     public.entitlement_catalog,
+     public.limit_catalog,
      public.permissions,
      public.user_feature_overrides,
      public.profiles,
@@ -146,5 +148,5 @@ GRANT EXECUTE ON FUNCTION public.rls_caller_is_sealed_item(uuid) TO authenticate
 -- Public read access for the unauthenticated pricing page (no write; the RLS SELECT policy
 -- is the only policy on these three tables).
 GRANT SELECT ON public.subscription_plans TO anon;
-GRANT SELECT ON public.plan_features TO anon;
+GRANT SELECT ON public.plan_entitlements TO anon;
 GRANT SELECT ON public.plan_limits TO anon;

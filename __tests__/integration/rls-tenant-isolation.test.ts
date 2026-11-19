@@ -28,7 +28,7 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
 const PASSWORD = 'Rls191Test!';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const PUBLIC_TABLES = ['plan_features', 'plan_limits', 'subscription_plans'];
+const PUBLIC_TABLES = ['plan_entitlements', 'plan_limits', 'subscription_plans'];
 
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -491,7 +491,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     // Catalog data is readable by any signed-in user.
     const { data: flags, error: flagsError } = await studentSession
-      .from('feature_flags')
+      .from('entitlement_flags')
       .select('id');
     expect(flagsError).toBeNull();
     expect(flags?.length).toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 /**
  * Deterministic ordering for plan feature keys.
  *
- * PostgREST returns `plan_features` unordered, so rendering `plan.features`
+ * PostgREST returns `plan_entitlements` unordered, so rendering `plan.features`
  * as-is makes the checkout bullets shuffle between loads. The explicit
  * priority list puts the differentiators first; unknown keys are appended
  * alphabetically so a newly seeded feature still renders in a stable place.

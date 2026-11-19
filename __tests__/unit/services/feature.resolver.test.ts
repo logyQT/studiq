@@ -69,11 +69,11 @@ describe('FeatureResolver', () => {
             { feature_key: 'quiz', is_enabled: true },
           ]);
         }
-        if (table === 'plan_features') {
-          return chain(seatFeatures.map((f) => ({ feature_key: f })));
+        if (table === 'plan_entitlements') {
+          return chain(seatFeatures.map((f) => ({ entitlement_key: f })));
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -107,11 +107,11 @@ describe('FeatureResolver', () => {
             { feature_key: 'quiz', is_enabled: true },
           ]);
         }
-        if (table === 'plan_features') {
-          return chain(seatFeatures.map((f) => ({ feature_key: f })));
+        if (table === 'plan_entitlements') {
+          return chain(seatFeatures.map((f) => ({ entitlement_key: f })));
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -134,11 +134,11 @@ describe('FeatureResolver', () => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
         if (table === 'org_seat_pools') return chain({ plan_key: 'ace' });
         if (table === 'org_role_features') return chain([]);
-        if (table === 'plan_features') {
-          return chain(seatFeatures.map((f) => ({ feature_key: f })));
+        if (table === 'plan_entitlements') {
+          return chain(seatFeatures.map((f) => ({ entitlement_key: f })));
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -159,7 +159,7 @@ describe('FeatureResolver', () => {
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -174,15 +174,15 @@ describe('FeatureResolver', () => {
         if (table === 'org_seat_assignments') return chain(null);
         if (table === 'org_role_features') return chain([]);
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'group.manage' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'group.manage' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -195,16 +195,16 @@ describe('FeatureResolver', () => {
     it('returns personal plan features when not in org context', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'ace' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'ai.chat' },
-            { feature_key: 'advanced.stats' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'ai.chat' },
+            { entitlement_key: 'advanced.stats' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -219,15 +219,15 @@ describe('FeatureResolver', () => {
         if (table === 'org_seat_assignments') return chain(null);
         if (table === 'org_role_features') return chain([]);
         if (table === 'organizations') return chain({ plan: 'hub' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'branding' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'branding' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -248,17 +248,17 @@ describe('FeatureResolver', () => {
           return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'pro' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'ai.chat' },
-            { feature_key: 'advanced.stats' },
-            { feature_key: 'documents' },
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
+            { entitlement_key: 'ai.chat' },
+            { entitlement_key: 'advanced.stats' },
+            { entitlement_key: 'documents' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -275,15 +275,15 @@ describe('FeatureResolver', () => {
           return chain([{ feature_key: 'flashcards', is_enabled: true }]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'hub' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'ai.chat' },
-            { feature_key: 'member.manage' },
-            { feature_key: 'role.builder' },
+            { entitlement_key: 'ai.chat' },
+            { entitlement_key: 'member.manage' },
+            { entitlement_key: 'role.builder' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -304,16 +304,16 @@ describe('FeatureResolver', () => {
           return chain([{ feature_key: 'flashcards', is_enabled: true }]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'lite' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'group.manage' },
-            { feature_key: 'member.manage' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'group.manage' },
+            { entitlement_key: 'member.manage' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -333,11 +333,11 @@ describe('FeatureResolver', () => {
           ]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'lite' });
-        if (table === 'plan_features') {
-          return chain([{ feature_key: 'group.manage' }, { feature_key: 'quiz' }]);
+        if (table === 'plan_entitlements') {
+          return chain([{ entitlement_key: 'group.manage' }, { entitlement_key: 'quiz' }]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -360,9 +360,9 @@ describe('FeatureResolver', () => {
           return chain([{ feature_key: 'flashcards', is_enabled: true }]);
         }
         if (table === 'profiles') return chain({ personal_plan_key: 'campus' });
-        if (table === 'plan_features') return chain([{ feature_key: 'ai.chat' }]);
+        if (table === 'plan_entitlements') return chain([{ entitlement_key: 'ai.chat' }]);
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -373,11 +373,11 @@ describe('FeatureResolver', () => {
     it('still applies the personal plan when there is no active org', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'ace' });
-        if (table === 'plan_features') {
-          return chain([{ feature_key: 'flashcards' }, { feature_key: 'branding' }]);
+        if (table === 'plan_entitlements') {
+          return chain([{ entitlement_key: 'flashcards' }, { entitlement_key: 'branding' }]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -400,9 +400,9 @@ describe('FeatureResolver', () => {
         }
         // The org plan would grant branding — role rows must still win.
         if (table === 'organizations') return chain({ plan: 'hub' });
-        if (table === 'plan_features') return chain([{ feature_key: 'branding' }]);
+        if (table === 'plan_entitlements') return chain([{ entitlement_key: 'branding' }]);
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -427,7 +427,7 @@ describe('FeatureResolver', () => {
             { feature_key: 'ai.chat', is_enabled: true },
           ]);
         }
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -439,8 +439,8 @@ describe('FeatureResolver', () => {
     it('ignores an expired user override grant (#382)', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_features')
-          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        if (table === 'plan_entitlements')
+          return chain([{ entitlement_key: 'flashcards' }, { entitlement_key: 'quiz' }]);
         if (table === 'user_feature_overrides')
           return chain([
             {
@@ -449,7 +449,7 @@ describe('FeatureResolver', () => {
               expires_at: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
             },
           ]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -460,8 +460,8 @@ describe('FeatureResolver', () => {
     it('ignores an expired user override revoke (#382)', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_features')
-          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        if (table === 'plan_entitlements')
+          return chain([{ entitlement_key: 'flashcards' }, { entitlement_key: 'quiz' }]);
         if (table === 'user_feature_overrides')
           return chain([
             {
@@ -470,7 +470,7 @@ describe('FeatureResolver', () => {
               expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
             },
           ]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -481,8 +481,8 @@ describe('FeatureResolver', () => {
     it('applies a user override whose expiry is still in the future', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_features')
-          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        if (table === 'plan_entitlements')
+          return chain([{ entitlement_key: 'flashcards' }, { entitlement_key: 'quiz' }]);
         if (table === 'user_feature_overrides')
           return chain([
             {
@@ -496,7 +496,7 @@ describe('FeatureResolver', () => {
               expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             },
           ]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -508,7 +508,7 @@ describe('FeatureResolver', () => {
       let selected: string | null = null;
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_features') return chain([{ feature_key: 'flashcards' }]);
+        if (table === 'plan_entitlements') return chain([{ entitlement_key: 'flashcards' }]);
         if (table === 'user_feature_overrides') {
           const overrides = chain([]);
           // Record the projection the resolver asks for, then answer with the empty list.
@@ -519,7 +519,7 @@ describe('FeatureResolver', () => {
             }),
           });
         }
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -530,9 +530,9 @@ describe('FeatureResolver', () => {
     it('returns empty when no entitlement source yields features', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_features') return chain([]);
+        if (table === 'plan_entitlements') return chain([]);
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -545,16 +545,16 @@ describe('FeatureResolver', () => {
     it('removes a feature whose global flag is disabled', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'ace' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'ai.chat' },
-            { feature_key: 'advanced.stats' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'ai.chat' },
+            { entitlement_key: 'advanced.stats' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') {
+        if (table === 'entitlement_flags') {
           return chain([
             { key: 'flashcards', is_enabled: true, rollout_percentage: 100 },
             { key: 'quiz', is_enabled: true, rollout_percentage: 100 },
@@ -577,16 +577,16 @@ describe('FeatureResolver', () => {
       // rollout = bucket → enabled only when bucket < rollout, so exactly disabled
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'ace' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'ai.chat' },
-            { feature_key: 'advanced.stats' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'ai.chat' },
+            { entitlement_key: 'advanced.stats' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') {
+        if (table === 'entitlement_flags') {
           return chain([
             { key: 'flashcards', is_enabled: true, rollout_percentage: 100 },
             { key: 'quiz', is_enabled: true, rollout_percentage: 100 },
@@ -607,16 +607,16 @@ describe('FeatureResolver', () => {
       // rollout = bucket + 1 → bucket < rollout, so enabled and reported
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'ace' });
-        if (table === 'plan_features') {
+        if (table === 'plan_entitlements') {
           return chain([
-            { feature_key: 'flashcards' },
-            { feature_key: 'quiz' },
-            { feature_key: 'ai.chat' },
-            { feature_key: 'advanced.stats' },
+            { entitlement_key: 'flashcards' },
+            { entitlement_key: 'quiz' },
+            { entitlement_key: 'ai.chat' },
+            { entitlement_key: 'advanced.stats' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') {
+        if (table === 'entitlement_flags') {
           return chain([
             { key: 'flashcards', is_enabled: true, rollout_percentage: 100 },
             { key: 'quiz', is_enabled: true, rollout_percentage: 100 },
@@ -671,7 +671,7 @@ describe('FeatureResolver', () => {
           return chain([{ feature_key: 'group.manage', is_enabled: true }]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
@@ -688,7 +688,7 @@ describe('FeatureResolver', () => {
           return chain([{ feature_key: 'group.manage', is_enabled: true }]);
         }
         if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'feature_flags') return chain(allFlagsOn());
+        if (table === 'entitlement_flags') return chain(allFlagsOn());
         return chain(null);
       });
 

@@ -31,6 +31,302 @@ export const Permission = {
 
 export type PermissionKey = (typeof Permission)[keyof typeof Permission];
 
+/** The three scopes a catalog permission can declare (ADR-0015 §4.1). */
+export type CatalogScope = 'own' | 'group' | 'organization';
+
+export type PermissionCategory = 'content' | 'group' | 'org';
+
+export interface PermissionDefinition {
+  category: PermissionCategory;
+  /** The scopes a role may hold this permission at, in the role editor. */
+  allowedScopes: readonly CatalogScope[];
+  /** Whether a custom role may be granted the key at all. */
+  assignable: boolean;
+  description: string;
+}
+
+const CONTENT_SCOPES = ['own', 'group', 'organization'] as const;
+const GROUP_SCOPES = ['own', 'group', 'organization'] as const;
+const GROUP_INVITE_SCOPES = ['group', 'organization'] as const;
+const ORG_SCOPES = ['organization'] as const;
+
+/**
+ * The closed permission catalog (ADR-0015 §4.1). `permissions` in the database
+ * is this object — `__tests__/integration/catalog-invariants.test.ts` fails on
+ * any divergence between the two. `Permission` stays the narrower 26-key set
+ * that code reads through `ctx.permissionScopes`; every one of its keys is here.
+ *
+ * `org.admin` is ownership only and is not assignable to a custom role (D16).
+ */
+export const PERMISSIONS = {
+  'flashcard.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read flashcards',
+  },
+  'flashcard.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create flashcards',
+  },
+  'flashcard.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit flashcards',
+  },
+  'flashcard.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete flashcards',
+  },
+  'deck.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read decks',
+  },
+  'deck.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create decks',
+  },
+  'deck.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit decks',
+  },
+  'deck.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete decks',
+  },
+  'topic.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read topics',
+  },
+  'topic.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create topics',
+  },
+  'topic.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit topics',
+  },
+  'topic.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete topics',
+  },
+  'question.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read questions',
+  },
+  'question.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create questions',
+  },
+  'question.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit questions',
+  },
+  'question.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete questions',
+  },
+  'question_bank.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read question banks',
+  },
+  'question_bank.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create question banks',
+  },
+  'question_bank.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit question banks',
+  },
+  'question_bank.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete question banks',
+  },
+  'quiz.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read quizzes',
+  },
+  'quiz.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create quizzes',
+  },
+  'quiz.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit quizzes',
+  },
+  'quiz.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete quizzes',
+  },
+  'assignment.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read assignments',
+  },
+  'assignment.create': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Create assignments',
+  },
+  'assignment.update': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Edit assignments',
+  },
+  'assignment.delete': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Delete assignments',
+  },
+  'assignment.publish': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Publish assignments to a class',
+  },
+  'assignment.grade': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Grade assignment submissions',
+  },
+  'stats.read': {
+    category: 'content',
+    allowedScopes: CONTENT_SCOPES,
+    assignable: true,
+    description: 'Read study statistics',
+  },
+  'group.read': {
+    category: 'group',
+    allowedScopes: GROUP_SCOPES,
+    assignable: true,
+    description: 'Read classes',
+  },
+  'group.manage': {
+    category: 'group',
+    allowedScopes: GROUP_SCOPES,
+    assignable: true,
+    description: 'Create, edit and delete classes',
+  },
+  'group.member.manage': {
+    category: 'group',
+    allowedScopes: GROUP_SCOPES,
+    assignable: true,
+    description: 'Add and remove class members',
+  },
+  'group.invite': {
+    category: 'group',
+    allowedScopes: GROUP_INVITE_SCOPES,
+    assignable: true,
+    description: 'Invite existing org members to a class',
+  },
+  'org.settings.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Edit organization name, slug and general settings',
+  },
+  'org.member.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Change member roles and remove members',
+  },
+  'org.invitation.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Invite people to the organization',
+  },
+  'org.role.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Create and edit roles and their permissions',
+  },
+  'org.seat.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Manage seat pools and seat assignments',
+  },
+  'org.billing.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Manage the organization plan and billing',
+  },
+  'org.report.manage': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Manage the organization question-report inbox',
+  },
+  'org.audit.read': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: true,
+    description: 'Read the organization audit log',
+  },
+  'org.admin': {
+    category: 'org',
+    allowedScopes: ORG_SCOPES,
+    assignable: false,
+    description: 'Ownership: delete the organization and transfer ownership',
+  },
+} as const satisfies Record<string, PermissionDefinition>;
+
+export type PermissionCatalogKey = keyof typeof PERMISSIONS;
+
 export interface ResourceAccess {
   createdBy: string;
   orgId: string | null;
