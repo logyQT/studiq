@@ -1225,8 +1225,8 @@ forbids before accepting that nothing can.
   verb, and only when `PERMISSIONS[key].category === 'content'` — so `group.read`
   and `org.*` can never take it, and a key outside the catalog gets none.
 - **`Permission` is the whole catalog.** 44 keys, up from 27 at the branch point
-  `origin/main` (`0b5932a0`), which held only `org.role.manage` of the `stats.*`,
-  `quiz.*`, `group.*` and `org.*` families. Both counts are derived with
+  `origin/main` (`0b5932a0`), where only `org.role.manage` stood in for the
+  `stats.*`, `quiz.*`, `group.*` and `org.*` families. Both counts are derived with
   `git show <ref>:packages/authz/src/lib/permissions.ts | sed -n '/^export const Permission = {/,/^} as const;/p' | grep -cE "^  [A-Z_]+: '"`,
   and equal the catalog's own 44 `PERMISSIONS` entries (R9). The R15 pin in `__tests__/unit/guards/permission-scopes-catalog.test.ts`
   ("catalog keys read outside `Permission`") is now `[]` instead of
