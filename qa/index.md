@@ -148,8 +148,8 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | MGR-INV-04  | P2 ważny       | Akceptacja zaproszenia dla istniejącego użytkownika                  | —           | MGR – Panel managera organizacji (/manage)        |
 | MGR-GRP-01  | P1 krytyczny   | Lista, tworzenie, edycja i usuwanie grup                             | —           | MGR – Panel managera organizacji (/manage)        |
 | MGR-GRP-02  | P2 ważny       | Członkowie grupy – przypisywanie                                     | —           | MGR – Panel managera organizacji (/manage)        |
-| MGR-ROL-01  | P2 ważny       | Tworzenie roli – plan bez role.builder (Launch)                      | —           | MGR – Panel managera organizacji (/manage)        |
-| MGR-ROL-02  | P2 ważny       | Tworzenie i edycja roli – plan z role.builder                        | BIL-04      | MGR – Panel managera organizacji (/manage)        |
+| MGR-ROL-01  | P2 ważny       | Tworzenie roli – bramka uprawnienia org.role.manage                  | —           | MGR – Panel managera organizacji (/manage)        |
+| MGR-ROL-02  | P2 ważny       | Tworzenie i edycja roli – uprawnienie org.role.manage                | —           | MGR – Panel managera organizacji (/manage)        |
 | MGR-ROL-03  | P2 ważny       | Edytor uprawnień roli                                                | —           | MGR – Panel managera organizacji (/manage)        |
 | MGR-ROL-04  | P1 krytyczny   | Usuwanie ról – ograniczenia                                          | —           | MGR – Panel managera organizacji (/manage)        |
 | MGR-SEAT-01 | P2 ważny       | Zakup miejsc (symulacja)                                             | —           | MGR – Panel managera organizacji (/manage)        |

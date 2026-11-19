@@ -232,21 +232,35 @@ never a single `isAdmin` flag.
 - `entitlement_profile text not null default 'none'` (check `all`, `learner`, `none`)
 - permissions in `org_role_permissions (org_role_id, permission_key, scope)`
 
-**System role templates** (seeded; admins can add permissions but cannot rename
-or delete them):
+**Seeded system roles** (the org-creation trigger creates them; admins can add
+permissions but cannot rename or delete them):
 
-| Template      | Permissions                                                                                                                                        |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Admin**     | every content permission at `organization`; every group permission at `organization`; every `org.*` including `org.admin`                          |
-| **Teacher**   | content CRUD at `own`/`group`; `group.read/manage/member.manage/invite` at `group`; assignment permissions at `own`/`group`; `stats.read` at group |
-| **Member**    | content CRUD at `own`, read at `group`; `group.read` at `group`; `stats.read` at own                                                               |
-| **Assistant** | `org.member.manage`, `org.invitation.manage`, `org.report.manage`; content at `organization` (for front-desk/admin staff)                          |
-| **Billing**   | `org.billing.manage`, `org.seat.manage`                                                                                                            |
-| **Read-only** | every `*.read` at `organization` (auditors)                                                                                                        |
+| Role        | Permissions                                                                                                                                        |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Admin**   | every content permission at `organization`; every group permission at `organization`; every `org.*` including `org.admin`                          |
+| **Teacher** | content CRUD at `own`/`group`; `group.read/manage/member.manage/invite` at `group`; assignment permissions at `own`/`group`; `stats.read` at group |
+| **Member**  | content CRUD at `own`, read at `group`; `group.read` at `group`; `stats.read` at own                                                               |
+
+**Editor presets** (D17; `POST /organization/roles` materialises one as an
+ordinary custom role — no preset is seeded by the trigger and none is a system
+role, so it can be renamed, edited and deleted like any other custom role):
+
+| Preset        | Permissions                                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Assistant** | `org.member.manage`, `org.invitation.manage`, `org.report.manage`; content at `organization` (front-desk/admin staff) |
+| **Billing**   | `org.billing.manage`, `org.seat.manage` at `organization`                                                             |
+| **Read-only** | every `content`/`group` `*.read` key plus `org.audit.read`, at `organization` (auditors)                              |
+| **Blank**     | none — a custom role built from scratch                                                                               |
 
 Custom roles start **empty** (no permissions, `entitlement_profile = 'none'`).
 An empty role can do nothing and gets no paid surface. This is the inverse of
 today's "zero rows means inherit everything".
+
+> **2026-11-19 (phase 2a-2, D17).** This table previously called all six rows
+> "system role templates", which contradicted §9's picker list and the data: only
+> Admin/Teacher/Member are seeded. Assistant/Billing/Read-only are code-owned
+> presets (`ROLE_TEMPLATES` in `@studiq/authz`), validated against the closed
+> catalog and materialised as custom roles. No preset carries `org.admin` (D16).
 
 ### 4.3 Group / class roles
 
@@ -715,7 +729,8 @@ The role editor is a first-class admin screen, not an API-only feature.
 
 **Editor layout**
 
-1. Template picker (Teacher / Assistant / Billing / Read-only / Blank).
+1. Template picker (Assistant / Billing / Read-only / Blank; D17 — the three
+   seeded roles are not picker entries).
 2. Permission list grouped by category; each row has a scope selector
    (`own | group | organization`) limited to the permission's `allowed_scopes`.
 3. "Entitlements this role receives" — a profile picker (`all`, `learner`,

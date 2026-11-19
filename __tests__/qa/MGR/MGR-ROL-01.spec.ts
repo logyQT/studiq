@@ -3,39 +3,28 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
- * MGR-ROL-01 — creating a custom role on an organization plan that lacks
- * `role.builder` (Launch).
+ * MGR-ROL-01 — the role-write gate is a permission, not a plan feature.
  *
- * Prerequisite (reconciled with the tenant seeder): the case's own organization
- * on the **Launch** plan — an organization is created on `launch` by the org
- * trigger, so no global plan row is touched — with a manager who is its `admin`.
- * The legacy manual seed (`manager@dev.local`, password `pass`) is never used.
+ * The case was written on the premise that Launch lacks `role.builder`, so its
+ * step ("Kliknij „Nowa rola”, nazwa „Asystent”, opis; zapisz") ends in a 403 and
+ * asks whether the UI warns about the missing plan. Phase 2a-2 replaces the
+ * entitlement gate with `org.role.manage` (ADR-0015 §4.4): the **plan** no longer
+ * gates role writes, the caller's role does. The organization's Admin role holds
+ * `org.role.manage` on every plan, so on Launch:
+ *
+ * 1. the manager (org role `admin`) sees the editor and can create/edit a role —
+ *    no locked card, no plan upgrade path;
+ * 2. a same-org member whose role does not hold `org.role.manage` (the tenant's
+ *    teacher) is refused by the API with 403 and has no editor. The persona route
+ *    rule still sends an educator away from `/manage`, so the absence of the
+ *    editor is asserted where the permission gate lives — `/permissions/me`
+ *    (no key) and the write endpoints (403).
  *
  * Tenant: the `content` profile of this case
  * (`__tests__/qa/profiles/MGR-ROL-01.json`), seeded before the suite starts by
  * `bun scripts/qa-tenant.ts MGR-ROL-01 --fresh`: one organization on Launch with
  * an `admin` manager, a teacher, a student and the default group `G1`, all
- * derived from `tenantKey('qa/cases/MGR-ROL-01.md', ...)` + `tenantId(key, entity)`.
- * A fresh run suffix gives each independent run its own organization and users;
- * the retry-safe setup lives in the profile, so the spec only reads it. Nothing
- * global is written (no settings, flags, plans or platform rows).
- *
- * Walk observation (shared app, pl): the manual case was written against a build
- * where `/manage/roles` offered „Nowa rola” on Launch and the attempt failed at
- * save time with „Nie udało się utworzyć roli”, and it asked to note whether the
- * page warns about the plan upfront. Fix #259 added that upfront warning
- * (`RoleBuilderLockedCard`, write affordances withheld) while keeping the API
- * gate (`requireFeature(ctx, 'role.builder')` → 403) as defence in depth. The
- * intended behaviour — and what this spec asserts — is therefore:
- *
- * 1. „Nowa rola” is not offered at all on Launch; the locked card names the
- *    missing plan feature and links to the organization plans.
- * 2. The roles list stays readable (the lock only withholds writes).
- * 3. A direct write still fails with 403/FORBIDDEN and creates nothing.
- *
- * The „Nie udało się utworzyć roli” toast is no longer reachable through the UI
- * (there is no form to submit); the API rejection is what keeps the guarantee
- * the case asked to confirm.
+ * derived from the case id + run suffix. Nothing global is written.
  */
 
 const CASE = 'MGR-ROL-01';
@@ -43,21 +32,22 @@ const TENANT: QaTenant = loadTenant(CASE);
 
 const ROLE_NAME = 'Asystent';
 const ROLE_DESCRIPTION = 'Rola testowa MGR-ROL-01';
+const ROLE_NAME_EDITED = 'Asystent organizacji';
 
 interface OrgRoleRow {
   id: string;
   name: string;
   isSystem: boolean;
+  permissionCount: number;
 }
 
-interface FeatureSet {
-  features: string[];
+interface OrgRoleDetail extends OrgRoleRow {
+  permissions: { permissionName: string; scope: string }[];
 }
 
 interface PlanInfo {
   key: string;
   name: string;
-  features: string[];
 }
 
 /** `GET` an endpoint as the signed-in user and unwrap the response envelope. */
@@ -73,9 +63,10 @@ function roleRow(page: Page, name: string) {
   return page.getByRole('row').filter({ has: page.getByText(name, { exact: true }) });
 }
 
-test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () => {
-  test('Launch plan withholds role writes and the API rejects a direct create', async ({
+test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', () => {
+  test('the Launch-plan admin writes roles while a member without org.role.manage is refused', async ({
     page,
+    browser,
   }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -89,127 +80,116 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () =
     await expect(page).toHaveURL(/\/manage\/roles$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Role', exact: true })).toBeVisible();
 
-    // 1. The plan lock the case asked to confirm is now shown upfront: the
-    //    missing feature is named and the page points at the organization plans.
-    await expect(
-      page.getByText('Kreator ról nie jest dostępny w Twoim planie', { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Twój obecny plan nie obejmuje kreatora ról. Ulepsz plan, aby tworzyć własne role i uprawnienia.',
-        { exact: true },
-      ),
-    ).toBeVisible();
-
-    // „Nowa rola” and the write column are not offered at all on Launch, so the
-    // failing create dialog/toast of the case is unreachable by design.
-    await expect(page.getByRole('button', { name: 'Nowa rola', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('columnheader', { name: 'Akcje', exact: true })).toHaveCount(0);
-
-    // 2. The list itself stays readable for a plan-locked org: the case's page is
-    //    not blocked, only its writes. The three system roles are rendered.
-    for (const column of ['Nazwa', 'Typ', 'Członkowie', 'Uprawnienia']) {
-      await expect(
-        page.getByRole('columnheader', { name: column, exact: true }),
-        `column ${column}`,
-      ).toBeVisible();
-    }
-    const roles = await getData<OrgRoleRow[]>(page, '/api/v1/organization/roles');
-    expect(roles.map((role) => role.name).toSorted(), 'system roles of this org').toEqual([
-      'admin',
-      'member',
-      'teacher',
-    ]);
-    for (const role of roles) await expect(roleRow(page, role.name)).toBeVisible();
-
-    // The gate is the `role.builder` feature, and this org's plan lacks it. Both
-    // facts come from the same session, not from a pinned global plan row.
-    const features = await getData<FeatureSet>(page, '/api/v1/features/me');
-    expect(features.features, 'role.builder must be absent on Launch').not.toContain(
-      'role.builder',
-    );
+    // The org is on Launch, so the *old* gate would withhold every write here.
     const plan = await getData<PlanInfo>(page, '/api/v1/me/plan');
     expect(plan.key, 'the seeded organization plan').toBe('launch');
-    expect(plan.features, 'Launch does not include role.builder').not.toContain('role.builder');
 
-    // 3. The operation the case performs is still rejected by the API: 403 and
-    //    nothing is created. This is the guarantee the case asks to confirm.
-    const create = await page.request.post('/api/v1/organization/roles', {
-      data: { name: ROLE_NAME, description: ROLE_DESCRIPTION },
-    });
-    expect(create.status(), 'POST /api/v1/organization/roles on Launch').toBe(403);
-    expect(await create.json()).toEqual({ success: false, error: 'FORBIDDEN' });
-
-    const afterCreate = await getData<OrgRoleRow[]>(page, '/api/v1/organization/roles');
-    expect(
-      afterCreate.some((role) => role.name === ROLE_NAME),
-      'the rejected role must not exist',
-    ).toBe(false);
-    expect(afterCreate).toHaveLength(roles.length);
-
-    // Adjacent write path of the same locked surface: renaming a role is gated by
-    // the same feature check, before any role-specific rule runs.
-    const adminRole = roles.find((role) => role.name === 'admin');
-    if (!adminRole) throw new Error('seeded org has no admin role');
-    const update = await page.request.put(`/api/v1/organization/roles/${adminRole.id}`, {
-      data: { name: 'Asystent' },
-    });
-    expect(update.status(), 'PUT /api/v1/organization/roles/:id on Launch').toBe(403);
-    expect(await update.json()).toEqual({ success: false, error: 'FORBIDDEN' });
-
-    const afterUpdate = await getData<OrgRoleRow[]>(page, '/api/v1/organization/roles');
-    expect(
-      afterUpdate.find((role) => role.id === adminRole.id)?.name,
-      'the admin role keeps its name',
-    ).toBe('admin');
-
-    // 4. „Zobacz plany” answers the case's „czy UI informuje o konieczności zmiany
-    //    planu”: it opens the organization ladder of /pricing, where this org's
-    //    current plan is marked and the plans that include „Kreator Ról” are listed.
-    await page.getByRole('button', { name: 'Zobacz plany', exact: true }).click();
-    await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Wybierz swój plan', exact: true }),
-    ).toBeVisible();
-
-    const currentPlanRow = page
-      .locator('#pricing-plans li')
-      .filter({ has: page.locator(`h3#${plan.key}`) });
-    await expect(currentPlanRow, 'one row for the current plan').toHaveCount(1);
-    await expect(currentPlanRow.getByText('Twój plan', { exact: true })).toBeVisible();
-
-    const upgradePlans = await getData<PlanInfo[]>(page, '/api/v1/subscription-plans?for=manager');
-    const entitled = upgradePlans.filter((candidate) =>
-      candidate.features.includes('role.builder'),
+    // The gate is now the caller's permission: the admin role holds it.
+    const permissions = await getData<{ permissions: Record<string, string | null> }>(
+      page,
+      '/api/v1/permissions/me',
     );
-    expect(
-      entitled.length,
-      'the catalogue offers at least one plan with role.builder',
-    ).toBeGreaterThan(0);
-    for (const candidate of entitled) {
-      await expect(
-        page.locator(`#pricing-plans h3#${candidate.key}`),
-        `plan row ${candidate.name}`,
-      ).toHaveCount(1);
-    }
+    expect(permissions.permissions['org.role.manage'], 'the admin holds the gate').toBe(
+      'organization',
+    );
 
-    // The feature the locked card promises is a row of the ladder's comparison,
-    // and it is a row precisely because the plans differ on it: the entitled
-    // plans carry the check, the current one does not.
-    const featureRow = page.getByRole('rowheader', { name: 'Kreator ról', exact: true });
-    await expect(featureRow, 'role.builder is a comparison row').toHaveCount(1);
-    for (const candidate of entitled) {
-      const column = upgradePlans.findIndex((cataloguePlan) => cataloguePlan.key === candidate.key);
-      await expect(
-        featureRow.locator('xpath=..').locator('td').nth(column).locator('svg.lucide-check'),
-        `${candidate.name} lists Kreator ról`,
-      ).toHaveCount(1);
-    }
-    const currentColumn = upgradePlans.findIndex((cataloguePlan) => cataloguePlan.key === plan.key);
+    // No plan lock: „Nowa rola” and the write column are offered on Launch.
+    await expect(page.getByText('Kreator ról nie jest dostępny w Twoim planie')).toHaveCount(0);
+    const newRoleButton = page.getByRole('button', { name: 'Nowa rola', exact: true });
+    await expect(newRoleButton).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Akcje', exact: true })).toBeVisible();
+
+    // Step 1 of the case: create „Asystent” from the Assistant preset.
+    await newRoleButton.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', { level: 2, name: 'Utwórz rolę' })).toBeVisible();
+    await dialog.getByLabel('Nazwa roli').fill(ROLE_NAME);
+    await dialog.getByLabel('Opis (opcjonalny)').fill(ROLE_DESCRIPTION);
     await expect(
-      featureRow.locator('xpath=..').locator('td').nth(currentColumn).locator('svg.lucide-check'),
-      `${plan.name} does not list Kreator ról`,
-    ).toHaveCount(0);
+      dialog.getByRole('combobox', { name: 'Szablon startowy' }),
+      'the create form offers the D17 templates',
+    ).toBeVisible();
+    await dialog.getByRole('combobox', { name: 'Szablon startowy' }).click();
+    await page.getByRole('option', { name: 'Asystent', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Utwórz', exact: true }).click();
+
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: 'Rola utworzona' }),
+      'the role is created on Launch',
+    ).toBeVisible();
+    const createdRow = roleRow(page, ROLE_NAME);
+    await expect(createdRow).toHaveCount(1);
+    await expect(createdRow.getByText('Niestandardowa', { exact: true })).toBeVisible();
+
+    // The assistant preset really applied: it carries the front-desk org keys and
+    // never ownership (D16).
+    const roles = await getData<OrgRoleRow[]>(page, '/api/v1/organization/roles');
+    const created = roles.find((role) => role.name === ROLE_NAME);
+    if (!created) throw new Error(`${CASE}: the created role is missing from the list`);
+    expect(created.isSystem).toBe(false);
+    expect(created.permissionCount, 'the preset wrote its rows').toBeGreaterThan(0);
+
+    const detail = await getData<OrgRoleDetail>(page, `/api/v1/organization/roles/${created.id}`);
+    expect(detail.permissions).toContainEqual({
+      permissionName: 'org.member.manage',
+      scope: 'organization',
+    });
+    expect(
+      detail.permissions.some((permission) => permission.permissionName === 'org.admin'),
+      'ownership is not grantable through a preset (D16)',
+    ).toBe(false);
+
+    // Editing is the same permission: rename and read it back.
+    const update = await page.request.put(`/api/v1/organization/roles/${created.id}`, {
+      data: { name: ROLE_NAME_EDITED },
+    });
+    expect(update.status(), 'PUT /organization/roles/:id on Launch').toBe(200);
+    const afterUpdate = await getData<OrgRoleRow[]>(page, '/api/v1/organization/roles');
+    expect(afterUpdate.find((role) => role.id === created.id)?.name).toBe(ROLE_NAME_EDITED);
+    await page.reload();
+    await expect(roleRow(page, ROLE_NAME_EDITED), 'the rename reached the page').toHaveCount(1);
+
+    // ── A same-org member without the permission ────────────────────────────
+    const teacherContext = await browser.newContext({
+      baseURL: process.env.QA_APP_URL ?? 'http://localhost:3010',
+    });
+    try {
+      const teacher = await teacherContext.newPage();
+      await loginAs(teacher, TENANT, 'teacher', { locale: 'pl' });
+
+      const teacherPermissions = await getData<{
+        permissions: Record<string, string | null>;
+      }>(teacher, '/api/v1/permissions/me');
+      expect(
+        teacherPermissions.permissions['org.role.manage'],
+        'the teacher role does not hold the gate',
+      ).toBeUndefined();
+
+      // The persona route rule still keeps an educator out of /manage (AUT-17 owns
+      // that surface), so no editor is rendered for this member.
+      await teacher.goto('/manage/roles');
+      await expect(teacher).toHaveURL(/\/edu(\/|$)/);
+      await expect(teacher.getByRole('button', { name: 'Nowa rola', exact: true })).toHaveCount(0);
+
+      // The permission, not the persona, is what the API enforces: the write paths
+      // answer 403 for exactly the caller the editor is withheld from.
+      const deniedCreate = await teacher.request.post('/api/v1/organization/roles', {
+        data: { name: 'Asystent nauczyciela', description: null },
+      });
+      expect(deniedCreate.status(), 'POST without org.role.manage').toBe(403);
+      expect(await deniedCreate.json()).toEqual({ success: false, error: 'FORBIDDEN' });
+
+      const deniedDelete = await teacher.request.delete(`/api/v1/organization/roles/${created.id}`);
+      expect(deniedDelete.status(), 'DELETE without org.role.manage').toBe(403);
+
+      // The list itself stays readable for every org member (the members page and
+      // the permission picker read it too).
+      const teacherRoles = await getData<OrgRoleRow[]>(teacher, '/api/v1/organization/roles');
+      expect(teacherRoles.map((role) => role.name)).toContain(ROLE_NAME_EDITED);
+    } finally {
+      await teacherContext.close();
+    }
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });

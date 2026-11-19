@@ -4,9 +4,13 @@ import {
   type PermissionCatalogKey,
   type PermissionScope,
   type RequestContext,
+  ROLE_TEMPLATES,
 } from '@studiq/authz';
 import type { ServiceResult } from '@studiq/server/lib/service-result';
-import { CATALOG_PERMISSION_KEYS } from '@studiq/server/models/org-role.model';
+import {
+  CATALOG_PERMISSION_KEYS,
+  type CreateOrgRoleInput,
+} from '@studiq/server/models/org-role.model';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
@@ -93,6 +97,11 @@ function catalogPayload(
 /** A profile outside the enum, the way a hand-crafted request body could carry it. */
 function unknownProfile(value: string): EntitlementProfile {
   return asJson<EntitlementProfile>(value);
+}
+
+/** A template outside the closed preset list, as a direct caller could pass it. */
+function unknownTemplate(value: string): NonNullable<CreateOrgRoleInput['template']> {
+  return asJson<NonNullable<CreateOrgRoleInput['template']>>(value);
 }
 
 /** The `org_roles` lookup row `setPermissions` reads before it authorizes anything. */
@@ -287,6 +296,88 @@ describe('OrgRoleService', () => {
         name: 'editor',
         // The schema rejects this first; the service is also a direct entry point (tests).
         entitlementProfile: unknownProfile('everything'),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('materialises a preset as an ordinary custom role with its permission rows', async () => {
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Assistant',
+        display_name: 'Assistant',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      const permissionsQb = qb(null);
+      mock.from.mockReturnValueOnce(insertQb).mockReturnValueOnce(permissionsQb);
+
+      const result = await service.createRole(ctx, { name: 'Assistant', template: 'assistant' });
+
+      expect(result.success).toBe(true);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ is_system: false, entitlement_profile: 'none' }),
+      );
+      const expected = Object.entries(ROLE_TEMPLATES.assistant.permissions).map(
+        ([permission_name, scope]) => ({
+          org_role_id: 'r-1',
+          permission_name,
+          scope,
+        }),
+      );
+      expect(permissionsQb.insert).toHaveBeenCalledWith(expected);
+    });
+
+    it('creates zero permission rows for the blank template', async () => {
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Fresh',
+        display_name: 'Fresh',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.createRole(ctx, { name: 'Fresh', template: 'blank' });
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('org_roles');
+    });
+
+    it('deletes the role when its preset rows fail to insert', async () => {
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Assistant',
+        display_name: 'Assistant',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      const permissionsQb = qb(null, { code: '23503', message: 'permission_key_fkey' });
+      const deleteQb = qb(null);
+      mock.from
+        .mockReturnValueOnce(insertQb)
+        .mockReturnValueOnce(permissionsQb)
+        .mockReturnValueOnce(deleteQb);
+
+      const result = await service.createRole(ctx, { name: 'Assistant', template: 'assistant' });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(deleteQb.delete).toHaveBeenCalled();
+      expect(deleteQb.eq).toHaveBeenCalledWith('id', 'r-1');
+    });
+
+    it('returns UNPROCESSABLE_ENTITY for a template outside the closed preset list', async () => {
+      const result = await service.createRole(ctx, {
+        name: 'editor',
+        template: unknownTemplate('teacher'),
       });
 
       expect(result.success).toBe(false);

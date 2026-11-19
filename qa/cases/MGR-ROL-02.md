@@ -1,15 +1,21 @@
-# MGR-ROL-02 — Tworzenie i edycja roli – plan z role.builder
+# MGR-ROL-02 — Tworzenie i edycja roli – uprawnienie org.role.manage
 
 - id: MGR-ROL-02
 - priority: P2 ważny
 - module: MGR – Panel managera organizacji (/manage)
 - section: Role (/manage/roles)
-- prereqs: role.builder dla organizacji (plan Hub); legacy BIL-04
+- prereqs: uprawnienie org.role.manage (rola org admin); plan Hub z BIL-04 jako kontekst
 - source: StudiQ Dokument Testera v1.3
 
 ## Prerequisite (verbatim)
 
 Włącz role.builder dla organizacji (override w adminie lub plan Hub: BIL-04).
+
+> **Stan po fazie 2a-2 (ADR-0015 §4.4).** Bramką zapisu roli jest uprawnienie
+> `org.role.manage`, a nie funkcja planu `role.builder`. Rolę zapisuje członek,
+> którego rola organizacji ma to uprawnienie — rola systemowa `admin` ma je na
+> każdym planie. Tenant pozostaje na Hubie, bo tak opisuje go dokument źródłowy,
+> ale plan nie jest już warunkiem zapisu.
 
 ## Prerequisite context (verbatim, legacy seed)
 
@@ -37,10 +43,11 @@ Expected:
 ## Seed (QA-suite tenant)
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`) ani nie
-przechodzi ścieżki zakupu z BIL-04. Warunek wstępny przypadku — `role.builder` dla
-organizacji — jest ustawiany **wewnątrz tenanta przypadku** przez ten sam RPC, którego
-używa webhook płatności (`apply_org_plan`), a nie przez globalną flagę czy zmianę planu
-innej organizacji:
+przechodzi ścieżki zakupu z BIL-04. Warunek wstępny przypadku — możliwość zapisu roli —
+spełnia rola systemowa `admin` tenanta, która ma `org.role.manage`; plan Hub jest
+ustawiany **wewnątrz tenanta przypadku** przez ten sam RPC, którego używa webhook
+płatności (`apply_org_plan`), bo tak opisuje przypadek, a nie przez globalną flagę czy
+zmianę planu innej organizacji:
 
 ```bash
 bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
@@ -48,8 +55,8 @@ bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
-  czemu rola `admin` dostaje `role.builder`; `/api/v1/features/me` zwraca tę funkcję.
+  tenanta na plan Hub. Zapisu roli nie warunkuje już plan: `/api/v1/permissions/me`
+  administratora zwraca `org.role.manage` z roli `admin`.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji), T1 →
   `users.teacher`, S1 → `users.student`; przypadku nie dotyczy T2.
 - Klucz tenanta: `MGR-ROL-02.md::MGR-ROL-02#<run>::qa-shared` —

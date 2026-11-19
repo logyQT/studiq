@@ -1,0 +1,252 @@
+import type { Database } from '@studiq/server/types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  cleanupOrganizationDeep,
+  seedOrgMembership,
+  seedOrganization,
+} from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
+
+/**
+ * RLS parity for the `org.role.manage` gate (ADR-0015 §4.4, R4).
+ *
+ * The role write routes gate on the permission, so the table must too: before
+ * this migration the policy asked `is_org_manager` (a `member.manage` feature),
+ * which meant a custom role holding `org.role.manage` passed the API and was
+ * refused by RLS — reachable through PostgREST, not only through a UI bug.
+ *
+ * Both directions are pinned with real signed-in sessions (the PostgREST path a
+ * browser uses): the permission holder may write, and a role that holds only the
+ * old manager feature may not. The control is what proves the predicate moved
+ * rather than widened.
+ */
+
+const PASSWORD = 'RoleManageRls!';
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+function newClient(): SupabaseClient<Database> {
+  return createClient<Database>(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+async function signIn(email: string): Promise<SupabaseClient<Database>> {
+  const client = newClient();
+  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+  if (error) throw new Error(`signIn failed for ${email}: ${error.message}`);
+  return client;
+}
+
+/** The `org_roles` INSERT error a session gets, or `null` when the policy allows it. */
+async function orgRoleInsertError(
+  session: SupabaseClient<Database>,
+  organizationId: string,
+  name: string,
+) {
+  const { error } = await session.from('org_roles').insert({
+    organization_id: organizationId,
+    name,
+    display_name: name,
+    description: null,
+    is_system: false,
+  });
+  return error;
+}
+
+describe('org.role.manage RLS predicate', () => {
+  const service = createTypedServiceClient();
+
+  let orgId: string;
+  let foreignOrgId: string;
+  let roleHolderId: string;
+  let managerFeatureHolderId: string;
+  /** Empty custom roles the two sessions write permission rows against. */
+  let roleHolderTargetId: string;
+  let managerFeatureHolderTargetId: string;
+
+  let roleHolder: SupabaseClient<Database>;
+  let managerFeatureHolder: SupabaseClient<Database>;
+
+  async function createUser(email: string, label: string): Promise<string> {
+    const { data, error } = await service.auth.admin.createUser({
+      email,
+      password: PASSWORD,
+      email_confirm: true,
+      user_metadata: { name: label, account_type: 'manager' },
+    });
+    if (error) throw new Error(`createUser ${label} failed: ${error.message}`);
+    return data.user.id;
+  }
+
+  /** A custom role in `organizationId` holding exactly `permission`, at organization scope. */
+  async function customRole(
+    organizationId: string,
+    name: string,
+    permission: string | null,
+  ): Promise<string> {
+    const { data: role, error } = await service
+      .from('org_roles')
+      .insert({
+        organization_id: organizationId,
+        name,
+        display_name: name,
+        description: null,
+        is_system: false,
+      })
+      .select('id')
+      .single();
+    if (error) throw new Error(`role ${name} create failed: ${error.message}`);
+
+    if (permission) {
+      const { error: permissionError } = await service.from('org_role_permissions').insert({
+        org_role_id: role.id,
+        permission_name: permission,
+        scope: 'organization',
+      });
+      if (permissionError) {
+        throw new Error(`permission for ${name} failed: ${permissionError.message}`);
+      }
+    }
+
+    return role.id;
+  }
+
+  beforeAll(async () => {
+    const org = await seedOrganization(`role-manage-${tag}`);
+    orgId = org.org.id;
+    const foreignOrg = await seedOrganization(`role-manage-foreign-${tag}`);
+    foreignOrgId = foreignOrg.org.id;
+
+    roleHolderId = await createUser(`role-holder-${tag}@dev.local`, 'role holder');
+    managerFeatureHolderId = await createUser(
+      `manager-feature-${tag}@dev.local`,
+      'manager feature holder',
+    );
+
+    const roleHolderRole = await customRole(orgId, `role-holder-${tag}`, 'org.role.manage');
+    const managerFeatureRole = await customRole(orgId, `manager-feature-${tag}`, null);
+
+    // The legacy manager capability `is_org_manager` reads: a custom role granted
+    // `member.manage` through the role builder. It must keep manager authority on
+    // every table 2b has not moved yet, but lose the role write to the permission.
+    const { error: featureError } = await service.from('org_role_features').insert({
+      org_role_id: managerFeatureRole,
+      feature_key: 'member.manage',
+      is_enabled: true,
+    });
+    if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);
+
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: roleHolderId,
+      orgRoleId: roleHolderRole,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: managerFeatureHolderId,
+      orgRoleId: managerFeatureRole,
+    });
+
+    // Targets for the permission-row policies: empty custom roles, so the
+    // inserts below cannot collide with a seeded row.
+    roleHolderTargetId = await customRole(orgId, `target-role-manage-${tag}`, null);
+    managerFeatureHolderTargetId = await customRole(orgId, `target-member-manage-${tag}`, null);
+
+    roleHolder = await signIn(`role-holder-${tag}@dev.local`);
+    managerFeatureHolder = await signIn(`manager-feature-${tag}@dev.local`);
+  });
+
+  afterAll(async () => {
+    await cleanupOrganizationDeep(orgId).catch(() => {});
+    await cleanupOrganizationDeep(foreignOrgId).catch(() => {});
+    for (const id of [roleHolderId, managerFeatureHolderId]) {
+      if (id) await service.auth.admin.deleteUser(id).catch(() => {});
+    }
+  });
+
+  it('lets an org.role.manage holder create, update and delete a role', async () => {
+    const { data: created, error: insertError } = await roleHolder
+      .from('org_roles')
+      .insert({
+        organization_id: orgId,
+        name: `created-by-role-holder-${tag}`,
+        display_name: `created-by-role-holder-${tag}`,
+        description: null,
+        is_system: false,
+      })
+      .select('id');
+    expect(insertError, 'INSERT is allowed by the permission predicate').toBeNull();
+    expect(created).toHaveLength(1);
+
+    const roleId = created![0]!.id;
+    const { error: updateError } = await roleHolder
+      .from('org_roles')
+      .update({ description: 'renamed' })
+      .eq('id', roleId);
+    expect(updateError, 'UPDATE is allowed by the permission predicate').toBeNull();
+
+    const { error: deleteError } = await roleHolder.from('org_roles').delete().eq('id', roleId);
+    expect(deleteError, 'DELETE is allowed by the permission predicate').toBeNull();
+  });
+
+  it('lets an org.role.manage holder write the role permission rows', async () => {
+    const { error: insertError } = await roleHolder.from('org_role_permissions').insert({
+      org_role_id: roleHolderTargetId,
+      permission_name: 'deck.read',
+      scope: 'own',
+    });
+    expect(insertError, 'INSERT is allowed by the permission predicate').toBeNull();
+
+    const { error: updateError } = await roleHolder
+      .from('org_role_permissions')
+      .update({ scope: 'group' })
+      .eq('org_role_id', roleHolderTargetId)
+      .eq('permission_name', 'deck.read');
+    expect(updateError, 'UPDATE is allowed by the permission predicate').toBeNull();
+
+    const { error: deleteError } = await roleHolder
+      .from('org_role_permissions')
+      .delete()
+      .eq('org_role_id', roleHolderTargetId)
+      .eq('permission_name', 'deck.read');
+    expect(deleteError, 'DELETE is allowed by the permission predicate').toBeNull();
+  });
+
+  it('still refuses a role that holds only the old manager feature (member.manage)', async () => {
+    // Prove the control actually holds the legacy capability, so the 42501 below
+    // is the moved predicate and not a role with no authority at all.
+    const { data: legacyManager } = await managerFeatureHolder.rpc('rls_caller_has_org_feature', {
+      p_organization_id: orgId,
+      p_feature: 'member.manage',
+    });
+    expect(legacyManager, 'the control holds the legacy member.manage feature').toBe(true);
+
+    const error = await orgRoleInsertError(
+      managerFeatureHolder,
+      orgId,
+      `denied-manager-feature-${tag}`,
+    );
+    expect(error?.code, 'org_roles INSERT needs org.role.manage, not member.manage').toBe('42501');
+
+    const { error: permissionError } = await managerFeatureHolder
+      .from('org_role_permissions')
+      .insert({
+        org_role_id: managerFeatureHolderTargetId,
+        permission_name: 'deck.read',
+        scope: 'own',
+      });
+    expect(
+      permissionError?.code,
+      'org_role_permissions INSERT needs org.role.manage, not member.manage',
+    ).toBe('42501');
+  });
+
+  it('keeps the tenant scope: the permission only reaches the caller own organizations', async () => {
+    const error = await orgRoleInsertError(roleHolder, foreignOrgId, `cross-org-${tag}`);
+
+    expect(error?.code, 'the role write is scoped to rls_caller_org_ids()').toBe('42501');
+  });
+});

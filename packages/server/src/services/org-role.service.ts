@@ -3,9 +3,12 @@ import {
   type EntitlementProfile,
   isCatalogScope,
   isEntitlementProfile,
+  isRoleTemplateName,
   PERMISSIONS,
   type PermissionDefinition,
   type RequestContext,
+  ROLE_TEMPLATES,
+  type RoleTemplate,
   scopeCovers,
 } from '@studiq/authz';
 import { log } from '@studiq/server/lib/log';
@@ -29,6 +32,18 @@ const CATALOG = PERMISSIONS as Record<string, PermissionDefinition | undefined>;
 /** `entitlement_profile` is a text column with a CHECK; read it through the catalog type. */
 function profileOf(value: string): EntitlementProfile {
   return isEntitlementProfile(value) ? value : 'none';
+}
+
+/** The permission rows a template seeds, in catalog order. */
+function templateRows(
+  orgRoleId: string,
+  template: RoleTemplate,
+): { org_role_id: string; permission_name: string; scope: CatalogScope }[] {
+  return Object.entries(template.permissions).map(([permission_name, scope]) => ({
+    org_role_id: orgRoleId,
+    permission_name,
+    scope,
+  }));
 }
 
 interface OrgRoleSummary {
@@ -148,6 +163,14 @@ export class OrgRoleService {
       return failure('UNPROCESSABLE_ENTITY');
     }
 
+    // D17: a template is an editor preset, materialised as an ordinary custom
+    // role. `blank` is the default — a role that holds nothing (fail-closed).
+    const templateName = data.template ?? 'blank';
+    if (!isRoleTemplateName(templateName)) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
+    const template = ROLE_TEMPLATES[templateName];
+
     const { data: role, error } = await supabase
       .from('org_roles')
       .insert({
@@ -156,13 +179,27 @@ export class OrgRoleService {
         display_name: data.name,
         description: data.description ?? null,
         is_system: false,
-        // A custom role starts with no paid surface (ADR-0015 §4.2, fail-closed).
-        entitlement_profile: data.entitlementProfile ?? 'none',
+        // A custom role starts with no paid surface (ADR-0015 §4.2, fail-closed);
+        // every preset is `none`, so the template cannot widen it.
+        entitlement_profile: data.entitlementProfile ?? template.entitlementProfile,
       })
       .select('id, name, display_name, description, is_system, entitlement_profile')
       .single();
 
     if (error) return toDbFailure(error);
+
+    const rows = templateRows(role.id, template);
+    if (rows.length > 0) {
+      const { error: permissionsError } = await supabase.from('org_role_permissions').insert(rows);
+
+      if (permissionsError) {
+        // The role and its preset rows are one write: a role whose template
+        // failed to apply is a role with less authority than the caller asked
+        // for, so undo it rather than leave a half-created row.
+        await supabase.from('org_roles').delete().eq('id', role.id);
+        return toDbFailure(permissionsError);
+      }
+    }
 
     return success(toRoleSummary(role));
   }

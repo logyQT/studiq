@@ -79,10 +79,17 @@ const AI_CHAT_PLAN_GATE_KEYS = [
 ] as const;
 
 /**
- * #259 — the roles page plan gate renders these `ManageRolesPage` keys directly,
- * so a missing translation would show the raw key on a locked page.
+ * 2a-2 (D17) — the roles page renders the template picker's labels directly, so a
+ * missing translation would show the raw key in the create dialog.
  */
-const MANAGE_ROLES_PLAN_GATE_KEYS = ['locked_title', 'locked_desc', 'locked_cta'] as const;
+const MANAGE_ROLES_TEMPLATE_KEYS = [
+  'template_label',
+  'template_hint',
+  'template_assistant',
+  'template_billing',
+  'template_read-only',
+  'template_blank',
+] as const;
 
 /**
  * #139 — `DeckFormDialog` renders the group-required hint from these namespaces,
@@ -203,10 +210,10 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     }
   });
 
-  it('translates every manage-roles plan-gate key', () => {
+  it('translates every manage-roles template-picker key', () => {
     const manageRolesPage = messages.ManageRolesPage as Record<string, string>;
 
-    for (const key of MANAGE_ROLES_PLAN_GATE_KEYS) {
+    for (const key of MANAGE_ROLES_TEMPLATE_KEYS) {
       const message = manageRolesPage[key];
 
       expect(message, `ManageRolesPage.${key}`).toBeTypeOf('string');

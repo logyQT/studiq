@@ -49,11 +49,15 @@ export {
 // ── Organization roles ──────────────────────────────────────────────────────
 export {
   isOrgAdminRole,
+  isRoleTemplateName,
   ORG_ADMIN_ROLE,
+  ROLE_TEMPLATE_NAMES,
+  ROLE_TEMPLATES,
   SYSTEM_ROLE_NAMES,
   SYSTEM_ROLE_TEMPLATES,
+  type RoleTemplate,
+  type RoleTemplateName,
   type SystemRoleName,
-  type SystemRoleTemplate,
 } from './lib/org-roles';
 
 // ── Request context ─────────────────────────────────────────────────────────

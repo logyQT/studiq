@@ -34,11 +34,13 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 8     | extendability audit (release gate)             | pending | —     | —   | all 188 + E2E             | 2026-11-19 |
 
 **Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389) and 1c (#1390,
-`67cfeb16`) are merged. Phase 2 is active: slice **2a-1** (the entitlement
-profile) is written on `feat/authority-2a-1`, and slice **2a-3** (the
-closed-catalog role editor) on `feat/authority-2a-3`, which lands **before**
-2a-2 by D24. The four legacy management keys stay until slice 2b, which replaces
-their gates with permissions.
+`67cfeb16`) are merged. Phase 2 is active: **2a-3** (the closed-catalog editor),
+**2a-1** (the entitlement profile) and **2a-2** (role presets + the
+`org.role.manage` gate and its RLS twin) are written on `feat/authority-2a-3`,
+`feat/authority-2a-1` and `feat/authority-2a-2`; 2a-3 lands before 2a-2 by D24.
+Next slices: 2a-4 (group roles) and 2a-5 (fail-closed scope defaults). The four
+legacy management keys stay until slice 2b, which replaces their remaining gates
+with permissions.
 
 ## 2. How to update this file
 
@@ -75,6 +77,7 @@ their gates with permissions.
 | R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                     |
 | R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                     |
 | R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                        | the `org.role.manage` gate would have been deletable by one role save   |
+| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                     | the `org_role_permissions` predicate read its own table                 |
 
 ## 4. Decisions
 
@@ -574,13 +577,13 @@ text is the product spec.
 **Settled 2026-11-19 — five slices on one short-lived branch.** Phase 2 started
 after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 
-| Slice    | Contents                                                                                                                                          | Size                    |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| **2a-1** | `entitlement_profile` + trigger/seed/backfill + profile-driven resolver + RLS fallback. Closes the RLS twin of FP-01 in the same PR.              | ~750 (`size:exception`) |
-| **2a-3** | closed-catalog editor + complete payload + audit log. Lands **before** 2a-2 (D24).                                                                | ~400 (`size:exception`) |
-| **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | ~200                    |
-| **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                     | ~90                     |
-| **2a-5** | fail-closed scope defaults.                                                                                                                       | ~110                    |
+| Slice    | Contents                                                                                                                                                              | Size                    |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **2a-1** | `entitlement_profile` + trigger/seed/backfill + profile-driven resolver + RLS fallback. Closes the RLS twin of FP-01 in the same PR.                                  | ~750 (`size:exception`) |
+| **2a-3** | closed-catalog editor + complete payload + audit log. Lands **before** 2a-2 (D24).                                                                                    | ~400 (`size:exception`) |
+| **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate + the RLS predicate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | ~200                    |
+| **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                                         | ~90                     |
+| **2a-5** | fail-closed scope defaults.                                                                                                                                           | ~110                    |
 
 The table is in **landing order**, not the original plan's order: 2a-3 goes before
 2a-2 because the gate flip is only safe once the editor sends the complete catalog
@@ -812,13 +815,15 @@ depend on the old writer.
 **Follow-ups this slice creates:**
 
 - **2a-2** adds `org_role_permissions.permission_key` → `permissions(key)` and the
-  backfill, then flips the gate to `requirePermission('org.role.manage')`. The
-  complete payload is the prerequisite (D24); the FK's backfill must run before
-  the constraint, because existing orgs keep rows the closed catalog knows but the
-  old free-text editor could also have written unknown ones. Until that FK lands,
-  a role holding a non-catalog name is a dead end: the editor cannot save it (the
-  payload's completeness check passes, but the role's own row is neither renderable
-  nor grantable), which fails closed but cannot be repaired from the UI.
+  backfill, then flips the gate to `requirePermission('org.role.manage')`. **Not
+  shipped in 2a-2** (its scope was the gate, the RLS twin and the presets; a
+  foreign key plus the backfill of old free-text names is its own change). The gap
+  is unchanged and still fails closed: a row the catalog does not know is neither
+  renderable nor grantable, so it cannot widen authority; the FK and backfill move
+  to 2b, where the catalog-pruning migration runs anyway. The complete payload is
+  the prerequisite (D24); when the FK lands, its backfill must run before the
+  constraint, because existing orgs keep rows the old free-text editor could have
+  written.
 - **2a-2 acceptance criterion**: `is_org_manager` RLS is
   `has_org_feature(..., 'member.manage')` (the legacy row), not
   `org.role.manage`. When the controller gate flips, a custom role holding
@@ -859,6 +864,128 @@ schema's completeness rule is what makes the write safe — a partial payload is
 a 422 that writes nothing — and the write is target-first (upsert, then prune), so
 even a failed save can only leave a superset.
 Rule: R17.
+
+**2a-2 shipped on `feat/authority-2a-2` (PR pending):**
+
+- **Gate.** `Permission.ORG_ROLE_MANAGE = 'org.role.manage'` joins the
+  code-readable map (`Permission ⊆ PERMISSIONS`); `ORG_ROLE_MANAGE` is the first
+  `org.*` key there, the rest follow with 2a-5. `requirePermission(ctx, key)` in
+  `packages/server/src/lib/authz.ts` is `can()` + `throw new AppError('FORBIDDEN')`,
+  so the controller cannot forget the branch; the four write handlers
+  (`createRole`, `updateRole`, `deleteRole`, `setPermissions`) use it and drop
+  `requireFeature(ctx, 'role.builder')`. `getRole`/`listRoles` stay ungated: the
+  list is read by `/manage/members` and the invite picker.
+- **RLS twin (R4).** `20261119190000_org_role_manage_rls.sql` adds
+  `public.rls_caller_has_permission(p_organization_id, p_permission)` (SECURITY
+  DEFINER, `search_path = ''`, execute to `authenticated`/`service_role`) and
+  moves the six write policies on `org_roles` and `org_role_permissions` —
+  insert/update/delete each — from `rls_caller_is_org_manager` (the legacy
+  `member.manage` feature) to `rls_caller_has_permission(…, 'org.role.manage')`,
+  keeping `rls_caller_org_ids()`. The two SELECT policies and every other table
+  stay as they were; `is_org_manager` still guards members, settings, seats and
+  invitations until 2b.
+- **Presets (D17).** `ROLE_TEMPLATES` in `@studiq/authz` holds Assistant / Billing
+  / Read-only / Blank (`ROLE_TEMPLATE_NAMES`, `isRoleTemplateName`), each
+  `entitlementProfile: 'none'`, every key/scope from `PERMISSIONS`, no
+  `org.admin`. `CreateOrgRoleSchema.template` accepts only those four and defaults
+  to `blank`; `UpdateOrgRoleSchema` has no field, so an edit cannot re-apply a
+  preset. `OrgRoleService.createRole` resolves the preset, inserts the role, then
+  its rows, and deletes the role if the row insert fails (the
+  `createAndJoin` shape).
+- **UI.** `/manage/roles` gates on `usePermission()('org.role.manage', { orgId })`
+  instead of `useFeature()('role.builder')`; the locked card, the
+  `featuresPending` guard, the `ORGANIZATION_PRICING_URL` import and the
+  `locked_*` keys in both locales are deleted. The create dialog gains the preset
+  picker (default „Pusty”/Blank), create-only — an existing role keeps its
+  permissions editor.
+- **Tests.** `__tests__/unit/lib/org-roles.test.ts` derives the preset shape from
+  `PERMISSIONS` (closed catalog, allowed scopes, no `org.admin`, `none` profile,
+  per-preset matrices), the model suite covers the enum and the create-only
+  field, the controller suite pins `requirePermission(ctx, 'org.role.manage')` on
+  all four writes and the ungated reads, the service suite covers preset rows,
+  the blank/omitted case, an unknown preset and the failed-insert rollback, and
+  two integration files prove the DB matrix equality
+  (`org-role-templates.test.ts`) and the RLS predicate in both directions with
+  real signed-in sessions (`org-role-manage-rls.test.ts`: an `org.role.manage`
+  role writes roles and permission rows, a role holding only the legacy
+  `member.manage` feature is refused 42501, and the foreign-org write stays
+  denied).
+- **QA/docs.** `MGR-ROL-01` is rewritten around the permission contract (a Launch
+  admin creates and edits a role; a member without the key is refused 403 and has
+  no editor), `MGR-ROL-02/04` prerequisites move to `org.role.manage` +
+  `/permissions/me`, `MGR-ROL-03`'s plan note is corrected, and the out-of-map e2e
+  `manage-roles-plan-gate.spec.ts` is deleted. ADR §4.2 now separates the three
+  seeded roles from the four presets and §9's picker list drops Teacher.
+- **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`,
+  `review:static`, `knip`, `dup:base`, `format:check`, the touched integration
+  files serially, and the five mutations below.
+- **One-PR incoherence (accepted).** The pricing surfaces still advertise
+  „Kreator ról” / `role.builder` and MGR-ROL-01's „Zobacz plany” path is gone from
+  the page. The entitlement row and its plan/flag rows are deleted in 2b with the
+  other three markers; until then the plan still _claims_ a capability it no
+  longer gates. Recorded rather than half-removed, because deleting the marker
+  needs the plan-row-before-catalog-row order and the same PR as the remaining
+  predicates.
+
+**Follow-ups this slice creates:**
+
+- **2b** must delete `org.role.manage`'s entitlement twin (`role.builder`) from
+  `plan_entitlements`, `org_role_features`, `entitlement_flags` and
+  `entitlement_catalog` — in that order — and move `is_org_manager`'s callers
+  (members, settings, seats, invitations) to `rls_caller_has_permission`.
+  `role.builder` currently has no reader in role writes but is still resolved by
+  the resolver and advertised by pricing.
+- **Phase 6** may pass the caller's own scope into the editor (the 2a-3
+  follow-up): today a grant beyond the caller's authority passes the client and
+  surfaces as `perms_save_failed`.
+- The six `org_role_permissions`/`org_roles` write policies are now the only
+  place `rls_caller_has_permission` is used. 2b's migration can reuse it
+  unchanged for the remaining control-plane tables.
+
+**Difficulty log**
+
+#### 2026-11-19 — the API gate and the RLS predicate disagreed by construction
+
+What: the controller moved from the `role.builder` entitlement to
+`org.role.manage` while `is_org_manager` (which guards all six role-write
+policies) still meant `has_org_feature(..., 'member.manage')`. A custom role
+holding only `org.role.manage` would pass the route and then have its write
+refused at the table — through PostgREST directly, regardless of the UI.
+Why: the two gates were built in different phases and only the app-layer one was
+on the flip list; `member.manage` looked like the same capability because the
+seeded Admin role holds both.
+Fix: `public.rls_caller_has_permission(org, key)` and the six policies move in
+the same PR (R4), pinned by a two-direction integration test — the permission
+holder writes, the legacy `member.manage` holder does not.
+Rule: when a permission replaces a feature as an app gate, its RLS twin moves in
+the same PR; the feature name and the permission name being different strings is
+exactly how the divergence hides.
+
+#### 2026-11-19 — a preset is a row writer, not a role
+
+What: D17's four presets could have been modelled as extra seeded system roles.
+They are materialised per organization instead, as ordinary custom roles.
+Why: a system role is protected from rename/delete and is created for every
+organization by the trigger; a preset is a starting point an admin may edit,
+rename or discard, and an org that never picks "Billing" should not carry it.
+Fix: `ROLE_TEMPLATES` lives in `@studiq/authz` as a closed matrix the service
+copies into `org_role_permissions`; the schema accepts the four names only, the
+DB assertion compares the rows to the constant, and the failed-insert path
+deletes the half-created role.
+Rule: a preset writes rows; a system role is an identity. Do not seed a preset.
+
+#### 2026-11-19 — the RLS helper had to be SECURITY DEFINER for the table it guards
+
+What: the new predicate reads `org_role_permissions`, and three of the policies
+it replaces live on `org_role_permissions` itself. A SQL function without
+`SECURITY DEFINER` would re-enter its own policy and raise 42P17.
+Why: `rls_caller_org_ids()` solves the same recursion for `org_members`; the
+pattern is invisible from the policy text.
+Fix: `rls_caller_has_permission` runs as the owner, `search_path = ''`, execute
+granted to `authenticated`/`service_role` only, `PUBLIC` revoked; verified by
+running the migration in a rolled-back transaction before the reset.
+Rule: an RLS helper that reads the table whose policy calls it must be SECURITY
+DEFINER — otherwise it recurses, and the error surfaces only at query time.
 
 ### Phase 3 — entitlements and limits
 

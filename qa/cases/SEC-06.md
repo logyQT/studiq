@@ -29,10 +29,10 @@ bun scripts/qa-tenant.ts SEC-06 --fresh
   (rola `admin`), `teacher` (typ `educator`, rola `teacher` — odpowiednik `teacher1`),
   drugi nauczyciel oraz `student` (rola `member` — odpowiednik `student1`). Dzięki temu
   odrzucenie nauczyciela nie może być skutkiem tego, że jest tylko członkiem `member`.
-- Plan Hub jest częścią warunku przypadku: bez `role.builder` / `member.manage` **każdy**
-  nie-admin dostaje 403 z powodu planu, więc granica roli byłaby nieodróżnialna od bramki
-  funkcji. Na Hubie admin wykonuje te same operacje (kontrola pozytywna), a nauczyciel
-  nie — to jest właśnie testowana granica uprawnień.
+- Plan Hub jest częścią warunku przypadku (dokument źródłowy); bramką zapisu ról i
+  członków jest uprawnienie (`org.role.manage` / `org.member.manage`), a rola `admin`
+  ma je na każdym planie. Admin wykonuje te same operacje (kontrola pozytywna), a
+  nauczyciel nie — to jest testowana granica uprawnień.
 - Identyfikatory: `tenantKey('qa/cases/SEC-06.md', 'SEC-06#<suffix>', 'qa-shared')` +
   `tenantId(key, entity)`; adresy e-mail i nazwa roli kontrolnej zawierają sufiks przebiegu,
   więc dwa przebiegi nigdy nie kolidują.
@@ -58,7 +58,7 @@ bun scripts/qa-tenant.ts SEC-06 --fresh
   (nie 422).
 - `teacher` (typ `educator`, rola organizacyjna `teacher`): `PUT /organization/members`
   (zmiana roli studenta) → **403**; `POST /organization/roles` → **403** (brak
-  `member.manage` / `role.builder` w roli `teacher`); `POST /organization/invites/bulk`
+  `org.member.manage` / `org.role.manage` w roli `teacher`); `POST /organization/invites/bulk`
   z rolą `admin` i z rolą `teacher` → **403** (`can_assign_org_role`, #189).
 - Brak zmian: wiersze `org_members` (użytkownik → rola) identyczne z baseline, zero
   zaproszeń na adresy użyte w odrzuconych próbach, zero nowych ról niestandardowych.
