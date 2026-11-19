@@ -11,6 +11,12 @@
 -- migration renames are not read anywhere (`withAuth` serves them as scopes, and
 -- no code reads `member.manage`, `role.builder`, `org.manage`, `ai.chat`,
 -- `documents`, `study.*` or `test.*` through `permissionScopes`).
+--
+-- Write-path change: the two foreign keys added below turn an admin free-text
+-- write of an unknown entitlement or limit key into a `23503`, which the admin
+-- services already map to `BAD_REQUEST`. Every key that exists today is in its
+-- catalog, so reads do not change; only a hand-crafted or stale write now fails
+-- closed instead of storing a key nothing resolves.
 
 -- ==========================================
 -- 1. limit_catalog — the keys `packages/server/src/services/limit.catalog.ts`
@@ -78,6 +84,15 @@ alter table public.entitlement_catalog enable row level security;
 create policy "Authenticated catalog read" on public.entitlement_catalog
   for select to authenticated
   using (true);
+
+-- The schema owns the catalog write contract: production applies migrations
+-- (`db push`) and never runs the seeds, so the privileges `authenticated`
+-- receives by default (`arwdDxtm`, TRUNCATE included, which bypasses RLS) have
+-- to be narrowed here, not only in `99_dev_grants.sql`.
+revoke insert, update, delete, truncate, references, trigger
+  on public.limit_catalog, public.entitlement_catalog from authenticated;
+
+grant select on public.limit_catalog, public.entitlement_catalog to authenticated;
 
 -- ==========================================
 -- 3. Table and column renames.
@@ -180,34 +195,63 @@ insert into public.permissions (key, category, allowed_scopes, assignable, descr
 -- ==========================================
 -- 5. Rewrite `org_role_permissions` for existing orgs.
 --
+--    A `db reset` runs this migration before any organization exists, so the
+--    rewrite is a no-op in every automated run; production is where it matters.
+--    A real function is what the integration suite exercises — replaying the
+--    statement list inline could not be called from a test.
+--
 --    The old role editor accepted free-string names, so a role may already hold
 --    both the old and the new name; the unique key is
---    (org_role_id, permission_name), so the old row has to go first. The rows
---    named below are the six entitlement keys phase 0b removed from the catalog
---    plus the two renamed management keys.
+--    (org_role_id, permission_name), so the old row has to go first. The six
+--    deleted names are the entitlement keys phase 0b removed from the catalog;
+--    the final sweep normalises the rest to the closed catalog.
 -- ==========================================
-delete from public.org_role_permissions o
-using public.org_role_permissions n
-where o.org_role_id = n.org_role_id
-  and (
-    (o.permission_name = 'member.manage' and n.permission_name = 'org.member.manage')
-    or (o.permission_name = 'role.builder' and n.permission_name = 'org.role.manage')
-  );
+create or replace function public.migrate_org_role_permission_names()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+BEGIN
+  -- 1. Dedupe: drop the old name where the role also holds the new one.
+  delete from public.org_role_permissions o
+  using public.org_role_permissions n
+  where o.org_role_id = n.org_role_id
+    and (
+      (o.permission_name = 'member.manage' and n.permission_name = 'org.member.manage')
+      or (o.permission_name = 'role.builder' and n.permission_name = 'org.role.manage')
+    );
 
-update public.org_role_permissions
-set permission_name = 'org.member.manage'
-where permission_name = 'member.manage';
+  -- 2. Map the two management names the permission catalog now spells `org.*`.
+  update public.org_role_permissions
+  set permission_name = 'org.member.manage'
+  where permission_name = 'member.manage';
 
-update public.org_role_permissions
-set permission_name = 'org.role.manage'
-where permission_name = 'role.builder';
+  update public.org_role_permissions
+  set permission_name = 'org.role.manage'
+  where permission_name = 'role.builder';
 
-delete from public.org_role_permissions
-where permission_name = 'org.manage'
-   or permission_name = 'ai.chat'
-   or permission_name = 'documents'
-   or permission_name like 'study.%'
-   or permission_name like 'test.%';
+  -- 3. Drop the entitlement names that were never permissions.
+  delete from public.org_role_permissions
+  where permission_name = 'org.manage'
+     or permission_name = 'ai.chat'
+     or permission_name = 'documents'
+     or permission_name like 'study.%'
+     or permission_name like 'test.%';
+
+  -- 4. Normalise to the closed catalog: phase 2's foreign key cannot be added
+  --    over a name the catalog does not know (free strings like `deck.publish`
+  --    from the old editor).
+  delete from public.org_role_permissions orp
+  where orp.permission_name not in (select key from public.permissions);
+END;
+$$;
+
+select public.migrate_org_role_permission_names();
+
+revoke all on function public.migrate_org_role_permission_names()
+  from public, anon, authenticated;
+grant execute on function public.migrate_org_role_permission_names() to service_role;
 
 -- ==========================================
 -- 6. Functions that read the old names. Each body is the newest definition with

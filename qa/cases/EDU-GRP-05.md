@@ -57,7 +57,7 @@ tej funkcji”_ — instead of mutating a global admin setting.
   trigger seeds `org_role_features` per role, and the `member` role only gets `flashcards`,
   `quiz`, `ai.chat`, `documents` and `branding` — so the `content` profile's educator is
   exactly „konto bez tej funkcji”, with no admin-panel override and no write to
-  `user_feature_overrides`, `feature_flags` or any other global row. The manager of the same
+  `user_feature_overrides`, `entitlement_flags` or any other global row. The manager of the same
   tenant keeps `group.manage` (org `admin`), which is what the spec's contrast check uses.
 - Seed: `bun scripts/qa-tenant.ts EDU-GRP-05 --fresh` — a fresh run suffix per independent
   run, so every run gets its own org/group/users from

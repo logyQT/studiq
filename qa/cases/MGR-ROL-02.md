@@ -62,7 +62,7 @@ bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
 - Spec: `__tests__/qa/MGR/MGR-ROL-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie role swojej organizacji; nie dotyka flag
-  funkcji, katalogu planów (`plan_features` czyta tylko pośrednio przez RPC), ustawień
+  funkcji, katalogu planów (`plan_entitlements` czyta tylko pośrednio przez RPC), ustawień
   admina, statystyk platformy ani wierszy singletonowych. Ścieżka zakupu z BIL-04 jest
   osobnym przypadkiem i nie jest tu wykonywana.
 

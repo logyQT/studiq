@@ -52,7 +52,7 @@ bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
 - Spec: `__tests__/qa/MGR/MGR-ROL-04.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie role oraz członkostwa swojej organizacji; nie
-  dotyka flag funkcji, katalogu planów (`plan_features` czyta tylko pośrednio przez RPC),
+  dotyka flag funkcji, katalogu planów (`plan_entitlements` czyta tylko pośrednio przez RPC),
   ustawień admina, statystyk platformy ani wierszy singletonowych.
 
 ## Observed (ręczny przebieg, 2026-10-28, qa-env-4)

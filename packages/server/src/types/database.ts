@@ -2794,6 +2794,7 @@ export type Database = {
         Returns: boolean;
       };
       is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
+      migrate_org_role_permission_names: { Args: Record<PropertyKey, never>; Returns: undefined };
       question_bank_counts: {
         Args: { p_bank_ids: string[] };
         Returns: {
