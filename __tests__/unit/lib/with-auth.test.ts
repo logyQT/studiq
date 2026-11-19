@@ -31,7 +31,7 @@ function queryStub(result: { data: unknown; error?: unknown }) {
  */
 function stubTables(opts: {
   membership: { org_role_id: string } | null;
-  permissions?: { permission_name: string; scope: string }[];
+  permissions?: { permission_key: string; scope: string }[];
 }) {
   return (table: string) => {
     switch (table) {
@@ -89,7 +89,7 @@ function groupMembersStub(
 function mockedFrom(
   membership: { org_role_id: string } | null,
   rows: Parameters<typeof groupMembersStub>[0],
-  permissions?: { permission_name: string; scope: string }[],
+  permissions?: { permission_key: string; scope: string }[],
 ) {
   const groups = groupMembersStub(rows);
   const tables = stubTables({ membership, permissions });
@@ -180,7 +180,7 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
             groups: { organization_id: 'org-1' },
           },
         ],
-        [{ permission_name: 'deck.read', scope: 'organization' }],
+        [{ permission_key: 'deck.read', scope: 'organization' }],
       ),
     );
 
@@ -214,6 +214,27 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
     expect(ctx?.activeOrgId).toBeNull();
     expect(ctx?.orgRoleId).toBeNull();
     expect(ctx?.permissionScopes).toEqual({});
+  });
+
+  it('serves a legacy scope as `any` and drops one the context type does not allow', async () => {
+    // The column keeps `any`/`granted` (phase 2b left that CHECK alone), and
+    // `ctx.permissionScopes` is the map every gate reads, so both values have to
+    // arrive there unchanged — except a scope outside `isPermissionScope`, which
+    // must not widen anything.
+    mock.from.mockImplementation(
+      mockedFrom(
+        { org_role_id: 'role-1' },
+        [],
+        [
+          { permission_key: 'deck.read', scope: 'any' },
+          { permission_key: 'topic.read', scope: 'user' },
+        ],
+      ),
+    );
+
+    const ctx = await captureContext();
+
+    expect(ctx?.permissionScopes).toEqual({ 'deck.read': 'any' });
   });
 
   it('leaves the context personal when no cookie is present', async () => {

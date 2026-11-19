@@ -206,6 +206,12 @@ insert into public.permissions (key, category, allowed_scopes, assignable, descr
 --    (org_role_id, permission_name), so the old row has to go first. The six
 --    deleted names are the entitlement keys phase 0b removed from the catalog;
 --    the final sweep normalises the rest to the closed catalog.
+--
+--    Phase 2b renames this column and re-creates this function
+--    (`20261119210000_org_role_permission_key_fk.sql`); this file cannot be made
+--    replay-safe on its own, because replaying it installs the old name and the
+--    phase-2b body is the only defence against that. The org-creation trigger
+--    below is re-created whole by later migrations.
 -- ==========================================
 create or replace function public.migrate_org_role_permission_names()
 returns void

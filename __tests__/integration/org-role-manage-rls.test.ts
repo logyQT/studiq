@@ -8,7 +8,7 @@ import {
   seedOrgMembership,
   seedOrganization,
 } from '#test/integration/helpers';
-import { createTypedServiceClient } from '#test/integration/test-utils';
+import { createTypedServiceClient, latestShippedFunction } from '#test/integration/test-utils';
 
 /**
  * RLS parity for the `org.role.manage` gate (ADR-0015 §4.4, R4).
@@ -30,6 +30,21 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const MIGRATION = 'supabase/migrations/20261119190000_org_role_manage_rls.sql';
+
+/**
+ * The 2a-2 file, with the one definition phase 2b moved.
+ *
+ * Its helper body reads `permission_name`, which phase 2b renamed; replaying the
+ * file as shipped would install a helper that fails on its first read (the 2b
+ * migration re-creates the same helper against the new column). The helper is
+ * therefore stripped here and installed from the migration that defines it last,
+ * so the policies pinned below stay the shipped 2a-2 policies.
+ */
+const SHIPPED_SQL = `${readFileSync(MIGRATION, 'utf8').replace(
+  /create or replace function public\.rls_caller_has_permission[\s\S]*?\$\$;\n/,
+  '',
+)}${latestShippedFunction('rls_caller_has_permission')}
+grant execute on function public.rls_caller_has_permission(uuid, text) to authenticated;`;
 
 const localDatabaseUrl = (() => {
   const raw = process.env.SUPABASE_DB_URL;
@@ -73,7 +88,7 @@ async function installShippedSql(): Promise<void> {
     await sql.unsafe(
       'revoke all on function public.rls_caller_has_permission(uuid, text) from authenticated',
     );
-    await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
+    await sql.unsafe(SHIPPED_SQL);
   } finally {
     await sql.end();
   }
@@ -155,7 +170,7 @@ describe('org.role.manage RLS predicate', () => {
     if (permission) {
       const { error: permissionError } = await service.from('org_role_permissions').insert({
         org_role_id: role.id,
-        permission_name: permission,
+        permission_key: permission,
         scope: 'organization',
       });
       if (permissionError) {
@@ -273,7 +288,7 @@ describe('org.role.manage RLS predicate', () => {
   it('lets an org.role.manage holder write the role permission rows', async () => {
     const { error: insertError } = await roleHolder.from('org_role_permissions').insert({
       org_role_id: roleHolderTargetId,
-      permission_name: 'deck.read',
+      permission_key: 'deck.read',
       scope: 'own',
     });
     expect(insertError, 'INSERT is allowed by the permission predicate').toBeNull();
@@ -282,14 +297,14 @@ describe('org.role.manage RLS predicate', () => {
       .from('org_role_permissions')
       .update({ scope: 'group' })
       .eq('org_role_id', roleHolderTargetId)
-      .eq('permission_name', 'deck.read');
+      .eq('permission_key', 'deck.read');
     expect(updateError, 'UPDATE is allowed by the permission predicate').toBeNull();
 
     const { error: deleteError } = await roleHolder
       .from('org_role_permissions')
       .delete()
       .eq('org_role_id', roleHolderTargetId)
-      .eq('permission_name', 'deck.read');
+      .eq('permission_key', 'deck.read');
     expect(deleteError, 'DELETE is allowed by the permission predicate').toBeNull();
   });
 
@@ -313,7 +328,7 @@ describe('org.role.manage RLS predicate', () => {
       .from('org_role_permissions')
       .insert({
         org_role_id: managerFeatureHolderTargetId,
-        permission_name: 'deck.read',
+        permission_key: 'deck.read',
         scope: 'own',
       });
     expect(

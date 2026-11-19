@@ -51,10 +51,10 @@ describe('OrgRoleService.createRole — presets', () => {
   async function permissionsOf(roleId: string): Promise<Record<string, string>> {
     const { data, error } = await service
       .from('org_role_permissions')
-      .select('permission_name, scope')
+      .select('permission_key, scope')
       .eq('org_role_id', roleId);
     if (error) throw new Error(`permission read failed: ${error.message}`);
-    return Object.fromEntries(dbRows(data).map((row) => [row.permission_name, row.scope]));
+    return Object.fromEntries(dbRows(data).map((row) => [row.permission_key, row.scope]));
   }
 
   async function createFromTemplate(

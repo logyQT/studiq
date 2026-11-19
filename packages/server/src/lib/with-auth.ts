@@ -91,12 +91,12 @@ export async function withAuth(
       if (orgRoleId) {
         const { data: perms } = await supabase
           .from('org_role_permissions')
-          .select('permission_name, scope')
+          .select('permission_key, scope')
           .eq('org_role_id', orgRoleId);
 
         for (const row of perms ?? []) {
           if (!isPermissionScope(row.scope)) continue;
-          permissionScopes[row.permission_name] = row.scope;
+          permissionScopes[row.permission_key] = row.scope;
         }
       }
     }

@@ -1105,20 +1105,20 @@ export type Database = {
         Row: {
           id: string;
           org_role_id: string;
-          permission_name: string;
+          permission_key: string;
           scope: string;
         };
         ComputedFields: never;
         Insert: {
           id?: string;
           org_role_id: string;
-          permission_name: string;
+          permission_key: string;
           scope: string;
         };
         Update: {
           id?: string;
           org_role_id?: string;
-          permission_name?: string;
+          permission_key?: string;
           scope?: string;
         };
         Relationships: [
@@ -1128,6 +1128,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'org_roles';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'org_role_permissions_permission_key_fkey';
+            columns: ['permission_key'];
+            isOneToOne: false;
+            referencedRelation: 'permissions';
+            referencedColumns: ['key'];
           },
         ];
       };
@@ -1419,14 +1426,14 @@ export type Database = {
             referencedColumns: ['key'];
           },
           {
-            foreignKeyName: 'plan_features_feature_key_fkey';
+            foreignKeyName: 'plan_entitlements_entitlement_key_flag_fkey';
             columns: ['entitlement_key'];
             isOneToOne: false;
             referencedRelation: 'entitlement_flags';
             referencedColumns: ['key'];
           },
           {
-            foreignKeyName: 'plan_features_plan_key_fkey';
+            foreignKeyName: 'plan_entitlements_plan_key_fkey';
             columns: ['plan_key'];
             isOneToOne: false;
             referencedRelation: 'subscription_plans';
