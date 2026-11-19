@@ -216,11 +216,12 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
     expect(ctx?.permissionScopes).toEqual({});
   });
 
-  it('serves a legacy scope as `any` and drops one the context type does not allow', async () => {
-    // The column keeps `any`/`granted` (phase 2b left that CHECK alone), and
-    // `ctx.permissionScopes` is the map every gate reads, so both values have to
-    // arrive there unchanged — except a scope outside `isPermissionScope`, which
-    // must not widen anything.
+  it('drops a stored scope outside the closed catalog instead of serving it', async () => {
+    // `org_role_permissions.scope` is `own | group | organization` (phase 2b's
+    // CHECK), so `any`/`granted` can only come from a database older than that
+    // constraint. They must not widen a gate: `ctx.permissionScopes` is what every
+    // reader consults, and `isPermissionScope` is the one place a row becomes a
+    // scope, so both the legacy value and an unknown one are dropped.
     mock.from.mockImplementation(
       mockedFrom(
         { org_role_id: 'role-1' },
@@ -234,7 +235,7 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
 
     const ctx = await captureContext();
 
-    expect(ctx?.permissionScopes).toEqual({ 'deck.read': 'any' });
+    expect(ctx?.permissionScopes).toEqual({});
   });
 
   it('leaves the context personal when no cookie is present', async () => {

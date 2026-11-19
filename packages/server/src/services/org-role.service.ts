@@ -386,9 +386,11 @@ export class OrgRoleService {
     // leave no role that holds `org.role.manage` — every write then 403s and
     // `org.admin` is not a fallback (ADR-0015 §4.1). Counted across the org's other
     // roles, before any write, so the answer is the state the save would leave.
-    // A legacy row (`scope = 'any'`) is absent from `current` — the editor reads the
-    // key as revoked — but it still satisfies `can()` and the RLS predicate, so it
-    // counts as a holder here.
+    // The count reads the stored rows rather than `current`, so a row read from a
+    // database older than phase 2b's scope CHECK (`scope = 'any'`, which the editor
+    // renders revoked and `withAuth` drops) still counts as the last holder: the
+    // count has no scope filter, so it agrees with the RLS predicate behind it.
+    // `org-role.service.test.ts` pins that row as a holder.
     const holdsGate = storedRows.some((row) => row.permission_key === 'org.role.manage');
     if (holdsGate && !target.get('org.role.manage')) {
       const { count, error: gateError } = await supabase

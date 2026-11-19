@@ -1,5 +1,3 @@
-export type PermissionScope = 'own' | 'group' | 'organization' | 'any';
-
 export const Permission = {
   FLASHCARD_READ: 'flashcard.read',
   FLASHCARD_CREATE: 'flashcard.create',
@@ -51,6 +49,15 @@ export type PermissionKey = (typeof Permission)[keyof typeof Permission];
 
 /** The three scopes a catalog permission can declare (ADR-0015 §4.1). */
 export type CatalogScope = 'own' | 'group' | 'organization';
+
+/**
+ * The scope a request carries for a key. One set with `CatalogScope`: the
+ * `org_role_permissions` CHECK accepts exactly these three, and `any`/`granted`
+ * from older databases are dropped at the one place a row becomes a scope
+ * (`isPermissionScope` in `@studiq/server/lib/authz`), so nothing downstream has
+ * to consider a fourth case.
+ */
+export type PermissionScope = CatalogScope;
 
 export type PermissionCategory = 'content' | 'group' | 'org';
 
@@ -365,13 +372,12 @@ const SCOPE_ORDER: Record<PermissionScope, number> = {
   own: 0,
   group: 1,
   organization: 2,
-  any: 3,
 };
 
 /**
- * Whether `held` is at least as wide as `wanted` (own < group < organization <
- * any). The role editor uses it to decide whether the caller may grant a scope
- * or remove a grant it currently holds (ADR-0015 §4.4, D21).
+ * Whether `held` is at least as wide as `wanted` (own < group < organization).
+ * `null` covers nothing, so a key the caller does not hold cannot be granted or
+ * removed through the role editor (ADR-0015 §4.4, D21).
  */
 export function scopeCovers(
   held: PermissionScope | null | undefined,
