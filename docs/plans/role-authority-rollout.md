@@ -144,12 +144,12 @@ plan, the ledger, the orchestrator contract. Nothing executable changes.
   `permissionScopes['…']` or `resolveScope(ctx, '…')` exists in the catalog, so
   a phantom literal cannot recur. A key assembled at runtime is out of reach.
 - Drop `resource_permissions`. The plan said its only reference was the
-  generated type file; the identifier is also in the `99_dev_grants.sql`
-  `REVOKE` list (which has no `IF EXISTS`, so the drop alone breaks `db reset`)
-  and the table carries its own RLS policy. Policy and grants fall with the
-  table; the seed line is removed with the drop. The generated `database.ts`
-  keeps a dead block: the pinned `supabase gen types` cannot reproduce the
-  committed file (see R2), and nothing reads the block.
+  generated type file; the identifier was also in the `99_dev_grants.sql`
+  `REVOKE` list (which has no `IF EXISTS`, so the drop alone breaks `db reset`;
+  that seed has since been retired) and the table carries its own RLS policy.
+  Policy and grants fall with the table; the seed line was removed with the drop.
+  The generated `database.ts` keeps a dead block: the pinned `supabase gen types`
+  cannot reproduce the committed file (see R2), and nothing reads the block.
 - Delete the dead `X-Feature-Rollout` header and its two comments.
 - Add the catalog invariants as integration tests: permissions ∩ entitlements =
   ∅; `permissions` is exactly the `Permission` catalog (the N1 guard); every

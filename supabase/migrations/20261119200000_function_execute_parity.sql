@@ -1,0 +1,37 @@
+-- ==========================================
+-- Function EXECUTE is the migrations' contract, not a seed's.
+--
+-- `supabase/seeds/99_dev_grants.sql` was retired in this change. It ran after
+-- every migration, blanket-revoked function EXECUTE from `PUBLIC`/`anon`/
+-- `authenticated`, and re-granted a hand-maintained allowlist. `db push` never
+-- runs seeds, so a reset and a deploy disagreed, and 2a-2 paid for it: every role
+-- write answered 42501 after a reset while CI stayed green, because the
+-- allowlist was missing the helper its own policies call (R19).
+--
+-- Deleting the seed restores parity in every dimension the audit compared —
+-- table/column/sequence/default grants, the `authenticated` RPC allowlist and
+-- the three `anon` pricing reads — except one. The seed's blanket revoke also
+-- closed functions created *after* the hardening migration
+-- (`20261024124757_rls_function_and_grant_hardening.sql`), and nothing else
+-- does. A default-privilege revoke does not close a function on this stack:
+-- `ALTER DEFAULT PRIVILEGES … REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` leaves a
+-- fresh `create function public.x()` with `{=X/<owner>, …}`, so without this
+-- migration `anon` — the key every browser holds — gets an RPC surface for:
+--
+--   `question_bank_counts(uuid[])` — SECURITY INVOKER, so the inner `questions`
+--   read still answers 42501; it is an RPC surface anon should not see at all.
+--   `bump_question_version()`, `bump_question_version_on_option()`,
+--   `quiz_attempts_assignment_marker()`, `teacher_assignments_cancel_once()`,
+--   `teacher_assignments_close_once()` — trigger functions, which raise 0A000
+--   when called directly and never return data.
+--
+-- The result is the privilege state local and CI already ran with: `authenticated`
+-- keeps its explicit grants (`question_bank_counts`, the RLS helpers), loses only
+-- the execute it held through `PUBLIC` on the five trigger functions, and
+-- `service_role` is untouched. Every future migration that creates a function
+-- must revoke `PUBLIC`/`anon` itself;
+-- `__tests__/integration/grant-parity.test.ts` enumerates `pg_proc` and fails
+-- when one does not.
+-- ==========================================
+
+revoke all on all functions in schema public from public, anon;

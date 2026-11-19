@@ -14,7 +14,7 @@
 -- Writes are server-only. The insert happens with the service role after the server proved the
 -- student is targeted and the review is open; a client-supplied insert would let one student burn
 -- another student's items. No INSERT/UPDATE/DELETE policy is defined, and the grants are revoked
--- here and again in the seed (which re-grants ALL).
+-- here; the dev seed that re-applied them after a `db reset` has been retired.
 --
 -- Deploy: migration first, app in the same release. The table starts empty; no backfill is possible
 -- or wanted (events are not retroactive — acceptance criterion 9).
