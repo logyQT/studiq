@@ -16,7 +16,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | Phase | What                                          | State   | PR    | CI  | QA shards                 | Updated    |
 | ----- | --------------------------------------------- | ------- | ----- | --- | ------------------------- | ---------- |
 | 0     | docs, ADR-0015, ledger, orchestrator contract | merged  | #1162 | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)   | pr-open | —     | —   | checks, unit, integration | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)   | pr-open | #1387 | —   | checks, unit, integration | 2026-11-19 |
 | 1     | catalog cutover                               | pending | —     | —   | PUB, ADM, LIM, BIL        |            |
 | 2     | authority cutover + control-plane RLS         | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
 | 3     | entitlements and limits                       | pending | —     | —   | LIM, BIL, STU             |            |
@@ -138,7 +138,7 @@ Rule: R8 and R9.
 
 ### Phase 0b — batch 0
 
-**Shipped (PR pending):**
+**Shipped (#1387):**
 
 - `resource_permissions` dropped (`20261119120000_authority_batch0_cleanup.sql`)
   and removed from the `99_dev_grants.sql` `REVOKE` list, which has no
@@ -183,6 +183,8 @@ bun run env:run -- bunx playwright test -c __tests__/qa/playwright.qa.config.ts 
 
 One infra note (not product): the browser cache held chromium-1248 while the
 config expects 1254; `bunx playwright install chromium` fixed it.
+
+**QA smoke (2026-11-19):** 5/5 PASS — MGR-ROL-03 (20 content radios), MGR-ROL-04 (system-role guards), MGR-SET-02 (branding upload survives org switch), PUB-04 (plan cards from the catalogue), LIM-05 (branding refused after Hub→Launch); no catalog-related console or network errors.
 
 **Difficulty log**
 
