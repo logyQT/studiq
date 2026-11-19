@@ -8,7 +8,9 @@
 -- (`db push`) has rows for it to act on, and a free-string name from the old role
 -- editor can survive there. It is called again below, before the rename and the
 -- constraint, and then re-created against the renamed column: the callable form
--- is the contract, and a later replay of it must keep working.
+-- is the contract, and a later replay of it must keep working — including the
+-- catalog sweep, the one step that still has work to do once the foreign key
+-- exists.
 --
 -- The rename happens after the rewrite because every historical migration that
 -- writes this table (`20261119180000`, `20261119190000`, …) names the old
@@ -83,9 +85,10 @@ alter table public.org_role_permissions
   to org_role_permissions_org_role_id_permission_key_key;
 
 -- ==========================================
--- 3. The scopes the old rows carry. `withAuth` already refuses the two legacy ones
---    (`isPermissionScope`), so no gate has ever honoured them; only 2a-2's
---    last-holder count reads them, and it reads them as holders of the gate on the
+-- 3. The scopes the old rows carry. `withAuth` accepts only the three scopes the
+--    catalog declares (`isPermissionScope`), so the app has never honoured
+--    `any`/`granted`; 2a-2's last-holder count is the only reader that still
+--    recognises such a row, and it counts it as a holder of the gate on the
 --    strength of a value that resolves nothing. Mapping them would mean deciding
 --    what they meant — a role's capability is not a scope — so the rows go and the
 --    CHECK says what the editor can send.
@@ -98,14 +101,20 @@ alter table public.org_role_permissions
     check (scope in ('own', 'group', 'organization'));
 
 -- The foreign key below rejects a name the catalog does not know from this point
--- on, so a test cannot insert one and watch the rewrite delete it; it installs the
--- function from this file and seeds the rows that are still catalog keys (see
--- `__tests__/integration/org-role-permission-key-fk.test.ts`).
+-- on, so a test cannot insert one and watch the rewrite delete it. The reachable
+-- half is what `catalog-rename-rewrite` proves: the shipped function runs on the
+-- rows an org trigger wrote without a `21000`, a second run leaves them unchanged,
+-- and a role row whose catalog row has been removed is swept — see
+-- `__tests__/integration/catalog-rename-rewrite.test.ts`.
 
 -- ==========================================
 -- 4. The callable contract, against the column the rest of the code reads.
---    `documents` stays on the deleted list: the catalog has no row for it until
---    its surface returns (D22), and a stale row must not block the foreign key.
+--
+--    Only the catalog sweep is load-bearing on this schema: the foreign key
+--    rejects every pre-rename and entitlement name at insert, so the dedupe and
+--    mapping steps can only match a row in a database that lost the constraint.
+--    They stay because this body is also what a restore replays, and it has to
+--    keep that job for a database the constraint has not reached yet.
 -- ==========================================
 create or replace function public.migrate_org_role_permission_names()
 returns void
@@ -132,14 +141,15 @@ BEGIN
 
   -- Deleting a name that is not in the catalog covers the entitlement names of
   -- phase 1b (`org.manage`, `ai.chat`, `documents`, `study.*`, `test.*`) and every
-  -- free string the old editor wrote, without a list that can fall behind.
+  -- free string the old editor wrote, without a list that can fall behind. It is
+  -- an `exists` rather than a `not in` list: the predicate then depends on each
+  -- key alone, so a null or a missing catalog row makes that key invalid instead
+  -- of the whole comparison unknown.
   delete from public.org_role_permissions orp
   where orp.permission_key is null
-     or orp.permission_key not in (select key from public.permissions);
-
-  -- The pre-catalog names it maps cannot exist once the foreign key is in place,
-  -- so on this schema only the sweep is load-bearing; the rename steps are what the
-  -- migration's own call, before the constraint, resolves.
+     or not exists (
+       select 1 from public.permissions p where p.key = orp.permission_key
+     );
 END;
 $$;
 
@@ -257,7 +267,8 @@ grant execute on function public.rls_caller_has_permission(uuid, text)
 --    constraints under the old `plan_features_*` names (Postgres keeps them
 --    across `alter table ... rename`); the type generator emits two of them as
 --    `foreignKeyName`, so they are visible to TypeScript even though nothing
---    reads them by name.
+--    reads them by name. Nothing depends on the old names; the restatement is
+--    so the table's constraints read as one set.
 -- ==========================================
 alter table public.plan_entitlements rename constraint plan_features_pkey to plan_entitlements_pkey;
 alter table public.plan_entitlements
