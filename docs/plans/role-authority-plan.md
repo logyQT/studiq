@@ -17,7 +17,8 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | ----- | ---------------------------------------------- | ------- | ----- | --- | ------------------------- | ---------- |
 | 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162 | —   | checks                    | 2026-11-19 |
 | 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387 | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | pr-open | #1388 | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388 | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | pr-open | —     | —   | checks, unit, integration | 2026-11-19 |
 | 1     | catalog cutover                                | pending | —     | —   | PUB, ADM, LIM, BIL        |            |
 | 2     | authority cutover + control-plane RLS          | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
 | 3     | entitlements and limits                        | pending | —     | —   | LIM, BIL, STU             |            |
@@ -26,8 +27,10 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 6     | UI and cache                                   | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
 
-**Next action:** phase 0b is merged (#1387); phase 1a (the type-generation
-cutover) is in PR; phase 1 starts after it merges.
+**Next action:** phase 0b (#1387) and phase 1a (#1388) are merged; phase 1b
+(the behaviour-neutral catalog rename) is in PR. Phase 1's catalog cutover —
+deleting `FEATURES`, the denylists and the four legacy management keys — starts
+after 1b merges.
 
 ## 2. How to update this file
 
@@ -61,6 +64,7 @@ cutover) is in PR; phase 1 starts after it merges.
 | R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                 | the role save drops the `assignment.*` rows the seed grants             |
 | R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors           |
 | R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable  |
+| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                     |
 
 ## 4. Decisions
 
@@ -83,6 +87,7 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D13 | A `student` persona may hold the Admin role                                                                                                                                                                                                                                                                |
 | D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                      |
 | D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
+| D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                         |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -303,6 +308,83 @@ exemption moved to `bunfig.toml` as a file override, and the file went through
 `bun fmt`. Nothing is edited in the output.
 Rule: pin the generator or accept its new shape; never hand-edit the generated
 file — a hand edit only survives until the next regeneration.
+
+### Phase 1b — catalog rename (behaviour-neutral)
+
+**Shipped in PR (pr-open):**
+
+- One migration, `20261119140000_catalog_rename.sql`: `limit_catalog` (the eight
+  `LIMITS` keys with their scopes), `entitlement_catalog` (the eleven `FEATURES`
+  keys — seven entitlements plus the four management markers phase 2 removes),
+  `feature_flags` → `entitlement_flags`, `plan_features` →
+  `plan_entitlements` (`feature_key` → `entitlement_key`, FK to the catalog),
+  `plan_limits.limit_key` FK, `permissions` reshaped to the 44-key catalog
+  (`key` PK, `category`, `allowed_scopes`, `assignable`, `description`;
+  `org.admin` not assignable, D16), the `org_role_permissions` rewrite, and the
+  three functions that read the old names.
+- Seeds: `00_plans.sql` and `99_dev_grants.sql` renamed; `09_perms.sql` now
+  seeds the 44-key catalog and derives the system-role grants from
+  `category = 'content'`, exactly like the org-creation trigger.
+- `PERMISSIONS` (44 keys with metadata) ships beside the unchanged `Permission`
+  (26) and `DEFAULT_ROLE_PERMISSIONS`; the readers (`FeatureResolver`,
+  `SubscriptionPlanService`, the three admin services, the admin pages) use the
+  new names, and `database.ts` is regenerated.
+- New-org row counts: **admin 31, teacher 31, member 25** content permissions.
+  Existing orgs keep their 26/26/20 rows: the quiz/stats keys have no reader
+  until phase 5, and phase 2 backfills them with the `permission_key` FK.
+- `catalog-invariants` now asserts the DB `permissions` table equals
+  `PERMISSIONS` (key, category, scopes, assignable), `Permission ⊆ PERMISSIONS`,
+  and `entitlement_catalog`/`limit_catalog` equal `FEATURES`/`LIMITS`.
+  `assignment-permissions-seed` derives its expectations from the catalog for
+  both a seeded and a trigger-created org.
+- Gates: `env:reset-db --yes`, serial integration (820 passed, 11 skipped),
+  `typecheck:all` + `typecheck:admin`, `lint:all`, `test:unit`, `review:static`,
+  `knip`, `dup:base`, `format:check`; four catalog mutations KILLED.
+
+**Difficulty log**
+
+#### 2026-11-19 — the catalog split temporarily puts `group.manage` in both namespaces
+
+What: 0b's `permissions ∩ FEATURES = ∅` assertion cannot hold in 1b:
+`group.manage` is a catalog permission (ADR §4.1) and one of the four legacy
+management entitlement keys phase 2 deletes, so it is in `FEATURES`,
+`entitlement_catalog` and `plan_entitlements` too.
+Why: the queue keeps the four markers in the entitlement tables until the route
+and RLS gates read permissions; the permission catalog adds `group.manage`
+unconditionally.
+Fix: the test pins the exact overlap (`['group.manage']`) instead of an empty
+list, so the rest of the namespace split stays under test; phase 2 restores
+`[]`.
+Rule: R15.
+
+#### 2026-11-19 — the permission rename had to happen before the foreign key
+
+What: `org_role_permissions` rows named `member.manage`/`role.builder` moved to
+`org.member.manage`/`org.role.manage` in this PR, not with phase 2's
+`permission_key` FK. The rows are not read by any code path (only
+`assignment.*` literals are read through `permissionScopes`), so the rewrite is
+behaviour-neutral. The old role editor accepted free strings, so a role can hold
+both names and the unique key is `(org_role_id, permission_name)`.
+Why: a plain `update` aborts on the duplicate key; deleting the assertion or
+leaving the rows would move the failure into phase 2's migration.
+Fix: delete the old-name row where the role already holds the new name, then
+update, then delete the six entitlement names 0b removed.
+Rule: a rename a later foreign key will enforce needs a delete-then-update, not
+an update.
+
+#### 2026-11-19 — entitlement metadata had to be derived from the constraint it serves
+
+What: ADR §5.1 gives portability and quotas for seven keys but does not settle
+`seatEligible` for the baseline keys, and the four management markers have no
+metadata by design.
+Why: from phase 4 a seat's plan keys must all be `seatEligible`, and every
+personal plan contains the baseline keys — `false` would make every seat plan
+ineligible.
+Fix: `seatEligible` is true for the six personal-scope keys (baseline
+`flashcards`/`quiz` included) and false for `branding` and the four markers;
+`personalPortable` is true only for the four paid personal surfaces.
+Rule: derive metadata from the constraint it will serve, and record the
+derivation where the next phase reads it.
 
 ### Phase 1 — catalog
 
