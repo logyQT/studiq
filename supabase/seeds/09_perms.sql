@@ -61,38 +61,22 @@ ON CONFLICT DO NOTHING;
 
 -- ==========================================
 -- SEED: org_role_permissions
--- Maps the system roles of EVERY seeded organization to the content catalog
--- with scopes. This is the same predicate `handle_new_organization` uses, so a
--- seeded organization and a trigger-created one carry identical rows:
---   admin   → every content permission at organization scope
---   teacher → every content permission at own scope
---   member  → every content permission except the staff-only `assignment.*`
---             family, read at group scope and everything else at own scope
--- Group and org authority is granted explicitly (phase 2 templates).
+-- Seeds the system roles of EVERY seeded organization from the closed catalog.
+-- The matrix lives in `SYSTEM_ROLE_TEMPLATES` (`packages/authz/src/lib/org-roles.ts`)
+-- and its SQL mirror is `public.seed_system_role_permissions()` — the same
+-- function `handle_new_organization` calls, so a seeded organization and a
+-- trigger-created one carry identical rows.
 -- ==========================================
 
-INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
-SELECT r.id, p.key, 'organization'
-FROM public.org_roles r, public.permissions p
-WHERE r.name = 'admin'
-  AND p.category = 'content'
-ON CONFLICT DO NOTHING;
+-- `01_seed.sql` inserts organizations and their roles directly, so the
+-- org-creation trigger (which writes the profile) never runs for them. The
+-- migration backfill only covers organizations that existed when it ran, and a
+-- reset has none. This is a no-op on an already-seeded database.
+UPDATE public.org_roles
+SET entitlement_profile = CASE WHEN name = 'member' THEN 'learner' ELSE 'all' END
+WHERE is_system IS TRUE
+  AND name IN ('admin', 'teacher', 'member')
+  AND entitlement_profile = 'none';
 
-INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
-SELECT r.id, p.key, 'own'
-FROM public.org_roles r, public.permissions p
-WHERE r.name = 'teacher'
-  AND p.category = 'content'
-ON CONFLICT DO NOTHING;
+SELECT public.seed_system_role_permissions(id) FROM public.organizations;
 
-INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
-SELECT r.id, p.key,
-  CASE
-    WHEN p.key LIKE '%.read' THEN 'group'
-    ELSE 'own'
-  END
-FROM public.org_roles r, public.permissions p
-WHERE r.name = 'member'
-  AND p.category = 'content'
-  AND p.key NOT LIKE 'assignment.%'
-ON CONFLICT DO NOTHING;

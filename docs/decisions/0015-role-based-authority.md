@@ -385,6 +385,16 @@ It contains only entitlement keys (never permissions).
   when its surface ships (§5.1); it is absent in v1 for exactly that reason.
 - Custom: `none`, empty. An empty role can do nothing and gets no paid surface.
 
+> **2026-11-19 (phase 2a-1, D18).** The profile governs **non-marker** keys only.
+> `all` is the ceiling **minus** the four legacy management markers
+> (`org.manage`, `member.manage`, `role.builder`, `group.manage`); those four
+> stay row-sourced in `org_role_features` until their route and RLS gates read
+> permissions (2b), so a Teacher (`all`) never inherits `member.manage` or
+> `role.builder` (FP-04). A member with no verified role (`ctx.orgRoleId: null`)
+> resolves nothing for the org layer — fail closed, with no plan read. The
+> `has_org_feature` zero-row fallback resolves the same profile and unions the
+> seat plan, so PostgREST is never wider than the resolver (FP-01).
+
 **v1.1 — per-role allocation (deferred).** The target shape, kept here so the
 follow-up has a contract: an `org_role_entitlements (org_role_id,
 entitlement_key)` table with a write-time subset check against

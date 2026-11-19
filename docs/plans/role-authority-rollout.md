@@ -221,33 +221,45 @@ tables. It reflects only the current table names, so phase 1b regenerates the
 file again after its `plan_features` → `plan_entitlements` and `feature_flags`
 → `entitlement_flags` rename.
 
-### 2 — authority cutover (the largest; stack of 2–3 PRs)
+### 2 — authority cutover (the largest; five slices)
 
-- `org_role_permissions.permission_key` FKs the permission catalog; seed the
-  role templates (`Admin`, `Teacher`, `Member`, `Assistant`, `Billing`,
-  `Read-only`); custom roles start empty.
-- `withAuth` builds `ctx.permissions` and `ctx.groupRoles` from
-  `group_members.role`; add a verified-org helper.
-- Scope defaults: `own` only when there is no active org (fail-closed fix).
-- Replace `allowedAccountTypes` on org routes with `requirePermission` —
-  41 files, keeping the 2 legitimate persona exceptions
-  (org creation, classroom creation) and the 5 embedded membership checks.
-- Role editor guards: closed catalog, no self-edit, no grant beyond your own
-  authority, system roles protected, every change audited.
-- Acceptance criterion (F3): a save through the role editor must not drop
-  permission rows for keys the payload does not manage. `setPermissions`
+Split into five slices on one short-lived branch, each independently
+reviewable. The slice list and shipped contents live in
+[role-authority-plan.md §5](role-authority-plan.md#phase-2--authority).
+
+- **2a-1** (~260) — `org_roles.entitlement_profile` (`all | learner | none`),
+  the trigger/seed/backfill, the profile-driven `FeatureResolver` org layer and
+  the `has_org_feature` zero-row fallback. Closes the RLS twin of FP-01 in the
+  same PR (R4).
+- **2a-2** (~200) — role templates (Assistant/Billing/Read-only/Blank presets),
+  `requirePermission('org.role.manage')` and the editor gate; rewrites
+  MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`.
+- **2a-3** (~400, `size:exception`) — closed-catalog editor, complete payload,
+  audit log. Acceptance criterion (F3): a save through the role editor must not
+  drop permission rows for keys the payload does not manage. `setPermissions`
   currently deletes every row for the role and re-inserts only the payload, so
   saving a system role removes the `assignment.*` family #1256 just granted.
   Pinned by a test that saves a role and asserts the unmanaged rows survive.
-- Backfill `org_role_permissions` for existing orgs with the seeded template
-  scopes: the system roles were backfilled by #1256; custom roles and the new
-  catalog remain. The org-creation trigger only seeds new orgs.
+- **2a-4** (~90) — `withAuth` builds `ctx.groupRoles` from
+  `group_members.role`; org-scoped group query; add a verified-org helper.
+  Closes the cross-org group union.
+- **2a-5** (~110) — scope defaults: `own` only when there is no active org
+  (fail-closed fix).
+
+The remaining phase-2 work, in slice order:
+
+- `org_role_permissions.permission_key` FKs the permission catalog (2a-2/2a-3).
+- Replace `allowedAccountTypes` on org routes with `requirePermission` —
+  49 files, keeping the 2 legitimate persona exceptions
+  (org creation, classroom creation) and the 5 embedded membership checks.
+- Role editor guards: closed catalog, no self-edit, no grant beyond your own
+  authority, system roles protected, every change audited (2a-2/2a-3).
 - Remove the four legacy management keys (`org.manage`, `member.manage`,
   `role.builder`, `group.manage`) from `ENTITLEMENTS`, `entitlement_catalog`,
-  `entitlement_flags`, `plan_entitlements` and `org_role_features`, once the
-  route and RLS gates read permissions instead.
+  `entitlement_flags`, `plan_entitlements` and `org_role_features` once the
+  route and RLS gates read permissions instead (2b/slice 3 boundary).
 - Class invites use `group.invite` at group scope for existing org members;
-  delete the `can_assign_org_role` teacher-name exception.
+  delete the `can_assign_org_role` teacher-name exception (2a-5).
 - **Control-plane RLS in the same PR**: `rls_caller_has_permission(org, key)`
   replaces `is_org_manager` / `has_org_feature` on members, roles, role
   permissions, organizations, seat pools, seat assignments and invitations.
@@ -257,8 +269,9 @@ gate on an org resource; `AUT`, `MGR`, `EDU`, `SEC` green.
 
 ### 3 — entitlements and limits
 
-- `org_roles.entitlement_profile` (`all | learner | none`) replaces the
-  boolean; `LEARNER_ENTITLEMENTS` lives in `@studiq/authz`.
+- `org_roles.entitlement_profile` (`all | learner | none`) ships in 2a-1
+  (phase 2); phase 3 consumes it in the single resolver.
+  `LEARNER_ENTITLEMENTS` lives in `@studiq/authz`.
 - One `resolveEntitlements(ctx)` returning `{ entitlements, limits, sources,
 plan }`; delete `FeatureResolver` and `LimitsResolver`.
 - Limits: `max(org, seat, personal)` for user scope, org plan for org scope,
@@ -384,7 +397,7 @@ is a phase-8 PR with the fixes, not a note.
 
 | Risk                                             | Mitigation                                                                           |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Phase 2 is large and touches 41 route files      | Stack 2–3 PRs; land the permission catalog first; the integrator rebases daily       |
+| Phase 2 is large and touches 49 route files      | Five slices; land the permission catalog first; the integrator rebases daily         |
 | Intermediate behaviour looks wrong to a reviewer | Each phase states the capability it preserves; QA shards are the proof               |
 | A migration lands wrong                          | Compensating migration; premarket allows dropping and replaying the chain            |
 | Test churn hides a regression                    | QA is the gate; changed cases show before/after                                      |

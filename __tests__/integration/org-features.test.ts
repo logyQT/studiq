@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext, SYSTEM_ROLE_TEMPLATES } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -56,7 +56,7 @@ describe(`Org Features (trigger)`, () => {
     ]);
   });
 
-  it('seeds permissions for all roles', async () => {
+  it('seeds the system-role permission matrix for all roles', async () => {
     const supabase = createTypedServiceClient();
 
     const { data: roles } = await supabase
@@ -68,11 +68,7 @@ describe(`Org Features (trigger)`, () => {
       (roles ?? []).map((r) => [r.name, r.id]),
     );
 
-    for (const [roleName, expectedScopeFn] of Object.entries({
-      admin: (_name: string): string => 'organization',
-      teacher: (_name: string): string => 'own',
-      member: (name: string): string => (name.endsWith('.read') ? 'group' : 'own'),
-    })) {
+    for (const [roleName, template] of Object.entries(SYSTEM_ROLE_TEMPLATES)) {
       const roleId = roleIds[roleName];
       if (!roleId) throw new Error(`[setup] org role ${roleName} not seeded`);
       const { data: perms } = await supabase
@@ -80,10 +76,8 @@ describe(`Org Features (trigger)`, () => {
         .select('permission_name, scope')
         .eq('org_role_id', roleId);
 
-      expect(perms?.length).toBeGreaterThan(0);
-      for (const perm of perms ?? []) {
-        expect(perm.scope).toBe(expectedScopeFn(perm.permission_name));
-      }
+      const actual = Object.fromEntries((perms ?? []).map((p) => [p.permission_name, p.scope]));
+      expect(actual).toEqual(template.permissions);
     }
   });
 

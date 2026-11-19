@@ -1135,6 +1135,7 @@ export type Database = {
         Row: {
           description: string | null;
           display_name: string;
+          entitlement_profile: string;
           id: string;
           is_system: boolean | null;
           name: string;
@@ -1144,6 +1145,7 @@ export type Database = {
         Insert: {
           description?: string | null;
           display_name: string;
+          entitlement_profile?: string;
           id?: string;
           is_system?: boolean | null;
           name: string;
@@ -1152,6 +1154,7 @@ export type Database = {
         Update: {
           description?: string | null;
           display_name?: string;
+          entitlement_profile?: string;
           id?: string;
           is_system?: boolean | null;
           name?: string;
@@ -2853,6 +2856,7 @@ export type Database = {
           rank: number;
         }[];
       };
+      seed_system_role_permissions: { Args: { p_org_id: string }; Returns: undefined };
       submit_quiz_attempt: {
         Args: { p_answers: Json; p_attempt_id: string; p_score: number; p_user_id: string };
         Returns: {

@@ -7,11 +7,16 @@
 export {
   ADMIN_ONLY_ENTITLEMENTS,
   type Entitlement,
-  ENTITLEMENT_KEYS,
   type EntitlementKey,
+  ENTITLEMENT_KEYS,
+  type EntitlementProfile,
+  ENTITLEMENT_PROFILES,
   type EntitlementResolution,
   ENTITLEMENTS,
   isEntitlementKey,
+  isEntitlementProfile,
+  LEARNER_ENTITLEMENTS,
+  LEGACY_MANAGEMENT_ENTITLEMENTS,
   ORG_SCOPED_ENTITLEMENTS,
   rolloutBucket,
   SURFACE_ENTITLEMENT_KEYS,
@@ -28,7 +33,6 @@ export {
 // ── Permissions ─────────────────────────────────────────────────────────────
 export {
   type CatalogScope,
-  DEFAULT_ROLE_PERMISSIONS,
   evaluateScope,
   PERMISSIONS,
   Permission,
@@ -40,7 +44,14 @@ export {
   type ResourceAccess,
 } from './lib/permissions';
 // ── Organization roles ──────────────────────────────────────────────────────
-export { isOrgAdminRole, ORG_ADMIN_ROLE } from './lib/org-roles';
+export {
+  isOrgAdminRole,
+  ORG_ADMIN_ROLE,
+  SYSTEM_ROLE_NAMES,
+  SYSTEM_ROLE_TEMPLATES,
+  type SystemRoleName,
+  type SystemRoleTemplate,
+} from './lib/org-roles';
 
 // ── Request context ─────────────────────────────────────────────────────────
 export type { RequestContext } from './lib/request-context';

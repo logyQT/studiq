@@ -127,13 +127,50 @@ export const SURFACE_ENTITLEMENT_KEYS: readonly EntitlementKey[] = ENTITLEMENT_K
 
 /**
  * Structure privileges that belong to the org admin role only. A seat or a
- * personal plan can never hand them to a non-admin role.
+ * personal plan can never hand them to a non-admin role. `group.manage` is
+ * deliberately absent: a Teacher holds it through the role's own rows, and the
+ * resolver's seat strip must not start denying it.
  */
 export const ADMIN_ONLY_ENTITLEMENTS: ReadonlySet<EntitlementKey> = new Set<EntitlementKey>([
   'org.manage',
   'member.manage',
   'role.builder',
 ]);
+
+/**
+ * The four legacy management markers. Until phase 2b replaces their route and
+ * RLS gates with permissions they stay in the entitlement catalog, but they are
+ * never granted by an `entitlement_profile`: a Teacher profile is `all` and
+ * must not inherit `member.manage`/`role.builder` (D6/D18, FP-04). They resolve
+ * only from an enabled `org_role_features` row.
+ */
+export const LEGACY_MANAGEMENT_ENTITLEMENTS: readonly EntitlementKey[] = [
+  'org.manage',
+  'member.manage',
+  'role.builder',
+  'group.manage',
+];
+
+/** The three-valued role entitlement profile (ADR-0015 §5.3, D5). */
+export const ENTITLEMENT_PROFILES = ['all', 'learner', 'none'] as const;
+
+export type EntitlementProfile = (typeof ENTITLEMENT_PROFILES)[number];
+
+export function isEntitlementProfile(value: string): value is EntitlementProfile {
+  return (ENTITLEMENT_PROFILES as readonly string[]).includes(value);
+}
+
+/**
+ * The fixed Member set (ADR-0015 §5.3): always intersected with the org plan
+ * ceiling, so a plan change needs no prune job. `documents` joins only when its
+ * surface ships (§5.1); it is absent in v1 for exactly that reason.
+ */
+export const LEARNER_ENTITLEMENTS: readonly EntitlementKey[] = [
+  'flashcards',
+  'quiz',
+  'ai.chat',
+  'branding',
+];
 
 /**
  * Entitlements describing control over the organization rather than the member's
