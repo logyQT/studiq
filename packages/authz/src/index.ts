@@ -61,6 +61,7 @@ export {
 } from './lib/org-roles';
 
 // ── Request context ─────────────────────────────────────────────────────────
+export { GROUP_ROLES, type GroupRole, isGroupRole } from './lib/request-context';
 export type { RequestContext } from './lib/request-context';
 // ── Types ───────────────────────────────────────────────────────────────────
 export { AccountType, type Nullable } from './types';
