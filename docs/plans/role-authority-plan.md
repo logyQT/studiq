@@ -35,12 +35,13 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
 **Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389) and 1c (#1390,
 `67cfeb16`) are merged. Phase 2 is active: **2a-3** (the closed-catalog editor),
-**2a-1** (the entitlement profile) and **2a-2** (role presets + the
-`org.role.manage` gate and its RLS twin) are written on `feat/authority-2a-3`,
-`feat/authority-2a-1` and `feat/authority-2a-2`; 2a-3 lands before 2a-2 by D24.
-Next slices: 2a-4 (group roles) and 2a-5 (fail-closed scope defaults). The four
-legacy management keys stay until slice 2b, which replaces their remaining gates
-with permissions.
+**2a-1** (the entitlement profile), **2a-2** (role presets + the
+`org.role.manage` gate and its RLS twin) and **2a-4** (org-scoped
+`ctx.groupRoles`) are written on `feat/authority-2a-3`, `feat/authority-2a-1`,
+`feat/authority-2a-2` and `feat/authority-2a-4`; 2a-3 lands before 2a-2 by D24.
+Next slice: 2a-5 (fail-closed scope defaults), which reads `ctx.groupRoles`. The
+four legacy management keys stay until slice 2b, which replaces their remaining
+gates with permissions.
 
 ## 2. How to update this file
 
@@ -584,7 +585,7 @@ after 1c merged; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from `@studiq/authz`.
 | **2a-1** | `entitlement_profile` + trigger/seed/backfill + profile-driven resolver + RLS fallback. Closes the RLS twin of FP-01 in the same PR.                                  | ~750 (`size:exception`) |
 | **2a-3** | closed-catalog editor + complete payload + audit log. Lands **before** 2a-2 (D24).                                                                                    | ~400 (`size:exception`) |
 | **2a-2** | role templates + `requirePermission('org.role.manage')` + editor gate + the RLS predicate (rewrites MGR-ROL-01, deletes the out-of-map e2e `manage-roles-plan-gate`). | 460 (`size:exception`)  |
-| **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                                         | ~90                     |
+| **2a-4** | `ctx.groupRoles` + org-scoped group query (closes the cross-org group union).                                                                                         | 59 (`bun run pr:size`)  |
 | **2a-5** | fail-closed scope defaults.                                                                                                                                           | ~110                    |
 
 The table is in **landing order**, not the original plan's order: 2a-3 goes before
@@ -1085,6 +1086,75 @@ commands; recorded rather than fixed here so the change stayed a retirement.
 Rule: a seed may carry data; migrations own grants. A local-only file that
 changes a privilege is a production bug wearing a dev hat — fix the migration and
 prove reset-vs-deploy parity with a test that reads the catalog.
+
+**2a-4 shipped on `feat/authority-2a-4` (PR pending):**
+
+- **The read.** `withAuth` now asks `group_members` for
+  `group_id, role, groups!inner(organization_id)` and filters on
+  `groups.organization_id = active org`, inside the existing verified-membership
+  block. The embedded join is the org filter (the `group.service#listMyGroups`
+  shape), so a membership in another org's group never reaches the context:
+  `ctx.groupIds` is the caller's groups **in the active org** (ADR-0015 §7.1 — no
+  cross-org union). One query, not two; the `Promise.all` with the membership
+  lookup is unchanged.
+- **The roles.** The same rows build `ctx.groupRoles: Readonly<Record<groupId,
+'teacher' | 'member'>>`, so the ids and the roles cannot disagree. `GroupRole`/
+  `GROUP_ROLES`/`isGroupRole` live in `@studiq/authz` beside `RequestContext`, and
+  the column value is narrowed by `isGroupRole` (the table's CHECK allows those two
+  values; nothing is cast). No active org, or a cookie org with no `org_members`
+  row, leaves both empty — the membership rule is untouched.
+- **The verified-org helper the slice was scoped for is not needed.** The org
+  scoping rides the existing `cookieOrgId` block, which already is the verified-org
+  helper: `activeOrgId` becomes the cookie only when an `org_members` row exists.
+  A second helper would be a second rule about what "active org" means.
+- **Deleted** `packages/server/src/lib/request-context.ts`: a dead duplicate of the
+  `@studiq/authz` interface (grep across `packages/`, `apps/`, `__tests__/`,
+  `scripts/` found no importer; only two archived docs mention the path). No shim.
+  `group.service#canShareContentToGroups`'s "Do NOT use ctx.groupIds: withAuth
+  resolves memberships without an org filter" comment was false after this change
+  and now says why the ids are still not a tenant authority (they are the caller's
+  own memberships, not every group of `contentOrgId`).
+- **Tests.** `__tests__/unit/lib/with-auth.test.ts` (6 → 10 cases) adds an
+  org-filtering stub that applies `groups.organization_id` the way the PostgREST
+  embed does, and three cases: another org's group is absent from both `groupIds`
+  and `groupRoles` (and the filter is requested); in-org `teacher`/`member` rows
+  arrive with their roles and `groupIds` is exactly `groupRoles`' keys; a cookie org
+  without a membership row leaves both empty — the no-cookie case that already
+  existed now also asserts both are empty.
+  `__tests__/integration/group-roles-org-scope.test.ts` drives the same through
+  real signed-in sessions: a user who is `teacher` in org A's group and `member`
+  in org B's group sees exactly one group per active org, with that org's role, and
+  nothing with no active org.
+- **Consumers.** 2a-5 reads `groupRoles` for scope resolution; 2b's group manage
+  and invite are teacher-only. `groupIds` stays for every current reader.
+- **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit` (4632
+  passed, 1 skipped), `review:static`, `knip`, `dup:base`, `format:check`, and the
+  new integration file against this branch's stack (2 passed — the coordinator
+  runs the full serial suite). Two mutations KILLED on the unit file (the org
+  filter; the role value); the integration file was proven red by the same
+  filter removal, applied by hand because `bun run mutate` refuses to edit a test
+  file. `bun run pr:size` **59/400**.
+
+**Difficulty log**
+
+#### 2026-11-19 — the role guard's mutation survived, and that is the right answer
+
+What: narrowing `group_members.role` with `isGroupRole` instead of a cast cannot
+be killed from a unit test. With the org filter present, the stub can only return
+in-org rows, and the column's CHECK (`role IN ('teacher', 'member')`,
+`20260703000012_create_groups.sql`) has already rejected every other value before
+the row leaves the database; a test that hands the handler a `'staff'` row would
+pin a database the product never has. The mutation that replaces the guard with an
+unguarded cast SURVIVED, and that is recorded rather than papered over.
+Why: the guard is a type-system boundary over a text column, not a business rule.
+Its value is that the record's type is honest at the one place the column becomes
+a `GroupRole`, not that a second runtime check will ever fire.
+Fix: no test added for the guard; the org-scoping and role-value invariants are
+proven instead. A value outside the CHECK stays impossible at the table, and a
+future write path that widens the CHECK must widen `GroupRole` with it — TypeScript
+fails there, which is the cheaper gate.
+Rule: none — this is the "a test must be able to fail" check returning an honest
+negative, already covered by AGENTS.md's mutation-gate section.
 
 ### Phase 3 — entitlements and limits
 
