@@ -87,6 +87,45 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(manager, 'flashcard.create')).toBeNull();
     });
 
+    // ADR-0015 §6.3: inside an org the role's rows are the whole answer, so a
+    // member whose role withholds a content key is denied instead of falling
+    // back to a persona default the org never granted.
+    it.each([AccountType.STUDENT, AccountType.EDUCATOR, AccountType.MANAGER])(
+      'denies every content key inside an org with no stored row (%s)',
+      (accountType) => {
+        const inOrg: RequestContext = { ...baseCtx, accountType, activeOrgId: 'org-1' };
+
+        expect(resolveScope(inOrg, 'deck.read')).toBeNull();
+        expect(resolveScope(inOrg, 'flashcard.create')).toBeNull();
+        expect(resolveScope(inOrg, 'question_bank.update')).toBeNull();
+        expect(resolveScope(inOrg, 'quiz.delete')).toBeNull();
+      },
+    );
+
+    it('keeps a stored row inside an org instead of the persona default', () => {
+      const inOrg: RequestContext = {
+        ...baseCtx,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'deck.read': 'group' },
+      };
+
+      expect(resolveScope(inOrg, 'deck.read')).toBe('group');
+      expect(resolveScope(inOrg, 'flashcard.read')).toBeNull();
+    });
+
+    it('never gives a group or org key the persona default, with or without an org', () => {
+      const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
+
+      for (const key of ['group.read', 'group.invite', 'org.role.manage', 'org.audit.read']) {
+        expect(resolveScope(baseCtx, key)).toBeNull();
+        expect(resolveScope(inOrg, key)).toBeNull();
+      }
+    });
+
+    it('gives no default to a key outside the catalog', () => {
+      expect(resolveScope(baseCtx, 'role.builder.manage')).toBeNull();
+    });
+
     it('returns null for unknown permissions', () => {
       expect(resolveScope(baseCtx, 'role.builder.manage')).toBeNull();
     });
@@ -129,7 +168,11 @@ describe('authz (unified lib)', () => {
     });
 
     it('scopes own filters to the active org', () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1' };
+      const ctx = {
+        ...baseCtx,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'flashcard.read': 'own' as const },
+      };
       expect(buildQueryFilter(ctx, 'flashcard.read')).toEqual({
         created_by: 'user-1',
         organization_id: 'org-1',

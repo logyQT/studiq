@@ -1,6 +1,8 @@
 import {
   AccountType,
   evaluateScope,
+  isPermissionCatalogKey,
+  PERMISSIONS,
   Permission,
   type PermissionKey,
   type PermissionScope,
@@ -23,28 +25,31 @@ export function evaluate(args: {
   return evaluateScope(args.scope, args.userId, args.resource);
 }
 
-// ── Scope resolution ────────────────────────────────────────────────────────
-// Resolves a permission's effective scope from the request context ONLY.
-// `permissionScopes` is populated by with-auth in a single batched query
-// (one SELECT per request), which eliminates the N+1 per-permission
-// org_role_permissions lookups the old rbac.getScope() performed.
+const PERSONA_DEFAULT_VERBS = ['.read', '.create', '.update', '.delete'] as const;
+
+/**
+ * Resolves a permission's effective scope from the request context ONLY.
+ * `permissionScopes` is populated by with-auth in a single batched query
+ * (one SELECT per request), which eliminates the N+1 per-permission
+ * org_role_permissions lookups the old rbac.getScope() performed.
+ *
+ * Inside an active org the stored role row is the whole answer (ADR-0015 §6.3:
+ * no row → deny). The persona default is a personal-content rule — no org, a
+ * content key, and never wider than `own` — so it can neither resurrect a
+ * permission the org's role withholds nor grant a `group.*`/`org.*` key.
+ */
 export function resolveScope(ctx: RequestContext, action: string): PermissionScope | null {
   const stored = ctx.permissionScopes[action];
   if (stored !== undefined) return stored;
 
-  // Students/educators default to 'own' for CRUD actions outside an org role.
-  if (ctx.accountType === AccountType.STUDENT || ctx.accountType === AccountType.EDUCATOR) {
-    if (
-      action.endsWith('.read') ||
-      action.endsWith('.create') ||
-      action.endsWith('.update') ||
-      action.endsWith('.delete')
-    ) {
-      return 'own';
-    }
+  if (ctx.activeOrgId != null) return null;
+  if (ctx.accountType !== AccountType.STUDENT && ctx.accountType !== AccountType.EDUCATOR) {
+    return null;
   }
+  if (!isPermissionCatalogKey(action)) return null;
+  if (!PERSONA_DEFAULT_VERBS.some((verb) => action.endsWith(verb))) return null;
 
-  return null;
+  return PERMISSIONS[action].category === 'content' ? 'own' : null;
 }
 
 // ── Permission checks (server, synchronous — no DB round-trips) ────────────

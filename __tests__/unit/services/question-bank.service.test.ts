@@ -99,9 +99,9 @@ describe('QuestionBankService', () => {
     url: '',
     method: 'GET',
     activeOrgId: 'org-1',
-    orgRoleId: null,
+    orgRoleId: 'role-1',
     groupIds: [],
-    permissionScopes: {},
+    permissionScopes: { 'question_bank.read': 'own', 'question_bank.update': 'own' },
   };
 
   beforeEach(() => {

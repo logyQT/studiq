@@ -83,9 +83,9 @@ describe('TopicService', () => {
     url: '',
     method: 'GET',
     activeOrgId: 'org-1',
-    orgRoleId: null,
+    orgRoleId: 'role-1',
     groupIds: [],
-    permissionScopes: {},
+    permissionScopes: { 'topic.read': 'own', 'topic.update': 'own' },
   };
 
   beforeEach(() => {
