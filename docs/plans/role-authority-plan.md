@@ -1266,7 +1266,10 @@ forbids before accepting that nothing can.
   which is the point.
 - **Gates:** `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`
   (4646 passed, 1 skipped), `review:static`, `knip`, `dup:base`, `format:check`,
-  `bun run pr:size` **80/400**.
+  `bun run pr:size` **80/400**. The stored-row pin is proven with `bun run mutate`
+  (`KILLED`): widening a stored row to `own` turns "keeps a stored scope wider
+  than the persona default outside an org" red, and a payload that emits `own`
+  for any verb-shaped key turns the controller's category case red.
 
 **Difficulty log**
 
