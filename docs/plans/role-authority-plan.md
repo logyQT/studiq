@@ -9,6 +9,11 @@ reads this file first; nothing here is replaced by chat history.
 - Evidence: [audit §0](../audits/features-perms-weak-spots.md)
 - Operating contract: [role-authority-orchestrator.md](role-authority-orchestrator.md)
 
+**Context recovery.** This ledger is the authoritative memory. An orchestrator
+session can be scoured with `opencode session list` and
+`opencode session export <id>` (grep for decisions, command pairs and PR
+numbers); chat history is never the source of truth.
+
 ## 1. Status
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
@@ -91,6 +96,11 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                      |
 | D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
 | D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                         |
+| D17 | Role templates are editor presets, not extra org rows: every org keeps admin/teacher/member; Assistant/Billing/Read-only/Blank are created from a template via POST /organization/roles. ADR §4.2 is amended to match §9.                                                                                  |
+| D18 | Teacher profile 'all' means the org ceiling minus the four legacy management markers; markers resolve only from org_role_features rows, so a Teacher never inherits member.manage/role.builder.                                                                                                            |
+| D19 | entitlement_profile is authoritative for non-marker entitlement keys; legacy rows are read only for marker grants and explicit is_enabled=false revokes. Phase 3 deletes the legacy writer.                                                                                                                |
+| D20 | Role changes are logged (actor, role, before, after) through @studiq/server/lib/log until an audit table exists; no audit subsystem is invented in phase 2.                                                                                                                                                |
+| D21 | Changing or removing a grant requires authority over the current scope as well as the target; org.admin holders are exempt from 'no self-edit', or a single-admin org could never edit its own Admin role.                                                                                                 |
 | D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                         |
 | D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                  |
 
@@ -549,6 +559,24 @@ Rule: grep a removed key in `docs/` and `qa/cases/`, not only in code — the ca
 text is the product spec.
 
 ### Phase 2 — authority
+
+**Settled 2026-11-19 — five slices on one short-lived branch.** Phase 2 starts
+only after 1c merges; 2a-1 imports `ENTITLEMENTS`/`LIMITS` from
+`@studiq/authz`.
+
+- **2a-1** `entitlement_profile` + trigger/seed/backfill + profile-driven
+  resolver + RLS fallback (~260 lines). **This slice closes the RLS twin of
+  FP-01 in the same PR**: `has_org_feature`'s zero-row fallback reads
+  `org_roles.entitlement_profile`, so PostgREST cannot escalate between 2a and
+  2b.
+- **2a-2** role templates + `requirePermission('org.role.manage')` + editor gate
+  (~200; rewrites MGR-ROL-01, deletes the out-of-map e2e
+  `manage-roles-plan-gate`).
+- **2a-3** closed-catalog editor + complete payload + audit log (~400,
+  `size:exception`).
+- **2a-4** `ctx.groupRoles` + org-scoped group query (~90; closes the cross-org
+  group union).
+- **2a-5** fail-closed scope defaults (~110).
 
 _Not started._
 
