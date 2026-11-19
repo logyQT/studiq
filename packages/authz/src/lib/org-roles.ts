@@ -20,7 +20,7 @@ export const SYSTEM_ROLE_NAMES = ['admin', 'teacher', 'member'] as const;
 
 export type SystemRoleName = (typeof SYSTEM_ROLE_NAMES)[number];
 
-export interface SystemRoleTemplate {
+export interface RoleTemplate {
   displayName: string;
   description: string;
   entitlementProfile: EntitlementProfile;
@@ -60,7 +60,7 @@ function scoped(keys: PermissionKeyList, scope: CatalogScope): Record<string, Ca
  * §4.2's matrix; the Teacher row grants it at `group`. Nothing reads the key
  * until phase 5, so neither scope is load-bearing yet.
  */
-export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, SystemRoleTemplate> = {
+export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, RoleTemplate> = {
   admin: {
     displayName: 'Admin',
     description: 'Org manager — settings, members, roles',
@@ -102,3 +102,66 @@ export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, SystemRoleTemplate> =
     },
   },
 };
+
+/** The read-only preset: every read key of the content and class families. */
+const READ_KEYS: PermissionKeyList = [...CONTENT_KEYS, ...GROUP_KEYS].filter((key) =>
+  key.endsWith('.read'),
+);
+
+/**
+ * The editor's templates (ADR-0015 §4.2/§9, D17). A template is a **preset**, not
+ * a fourth system role: the three `SYSTEM_ROLE_TEMPLATES` are seeded by the
+ * trigger and cannot be renamed or deleted, while these are materialised as
+ * ordinary custom roles by `POST /organization/roles`. Nothing here is a system
+ * role, and `org.admin` is absent by D16 — ownership is not grantable.
+ *
+ * Every key and scope is drawn from `PERMISSIONS`, so a template cannot carry a
+ * name the editor's closed catalog refuses; the absent `org.admin` and the DB
+ * matrix equality are pinned by `__tests__/unit/lib/org-roles.test.ts` and
+ * `__tests__/integration/org-role-templates.test.ts`.
+ */
+export const ROLE_TEMPLATE_NAMES = ['assistant', 'billing', 'read-only', 'blank'] as const;
+
+export type RoleTemplateName = (typeof ROLE_TEMPLATE_NAMES)[number];
+
+export const ROLE_TEMPLATES = {
+  assistant: {
+    displayName: 'Assistant',
+    description: 'Front-desk staff — members, invitations, reports and content',
+    entitlementProfile: 'none',
+    permissions: {
+      'org.member.manage': 'organization',
+      'org.invitation.manage': 'organization',
+      'org.report.manage': 'organization',
+      ...scoped(CONTENT_KEYS, 'organization'),
+    },
+  },
+  billing: {
+    displayName: 'Billing',
+    description: 'Billing staff — the organization plan and its seats',
+    entitlementProfile: 'none',
+    permissions: {
+      'org.billing.manage': 'organization',
+      'org.seat.manage': 'organization',
+    },
+  },
+  'read-only': {
+    displayName: 'Read-only',
+    description: 'Auditor — read content, classes and the audit log',
+    entitlementProfile: 'none',
+    permissions: {
+      ...scoped(READ_KEYS, 'organization'),
+      'org.audit.read': 'organization',
+    },
+  },
+  blank: {
+    displayName: 'Blank',
+    description: 'No permissions — a custom role built from scratch',
+    entitlementProfile: 'none',
+    permissions: {},
+  },
+} as const satisfies Record<RoleTemplateName, RoleTemplate>;
+
+export function isRoleTemplateName(value: string): value is RoleTemplateName {
+  return (ROLE_TEMPLATE_NAMES as readonly string[]).includes(value);
+}

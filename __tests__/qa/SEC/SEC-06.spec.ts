@@ -18,10 +18,12 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *   case's `student1` as a plain `member`, so the teacher's 403 cannot be an artifact
  *   of a member-role caller;
  * - `--plan hub` puts *this tenant's own* organization on Hub through
- *   `apply_org_plan` (the same RPC the billing webhook calls), so the manager
- *   positive control can create a custom role (`role.builder`) and manage members
- *   (`member.manage`). Nothing global is written: no admin setting, feature flag,
- *   plan catalogue row, platform stat or singleton.
+ *   `apply_org_plan` (the same RPC the billing webhook calls), the plan the case
+ *   names. It is not the write gate any more (2a-2: role writes need
+ *   `org.role.manage`, member writes `org.member.manage`, both on the Admin role);
+ *   the plan only keeps the fixture on the shape the case document describes.
+ *   Nothing global is written: no admin setting, feature flag, plan catalogue row,
+ *   platform stat or singleton.
  *
  * All ids derive from the tenant (`tenant.runSuffix` + `tenant.users` / `tenant.org`);
  * emails and the control role name carry that run suffix, so two runs never collide.
@@ -32,10 +34,10 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    /organization/roles` → **403 FORBIDDEN**, also with an invalid body where the
  *    route gates on the account type (the gate runs before validation: 403, not 422).
  * 2. As the **teacher** (org role `teacher`, Hub plan): `PUT /organization/members`
- *    and `POST /organization/roles` → **403 FORBIDDEN** (missing `member.manage` /
- *    `role.builder` for the teacher role), and a bulk invitation that would grant a
- *    privileged role (`admin`, `teacher`) → **403 FORBIDDEN** (`can_assign_org_role`,
- *    #189).
+ *    and `POST /organization/roles` → **403 FORBIDDEN** (the teacher role holds
+ *    neither `org.member.manage` nor `org.role.manage`), and a bulk invitation that
+ *    would grant a privileged role (`admin`, `teacher`) → **403 FORBIDDEN**
+ *    (`can_assign_org_role`, #189).
  * 3. Nothing changed: the organization's `org_members` rows and role ids are exactly
  *    the seeded baseline, no invitation row exists for any address the rejected
  *    attempts used, and no custom role was created.
@@ -176,7 +178,7 @@ async function listMembers(page: Page): Promise<Member[]> {
 function loadCaseTenant(): QaTenant {
   const tenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
-  expect(tenant.plan, `${CASE} needs role.builder/member.manage (Hub plan)`).toBe('hub');
+  expect(tenant.plan, `${CASE} needs the case document's Hub plan for its tenant`).toBe('hub');
   if (!tenant.org || !tenant.users.manager || !tenant.users.teacher || !tenant.users.student) {
     throw new Error(`${CASE} tenant is missing its organization, manager, teacher or student`);
   }
@@ -337,7 +339,7 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       'the teacher holds the org teacher role in the active organization',
     ).toMatchObject({ id: org.id, orgRoleName: 'teacher', isActive: true });
 
-    // A real role change is refused: the teacher lacks `member.manage`.
+    // A real role change is refused: the teacher lacks `org.member.manage`.
     expectForbidden(
       await call(page, 'PUT', MEMBERS_URL, {
         targetUserId: student.id,
@@ -350,7 +352,7 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       'teacher PUT /organization/members with an invalid body',
     );
 
-    // A custom role is refused: the teacher lacks `role.builder`.
+    // A custom role is refused: the teacher lacks `org.role.manage`.
     expectForbidden(
       await call(page, 'POST', ROLES_URL, { name: teacherRoleName }),
       'teacher POST /organization/roles',

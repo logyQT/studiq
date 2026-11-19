@@ -1,9 +1,9 @@
-import type { RequestContext } from '@studiq/authz';
+import { Permission, type RequestContext } from '@studiq/authz';
+import { requirePermission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
-import { requireFeature } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
@@ -13,6 +13,18 @@ import {
   UpdateOrgRoleSchema,
 } from '@studiq/server/models/org-role.model';
 import { type OrgRoleService, orgRoleService } from '@studiq/server/services/org-role.service';
+
+/** The 400 every id-addressed route returns for a path id that is not a UUID. */
+const INVALID_ROLE_ID: ControllerResponse = {
+  success: false,
+  statusCode: 400,
+  error: 'BAD_REQUEST',
+};
+
+function parseRoleId(id: string): string | null {
+  const parsed = OrgRoleIdParamsSchema.safeParse({ id });
+  return parsed.success ? parsed.data.id : null;
+}
 
 export class OrgRoleController {
   constructor(private service: OrgRoleService) {}
@@ -28,12 +40,10 @@ export class OrgRoleController {
   }
 
   async getRole(ctx: RequestContext, id: string): Promise<ControllerResponse> {
-    const paramsParsed = OrgRoleIdParamsSchema.safeParse({ id });
-    if (!paramsParsed.success) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-    }
+    const roleId = parseRoleId(id);
+    if (!roleId) return INVALID_ROLE_ID;
 
-    const role = await this.service.getRole(ctx, paramsParsed.data.id);
+    const role = await this.service.getRole(ctx, roleId);
 
     if (isFailure(role)) {
       return controllerResponse.error(role.error);
@@ -43,7 +53,7 @@ export class OrgRoleController {
   }
 
   async createRole(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'role.builder');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
     const parsed = CreateOrgRoleSchema.safeParse(body);
     if (!parsed.success) {
@@ -65,12 +75,10 @@ export class OrgRoleController {
   }
 
   async updateRole(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'role.builder');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
-    const paramsParsed = OrgRoleIdParamsSchema.safeParse({ id });
-    if (!paramsParsed.success) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-    }
+    const roleId = parseRoleId(id);
+    if (!roleId) return INVALID_ROLE_ID;
 
     const parsed = UpdateOrgRoleSchema.safeParse(body);
     if (!parsed.success) {
@@ -82,7 +90,7 @@ export class OrgRoleController {
       };
     }
 
-    const role = await this.service.updateRole(ctx, paramsParsed.data.id, parsed.data);
+    const role = await this.service.updateRole(ctx, roleId, parsed.data);
 
     if (isFailure(role)) {
       return controllerResponse.error(role.error);
@@ -92,14 +100,12 @@ export class OrgRoleController {
   }
 
   async deleteRole(ctx: RequestContext, id: string): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'role.builder');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
-    const paramsParsed = OrgRoleIdParamsSchema.safeParse({ id });
-    if (!paramsParsed.success) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-    }
+    const roleId = parseRoleId(id);
+    if (!roleId) return INVALID_ROLE_ID;
 
-    const result = await this.service.deleteRole(ctx, paramsParsed.data.id);
+    const result = await this.service.deleteRole(ctx, roleId);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -113,12 +119,10 @@ export class OrgRoleController {
     id: string,
     body: unknown,
   ): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'role.builder');
+    await requirePermission(ctx, Permission.ORG_ROLE_MANAGE);
 
-    const paramsParsed = OrgRoleIdParamsSchema.safeParse({ id });
-    if (!paramsParsed.success) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-    }
+    const roleId = parseRoleId(id);
+    if (!roleId) return INVALID_ROLE_ID;
 
     const parsed = SetRolePermissionsSchema.safeParse(body);
     if (!parsed.success) {
@@ -130,7 +134,7 @@ export class OrgRoleController {
       };
     }
 
-    const result = await this.service.setPermissions(ctx, paramsParsed.data.id, parsed.data);
+    const result = await this.service.setPermissions(ctx, roleId, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

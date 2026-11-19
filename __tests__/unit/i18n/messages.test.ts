@@ -3,6 +3,7 @@ import pl from '@/i18n/messages/pl.json';
 import adminEn from '@admin/i18n/messages/en.json';
 import adminPl from '@admin/i18n/messages/pl.json';
 import { translateErrorCode } from '@/lib/error-messages';
+import { ROLE_TEMPLATE_NAMES } from '@studiq/authz';
 import { APP_ERRORS } from '@studiq/server/lib/errors';
 import { START_REFUSAL_CODES } from '#test/helpers/start-refusals';
 import { createTranslator } from 'next-intl';
@@ -79,10 +80,16 @@ const AI_CHAT_PLAN_GATE_KEYS = [
 ] as const;
 
 /**
- * #259 — the roles page plan gate renders these `ManageRolesPage` keys directly,
- * so a missing translation would show the raw key on a locked page.
+ * 2a-2 (D17) — the roles page renders the template picker's labels directly, so a
+ * missing translation would show the raw key in the create dialog. The keys are
+ * derived from the preset list, so adding or renaming a preset cannot ship one
+ * (the hyphen in `template_read-only` is the preset name).
  */
-const MANAGE_ROLES_PLAN_GATE_KEYS = ['locked_title', 'locked_desc', 'locked_cta'] as const;
+const MANAGE_ROLES_TEMPLATE_KEYS = [
+  'template_label',
+  'template_hint',
+  ...ROLE_TEMPLATE_NAMES.map((name) => `template_${name}`),
+] as const;
 
 /**
  * #139 — `DeckFormDialog` renders the group-required hint from these namespaces,
@@ -203,10 +210,10 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     }
   });
 
-  it('translates every manage-roles plan-gate key', () => {
+  it('translates every manage-roles template-picker key', () => {
     const manageRolesPage = messages.ManageRolesPage as Record<string, string>;
 
-    for (const key of MANAGE_ROLES_PLAN_GATE_KEYS) {
+    for (const key of MANAGE_ROLES_TEMPLATE_KEYS) {
       const message = manageRolesPage[key];
 
       expect(message, `ManageRolesPage.${key}`).toBeTypeOf('string');

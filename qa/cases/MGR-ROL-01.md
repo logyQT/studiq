@@ -1,4 +1,4 @@
-# MGR-ROL-01 — Tworzenie roli – plan bez role.builder (Launch)
+# MGR-ROL-01 — Tworzenie roli – bramka uprawnienia org.role.manage
 
 - id: MGR-ROL-01
 - priority: P2 ważny
@@ -14,10 +14,26 @@ M1, WSB Merito (Launch).
 ## Steps
 
 1. Kliknij „Nowa rola”, nazwa „Asystent”, opis; zapisz.
+2. Edytuj nazwę utworzonej roli.
+3. Zaloguj się jako członek organizacji, którego rola nie ma `org.role.manage`,
+   i spróbuj wykonać zapis roli.
 
 ## Expected result
 
-- Operacja odrzucona (403 – brak funkcji role.builder na planie Launch); toast „Nie udało się utworzyć roli”. Zanotuj: czy UI informuje o konieczności zmiany planu (UWAGA: strona nie wyświetla blokady z góry, jak w Ustawieniach).
+- Administrator organizacji tworzy i edytuje rolę na planie Launch — bez blokady
+  planu i bez prośby o ulepszenie. Bramką zapisu jest uprawnienie
+  `org.role.manage`, a rola systemowa `admin` ma je na każdym planie.
+- Członek bez `org.role.manage` nie widzi edytora, a bezpośredni zapis
+  (`POST`/`PUT`/`DELETE /api/v1/organization/roles…`) zwraca **403**
+  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna.
+- Wybrany szablon (D17) zapisuje początkowe uprawnienia roli; `org.admin` nigdy
+  nie jest przyznawany szablonem. Klucze `org.*` szablonu zaczną działać, gdy 2b
+  zastąpi stare bramki funkcji (`member.manage`, `org.manage` itd.); klucze
+  treściowe działają już teraz.
+- Członek z **kontem typu manager** i rolą niestandardową bez `org.role.manage`
+  widzi listę ról (reguła persony go wpuszcza), ale nie ma „Nowej roli” ani
+  kolumny „Akcje”, a `POST /api/v1/organization/roles` zwraca **403** — bramką
+  jest uprawnienie, nie typ konta.
 
 ## Prerequisite context (tenant model)
 
@@ -28,30 +44,48 @@ scenariusz. Zautomatyzowany wariant używa własnego tenanta tego przypadku:
 bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy na każdy przebieg
 ```
 
-- **Klucz tenanta**: `tenantKey('qa/cases/MGR-ROL-01.md', <title>, 'qa-shared')` — z
-  `--fresh` tytuł dostaje sufiks przebiegu, więc każdy niezależny przebieg ma nowe,
-  ale wciąż deterministyczne id (`tenantId(key, entity)`).
+- **Klucz tenanta**: `tenantKey('qa/cases/MGR-ROL-01.md', <caseId>#<run>, 'qa-shared')`
+  — z `--fresh` każdy niezależny przebieg ma nowe, ale deterministyczne id
+  (`tenantId(key, entity)`).
 - **Organizacja**: jedna organizacja tworzona przez trigger na planie **Launch**
   (`organizations.plan`); nie ruszamy globalnego katalogu planów ani flag.
-- **Użytkownicy** (hasło `Seed4Test!`): `manager` (manager, rola org `admin`) — tylko
-  on jest potrzebny; `teacher` i `student` dopełniają graf tenantа.
-- **Profil**: `content` (domyślny, więc bez wpisu w `__tests__/qa/profiles/<CASE>.json`).
+- **Użytkownicy** (hasło `Seed4Test!`): `manager` (manager, rola org `admin`),
+  `teacher` (educator, rola org `member`), `student` (student, rola org `member`),
+  `roleless` (manager, rola org `member` — przypadek odmowy bramki klienta; rola
+  niestandardowa jest mu nadawana przez API w przebiegu).
+- **Profil**: `content` z jawnym rosterem `members` w
+  `__tests__/qa/profiles/MGR-ROL-01.json` (cztery konta powyżej; roster jest
+  deklaratywny, więc seeder nie zgaduje).
 - Plan i uprawnienia są odczytywane w tym samym przebiegu przez `/api/v1/me/plan`,
-  `/api/v1/features/me` i `/api/v1/subscription-plans` — nic nie jest zaszyte na sztywno.
+  `/api/v1/permissions/me` i `/api/v1/organization/roles` — nic nie jest zaszyte
+  na sztywno.
 
-## Walk observations (shared app, pl)
+## Walk observations (2026-11-19, po 2a-2)
 
-- Strona `/manage/roles` **wyświetla blokadę z góry**: karta „Kreator ról nie jest
-  dostępny w Twoim planie” z opisem „Twój obecny plan nie obejmuje kreatora ról. Ulepsz
-  plan, aby tworzyć własne role i uprawnienia.” i przyciskiem „Zobacz plany”.
-- „Nowa rola” oraz kolumna „Akcje” **nie są renderowane** na planie Launch, więc
-  ścieżka z formularzem i toastem „Nie udało się utworzyć roli” jest nieosiągalna z UI.
-  To naprawa #259 (wcześniej strona nie ostrzegała z góry) — intencją jest blokada
-  zapisu z wyprzedzeniem plus nadal działająca bramka API.
-- Bezpośrednie `POST /api/v1/organization/roles` (nazwa „Asystent”, opis) zwraca
-  **403** `{"success":false,"error":"FORBIDDEN"}` i nie tworzy roli; `PUT` istniejącej
-  roli jest odrzucany tak samo, a nazwa roli pozostaje bez zmian.
-- Lista ról (`admin`, `teacher`, `member`) pozostaje czytelna — blokada dotyczy tylko zapisu.
-- „Zobacz plany” prowadzi do `/pricing?audience=organization` („Wybierz swój plan”):
-  wiersz bieżącego planu oznaczony „Twój plan”, a plany z funkcją „Kreator ról” są na liście. UI **informuje**
-  więc o konieczności zmiany planu — to odpowiedź na uwagę z oczekiwanego rezultatu.
+- Strona `/manage/roles` **nie wyświetla już** karty „Kreator ról nie jest dostępny
+  w Twoim planie”. Karta i cała bramka planu (`role.builder`) zostały usunięte w
+  fazie 2a-2; przycisk „Nowa rola”, kolumna „Akcje” i edytor uprawnień są widoczne
+  dla administratora na Launch.
+- Formularz „Utwórz rolę” ma pola „Nazwa roli”, „Opis (opcjonalny)” i wybór
+  „Szablon startowy” (domyślnie „Pusty”). Po zapisie: toast „Rola utworzona”,
+  wiersz „Asystent” z plakietką „Niestandardowa”.
+- `GET /api/v1/permissions/me` administratora zawiera `org.role.manage`
+  (zakres `organization`); dla roli `teacher` klucza nie ma.
+- Bezpośredni `POST /api/v1/organization/roles` jako `teacher` zwraca **403**;
+  to samo dotyczy `PUT` i `DELETE`. `GET` listy ról zwraca 200 dla obu użytkowników.
+- Członek `roleless` (konto typu **manager**, rola niestandardowa „Asystent
+  organizacji” bez `org.role.manage`) widzi `/manage/roles` i listę ról, ale bez
+  przycisku „Nowa rola” i bez kolumny „Akcje”; `POST /api/v1/organization/roles`
+  z jego sesją zwraca 403. To dowód, że edytor jest bramkowany uprawnieniem, a nie
+  regułą persony.
+- Nauczyciel (account type educator) nadal jest przekierowywany z `/manage` na
+  `/edu` przez regułę persony (`AUT-17`), więc edytora nie zobaczy także z tego
+  powodu; bramką merytoryczną jest uprawnienie sprawdzane po stronie API.
+
+## Historia przypadku
+
+Wydanie v1.3 opisywało Launch jako plan bez `role.builder`, a krok 1 kończył się
+403 i prośbą o zanotowanie, czy UI ostrzega o planie. Naprawa #259 dodała kartę
+blokady planu. Faza 2a-2 (ADR-0015 §4.4) zastąpiła bramkę planu uprawnieniem
+`org.role.manage`, więc oczekiwany rezultat został przepisany na kontrakt
+uprawnienia: administrator na Launch zapisuje, członek bez klucza nie.

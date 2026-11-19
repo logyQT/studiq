@@ -4,6 +4,7 @@ import {
   type PermissionCatalogKey,
   type PermissionScope,
   type RequestContext,
+  ROLE_TEMPLATES,
 } from '@studiq/authz';
 import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { CATALOG_PERMISSION_KEYS } from '@studiq/server/models/org-role.model';
@@ -24,6 +25,7 @@ type QueryChain = {
   update: Mock<(...args: unknown[]) => QueryChain>;
   delete: Mock<(...args: unknown[]) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
+  neq: Mock<(...args: unknown[]) => QueryChain>;
   not: Mock<(...args: unknown[]) => QueryChain>;
   order: Mock<(...args: unknown[]) => QueryChain>;
   single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
@@ -55,6 +57,7 @@ function qb(data: unknown, error: unknown = null, count?: number) {
     update: vi.fn(() => b),
     delete: vi.fn(() => b),
     eq: vi.fn(() => b),
+    neq: vi.fn(() => b),
     not: vi.fn(() => b),
     order: vi.fn(() => b),
     single: vi.fn().mockResolvedValue(result),
@@ -292,6 +295,77 @@ describe('OrgRoleService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
       expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('materialises a preset as an ordinary custom role with its permission rows', async () => {
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Assistant',
+        display_name: 'Assistant',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      const permissionsQb = qb(null);
+      mock.from.mockReturnValueOnce(insertQb).mockReturnValueOnce(permissionsQb);
+
+      const result = await service.createRole(ctx, { name: 'Assistant', template: 'assistant' });
+
+      expect(result.success).toBe(true);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ is_system: false, entitlement_profile: 'none' }),
+      );
+      const expected = Object.entries(ROLE_TEMPLATES.assistant.permissions).map(
+        ([permission_name, scope]) => ({
+          org_role_id: 'r-1',
+          permission_name,
+          scope,
+        }),
+      );
+      expect(permissionsQb.insert).toHaveBeenCalledWith(expected);
+    });
+
+    it('creates zero permission rows for the blank template', async () => {
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Fresh',
+        display_name: 'Fresh',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.createRole(ctx, { name: 'Fresh', template: 'blank' });
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('org_roles');
+    });
+
+    it('deletes the role when its preset rows fail to insert', async () => {
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Assistant',
+        display_name: 'Assistant',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      const permissionsQb = qb(null, { code: '23503', message: 'permission_key_fkey' });
+      const deleteQb = qb(null);
+      mock.from
+        .mockReturnValueOnce(insertQb)
+        .mockReturnValueOnce(permissionsQb)
+        .mockReturnValueOnce(deleteQb);
+
+      const result = await service.createRole(ctx, { name: 'Assistant', template: 'assistant' });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(deleteQb.delete).toHaveBeenCalled();
+      expect(deleteQb.eq).toHaveBeenCalledWith('id', 'r-1');
     });
 
     it('returns error on DB failure', async () => {
@@ -667,18 +741,87 @@ describe('OrgRoleService', () => {
     });
 
     it('lets an org.admin holder edit the Admin role it belongs to', async () => {
-      mockRoleLookup(roleRow([{ permission_name: 'org.admin', scope: 'organization' }]));
+      mockRoleLookup(
+        roleRow([
+          { permission_name: 'org.admin', scope: 'organization' },
+          { permission_name: 'org.role.manage', scope: 'organization' },
+        ]),
+      );
       mock.from.mockReturnValueOnce(qb(undefined)); // upsert
       mock.from.mockReturnValueOnce(qb(undefined)); // prune
+      const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
+
+      // The gate and ownership are both re-sent unchanged: the edit is a no-op for
+      // them, so it is the self-edit exemption under test, not a gate removal.
+      const result = await service.setPermissions(
+        selfCtx,
+        'r-1',
+        catalogPayload({ 'org.admin': 'organization', 'org.role.manage': 'organization' }),
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it('refuses to remove the last org.role.manage grant', async () => {
+      // The caller owns the org and is editing its own Admin role, so every other
+      // guard passes; only the last-holder count stands between this save and an
+      // org where no role can manage roles.
+      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'organization' }]));
+      const gateQb = qb([], null, 0);
+      mock.from.mockReturnValueOnce(gateQb); // other-holder count
+      // Stubbed so a service that wrote anyway fails on the assertions below, not on
+      // an unstubbed client call.
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert, must not run
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune, must not run
+      const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
+
+      const result = await service.setPermissions(selfCtx, 'r-1', catalogPayload());
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+      // The count ran, and nothing was written.
+      expect(gateQb.eq).toHaveBeenCalledWith('permission_name', 'org.role.manage');
+      expect(gateQb.eq).toHaveBeenCalledWith('org_roles.organization_id', 'org-1');
+      expect(gateQb.neq).toHaveBeenCalledWith('org_role_id', 'r-1');
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('counts a legacy `any` gate row as a holder', async () => {
+      // The editor renders an out-of-catalog scope as revoked, but the row still
+      // answers `can()` and the RLS predicate, so pruning it can be the last holder.
+      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'any' }]));
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // other-holder count
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert, must not run
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune, must not run
+      const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
+
+      const result = await service.setPermissions(selfCtx, 'r-1', catalogPayload());
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+    });
+
+    it('removes org.role.manage when another role still holds it', async () => {
+      mockRoleLookup(roleRow([{ permission_name: 'org.role.manage', scope: 'organization' }]));
+      mock.from.mockReturnValueOnce(qb([], null, 1)); // another holder
+      const upsertQb = qb(undefined);
+      const pruneQb = qb(undefined);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(pruneQb);
       const selfCtx = { ...permCtx, orgRoleId: 'r-1' };
 
       const result = await service.setPermissions(
         selfCtx,
         'r-1',
-        catalogPayload({ 'org.admin': 'organization' }),
+        catalogPayload({ 'flashcard.read': 'own' }),
       );
 
       expect(result.success).toBe(true);
+      expect(upsertQb.upsert).toHaveBeenCalledWith(
+        [{ org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' }],
+        { onConflict: 'org_role_id,permission_name', ignoreDuplicates: false },
+      );
+      expect(pruneQb.not).toHaveBeenCalledWith('permission_name', 'in', '("flashcard.read")');
     });
 
     it('refuses to grant a key the caller does not hold', async () => {

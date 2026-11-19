@@ -7,12 +7,12 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  * Prerequisite (case text: „Rola niestandardowa z członkiem i rola bez członków”):
  * the `content` profile — one organization with a manager, a teacher and a
- * student — plus the role builder. `__tests__/qa/profiles/<CASE>.json` declares
- * `{ profile: "content", plan: "hub" }`: `--plan hub` puts *this tenant's own*
- * organization on Hub through `apply_org_plan`, the same path MGR-ROL-02 uses,
- * because the role write endpoints require `role.builder` (#259). Nothing global
- * is written: no admin setting, feature flag, plan catalog row, platform stat or
- * singleton.
+ * student. `__tests__/qa/profiles/<CASE>.json` declares
+ * `{ profile: "content", plan: "hub" }`: `--plan hub` keeps *this tenant's own*
+ * organization on the plan the case document names, while the write gate itself is
+ * the `org.role.manage` permission on the Admin role (ADR-0015 §4.4, 2a-2). Nothing
+ * global is written: no admin setting, feature flag, plan catalog row, platform
+ * stat or singleton.
  *
  *   bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
  *
@@ -148,9 +148,9 @@ async function signInAsManager(page: Page, tenant: QaTenant): Promise<void> {
 }
 
 /**
- * Open /manage/roles. `role.builder` arrives with `/features/me`, and the write
- * UI is fail-closed until it resolves, so the create button is the readiness
- * signal for the whole action column.
+ * Open /manage/roles. The write UI is fail-closed until `/permissions/me`
+ * resolves (`usePermission()`), so the create button is the readiness signal for
+ * the whole action column.
  */
 async function openRoles(page: Page, tenant: QaTenant): Promise<void> {
   await signInAsManager(page, tenant);
@@ -186,10 +186,15 @@ test('a system role offers no delete control and the API refuses to delete it', 
 
   await openRoles(page, tenant);
 
-  // The prerequisite is the `role.builder` feature; assert it from the same
-  // endpoint the page's `useFeature()` hook reads.
-  const features = await readData<{ features: string[] }>(page, '/api/v1/features/me');
-  expect(features.features, 'the org plan unlocks role.builder').toContain('role.builder');
+  // The prerequisite is the caller's permission; assert it from the same endpoint
+  // the page's `usePermission()` hook reads.
+  const permissions = await readData<{ permissions: Record<string, string | null> }>(
+    page,
+    '/api/v1/permissions/me',
+  );
+  expect(permissions.permissions['org.role.manage'], 'the admin holds the gate').toBe(
+    'organization',
+  );
 
   // --- Step 1: every system role is labelled and has no delete action -------
   const before = await listRoles(page);

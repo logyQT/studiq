@@ -6,6 +6,8 @@ import {
   PERMISSIONS,
   type PermissionDefinition,
   type RequestContext,
+  ROLE_TEMPLATES,
+  type RoleTemplate,
   scopeCovers,
 } from '@studiq/authz';
 import { log } from '@studiq/server/lib/log';
@@ -29,6 +31,18 @@ const CATALOG = PERMISSIONS as Record<string, PermissionDefinition | undefined>;
 /** `entitlement_profile` is a text column with a CHECK; read it through the catalog type. */
 function profileOf(value: string): EntitlementProfile {
   return isEntitlementProfile(value) ? value : 'none';
+}
+
+/** The permission rows a template seeds, in catalog order. */
+function templateRows(
+  orgRoleId: string,
+  template: RoleTemplate,
+): { org_role_id: string; permission_name: string; scope: CatalogScope }[] {
+  return Object.entries(template.permissions).map(([permission_name, scope]) => ({
+    org_role_id: orgRoleId,
+    permission_name,
+    scope,
+  }));
 }
 
 interface OrgRoleSummary {
@@ -148,6 +162,11 @@ export class OrgRoleService {
       return failure('UNPROCESSABLE_ENTITY');
     }
 
+    // D17: a template is an editor preset, materialised as an ordinary custom
+    // role. An omitted template means `blank` — a role that holds nothing
+    // (fail-closed). The schema owns the closed list; `data.template` is typed.
+    const template = ROLE_TEMPLATES[data.template ?? 'blank'];
+
     const { data: role, error } = await supabase
       .from('org_roles')
       .insert({
@@ -156,13 +175,27 @@ export class OrgRoleService {
         display_name: data.name,
         description: data.description ?? null,
         is_system: false,
-        // A custom role starts with no paid surface (ADR-0015 §4.2, fail-closed).
-        entitlement_profile: data.entitlementProfile ?? 'none',
+        // A custom role starts with no paid surface (ADR-0015 §4.2, fail-closed);
+        // every preset is `none`, so the template cannot widen it.
+        entitlement_profile: data.entitlementProfile ?? template.entitlementProfile,
       })
       .select('id, name, display_name, description, is_system, entitlement_profile')
       .single();
 
     if (error) return toDbFailure(error);
+
+    const rows = templateRows(role.id, template);
+    if (rows.length > 0) {
+      const { error: permissionsError } = await supabase.from('org_role_permissions').insert(rows);
+
+      if (permissionsError) {
+        // The role and its preset rows are one write: a role whose template
+        // failed to apply is a role with less authority than the caller asked
+        // for, so undo it rather than leave a half-created row.
+        await supabase.from('org_roles').delete().eq('id', role.id);
+        return toDbFailure(permissionsError);
+      }
+    }
 
     return success(toRoleSummary(role));
   }
@@ -316,8 +349,9 @@ export class OrgRoleService {
 
     if (roleError) return toDbFailure(roleError);
 
+    const storedRows = dbRows(role.org_role_permissions);
     const current = new Map<string, CatalogScope>();
-    for (const row of dbRows(role.org_role_permissions)) {
+    for (const row of storedRows) {
       if (isCatalogScope(row.scope)) current.set(row.permission_name, row.scope);
     }
 
@@ -350,6 +384,27 @@ export class OrgRoleService {
       const mine = ctx.permissionScopes[key];
       if (held && !scopeCovers(mine, held)) return failure('FORBIDDEN');
       if (next && !scopeCovers(mine, next)) return failure('FORBIDDEN');
+    }
+
+    // The gate must survive its own editor: an `org.admin` holder may self-edit, so
+    // without this the owner could untick „Role management” on the Admin role and
+    // leave no role that holds `org.role.manage` — every write then 403s and
+    // `org.admin` is not a fallback (ADR-0015 §4.1). Counted across the org's other
+    // roles, before any write, so the answer is the state the save would leave.
+    // A legacy row (`scope = 'any'`) is absent from `current` — the editor reads the
+    // key as revoked — but it still satisfies `can()` and the RLS predicate, so it
+    // counts as a holder here.
+    const holdsGate = storedRows.some((row) => row.permission_name === 'org.role.manage');
+    if (holdsGate && !target.get('org.role.manage')) {
+      const { count, error: gateError } = await supabase
+        .from('org_role_permissions')
+        .select('org_role_id, org_roles!inner(organization_id)', { count: 'exact', head: true })
+        .eq('permission_name', 'org.role.manage')
+        .eq('org_roles.organization_id', ctx.activeOrgId)
+        .neq('org_role_id', id);
+
+      if (gateError) return toDbFailure(gateError);
+      if (!count) return failure('CONFLICT');
     }
 
     const rows: { org_role_id: string; permission_name: string; scope: CatalogScope }[] = [];

@@ -1,4 +1,4 @@
-import { PERMISSIONS } from '@studiq/authz';
+import { PERMISSIONS, ROLE_TEMPLATE_NAMES } from '@studiq/authz';
 import {
   CATALOG_PERMISSION_KEYS,
   CreateOrgRoleSchema,
@@ -140,5 +140,30 @@ describe('org role schemas — entitlement profile', () => {
   it('accepts a known profile and rejects an unknown one on update', () => {
     expect(UpdateOrgRoleSchema.safeParse({ entitlementProfile: 'all' }).success).toBe(true);
     expect(UpdateOrgRoleSchema.safeParse({ entitlementProfile: 'everything' }).success).toBe(false);
+  });
+});
+
+describe('org role schemas — templates (D17)', () => {
+  it('accepts every editor preset and the blank default', () => {
+    for (const template of ROLE_TEMPLATE_NAMES) {
+      expect(CreateOrgRoleSchema.safeParse({ name: 'Assistant', template }).success, template).toBe(
+        true,
+      );
+    }
+    expect(CreateOrgRoleSchema.safeParse({ name: 'Assistant' }).success).toBe(true);
+  });
+
+  it('rejects a template outside the closed preset list', () => {
+    const result = CreateOrgRoleSchema.safeParse({ name: 'Assistant', template: 'teacher' });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['template']);
+  });
+
+  it('does not offer a template on update: the field is stripped, not honoured', () => {
+    const parsed = UpdateOrgRoleSchema.safeParse({ template: 'assistant' });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).not.toHaveProperty('template');
   });
 });

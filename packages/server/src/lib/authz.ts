@@ -240,6 +240,17 @@ export async function check(
   }
 }
 
+/**
+ * A capability the caller must hold to reach a write path (ADR-0015 §4.4).
+ * Throws instead of returning a boolean so a controller cannot forget the
+ * branch; `withAuth` maps the throw to 403 and records it on the span.
+ */
+export async function requirePermission(ctx: RequestContext, permission: string): Promise<void> {
+  if (!(await can(ctx, permission))) {
+    throw new AppError('FORBIDDEN');
+  }
+}
+
 interface AccessibleFilterResult {
   _impossible?: true;
   or?: string;

@@ -36,9 +36,10 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
   Spec zeruje uprawnienia **przez edytor** (odznaczenie wszystkich wierszy i zapis), bo
   `PUT /organization/roles/<id>/permissions` przyjmuje teraz komplet kluczy katalogu, a
   nie pustą listę.
-- Edycja uprawnień roli to funkcja `role.builder` z planu Hub+, a plan Launch celowo jej
-  nie ma. Spec przenosi **własną** organizację na plan `hub` przez produktowe
-  `apply_org_plan()` — katalog planów, flagi funkcji i inne organizacje pozostają nietknięte.
+- Edycja uprawnień roli wymaga uprawnienia `org.role.manage`, które rola systemowa
+  `admin` ma na każdym planie; plan nie jest już bramką. Spec przenosi **własną**
+  organizację na plan `hub` przez produktowe `apply_org_plan()`, bo tak opisuje go
+  przypadek — katalog planów, flagi funkcji i inne organizacje pozostają nietknięte.
 - Treści per zakres (każda rodzina: talia/fiszki, temat, bank pytań/pytania):
   - `own` — utworzone przez użytkownika roli,
   - `group` — utworzone przez admina i udostępnione grupie `G1`,

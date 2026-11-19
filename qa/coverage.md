@@ -123,7 +123,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | MGR-MEM-04  | MGR  | P2   | e2e    |                                                                      |
 | MGR-MEM-05  | MGR  | P2   | e2e    |                                                                      |
 | MGR-REP-01  | MGR  | P2   | e2e    |                                                                      |
-| MGR-ROL-01  | MGR  | P2   | e2e    |                                                                      |
+| MGR-ROL-01  | MGR  | P2   | e2e    | gate: `org.role.manage` (QA case; e2e deleted)                       |
 | MGR-ROL-02  | MGR  | P2   | e2e    |                                                                      |
 | MGR-ROL-03  | MGR  | P2   | e2e    |                                                                      |
 | MGR-ROL-04  | MGR  | P1   | e2e    |                                                                      |

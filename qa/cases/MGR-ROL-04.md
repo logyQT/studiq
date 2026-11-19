@@ -4,7 +4,7 @@
 - priority: P1 krytyczny
 - module: MGR – Panel managera organizacji (/manage)
 - section: Role (/manage/roles)
-- prereqs: role.builder (plan Hub); rola niestandardowa z członkiem + pusta rola niestandardowa
+- prereqs: uprawnienie org.role.manage (rola org admin); rola niestandardowa z członkiem + pusta rola niestandardowa
 - source: StudiQ Dokument Testera v1.3
 
 ## Prerequisite (verbatim)
@@ -26,9 +26,10 @@ Rola niestandardowa z członkiem i rola bez członków.
 ## Seed (QA-suite tenant)
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Warunek
-wstępny przypadku — kreator ról (`role.builder`) — jest ustawiany **wewnątrz tenanta
-przypadku** przez ten sam RPC, którego używa webhook płatności (`apply_org_plan`), a nie
-przez globalną flagę czy zmianę planu innej organizacji:
+wstępny przypadku — możliwość zapisu i usuwania ról — spełnia rola systemowa `admin`
+tenanta, która ma `org.role.manage`; plan Hub jest ustawiany **wewnątrz tenanta
+przypadku** przez ten sam RPC, którego używa webhook płatności (`apply_org_plan`), bo tak
+opisuje przypadek, a nie przez globalną flagę czy zmianę planu innej organizacji:
 
 ```bash
 bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
@@ -36,8 +37,8 @@ bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. Rola `admin` dostaje wtedy `role.builder` w snapshocie
-  `org_role_features`, a `/api/v1/features/me` zwraca tę funkcję.
+  tenanta na plan Hub. Zapisu ról nie warunkuje już plan: `/api/v1/permissions/me`
+  administratora zwraca `org.role.manage` z roli `admin`.
 - Mapowanie skrótów z ręcznego seeda: M1 → `users.manager` (admin organizacji), T1 →
   `users.teacher`, S1 → `users.student`.
 - Klucz tenanta: `MGR-ROL-04.md::MGR-ROL-04#<run>::qa-shared` —

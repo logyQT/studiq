@@ -3,6 +3,7 @@ import {
   isPermissionCatalogKey,
   PERMISSIONS,
   type PermissionCatalogKey,
+  ROLE_TEMPLATE_NAMES,
 } from '@studiq/authz';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
@@ -40,6 +41,8 @@ export const CreateOrgRoleSchema = registry.register(
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
     description: z.string().nullable().optional(),
     entitlementProfile: EntitlementProfileSchema.optional(),
+    /** Editor preset (D17); `blank` when omitted — a role with no permissions. */
+    template: z.enum(ROLE_TEMPLATE_NAMES, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
   }),
 );
 

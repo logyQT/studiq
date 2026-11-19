@@ -99,7 +99,7 @@ case documents, 18 of which have no spec yet.)
 | MGR-01      | teacher/student counters derived from role name                                     | `org.member.manage`; custom roles break role-name classification             | 2     |
 | MGR-02      | manager menu lacks the AI entry; chat admits student/educator                       | manager AI via entitlement                                                   | 5     |
 | MGR-ACC-01  | manager „Wybierz plan” + `/me/plan` agreement                                       | `solo`; effective-plan display                                               | 4     |
-| MGR-ROL-01  | Launch lacks `role.builder`; locked card + 403                                      | `org.role.manage` permission                                                 | 2     |
+| MGR-ROL-01  | Launch lacks `role.builder`; locked card + 403                                      | Launch admin writes via `org.role.manage`; a member without it is 403        | 2     |
 | MGR-ROL-02  | role CRUD gated by `role.builder` on Hub                                            | `org.role.manage`; closed catalog                                            | 2     |
 | MGR-ROL-03  | 20 free-string scopes across 5 sections, live scope swap                            | closed catalog (44 keys, 10 sections); complete payload; no-escalation guard | 2     |
 | MGR-ROL-04  | system-role delete 403; role with members undeletable                               | same guards under `org.role.manage`                                          | 2     |
@@ -244,10 +244,12 @@ guards replaces the role's whole permission set and the gate is one of those row
   controller (`SetRolePermissionsSchema`) and again at the service
   (`isCompleteCatalogPayload`), pinned by the model, controller and service unit
   tests, the integration no-op case and MGR-ROL-03.
-- **2a-2** (~200) — role templates (Assistant/Billing/Read-only/Blank presets),
-  `requirePermission('org.role.manage')` and the editor gate; rewrites
+- **2a-2** (~460, `size:exception`; 438 at review) — role templates (Assistant/Billing/Read-only/Blank presets),
+  `requirePermission('org.role.manage')`, the editor gate and the RLS predicate
+  (`rls_caller_has_permission` on the six role-write policies, R4); rewrites
   MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`. Runs on the
-  write path 2a-3 made safe.
+  write path 2a-3 made safe. The `org.*` keys in a preset take effect when 2b
+  replaces the legacy feature gates; the content keys are live now.
 - **2a-4** (~90) — `withAuth` builds `ctx.groupRoles` from
   `group_members.role`; org-scoped group query; add a verified-org helper.
   Closes the cross-org group union.
@@ -256,7 +258,9 @@ guards replaces the role's whole permission set and the gate is one of those row
 
 The remaining phase-2 work, in slice order:
 
-- `org_role_permissions.permission_key` FKs the permission catalog (2a-2/2a-3).
+- `org_role_permissions.permission_key` FKs the permission catalog (2b; deferred
+  from 2a-2, whose scope was the gate, the RLS predicate and the presets — the FK
+  needs the old free-text names backfilled first).
 - Replace `allowedAccountTypes` on org routes with `requirePermission` —
   49 files, keeping the 2 legitimate persona exceptions
   (org creation, classroom creation) and the 5 embedded membership checks.

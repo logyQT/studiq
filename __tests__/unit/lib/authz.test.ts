@@ -6,8 +6,10 @@ import {
   checkPermission,
   evaluate,
   hasPermission,
+  requirePermission,
   resolveScope,
 } from '@studiq/server/lib/authz';
+import { AppError } from '@studiq/server/lib/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
@@ -97,6 +99,25 @@ describe('authz (unified lib)', () => {
 
     it('returns false when scope is null', () => {
       expect(hasPermission(baseCtx, 'org_role.manage')).toBe(false);
+    });
+  });
+
+  describe('requirePermission', () => {
+    it('resolves when the caller holds the permission', async () => {
+      await expect(
+        requirePermission(
+          { ...baseCtx, permissionScopes: { 'org.role.manage': 'organization' } },
+          'org.role.manage',
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws FORBIDDEN when the caller does not hold it', async () => {
+      await expect(requirePermission(baseCtx, 'org.role.manage')).rejects.toMatchObject({
+        name: 'AppError',
+        code: 'FORBIDDEN',
+      });
+      await expect(requirePermission(baseCtx, 'org.role.manage')).rejects.toBeInstanceOf(AppError);
     });
   });
 

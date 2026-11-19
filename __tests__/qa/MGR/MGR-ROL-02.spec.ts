@@ -15,12 +15,12 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * `__tests__/qa/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`: the
  * `content` tenant gives the org its admin, teacher and student, and `--plan hub`
- * puts *this tenant's own* organization on Hub through `apply_org_plan` — the
- * prerequisite the case states („Włącz role.builder dla organizacji (override w
- * adminie lub plan Hub)”), because the role write endpoints require `role.builder`
- * (#259). Nothing global is written: no admin setting, feature flag, plan catalog
- * row, platform stat or singleton. BIL-04's purchase path is not exercised here;
- * it is reported separately.
+ * puts *this tenant's own* organization on Hub through `apply_org_plan` — the plan
+ * the case document names („Włącz role.builder dla organizacji … plan Hub”). The
+ * write gate itself is the `org.role.manage` permission on the tenant's Admin role
+ * (ADR-0015 §4.4, 2a-2), not the plan. Nothing global is written: no admin
+ * setting, feature flag, plan catalog row, platform stat or singleton. BIL-04's
+ * purchase path is not exercised here; it is reported separately.
  *
  * The spec creates the case's role through the UI, edits it through the UI, and
  * cross-checks the persisted rows with `GET /api/v1/organization/roles`.
@@ -43,7 +43,7 @@ const COPY = {
   typeCustom: 'Niestandardowa',
   roleCreated: 'Rola utworzona',
   roleUpdated: 'Rola zaktualizowana',
-  locked: 'Kreator ról nie jest dostępny w Twoim planie',
+  templateLabel: 'Szablon startowy',
 } as const;
 
 const ROLE_NAME = 'Asystent';
@@ -100,11 +100,16 @@ test('creates „Asystent”, renames it with a description and keeps the custom
 
   await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
 
-  // --- Prerequisite: the tenant org is entitled to the role builder ---------
-  // The case's prerequisite is the `role.builder` feature („plan Hub”); assert it
-  // from the same endpoint the page's `useFeature()` hook reads.
-  const features = await getJson<{ features: string[] }>(page, '/api/v1/features/me');
-  expect(features.features, 'the org plan unlocks role.builder').toContain('role.builder');
+  // --- Prerequisite: the caller's role holds the role-management key ---------
+  // ADR-0015 §4.4 (2a-2): the write gate is `org.role.manage`, not the
+  // `role.builder` plan feature. The Admin role carries both on every plan.
+  const permissions = await getJson<{ permissions: Record<string, string | null> }>(
+    page,
+    '/api/v1/permissions/me',
+  );
+  expect(permissions.permissions['org.role.manage'], 'the admin holds the gate').toBe(
+    'organization',
+  );
 
   const plan = await getJson<{ key: string }>(page, '/api/v1/me/plan');
   expect(plan.key, 'the active org plan').toBe('hub');
@@ -128,9 +133,6 @@ test('creates „Asystent”, renames it with a description and keeps the custom
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
   await expect(page.getByRole('heading', { level: 1, name: COPY.title })).toBeVisible();
 
-  // An entitled org sees the builder, never the Launch locked card (#259).
-  await expect(page.getByText(COPY.locked, { exact: true })).toHaveCount(0);
-
   const newRoleButton = page.getByRole('button', { name: COPY.newRole, exact: true });
   await expect(newRoleButton).toBeVisible();
 
@@ -150,6 +152,8 @@ test('creates „Asystent”, renames it with a description and keeps the custom
   ).toBeVisible();
   await expect(createDialog.getByText(COPY.nameLabel, { exact: true })).toBeVisible();
   await expect(createDialog.getByText(COPY.descriptionLabel, { exact: true })).toBeVisible();
+  // 2a-2/D17: the create form offers the preset picker; the default is „Pusty”.
+  await expect(createDialog.getByRole('combobox', { name: COPY.templateLabel })).toBeVisible();
 
   const createInputs = createDialog.locator('input');
   await expect(createInputs).toHaveCount(2);

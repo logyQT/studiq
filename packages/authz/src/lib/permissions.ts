@@ -27,6 +27,7 @@ export const Permission = {
   ASSIGNMENT_DELETE: 'assignment.delete',
   ASSIGNMENT_PUBLISH: 'assignment.publish',
   ASSIGNMENT_GRADE: 'assignment.grade',
+  ORG_ROLE_MANAGE: 'org.role.manage',
 } as const;
 
 export type PermissionKey = (typeof Permission)[keyof typeof Permission];
@@ -53,8 +54,8 @@ const ORG_SCOPES = ['organization'] as const;
 /**
  * The closed permission catalog (ADR-0015 §4.1). `permissions` in the database
  * is this object — `__tests__/integration/catalog-invariants.test.ts` fails on
- * any divergence between the two. `Permission` stays the narrower 26-key set
- * that code reads through `ctx.permissionScopes`; every one of its keys is here.
+ * any divergence between the two. `Permission` stays the narrower set code reads
+ * through `ctx.permissionScopes`; every one of its keys is here.
  *
  * `org.admin` is ownership only and is not assignable to a custom role (D16).
  */

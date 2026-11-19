@@ -2826,6 +2826,10 @@ export type Database = {
         Args: { p_feature: string; p_organization_id: string };
         Returns: boolean;
       };
+      rls_caller_has_permission: {
+        Args: { p_organization_id: string; p_permission: string };
+        Returns: boolean;
+      };
       rls_caller_is_org_manager: { Args: { p_organization_id: string }; Returns: boolean };
       rls_caller_is_sealed_item: { Args: { p_question_id: string }; Returns: boolean };
       rls_caller_org_ids: {

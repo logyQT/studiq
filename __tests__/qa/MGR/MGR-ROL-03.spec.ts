@@ -20,9 +20,10 @@ import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
  *   bun scripts/qa-tenant.ts MGR-ROL-03 --fresh
  *
  * `--plan hub` puts *this tenant's own* organization on Hub through
- * `apply_org_plan()`: custom roles are a `role.builder` feature, and the Launch plan
- * deliberately has no role builder. This is tenant-local — the plan catalog, feature
- * flags and every other org are untouched.
+ * `apply_org_plan()`. The plan is no longer the permission gate (2a-2: role writes
+ * need `org.role.manage`, which the Admin role holds on every plan); the tenant stays
+ * on Hub because the case's own seed does. This is tenant-local — the plan catalog,
+ * feature flags and every other org are untouched.
  *
  * The spec then provisions the case's own prerequisite **through the product API**:
  * it creates the `content-reader` custom role, clears it through the editor, creates

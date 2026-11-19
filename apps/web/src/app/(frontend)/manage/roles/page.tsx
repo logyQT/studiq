@@ -5,17 +5,18 @@ import {
   type EntitlementProfile,
   isCatalogScope,
   isPermissionCatalogKey,
+  isRoleTemplateName,
   PERMISSIONS,
+  ROLE_TEMPLATE_NAMES,
   type CatalogScope,
   type PermissionCatalogKey,
+  type RoleTemplateName,
 } from '@studiq/authz';
 import {
   Badge,
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,6 +26,11 @@ import {
   DialogTrigger,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -32,18 +38,16 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { Lock, Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState } from '@/components/shared/empty-state';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useOrgs } from '@/hooks/use-orgs';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
+import { usePermission } from '@/hooks/use-permission';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 import { isArrayOf } from '@/lib/unknown-value';
 
 /** The closed catalog, grouped by key family: content families, then groups, then org. */
@@ -104,14 +108,12 @@ interface RolePermission {
 
 export default function RolesPage() {
   const t = useTranslations('ManageRolesPage');
-  const router = useRouter();
-  // Role writes are plan-gated (`role.builder`) on the API (#259). The list itself
-  // is ungated and stays readable for every plan — /manage/members uses it too.
-  // `useFeature()` is a provisional `false` until /features/me resolves, so the
-  // write affordances stay fail-closed; `featuresPending` only suppresses the
-  // locked card, so entitled orgs never flash it.
-  const canBuild = useFeature()('role.builder');
-  const { isPending: featuresPending } = useFeatures();
+  const permission = usePermission();
+  const { activeOrg } = useOrgs();
+  // The write gate is `org.role.manage` (ADR-0015 §4.4). `usePermission()` is a
+  // provisional `false` until /permissions/me resolves, so the write affordances
+  // stay fail-closed; the list is ungated and stays readable for every member.
+  const canBuild = permission('org.role.manage', { orgId: activeOrg?.id });
   const [data, setData] = useState<OrgRole[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -136,7 +138,10 @@ export default function RolesPage() {
 
   useOrgScopedLoad(load);
 
-  async function handleSave(role: { name: string; description?: string | null }, id?: string) {
+  async function handleSave(
+    role: { name: string; description?: string | null; template?: RoleTemplateName },
+    id?: string,
+  ) {
     try {
       if (id) await apiPut(`/api/v1/organization/roles/${id}`, role);
       else await apiPost('/api/v1/organization/roles', role);
@@ -228,17 +233,7 @@ export default function RolesPage() {
         )}
       </div>
 
-      {!featuresPending && !canBuild && (
-        <RoleBuilderLockedCard onUpgrade={() => router.push(ORGANIZATION_PRICING_URL)} />
-      )}
-
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5" />
-            {t('title')}
-          </CardTitle>
-        </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
@@ -369,31 +364,17 @@ export default function RolesPage() {
 }
 
 /**
- * Locked state shown when the org's plan lacks the `role.builder` feature (#259).
- * Mirrors `BrandingLockedCard` (settings) and the `ai.chat` plan gate: the list
- * stays readable, only the write UI is withheld.
+ * Create/edit form. The template picker is create-only: a template describes the
+ * permission rows a *new* role starts with (D17), so an edit never offers one —
+ * permissions are edited in the permission dialog instead.
  */
-function RoleBuilderLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
-  const t = useTranslations('ManageRolesPage');
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-dashed bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-2">
-        <Lock aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div>
-          <p className="text-sm font-medium">{t('locked_title')}</p>
-          <p className="text-sm text-muted-foreground">{t('locked_desc')}</p>
-        </div>
-      </div>
-      <Button variant="outline" size="sm" onClick={onUpgrade}>
-        {t('locked_cta')}
-      </Button>
-    </div>
-  );
-}
-
 interface RoleFormProps {
   initial?: OrgRole;
-  onSave: (role: { name: string; description?: string | null }) => Promise<void>;
+  onSave: (role: {
+    name: string;
+    description?: string | null;
+    template?: RoleTemplateName;
+  }) => Promise<void>;
   onCancel: () => void;
   t: RolesTranslator;
 }
@@ -402,6 +383,7 @@ function RoleForm({ initial, onSave, onCancel, t }: RoleFormProps) {
   const [draft, setDraft] = useState({
     name: initial?.name ?? '',
     description: initial?.description ?? '',
+    template: 'blank' as RoleTemplateName,
   });
 
   async function handleSubmit(e: React.FormEvent) {
@@ -409,26 +391,53 @@ function RoleForm({ initial, onSave, onCancel, t }: RoleFormProps) {
     await onSave({
       name: draft.name,
       description: draft.description || null,
+      ...(initial ? {} : { template: draft.template }),
     });
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label>{t('name_label')}</Label>
+        <Label htmlFor="role-name">{t('name_label')}</Label>
         <Input
+          id="role-name"
           value={draft.name}
           onChange={(e) => setDraft((current) => ({ ...current, name: e.target.value }))}
           required
         />
       </div>
       <div className="space-y-2">
-        <Label>{t('description_label')}</Label>
+        <Label htmlFor="role-description">{t('description_label')}</Label>
         <Input
+          id="role-description"
           value={draft.description}
           onChange={(e) => setDraft((current) => ({ ...current, description: e.target.value }))}
         />
       </div>
+      {!initial && (
+        <div className="space-y-2">
+          <Label htmlFor="role-template">{t('template_label')}</Label>
+          <Select
+            value={draft.template}
+            onValueChange={(value) => {
+              if (!isRoleTemplateName(value)) return;
+              setDraft((current) => ({ ...current, template: value }));
+            }}
+          >
+            <SelectTrigger id="role-template" className="w-full" aria-label={t('template_label')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLE_TEMPLATE_NAMES.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {t(`template_${name}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">{t('template_hint')}</p>
+        </div>
+      )}
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           {t('common_cancel')}
