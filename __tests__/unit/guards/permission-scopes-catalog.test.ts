@@ -97,9 +97,9 @@ describe('permission scope catalog', () => {
     ).toEqual([]);
   });
 
-  // R15: a catalog key without a `Permission` entry is deliberate, so the set is
-  // pinned instead of deleted. `org.admin` is ownership only (D16) and no route
-  // gates on it through `Permission`.
+  // R15: a catalog key without a `Permission` entry would be deliberate, so the
+  // set is pinned instead of deleted. 2a-5 made `Permission` the whole catalog,
+  // so the pin is now empty: every catalog key is a name code may read.
   it('pins the catalog keys read outside the Permission set', () => {
     const outside = [
       ...new Set(
@@ -109,6 +109,6 @@ describe('permission scope catalog', () => {
       ),
     ].toSorted();
 
-    expect(outside).toEqual(['org.admin']);
+    expect(outside).toEqual([]);
   });
 });

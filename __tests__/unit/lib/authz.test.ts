@@ -87,8 +87,98 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(manager, 'flashcard.create')).toBeNull();
     });
 
+    // ADR-0015 §6.3: inside an org the role's rows are the whole answer, so a
+    // member whose role withholds a content key is denied instead of falling
+    // back to a persona default the org never granted.
+    it.each([AccountType.STUDENT, AccountType.EDUCATOR, AccountType.MANAGER])(
+      'denies every content key inside an org with no stored row (%s)',
+      (accountType) => {
+        const inOrg: RequestContext = { ...baseCtx, accountType, activeOrgId: 'org-1' };
+
+        expect(resolveScope(inOrg, 'deck.read')).toBeNull();
+        expect(resolveScope(inOrg, 'flashcard.create')).toBeNull();
+        expect(resolveScope(inOrg, 'question_bank.update')).toBeNull();
+        expect(resolveScope(inOrg, 'quiz.delete')).toBeNull();
+      },
+    );
+
+    // The table above runs one case per persona; each row alone must be able to
+    // fail — the student row is the one a "defaults inside an org" branch revives.
+    it('denies a student read inside an org whose role has no row for it', () => {
+      const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
+
+      expect(resolveScope(inOrg, 'deck.read')).toBeNull();
+    });
+
+    it('keeps a stored row inside an org instead of the persona default', () => {
+      const inOrg: RequestContext = {
+        ...baseCtx,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'deck.read': 'group' },
+      };
+
+      expect(resolveScope(inOrg, 'deck.read')).toBe('group');
+      expect(resolveScope(inOrg, 'flashcard.read')).toBeNull();
+    });
+
+    // A stored row is returned verbatim, never reconciled with the persona
+    // default, and a key without one stays denied inside the org that could have
+    // granted it. `deck.read`/`deck.update` are both content CRUD, so the default
+    // would answer `own` for them here if the stored row short-circuit or the
+    // in-org null were removed.
+    it('returns a stored row as-is and leaves its unrowed sibling null', () => {
+      const noOrgEducator: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        permissionScopes: { 'deck.update': 'own' },
+      };
+      const inOrgEducator: RequestContext = { ...noOrgEducator, activeOrgId: 'org-1' };
+
+      expect(resolveScope(noOrgEducator, 'deck.update')).toBe('own');
+      expect(resolveScope(inOrgEducator, 'deck.update')).toBe('own');
+      expect(resolveScope(inOrgEducator, 'deck.read')).toBeNull();
+    });
+
+    // The stored value is not narrowed to the persona default: a role holding a
+    // key at `group` keeps `group` even where the default would answer `own`.
+    // A `max(stored, 'own')`, a hard-coded `'own'`, or a `stored ?? default`
+    // that ignored the row are all red here.
+    it('keeps a stored scope wider than the persona default outside an org', () => {
+      const ctx: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        permissionScopes: { 'deck.update': 'group', 'deck.read': 'organization' },
+      };
+
+      expect(resolveScope(ctx, 'deck.update')).toBe('group');
+      expect(resolveScope(ctx, 'deck.read')).toBe('organization');
+    });
+
+    it('never gives a group or org key the persona default, with or without an org', () => {
+      const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
+
+      // `group.read` reads: a category guard deleted with the default deleted
+      // (route A) or with the verb filter deleted (route B) is either red here
+      // (B) or green here and red in the read case below (A).
+      expect(resolveScope(baseCtx, 'group.read')).toBeNull();
+      for (const key of ['group.invite', 'org.role.manage', 'org.audit.read']) {
+        expect(resolveScope(baseCtx, key)).toBeNull();
+      }
+      for (const key of ['group.read', 'group.invite', 'org.role.manage', 'org.audit.read']) {
+        expect(resolveScope(inOrg, key)).toBeNull();
+      }
+    });
+
+    it('decides a read key by its category, not by its verb', () => {
+      expect(resolveScope(baseCtx, 'flashcard.read')).toBe('own');
+      expect(resolveScope(baseCtx, 'group.read')).toBeNull();
+    });
+
+    // `group.read` is a *group* key read: deleting the catalog test with the
+    // category guard is red here only, so the unknown-key case has to be a verb.
     it('returns null for unknown permissions', () => {
       expect(resolveScope(baseCtx, 'role.builder.manage')).toBeNull();
+      expect(resolveScope(baseCtx, 'legacy.read')).toBeNull();
     });
   });
 
@@ -129,7 +219,11 @@ describe('authz (unified lib)', () => {
     });
 
     it('scopes own filters to the active org', () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1' };
+      const ctx = {
+        ...baseCtx,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'flashcard.read': 'own' as const },
+      };
       expect(buildQueryFilter(ctx, 'flashcard.read')).toEqual({
         created_by: 'user-1',
         organization_id: 'org-1',

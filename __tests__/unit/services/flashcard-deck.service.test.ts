@@ -129,6 +129,16 @@ describe('FlashcardDeckService', () => {
     groupIds: [],
     permissionScopes: {},
   };
+  // A caller with an org role: inside an org the stored row is the whole answer
+  // (ADR-0015 §6.3), so the role's content grants have to be in the context. A
+  // context built without `permissionScopes` is denied — and spreading one of
+  // these and overriding the map is how a test loses the grants.
+  const orgCtx: RequestContext = {
+    ...ctx,
+    activeOrgId: 'org-1',
+    orgRoleId: 'role-1',
+    permissionScopes: { 'deck.create': 'own', 'deck.read': 'own', 'deck.update': 'own' },
+  };
 
   /** The builder `from()` returned on its `index`-th call. */
   function builderAt(index: number): QueryBuilder {
@@ -227,7 +237,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb({ id: 'd-1', name: 'Study Deck' }));
 
-      await service.create({ name: 'Study Deck' }, { ...ctx, activeOrgId: 'org-1' });
+      await service.create({ name: 'Study Deck' }, orgCtx);
 
       expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(countBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
@@ -248,10 +258,7 @@ describe('FlashcardDeckService', () => {
 
     // #139 — group visibility without a single share link is only visible to the creator.
     it('rejects a group deck with no groupIds before touching the database', async () => {
-      const result = await service.create(
-        { name: 'Group Deck', visibility: 'group' },
-        { ...ctx, activeOrgId: 'org-1' },
-      );
+      const result = await service.create({ name: 'Group Deck', visibility: 'group' }, orgCtx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
@@ -262,7 +269,7 @@ describe('FlashcardDeckService', () => {
     it('rejects a group deck with an empty groupIds list', async () => {
       const result = await service.create(
         { name: 'Group Deck', visibility: 'group', groupIds: [] },
-        { ...ctx, activeOrgId: 'org-1' },
+        orgCtx,
       );
 
       expect(result.success).toBe(false);
@@ -281,7 +288,7 @@ describe('FlashcardDeckService', () => {
 
       const result = await service.create(
         { name: 'Group Deck', visibility: 'group', groupIds: ['g-1'] },
-        { ...ctx, activeOrgId: 'org-1' },
+        orgCtx,
       );
 
       expect(result.success).toBe(true);
@@ -305,7 +312,7 @@ describe('FlashcardDeckService', () => {
 
       const result = await service.create(
         { name: 'Group Deck', visibility: 'group', groupIds: ['g-1', 'g-1'] },
-        { ...ctx, activeOrgId: 'org-1' },
+        orgCtx,
       );
 
       expect(result.success).toBe(true);
@@ -326,7 +333,7 @@ describe('FlashcardDeckService', () => {
 
       const result = await service.create(
         { name: 'Group Deck', visibility: 'group', groupIds: ['g-untaugh'] },
-        { ...ctx, activeOrgId: 'org-1' },
+        orgCtx,
       );
 
       expect(result.success).toBe(false);
@@ -348,7 +355,7 @@ describe('FlashcardDeckService', () => {
 
       const result = await service.create(
         { name: 'Group Deck', visibility: 'group', groupIds: ['g-1'] },
-        { ...ctx, activeOrgId: 'org-1' },
+        orgCtx,
       );
 
       expect(result.success).toBe(false);
@@ -582,11 +589,7 @@ describe('FlashcardDeckService', () => {
         data: false,
       });
 
-      const result = await service.update(
-        'd-1',
-        { groupIds: ['g-untaugh'] },
-        { ...ctx, activeOrgId: 'org-1' },
-      );
+      const result = await service.update('d-1', { groupIds: ['g-untaugh'] }, orgCtx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
@@ -609,11 +612,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
       mock.from.mockReturnValueOnce(qb(linked)); // getById
 
-      const result = await service.update(
-        'd-1',
-        { groupIds: ['g-1'] },
-        { ...ctx, activeOrgId: 'org-1' },
-      );
+      const result = await service.update('d-1', { groupIds: ['g-1'] }, orgCtx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
@@ -642,7 +641,7 @@ describe('FlashcardDeckService', () => {
       const result = await service.update(
         'd-1',
         { groupIds: ['g-in-B'] },
-        { ...ctx, activeOrgId: 'org-B' },
+        { ...orgCtx, activeOrgId: 'org-B' },
       );
 
       expect(result.success).toBe(false);
@@ -676,7 +675,7 @@ describe('FlashcardDeckService', () => {
       const result = await service.update(
         'd-1',
         { groupIds: ['g-1'] },
-        { ...ctx, activeOrgId: 'org-B' },
+        { ...orgCtx, activeOrgId: 'org-B' },
       );
 
       expect(result.success).toBe(true);
@@ -798,7 +797,7 @@ describe('FlashcardDeckService', () => {
       const result = await service.update(
         'd-1',
         { visibility: 'personal', groupIds: ['g-1'] },
-        { ...ctx, activeOrgId: 'org-1' },
+        orgCtx,
       );
 
       expect(result.success).toBe(true);
