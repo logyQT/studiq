@@ -1,4 +1,10 @@
-import { AccountType, type PermissionScope, type RequestContext } from '@studiq/authz';
+import {
+  AccountType,
+  isGroupRole,
+  type GroupRole,
+  type PermissionScope,
+  type RequestContext,
+} from '@studiq/authz';
 import { ACTIVE_ORG_COOKIE } from '@studiq/server/lib/active-org-cookie';
 import { isAccountType, isPermissionScope } from '@studiq/server/lib/authz';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
@@ -50,7 +56,8 @@ export async function withAuth(
     // stale id from a previous session can never widen the tenant scope.
     let activeOrgId: string | null = null;
     let orgRoleId: string | null = null;
-    let groupIds: string[] = [];
+    const groupIds: string[] = [];
+    const groupRoles: Record<string, GroupRole> = {};
     const permissionScopes: Partial<Record<string, PermissionScope>> = {};
 
     if (cookieOrgId) {
@@ -61,14 +68,25 @@ export async function withAuth(
           .eq('organization_id', cookieOrgId)
           .eq('user_id', user.id)
           .maybeSingle(),
-        supabase.from('group_members').select('group_id').eq('user_id', user.id),
+        // The join is the org filter: an embedded `groups` row is filtered by
+        // `groups.organization_id`, so a membership in another org's group
+        // never reaches the context (ADR-0015 §7.1 — no cross-org union).
+        supabase
+          .from('group_members')
+          .select('group_id, role, groups!inner(organization_id)')
+          .eq('user_id', user.id)
+          .eq('groups.organization_id', cookieOrgId),
       ]);
 
       if (membershipResult.data) {
         activeOrgId = cookieOrgId;
         orgRoleId = membershipResult.data.org_role_id;
+
+        for (const row of groupsResult.data ?? []) {
+          groupIds.push(row.group_id);
+          if (isGroupRole(row.role)) groupRoles[row.group_id] = row.role;
+        }
       }
-      groupIds = (groupsResult.data ?? []).map((r) => r.group_id);
 
       if (orgRoleId) {
         const { data: perms } = await supabase
@@ -96,6 +114,7 @@ export async function withAuth(
       url: req.url,
       method: req.method,
       groupIds,
+      groupRoles,
       permissionScopes,
     };
 

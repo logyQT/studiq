@@ -250,9 +250,15 @@ guards replaces the role's whole permission set and the gate is one of those row
   MGR-ROL-01 and deletes the out-of-map e2e `manage-roles-plan-gate`. Runs on the
   write path 2a-3 made safe. The `org.*` keys in a preset take effect when 2b
   replaces the legacy feature gates; the content keys are live now.
-- **2a-4** (~90) — `withAuth` builds `ctx.groupRoles` from
-  `group_members.role`; org-scoped group query; add a verified-org helper.
-  Closes the cross-org group union.
+- **2a-4** (§ 59, `bun run pr:size`; planned as ~90) — **delivered.**
+  `withAuth` builds `ctx.groupRoles` (`groupId → teacher | member`) beside
+  `ctx.groupIds`, from one `group_members` read whose `groups!inner` embed is
+  filtered on the active org. Closes the cross-org group union: a request scoped to
+  org A never carries a group or a group role from org B, and both are empty with
+  no active org (ADR-0015 §7.1). The planned "verified-org helper" was not needed —
+  the existing `org_members`-backed `cookieOrgId` block is that helper. No
+  migration. `groupIds` stays for every current reader. Consumed by 2a-5 (scope
+  resolution) and 2b (group manage/invite are teacher-only).
 - **2a-5** (~110) — scope defaults: `own` only when there is no active org
   (fail-closed fix).
 

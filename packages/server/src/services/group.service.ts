@@ -369,7 +369,10 @@ export class GroupService {
    * created now, and `existing.organization_id ?? ctx.activeOrgId` for an update
    * of legacy personal content with a NULL org.
    *
-   * Do NOT use ctx.groupIds: withAuth resolves memberships without an org filter.
+   * `ctx.groupIds` is the caller's own membership list in the active org, so it
+   * is not a tenant authority: every incoming group id must still be verified
+   * against `contentOrgId`, because a group id from another org could otherwise
+   * slip past the caller's membership list and reach the query below.
    */
   async canShareContentToGroups(
     ctx: RequestContext,
