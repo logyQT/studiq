@@ -13,19 +13,21 @@ reads this file first; nothing here is replaced by chat history.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                          | State   | PR    | CI  | QA shards                 | Updated    |
-| ----- | --------------------------------------------- | ------- | ----- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract | merged  | #1162 | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)   | pr-open | #1387 | —   | checks, unit, integration | 2026-11-19 |
-| 1     | catalog cutover                               | pending | —     | —   | PUB, ADM, LIM, BIL        |            |
-| 2     | authority cutover + control-plane RLS         | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
-| 3     | entitlements and limits                       | pending | —     | —   | LIM, BIL, STU             |            |
-| 4     | seats and personal plans                      | pending | —     | —   | MGR, BIL, LIM             |            |
-| 5     | enforcement closure                           | pending | —     | —   | STU, EDU, MGR, PUB        |            |
-| 6     | UI and cache                                  | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
-| 7     | delete, full QA, close                        | pending | —     | —   | all 188 + E2E             |            |
+| Phase | What                                           | State   | PR    | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ----- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162 | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387 | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | pr-open | #1388 | —   | checks, unit, integration | 2026-11-19 |
+| 1     | catalog cutover                                | pending | —     | —   | PUB, ADM, LIM, BIL        |            |
+| 2     | authority cutover + control-plane RLS          | pending | —     | —   | AUT, MGR, EDU, SEC        |            |
+| 3     | entitlements and limits                        | pending | —     | —   | LIM, BIL, STU             |            |
+| 4     | seats and personal plans                       | pending | —     | —   | MGR, BIL, LIM             |            |
+| 5     | enforcement closure                            | pending | —     | —   | STU, EDU, MGR, PUB        |            |
+| 6     | UI and cache                                   | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
+| 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
 
-**Next action:** phase 0b is in PR; phase 1 starts after it merges.
+**Next action:** phase 0b is merged (#1387); phase 1a (the type-generation
+cutover) is in PR; phase 1 starts after it merges.
 
 ## 2. How to update this file
 
@@ -43,21 +45,22 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
 ## 3. Rules (earned, not invented)
 
-| #   | Rule                                                                                                                                                                                                            | Earned from                                                             |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                                             | `check-migration-timestamps` fails on duplicate prefixes                |
-| R2  | Regenerate `database.ts` in the same PR when the schema change is consumed by typed code; a dropped, unreferenced table may leave its block until the toolchain is pinned — phase 1 owns the generator cutover. | the pinned v3.1 generator emits a different shape and 7 RPC type errors |
-| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                                                   | both hooks run `knip --treat-config-hints-as-errors`                    |
-| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                                               | FP-01 is exploitable through PostgREST                                  |
-| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                                                         | audit §0.2: 41 of 45 gates are permission checks                        |
-| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                                                      | the corpus is the product contract                                      |
-| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                                                        | prose is not a verdict                                                  |
-| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                                                     | a v1 scope change left six sections describing the deferred table       |
-| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                                                  | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine      |
-| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                                                | a six-day-old 0b checklist cited three already-shipped items            |
-| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                                                         | "only reference is the generated type file" missed a seed `REVOKE`      |
-| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                                           | the role save drops the `assignment.*` rows the seed grants             |
-| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                                                 | the 0b regen produced a different shape and 7 RPC type errors           |
+| #   | Rule                                                                                                                                                                                  | Earned from                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                   | `check-migration-timestamps` fails on duplicate prefixes                |
+| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project. | the pinned v3.1 generator emits a different shape and 7 RPC type errors |
+| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                         | both hooks run `knip --treat-config-hints-as-errors`                    |
+| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                     | FP-01 is exploitable through PostgREST                                  |
+| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                               | audit §0.2: 41 of 45 gates are permission checks                        |
+| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                            | the corpus is the product contract                                      |
+| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                              | prose is not a verdict                                                  |
+| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                           | a v1 scope change left six sections describing the deferred table       |
+| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                        | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine      |
+| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                      | a six-day-old 0b checklist cited three already-shipped items            |
+| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                               | "only reference is the generated type file" missed a seed `REVOKE`      |
+| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                 | the role save drops the `assignment.*` rows the seed grants             |
+| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors           |
+| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable  |
 
 ## 4. Decisions
 
@@ -250,6 +253,56 @@ Rule: none — host/CI concurrency difference, not a programme rule.
 invariants are integration tests. The generated `database.ts` keeps the dead
 table block until the toolchain is pinned (R2/R13); the role-editor write path is
 phase 2.
+
+### Phase 1a — database types
+
+**Shipped in PR (active):**
+
+- `packages/server/src/types/database.ts` regenerated with the pinned CLI 3.1
+  (`bun run env:supa gen types typescript --schema public`, then `bun fmt`).
+  The stale file was produced by an older generator: the new one drops the
+  `graphql_public` schema and its `graphql` function, drops the
+  `resource_permissions` block (dropped in 0b), fills the two billing tables'
+  `Relationships` arrays that the old file left empty, and adds four RPCs the
+  old file never saw (`activity_stamp_client_write`,
+  `rls_caller_can_read_assignment_items`, `rls_caller_can_read_assignment_targets`,
+  `rls_caller_is_sealed_item`). Every table and enum the live schema has is
+  present (52 tables, 0 views); the only functions absent are trigger functions,
+  which the generator omits on purpose.
+- Nullable RPC parameters are now `?: T` instead of `?: T | null`, so the seven
+  call sites in `notification`, `search`, `flashcard-stats` and `stats` pass
+  `undefined` (the argument is omitted and PostgREST applies the SQL
+  `DEFAULT NULL`, proven from `pg_get_function_arguments`) instead of `null`;
+  `notifications.payload` narrows to `NonNullable<Json>` because the column is
+  `NOT NULL DEFAULT '{}'`. No runtime change.
+- The generated file's one lint finding is exempted in `bunfig.toml`, not with an
+  inline disable.
+
+**Gates:** `typecheck:all`, `lint:all`, `test:unit`, `review:static`, `knip`,
+`dup:base`, `format:check`, and the serial integration run (813 passed, 11
+skipped), all green.
+
+**Difficulty log**
+
+#### 2026-11-19 — the committed `database.ts` had been hand-edited
+
+What: regenerating exposed more than the seven RPC type errors. The committed
+file carried an inline `eslint-disable-next-line` that the generator never
+emits, so `bun run lint` failed on the fresh output with a warning budget of
+zero; and `bunx oxfmt` — the formatter the CLI itself prints — is not this
+repo's formatter, so `format:check` still failed until the file went through
+`bun fmt`. The old file's populated-looking `Relationships: []` entries were
+also stale: only a regen shows which foreign keys the old generator could not
+introspect.
+Why: the previous generation was patched by hand, so the committed "baseline"
+was not reproducible; every fix that lived in the file was invisible until the
+next regen deleted it.
+Fix: the call sites carry the real fix (`undefined` where the SQL default is
+NULL, `NonNullable<Json>` for the `NOT NULL` payload column), the lint
+exemption moved to `bunfig.toml` as a file override, and the file went through
+`bun fmt`. Nothing is edited in the output.
+Rule: pin the generator or accept its new shape; never hand-edit the generated
+file — a hand edit only survives until the next regeneration.
 
 ### Phase 1 — catalog
 

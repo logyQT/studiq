@@ -254,8 +254,8 @@ describe('StatsService', () => {
       // No active org: the RPC scopes learners to every org the caller shares.
       expect(mock.rpc).toHaveBeenCalledWith('get_teacher_problematic_questions', {
         p_user_id: 'test-user-id',
-        p_organization_id: null,
-        p_bank_id: null,
+        p_organization_id: undefined,
+        p_bank_id: undefined,
       });
     });
 

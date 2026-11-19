@@ -19,17 +19,17 @@ export class SearchService {
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (isImpossibleFilter(filter)) return success([]);
 
-    // The search RPC's parameters are nullable with a SQL `DEFAULT NULL`, so the
-    // `null` that means "no filter" is kept (see `nullableRpcArg`).
-    let p_user_id: string | null = null;
-    let p_organization_id: string | null = null;
+    // `undefined` omits the argument, so PostgREST applies the SQL `DEFAULT NULL`
+    // — the same "no filter" value an explicit NULL would send.
+    let p_user_id: string | undefined;
+    let p_organization_id: string | undefined;
 
     // Construct search RPC params based on access filter
     if (filter.created_by) {
       p_user_id = ctx.userId;
     } else if (filter.or) {
       p_user_id = ctx.userId;
-      p_organization_id = ctx.activeOrgId;
+      p_organization_id = ctx.activeOrgId ?? undefined;
     }
 
     const { data, error } = await supabase.rpc('search_flashcards', {

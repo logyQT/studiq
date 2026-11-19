@@ -1,26 +1,6 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never;
-    };
-    Views: {
-      [_ in never]: never;
-    };
-    Functions: {
-      graphql: {
-        Args: { extensions?: Json; operationName?: string; query?: string; variables?: Json };
-        Returns: Json;
-      };
-    };
-    Enums: {
-      [_ in never]: never;
-    };
-    CompositeTypes: {
-      [_ in never]: never;
-    };
-  };
   public: {
     Tables: {
       assignment_answer_images: {
@@ -225,12 +205,27 @@ export type Database = {
           stripe_customer_id?: string;
           user_id?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'billing_customers_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'billing_customers_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       billing_subscriptions: {
         Row: {
-          billing_cycle: string;
           billing_customer_id: string;
+          billing_cycle: string;
           cancel_at: string | null;
           cancel_at_period_end: boolean;
           canceled_at: string | null;
@@ -255,8 +250,8 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
-          billing_cycle?: string;
           billing_customer_id: string;
+          billing_cycle?: string;
           cancel_at?: string | null;
           cancel_at_period_end?: boolean;
           canceled_at?: string | null;
@@ -280,8 +275,8 @@ export type Database = {
           user_id?: string | null;
         };
         Update: {
-          billing_cycle?: string;
           billing_customer_id?: string;
+          billing_cycle?: string;
           cancel_at?: string | null;
           cancel_at_period_end?: boolean;
           canceled_at?: string | null;
@@ -304,7 +299,43 @@ export type Database = {
           updated_at?: string;
           user_id?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'billing_subscriptions_customer_organization_fkey';
+            columns: ['billing_customer_id', 'organization_id', 'livemode'];
+            isOneToOne: false;
+            referencedRelation: 'billing_customers';
+            referencedColumns: ['id', 'organization_id', 'livemode'];
+          },
+          {
+            foreignKeyName: 'billing_subscriptions_customer_user_fkey';
+            columns: ['billing_customer_id', 'user_id', 'livemode'];
+            isOneToOne: false;
+            referencedRelation: 'billing_customers';
+            referencedColumns: ['id', 'user_id', 'livemode'];
+          },
+          {
+            foreignKeyName: 'billing_subscriptions_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'billing_subscriptions_purchaser_user_id_fkey';
+            columns: ['purchaser_user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'billing_subscriptions_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       deck_groups: {
         Row: {
@@ -900,16 +931,17 @@ export type Database = {
           created_at: string;
           id: string;
           organization_id: string | null;
-          payload: Json;
+          payload: NonNullable<Json>;
           read_at: string | null;
           type: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           id?: string;
           organization_id?: string | null;
-          payload?: Json;
+          payload?: NonNullable<Json>;
           read_at?: string | null;
           type: string;
           user_id: string;
@@ -918,7 +950,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           organization_id?: string | null;
-          payload?: Json;
+          payload?: NonNullable<Json>;
           read_at?: string | null;
           type?: string;
           user_id?: string;
@@ -1925,42 +1957,6 @@ export type Database = {
           },
         ];
       };
-      resource_permissions: {
-        Row: {
-          created_at: string | null;
-          id: string;
-          permission: string;
-          resource_id: string;
-          resource_type: string;
-          user_id: string | null;
-        };
-        ComputedFields: never;
-        Insert: {
-          created_at?: string | null;
-          id?: string;
-          permission: string;
-          resource_id: string;
-          resource_type: string;
-          user_id?: string | null;
-        };
-        Update: {
-          created_at?: string | null;
-          id?: string;
-          permission?: string;
-          resource_id?: string;
-          resource_type?: string;
-          user_id?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'resource_permissions_user_id_fkey';
-            columns: ['user_id'];
-            isOneToOne: false;
-            referencedRelation: 'profiles';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
       stripe_prices: {
         Row: {
           active: boolean;
@@ -2184,14 +2180,14 @@ export type Database = {
       };
       teacher_assignments: {
         Row: {
+          allow_same_item_retake: boolean;
+          attempt_item_count: number | null;
           closed_at: string | null;
           created_at: string | null;
           created_by: string | null;
           deadline: string | null;
           description: string | null;
           id: string;
-          allow_same_item_retake: boolean;
-          attempt_item_count: number | null;
           max_attempts: number;
           organization_id: string | null;
           passing_score: number | null;
@@ -2211,14 +2207,14 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          allow_same_item_retake?: boolean;
+          attempt_item_count?: number | null;
           closed_at?: string | null;
           created_at?: string | null;
           created_by?: string | null;
           deadline?: string | null;
           description?: string | null;
           id?: string;
-          allow_same_item_retake?: boolean;
-          attempt_item_count?: number | null;
           max_attempts?: number;
           organization_id?: string | null;
           passing_score?: number | null;
@@ -2237,14 +2233,14 @@ export type Database = {
           updated_at?: string | null;
         };
         Update: {
+          allow_same_item_retake?: boolean;
+          attempt_item_count?: number | null;
           closed_at?: string | null;
           created_at?: string | null;
           created_by?: string | null;
           deadline?: string | null;
           description?: string | null;
           id?: string;
-          allow_same_item_retake?: boolean;
-          attempt_item_count?: number | null;
           max_attempts?: number;
           organization_id?: string | null;
           passing_score?: number | null;
@@ -2513,8 +2509,13 @@ export type Database = {
     Functions: {
       accept_org_invitation: {
         Args: { p_token: string; p_user_id: string };
-        Returns: { organization_id: string; organization_name: string; org_role_id: string }[];
+        Returns: {
+          org_role_id: string;
+          organization_id: string;
+          organization_name: string;
+        }[];
       };
+      activity_stamp_client_write: { Args: Record<PropertyKey, never>; Returns: boolean };
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
       apply_entitlement_fenced: {
@@ -2685,10 +2686,7 @@ export type Database = {
         Args: { p_created_by?: string; p_organization_id?: string; p_user_id: string };
         Returns: Json;
       };
-      get_student_insights: {
-        Args: { p_days?: number; p_user_id: string };
-        Returns: Json;
-      };
+      get_student_insights: { Args: { p_days?: number; p_user_id: string }; Returns: Json };
       get_teacher_activity_feed: {
         Args: { p_limit?: number; p_organization_id: string; p_user_id: string };
         Returns: Json;
@@ -2698,18 +2696,14 @@ export type Database = {
         Returns: Json;
       };
       get_teacher_problematic_questions: {
-        Args: {
-          p_bank_id?: string | null;
-          p_organization_id?: string | null;
-          p_user_id: string;
-        };
+        Args: { p_bank_id?: string; p_organization_id?: string; p_user_id: string };
         Returns: Json;
       };
       get_teacher_stats: {
         Args: {
-          p_deck_id?: string | null;
+          p_deck_id?: string;
           p_flashcard_ids: string[];
-          p_organization_id?: string | null;
+          p_organization_id?: string;
           p_user_id: string;
         };
         Returns: Json;
@@ -2744,11 +2738,17 @@ export type Database = {
         }[];
       };
       rls_caller_can_assign_org_role: { Args: { p_role_id: string }; Returns: boolean };
+      rls_caller_can_read_assignment_items: { Args: { p_assignment_id: string }; Returns: boolean };
+      rls_caller_can_read_assignment_targets: {
+        Args: { p_assignment_id: string };
+        Returns: boolean;
+      };
       rls_caller_has_org_feature: {
         Args: { p_feature: string; p_organization_id: string };
         Returns: boolean;
       };
       rls_caller_is_org_manager: { Args: { p_organization_id: string }; Returns: boolean };
+      rls_caller_is_sealed_item: { Args: { p_question_id: string }; Returns: boolean };
       rls_caller_org_ids: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -2763,8 +2763,8 @@ export type Database = {
       };
       search_flashcards: {
         Args: {
-          p_organization_id?: string | null;
-          p_user_id?: string | null;
+          p_organization_id?: string;
+          p_user_id?: string;
           result_limit?: number;
           search_query: string;
         };
@@ -2779,7 +2779,9 @@ export type Database = {
       };
       submit_quiz_attempt: {
         Args: { p_answers: Json; p_attempt_id: string; p_score: number; p_user_id: string };
-        Returns: { completed_attempt_id: string }[];
+        Returns: {
+          completed_attempt_id: string;
+        }[];
       };
     };
     Enums: {
@@ -2886,7 +2888,6 @@ export type Enums<
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- generated Supabase types: this schema has no composite types, so `keyof` is `never`.
     keyof DefaultSchema['CompositeTypes'] | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
@@ -2900,9 +2901,6 @@ export type CompositeTypes<
     : never;
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       account_type: ['student', 'educator', 'manager'],
