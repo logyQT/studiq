@@ -313,23 +313,6 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
-    it('returns FORBIDDEN without an active org and never queries (#148)', async () => {
-      const result = await service.create(
-        {
-          title: 'Quiz 1',
-          shuffleQuestions: true,
-          shuffleAnswers: false,
-          showResults: false,
-          maxAttempts: 1,
-        },
-        { ...ctx, activeOrgId: null },
-      );
-
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error).toBe('FORBIDDEN');
-      expect(mock.from).not.toHaveBeenCalled();
-    });
-
     it('returns INTERNAL_SERVER on DB error', async () => {
       mock.from.mockReturnValue({
         insert: vi.fn(() => ({

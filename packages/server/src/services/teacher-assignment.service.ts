@@ -283,12 +283,6 @@ export class TeacherAssignmentService {
     data: CreateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    // An assessment is org-scoped: without a verified active org there is no tenant to
-    // create it in. Guard before inserting — a null org would fail at the table (23502)
-    // or at RLS (42501) instead of answering the 403 an authenticated caller without an
-    // active org gets (#148).
-    if (!ctx.activeOrgId) return failure('FORBIDDEN');
-
     const supabase = await this.clientFactory();
 
     // A quiz copy is a new binding, and it is chosen as a whole: if any item is retired or
