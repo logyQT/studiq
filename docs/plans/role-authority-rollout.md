@@ -81,7 +81,7 @@ case documents, 18 of which have no spec yet.)
 | ----------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ----- |
 | AUT-07      | persona landing dashboards; nav excludes plan-gated items                           | shell follows the active org's permissions                                   | 6     |
 | AUT-11      | `/login`, `/register` redirect by JWT `account_type`                                | redirect from role/active org                                                | 6     |
-| AUT-16      | student 3xx off `/edu`, `/manage`, `/setup`                                         | no persona gate on org routes; permission 403                                | 2     |
+| AUT-16      | student 3xx off `/edu`, `/manage`, `/setup`                                         | no persona gate on org routes; permission 403, roster read empty list (D25)  | 2     |
 | AUT-17      | teacher 3xx off `/app`, `/manage`                                                   | same                                                                         | 2     |
 | AUT-18      | manager 3xx off `/app`, `/edu`                                                      | role-derived shell                                                           | 6     |
 | AUT-19      | student 403 on `/teacher/*`, `/organization/members`                                | permission check replaces account-type gate                                  | 2     |

@@ -315,12 +315,22 @@ test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
     expect(foreignOrg.body.error).toBe('FORBIDDEN');
     expect(JSON.stringify(foreignOrg.body)).not.toContain(orgA.name);
 
-    // A student has no member-administration access at all; whatever the answer is,
-    // it must never carry the other organization's members.
+    // D25: the roster read is a capability the Member role lacks, and its deny
+    // shape is an empty list. `403` stays accepted as the documented
+    // alternative, but a `200` must carry no row at all.
     const members = await getJson(page, '/api/v1/organization/members');
-    expect(members.status, 'student requesting the member list').toBe(403);
+    expect(
+      [200, 403],
+      `student requesting the member list → ${JSON.stringify(members.body)}`,
+    ).toContain(members.status);
+    if (members.status === 403) {
+      expect(members.body).toMatchObject({ success: false, error: 'FORBIDDEN' });
+    } else {
+      expect(members.body).toEqual({ success: true, data: [] });
+    }
     expect(JSON.stringify(members.body)).not.toContain(TENANT.users.teacherA.email);
     expect(JSON.stringify(members.body)).not.toContain(TENANT.users.studentA.email);
+    expect(JSON.stringify(members.body)).not.toContain('@');
 
     // A write from the outsider is refused as "not found" and changes nothing.
     const rename = await page.request.put(`/api/v1/flashcards/decks/${deckA.id}`, {

@@ -2287,7 +2287,10 @@ narrowed: it predates the slice and every `org_members` reader must be audited
 first, so the API is narrower than the data plane until 2b-4 (R23); D25, §7.1
 and the 2b-4 slice row carry that asymmetry. The unit truth table and the API
 integration matrix pin each branch, and `bun run mutate` kills the
-`group.manage` branch, the `group.invite` branch and the empty-list shape.
+`group.manage` branch, the `group.invite` branch and the empty-list shape. R16
+sent the corpus with the change: AUT-16 and SEC-02 asserted `403` for a student
+reading the roster, so both now accept `[200, 403]` and pin the exact empty
+body, and their case texts gained a dated observation.
 Rule: a shared directory denies with an empty list, not an error; and R23 — an
 API gate that stays deliberately narrower than its data-plane policy names the
 asymmetry and its owner in the same PR.

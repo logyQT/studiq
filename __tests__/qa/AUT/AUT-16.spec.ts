@@ -32,7 +32,9 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * Adjacent regression paths that matter for the tested surface: the gate must stay
  * role-based rather than a blanket block (the tenant's teacher still reaches
  * `/edu/assignments`, its manager still reaches `/manage/members`), and the panel
- * data must be unreachable through the API as well (`403 FORBIDDEN`).
+ * data must be unreachable through the API as well: the teacher/stats endpoints
+ * answer `403 FORBIDDEN`, while the roster read (D25) answers `200` with an empty
+ * list or the same `403` — never a member row.
  *
  * No UI copy is asserted — the tenant's teacher/manager pages render in the run
  * locale — so the test only uses URLs, roles and the tenant's own account data.
@@ -156,16 +158,31 @@ test('a student is redirected from every teacher, manager and onboarding route t
     expect(await panelChrome(), `${route} must not paint teacher/manager chrome`).toEqual([]);
   }
 
-  // The panel data is gated as well, not only the pages.
-  for (const api of [
-    '/api/v1/teacher/assignments',
-    '/api/v1/organization/members',
-    '/api/v1/stats/teacher',
-  ]) {
+  // The panel data is gated as well, not only the pages: these two have no
+  // deny shape other than the error.
+  for (const api of ['/api/v1/teacher/assignments', '/api/v1/stats/teacher']) {
     const response = await page.request.get(api);
     expect(response.status(), `GET ${api} as a student`).toBe(403);
     expect(await response.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
   }
+
+  // D25: the roster read is a capability a plain Member role lacks, and its
+  // deny shape is an empty list. `403` stays accepted as the documented
+  // alternative, but a `200` must carry no row — so any member row fails here.
+  const members = await page.request.get('/api/v1/organization/members');
+  const membersBody = await json<{ success: boolean; data?: unknown[]; error?: string }>(members);
+  expect(
+    [200, 403],
+    `GET /api/v1/organization/members as a student → ${JSON.stringify(membersBody)}`,
+  ).toContain(members.status());
+  if (members.status() === 403) {
+    expect(membersBody).toMatchObject({ success: false, error: 'FORBIDDEN' });
+  } else {
+    expect(membersBody).toEqual({ success: true, data: [] });
+  }
+  const membersRaw = JSON.stringify(membersBody);
+  expect(membersRaw, 'the roster deny leaks no e-mail').not.toContain('@');
+  expect(membersRaw, 'the roster deny leaks the student').not.toContain(student.email);
 });
 
 test('the role gate still lets a teacher into the teacher routes', async ({ page }) => {
