@@ -714,9 +714,11 @@ describe('org-control routes authorize on org permissions', () => {
     });
 
     it('lets the holder retarget and then revoke', async () => {
-      // Retarget keeps the legacy grant-authority conjunct (`can_assign_org_role`)
-      // until 2b-4, so the working caller is the Admin role — which also proves
-      // D13: a `student` persona holding Admin passes on authority alone.
+      // Retarget keeps the grant-authority conjunct (`can_assign_org_role`),
+      // whose manager half still reads the legacy `member.manage` marker (2b-5
+      // moves it with the invitation read). The working caller is the Admin
+      // role — which also proves D13: a `student` persona holding Admin passes
+      // on authority alone.
       const retarget = await callWithId(
         studentAdminSession,
         updateInvite,

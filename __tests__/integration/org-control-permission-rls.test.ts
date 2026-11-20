@@ -212,11 +212,15 @@ describe('org-control permission RLS', () => {
     // with no permission key. It must lose every predicate this slice moved.
     legacyRoleId = await customRole(orgId, `org-control-legacy-${tag}`, []);
 
-    // Invitation writes keep `rls_caller_can_assign_org_role` until 2b-4, and
+    // Invitation writes keep `rls_caller_can_assign_org_role` until 2b-5, and
     // that helper still resolves the manager half from the legacy marker. The
     // positive invitation caller therefore carries the permission AND the
     // marker; the legacy control below carries only the marker and must still
     // be refused, which is what proves the permission branch moved.
+    //
+    // The marker is also what keeps the row SELECT-visible: PostgREST refuses an
+    // UPDATE whose row the SELECT policy hides, and 2b-4 deliberately leaves the
+    // invitation read on the legacy branch (2b-5 moves both halves together).
     invitationManagerRoleId = await customRole(orgId, `org-control-inviter-${tag}`, [
       'org.invitation.manage',
     ]);
@@ -707,6 +711,12 @@ describe('org-control permission RLS', () => {
         .select('id');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
+      const { data: persisted } = await service
+        .from('invitations')
+        .select('target_org_role_id')
+        .eq('id', invitationId)
+        .single();
+      expect(persisted?.target_org_role_id).toBe(teacherRoleId);
 
       // The revoking session is not the inviter, and the DELETE predicate has no
       // `rls_caller_can_assign_org_role` conjunct: the permission alone is
@@ -717,6 +727,11 @@ describe('org-control permission RLS', () => {
         .delete()
         .eq('id', invitationId);
       expect(deleteError).toBeNull();
+      const { data: remaining } = await service
+        .from('invitations')
+        .select('id')
+        .eq('id', invitationId);
+      expect(remaining).toEqual([]);
     });
 
     it('refuses retarget/revoke for the Member role and the legacy manager marker', async () => {
@@ -759,8 +774,9 @@ describe('org-control permission RLS', () => {
 
     it('keeps the inviter branch and the grant-authority conjunct', async () => {
       // A Teacher may invite into the system member role (the classroom flow
-      // 2b-4 rewrites). The inviter branch is what lets them edit their own
-      // row, and `rls_caller_can_assign_org_role` still bounds the target.
+      // 2b-5 rewrites). The inviter branch is what lets them edit their own
+      // row, and `rls_caller_can_assign_org_role`'s teacher-role-name half
+      // still bounds the target.
       const invitationId = await insertInvitation({
         organizationId: orgId,
         inviterId: teacherId,
@@ -784,10 +800,10 @@ describe('org-control permission RLS', () => {
       expect(escalation.error?.code, 'a Teacher cannot grant the Admin role').toBe('42501');
     });
 
-    it('still lets a Teacher INSERT the classroom invitation (2b-4 owns this policy)', async () => {
-      // The INSERT policy keeps `rls_caller_can_assign_org_role`: adding the
-      // org.invitation.manage conjunct here would refuse the classroom invite
-      // its POST route deliberately keeps.
+    it('still lets a Teacher INSERT the classroom invitation (2b-5 owns this policy)', async () => {
+      // The INSERT policy keeps `rls_caller_can_assign_org_role`'s teacher half:
+      // adding the org.invitation.manage conjunct here would refuse the
+      // classroom invite its POST route deliberately keeps.
       const { error } = await teacher.from('invitations').insert({
         email: `teacher-create-${tag}@example.com`,
         target_org_role_id: memberRoleId,

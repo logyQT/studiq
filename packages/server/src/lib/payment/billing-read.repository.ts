@@ -11,10 +11,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *
  * Unlike the checkout/webhook repositories this one deliberately uses the
  * caller's session client. `billing_subscriptions` has an own-row and an
- * org-manager SELECT policy, so RLS is the authorization boundary: a member
- * who is not an org manager gets no organization row instead of a service-role
+ * `org.billing.manage` SELECT policy, so RLS is the authorization boundary: a
+ * member without the key gets no organization row instead of a service-role
  * read that would have to re-check the role by hand. Provider actions (portal,
- * change plan, cancel) still re-check the stricter `admin` role in the service.
+ * change plan, cancel) check the same key in the service.
  */
 export interface SubscriptionReadRow {
   stripeSubscriptionId: string;

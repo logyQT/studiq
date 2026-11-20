@@ -103,7 +103,7 @@ export class StripeController {
     }
 
     // The owner is resolved from `ctx` inside BillingService; the portal call
-    // re-checks org admin membership and the customer mapping there.
+    // requires `org.billing.manage` for an org owner and the customer mapping there.
     const result = await this.billing.createPortalSession(ctx, parsed.data.locale ?? 'pl');
 
     if (isFailure(result)) return controllerResponse.error(result.error);
