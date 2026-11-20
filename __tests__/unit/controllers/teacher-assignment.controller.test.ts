@@ -32,13 +32,18 @@ function createMockService() {
 const mockCtx: RequestContext = {
   traceId: 't',
   userId: 'teacher-1',
-  accountType: 'teacher',
-  orgRoleId: null,
+  accountType: 'educator',
+  orgRoleId: 'role-1',
   activeOrgId: 'org-1',
   url: '/test',
   method: 'GET',
   groupIds: [],
-  permissionScopes: {},
+  permissionScopes: {
+    'assignment.read': 'own',
+    'assignment.create': 'own',
+    'assignment.update': 'own',
+    'assignment.delete': 'own',
+  },
 };
 
 describe('TeacherAssignmentController', () => {
@@ -402,6 +407,94 @@ describe('TeacherAssignmentController', () => {
       );
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+    });
+  });
+
+  describe('permission gate (ADR-0015 §7, phase 2b-6)', () => {
+    const validBody = { title: 'Quiz 1' };
+
+    it.each(['own', 'group', 'organization'] as const)(
+      'a caller holding assignment.create at %s scope is allowed',
+      async (scope) => {
+        mockService.create.mockResolvedValueOnce(success({ id: 'a-1' }));
+        const response = await controller.create(validBody, {
+          ...mockCtx,
+          permissionScopes: { 'assignment.create': scope },
+        });
+        expect(response).toEqual({ success: true, statusCode: 201, data: { id: 'a-1' } });
+      },
+    );
+
+    it('a caller without assignment.create is 403 and the service is never called', async () => {
+      const response = await controller.create(validBody, { ...mockCtx, permissionScopes: {} });
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('the gate runs before the schema parse: a malformed body still answers 403', async () => {
+      const response = await controller.create({}, { ...mockCtx, permissionScopes: {} });
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('a student-persona holder of the key is allowed (D13: the persona is irrelevant)', async () => {
+      mockService.create.mockResolvedValueOnce(success({ id: 'a-1' }));
+      const response = await controller.create(validBody, {
+        ...mockCtx,
+        accountType: 'student',
+        permissionScopes: { 'assignment.create': 'organization' },
+      });
+      expect(response).toEqual({ success: true, statusCode: 201, data: { id: 'a-1' } });
+    });
+
+    it('reads without assignment.read are 403 on list and getById', async () => {
+      const ctx = { ...mockCtx, permissionScopes: {} };
+      expect(await controller.list(ctx)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      expect(await controller.getById('a-1', ctx)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      expect(mockService.list).not.toHaveBeenCalled();
+      expect(mockService.getById).not.toHaveBeenCalled();
+    });
+
+    it('writes without assignment.update are 403 on the staff children', async () => {
+      const ctx = { ...mockCtx, permissionScopes: { 'assignment.read': 'own' } };
+      for (const call of [
+        () => controller.update('a-1', validBody, ctx),
+        () => controller.unpublish('a-1', ctx),
+        () => controller.close('a-1', ctx),
+        () => controller.publish('a-1', {}, ctx),
+        () => controller.addQuestions('a-1', { questionIds: [] }, ctx),
+        () => controller.removeQuestion('a-1', 'q-1', ctx),
+        () => controller.reorderQuestions('a-1', { questionIds: [] }, ctx),
+        () => controller.randomize('a-1', {}, ctx),
+        () => controller.setTargets('a-1', {}, ctx),
+        () => controller.setReviewHold('a-1', 'q-1', { withheld: true }, ctx),
+        () => controller.setTaughtItem('a-1', 'q-1', { taught: true }, ctx),
+        () => controller.releaseItem('a-1', 'q-1', ctx),
+        () => controller.getResults('a-1', ctx),
+        () => controller.getStudentAnswers('a-1', 's-1', ctx),
+        () => controller.gradeAnswer('a-1', 's-1', {}, ctx),
+        () => controller.exportAnswers('a-1', undefined, ctx),
+      ]) {
+        expect(await call()).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      }
+    });
+
+    it('a delete without assignment.delete is 403', async () => {
+      const ctx = { ...mockCtx, permissionScopes: { 'assignment.update': 'own' } };
+      expect(await controller.delete('a-1', ctx)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      expect(mockService.delete).not.toHaveBeenCalled();
     });
   });
 });

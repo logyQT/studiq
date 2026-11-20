@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { json } from '#test/helpers/json';
+import { asJson, json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
@@ -20,23 +20,24 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * - `teacher` (`EDUCATOR`) — the positive control;
  * - `manager` (`MANAGER`) — org admin, keeps the graph realistic.
  *
- * Acceptance points from the case, all as the **student**, with its own
- * organization active (the cookie `loginAs` writes for the seeded membership):
- * 1. `POST /api/v1/teacher/quizzes {name:"x"}` → **403 `FORBIDDEN`**.
- * 2. `POST /api/v1/teacher/assignments {...}` → **403 `FORBIDDEN`**.
- * 3. `GET /api/v1/stats/teacher` → **403 `FORBIDDEN`**.
- *    …and no resource is created: after the three calls the tenant organization
- *    owns zero `quizzes` and zero `teacher_assignments` rows, and neither table
- *    has a row created by the student.
- *
- * The rejection is the route rule (`allowedAccountTypes` in the route file, which
- * runs before the body is read): the same calls with a malformed body are still
- * 403 and never 422, so the gate is the account type — not input validation and
- * not a missing active organization.
+ * Acceptance points from the case, all as the **student** (org role `member`),
+ * with its own organization active (the cookie `loginAs` writes for the seeded
+ * membership). Phase 2b-6 replaced the route persona rule with catalog keys:
+ * 1. `POST /api/v1/teacher/quizzes {name:"x"}` → **201** — the Member role holds
+ *    `quiz.create` at `own`, so an own-scope content create is allowed and the row
+ *    is created by the student (the boundary is the key, not the persona). The
+ *    spec deletes it again as its owner, so the tenant ends empty.
+ * 2. `POST /api/v1/teacher/assignments {...}` → **403 `FORBIDDEN`** — the member
+ *    template carries no `assignment.*` key, and the gate runs before input
+ *    validation (a malformed body is still 403, never 422).
+ * 3. `GET /api/v1/stats/teacher` → **200** with the student's own-scoped stats
+ *    (`stats.read` at `own`; the payload counts the student's own content only).
+ *    …and no staff resource is created: after the calls the tenant organization
+ *    owns zero `teacher_assignments` rows and no row created by the student there.
  *
  * Adjacent regressions that matter for this surface:
- * - the collection reads behind the same gate (`GET /api/v1/teacher/quizzes`,
- *   `GET /api/v1/teacher/assignments`) are 403 for the student too;
+ * - the collection reads behind the same keys: `GET /api/v1/teacher/quizzes` is
+ *   200 with own quizzes only, `GET /api/v1/teacher/assignments` is 403;
  * - the positive control: the tenant's educator, with the same active
  *   organization, creates a quiz (201) and an assignment (201) and reads the
  *   teacher stats (200) — so the 403s above are a permission boundary, not a
@@ -209,7 +210,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     // --- Step 0b: the case subject is a student with a real tenant scope --
     // The organization is active, so a 403 below cannot be "authenticated but
-    // scoped to no organization" — it has to be the route's account-type rule.
+    // scoped to no organization" — it has to be the missing catalog key.
     await switchUser(page, tenant, 'student');
 
     const me = await page.request.get('/api/v1/auth/me');
@@ -231,16 +232,14 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     ).toMatchObject({ id: org.id, orgRoleName: 'member', isActive: true });
 
     // --- Step 1: POST /api/v1/teacher/quizzes -----------------------------
-    expectForbidden(
-      await call(page, 'POST', TEACHER_QUIZZES, { name: 'x' }),
-      'POST /api/v1/teacher/quizzes as the student',
-    );
-    // The gate runs before input validation: an invalid payload is still 403,
-    // never 422 (which would mean the request reached the quiz controller).
-    expectForbidden(
-      await call(page, 'POST', TEACHER_QUIZZES, {}),
-      'POST /api/v1/teacher/quizzes with an invalid body',
-    );
+    // 2b-6: the Member role holds quiz.create at `own`, so the own-scope create
+    // is allowed — the key, not the account type, is the boundary. The row is
+    // the student's own and is deleted again below, so the tenant ends empty.
+    const studentQuiz = await call(page, 'POST', TEACHER_QUIZZES, { name: 'SEC-05 own quiz' });
+    expect(studentQuiz.status, 'POST /api/v1/teacher/quizzes as the student (own scope)').toBe(201);
+    const studentQuizBody = asJson<{ data?: { id?: string } }>(JSON.parse(studentQuiz.body));
+    const studentQuizId = studentQuizBody.data?.id;
+    expect(studentQuizId, 'the created quiz carries an id').toBeTruthy();
 
     // --- Step 2: POST /api/v1/teacher/assignments -------------------------
     expectForbidden(
@@ -258,20 +257,34 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     );
 
     // --- Step 3: GET /api/v1/stats/teacher --------------------------------
-    expectForbidden(
-      await call(page, 'GET', TEACHER_STATS),
-      'GET /api/v1/stats/teacher as the student',
-    );
+    // stats.read sits at `own` on the Member role, so the teacher-stats route
+    // answers 200 with the caller's own content only — never the teacher's.
+    const teacherStats = await page.request.get(TEACHER_STATS);
+    expect(teacherStats.status(), 'GET /api/v1/stats/teacher as the student').toBe(200);
+    const teacherStatsBody = await json<ApiBody<{ totalQuestions?: number }>>(teacherStats);
+    expect(teacherStatsBody.success, 'stats payload success').toBe(true);
+    expect(
+      teacherStatsBody.data?.totalQuestions,
+      'own-scope stats: the student owns no questions, the teacher’s do not leak',
+    ).toBe(0);
 
-    // --- Adjacent: the reads behind the same route rule -------------------
-    expectForbidden(
-      await call(page, 'GET', TEACHER_QUIZZES),
-      'GET /api/v1/teacher/quizzes as the student',
-    );
+    // --- Adjacent: the reads behind the same keys --------------------------
+    const quizzesList = await page.request.get(TEACHER_QUIZZES);
+    expect(quizzesList.status(), 'GET /api/v1/teacher/quizzes as the student').toBe(200);
+    const quizzesListBody = await json<ApiBody<Quiz[]>>(quizzesList);
+    for (const quiz of quizzesListBody.data ?? []) {
+      expect(quiz.created_by, 'the student’s list carries only own quizzes').toBe(student.id);
+    }
     expectForbidden(
       await call(page, 'GET', TEACHER_ASSIGNMENTS),
       'GET /api/v1/teacher/assignments as the student',
     );
+
+    // The own-scope quiz create is the student's own resource: delete it again
+    // as its owner (quiz.delete at own) so the "creates nothing" check below
+    // stays about the staff surface.
+    const deletedQuiz = await page.request.delete(`${TEACHER_QUIZZES}/${studentQuizId}`);
+    expect(deletedQuiz.status(), 'DELETE own quiz as the student').toBe(200);
 
     // --- No over-block: the student's own surface still works -------------
     // Same session, same org cookie: the account type is the only discriminator.
@@ -285,7 +298,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     await expect(page).toHaveURL(/\/app(\/|$)/, { timeout: 20_000 });
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-    // --- "brak utworzenia zasobów": the rejected writes left no rows ------
+    // --- "brak utworzenia zasobów": the refused writes left no rows --------
     // Checked before the educator control writes anything, so the organization
     // must be empty: the student's POSTs cannot have created a row anywhere.
     const quizzesAfterAttempts = await db
@@ -293,7 +306,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       .select('id, name, created_by, organization_id')
       .eq('organization_id', org.id);
     expect(quizzesAfterAttempts.error).toBeNull();
-    expect(quizzesAfterAttempts.data, 'the student created no quiz').toEqual([]);
+    expect(quizzesAfterAttempts.data, 'the student’s own quiz was deleted again').toEqual([]);
 
     const assignmentsAfterAttempts = await db
       .from('teacher_assignments')
@@ -304,7 +317,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const studentQuizzes = await db.from('quizzes').select('id').eq('created_by', student.id);
     expect(studentQuizzes.error).toBeNull();
-    expect(studentQuizzes.data, 'no quiz row is owned by the student').toEqual([]);
+    expect(studentQuizzes.data, 'the student’s own quiz row is gone after its delete').toEqual([]);
 
     const studentAssignments = await db
       .from('teacher_assignments')
@@ -346,11 +359,13 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       created_by: teacher.id,
     });
 
-    const teacherStats = await page.request.get(TEACHER_STATS);
-    expect(teacherStats.status(), 'the educator reads the teacher stats').toBe(200);
-    const teacherStatsBody = await json<ApiBody<Record<string, unknown>>>(teacherStats);
-    expect(teacherStatsBody.success).toBe(true);
-    expect(teacherStatsBody.data, 'teacher stats payload').toHaveProperty('totalQuestions');
+    const educatorStats = await page.request.get(TEACHER_STATS);
+    expect(educatorStats.status(), 'the educator reads the teacher stats').toBe(200);
+    const educatorStatsBody = await json<ApiBody<Record<string, unknown>>>(educatorStats);
+    expect(educatorStatsBody.success).toBe(true);
+    expect(educatorStatsBody.data, 'the educator’s org-scoped staff stats payload').toHaveProperty(
+      'totalQuestions',
+    );
 
     const teacherQuizzes = await page.request.get(TEACHER_QUIZZES);
     expect(teacherQuizzes.status(), 'the educator lists the teacher quizzes').toBe(200);

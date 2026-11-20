@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { can, Permission } from '@studiq/server/lib/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -10,6 +11,7 @@ export class ActivityController {
   constructor(private service: ActivityService) {}
 
   async getActivity(ctx: RequestContext, query: unknown): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = ActivityQuerySchema.safeParse(query);
 
     if (!parsed.success) {

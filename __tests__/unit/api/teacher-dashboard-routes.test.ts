@@ -3,7 +3,12 @@ import { NextRequest } from 'next/server';
 
 const groups = vi.fn<(...args: unknown[]) => unknown>();
 const feed = vi.fn<(...args: unknown[]) => unknown>();
-const ctx = { userId: 'teacher-1', activeOrgId: 'org-1' };
+const ctx = {
+  userId: 'teacher-1',
+  activeOrgId: 'org-1',
+  url: 'http://localhost/api/v1/stats/teacher/groups',
+  method: 'GET',
+};
 const authOptions = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock('@studiq/server/controllers/stats.controller', () => ({
@@ -15,12 +20,13 @@ vi.mock('@studiq/server/controllers/stats.controller', () => ({
 
 vi.mock('@studiq/server/lib/with-auth', () => ({
   withAuth: async (
-    _req: unknown,
+    req: { url: string },
     handler: (context: typeof ctx) => Promise<Response>,
     options: unknown,
   ) => {
     authOptions(options);
-    return handler(ctx);
+    // The real withAuth stamps the request's own url on the context.
+    return handler({ ...ctx, url: req.url });
   },
 }));
 
@@ -36,7 +42,7 @@ describe('teacher dashboard routes', () => {
     ['groups', getGroups, groups, 'days', '365'],
     ['feed', getFeed, feed, 'limit', '50'],
   ])(
-    '%s restricts roles and forwards the query and context',
+    '%s forwards the query and context with no persona gate (2b-6)',
     async (path, get, controller, key, value) => {
       const data = [{ id: 'item-1' }];
       controller.mockResolvedValue({ success: true, statusCode: 200, data });
@@ -45,8 +51,13 @@ describe('teacher dashboard routes', () => {
         new NextRequest(`http://localhost/api/v1/stats/teacher/${path}?${key}=${value}`),
       );
 
-      expect(authOptions).toHaveBeenCalledWith({ allowedAccountTypes: ['educator', 'manager'] });
-      expect(controller).toHaveBeenCalledWith({ [key]: value }, ctx);
+      // 2b-6: no persona option reaches withAuth; the stats.read key gates in
+      // the controller.
+      expect(authOptions).toHaveBeenCalledWith({});
+      expect(controller).toHaveBeenCalledWith(
+        { [key]: value },
+        expect.objectContaining({ userId: 'teacher-1', activeOrgId: 'org-1' }),
+      );
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ success: true, data });
     },
@@ -60,7 +71,10 @@ describe('teacher dashboard routes', () => {
 
     const response = await get(new NextRequest(`http://localhost/${path}`));
 
-    expect(controller).toHaveBeenCalledWith({}, ctx);
+    expect(controller).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ userId: 'teacher-1', activeOrgId: 'org-1' }),
+    );
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ success: false, error: 'FORBIDDEN' });
   });

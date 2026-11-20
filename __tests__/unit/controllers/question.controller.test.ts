@@ -39,6 +39,7 @@ function createMockQuestionService() {
     getById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    exposureLedger: vi.fn(),
   });
 }
 
@@ -299,6 +300,38 @@ describe('QuestionController', () => {
       const response = await controller.delete('q-1', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+    });
+  });
+
+  describe('ledger permission gate (ADR-0015 §7, phase 2b-6)', () => {
+    const inOrg = { ...mockCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
+
+    it('a caller inside an org without question_bank.update is 403', async () => {
+      const response = await controller.ledger('q-1', { ...inOrg, permissionScopes: {} });
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(mockService.exposureLedger).not.toHaveBeenCalled();
+    });
+
+    it.each(['own', 'group', 'organization'] as const)(
+      'a caller holding question_bank.update at %s scope passes the gate',
+      async (scope) => {
+        mockService.exposureLedger.mockResolvedValueOnce(success([]));
+        const response = await controller.ledger('q-1', {
+          ...inOrg,
+          permissionScopes: { 'question_bank.update': scope },
+        });
+        expect(response).toEqual({ success: true, statusCode: 200, data: [] });
+      },
+    );
+
+    it('a student-persona holder of the key is allowed (D13)', async () => {
+      mockService.exposureLedger.mockResolvedValueOnce(success([]));
+      const response = await controller.ledger('q-1', {
+        ...inOrg,
+        accountType: AccountType.STUDENT,
+        permissionScopes: { 'question_bank.update': 'organization' },
+      });
+      expect(response).toEqual({ success: true, statusCode: 200, data: [] });
     });
   });
 });

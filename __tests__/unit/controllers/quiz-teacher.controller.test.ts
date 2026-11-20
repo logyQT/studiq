@@ -25,13 +25,19 @@ function createMockService() {
 const mockCtx: RequestContext = {
   traceId: 't',
   userId: 'teacher-1',
-  accountType: 'teacher',
-  orgRoleId: null,
+  accountType: 'educator',
+  orgRoleId: 'role-1',
   activeOrgId: 'org-1',
   url: '/test',
   method: 'GET',
   groupIds: [],
-  permissionScopes: {},
+  permissionScopes: {
+    'quiz.read': 'own',
+    'quiz.create': 'own',
+    'quiz.update': 'own',
+    'quiz.delete': 'own',
+    'assignment.create': 'own',
+  },
 };
 
 describe('QuizTeacherController', () => {
@@ -279,6 +285,109 @@ describe('QuizTeacherController', () => {
       const response = await controller.createAssignment('quiz-1', mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: assignment });
+    });
+  });
+
+  describe('permission gate (ADR-0015 §7, phase 2b-6)', () => {
+    const body = { name: 'My Quiz' };
+
+    it.each(['own', 'group', 'organization'] as const)(
+      'a caller holding quiz.create at %s scope is allowed',
+      async (scope) => {
+        mockService.create.mockResolvedValueOnce(success({ id: 'q-1' }));
+        const response = await controller.create(body, {
+          ...mockCtx,
+          permissionScopes: { 'quiz.create': scope },
+        });
+        expect(response).toEqual({ success: true, statusCode: 201, data: { id: 'q-1' } });
+      },
+    );
+
+    it('a caller without the key is 403 and the service is never called', async () => {
+      const response = await controller.create(body, { ...mockCtx, permissionScopes: {} });
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('the gate runs before the schema parse: a malformed body still answers 403', async () => {
+      const response = await controller.create({}, { ...mockCtx, permissionScopes: {} });
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('a student-persona holder of the key is allowed (D13: the persona is irrelevant)', async () => {
+      mockService.create.mockResolvedValueOnce(success({ id: 'q-1' }));
+      const response = await controller.create(body, {
+        ...mockCtx,
+        accountType: 'student',
+        permissionScopes: { 'quiz.create': 'organization' },
+      });
+      expect(response).toEqual({ success: true, statusCode: 201, data: { id: 'q-1' } });
+    });
+
+    it('a read without quiz.read is 403 on list and getById', async () => {
+      const ctx = { ...mockCtx, permissionScopes: {} };
+      expect(await controller.list(ctx)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      expect(await controller.getById('q-1', ctx)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      expect(mockService.list).not.toHaveBeenCalled();
+      expect(mockService.getById).not.toHaveBeenCalled();
+    });
+
+    it('a write without quiz.update is 403 on update and the child routes', async () => {
+      const ctx = { ...mockCtx, permissionScopes: { 'quiz.read': 'own' } };
+      for (const call of [
+        () => controller.update('q-1', body, ctx),
+        () => controller.bulkSave('q-1', { name: 'x', questions: [] }, ctx),
+        () => controller.addQuestions('q-1', { questionIds: [] }, ctx),
+        () => controller.removeQuestion('q-1', 'qq-1', ctx),
+        () => controller.reorderQuestions('q-1', { questionIds: [] }, ctx),
+      ]) {
+        expect(await call()).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      }
+      expect(mockService.update).not.toHaveBeenCalled();
+    });
+
+    it('a delete without quiz.delete is 403', async () => {
+      const ctx = { ...mockCtx, permissionScopes: { 'quiz.update': 'own' } };
+      expect(await controller.delete('q-1', ctx)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      expect(mockService.delete).not.toHaveBeenCalled();
+    });
+
+    it('createAssignment asks the parent quiz.update key and assignment.create', async () => {
+      const noUpdate = { ...mockCtx, permissionScopes: { 'assignment.create': 'own' } };
+      expect(await controller.createAssignment('q-1', noUpdate)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      const noCreate = { ...mockCtx, permissionScopes: { 'quiz.update': 'own' } };
+      expect(await controller.createAssignment('q-1', noCreate)).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+      mockService.createAssignment.mockResolvedValueOnce(success({ id: 'a-1' }));
+      const both = {
+        ...mockCtx,
+        permissionScopes: { 'quiz.update': 'own', 'assignment.create': 'own' },
+      };
+      expect(await controller.createAssignment('q-1', both)).toEqual({
+        success: true,
+        statusCode: 201,
+        data: { id: 'a-1' },
+      });
     });
   });
 });

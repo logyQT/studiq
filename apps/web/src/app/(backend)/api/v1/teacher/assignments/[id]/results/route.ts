@@ -1,16 +1,10 @@
-import { AccountType } from '@studiq/authz';
 import { teacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await teacherAssignmentController.getResults(id, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+type Params = { id: string };
+
+/** The cohort results of one run; the parent's key gates in the controller as the service decides. */
+export const GET = authedRouteWithParams<Params, [string]>(
+  ({ params: { id } }) => [id],
+  (ctx, id) => teacherAssignmentController.getResults(id, ctx),
+);

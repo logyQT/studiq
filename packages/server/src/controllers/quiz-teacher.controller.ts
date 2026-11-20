@@ -1,8 +1,11 @@
 import type { RequestContext } from '@studiq/authz';
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
-import { controllerResponse } from '@studiq/server/lib/controller-response';
+import { can, Permission } from '@studiq/server/lib/authz';
+import {
+  type ControllerResponse,
+  controllerResponse,
+} from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
-import { isFailure } from '@studiq/server/lib/service-result';
+import { isFailure, type ServiceResult } from '@studiq/server/lib/service-result';
 import {
   AddQuizQuestionsSchema,
   BulkSaveQuizSchema,
@@ -16,82 +19,65 @@ import { quizTeacherService } from '@studiq/server/services/quiz-teacher.service
 export class QuizTeacherController {
   constructor(private service: QuizTeacherService) {}
 
+  /** Maps a service result to the envelope, 201 when `created`. */
+  private fromService(result: ServiceResult<unknown>, created = false): ControllerResponse {
+    return isFailure(result)
+      ? controllerResponse.error(result.error, result.details)
+      : created
+        ? controllerResponse.created(result.data)
+        : controllerResponse.success(result.data);
+  }
+
+  /**
+   * The catalog key decides, from the context alone, before any schema parse (ADR-0015 §7).
+   * The service resolves the same key against the loaded quiz row, so a foreign id is 404 and
+   * a same-org quiz the caller's scope does not reach is 403.
+   */
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = CreateQuizSchema.safeParse(body);
-    if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
-    }
-    const result = await this.service.create(parsed.data, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.created(result.data);
+    if (!parsed.success)
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    return this.fromService(await this.service.create(parsed.data, ctx), true);
   }
 
   async list(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.service.list(ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!(await can(ctx, Permission.QUIZ_READ))) return controllerResponse.error('FORBIDDEN');
+    return this.fromService(await this.service.list(ctx));
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.service.getById(id, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!(await can(ctx, Permission.QUIZ_READ))) return controllerResponse.error('FORBIDDEN');
+    return this.fromService(await this.service.getById(id, ctx));
   }
 
   async bulkSave(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = BulkSaveQuizSchema.safeParse(body);
-    if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
-    }
-    const result = await this.service.bulkSave(id, parsed.data, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!parsed.success)
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    return this.fromService(await this.service.bulkSave(id, parsed.data, ctx));
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = UpdateQuizSchema.safeParse(body);
-    if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
-    }
-    const result = await this.service.update(id, parsed.data, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!parsed.success)
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    return this.fromService(await this.service.update(id, parsed.data, ctx));
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.service.delete(id, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!(await can(ctx, Permission.QUIZ_DELETE))) return controllerResponse.error('FORBIDDEN');
+    return this.fromService(await this.service.delete(id, ctx));
   }
 
   async addQuestions(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = AddQuizQuestionsSchema.safeParse(body);
-    if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
-    }
-    const result = await this.service.addQuestions(id, parsed.data, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!parsed.success)
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    return this.fromService(await this.service.addQuestions(id, parsed.data, ctx));
   }
 
   async removeQuestion(
@@ -99,9 +85,8 @@ export class QuizTeacherController {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    const result = await this.service.removeQuestion(id, questionId, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
+    return this.fromService(await this.service.removeQuestion(id, questionId, ctx));
   }
 
   async reorderQuestions(
@@ -109,24 +94,20 @@ export class QuizTeacherController {
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = ReorderQuizQuestionsSchema.safeParse(body);
-    if (!parsed.success) {
-      return {
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-        details: parsed.error.issues,
-      };
-    }
-    const result = await this.service.reorderQuestions(id, parsed.data, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.success(result.data);
+    if (!parsed.success)
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    return this.fromService(await this.service.reorderQuestions(id, parsed.data, ctx));
   }
 
   async createAssignment(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.service.createAssignment(id, ctx);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return controllerResponse.created(result.data);
+    // The child acts on the parent quiz's update key, and the assignment it mints
+    // is an `assignment.create` write (the INSERT policy asks for the same key).
+    if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
+    if (!(await can(ctx, Permission.ASSIGNMENT_CREATE)))
+      return controllerResponse.error('FORBIDDEN');
+    return this.fromService(await this.service.createAssignment(id, ctx), true);
   }
 }
 export const quizTeacherController = wrapService(

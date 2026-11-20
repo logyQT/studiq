@@ -43,7 +43,9 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
 which replaces their remaining gates with permissions. Phase 2b: 2b-1…2b-4 are
 merged and **2b-5 (class invites) is written on `feat/authority-2b-5`** — the
-next slice is 2b-6 (the content-route sweep and the `authedRoute` adoption).
+next slice is 2b-6 (the content-route sweep and the `authedRoute` adoption) —
+**written on `feat/authority-2b-6`**; the remaining slices are 2b-7 (marker deletion),
+2b-8 (the RLS half of the role-editor guards) and 2b-9 (deferred to phase 5).
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
 backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
@@ -1339,7 +1341,7 @@ control-plane RLS (2b-4), because the routes and their predicates move together
 | 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`.                                                   |
 | 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment writes and cohort read, the billing service gate, and the `org_members` SELECT review D25 leaves open. **Merged** `9da8c9b3` (#1400); `can_assign_org_role` and the invitation read were 2b-5's.        |
 | 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Written** on `feat/authority-2b-5`. |
-| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption (2b-2's deferred route-layer shape).                                                                                                                                                                            |
+| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Written on `feat/authority-2b-6`** (delivered block below).                                                                                                                                                  |
 | 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them.                                                                                    |
 | 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                                                                  |
 | 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                       |
@@ -1706,6 +1708,145 @@ and a reset that passes proves little until it has run twice.
 - 2b-6's route sweep reconciles the two deliberate shape variations
   (`roles/[id]/permissions` destructures the id, `seats/pools/[id]` hands the
   body first) that keep `dup:base` at zero until the layer changes once.
+
+**2b-6 written on `feat/authority-2b-6` — slice 6 of 9 (content-route sweep + the
+`authedRoute` adoption):**
+
+- **The count, re-derived (R9/R10).** `git grep -l allowedAccountTypes origin/main --
+'apps/web/src/app/(backend)/api/v1'` reports **33 files** at the base: `teacher/` 22
+  (14 assignment files, 7 quiz files, `classrooms/route.ts`), `stats/` 5,
+  `flashcards/stats/teacher` 2, `questions/[id]/ledger` 1, `organization/route.ts` 1,
+  `ai/` 2. The sweep set is **29 files / 39 handlers**; the R5 exceptions
+  (`organization/route.ts` POST, `teacher/classrooms/route.ts` POST) and `ai/*`
+  (2b-9, phase 5) stay.
+- **Route map** (family → key the controller enforces, first statement, before any
+  schema parse):
+  - `teacher/quizzes` — GET list `quiz.read`, POST create `quiz.create`;
+    `quizzes/[id]` GET `quiz.read`, PUT `quiz.update`, DELETE `quiz.delete`;
+    the children `bulk`, `questions`, `questions/[questionId]`, `questions/reorder`
+    and `create-assignment` act on the parent's `quiz.update` (the service resolves
+    it against the loaded row: foreign id 404, unreached same-org row 403);
+    `create-assignment` also asks `assignment.create` (the minted run is that write,
+    and the INSERT policy asks the same key).
+  - `teacher/assignments` — GET list / `[id]` GET `assignment.read`, POST create
+    `assignment.create`, PUT `assignment.update`, DELETE `assignment.delete`;
+    results, targets, publish/unpublish, close, the `[action]` lifecycle
+    (cancel/extend/override), the item questions/flags and export-answers follow
+    the parent's read/update key **as the service already decides** (`ownedClient`
+    resolves `assignment.update`/`assignment.delete` against the loaded row;
+    `getById`/`list` use `assignment.read`); `results/[studentId]` PUT
+    (gradeAnswer) is `assignment.update`, the key the service gates on.
+  - `stats/teacher*` (5 routes) and `flashcards/stats/teacher*` (2) → `stats.read`,
+    resolved from `ctx.permissionScopes` as 2a-5 ships it — not re-derived.
+  - `questions/[id]/ledger` → `question_bank.update`, the staff key the service's
+    `canReadQuestionKey` already enforces on the loaded row; the service now 404s a
+    foreign-org item instead of 403 (§7.1).
+- **The shape.** All 29 files use `authedRoute`/`authedRouteWithParams` with a
+  declared `readsBody` and drop `allowedAccountTypes`. Three documented holdouts,
+  like 2b-3's logo route: the export-answers CSV route (returns CSV, not the JSON
+  envelope), the `[action]` lifecycle map (per-action dispatch + a body-less `cancel`
+  whose empty stream must not become a 400), and the query-param DELETE in
+  `assignments/[id]/questions` (keeps its exact `MISSING_QUESTION_ID` 422).
+  `item-flag-route.ts` stays as the shared `authedRouteWithParams` factory for the
+  two flag handlers. `dup:base`/`dup:changed`: **0 new clones** (the sweep started
+  at 21 and each pair was closed by varying what the route hands the controller —
+  destructured reads, body-first tuples, the params object, named vs inline `Params` —
+  never comments or renamed locals).
+- **Service changes.** `quiz-teacher.service` resolves the family key against the
+  loaded quiz row (`own` → author, `organization` → the active org; `group` reaches
+  no quiz because a quiz has no share link, so only the author) and the list
+  follows the caller's `quiz.read` scope (organization → org-wide, otherwise own),
+  exactly like the assignment list already did. `teacher-assignment.service` needed
+  no change — `verifyOwnership`/`ownedClient` already resolve the key on the loaded
+  row. `question.service#exposureLedger` 404s a foreign-org question.
+- **The RLS twin (R4).** `20261120190000_content_route_permission_rls.sql` moves the
+  `teacher_assignments` INSERT off the JWT persona conjunct (2b-4's recorded
+  boundary, owned by this slice) onto
+  `rls_caller_has_permission(organization_id, 'assignment.create')` —
+  `created_by = auth.uid()` stays the own rule, so a holder at any scope mints its
+  own run and a student-persona Admin works (D13). The org-wide
+  `Visible teacher assignments` SELECT stays (phase 5 owns its readers).
+  `control-plane-permission-rls.test.ts` now replays only the newest file that owns
+  the object (R27): 2b-4's own closing guard pins the pre-2b-6 persona conjunct, so
+  replaying it on a 2b-6 database raises by design.
+- **What can now 403 that did not** (and what now passes): a caller holding the
+  family key at any scope passes regardless of persona — a Student-persona Admin
+  creates quizzes and assignments (D13, pinned through the real routes and the moved
+  INSERT policy). A role without the key is 403 before any schema parse — a
+  well-formed but schema-invalid body still answers 403, never 422; a syntactically
+  malformed JSON body 400s at the route's own body parse (`authedRoute`'s
+  `readsBody`), before the controller runs. A foreign-org id is 404 for a key
+  holder; a same-org row the caller's scope does not reach is 403. A Member-role
+  caller is refused every `assignment.*` route (the member template carries none)
+  but may create own-scope content (`quiz.create` at `own`) and read `stats.read`
+  at `own` — the rollout map's "own-scope content permissions" for SEC-05. The
+  `override` lifecycle action is no longer manager-persona-only: any
+  `assignment.update` holder over the run may move either bound.
+- **Tests.** Unit truth tables per controller family (holder at each scope the key
+  can carry is allowed, no-key 403 with the service never called, gate before schema
+  parse, Student-persona holder allowed — D13) in the six controller suites plus the
+  quiz service's resource-scope and list-scope cases. Integration:
+  `content-route-permission-api.test.ts` (17 cases) drives the real routes through
+  real `withAuth` with signed-in custom-role sessions: key-only holder
+  creates/reads/edits, Member refused on `assignment.*`, Student-persona Admin
+  creates a quiz and an assignment, foreign ids 404, same-org unreached rows 403.
+  Existing persona-encoding tests updated without weakening what they prove:
+  `stats.test.ts` (member gets own-scoped stats; a no-`stats.read` role is 403), the
+  route-option suites (`stats-teacher-route`, `teacher-dashboard-routes`) now assert
+  **no** `allowedAccountTypes` reaches `withAuth`, `assessment-lifecycle` (override
+  refused for a member-role caller), `api-auth-inventory` (a gated factory may
+  delegate to another gated factory, and the delegation chain must reach
+  `withAuth`). Mutation proofs, all KILLED with
+  `bun run mutate`: the create/read/delete gates in the quiz, assignment, stats,
+  activity, flashcard-stats and question controllers, the quiz service's
+  resource-scope check, and the quiz list scope filter. The route-layer persona
+  gate itself cannot be mutated — it no longer exists; `api-auth-inventory` proves
+  every handler is wrapped in `withAuth`, while the key gates are what the
+  controller truth tables and `content-route-permission-api.test.ts` prove
+  through the real routes.
+- **Corpus (R16).** `SEC-05`, `AUT-19` and `AUT-16` depended on the removed persona
+  gates and were reconciled with spec + case text together (R6): the Member student
+  now gets 201 on own-scope quiz create, 403 on every `assignment.*` route, 200
+  own-scoped on the stats/teacher family and an own-only quiz list. `SEC-09`
+  accepts 403/404 and is unaffected (foreign reads answer 404). `AUT-17/18` (proxy
+  redirects), `STU-01/03/07`, `EDU-02`, `MGR-01` do not touch the swept routes
+  (phase 6/3 surfaces). EDU-*/STU-3x tenants are teacher/admin roles and keep
+  working. The QA specs were reconciled by reading, not run (this slice's gates
+  exclude Playwright).
+- **Gates.** `env:ensure --profile api`, `env:reset-db --yes`, the touched
+  integration files serially, then the full serial integration run (**109 files:
+  1000 passed, 11 skipped** — re-measured on the review-pass HEAD, same as at
+  `c5dd2103`), `test:unit` (**310 files, 4816 passed, 1 skipped** — re-measured
+  2026-11-20 on the review-pass HEAD; 4812 at `c5dd2103` before the review pass
+  added four `api-auth-inventory` reachability cases),
+  `typecheck:all`, `typecheck:admin`, `lint:all`, `review:static`, `knip`,
+  `dup:base` (**0 new**), `format:check`, `pr:size`. No build/serve/Playwright/QA.
+- **`bun run pr:size` at the end: 1402 reviewable lines (XL)** — 1388 at `c5dd2103`,
+  re-measured on the review-pass HEAD. The 29-file sweep
+  plus controllers, tests and docs. The coordinator decided **one PR with
+  `size:exception`** — R4 binds the `teacher_assignments` INSERT migration to the
+  teacher routes, so the split below is not available. The branch is committed as
+  focused commits (sweep, then migration+tests, then corpus/docs) so a later split
+  would still be a rebase, not a rewrite.
+
+**Follow-ups this slice creates:**
+
+- **2026-11-20 review pass:** the 403-vs-404 split between the two content families is
+  pre-existing and cosmetic, recorded here, not changed: a foreign-org id answers **404**
+  on the quiz paths (`ownedQuiz` maps it to `NOT_FOUND`) but **403** on the assignment
+  read (`getById`), and a same-org row the caller's scope does not reach answers **403**
+  on the quiz writes (`ownedQuiz`'s scope evaluate) but **404** on the assignment
+  writes (`ownedClient` collapses foreign and unreached into `NOT_FOUND`). §7.1's
+  tenant-non-leak rule is the reason the quiz side is preferred; the assignment side
+  predates 2b-6 and no caller distinguishes the two today.
+- **2026-11-20 review pass (tried and reverted):** adding the quiz service's
+  `!ctx.activeOrgId` guard to `teacher-assignment.service#create` was reverted.
+  `teacher_assignments.organization_id` is nullable (unlike `quizzes`), so a null org
+  cannot raise 23502, and a real no-org session is refused at the table with 42501 —
+  which `PG_ERROR_MAP` already maps to 403 (`supabase-errors.test.ts` pins the mapping) —
+  while the service-layer guard broke the integration suites that seed personal
+  (null-org) assignments with RLS bypassed (`no-active-org-guards`, `item-states`).
+  No-org assignment create therefore answers 403 through the RLS denial, not a guard.
 
 **Difficulty log**
 

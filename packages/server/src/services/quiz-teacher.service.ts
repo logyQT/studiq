@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { evaluate, resolveScope } from '@studiq/server/lib/authz';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -19,16 +20,34 @@ import type { Database } from '../types/database';
 /**
  * A quiz outside the caller's active org is indistinguishable from a missing one on reads,
  * while the flows that had already verified ownership answer the same row with FORBIDDEN.
+ * The caller's `permission` scope is resolved against the loaded row (ADR-0015 §6.3): `own`
+ * reaches the author, `organization` the active org (checked above), `group` nothing — a quiz
+ * has no class share link, so a group-scope row authorizes only its own author.
  */
-function ownedQuiz<T extends { organization_id: string }>(
+function ownedQuiz<T extends { organization_id: string; created_by?: string | null }>(
   quiz: T | null,
   error: PostgrestError | null,
   ctx: RequestContext,
   foreignOrgError: 'NOT_FOUND' | 'FORBIDDEN',
+  permission?: string,
 ): ServiceResult<T> {
   if (error) return toDbFailure(error);
   if (!quiz) return failure('NOT_FOUND');
   if (quiz.organization_id !== ctx.activeOrgId) return failure(foreignOrgError);
+  if (
+    permission &&
+    !evaluate({
+      scope: resolveScope(ctx, permission),
+      userId: ctx.userId,
+      resource: {
+        createdBy: quiz.created_by ?? '',
+        orgId: quiz.organization_id,
+        activeOrgId: ctx.activeOrgId,
+      },
+    })
+  ) {
+    return failure('FORBIDDEN');
+  }
   return success(quiz);
 }
 
@@ -45,7 +64,7 @@ export class QuizTeacherService {
       .eq('id', id)
       .maybeSingle();
 
-    const owned = ownedQuiz(quiz, error, ctx, 'NOT_FOUND');
+    const owned = ownedQuiz(quiz, error, ctx, 'NOT_FOUND', 'quiz.read');
     if (!owned.success) return owned;
 
     // A deleted item leaves the builder (it is hidden from authoring); the quiz row stays.
@@ -66,14 +85,15 @@ export class QuizTeacherService {
     id: string,
     ctx: RequestContext,
     foreignOrgError: 'NOT_FOUND' | 'FORBIDDEN' = 'NOT_FOUND',
+    permission = 'quiz.update',
   ): Promise<ServiceResult<never> | null> {
     const { data: quiz, error } = await supabase
       .from('quizzes')
-      .select('organization_id')
+      .select('organization_id, created_by')
       .eq('id', id)
       .maybeSingle();
 
-    const owned = ownedQuiz(quiz, error, ctx, foreignOrgError);
+    const owned = ownedQuiz(quiz, error, ctx, foreignOrgError, permission);
     return owned.success ? null : owned;
   }
 
@@ -111,11 +131,19 @@ export class QuizTeacherService {
       return failure('FORBIDDEN');
     }
 
-    const { data, error } = await supabase
+    // The list follows the caller's `quiz.read` scope the way the assignment list does:
+    // an organization-scope row reads the org's quizzes, any other scope only the
+    // caller's own (a quiz has no class share link, so `group` reaches nothing but the
+    // author's own rows through the creator branch of the scope rule).
+    const scope = resolveScope(ctx, 'quiz.read');
+    const query = supabase
       .from('quizzes')
       .select('*, quiz_questions(question_id, question:questions(status))')
       .eq('organization_id', ctx.activeOrgId)
       .order('created_at', { ascending: false });
+    const filtered = scope === 'organization' ? query : query.eq('created_by', ctx.userId);
+
+    const { data, error } = await filtered;
 
     if (error) return toDbFailure(error);
 
@@ -216,7 +244,7 @@ export class QuizTeacherService {
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const denied = await this.quizAccessFailure(supabase, id, ctx);
+    const denied = await this.quizAccessFailure(supabase, id, ctx, 'NOT_FOUND', 'quiz.delete');
     if (denied) return denied;
 
     const { error: deleteError } = await supabase.from('quizzes').delete().eq('id', id);
@@ -329,7 +357,7 @@ export class QuizTeacherService {
       .eq('id', id)
       .maybeSingle();
 
-    const owned = ownedQuiz(quiz, quizError, ctx, 'FORBIDDEN');
+    const owned = ownedQuiz(quiz, quizError, ctx, 'FORBIDDEN', 'quiz.update');
     if (!owned.success) return owned;
 
     // 2. A quiz copy is a new binding and is chosen as a whole: any retired or deleted item

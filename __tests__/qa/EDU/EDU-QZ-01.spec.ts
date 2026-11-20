@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-QZ-01 — creating a quiz („Utworzenie quizu”).
@@ -34,6 +34,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * 4. With an empty (or whitespace-only) name „Utwórz quiz” is disabled and neither a click
  *    nor Enter creates anything; the server rejects a blank name with 422 as well.
  * 5. „Anuluj” leaves the form without creating a quiz.
+ * 6. The list is own-only (2b-6): the Teacher role holds `quiz.read` at `own`, so a quiz
+ *    another member of the same organization created — the spec mints one as the tenant's
+ *    org admin, then deletes it again — does not appear in `GET /api/v1/teacher/quizzes`
+ *    for the educator, and every listed row carries the educator's own `created_by`.
  */
 
 const CASE = 'EDU-QZ-01';
@@ -99,6 +103,7 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     if (!tenant.org || !tenant.users.teacher) {
       throw new Error(`${CASE} needs the content tenant profile (org and educator)`);
     }
+    const teacher = tenantUser(tenant, 'teacher');
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -172,6 +177,44 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     await expect(card.getByText(QUIZ_NAME, { exact: true })).toBeVisible();
     await expect(card.getByText(QUIZ_DESCRIPTION, { exact: true })).toBeVisible();
     await expect(card.getByText(COPY.zeroQuestions, { exact: true })).toBeVisible();
+
+    // --- The list is own-only (2b-6) ------------------------------------------
+    // The Teacher role holds `quiz.read` at `own`, so a quiz another member of the
+    // same organization created must stay out of the educator's list. The tenant's
+    // org admin holds `quiz.create` at `organization` and mints one; the spec
+    // deletes it again as its creator, so the tenant ends as it started.
+    await page.context().clearCookies();
+    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    const foreignResponse = await page.request.post(QUIZZES_URL, {
+      data: { name: `EDU-QZ-01 foreign ${RUN_SUFFIX}` },
+    });
+    expect(
+      foreignResponse.status(),
+      `POST ${QUIZZES_URL} as the org admin → ${await foreignResponse.text()}`,
+    ).toBe(201);
+    const foreignQuiz = (await json<ApiEnvelope<QuizRow>>(foreignResponse)).data;
+    expect(foreignQuiz.created_by, 'the admin’s quiz is not the educator’s').not.toBe(teacher.id);
+
+    await page.context().clearCookies();
+    await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
+    const ownList = await listQuizzes(page);
+    expect(
+      ownList.every((row) => row.created_by === teacher.id),
+      'the educator’s list carries only own quizzes',
+    ).toBe(true);
+    expect(
+      ownList.map((row) => row.id),
+      'the educator’s own quiz is listed',
+    ).toContain(quiz.id);
+    expect(
+      ownList.map((row) => row.id),
+      'the org admin’s quiz stays out of the own-scope list',
+    ).not.toContain(foreignQuiz.id);
+
+    await page.context().clearCookies();
+    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    const removed = await page.request.delete(`${QUIZZES_URL}/${foreignQuiz.id}`);
+    expect(removed.status(), 'DELETE the admin’s quiz as its creator').toBe(200);
 
     expect(pageErrors, 'uncaught page errors during the walk').toEqual([]);
   });

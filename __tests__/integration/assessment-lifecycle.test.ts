@@ -348,8 +348,11 @@ describe('Assessment lifecycle: cancel, extend, override (#1174)', () => {
     ]);
   });
 
-  it('refuses the override to a teacher — moving a window is a manager decision (R20)', async () => {
-    mockUser(teacher.user);
+  it('refuses the override to a caller without assignment.update (R20; 2b-6: the key, not the persona, decides)', async () => {
+    // The seeded student is an org `member`: that role carries no assignment.*
+    // key, so the lifecycle action is refused even though the caller is a
+    // signed-in member of the run's org.
+    mockUser(student.user);
     const { request } = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/assignments/${assignmentId}/override`,
       { id: assignmentId },
@@ -364,6 +367,7 @@ describe('Assessment lifecycle: cancel, extend, override (#1174)', () => {
       params: Promise.resolve({ id: assignmentId, action: 'override' }),
     });
     expect(response.status).toBe(403);
+    expect(await errorOf(response)).toBe('FORBIDDEN');
   });
 
   it('cancels a live run: attempts expire, the seal lifts and there is no review (R12/R19)', async () => {
@@ -449,6 +453,7 @@ describe('Assessment lifecycle: cancel a scheduled run (#1174)', () => {
     teacher = await before({ role: 'educator', org: true, groups: 1, questions: 1 });
     if (!teacher.orgId) throw new Error('the teacher fixture has no organisation');
     orgId = teacher.orgId;
+
     groupId = requiredAt(teacher.groups, 0, 'the seeded group');
     questionId = requiredAt(teacher.created.questions, 0, 'the seeded question');
     const { data: questionRow } = await service

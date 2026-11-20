@@ -17,13 +17,13 @@ function createMockStatsService() {
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: AccountType.STUDENT,
-  orgRoleId: null,
-  activeOrgId: null,
+  accountType: AccountType.EDUCATOR,
+  orgRoleId: 'role-1',
+  activeOrgId: 'org-1',
   url: '/test',
   method: 'GET',
   groupIds: [],
-  permissionScopes: {},
+  permissionScopes: { 'stats.read': 'group' },
 };
 
 describe('StatsController', () => {
@@ -117,6 +117,57 @@ describe('StatsController', () => {
       const response = await controller.getTeacherQuizStats(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+  });
+
+  describe('permission gate (ADR-0015 §7, phase 2b-6)', () => {
+    it('a caller inside an org without stats.read is 403 on every teacher read', async () => {
+      const ctx = { ...mockCtx, permissionScopes: {} };
+      for (const call of [
+        () => controller.getTeacherStats({}, ctx),
+        () => controller.getTeacherQuizStats(ctx),
+        () => controller.getTeacherGroupPerformance({}, ctx),
+        () => controller.getTeacherActivityFeed({}, ctx),
+      ]) {
+        expect(await call()).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      }
+      expect(mockService.getTeacherStats).not.toHaveBeenCalled();
+      expect(mockService.getTeacherQuizStats).not.toHaveBeenCalled();
+    });
+
+    it.each(['own', 'group', 'organization'] as const)(
+      'a caller holding stats.read at %s scope is allowed',
+      async (scope) => {
+        mockService.getTeacherQuizStats.mockResolvedValueOnce(success([]));
+        const response = await controller.getTeacherQuizStats({
+          ...mockCtx,
+          permissionScopes: { 'stats.read': scope },
+        });
+        expect(response).toEqual({ success: true, statusCode: 200, data: [] });
+      },
+    );
+
+    it('a student-persona holder of the key is allowed (D13)', async () => {
+      mockService.getTeacherStats.mockResolvedValueOnce(success({ totalQuestions: 0 }));
+      const response = await controller.getTeacherStats(
+        {},
+        {
+          ...mockCtx,
+          accountType: AccountType.STUDENT,
+          permissionScopes: { 'stats.read': 'own' },
+        },
+      );
+      expect(response).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { totalQuestions: 0 },
+      });
+    });
+
+    it('the student reads stay ungated', async () => {
+      mockService.getStudentStats.mockResolvedValueOnce(success({ totalQuizzes: 0 }));
+      const response = await controller.getStudentStats({ ...mockCtx, permissionScopes: {} });
+      expect(response).toEqual({ success: true, statusCode: 200, data: { totalQuizzes: 0 } });
     });
   });
 });

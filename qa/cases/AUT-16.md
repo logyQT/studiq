@@ -55,8 +55,11 @@ same tenant's teacher and manager. It therefore runs against the case's own tena
   the navigation settles.
 - The student never sees teacher/manager navigation chrome (no `/edu` or `/manage`
   link appears in the DOM at any point), and the panel APIs stay closed to them:
-  `GET /api/v1/teacher/assignments`, `GET /api/v1/organization/members` and
-  `GET /api/v1/stats/teacher` all return `403 FORBIDDEN`.
+  `GET /api/v1/teacher/assignments` and `GET /api/v1/organization/members` return
+  `403 FORBIDDEN` (the Member role holds no `assignment.read` / roster key), while
+  `GET /api/v1/stats/teacher` — a content key the Member role holds at `own` since
+  phase 2b-6 — answers `200` with the student's own (empty) stats or `403`, never
+  the teacher's aggregates.
 - The gate is role-based, not a blanket block: the tenant's teacher still reaches
   `/edu/assignments` (`200`, teacher sidebar rendered) and its manager still reaches
   `/manage/members` (`200`, the three seeded members listed).
@@ -74,6 +77,8 @@ same tenant's teacher and manager. It therefore runs against the case's own tena
   holds none of them, so the route answers `200 {"success":true,"data":[]}`:
   the empty list is the deny shape and carries no member row, e-mail or id.
   `403 FORBIDDEN` remains accepted as the documented alternative;
-  `GET /api/v1/teacher/assignments` and `GET /api/v1/stats/teacher` stay `403`.
+  `GET /api/v1/teacher/assignments` stays `403` (no `assignment.read` on the
+  Member role); `GET /api/v1/stats/teacher` may answer `200` with the member's
+  own-scoped stats (2b-6) or `403` — either way without teacher data.
   The spec accepts both shapes and asserts the exact empty body; the walk
   recorded above is left as written.

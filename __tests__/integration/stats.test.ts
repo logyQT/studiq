@@ -88,6 +88,7 @@ describe(`Stats Integration`, () => {
   let scopedTeacher!: BeforeResult;
   let member!: TestUserFixture;
   let outsider!: TestUserFixture;
+  let noStats!: TestUserFixture;
   let seedBankId!: string;
   let extraBankId!: string;
 
@@ -172,6 +173,37 @@ describe(`Stats Integration`, () => {
     });
     if (membershipError) {
       throw new Error(`[setup] org membership failed: ${membershipError.message}`);
+    }
+
+    // 2b-6: a caller whose role carries no stats.read at any scope, to pin the
+    // key gate (the persona gate these routes used to have is gone).
+    noStats = await createTestUser({ role: 'student' });
+    const { data: noStatsRole } = await service
+      .from('org_roles')
+      .insert({
+        organization_id: orgId,
+        name: `no-stats-${suiteId}`,
+        display_name: 'No stats',
+        is_system: false,
+      })
+      .select('id')
+      .single();
+    if (!noStatsRole) throw new Error('[setup] no-stats org role not found');
+    const { error: noStatsPermError } = await service.from('org_role_permissions').insert({
+      org_role_id: noStatsRole.id,
+      permission_key: 'group.read',
+      scope: 'group',
+    });
+    if (noStatsPermError) {
+      throw new Error(`[setup] no-stats permission failed: ${noStatsPermError.message}`);
+    }
+    const { error: noStatsMembershipError } = await service.from('org_members').insert({
+      organization_id: orgId,
+      user_id: noStats.id,
+      org_role_id: noStatsRole.id,
+    });
+    if (noStatsMembershipError) {
+      throw new Error(`[setup] no-stats membership failed: ${noStatsMembershipError.message}`);
     }
 
     const now = Date.now();
@@ -383,14 +415,22 @@ describe(`Stats Integration`, () => {
       expect(body.success).toBe(false);
     });
 
-    // #189: the proxy skips /api/*, so withAuth's allowedAccountTypes is the
-    // only gate. A student used to get a 200 here (own data), and the
-    // activity sibling leaked the org roster to any member of that org.
-    it('returns 403 for a student caller on the teacher-stats family (#189)', async () => {
-      mockUser(member);
+    // #189 / phase 2b-6: the persona gate is gone, the stats.read key decides.
+    // An org member holds stats.read at `own`, so the teacher-stats family
+    // answers 200 with the caller's OWN content only — the teacher's counts
+    // must not leak. A role without the key at any scope is 403.
+    it('answers a member with own-scoped data and 403s a role without stats.read (#189, 2b-6)', async () => {
       const orgCookie = { active_org_id: scopedTeacher.orgId! };
 
-      const plain = await teacherGet(createNextRequest('http://localhost/api/v1/stats/teacher'));
+      mockUser(member);
+      const plain = await teacherGet(
+        createNextRequest('http://localhost/api/v1/stats/teacher', undefined, orgCookie),
+      );
+      expect(plain.status).toBe(200);
+      const plainBody = await json<TeacherStatsBody>(plain);
+      // Own content only: the seeded teacher owns 3+ questions, the member none.
+      expect(plainBody.data.totalQuestions).toBe(0);
+
       const activity = await activityGet(
         createNextRequest(
           'http://localhost/api/v1/stats/teacher/activity?range=30d',
@@ -398,13 +438,23 @@ describe(`Stats Integration`, () => {
           orgCookie,
         ),
       );
+      expect(activity.status).toBe(200);
       const flashcards = await flashcardTeacherStatsGet(
         createNextRequest('http://localhost/api/v1/flashcards/stats/teacher', undefined, orgCookie),
       );
+      expect(flashcards.status).toBe(200);
 
-      expect(plain.status).toBe(403);
-      expect(activity.status).toBe(403);
-      expect(flashcards.status).toBe(403);
+      mockUser(noStats);
+      for (const [label, get] of [
+        ['stats/teacher', teacherGet],
+        ['stats/teacher/activity', activityGet],
+        ['flashcards/stats/teacher', flashcardTeacherStatsGet],
+      ] as const) {
+        const res = await get(
+          createNextRequest(`http://localhost/api/v1/${label}`, undefined, orgCookie),
+        );
+        expect(res.status, `${label} without stats.read`).toBe(403);
+      }
     });
   });
 
@@ -636,15 +686,30 @@ describe(`Stats Integration`, () => {
       expect(body.success).toBe(false);
     });
 
-    it('returns 403 for a student caller', async () => {
+    it('answers an own-scope caller with an empty list and 403s a role without stats.read (2b-6)', async () => {
+      // `student` has no org membership, so the cookie org is not verified and
+      // the persona default resolves stats.read at `own`: the answer is 200
+      // with an empty list (no active org → no class to report on), never the
+      // teacher's aggregates.
       mockUser(student.user);
+      const orgCookie = { active_org_id: scopedTeacher.orgId! };
 
-      const req = createNextRequest('http://localhost/api/v1/stats/teacher/quizzes', undefined, {
-        active_org_id: scopedTeacher.orgId!,
-      });
+      const req = createNextRequest(
+        'http://localhost/api/v1/stats/teacher/quizzes',
+        undefined,
+        orgCookie,
+      );
       const response = await quizzesGet(req);
+      const body = await json<QuizStatsBody>(response);
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+
+      mockUser(noStats);
+      const refused = await quizzesGet(
+        createNextRequest('http://localhost/api/v1/stats/teacher/quizzes', undefined, orgCookie),
+      );
+      expect(refused.status).toBe(403);
     });
   });
 

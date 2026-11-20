@@ -1,38 +1,17 @@
-import { AccountType } from '@studiq/authz';
 import { teacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string; studentId: string }> },
-) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id, studentId } = await params;
-      return toNextResponse(
-        await teacherAssignmentController.getStudentAnswers(id, studentId, ctx),
-      );
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+type Params = { id: string; studentId: string };
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string; studentId: string }> },
-) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id, studentId } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(
-        await teacherAssignmentController.gradeAnswer(id, studentId, body, ctx),
-      );
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR] },
-  );
-}
+/** One student's answers in a run; the parent's key gates in the controller as the service decides. */
+export const GET = authedRouteWithParams<Params, [string, string]>(
+  ({ params }) => [params.id, params.studentId],
+  (ctx, id, studentId) => teacherAssignmentController.getStudentAnswers(id, studentId, ctx),
+);
+
+/** Grades one student's answer; `assignment.update` gates in the controller. */
+export const PUT = authedRouteWithParams<Params, [string, string, unknown]>(
+  ({ params, json }) => [params.id, params.studentId, json],
+  (ctx, id, studentId, body) => teacherAssignmentController.gradeAnswer(id, studentId, body, ctx),
+  { readsBody: true },
+);

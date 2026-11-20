@@ -19,7 +19,10 @@ Okno bez sesji; potem sesja studenta.
 ## Expected result
 
 - Bez sesji: JSON {success:false, error:…UNAUTHORIZED} z kodem 401.
-- Student na /api/v1/teacher/*: kod 403 FORBIDDEN.
+- Student na /api/v1/teacher/*: kod 403 FORBIDDEN albo (od fazy 2b-6, gdy rola
+  członka niesie `quiz.read` w zakresie `group`, który nie dosięga żadnego quizu
+  poza własnym) 200 z pustą listą quizów należących do studenta – żadne quizy
+  nauczyciela nie mogą wyciec.
 - Student na /api/v1/organization/members: brak danych członków (403 lub pusta lista – dane innych użytkowników nie mogą wyciec).
 
 ## Seed (QA-suite tenant)
@@ -58,7 +61,8 @@ bun scripts/qa-tenant.ts AUT-19 --profile content --fresh
   sprawdzana przed rolą).
 - Po zalogowaniu na konto studenta tenanta (`users.student`) i ustawieniu
   aktywnej organizacji (cookie `active_org_id`, jak w fixture):
-  - `GET /api/v1/teacher/quizzes` → **403** `{"success":false,"error":"FORBIDDEN"}`;
+  - `GET /api/v1/teacher/quizzes` → **403** `{"success":false,"error":"FORBIDDEN"}`
+    albo (2b-6) **200** z listą quizów własnych studenta (pustą) — bez quizów nauczyciela;
   - `GET /api/v1/organization/members` → **403** `{"success":false,"error":"FORBIDDEN"}`
     (wariant „pusta lista” z treści przypadku nie występuje; brak jakichkolwiek
     danych członków w odpowiedzi);
@@ -66,7 +70,7 @@ bun scripts/qa-tenant.ts AUT-19 --profile content --fresh
     trasa studenta działa na tej samej sesji — 401/403 dotyczą sesji i roli, a nie
     zepsutej trasy.
 - Kontrola dodatnia: nauczyciel tenanta dostaje **200** na
-  `/api/v1/teacher/quizzes` (pusta lista quizów) oraz **200** na
+  `/api/v1/teacher/quizzes` (pusta lista quizów własnych studenta) oraz **200** na
   `/api/v1/organization/members`; lista zawiera konta wyłącznie z organizacji
   tenanta (`organization_id` = organizacja przypadku), w tym studenta, któremu
   ta sama trasa zwróciła 403.

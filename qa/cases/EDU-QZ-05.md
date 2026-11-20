@@ -35,7 +35,9 @@ Odkrycia”). The suite version uses the case's own tenant and never the legacy 
 - The active organization is required: quizzes are strictly org-scoped
   (`quizzes.organization_id` is NOT NULL and `POST /api/v1/teacher/quizzes` rejects a caller
   without a verified active org), and the route only admits account type `educator`, which is
-  exactly the tenant's `teacher`.
+  exactly the tenant's `teacher`. 2026-11-20 (phase 2b-6 correction): the route no longer
+  admits by account type — it is key-gated on `quiz.create` in the controller, which the
+  tenant's `teacher` role holds, so the outcome the sentence describes still stands.
 - Prerequisite „Quiz z pytaniami” is built by the spec through the same product endpoints the
   UI calls, as the tenant teacher: bank „EDU-QZ-05 bank” with three multiple-choice questions
   („EDU-QZ-05 pytanie 1..3”, 1 pkt each) and quiz „EDU-QZ-05 quiz” holding those three

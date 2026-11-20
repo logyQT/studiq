@@ -336,6 +336,11 @@ export class QuestionService {
       .maybeSingle();
     if (error) return toDbFailure(error);
     if (!question) return failure('NOT_FOUND');
+    // A question of another org is indistinguishable from a missing one (ADR-0015 §7.1);
+    // a personal question (organization_id NULL) stays reachable for its author.
+    if (question.organization_id && question.organization_id !== ctx.activeOrgId) {
+      return failure('NOT_FOUND');
+    }
     if (!canReadQuestionKey(ctx, question)) return failure('FORBIDDEN');
 
     const service = createServiceClient();
