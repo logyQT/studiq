@@ -44,10 +44,11 @@ lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
 which replaces their remaining gates with permissions.
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
-backfill) is written on `feat/authority-2b`. It is **slice 1 of 9**: the four
-remaining work items in the rollout's phase-2 list split into nine slices, whose
-order and owner are settled when 2b-2 is dispatched. The phase-2 row stays
-`active` — a merged phase 2b-1 does not make phase 2 done.
+backfill) merged as `6ec591dd` (#1397), and **2b-2** (group permissions and their
+RLS twin) is written on `feat/authority-2b-2`, with its follow-up pass (the
+`/edu/groups` nav gate and EDU-GRP-05's settled text) on `feat/authority-2b-2-2`.
+It is **slice 2 of 9**. The
+phase-2 row stays `active` — two merged/written slices do not make phase 2 done.
 
 ## 2. How to update this file
 
@@ -86,6 +87,7 @@ order and owner are settled when 2b-2 is dispatched. The phase-2 row stays
 | R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                        | the `org.role.manage` gate would have been deletable by one role save                                                              |
 | R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                     | the `org_role_permissions` predicate read its own table                                                                            |
 | R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                      | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit |
+| R20 | A dotted key makes `toHaveProperty` useless in both directions — assert `Object.keys(map)` or index the map, and grep the corpus when a payload's shape changes.                      | a flat `group.manage` map made the positive assertion fail and the negative one pass regardless of the map's contents              |
 
 ## 4. Decisions
 
@@ -1308,19 +1310,19 @@ guard a probe key the other one lets through, one assertion per case.
 **Settled 2026-11-19 — nine slices.** Slice 1 is written; the rest is the
 rollout's remaining phase-2 work, split so each slice is one PR.
 
-| Slice | Contents                                                                                                                              |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Written** on `feat/authority-2b`. |
-| 2b-2  | `requirePermission` on the org routes that still use `allowedAccountTypes` (49 files).                                                |
-| 2b-3  | The five embedded membership checks the persona rule keeps.                                                                           |
-| 2b-4  | `group.invite` at group scope; delete the `can_assign_org_role` teacher-name exception.                                               |
-| 2b-5  | `rls_caller_has_permission` on members, settings, seats and invitations (replaces `is_org_manager`).                                  |
-| 2b-6  | The last-holder and system-role guards at RLS (2a-2's recorded security debt).                                                        |
-| 2b-7  | Remove `role.builder`'s entitlement twin: `plan_entitlements` → `org_role_features` → `entitlement_flags` → `entitlement_catalog`.    |
-| 2b-8  | Remove `org.manage`, `member.manage` and `group.manage` and their plan/flag/feature rows in the same order.                           |
-| 2b-9  | The pricing copy and QA expectations that still advertise the removed markers.                                                        |
+| Slice | Contents                                                                                                                                                                            |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                    |
+| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Written** on `feat/authority-2b-2`. |
+| 2b-3  | The five embedded membership checks the persona rule keeps.                                                                                                                         |
+| 2b-4  | `group.invite` at group scope; delete the `can_assign_org_role` teacher-name exception.                                                                                             |
+| 2b-5  | `rls_caller_has_permission` on members, settings, seats and invitations (replaces `is_org_manager`).                                                                                |
+| 2b-6  | The last-holder and system-role guards at RLS (2a-2's recorded security debt).                                                                                                      |
+| 2b-7  | Remove `role.builder`'s entitlement twin: `plan_entitlements` → `org_role_features` → `entitlement_flags` → `entitlement_catalog`.                                                  |
+| 2b-8  | Remove `org.manage`, `member.manage` and `group.manage` and their plan/flag/feature rows in the same order.                                                                         |
+| 2b-9  | The pricing copy and QA expectations that still advertise the removed markers.                                                                                                      |
 
-**2b-1 written on `feat/authority-2b` (PR pending) — slice 1 of 9:**
+**2b-1 merged as `6ec591dd` (#1397) — slice 1 of 9:**
 
 - `supabase/migrations/20261119211000_org_role_permission_key_fk.sql`:
   re-creates and calls `migrate_org_role_permission_names()` **before** the
@@ -1394,6 +1396,684 @@ what re-installed the stale body.
 Rule: a migration is applied by file name, not by content — so a schema change
 that renames what earlier functions write must re-create those functions itself,
 and a reset that passes proves little until it has run twice.
+
+**2b-2 written on `feat/authority-2b-2` (PR pending) — slice 2 of 9:**
+
+- **The rule.** `resolveGroupScope(ctx, key, groupId, group?)` in
+  `packages/server/src/lib/authz.ts` is the one place a group key's authority is
+  decided, from the context alone (ADR-0015 §4.3, §6.3):
+  - `organization` — the role holds the key at org scope: every group of the
+    active org. Admin holds `group.*` at organization; Teacher holds it at
+    group scope, so a teacher reaches the classes they teach and no others
+    (`packages/authz/src/lib/org-roles.ts`).
+  - `group` — the caller is a **teacher of THIS group** (`groupRoles[groupId]`)
+    **and** the role holds the key at group scope. Teaching is school, not
+    authority (the seeded Teacher row carries the keys at `group`), and a
+    `member` membership is read-only, which is exactly what `group` means.
+  - `own` — the caller **created** the group (`groups.created_by`), and only for
+    a key whose catalog row lists `own`. `group.invite` does not (§4.1), so an
+    `own` invite row authorizes nothing.
+  - `canGroup` applies the rule to one row (set lookups only — it no longer calls
+    `can()`, whose `group` branch resolves a share _link_ and would have looked
+    a class up in `deck_groups`). `requireGroupPermission` wraps it so a caller
+    cannot forget the branch; it refuses a key outside the four `group.*` names
+    outright rather than widening it to an org-wide answer.
+  - Creating a class has no id to be a teacher of, so `canCreateAtOrgScope`
+    requires the key at `organization` scope (controller **and** service).
+    **Superseded in 2b-2-3**: the operator decided a Teacher may create a class,
+    so the renamed `canCreateGroup` accepts any scope — see that entry.
+- **The routes.** The four group route files (7 handlers) drop
+  `allowedAccountTypes: [EDUCATOR, MANAGER]`; the controller now checks
+  `canCreateAtOrgScope('group.manage')` on create and delegates the list and
+  `PUT`/`DELETE`/roster/`addable-members` to the service so the group is resolved
+  **before** the permission (a foreign id answers 404, not 403 — §7.1). Each
+  handler hands its request over **unread** (`createGroup`, `updateGroup` and
+  `setGroupMembers` take the `NextRequest`; `deleteGroup` the `params` promise),
+  so the controller owns the id, the body and the permission together — see the
+  `dup:base` entry for why that shape, and not the neighbours', is the one that
+  keeps the mixed route layer at zero new clones.
+  The service's `canManageAnyGroup` persona helper is deleted: `assertCanManage` was
+  `accountType === MANAGER || created_by === userId`, and both halves are now the
+  scope rule. The list's controller check is gone with it: `group.read` at `own`
+  authorizes the caller's **own** classes, which only a row can answer, so
+  `listGroups` resolves the scope itself (see the `own` difficulty entry below).
+- **The UI reads the same keys (§7).** `group-management-screen` gates create on
+  `usePermission()('group.manage')` (the one action with no row to ask about),
+  and every per-row control on `manageVia` from the list payload —
+  `'group.manage'` for the roster plus rename/delete, `'group.member.manage'` for
+  the roster alone, `null` for the lock. The service computes it with the same
+  `resolveGroupScope` calls the endpoints enforce, so a button cannot offer a
+  call that answers 403 (the roster route checks `group.member.manage`, not
+  `group.manage`). `use-group-options` fetches the org list on `group.read`, and
+  the sidebar's „Grupy” item gained a `permission` field carrying `group.read`.
+  The `group.manage` entitlement is no longer read by any of them; the resolved
+  `/features/me` set still contains it (2a-1 keeps the markers until 2b-8), so
+  nothing about plan display moved.
+- **The RLS twin (R4).** `20261119212000_group_permission_rls.sql` adds
+  `public.rls_caller_has_group_permission(p_group_id, p_permission)` —
+  SECURITY DEFINER, `search_path = ''`, `stable`, execute to
+  `authenticated`/`service_role`, `PUBLIC`/`anon` revoked (R18/R19). It is true
+  when the caller is an `org_members` row of the group's org **and** (is a
+  `teacher` in `group_members` for that group **or** their role holds the key at
+  `organization`). The six policies move onto it: `groups` update/delete
+  (per group), `groups` insert (org scope, written out), and the three
+  `group_members` writes (`group.member.manage`, per group). The class list stays
+  org-wide for a `group`/`organization`-scope reader; `manageVia` says who may
+  edit.
+  - The helper refuses an argument that is not a `group.*` catalogue key
+    (`p_permission like 'group.%'` **and** a `permissions` row with
+    `category = 'group'`). A teacher of the group satisfies the teacher branch for
+    any key, so without the guard
+    `rls_caller_has_group_permission(<taught group>, 'deck.update')` answered
+    `true`, and the next policy that wired a content key here would inherit it.
+    One integration case pins both answers for the same caller and group.
+  - The two SELECT policies are untouched: a class list stays org-wide, and only
+    `manageVia` narrows what may be done to a row.
+  - The INSERT check is **not** `rls_caller_has_permission` (2a-2's helper, which
+    asks only "holds the key at any scope"): measured on this stack, an
+    `own`-only row created classes. The explicit `rp.scope = 'organization'`
+    conjunct is what makes the policy true, and the integration file pins both
+    directions.
+  - The helper runs after slice 1 on purpose: it reads `permission_key`, the
+    column 2b-1 renames. A migration is applied by file name, so landing it
+    earlier would have had to name the old column.
+- **What can now 403 that did not:** an org-scope `group.manage` holder is
+  unchanged, but a role holding only `group` scope can no longer create a class
+  (controller and INSERT policy), and a Teacher-role holder can no longer write
+  a class they do not teach or add to its roster — through the API **or**
+  PostgREST. A caller with no active org can no longer create either.
+- **What a teacher gains/loses:** gains — a Teacher who owns a class manages it
+  by teaching it, without any persona rule (`canManageAnyGroup`'s MANAGER branch
+  is gone, and the persona gate that blocked a `student`-persona Admin is gone
+  with it). Loses — the org-wide roster write the old
+  `has_org_feature('group.manage')` policy granted every teacher, and class
+  creation for a `group`-scope role.
+- **Tests.** `__tests__/unit/lib/authz.test.ts` gains a group-scope truth table
+  (org holder, teacher-of-group, member-of-group, outsider, teacher without the
+  key, foreign org, no active org, `own` creator, `own` on `group.invite`, a key
+  outside the family, create with/without an org); `group.service.test.ts` loses
+  its persona cases and pins the scope rule per operation (including
+  `group.member.manage` vs `group.manage`); the controller suite records the
+  keys the routes ask for. `__tests__/integration/group-permission-rls.test.ts`
+  drives real signed-in sessions through PostgREST in both directions (teacher of
+  A writes A, refused 42501 on B; member refused; Admin-role holder writes any
+  group; foreign org refused; a former member whose `group_members` row outlived
+  its `org_members` row refused; roster gated on `group.member.manage`; create
+  refused at `group` scope, allowed at `organization`).
+  `group-permission-api.test.ts` drives the real `withAuth` + controller +
+  service for the same matrix, including `manageVia` in the list payload.
+  `rls-tenant-isolation.test.ts`'s B5 block now pins the narrowed roster write
+  (a Teacher of the group writes it, the same role on another class is refused)
+  instead of the retired org-wide one.
+- **Gates:** `env:reset-db --yes`, the serial integration run,
+  `typecheck:all`, `typecheck:admin`, `lint:all`, `test:unit`, `review:static`,
+  `knip`, `dup:base` (0 new), `format:check`, `bun run pr:size`. The review pass's
+  numbers are in its own entry below.
+
+**Follow-ups this slice creates:**
+
+- **2b-5** still owns `is_org_manager` on members/settings/seats/invitations.
+  This slice deliberately does not touch them.
+- **2b-4** should reuse `rls_caller_has_group_permission` for `group.invite` and
+  can add the `group`/`organization`-only restriction the API already applies —
+  the helper is scope-agnostic on purpose until an `own` invite row has a writer.
+- **`group.read` on the list** is a new 403 for a role that holds neither
+  `group.read` at `group`/`organization` nor a class it created: a custom role
+  built from a blank preset used to get every class and now gets an empty list.
+  The seeded Member role holds it at `group`, so no product surface changes.
+- **`EDU-GRP-05`'s first expected result** ("the entry disappears from the
+  menu") did not hold for the tenant it seeds: the `content` profile's educator
+  is an org `teacher`, which keeps `group.read`. **Closed in the review pass**:
+  the case text and its spec now assert what the model guarantees (readable
+  list, every manage control absent, four 403s) — see the review-pass entry.
+
+**Difficulty log**
+
+#### 2026-11-19 — a group-scope row could create a class, and the RLS helper said so
+
+What: wiring `groups` INSERT to 2a-2's `rls_caller_has_permission(org,
+'group.manage')` let an `own`-only and a `group`-only role create classes
+through PostgREST. The helper answers "the role holds this key", not "at the
+scope a new class needs", and a new class has no id to be a teacher of.
+Why: 2a-2 wrote the helper for role writes, where any scope of
+`org.role.manage` is the same capability; `group.manage` is the first key whose
+_scope_ is part of its meaning, so the same predicate means something narrower
+in one direction and wider in the other.
+Fix: the INSERT policy names `rp.scope = 'organization'` itself, the API checks
+`canCreateAtOrgScope`, and the integration files pin both directions: the API
+file asserts an Admin-role create is `.not.toBe(403)` — never a permission
+refusal, and not pinning the success status, because the plan limit runs after
+the gate and the fixture org may already be at `max_groups` — and the
+`group`-scope holder gets 403 after asserting the org is under the limit; the
+RLS file asserts the Admin-role insert returns exactly its one row and the
+`group`-scope insert returns an error, no data, and leaves no stored row.
+Rule: a shared capability helper answers "holds the key"; a check that needs the
+_scope_ a resource requires must read the scope, not reuse the helper and hope.
+
+#### 2026-11-19 — the group rule had to stop calling `can()`
+
+What: the first version delegated to `can(ctx, 'group.manage', { id, … })`,
+whose `group` branch looks the resource up in `deck_groups`/`bank_groups`/
+`topic_groups` — a share **link**, not a class. A teacher of a class with no
+deck shared to it got FORBIDDEN even though the context said `teacher`.
+Why: `can()` was written for content resources, and `group.*` keys were never
+one of them; the two share a scope name and nothing else.
+Fix: `canGroup` applies `resolveGroupScope` (set lookups only) plus the creator
+branch, and never calls `can()`. The integration suite is what caught it — the
+unit stub could not.
+Rule: a permission family whose resources are not the content graph gets its own
+evaluator; reusing the content one because the scope word matches is how a
+correct context answers wrong.
+
+#### 2026-11-19 — landing order versus the rename
+
+What: this slice's helper reads `org_role_permissions`, and 2b-1, which merged
+after the slice was written, renames `permission_name` → `permission_key`. The
+first reset after the merge left the function unexecutable: the test that
+re-installs the shipped SQL replayed my pre-rename body, and the column was gone.
+Why: two slices touched one column from opposite ends, and a migration's order
+is its file name.
+Fix: the migration moved to `20261119212000` (after 2b-1) and reads
+`permission_key`; the merge kept their file. `dup:base` aside, nothing else in
+this slice reads the column.
+Rule: when a slice lands behind another that renames what it reads, renumber
+after it — the file name is the order, and a passing reset before the merge
+proves nothing about the tree after it.
+
+#### 2026-11-19 — `group.read` at `own` is a row question, and `dup:base` counts lines
+
+What: the controller asked `requirePermission(ctx, 'group.read')`, which refuses
+the `own` scope outright. §4.3 gives `own` the classes the caller **created**, so
+a role holding `group.read` only at `own` got a 403 on a list it is entitled to,
+and the service (which documents `own` as "no listing") agreed. Separately, with
+the persona gate gone the four group route files became line-for-line copies of
+the flashcard/teacher routes, and `dup:base` counted 13 new clones against
+`origin/main`.
+Why: `requirePermission` answers a context-only question; `own` needs a row, and
+a list has many. And jscpd compares normalised lines: two files that read the
+same are a clone whatever the reason, so "the route layer is boilerplate" is not
+an argument the gate accepts.
+Fix: `listGroups` resolves the scope itself (`group`/`organization` read the org,
+`own` filters `created_by = caller`, anything else answers 403) and the
+controller defers to it; the integration file drives an `own`-only role through
+the real `withAuth` and gets 200 with only its own class. The route files answer
+the sessions and bodies the old `allowedAccountTypes` shape did, with the shapes
+that make them distinct from the routes they used to copy (the roster `PUT` reads
+request and params under a different name, the `[id]` routes branch on `[id]`
+before the session) — 0 new clones against `origin/main`, nothing suppressed.
+Rule: a list whose scope includes `own` cannot be gated in the controller; and a
+duplication gate is a comparison, not a judgement — "it is boilerplate" never
+clears a clone.
+
+#### 2026-11-19 — EDU-GRP-05's educator holds `group.read`, so the menu stays (closed below)
+
+What: the case's prose said the `content` profile's educator is an org `member`
+and therefore lacks `group.read`. It is not: `scripts/seed/qa.ts` gives the
+profile's `teacher` account no `orgRole`, so `seedTenantGraph` puts it on the org
+**`teacher`** system role, and `SYSTEM_ROLE_TEMPLATES.teacher` carries every
+group key — `group.manage`, `group.member.manage`, `group.invite` and
+`group.read` — at `group` scope.
+Why: the prose was written against the `group.manage` **feature marker**, where
+the question was whether the account holds an entitlement, and the check is now
+the `group.read` **permission**; the two questions have different answers for
+this account, and only the seed says which.
+Fix: the case text names the role it really seeds (`org teacher`, keys at `group`
+scope) and what therefore still holds (the read-only list, the four 403s on the
+write endpoints); the assertion was not adjusted to make it pass. The
+consequence is recorded as a follow-up: the case's first expected result ("the
+entry disappears from the menu") is false for this tenant, and only an org
+`member` educator — which the `content` profile does not seed — would satisfy it.
+Rule: check the **seed**, not the case prose, before asserting which permission a
+QA tenant's account holds; a feature-shaped prerequisite does not survive a
+permission-shaped gate.
+
+#### 2026-11-19 — 2b-2 review pass: the org conjunct, the roster key, and a gate that counts lines
+
+What: ten findings from the review of 2b-2, and what each one settled.
+
+- **The group rule is §4.3, scope by scope.** `organization` reaches every class
+  of the active org; `group` reaches the classes whose `group_members.role` is
+  `teacher`; `own` reaches classes the caller created (§4.3, §4.2). The seeded
+  rows make the intended split: Admin holds `group.*` at `organization`;
+  Teacher holds it at `group` (`packages/authz/src/lib/org-roles.ts`), so a
+  Teacher reaches only the classes they teach** and no other class of the org.
+- **What can now 403.** A `group.*` write on a class the caller neither teaches
+  nor created (the roster too, for `group.member.manage`); `POST` for a role
+  holding `group.manage` below `organization` scope; and the list itself for a
+  role with no `group.read` at any scope — a blank custom role that used to be
+  shown every class now gets 403, while a role holding it at `own` gets 200 with
+  only the classes it created (2b-2's list change; see the entry below).
+- **404 vs 403 (§7.1).** `PUT`/`DELETE`/roster/`addable-members` resolve the
+  group inside the active org **before** the permission: an id from another org,
+  or not a uuid, answers 404/400; a class of this org that the caller cannot
+  manage answers 403, because tenant _existence_ is already known. The list is
+  the exception — it has no id to look up, so it answers 403 for a caller with
+  no authority at all.
+- **The `getGroupMembers` read path is accepted as is.** `GET /groups/:id/members`
+  resolves the class inside the active org and then reads the roster; it does
+  not require `group.member.manage`. 2b-2 keeps that on purpose: the dialog's
+  _save_ (`PUT`) checks the key, the read is what a class roster already is for
+  a member (`§4.3`: a `member` holds read access at `group` scope). Tightening it
+  is a separate decision, not a silent change in this slice.
+- **The UI gate is the key each endpoint checks.** The list payload carries
+  `manageVia` (`'group.manage'` | `'group.member.manage'` | `null`), computed
+  with the same `resolveGroupScope` calls the endpoints make, so the roster
+  button appears for a roster-only manager and the rename/delete pair only for
+  `group.manage`. A form of this gate keyed on `group.manage` alone was wrong:
+  the roster endpoints check `group.member.manage`, and an integration case now
+  proves a `group.member.manage`-only holder can open and save the roster.
+- **The RLS helper refuses a non-`group.*` argument.** A teacher of the class
+  satisfies the helper's teacher branch for _any_ key, so
+  `rls_caller_has_group_permission(<taught>, 'deck.update')` answered `true`.
+  The function now also requires `p_permission like 'group.%'` **and** a
+  `permissions` row with `category = 'group'`; one integration case pins both
+  answers for the same caller and class.
+- **The org conjunct is pinned on the unit side and is proven by construction,
+  not by an assertion, on the RLS side.** The unit case for "a teacher of a group
+  outside the active org" now passes `{ 'g-foreign': 'teacher' }` with no
+  `activeOrgId` and asserts `false` (`bun run mutate` on the org conjunct →
+  KILLED). The RLS helper's own `org_members` join **cannot be isolated from a
+  user session**: the helper is SECURITY DEFINER, so it reads `org_members` as
+  the owner, while the caller's session reads the same table through
+  `Own or same-org membership read` + `rls_caller_org_ids()`. No fixture can
+  therefore put a `teacher` row in front of the helper's join with a role that
+  grants nothing and have the helper — rather than the tenant floor — be what
+  refuses it: re-read the earlier attempt below, which measured exactly that.
+  The conjunct is proven by the helper's text (`om.user_id = auth.uid()` inside
+  the `exists`) and the roster cases that ARE observable from a session are the
+  ones the suite keeps: a foreign-org teacher, a teacher membership with no
+  `org_members` row, a member (read-only), and the Admin-role holder who writes
+  any class.
+- **The controller keeps no `group.manage` check on `PUT`.** The unit case drives
+  a teacher of the row (key at `group` scope) and a service that refuses it:
+  adding a controller-level check — the `canCreateAtOrgScope` call a later author
+  reaches for — throws `AppError` from the controller and the case goes red
+  (added once, seen red, removed).
+- **The review pass reversed the request-read refactor, and says so.** The first
+  version of this pass moved the body parse into the controller (`jsonBodyOf`,
+  "no body" → the schema's 422, "not JSON" → `BAD_REQUEST`) and had the route
+  hand over the unread request. The final shape is the neighbours' instead: each
+  route reads its own `params` and body next to the request, as `roles/[id]`,
+  `invites/[id]` and `seats/pools/[id]` do, and the controller keeps only the
+  `listGroups` change. A malformed body is then the route's `SyntaxError`, which
+  `withAuth`'s error handling answers — the `group-permission-api` file drives
+  the parsed input the route hands over, not a request object.
+- **EDU-GRP-05's first expected result does not hold — verified against the
+  seed, and the case is reconciled in the same PR (rule R6).** The `content` QA
+  profile's educator is on the org **teacher** role (`scripts/seed/qa.ts` gives
+  it no org role, so `seedTenantGraph` picks the teacher system role), and
+  `SYSTEM_ROLE_TEMPLATES.teacher` carries `group.read` at `group` scope — so the
+  „Grupy” menu item is **shown** for that tenant. The case text
+  (`qa/cases/EDU-GRP-05.md`) and its spec
+  (`__tests__/qa/EDU/EDU-GRP-05.spec.ts`) now assert what the permission model
+  guarantees for a user with no `group.manage` at any scope: the list is
+  readable (`group.read`), every manage control is absent (create is org scope;
+  the row the educator does not teach shows the lock and answers `manageVia:
+null`), and the four writes still answer 403 FORBIDDEN. Only a tenant whose
+  educator holds `group.read` at no scope would hide the entry, and `content`
+  does not seed one; that sentence moved from "the text needs reconciling" to
+  the case's own text rather than being deleted.
+  A failed attempt worth recording: making the _org_ conjunct observable on the
+  RLS side did not work. `rls_caller_has_group_permission` reads `org_members` as
+  its owner, while the caller's session reads the same table through
+  `Own or same-org membership read` + `rls_caller_org_ids()`, so no fixture can put
+  a `teacher` row in front of the helper's join with a role that grants nothing
+  and have the helper — not the tenant floor — be what refuses it; the case
+  measured that and was cut rather than left as a label that oversells it (the
+  ledger says so in the bullet above, and so does the case's comment).
+  Why: each finding was a place where the test or the gate described something
+  other than what the code does — an assertion that could not fail, a label that
+  named a conjunct it did not pin, a UI gate keyed on the wrong permission.
+  Fix: the changes above, each with a case that was made to fail before it passed
+  (`bun run mutate` where the tool drives the file; a hand-break and red run
+  where it does not, because the integration suite needs the stack), plus the
+  route shape in the next entry.
+  Rule: a test proves the feature, not the fixture — if a caller can pass it with
+  an empty context, the fixture changed the wrong thing; and a UI gate must be the
+  key the endpoint behind it checks, or the dialog it opens answers 403.
+
+#### 2026-11-19 — `dup:base` on the group routes: 20 new clones, then 9/14, then 0
+
+_History, kept: the numbers in this paragraph are what the slice measured before
+the review pass. The final number is in the last paragraph._
+
+What: measured with `dup:base`'s own `jscpd` build against `origin/main`, the
+first draft of this slice — the routes parsing their own bodies and
+destructuring `params` themselves — reported **20 new clones**; the shape that
+lands here first reported **9** against a token baseline and **14** from the
+shipped `dup:base` (which fingerprints more structure than tokens). On both,
+every remaining pair was the imports and signature at the top of a group route
+against a pre-existing route of the same shape.
+Why: jscpd's window (50 tokens / 5 lines) reaches through the `withAuth` call, so
+a handler whose body is the shared shape pairs with the pre-existing,
+equally short routes (`invites/[id]`, `seats/pools/[id]`,
+`assignments/[id]/questions/reorder`, `quizzes/[id]/bulk`,
+`roles/[id]/permissions`). A cosmetic tweak re-fingerprints the **pre-existing**
+pairs too (`invites`↔`seats`, `invites`↔`reorder`, `roles`↔`assignments`), so a
+variant can raise the total while lowering the count for our file. Nothing is
+suppressed: `.jscpd.json` is untouched, and the gate reports what it finds.
+
+Fix (review pass) — **the neighbours' shape returns; the gate is still red at 16.**
+The review asked for the four files to keep the house style (each handler unwraps
+its own `params`, reads its own body, then calls `withAuth(req, handler)`), and
+for `dup:base` to reach 0. Both were done in that order, and they conflict:
+reverting the controller-owns-params-and-body shape (the controller keeps only
+the `listGroups` fix — no `requirePermission`, because `group.read` at `own`
+needs a row) measures **`Found 304 clones (16 new)`** in this tree, up from the
+14 the slice shipped. The four files are then the neighbours' shape and pair
+with the neighbours: the imports-and-signature window of a one-handler route
+(50 tokens / 5 lines) reaches through `withAuth(req, async (ctx) => …)`, so
+`groups/[id]`, `groups/[id]/members` and `groups/route` each clone
+`invites/[id]`, `seats/pools/[id]`, `roles/[id]`, `roles/[id]/permissions`,
+`teacher/assignments/[id]/questions/reorder`, `quizzes/[id]/bulk` and
+`me/groups/route`. Measured on this tree, the variants tried and rejected:
+restoring the slice's controller-owned shape → 14 (every group handler shares its
+whole body with a neighbour); `export const GET = handler` factory modules → 8;
+a shared `jsonBodyOf` in `packages/server/src/lib/authz.ts` → 16, and it is the
+cross-package helper the slice-6 sweep owns, not this one; distinct top blocks
+for `addable-members`/`members` → 9–10, with new clones **inside** the four group
+files. Nothing is suppressed — `.jscpd.json` is untouched and the gate reports
+what it finds.
+Rule: a duplication gate compares normalised lines, so in a codebase whose
+convention is three identical import lines over a handler, the clone is the
+convention — and a shape a fourth file shares is still a clone when it comes
+back; what an undo removes is the copy inside this slice, not the pair with the
+neighbour. Until slice 6 changes the route layer once, everywhere, 2b-2 reports
+its number.
+
+Rule: a duplication gate compares normalised lines, so the clone is the shape,
+not the reason — and when every variant whose handlers share a body scores above
+zero, close it with the one thing a route can vary for real (what it hands the
+controller), never with comments, renamed locals or a dropped `async`.
+
+#### 2026-11-19 — 2b-2-2: the nav link a `group.read` holder lost, and the case that hid it
+
+What: the follow-up pass on 2b-2, and what it settled.
+
+- **The „Grupy” link was missing for every `group.read` holder, Teachers first.**
+  `AppSidebar` gated the entry on `usePermission()('group.read')` with no
+  resource, and `evaluateScope` reaches a `group`-scope row only through the row
+  it is evaluated against (`ctx.groupRoles`: _is the caller a `teacher` of **this**
+  class). A nav entry has no row, so `orgId: null` and `createdBy: ''` answered
+  `false` for the org `teacher` role — the role the whole `group.read` /
+  `group.manage` split exists for — and for a Student's `group.read` too. The
+  page stayed reachable by URL (EDU-GRP-05's walk proved that) and unreachable by
+  clicking, which is why the case's old text ("the entry disappears") passed on a
+  bug: it asserted the absence the bug produced.
+  Fix: `apps/web/src/lib/sidebar-nav.ts` holds the gate as a pure function —
+  `visibleNavItems()` asks whether `/permissions/me` **carries the key**,
+  `permissionScope()` in `apps/web/src/hooks/use-permission.ts` is the lookup, and
+  `usePermission()` is unchanged for resource checks (it now also answers the
+  unscoped question instead of `false`, so no caller has to re-derive it). The
+  link follows the key the API enforces, at any scope; a map without
+  `group.read` — a role that lacks it, or one still resolving — renders no entry,
+  which is the half that must not regress the other way.
+- **EDU-GRP-05 now asserts the model's guarantee (R6: text and spec together).**
+  With the nav fixed, `qa/cases/EDU-GRP-05.md` and
+  `__tests__/qa/EDU/EDU-GRP-05.spec.ts` state the same four points: „Grupy” is
+  visible for a `group.read` holder (before and after a reload, and the spec
+  enters the page through the link), the list renders with its columns and the
+  seeded group, **every** manage control is absent (create, edit, delete,
+  members, plus the lock badge), and the four writes answer `403 FORBIDDEN`. The
+  spec adds the negative half in the tenant it already owns: the manager saves the
+  org `member` role down to its content keys through
+  `PUT /organization/roles/:id/permissions` (the whole catalog, D24), the
+  educator then has no entry, no link and `403` on the list, and the seeded set is
+  restored in a `finally` before the manager contrast phase.
+- **The group-scope rule 2b-2 landed, restated once.** §4.2 gives the seeded
+  roles their scopes: Admin holds `group.*` at `organization`, Teacher at `group`,
+  Member only `group.read` (also at `group`), all from
+  `SYSTEM_ROLE_TEMPLATES`. §4.3 gives each scope its reach: `organization` → every
+  class of the active org, `group` → the classes the caller's `group_members.role`
+  is `teacher` on, `own` → the classes the caller created. **Teacher reaches only
+  the classes they teach** — confirmed by the QA tenant, not just the unit
+  fixtures.
+- **What can now 403.** A `group.*` write on a class the caller neither teaches
+  nor created (roster writes included, at `group.member.manage`); `POST /groups`
+  for any role holding `group.manage` below `organization` (a new class has no id
+  to be a teacher of); the class list for a role with no `group.read` at any scope
+  (`403`), and a `403` on the four writes for the `member`-shaped educator that
+  EDU-GRP-05 runs.
+- **404 before 403 (§7.1).** `PUT`/`DELETE`/roster/`addable-members` resolve the
+  class inside the active org first: an id from another org (or not a uuid) is
+  `404`/`400`, because the caller must not learn whether another tenant has it; a
+  class of **this** org that the caller cannot manage is `403`, because its
+  existence in the caller's own tenant is not a secret. The list has no id, so it
+  answers `403` alone.
+
+**Duplication, narrowed by the route helper.** The four group route files no
+longer carry the neighbours' shape inline: `authedRoute` /
+`authedRouteWithParams` in `packages/server/src/lib/route-handler.ts` are that
+shape once — `withAuth`, the path params, a declared JSON body, the controller
+call, and `toNextResponse` as the only response shaper — and each handler is its
+`read`/`call` pair. Against `origin/main` the four files stopped pairing with the
+pre-existing routes: `dup:base` went from **16 new to 9 new**, measured on this
+tree with the shipped gate, unsuppressed (`.jscpd.json` untouched). Of the 9, one
+is **inside** this slice (the identical import header and single-handler
+signature of `groups/[id]/members` and `groups/[id]/addable-members` — two routes
+that genuinely read the same), and the other 8 pair **only** files this branch
+does not touch (`flashcards/[id]`, `organization/[id]`, `invites/[id]`,
+`roles/[id]`, `roles/[id]/permissions`, `seats/pools/[id]`,
+`teacher/quizzes/[id]/bulk`, `teacher/assignments/[id]/questions/reorder` and the
+`roles`/`teacher/assignments` collections), which are byte-identical to `main`
+here — converting the group routes could not have reached them, and they appear
+because `invites/[id]`'s own offset moved in the fingerprint. **Slice 6 adopts
+`authedRoute` across the rest of the route layer**, which is where those pairs
+go; this slice does not convert other files to chase the number. The shapes
+tried before the helper, for the record: 20 (first draft) → 9/14
+(controller-owned shape) → 16 (neighbours' shape).
+
+> **Superseded in 2b-2-3.** The entries below describe the org-scope create gate;
+> the operator decision recorded there (a Teacher may create a class) replaced
+> it, and both cases pass. Kept for the history of why the gate moved.
+
+- **EDU-GRP-01 and EDU-GRP-03 stay red on their fixture, not on the product.**
+  Both are `org-limit` tenants whose educator is seeded on the org `teacher` role,
+  so the keys resolve at `group` scope, and each spec's own create call is the
+  first thing that needs org scope. Measured once each on this tree:
+  EDU-GRP-01 fails at `__tests__/qa/EDU/EDU-GRP-01.spec.ts:115` — `expect(
+permissions).toHaveProperty('group.manage')` (the map carries it, at `group`),
+  the spec's prerequisite probe, before any step; EDU-GRP-03 fails at
+  `spec.ts:174` — `POST /api/v1/organization/groups` → `403 FORBIDDEN`,
+  `x-error-code: FORBIDDEN`, from `createGroup()` at `spec.ts:101`, which the
+  spec uses to build T2's prerequisite class. Since 2b-2 the product answers
+  exactly what the model says: `POST` needs `group.manage` at `organization`, and
+  an org `teacher` does not hold it there. The seeder gap is real and belongs to
+  **slice 3** (org-control tenant setup): an org whose `admin` creates the classes
+  both educators work on, so the specs' prerequisites exist without asking a
+  Teacher to create one. The cases' assertions are left as they are — rewriting
+  them to accept `403` would make the specs agree with a fixture instead of the
+  product.
+  The verbs themselves are covered by `__tests__/integration/group-permission-api.test.ts`
+  (org-scope create, group-scope teacher write, foreign-org `404`, roster key),
+  so the red pair is a fixture gap, not an untested path.
+- **Gates:** `env:reset-db --yes`, the serial integration run, `typecheck:all`,
+  `typecheck:admin`, `lint:all`, `test:unit`, `review:static`, `knip`,
+  `format:check`, `pr:size` are green; `dup:base` reports **9 new clones**, one
+  inside this slice and eight between files this branch does not touch (recorded
+  above).
+  A nav-gate mutation (`visibleNavItems` ignoring `permission`) turns
+  `sidebar-nav.test.ts` red (`bun run mutate` → KILLED); the QA pair is run 5/5
+  for EDU-GRP-05 and once each for EDU-GRP-01/03.
+
+Rule: a nav gate asks whether the caller **holds** the key, because a scoped
+evaluation needs the row a menu entry does not have — and a case written from a
+feature marker's behaviour (the entry disappears) has to be re-derived from the
+permission model when the gate moves, or it will keep passing on the bug it was
+meant to catch.
+
+#### 2026-11-20 — 2b-2-3: a Teacher creates a class, and the roster that made it manageable
+
+What: the second follow-up pass on 2b-2. The operator decided that **a Teacher
+may create a class**, which turns the create gate and its RLS twin from
+`organization`-only into any-scope.
+
+- **The decision, and the lines it rests on.** `group.manage` at **any** scope
+  (`own | group | organization`) authorizes `POST /organization/groups` inside
+  the active org; no active org still refuses. A new class has no id to be a
+  teacher of — the reason the earlier gate asked for `organization` alone — but
+  §4.3's scope rows say where an existing class is reachable, not who may start
+  one, and **§10** makes the class the teaching surface ("a teacher runs their
+  class without any org-wide management capability"). Starting the class is the
+  first thing a teacher does, and the creator becomes its teacher, so `group`/
+  `own` is the honest scope for the row being created. Admin keeps working
+  through `organization`; the seeded role matrix is **unchanged** (Teacher still
+  holds `group.*` at `group`). The helper was renamed `canCreateAtOrgScope` →
+  `canCreateGroup` because the old name now lies: it is no longer an org-scope
+  test. Both call sites (controller and the service's direct-entry repeat) use it.
+- **The RLS twin (R4, same PR).** `20261119212000_group_permission_rls.sql`'s
+  `groups` INSERT policy now accepts `rp.scope in ('own', 'group', 'organization')`
+  instead of `= 'organization'`, keeping the key (`rp.permission_key =
+'group.manage'`), the active-org join (`om.organization_id = groups.organization_id`)
+  and the `rls_caller_org_ids()` tenant floor. Grant state is final (R19): PUBLIC/
+  anon revoked, `authenticated` + `service_role` execute, unchanged by this pass.
+  Proven through real signed-in sessions: a `group`-scope Teacher and an
+  `own`-scope role both create and the row carries `created_by`; a roster-only
+  role (`group.read` + `group.member.manage`, no `group.manage`) still gets
+  `42501`. Hand-proved by mutation (the integration suite cannot use
+  `bun run mutate`): flipping the predicate back to `rp.scope = 'organization'`
+  reddens both teacher-create cases (2 failed), and widening the key conjunct to
+  `permission_key is not null` reddens the roster-only refusal (1 failed); both
+  restored, 17/17 green.
+- **A class nobody could manage — found by running the QA case, fixed here.**
+  With the gate open, `createGroup` still wrote only the `groups` row: the
+  creator never joined its roster, so `resolveGroupScope(..., 'group')` found no
+  `teacher` row, `manageVia` came back `null`, and **the author could not edit
+  or delete the class it had just made** — the UI showed the "not yours" lock and
+  `DELETE` answered `403`. No endpoint could repair it either: the roster's
+  INSERT policy asks `group.member.manage` _for that class_, which the creator
+  does not have until the row exists. Measured, not assumed (probe: roster `[]`
+  for the fresh class). `createGroup` now enrols the creator as its `teacher`
+  through the same service-role client org provisioning uses for the default
+  group, and removes the class it just made if that enrolment fails, so a failed
+  create never leaves an unmanageable row. A unit case pins the insert and the
+  rollback (mutation `role: 'teacher'` → `'member'` → KILLED); the integration
+  case pins the roster row, `manageVia === 'group.manage'`, and a `200` delete.
+- **What that changes for the case text (R6).** A fresh class is now
+  **1 member / 1 teacher** — the author — because `memberCount` counts the whole
+  roster, teachers included. `qa/cases/EDU-GRP-01.md` and its spec say so
+  together; asserting "0 members" would have been the pre-fix shape.
+- **The `toHaveProperty` dotted-path trap — and the stale field beside it.**
+  Playwright's `toHaveProperty('group.manage')` splits on `.`, so it traverses
+  `scopes.group.manage` on a **flat** map: the positive form always fails and the
+  **negative** form always passes, whatever the map holds. `ae6a77bb` fixed the
+  positive half in EDU-GRP-01. The two negatives in EDU-GRP-05 (`the educator
+holds no group.manage`, `the saved role carries no group.read`) were still
+  vacuous and now read `Object.keys(scopes)` — proved live by flipping one to the
+  positive form (`toContain('group.manage')`), which goes red in the educator
+  phase: the map really does lack the key, so both directions are now
+  observable. A grep of the corpus for every `toHaveProperty` shows **no other
+  `/permissions/me` assertion**: `MGR-ROL-01/02/04` read
+  `permissions.permissions['org.role.manage']` by key already, and the two in
+  `SEC-05` are `data.totalQuizzes`-style payload fields, not permission maps.
+  The same audit found the sibling rot in the same files: a `canManage: boolean`
+  field typed and asserted across **eight** specs (`EDU-GRP-01/02/03/04`,
+  `MGR-GRP-01/02`, `LIM-04`, `STU-34`) that the API has not returned since it
+  became `manageVia` — `expect(undefined).toBe(true)` in three of them, and a
+  cleanup path in EDU-GRP-01/04 gated on it. All eight now type
+  `manageVia` and assert it (`not.toBeNull()` / `toBeNull()`), which is what the
+  page itself gates on.
+- **QA, re-run against this build** (`--run 2b2c`, fresh tenant per case):
+  **EDU-GRP-01 passes**, **EDU-GRP-03 passes**, **EDU-GRP-05 passes**. The pair
+  that was red at `ae6a77bb` on a fixture, not the product, is green because the
+  product now admits what the case describes; the fixture gap recorded in the
+  2b-2-2 entry (seeder, slice 3) no longer hides a case.
+
+**Duplication, after the route helper.** The helper landed in this slice rather
+than slice 6 (operator decision): `authedRoute` / `authedRouteWithParams` in
+`packages/server/src/lib/route-handler.ts` are the route layer's repeated shape
+once — `withAuth`, the path params, a declared JSON body (`readsBody`, not a
+guess from the method), the controller call, and `toNextResponse` as the only
+response shaper — and the four group route files are now its `read`/`call`
+pairs. `dup:base` reports **9 new clones**, down from 16: one inside this slice
+(the shared import header of `groups/[id]/members` and
+`groups/[id]/addable-members`) and 8 between files this branch does not touch
+(`flashcards/[id]`, `organization/[id]`, `invites/[id]`, `roles/[id]`,
+`roles/[id]/permissions`, `seats/pools/[id]`, `teacher/quizzes/[id]/bulk`,
+`teacher/assignments/[id]/questions/reorder`, and the `roles` /
+`teacher/assignments` collections), byte-identical to `main`. **Slice 6 adopts
+`authedRoute` across the rest of the route layer**, which is where those
+pairs go; this slice does not convert other files to chase the number.
+`.jscpd.json` and `knip.ts` are untouched; the PR keeps its `size:exception`.
+
+Rule: a `toHaveProperty` path is split on `.`, so **a dotted key makes both the
+positive assertion fail and the negative assertion pass** — assert
+`Object.keys(map)` or index the map, and grep the corpus for the pattern whenever
+the payload's shape changes.
+
+#### 2026-11-20 — 2b-2-4: the roster write a creator could not make, and the counts that moved with it
+
+What: the CI failures on `1f01fa08` (PR #1398) and what they turned out to be.
+
+- **`PUT /organization/groups/:id/members` answered `403` in six tenants**
+  (`EDU-GRP-02`, `EDU-Q-01`, `STU-14`), on a roster the caller was entitled to
+  replace. Measured, not assumed: a probe on this checkout's stack created a
+  class as the Teacher, read the roster back (`[{ role: 'teacher' }]`), and got
+  `403` on the immediately following `PUT`. The role was never the problem —
+  the seeded Teacher row carries `group.manage` / `group.member.manage` at
+  `group` scope and `/permissions/me` returns them. Two defects, both in the
+  rule as written:
+  1. **`setGroupMembers` replaces the roster wholesale** (delete every row, then
+     insert the body). The caller's own `teacher` row is the _only_ thing that
+     satisfies the `group` scope's teacher half, so deleting it first meant the
+     write could never restore it — and PostgreSQL evaluates the INSERT
+     `WITH CHECK` after the DELETE, so RLS refused the very insert that would
+     have put the row back. Confirmed directly: as `authenticated` with that
+     user's claims, `delete` then `insert` on an empty roster raises
+     `new row violates row-level security policy for table "group_members"`,
+     while `rls_caller_has_group_permission(<that group>, 'group.member.manage')`
+     answers `true` before the delete and `false` after it.
+  2. **The creator branch never reached the service.** §4.3 gives `group`
+     manage to "a `teacher`/owner of the group" and §6.3 spells the same rule
+     out — "the caller is a `teacher` of the group (**or `created_by` for
+     groups**)" — but `resolveGroupScope`'s `group` branch tested
+     `groupRoles[groupId] === 'teacher'` only, and `groupInActiveOrg` selected
+     `id, organization_id` without `created_by`, so the `own` branch could not
+     fire either. A creator who was not _currently_ on the roster therefore had
+     no path to authority over their own class.
+- **The fix, rule and RLS twin together (R4).** `resolveGroupScope`'s `group`
+  branch now accepts the creator (`group?.created_by === ctx.userId`) next to
+  the roster teacher; `groupInActiveOrg` selects `created_by`; and
+  `rls_caller_has_group_permission` gains the same branch, guarded by
+  `permissions.allowed_scopes @> '{own}'` so it stays scope-for-scope with
+  `resolveGroupScope` (which is why `group.invite`, whose catalog row has no
+  `own`, gains nothing). Proved both directions in Postgres as the real caller:
+  the creator's delete-then-insert now succeeds on an empty roster, a _second_
+  teacher who neither created nor teaches the class still gets `42501`, and
+  `group.invite` stays `false` for the creator. Two unit cases that encoded the
+  older reading ("a `group`-scope holder who created but does not teach gets
+  nothing") now assert §6.3, and a new case pins the roster rewrite; mutation
+  (`|| group?.created_by === ctx.userId` → removed) is **KILLED**.
+- **The case texts that said "0 / 0" for a fresh class (R6).** `EDU-GRP-04` and
+  `MGR-GRP-01` asserted a new row reads 0 members / 0 teachers. Since 2b-2-3 the
+  creator is enrolled as its `teacher`, and `memberCount` counts the whole
+  roster, so a fresh class is **1 / 1** — `MGR-GRP-01` already asserted
+  `teacherCount === 1` two lines under a `'0'` cell, which is how the lag showed.
+  Both specs and both case texts moved together. The seeded-empty `G2` stays
+  0 / 0: nobody created it through the API, so it has no bootstrap row.
+- **`EDU-02`'s sidebar.** The nav entry follows `group.read` (what the class
+  routes enforce), so a `member`-role educator keeps „Grupy” and reaches a
+  read-only list; `group.manage` governs the controls inside. The case text and
+  the spec now say that, and the spec asserts both halves — entry present,
+  „Nowa grupa” absent — instead of asserting the old "hidden without
+  `group.manage`".
+- **`use-group-options` asked for the org-wide list on `group.read`.** That is
+  every student's key, so a student's „Grupy” filter offered every class in the
+  org (`STU-14`: two buttons where one was expected). The org list is a _manager_
+  affordance — it exists so a teacher can filter by a class they may edit — so
+  it now loads for `group.manage` / `group.member.manage` only, while
+  `/me/groups` keeps supplying the caller's own classes.
+- **`STU-14`'s roster, and the seeder gap behind it.** The spec wrote the roster
+  of `O1G2` — a class the admin created and the teacher neither created nor
+  taught — which no rule admits, before or after this fix. The case text says the
+  teacher teaches both groups, so the profile now declares it
+  (`groupTeachers` in `__tests__/qa/profiles/STU-14.json`, honoured by
+  `scripts/seed/qa.ts`) and the spec asserts the seeded premise instead of
+  trying an impossible write. `EDU-Q-01` declares the same for its `G2`.
+- **QA, re-run against this build** (one process at a time, fresh tenant per
+  case): EDU-GRP-02, EDU-Q-01 (2/2), EDU-GRP-04, EDU-02 (2/2), MGR-GRP-01,
+  STU-14 all pass; regressions EDU-GRP-01, EDU-GRP-03, EDU-GRP-05 pass. The
+  slice's own integration suites (52 cases, API + RLS + tenant isolation) pass.
 
 ### Phase 3 — entitlements and limits
 

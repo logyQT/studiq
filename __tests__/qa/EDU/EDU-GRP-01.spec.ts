@@ -12,14 +12,13 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  *   bun scripts/qa-tenant.ts EDU-GRP-01 --fresh
  *
- * The case's prerequisite is „T1 (plan Lite – group.manage)”: an educator whose
- * resolved feature set contains `group.manage`, which is what shows the „Grupa”
- * sidebar item, the „Nowa grupa” button and the actions column. In the tenant model
- * that entitlement comes from the org role: the org trigger seeds
- * `org_role_features` per role, so only an educator with the org `teacher` role has
- * `group.manage` (the `member` set is `flashcards`, `quiz`, `ai.chat` and
- * `branding`; `documents` is absent until its surface ships — open catalog,
- * ADR §5.1 / D22). The
+ * The case's prerequisite is „T1 (plan Lite – group.manage)”: an educator who may
+ * manage classes, which is what shows the „Grupa” sidebar item, the „Nowa grupa”
+ * button and the actions column. Since 2b-2 that is the `group.*` permission on the
+ * active org's role (ADR-0015 §4.3), not the `group.manage` entitlement: the org
+ * `teacher` role holds every group key at `group` scope, so its educator manages the
+ * classes they teach — and, since 2b-2, creates their own (§10: a class is the
+ * teaching surface; the creator becomes its teacher). The
  * `org-limit` profile is the seeder's shape with a seeded org-`teacher` educator
  * (admin + two teachers + one member, default group `G1`), so the case runs without
  * editing the shared seeder. Every id comes from
@@ -33,7 +32,9 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *    Nauczyciele / Akcje, including the tenant's seeded group with its real counts.
  * 2. „Nowa grupa” opens „Utwórz grupę” with empty Nazwa/Opis fields.
  * 3. Saving „Grupa testowa” with a description shows the toast „Grupa utworzona”
- *    and adds the row with its description and 0 members / 0 teachers.
+ *    and adds the row with its description and 1 member / 1 teacher — its author,
+ *    whom the create enrols as the class's teacher (`memberCount` counts the whole
+ *    roster, teachers included).
  * 4. The created group is persisted for this tenant's organization (the API the page
  *    calls lists exactly one row with that name) and is manageable by its author.
  *
@@ -75,7 +76,8 @@ interface GroupRow {
   description: string | null;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 /** `GET` the group list as the signed-in educator and unwrap the envelope. */
@@ -105,12 +107,17 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
     await loginAs(page, tenant, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
 
-    // Prerequisite: the org `teacher` role resolves `group.manage`, which is what
-    // renders the write controls. A member-role educator would get a read-only list.
-    const features = await page.request.get('/api/v1/features/me');
-    expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = (await json<ApiEnvelope<{ features: string[] }>>(features)).data.features;
-    expect(enabled, 'the educator is entitled to group management').toContain('group.manage');
+    // Prerequisite: the org `teacher` role holds the group keys, which is what
+    // renders the list and its write controls. A member-role educator would get a
+    // read-only list. The keys contain dots, so read them as object keys:
+    // `toHaveProperty('group.manage')` splits on the dot and looks for a nested
+    // `group.manage` object, which never matches this flat map.
+    const permissions = await page.request.get('/api/v1/permissions/me');
+    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
+      .data.permissions;
+    expect(Object.keys(scopes), 'the educator may manage classes').toContain('group.manage');
+    expect(scopes['group.manage'], 'at the org (group) scope').toBe('group');
 
     // A retried run shares the tenant: remove its leftover group first, both to keep
     // the row count deterministic and to stay under the plan's three-group limit.
@@ -120,7 +127,10 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
         seededIds.push(group.id);
         continue;
       }
-      expect(group.canManage, 'the leftover group belongs to this tenant’s educator').toBe(true);
+      expect(
+        group.manageVia,
+        'the leftover group belongs to this tenant’s educator',
+      ).not.toBeNull();
       const deleted = await page.request.delete(`${GROUPS_URL}/${group.id}`);
       expect(deleted.status(), `DELETE ${GROUPS_URL}/${group.id}`).toBe(200);
     }
@@ -173,8 +183,14 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
       const created = groupRow(page, GROUP_NAME);
       await expect(created, 'the new group is listed exactly once').toHaveCount(1);
       await expect(created.getByRole('cell').nth(0)).toContainText(GROUP_DESCRIPTION);
-      await expect(created.getByRole('cell').nth(1), 'members of a new group').toHaveText('0');
-      await expect(created.getByRole('cell').nth(2), 'teachers of a new group').toHaveText('0');
+      await expect(
+        created.getByRole('cell').nth(1),
+        'members of a new group — its author',
+      ).toHaveText('1');
+      await expect(
+        created.getByRole('cell').nth(2),
+        'the author is the new group’s teacher',
+      ).toHaveText('1');
 
       // 4. Persisted for this organization, authored by the educator — its actions
       //    column offers edit/delete instead of the read-only lock.
@@ -184,9 +200,12 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
       if (!storedGroup) throw new Error(`${CASE} the created group is not in the API list`);
       createdId = storedGroup.id;
       expect(storedGroup.description, 'description stored by the API').toBe(GROUP_DESCRIPTION);
-      expect(storedGroup.memberCount).toBe(0);
-      expect(storedGroup.teacherCount).toBe(0);
-      expect(storedGroup.canManage, 'the educator owns the group').toBe(true);
+      expect(storedGroup.memberCount, 'the roster holds its author').toBe(1);
+      expect(storedGroup.teacherCount, 'the create enrols its author as teacher').toBe(1);
+      expect(
+        storedGroup.manageVia,
+        'the educator may still manage the class it made',
+      ).not.toBeNull();
 
       await expect(
         created.getByRole('button', { name: `Edytuj grupę ${GROUP_NAME}` }),

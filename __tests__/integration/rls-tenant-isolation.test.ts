@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import {
   cleanupOrganizationDeep,
+  seedGroupMembership,
   seedOrganization,
   seedOrgMembership,
 } from '#test/integration/helpers';
@@ -1028,13 +1029,36 @@ describe('RLS tenant isolation (#191)', () => {
     });
     expect(selfJoinError?.code).toBe('42501');
 
-    // Teachers hold group.manage and still manage rosters.
+    // A teacher of this group manages its roster. `group.member.manage` at
+    // `group` scope reaches only classes the caller teaches (ADR-0015 §4.3), so
+    // the row is what decides — a Teacher-role holder who does not teach this
+    // class is refused just below.
+    await seedGroupMembership({ groupId: group!.id, userId: teacherId, role: 'teacher' });
     const { error: teacherGroupError } = await teacherSession.from('group_members').insert({
       group_id: group!.id,
       user_id: studentId,
       role: 'member',
     });
     expect(teacherGroupError).toBeNull();
+
+    // The same Teacher role on a class it does not teach: `group` scope is not
+    // an org-wide roster grant.
+    const { data: otherGroup } = await service
+      .from('groups')
+      .insert({
+        organization_id: orgA.orgId,
+        name: `rls191-group-other-${tag}`,
+        description: null,
+        is_default: false,
+      })
+      .select('id')
+      .single();
+    const { error: teacherOtherGroupError } = await teacherSession.from('group_members').insert({
+      group_id: otherGroup!.id,
+      user_id: studentId,
+      role: 'member',
+    });
+    expect(teacherOtherGroupError?.code).toBe('42501');
 
     // Managers hold member.manage: they may create roles, but a system role's
     // identity is immutable (the manager helper keys on the `admin` name).

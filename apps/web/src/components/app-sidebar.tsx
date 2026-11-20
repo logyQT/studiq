@@ -27,13 +27,17 @@ import {
 import { usePathname } from 'next/navigation';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { UserMenu } from '@/components/layout/user-menu';
-import { type NavItem, NavMain } from '@/components/nav-main';
+import { NavMain } from '@/components/nav-main';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { usePermission } from '@/hooks/use-permission';
 import { questionReportKeys } from '@/lib/query-keys';
+import { type SidebarSection, sectionsWithBadge, visibleNavItems } from '@/lib/sidebar-nav';
 
-const NAV_ITEMS: Record<'/edu' | '/manage' | '/app', { label: string; items: NavItem[] }[]> = {
+type DashboardArea = '/edu' | '/manage' | '/app';
+
+const NAV_ITEMS: Record<DashboardArea, SidebarSection[]> = {
   '/edu': [
     {
       label: 'sidebar_main',
@@ -59,7 +63,7 @@ const NAV_ITEMS: Record<'/edu' | '/manage' | '/app', { label: string; items: Nav
         { titleKey: 'edu_quizzes', href: '/edu/quizzes', icon: ScrollText },
         { titleKey: 'edu_assignments', href: '/edu/assignments', icon: ClipboardCheck },
         { titleKey: 'question_reports', href: '/edu/reports', icon: MessageSquareWarning },
-        { titleKey: 'edu_groups', href: '/edu/groups', icon: Users, feature: 'group.manage' },
+        { titleKey: 'edu_groups', href: '/edu/groups', icon: Users, permission: 'group.read' },
       ],
     },
     {
@@ -127,10 +131,21 @@ const NAV_ITEMS: Record<'/edu' | '/manage' | '/app', { label: string; items: Nav
   ],
 };
 
+const DASHBOARD_AREAS: readonly DashboardArea[] = ['/edu', '/manage', '/app'];
+
+/** The sections of the dashboard area the path belongs to; anything else has none. */
+export function currentSections(pathname: string): SidebarSection[] {
+  const area = DASHBOARD_AREAS.find(
+    (candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`),
+  );
+  return area ? NAV_ITEMS[area] : [];
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const { user } = useAuth();
   const feature = useFeature();
+  const permission = usePermission();
 
   const { data: reportsUnread } = useApiQuery<{ count: number }>({
     queryKey: questionReportKeys.unreadCount,
@@ -139,23 +154,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     staleTime: 30 * 1000,
   });
 
-  const groups = (() => {
-    const raw = (() => {
-      if (pathname.startsWith('/edu')) return NAV_ITEMS['/edu'];
-      if (pathname.startsWith('/manage')) return NAV_ITEMS['/manage'];
-      if (pathname.startsWith('/app')) return NAV_ITEMS['/app'];
-      return [];
-    })();
-
-    return raw.map((group) => ({
-      ...group,
-      items: group.items
-        .filter((item) => !item.feature || feature(item.feature))
-        .map((item) =>
-          item.href.endsWith('/reports') ? { ...item, badge: reportsUnread?.count ?? 0 } : item,
-        ),
-    }));
-  })();
+  const gates = { feature, permission };
+  const groups = sectionsWithBadge(
+    currentSections(pathname),
+    (section) => visibleNavItems(section.items, gates),
+    reportsUnread?.count,
+  );
 
   const activeHref = (() => {
     let best: string | null = null;

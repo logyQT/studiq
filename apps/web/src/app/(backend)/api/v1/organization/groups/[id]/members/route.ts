@@ -1,28 +1,15 @@
-import { AccountType } from '@studiq/authz';
 import { groupController } from '@studiq/server/controllers/group.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await groupController.getGroupMembers(ctx, id));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Who is in the class, for anyone the service lets read it. */
+export const GET = authedRouteWithParams<{ id: string }, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => groupController.getGroupMembers(ctx, id),
+);
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(await groupController.setGroupMembers(ctx, id, body));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Replaces it wholesale: the roster sent IS the roster afterwards. */
+export const PUT = authedRouteWithParams<{ id: string }, [string, unknown]>(
+  ({ params, json }) => [params.id, json],
+  (ctx, id, body) => groupController.setGroupMembers(ctx, id, body),
+  { readsBody: true },
+);

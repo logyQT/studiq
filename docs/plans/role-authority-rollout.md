@@ -269,25 +269,38 @@ guards replaces the role's whole permission set and the gate is one of those row
   grant — the QA swarms (STU, SEC-05/06, MGR-ROL-03) must expect no edits outside
   that set.
 
-The remaining phase-2 work, in slice order. **Phase 2b is nine slices** and only
-slice 1 is written: a merged 2b-1 does not mean phase 2 is done. The ledger's
-phase-2 row is `active` today (§1 of the
+The remaining phase-2 work, in slice order. **Phase 2b is nine slices**: slice 1
+is merged and slice 2 is written. A merged 2b-1 (or a written 2b-2) does not
+mean phase 2 is done. The ledger's phase-2 row is `active` today (§1 of the
 [plan](role-authority-plan.md#1-status)) and is set to `merged` only when the last
 slice below lands.
 
 - **2b-1 — `org_role_permissions.permission_key` FKs the permission catalog.
-  Delivered** (slice 1 of 9) on `feat/authority-2b`: the column rename, the backfill before the
-  constraint, the foreign key with the default RESTRICT behaviour, the scope
-  CHECK narrowed to `own | group | organization`, the `plan_features_*`
+  Merged** (`6ec591dd`, #1397; slice 1 of 9): the column rename, the backfill
+  before the constraint, the foreign key with the default RESTRICT behaviour, the
+  scope CHECK narrowed to `own | group | organization`, the `plan_features_*`
   constraint names corrected, and `database.ts` regenerated. Deferred from 2a-2,
   whose scope was the gate, the RLS predicate and the presets — the FK needed the
   old free-text names backfilled first.
-- 2b-2 — replace `allowedAccountTypes` on org routes with `requirePermission` —
-  49 files, keeping the 2 legitimate persona exceptions
-  (org creation, classroom creation).
-- 2b-3 — the 5 embedded membership checks the persona rule leaves in place.
+- **2b-2 — group permissions and their RLS twin. Delivered** (slice 2 of 9) on
+  `feat/authority-2b-2`: `resolveGroupScope`/`canGroup`/`requireGroupPermission`
+  give `group.read/manage/member.manage` their ADR-0015 §4.3 meaning
+  (org scope → any group, `group` scope → the classes the caller **teaches**,
+  `own` → the classes the caller **created**), create needs the key at **any**
+  scope (the 2b-2 operator decision: a Teacher starts a class and becomes its
+  teacher — §10), the
+  four group route files drop `allowedAccountTypes`, the group UI gates create on
+  `/permissions/me` and every per-row control on the API's `manageVia`, and
+  `public.rls_caller_has_group_permission(group, key)` moves the six
+  `groups`/`group_members` write policies in the same PR (R4). A Teacher-role
+  holder reaches the classes it teaches (the seeded row is `group` scope); Admin
+  holds the keys at `organization`. `group.invite` stays unused until 2b-4.
+- 2b-3 — replace `allowedAccountTypes` on the remaining org routes with
+  `requirePermission` (the group routes left the list in 2b-2), keeping the 2
+  legitimate persona exceptions (org creation, classroom creation).
 - 2b-4 — class invites use `group.invite` at group scope for existing org
-  members; delete the `can_assign_org_role` teacher-name exception (2a-5).
+  members; delete the `can_assign_org_role` teacher-name exception (2a-5), and
+  reuse `rls_caller_has_group_permission` for the invitation policy.
 - 2b-5 — **control-plane RLS**: `rls_caller_has_permission(org, key)` replaces
   `is_org_manager` / `has_org_feature` on members, settings, seat pools, seat
   assignments and invitations (roles and role permissions moved in 2a-2).

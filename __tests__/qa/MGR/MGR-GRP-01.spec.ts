@@ -53,7 +53,8 @@ interface GroupRow {
   description: string | null;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 /** The rows the groups page renders, read through the same API the page calls. */
@@ -141,16 +142,16 @@ test.describe('@case:MGR-GRP-01 @area:MGR @prio:P1 organization groups CRUD', ()
     const created = groupRow(page, 'Grupa C');
     await expect(created).toBeVisible();
     await expect(created.getByRole('cell').nth(0)).toContainText('Opis grupy C');
-    await expect(created.getByRole('cell').nth(1)).toHaveText('0');
-    await expect(created.getByRole('cell').nth(2)).toHaveText('0');
+    await expect(created.getByRole('cell').nth(1)).toHaveText('1');
+    await expect(created.getByRole('cell').nth(2)).toHaveText('1');
 
     const afterCreate = await listGroups(page);
     const createdRow = afterCreate.find((group) => group.name === 'Grupa C');
     if (!createdRow) throw new Error('created group is missing from GET /organization/groups');
     expect(createdRow.description, 'description stored by the API').toBe('Opis grupy C');
-    expect(createdRow.memberCount).toBe(0);
-    expect(createdRow.teacherCount).toBe(0);
-    expect(createdRow.canManage).toBe(true);
+    expect(createdRow.memberCount, 'the creator is on the roster it created').toBe(1);
+    expect(createdRow.teacherCount, 'the Admin who created it is its teacher').toBe(1);
+    expect(createdRow.manageVia, 'an Admin manages every class it creates').not.toBeNull();
 
     // 3. Edit the name — the form opens pre-filled, the description survives.
     await created.getByRole('button', { name: 'Edytuj grupę Grupa C' }).click();

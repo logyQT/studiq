@@ -1,12 +1,23 @@
-import { AccountType, isOrgAdminRole, ORG_ADMIN_ROLE, type RequestContext } from '@studiq/authz';
+import {
+  AccountType,
+  isOrgAdminRole,
+  ORG_ADMIN_ROLE,
+  type PermissionScope,
+  type RequestContext,
+} from '@studiq/authz';
 import {
   accessibleFilter,
   buildQueryFilter,
   can,
+  canCreateGroup,
+  canGroup,
   checkPermission,
   evaluate,
   hasPermission,
+  isGroupPermission,
+  requireGroupPermission,
   requirePermission,
+  resolveGroupScope,
   resolveScope,
 } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
@@ -65,6 +76,29 @@ const baseCtx: RequestContext = {
   groupIds: [],
   permissionScopes: {},
 };
+
+/** A `groups` row in `org-1` unless another org is named. */
+function groupRow(id: string, organizationId = 'org-1') {
+  return { id, organization_id: organizationId };
+}
+
+/**
+ * A role holding `permission` at `scope` (or at no scope at all) in active org
+ * `org-1`, with the given group memberships.
+ */
+function roleCtx(
+  permission: string,
+  scope: PermissionScope | null,
+  groupRoles: Record<string, 'teacher' | 'member'> = {},
+): RequestContext {
+  return {
+    ...baseCtx,
+    accountType: AccountType.EDUCATOR,
+    activeOrgId: scope === null ? null : 'org-1',
+    groupRoles,
+    permissionScopes: scope ? { [permission]: scope } : {},
+  };
+}
 
 describe('authz (unified lib)', () => {
   describe('resolveScope', () => {
@@ -437,6 +471,202 @@ describe('authz (unified lib)', () => {
 
       expect(await can(groupCtx, 'deck.read', foreignDeck)).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
+  });
+
+  describe('group permission scope (ADR-0015 §4.3, §6.3)', () => {
+    it('recognises exactly the four group keys', () => {
+      expect(
+        ['group.read', 'group.manage', 'group.member.manage', 'group.invite'].filter(
+          isGroupPermission,
+        ),
+      ).toHaveLength(4);
+      expect(isGroupPermission('deck.read')).toBe(false);
+      expect(isGroupPermission('org.role.manage')).toBe(false);
+    });
+
+    // The create rule (§4.3 scopes, §10 classes; the 2b-2 decision that a Teacher
+    // may create a class): any scope the role holds the key at authorizes it,
+    // because the creator becomes the class's teacher.
+    it('lets a group-scope group.manage create a class', () => {
+      expect(canCreateGroup(roleCtx('group.manage', 'group'))).toBe(true);
+    });
+
+    it('lets an own-scope group.manage create a class', () => {
+      // A create cannot wait for an existing row, so the scope the created row
+      // would resolve at must not be the thing that withholds it.
+      expect(canCreateGroup(roleCtx('group.manage', 'own'))).toBe(true);
+    });
+
+    it('lets an organization-scope group.manage create a class (an Admin)', () => {
+      expect(canCreateGroup(roleCtx('group.manage', 'organization'))).toBe(true);
+    });
+
+    it('refuses a create to a role with no group.manage at any scope', () => {
+      const rosterOnly: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'group.read': 'group', 'group.member.manage': 'group' },
+        groupRoles: { 'g-mine': 'teacher' },
+      };
+      expect(canCreateGroup(rosterOnly)).toBe(false);
+    });
+
+    it('refuses a create with no active org even when the role holds group.manage', () => {
+      const ctx: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        permissionScopes: { 'group.manage': 'organization' },
+      };
+      expect(canCreateGroup(ctx)).toBe(false);
+    });
+
+    it('refuses a key outside the group family even when the role holds it org-wide', () => {
+      // Without the `isGroupPermission` guard this resolves `true` from the
+      // `organization` branch, i.e. a content key would authorize a group.
+      expect(resolveGroupScope(roleCtx('deck.read', 'organization'), 'deck.read', 'g-1')).toBe(
+        false,
+      );
+    });
+
+    it('lets an organization-scope holder manage any group in the active org', () => {
+      expect(
+        resolveGroupScope(roleCtx('group.manage', 'organization'), 'group.manage', 'g-any'),
+      ).toBe(true);
+    });
+
+    it('lets a teacher of the group manage that group', () => {
+      expect(
+        resolveGroupScope(
+          roleCtx('group.manage', 'group', { 'g-mine': 'teacher' }),
+          'group.manage',
+          'g-mine',
+        ),
+      ).toBe(true);
+    });
+
+    it('refuses a group-scope role on a group it only belongs to', () => {
+      expect(
+        resolveGroupScope(
+          roleCtx('group.manage', 'group', { 'g-joined': 'member' }),
+          'group.manage',
+          'g-joined',
+        ),
+      ).toBe(false);
+    });
+
+    it('refuses a teacher of the group whose role withholds the key', () => {
+      // Teaching is not authority: the ADR's `group` scope means "AND the caller
+      // is a teacher", not "a teacher may do anything in their class".
+      expect(resolveGroupScope(roleCtx('group.manage', null), 'group.manage', 'g-mine')).toBe(
+        false,
+      );
+    });
+
+    it('refuses a teacher of a group outside the active org', () => {
+      // Only the org differs from the green case above: the SAME caller, teaching
+      // the SAME id, with `activeOrgId` unset. An empty `groupRoles` (the old
+      // fixture) passes this even if the `group` branch stops reading the org.
+      // A stored scope outlives the cookie that selected the org, so the context
+      // still HELDS the key and names the membership — only the org is missing.
+      const teacher: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        activeOrgId: null,
+        groupRoles: { 'g-foreign': 'teacher' },
+        permissionScopes: { 'group.manage': 'group' },
+      };
+      expect(resolveGroupScope(teacher, 'group.manage', 'g-foreign')).toBe(false);
+      expect(
+        resolveGroupScope({ ...teacher, activeOrgId: 'org-1' }, 'group.manage', 'g-foreign'),
+      ).toBe(true);
+    });
+
+    it('authorizes nothing at all without an active org', () => {
+      const ctx: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        permissionScopes: { 'group.manage': 'organization' },
+      };
+      expect(resolveGroupScope(ctx, 'group.manage', 'g')).toBe(false);
+    });
+
+    it('gives an own row the group the caller created through canGroup', () => {
+      expect(
+        canGroup(roleCtx('group.manage', 'own'), 'group.manage', {
+          ...groupRow('g-new'),
+          created_by: 'user-1',
+        }),
+      ).toBe(true);
+    });
+
+    it('refuses an own row on a group someone else created through canGroup', () => {
+      expect(
+        canGroup(roleCtx('group.manage', 'own'), 'group.manage', {
+          ...groupRow('g-theirs'),
+          created_by: 'user-2',
+        }),
+      ).toBe(false);
+    });
+
+    it('refuses a group.invite row held at own scope, which the catalog does not allow', () => {
+      // `group.invite` is the one group key with no `own` scope (ADR-0015 §4.1),
+      // so a hand-written `own` row must not reach a group the caller created.
+      const ctx: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        activeOrgId: 'org-1',
+        // `group.manage` rather than `group.invite`: the former's catalogue row
+        // LISTS `own`, so only the creator comparison can refuse it here.
+        permissionScopes: { 'group.manage': 'own' },
+      };
+      expect(resolveGroupScope(ctx, 'group.manage', 'g-created', { created_by: 'user-2' })).toBe(
+        false,
+      );
+      expect(resolveGroupScope(ctx, 'group.invite', 'g-created', { created_by: 'user-1' })).toBe(
+        false,
+      );
+      expect(
+        resolveGroupScope(
+          { ...ctx, permissionScopes: { 'group.manage': 'own' } },
+          'group.manage',
+          'g-created',
+          { created_by: 'user-1' },
+        ),
+      ).toBe(true);
+    });
+
+    it('refuses a non-group permission outright instead of widening it to the org', () => {
+      expect(() =>
+        requireGroupPermission(roleCtx('deck.read', 'organization'), 'deck.read', groupRow('g-1')),
+      ).toThrow(AppError);
+    });
+
+    it('refuses a group of another org even when the role holds the key org-wide', () => {
+      expect(
+        canGroup(roleCtx('group.manage', 'organization'), 'group.manage', groupRow('g-x', 'org-2')),
+      ).toBe(false);
+    });
+
+    it('resolves for a teacher of the group through requireGroupPermission', () => {
+      expect(() =>
+        requireGroupPermission(
+          roleCtx('group.member.manage', 'group', { 'g-mine': 'teacher' }),
+          'group.member.manage',
+          groupRow('g-mine'),
+        ),
+      ).not.toThrow();
+    });
+
+    it('throws FORBIDDEN for a member of the group through requireGroupPermission', () => {
+      expect(() =>
+        requireGroupPermission(
+          roleCtx('group.member.manage', 'group', { 'g-joined': 'member' }),
+          'group.member.manage',
+          groupRow('g-joined'),
+        ),
+      ).toThrow(AppError);
     });
   });
 });

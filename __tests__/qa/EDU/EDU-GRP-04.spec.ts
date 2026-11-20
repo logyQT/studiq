@@ -67,7 +67,8 @@ interface GroupRow {
   description: string | null;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface ApiEnvelope<T> {
@@ -147,13 +148,14 @@ test.describe('EDU-GRP-04 — organization group limit (Launch: 3 groups)', () =
     }
 
     // Re-run safety: remove only this spec's own groups (the teacher created
-    // them, so `canManage` is true) before counting the baseline.
+    // them, so the API sets `manageVia`) before counting the baseline.
     const groupNames: readonly string[] = Object.values(GROUPS);
     const leftovers = (await listGroups(page)).filter((group) => groupNames.includes(group.name));
     for (const leftover of leftovers) {
-      expect(leftover.canManage, `leftover ${leftover.name} must be the teacher's own group`).toBe(
-        true,
-      );
+      expect(
+        leftover.manageVia,
+        `leftover ${leftover.name} must be the teacher's own group`,
+      ).not.toBeNull();
       const deleted = await page.request.delete(`/api/v1/organization/groups/${leftover.id}`);
       expect(deleted.status(), `cleanup DELETE ${leftover.name}`).toBe(200);
     }
@@ -177,8 +179,10 @@ test.describe('EDU-GRP-04 — organization group limit (Launch: 3 groups)', () =
     ).toBeVisible();
     const secondRow = groupRow(page, GROUPS.second);
     await expect(secondRow).toBeVisible();
-    await expect(secondRow.getByRole('cell').nth(1)).toHaveText('0');
-    await expect(secondRow.getByRole('cell').nth(2)).toHaveText('0');
+    // The creator is on the roster as its `teacher` from the create itself, and
+    // `memberCount` counts the whole roster: both columns read 1.
+    await expect(secondRow.getByRole('cell').nth(1)).toHaveText('1');
+    await expect(secondRow.getByRole('cell').nth(2)).toHaveText('1');
 
     const third = await createGroup(page, GROUPS.third);
     expect(third.response.status(), await third.response.text()).toBe(201);

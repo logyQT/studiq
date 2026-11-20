@@ -22,7 +22,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  * The tenant seeder's default group `G1` belongs to the manager, so the educator
  * cannot manage it — the case's group is created by the educator through the
- * product API (the EDU-GRP-01 prerequisite), which makes `canManage` true and
+ * product API (the EDU-GRP-01 prerequisite), which leaves `manageVia` set and
  * gives the spec a group whose roster it fully owns. The same roster endpoint
  * `/manage/groups` and `/edu/groups` use resets that group to an empty roster, so
  * every run starts from the „Wybierz osoby…” state instead of depending on a
@@ -81,7 +81,8 @@ interface GroupSummary {
   created_at: string;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface OrgMember {
@@ -197,7 +198,7 @@ async function ensureOwnedEmptyGroup(page: Page, name: string): Promise<GroupSum
     ).toBe(true);
   }
 
-  expect(group.canManage, `the educator created ${name} and may manage it`).toBe(true);
+  expect(group.manageVia, `the educator created ${name} and may manage it`).not.toBeNull();
   return group;
 }
 

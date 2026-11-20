@@ -53,7 +53,8 @@ interface GroupSummary {
   created_at: string;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface OrgMember {
@@ -105,11 +106,11 @@ async function ensureEmptyGroup(page: Page, name: string): Promise<GroupSummary>
     });
     expect(res.status(), `POST ${GROUPS_URL}`).toBe(201);
     const body =
-      await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'canManage'>>>(
+      await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'manageVia'>>>(
         res,
       );
     expect(body.success, `POST ${GROUPS_URL} success`).toBe(true);
-    group = { ...body.data, memberCount: 0, teacherCount: 0, canManage: true };
+    group = { ...body.data, memberCount: 0, teacherCount: 1, manageVia: 'group.manage' };
   }
 
   const roster = await getJson<GroupMemberRow[]>(page, `${GROUPS_URL}/${group.id}/members`);

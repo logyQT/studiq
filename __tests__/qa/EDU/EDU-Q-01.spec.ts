@@ -259,10 +259,9 @@ async function setGroupMembers(
 
 /**
  * The case's own group shape: `G1` holds the teacher and student1, `G2` holds the
- * teacher and only the student outside the group. The seeder enrols every member
- * in the default group and leaves `G2` without a teacher (a group is offered in the
- * pickers only when it has one), so both rosters are written here through the same
- * endpoint `/manage/groups` uses — tenant-local and idempotent.
+ * teacher and only the student outside the group. The profile declares the teacher
+ * as the teacher of both groups (`groupTeachers`); this rewrites both rosters
+ * through the same endpoint `/manage/groups` uses — tenant-local and idempotent.
  */
 /**
  * Close the filter popover. The pointer has to leave the „Grupy” row first: while

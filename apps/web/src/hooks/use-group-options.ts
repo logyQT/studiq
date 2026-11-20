@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
+import { usePermission } from '@/hooks/use-permission';
 import { useOrgs } from '@/hooks/use-orgs';
 import { groupKeys } from '@/lib/query-keys';
 
@@ -20,13 +20,18 @@ export interface GroupOption {
  */
 export function useGroupOptions() {
   const { activeOrg } = useOrgs();
-  const feature = useFeature();
-  const canManageGroups = feature('group.manage');
+  // The org-wide list is for a class MANAGER: it exists so a teacher can filter by
+  // a class they may edit, not to widen a student's picker. `group.read` alone is
+  // not that gate — every student holds it at `group` scope — so the list is asked
+  // for only when one of the two write keys is in the map. `/me/groups` below
+  // always supplies the caller's own classes.
+  const permission = usePermission();
+  const managesGroups = permission('group.manage') || permission('group.member.manage');
 
   const groupsQuery = useApiQuery<GroupOption[]>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && canManageGroups,
+    enabled: !!activeOrg?.id && managesGroups,
   });
   const myGroupsQuery = useApiQuery<Array<GroupOption & { organizationId: string }>>({
     queryKey: groupKeys.my,
@@ -54,7 +59,7 @@ export function useGroupOptions() {
   );
   // An org-scoped group list only loads with an org; without one the selection is empty anyway.
   const ready =
-    myGroupsQuery.isFetched && (!canManageGroups || !activeOrg?.id || groupsQuery.isFetched);
+    myGroupsQuery.isFetched && (!managesGroups || !activeOrg?.id || groupsQuery.isFetched);
 
   return { groupsData, options, myGroupIds, groupNameMap, ready };
 }

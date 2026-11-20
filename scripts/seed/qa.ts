@@ -200,11 +200,18 @@ interface MemberSpec {
  *   `members` — explicit roster; replaces the default manager/teacher/student
  *   `groups`  — group names, the first is the default group
  *   `solo`    — one account that belongs to no organization at all
+ *   `groupTeachers` — member key → the groups that member teaches. The graph
+ *   enrols every member as a plain `member` of the default group only, and no
+ *   endpoint lets a caller join a class they neither teach nor created
+ *   (`group.member.manage` at `group` scope needs a `teacher` row, and a class
+ *   has no self-service join), so a case that needs a teacher on a second group
+ *   declares it here rather than writing the row from the spec.
  */
 interface ProfileShape {
   members?: MemberSpec[];
   groups?: string[];
   solo?: MemberSpec;
+  groupTeachers?: Record<string, string[]>;
   /**
    * Several organizations that do **not** share an owner (`SEC-04`: two admins,
    * each a member of only their own org). Each org gets its own deterministic key.
@@ -250,6 +257,7 @@ function declaredShape(entry: ProfileEntry | undefined): ProfileShape {
     members: entry.members,
     groups: entry.groups,
     solo: entry.solo,
+    groupTeachers: entry.groupTeachers,
     orgs: entry.orgs,
   };
 }
@@ -884,6 +892,59 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
         password: account.password,
       };
     });
+
+    // `groupTeachers` names a group by its declared name; ids follow the same
+    // `group:default` / `group:<index+2>` scheme the extraGroups above use.
+    const groupIdsByName = new Map<string, string>([
+      [defaultGroupName, groupId],
+      ...extraGroupNames.map((name, index): [string, string] => [
+        name,
+        tenantId(key, `group:${index + 2}`),
+      ]),
+    ]);
+    const teacherRows = Object.entries(shape.groupTeachers ?? {}).flatMap(
+      ([memberKey, groupNames]) => {
+        const user = shapeUsers[memberKey];
+        if (!user) {
+          throw new Error(`seed ${key}: groupTeachers names ${memberKey}, which is not a member`);
+        }
+        return groupNames.map((name) => {
+          const targetId = groupIdsByName.get(name);
+          if (!targetId) {
+            throw new Error(
+              `seed ${key}: groupTeachers names ${name}, which the profile does not declare`,
+            );
+          }
+          return {
+            group_id: targetId,
+            user_id: user.id,
+            role: 'teacher' as const,
+          };
+        });
+      },
+    );
+    if (teacherRows.length > 0) {
+      // The default group may already carry this member's row (the org teacher is
+      // promoted there by `seedTenantGraph`), and a re-seed of the same tenant
+      // finds the previous run's rows. Both are keyed by `(group_id, user_id)`, not
+      // by the synthetic id, so the pair is removed first and re-inserted as a
+      // teacher — the same net state a hand-run "make them teach it" produces.
+      const uniquePairs = [
+        ...new Map(teacherRows.map((row) => [`${row.group_id}:${row.user_id}`, row])).values(),
+      ];
+      for (const row of uniquePairs) {
+        const { error: clearError } = await db
+          .from('group_members')
+          .delete()
+          .eq('group_id', row.group_id)
+          .eq('user_id', row.user_id);
+        if (clearError)
+          throw new Error(`seed ${key}: group_members(teachers clear) ${clearError.message}`);
+      }
+      const { error: teacherError } = await db.from('group_members').insert(uniquePairs);
+      if (teacherError)
+        throw new Error(`seed ${key}: group_members(teachers) ${teacherError.message}`);
+    }
     if (shape.solo) {
       const solo = seededAccount(
         await ensureAccounts(

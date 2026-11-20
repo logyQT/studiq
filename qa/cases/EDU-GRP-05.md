@@ -4,7 +4,7 @@
 - priority: P2 ważny
 - module: EDU – Panel nauczyciela (/edu)
 - section: Grupy nauczyciela (/edu/groups)
-- prereqs: tenant `content` (educator whose org role is `member` → no `group.manage`)
+- prereqs: tenant `content` (educator whose org role carries no `group.manage`)
 - source: StudiQ Dokument Testera v1.3
 
 ## Prerequisite (verbatim)
@@ -18,49 +18,62 @@ Użyj konta bez funkcji group.manage (konto bez tej funkcji).
 
 ## Expected result
 
-- Pozycja „Grupy” znika z menu.
 - Operacje zapisu na grupach są odrzucane (403 FORBIDDEN) – brak niezabezpieczonych akcji.
+
+Case text settled on the model's guarantee (ADR-0015 §4.3, §7.1):
+
+- Pozycja „Grupy” jest widoczna w menu dla każdego, czyja rola niesie `group.read`
+  (także na zasięgu `group`, czyli Nauczyciel prowadzący klasę). Konto **bez**
+  `group.read` nie widzi pozycji ani nie otwiera listy.
+- Lista grup się renderuje: nagłówek „Grupy”, kolumny Nazwa / Członkowie / Nauczyciele /
+  Akcje i zasiana grupa z jej liczbami.
+- Brakuje **każdej** kontrolki zarządzania: „Nowa grupa”, „Edytuj grupę”, „Usuń grupę”
+  i „Zarządzaj członkami” (wiersz pokazuje zamek „Grupa utworzona przez kogoś innego —
+  nie możesz jej edytować”).
+- Każdy zapis na grupach odpowiada `403 FORBIDDEN` — brak niezabezpieczonych akcji.
+
+The earlier text — „Pozycja «Grupy» znika z menu” — described the 2.1 entitlement gate,
+where `group.manage` hid the entry and the page stayed reachable by hand. Under the
+permission model the list is the `group.read` surface and the writes are the
+`group.manage`/`group.member.manage` surface, so the case asserts both halves instead of
+the disappearing link.
 
 ## Observed on the shared app (walk, qa-env-1)
 
-- The educator's sidebar has no „Grupy” entry (and no `a[href="/edu/groups"]` at all); the
-  rest of the `/edu` nav (Przegląd / Talie / Tematy / Pytania / Testy / Kartkówki /
-  Zgłoszenia / Treści / Wyniki / Aktywność) is unchanged, before and after a reload.
-- `/edu/groups` stays reachable and renders a **read-only** list: heading „Grupy”, the
-  seeded group with its real counts, the lock badge „Grupa utworzona przez kogoś innego —
-  nie możesz jej edytować” and the report button. There is no „Nowa grupa”, no
+- The educator's sidebar had no „Grupy” entry (and no `a[href="/edu/groups"]` at all). The
+  cause was the nav gate, not the role: the 2b-2 sidebar asked `usePermission('group.read')`
+  without a resource, and `evaluateScope` only says yes to a `group`-scope row through a
+  row (`ctx.groupRoles`), so a Teacher — the role the `group.read`/`group.manage` split was
+  built for — never saw the link. Fixed in 2b-2: the nav asks `/permissions/me` whether the
+  key is present (`apps/web/src/lib/sidebar-nav.ts`), the same key the API enforces.
+- `/edu/groups` renders the **read-only** list: heading „Grupy”, the seeded group with its
+  real counts, the lock badge and the report button. There is no „Nowa grupa”, no
   „Edytuj grupę”, no „Usuń grupę” and no member-management control.
 - `POST /api/v1/organization/groups`, `PUT`/`DELETE /api/v1/organization/groups/:id` and
   `PUT /api/v1/organization/groups/:id/members` all answer `403` with
   `x-error-code: FORBIDDEN` and `{ "success": false, "error": "FORBIDDEN" }`; the group and
   its membership are unchanged afterwards.
-- The route staying reachable (read-only) is not a contradiction of the case: the expected
-  result only requires the menu entry to disappear and writes to be rejected, and
-  `GroupService.listGroups` has no `group.manage` gate by design.
-- Out of scope, recorded only: the `/edu` onboarding checklist still offers „Utwórz swoją
-  pierwszą grupę” / „Zaproś pierwszych studentów” linking to `/edu/groups` for this
-  educator. It is a link to the read-only page, not a write action, and the case does not
-  cover the checklist — not asserted.
+- Since 2b-2 the list route answers `group.read` and every write resolves the `group.*`
+  permission for that class (ADR-0015 §4.3), so a caller without `group.manage` is refused
+  by the permission rather than by a persona gate — the four 403s are unchanged.
 
 ## QA tenant fixture (reconciled)
 
 The case was written against the legacy manual seed (`teacher1@dev.local`, password `pass`,
-organization WSB Merito, group `O1G1`) and its prerequisite asked for a feature override
-on that account. The suite version uses the case's own tenant and
-never the legacy accounts, and it takes the prerequisite's second option — _„użyj konta bez
-tej funkcji”_ — instead of mutating a global admin setting.
+organization WSB Merito, group `O1G1`). The suite version uses the case's own tenant, never
+the legacy accounts, and takes the prerequisite's second option — _„użyj konta bez tej
+funkcji”_ — instead of mutating a global admin setting.
 
 - Profile: `content` (`__tests__/qa/profiles/EDU-GRP-05.json`) — one organization with an
   `admin` manager, an org-`member` educator and an org-`member` student, plus the default
   group `G1` (all three enrolled, the manager as its group `teacher`).
-- Why that profile: `group.manage` is an org-role entitlement, not a personal plan. The org
-  trigger seeds `org_role_features` per role, and the `member` role only gets `flashcards`,
-  `quiz`, `ai.chat` and `branding` — the v1 learner set intersected with the plan
-  (`launch` carries `flashcards` and `quiz`; `documents` is absent until its surface ships,
-  open catalog, ADR §5.1) — so the `content` profile's educator is exactly „konto bez tej
-  funkcji”, with no admin-panel override and no write to
-  `user_feature_overrides`, `entitlement_flags` or any other global row. The manager of the same
-  tenant keeps `group.manage` (org `admin`), which is what the spec's contrast check uses.
+- Why that profile: the group keys are permissions (ADR-0015 §4.1). The org `member` role
+  holds `group.read` at `group` scope and no `group.manage`, `group.member.manage` or
+  `group.invite`, so the educator is exactly „konto bez tej funkcji” — no admin-panel
+  override and no write to `org_role_permissions`, `entitlement_flags` or any other global
+  row. `G1`'s `manageVia` is `null`, which is what the page renders as the lock and what
+  the spec asserts. The manager of the same tenant holds the Admin system role, which
+  carries every `group.*` key at `organization` — the contrast check.
 - Seed: `bun scripts/qa-tenant.ts EDU-GRP-05 --fresh` — a fresh run suffix per independent
   run, so every run gets its own org/group/users from
   `tenantKey('qa/cases/EDU-GRP-05.md', 'EDU-GRP-05#<suffix>', 'qa-shared')` +
@@ -68,5 +81,3 @@ tej funkcji”_ — instead of mutating a global admin setting.
 - The spec never writes: it only attempts the four group write endpoints and asserts they
   are rejected, so the tenant is left exactly as seeded and re-runs on one seeded tenant
   (CI `--retries=2`) stay deterministic.
-- Not asserted: the second/third accounts beyond what the write attempts need — they exist
-  because the `content` profile always creates manager + educator + student.

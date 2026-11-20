@@ -38,8 +38,10 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  *    `/edu/ai` exists since #433 and renders the assistant, so the intended
  *    behaviour is a working page, not the predicted 404.
  * 3. The „Klasa”/classroom section stays hidden (commented out in the sidebar).
- * 4. „Grupy” disappears when the resolved feature set has no `group.manage`,
- *    while „Asystent Q” (ai.chat) stays — so the gate is specific.
+ * 4. „Grupy” follows `group.read` (the key the class routes enforce), not the
+ *    `group.manage` entitlement: a `member` role keeps the entry and reaches a
+ *    read-only list, while „Asystent Q” (ai.chat) stays for the same account —
+ *    so neither gate is a persona check.
  */
 
 const CASE = 'EDU-02';
@@ -66,13 +68,6 @@ const SIDEBAR_GROUPS = [
     items: ['Talie', 'Tematy', 'Pytania', 'Testy', 'Kartkówki', 'Zgłoszenia', 'Grupy'],
   },
   { label: 'Statystyki', items: ['Treści', 'Wyniki', 'Aktywność'] },
-] as const;
-
-/** Same menu for an educator whose resolved features lack `group.manage`. */
-const SIDEBAR_WITHOUT_GROUPS = [
-  SIDEBAR_GROUPS[0],
-  { label: 'Treści', items: ['Talie', 'Tematy', 'Pytania', 'Testy', 'Kartkówki', 'Zgłoszenia'] },
-  SIDEBAR_GROUPS[2],
 ] as const;
 
 const NAV_ITEMS: NavEntry[] = [
@@ -211,7 +206,7 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     expect(pageErrors, 'uncaught page errors during the menu walk').toEqual([]);
   });
 
-  test('hides „Grupy” when the resolved features lack group.manage', async ({ page }) => {
+  test('keeps „Grupy” for a group.read holder and hides the manage controls', async ({ page }) => {
     test.setTimeout(120_000);
     const { pageErrors } = watchPage(page);
 
@@ -224,18 +219,27 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     expect(enabled, 'ai.chat is entitled').toContain('ai.chat');
     expect(enabled, 'group.manage is not entitled').not.toContain('group.manage');
 
+    // The entry follows `group.read` (what the class routes ask for), not the
+    // `group.manage` entitlement: a `member` role may read the class list it
+    // cannot edit, and the link must not lie about that.
     await expect
       .poll(() => readSidebar(page), { timeout: 15_000, message: 'educator sidebar menu' })
-      .toEqual(SIDEBAR_WITHOUT_GROUPS);
+      .toEqual(SIDEBAR_GROUPS);
 
     const nav = sidebar(page);
     await expect(
       nav.locator('[data-slot="sidebar-menu-item"] a[href="/edu/groups"]'),
-      '„Grupy” is gated by group.manage',
-    ).toHaveCount(0);
+      '„Grupy” follows group.read',
+    ).toHaveCount(1);
     // The gate is specific: the ai.chat item stays for the same account.
     await expect(navLink(page, '/edu/ai'), '„Asystent Q” still shows').toBeVisible();
     await expect(nav, 'the classroom section is hidden').not.toContainText('Klasa');
+
+    // Reading is not editing: the list opens, and every write control a
+    // `group.manage` holder would see is absent for this role.
+    await navLink(page, '/edu/groups').click();
+    await expect(page).toHaveURL(/\/edu\/groups$/);
+    await expect(page.getByRole('button', { name: 'Nowa grupa' })).toHaveCount(0);
 
     expect(pageErrors, 'uncaught page errors on the educator dashboard').toEqual([]);
   });

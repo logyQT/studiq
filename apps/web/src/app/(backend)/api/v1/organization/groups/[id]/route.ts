@@ -1,28 +1,15 @@
-import { AccountType } from '@studiq/authz';
 import { groupController } from '@studiq/server/controllers/group.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(await groupController.updateGroup(ctx, id, body));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Renames or re-describes one class. */
+export const PUT = authedRouteWithParams<{ id: string }, [string, unknown]>(
+  ({ params, json }) => [params.id, json],
+  (ctx, id, body) => groupController.updateGroup(ctx, id, body),
+  { readsBody: true },
+);
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await groupController.deleteGroup(ctx, id));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Deleting has no body: the id is the whole input. */
+export const DELETE = authedRouteWithParams<{ id: string }, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => groupController.deleteGroup(ctx, id),
+);

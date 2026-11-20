@@ -102,7 +102,8 @@ interface AssignmentDetail {
 interface GroupRow {
   id: string;
   name: string;
-  canManage?: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface StartedAttempt {

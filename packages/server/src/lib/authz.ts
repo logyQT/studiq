@@ -253,6 +253,124 @@ export async function requirePermission(ctx: RequestContext, permission: string)
   }
 }
 
+// ── Group scope (ADR-0015 §4.3, §6.3, §10) ────────────────────────────────
+const GROUP_PERMISSIONS = [
+  'group.read',
+  'group.manage',
+  'group.member.manage',
+  'group.invite',
+] as const;
+
+export function isGroupPermission(permission: string): boolean {
+  return (GROUP_PERMISSIONS as readonly string[]).includes(permission);
+}
+
+/**
+ * The caller's authority over ONE group, from the request context alone
+ * (`permissionScopes` and `groupRoles`, both resolved for the active org).
+ *
+ * - `organization`: the role holds the key at org scope, which reaches every
+ *   group of the active org (ADR-0015 §6.3).
+ * - `group`: the caller is a `teacher` of THIS group (§4.3) **or its creator**
+ *   (§4.3: `group` manage/invite → "the caller is a `teacher`/owner of the
+ *   group"), so the role must also hold the key at group scope. The owner
+ *   belongs here, and not only in `own`, because the seeded Teacher row carries
+ *   the keys at `group` and never at `own` — and because `setGroupMembers`
+ *   replaces a roster wholesale, so the creator's own `teacher` row is absent
+ *   exactly while the write that would restore it runs. Without the owner half
+ *   a creator could never write back a roster they had just cleared.
+ * - `own`: the caller created the group (§4.3: `groups.created_by = caller`),
+ *   and only for a key whose catalog row lists `own`. `group.invite` does not
+ *   (ADR-0015 §4.1), so an `own` invite row authorizes nothing. A `group`-scope
+ *   row does not reach it either: §6.3 gives each scope exactly one rule.
+ *
+ * No active org authorizes nothing, and `groupRoles` never names a group from
+ * another org (withAuth filters it, 2a-4), so a foreign group id finds no
+ * membership here.
+ */
+export function resolveGroupScope(
+  ctx: RequestContext,
+  permission: string,
+  groupId: string | null,
+  group?: { created_by: string | null },
+): boolean {
+  if (!isGroupPermission(permission) || ctx.activeOrgId == null) return false;
+
+  const scope = resolveScope(ctx, permission);
+  if (scope === 'organization') return true;
+  if (scope === 'group') {
+    if (groupId === null) return false;
+    return ctx.groupRoles[groupId] === 'teacher' || group?.created_by === ctx.userId;
+  }
+  if (scope === 'own') {
+    const grantsOwn =
+      isPermissionCatalogKey(permission) &&
+      (PERMISSIONS[permission].allowedScopes as readonly PermissionScope[]).includes('own');
+    return grantsOwn && group?.created_by === ctx.userId;
+  }
+  return false;
+}
+
+/**
+ * Create-time authority over the org's class list, at ANY scope the layout
+ * admits: `own`, `group` and `organization` all authorize a create.
+ *
+ * A new class has no id to be a teacher of, which is why an earlier version of
+ * this gate asked for `organization` alone. That read §4.3's scope rows as a
+ * hierarchy about the row being touched — but §10 makes a class the teaching
+ * surface ("a teacher runs their class without any org-wide management
+ * capability"), and creating it is the first thing a teacher does. The operator
+ * decision of 2b-2 settles it: a Teacher may create a class, and becomes its
+ * teacher, so `group`/`own` is the honest scope for the row they create
+ * (ADR-0015 §4.3 scopes, §10 class model). Admin keeps working through
+ * `organization`.
+ *
+ * Not `resolveGroupScope`: that answer needs a group id, and the one thing a
+ * create does not have. This asks only whether the caller's role holds the key
+ * at all, in the active org.
+ */
+export function canCreateGroup(ctx: RequestContext, permission = 'group.manage'): boolean {
+  // Without an active org `resolveScope` can still answer from a stored row (a
+  // stale cookie), and a create would then run against no tenant.
+  if (ctx.activeOrgId == null) return false;
+  return resolveScope(ctx, permission) !== null;
+}
+
+/**
+ * A group key for one group. `group.created_by` is optional: a caller that did
+ * not select it cannot use the creator branch.
+ *
+ * Not `can()`: that function is for content resources, and its `group` branch
+ * resolves a share link (deck/bank/topic), which a `group.*` key is not. A
+ * group row uses only the creator branch of it (ADR-0015 §4.3 `own`).
+ */
+export function canGroup(
+  ctx: RequestContext,
+  permission: string,
+  group: { id: string; organization_id: string; created_by?: string | null },
+): boolean {
+  return group.organization_id === ctx.activeOrgId
+    ? resolveGroupScope(ctx, permission, group.id, { created_by: group.created_by ?? null })
+    : false;
+}
+
+/**
+ * A group capability the caller must hold for ONE group (ADR-0015 §7:
+ * `requirePermission('group.*', { groupId })`).
+ *
+ * `isGroupPermission` is part of the gate, not a guard clause: a `group.*` check
+ * must never become an org-wide answer for some other key, so a non-group
+ * permission is refused outright.
+ */
+export function requireGroupPermission(
+  ctx: RequestContext,
+  permission: string,
+  group: { id: string; organization_id: string; created_by?: string | null },
+): void {
+  if (!isGroupPermission(permission)) throw new AppError('FORBIDDEN');
+  if (!canGroup(ctx, permission, group)) throw new AppError('FORBIDDEN');
+}
+
 interface AccessibleFilterResult {
   _impossible?: true;
   or?: string;
@@ -309,7 +427,7 @@ export async function resolveGroupResourceIds(
  * decks and banks instead of growing with every card and question inside them (#1049). The
  * filter ends up in the request URL, and PostgREST refuses one beyond ~15 KB (~390 ids).
  */
-async function resolveGroupScope(
+async function resolveGroupResourceScope(
   resourceType: ResourceType,
   groupIds: string[],
 ): Promise<{ column: 'id' | 'deck_id' | 'bank_id'; ids: string[] }> {
@@ -345,7 +463,7 @@ export async function accessibleFilter(
         return { organization_id: ctx.activeOrgId, created_by: ctx.userId };
       }
 
-      const { column, ids } = await resolveGroupScope(resourceType, ctx.groupIds);
+      const { column, ids } = await resolveGroupResourceScope(resourceType, ctx.groupIds);
       if (ids.length === 0) {
         return { organization_id: ctx.activeOrgId, created_by: ctx.userId };
       }

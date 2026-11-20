@@ -85,6 +85,8 @@ function ungatedHandlers(source: string): string[] {
  * never names `withAuth`; the last test proves each entry really gates.
  */
 const GATED_FACTORIES: Record<string, string> = {
+  authedRoute: 'packages/server/src/lib/route-handler.ts',
+  authedRouteWithParams: 'packages/server/src/lib/route-handler.ts',
   batchActionRoute: 'packages/server/src/lib/batch-action-route.ts',
   itemFlagRoute: 'packages/server/src/lib/item-flag-route.ts',
 };
@@ -92,7 +94,7 @@ const GATED_FACTORIES: Record<string, string> = {
 function isGated(body: string): boolean {
   return (
     body.includes('withAuth(') ||
-    Object.keys(GATED_FACTORIES).some((factory) => body.includes(`${factory}(`))
+    Object.keys(GATED_FACTORIES).some((factory) => new RegExp(`\\b${factory}\\s*[<(]`).test(body))
   );
 }
 
@@ -148,7 +150,9 @@ describe('API auth inventory', () => {
   it('every gated factory really calls withAuth() in its own module', () => {
     for (const [factory, file] of Object.entries(GATED_FACTORIES)) {
       const source = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
-      expect(source, `${file} is listed as a gated factory`).toContain(`function ${factory}(`);
+      expect(source, `${file} is listed as a gated factory`).toMatch(
+        new RegExp(`function ${factory}\\s*[<(]`),
+      );
       expect(source, `${file} must wrap its handler in withAuth()`).toContain('withAuth(');
     }
   });
