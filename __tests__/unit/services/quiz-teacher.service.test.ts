@@ -98,7 +98,12 @@ const ctx: RequestContext = {
   activeOrgId: orgId,
   orgRoleId: 'role-id',
   groupIds: [],
-  permissionScopes: {},
+  permissionScopes: {
+    'quiz.read': 'own',
+    'quiz.create': 'own',
+    'quiz.update': 'own',
+    'quiz.delete': 'own',
+  },
 };
 
 describe('QuizTeacherService', () => {
@@ -113,7 +118,7 @@ describe('QuizTeacherService', () => {
 
   describe('create', () => {
     it('creates a quiz successfully', async () => {
-      const dbRow = { id: quizId, name: 'My Quiz', organization_id: orgId };
+      const dbRow = { id: quizId, name: 'My Quiz', organization_id: orgId, created_by: userId };
       mock.from.mockReturnValue(chain(dbRow));
 
       const result = await service.create({ name: 'My Quiz' }, ctx);
@@ -202,6 +207,7 @@ describe('QuizTeacherService', () => {
         id: quizId,
         name: 'My Quiz',
         organization_id: orgId,
+        created_by: userId,
         quiz_questions: [{ question_id: 'q-1', order_index: 0, points: 1 }],
       };
       mock.from.mockReturnValue(chain(dbRow));
@@ -226,6 +232,41 @@ describe('QuizTeacherService', () => {
       }
     });
 
+    it('returns FORBIDDEN for a same-org quiz the own scope does not reach (2b-6)', async () => {
+      const dbRow = {
+        id: quizId,
+        name: 'My Quiz',
+        organization_id: orgId,
+        created_by: 'another-user',
+      };
+      mock.from.mockReturnValue(chain(dbRow));
+
+      const result = await service.getById(quizId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('FORBIDDEN');
+      }
+    });
+
+    it('reads a same-org quiz at organization scope (2b-6)', async () => {
+      const dbRow = {
+        id: quizId,
+        name: 'My Quiz',
+        organization_id: orgId,
+        created_by: 'another-user',
+        quiz_questions: [],
+      };
+      mock.from.mockReturnValue(chain(dbRow));
+
+      const result = await service.getById(quizId, {
+        ...ctx,
+        permissionScopes: { 'quiz.read': 'organization' },
+      });
+
+      expect(result.success).toBe(true);
+    });
+
     it('returns NOT_FOUND when quiz does not exist', async () => {
       mock.from.mockReturnValue(chain(null));
 
@@ -240,10 +281,15 @@ describe('QuizTeacherService', () => {
 
   describe('update', () => {
     it('updates quiz name and description', async () => {
-      const updated = { id: quizId, name: 'Updated Name', organization_id: orgId };
+      const updated = {
+        id: quizId,
+        name: 'Updated Name',
+        organization_id: orgId,
+        created_by: userId,
+      };
       const updateChain = chain(updated);
       mock.from
-        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
+        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId, created_by: userId }))
         .mockReturnValue(updateChain);
 
       const result = await service.update(
@@ -276,7 +322,7 @@ describe('QuizTeacherService', () => {
     it('deletes a quiz', async () => {
       const deleteChain = chain(null);
       mock.from
-        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
+        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId, created_by: userId }))
         .mockReturnValue(deleteChain);
 
       const result = await service.delete(quizId, ctx);
@@ -292,7 +338,7 @@ describe('QuizTeacherService', () => {
     it('adds questions to a quiz with sequential indices', async () => {
       const insertChain = chain([{ question_id: 'q-1', order_index: 5, points: 1 }]);
       mock.from
-        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
+        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(chain({ order_index: 4 }))
         .mockReturnValueOnce(chain([]))
         .mockReturnValue(insertChain);
@@ -310,7 +356,7 @@ describe('QuizTeacherService', () => {
     it('skips duplicate questions', async () => {
       const insertChain = chain([]);
       mock.from
-        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
+        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
         .mockReturnValue(insertChain);
@@ -326,7 +372,7 @@ describe('QuizTeacherService', () => {
     it('removes a question from a quiz', async () => {
       const deleteChain = chain(null);
       mock.from
-        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
+        .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId, created_by: userId }))
         .mockReturnValue(deleteChain);
 
       const result = await service.removeQuestion(quizId, 'q-1', ctx);
@@ -351,7 +397,7 @@ describe('QuizTeacherService', () => {
         quiz_questions: [{ question_id: 'q-1' }],
       };
       mock.from
-        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain({ organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain(null))
@@ -370,7 +416,7 @@ describe('QuizTeacherService', () => {
       const updateChain = chain(null);
       const deleteChain = chain(null);
       mock.from
-        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain({ organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(updateChain)
         .mockReturnValueOnce(deleteChain)
         .mockReturnValue(chain(updated));
@@ -410,7 +456,7 @@ describe('QuizTeacherService', () => {
 
     it('returns error when update fails', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain({ organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(chainError({ message: 'fail', code: 'XX000' }));
 
       const result = await service.bulkSave(quizId, bulkData, ctx);
@@ -420,7 +466,7 @@ describe('QuizTeacherService', () => {
 
     it('returns error when insert fails', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain({ organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chainError({ message: 'fail', code: 'XX000' }));
@@ -434,7 +480,9 @@ describe('QuizTeacherService', () => {
   describe('reorderQuestions', () => {
     it('reorders questions sequentially', async () => {
       const updateChain = chain(null);
-      mock.from.mockReturnValueOnce(chain({ organization_id: orgId })).mockReturnValue(updateChain);
+      mock.from
+        .mockReturnValueOnce(chain({ organization_id: orgId, created_by: userId }))
+        .mockReturnValue(updateChain);
 
       const result = await service.reorderQuestions(
         quizId,
@@ -482,7 +530,7 @@ describe('QuizTeacherService', () => {
 
     it('returns error when update fails', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain({ organization_id: orgId, created_by: userId }))
         .mockReturnValueOnce(chainError({ message: 'fail', code: 'XX000' }));
 
       const result = await service.reorderQuestions(quizId, { questionIds: ['q-1'] }, ctx);
@@ -497,6 +545,7 @@ describe('QuizTeacherService', () => {
         id: quizId,
         name: 'My Quiz',
         organization_id: orgId,
+        created_by: userId,
         quiz_questions: [
           { question_id: 'q-1', order_index: 0, points: 1 },
           { question_id: 'q-2', order_index: 1, points: 2 },
@@ -531,6 +580,7 @@ describe('QuizTeacherService', () => {
         id: quizId,
         name: 'My Quiz',
         organization_id: orgId,
+        created_by: userId,
         quiz_questions: [{ question_id: 'q-1', order_index: 0, points: 1 }],
       };
       mock.from

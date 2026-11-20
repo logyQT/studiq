@@ -36,7 +36,12 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const MIGRATION = 'supabase/migrations/20261120130000_control_plane_permission_rls.sql';
+// R27: 2b-6 rewrote the `teacher_assignments` INSERT policy, and 2b-4's own
+// closing guard pins the pre-2b-6 persona conjunct, so 2b-4's file can no longer
+// be replayed on a 2b-6 database — the replay list is the newest file that owns
+// the object. The remaining 2b-4 policies (billing read, the assignment writes)
+// are installed by the reset itself; this file repairs the one 2b-6 moved.
+const MIGRATIONS = ['supabase/migrations/20261120190000_content_route_permission_rls.sql'];
 
 const localDatabaseUrl = (() => {
   const raw = process.env.SUPABASE_DB_URL;
@@ -63,11 +68,13 @@ function requireLocalDatabaseUrl(): string {
   return localDatabaseUrl;
 }
 
-/** Install the shipped migration the way a reset would (`alter policy` is idempotent). */
+/** Install the shipped migrations the way a reset would (`alter policy` is idempotent). */
 async function installShippedSql(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
-    await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
+    for (const migration of MIGRATIONS) {
+      await sql.unsafe(readFileSync(migration, 'utf8'));
+    }
   } finally {
     await sql.end();
   }

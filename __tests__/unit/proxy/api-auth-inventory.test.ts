@@ -148,12 +148,26 @@ describe('API auth inventory', () => {
   });
 
   it('every gated factory really calls withAuth() in its own module', () => {
+    const sources = Object.fromEntries(
+      Object.entries(GATED_FACTORIES).map(([factory, file]) => [
+        factory,
+        fs.readFileSync(path.join(process.cwd(), file), 'utf8'),
+      ]),
+    );
     for (const [factory, file] of Object.entries(GATED_FACTORIES)) {
-      const source = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+      const source = sources[factory]!;
       expect(source, `${file} is listed as a gated factory`).toMatch(
         new RegExp(`function ${factory}\\s*[<(]`),
       );
-      expect(source, `${file} must wrap its handler in withAuth()`).toContain('withAuth(');
+      // A factory may delegate to another gated factory (2b-6: itemFlagRoute is
+      // the authedRouteWithParams shape), but the chain must end at withAuth.
+      const delegates = Object.keys(GATED_FACTORIES).some(
+        (other) => other !== factory && new RegExp(`\\b${other}\\s*[<(]`).test(source),
+      );
+      expect(
+        source.includes('withAuth(') || delegates,
+        `${file} must wrap its handler in withAuth() or delegate to a gated factory`,
+      ).toBe(true);
     }
   });
 });

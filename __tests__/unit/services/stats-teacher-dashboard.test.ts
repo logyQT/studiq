@@ -18,9 +18,9 @@ const ctx: RequestContext = {
   url: '',
   method: 'GET',
   activeOrgId: 'org-1',
-  orgRoleId: null,
+  orgRoleId: 'role-1',
   groupIds: [],
-  permissionScopes: {},
+  permissionScopes: { 'stats.read': 'group' },
 };
 
 describe('StatsService teacher dashboard', () => {

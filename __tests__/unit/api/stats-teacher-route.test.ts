@@ -33,7 +33,13 @@ vi.mock('@studiq/server/lib/with-auth', () => ({
   ) => {
     withAuthCalls++;
     capturedOptions = options;
-    return handler({ userId: 'u-1', accountType: 'educator', activeOrgId: 'org-1' });
+    return handler({
+      userId: 'u-1',
+      accountType: 'educator',
+      activeOrgId: 'org-1',
+      url: 'http://localhost/api/v1/stats/teacher',
+      method: 'GET',
+    });
   },
 }));
 
@@ -45,9 +51,10 @@ import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 const ok = { success: true, statusCode: 200, data: {} };
 
 /**
- * #189: the whole teacher-stats family must be educator/manager-only. The proxy
- * early-returns for /api/*, so `withAuth`'s options are the only enforcement
- * point — asserting the option is the cheapest regression guard.
+ * #189 / phase 2b-6: the teacher-stats family no longer carries a persona
+ * option — `authedRoute` wraps `withAuth` and the `stats.read` key gates in
+ * the controller. The proxy early-returns for /api/*, so asserting that NO
+ * `allowedAccountTypes` reaches `withAuth` is the regression guard.
  */
 describe('teacher stats routes — allowed account types (#189)', () => {
   beforeEach(() => {
@@ -83,11 +90,11 @@ describe('teacher stats routes — allowed account types (#189)', () => {
           },
         ),
     ],
-  ])('%s allows educators and managers only', async (_name, call) => {
+  ])('%s carries no persona gate and forwards to the controller', async (_name, call) => {
     const res = await call();
 
     expect(res.status).toBe(200);
     expect(withAuthCalls).toBe(1);
-    expect(capturedOptions?.allowedAccountTypes).toEqual(['educator', 'manager']);
+    expect(capturedOptions?.allowedAccountTypes).toBeUndefined();
   });
 });
