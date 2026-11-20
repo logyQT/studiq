@@ -98,6 +98,28 @@ function isGated(body: string): boolean {
   );
 }
 
+/**
+ * Whether `factory`'s module reaches `withAuth()`: directly, or through a chain of
+ * declared gated factories. A delegation cycle never reaches it, so two factories
+ * that only call each other answer false.
+ */
+function reachesWithAuth(
+  sources: Record<string, string>,
+  factory: string,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(factory)) return false;
+  seen.add(factory);
+  const source = sources[factory] ?? '';
+  if (source.includes('withAuth(')) return true;
+  return Object.keys(sources).some(
+    (other) =>
+      other !== factory &&
+      new RegExp(`\\b${other}\\s*[<(]`).test(source) &&
+      reachesWithAuth(sources, other, seen),
+  );
+}
+
 /** Every unprotected handler on a route outside `PUBLIC_API`, as `file (url) HANDLER`. */
 function unlistedHandlers(candidates: ApiRoute[]): string[] {
   return candidates
@@ -160,13 +182,11 @@ describe('API auth inventory', () => {
         new RegExp(`function ${factory}\\s*[<(]`),
       );
       // A factory may delegate to another gated factory (2b-6: itemFlagRoute is
-      // the authedRouteWithParams shape), but the chain must end at withAuth.
-      const delegates = Object.keys(GATED_FACTORIES).some(
-        (other) => other !== factory && new RegExp(`\\b${other}\\s*[<(]`).test(source),
-      );
+      // the authedRouteWithParams shape), but the chain must reach withAuth — a
+      // delegation cycle between factories gates nothing.
       expect(
-        source.includes('withAuth(') || delegates,
-        `${file} must wrap its handler in withAuth() or delegate to a gated factory`,
+        reachesWithAuth(sources, factory),
+        `${file} must reach withAuth() through its delegation chain`,
       ).toBe(true);
     }
   });
@@ -259,5 +279,42 @@ describe('ungatedHandlers()', () => {
     expect(findings).toEqual([
       'apps/web/src/app/(backend)/api/v1/flashcards/route.ts (/api/v1/flashcards) DELETE',
     ]);
+  });
+});
+
+describe('reachesWithAuth()', () => {
+  it('passes a factory whose own module calls withAuth()', () => {
+    const sources = {
+      authedRoute:
+        'export function authedRoute(r, c) { return withAuth(req, async (ctx) => c(ctx)); }',
+    };
+    expect(reachesWithAuth(sources, 'authedRoute')).toBe(true);
+  });
+
+  it('passes a factory that delegates to one whose module calls withAuth()', () => {
+    const sources = {
+      itemFlagRoute: 'export function itemFlagRoute(a) { return authedRouteWithParams(a, b, c); }',
+      authedRouteWithParams:
+        'export function authedRouteWithParams(r, c) { return withAuth(req, async (ctx) => c(ctx)); }',
+    };
+    expect(reachesWithAuth(sources, 'itemFlagRoute')).toBe(true);
+  });
+
+  it('fails a two-factory cycle where neither reaches withAuth()', () => {
+    const sources = {
+      factoryA: 'export function factoryA() { return factoryB(); }',
+      factoryB: 'export function factoryB() { return factoryA(); }',
+    };
+    expect(reachesWithAuth(sources, 'factoryA')).toBe(false);
+    expect(reachesWithAuth(sources, 'factoryB')).toBe(false);
+  });
+
+  it('fails a factory that delegates only into a cycle', () => {
+    const sources = {
+      entry: 'export function entry() { return factoryA(); }',
+      factoryA: 'export function factoryA() { return factoryB(); }',
+      factoryB: 'export function factoryB() { return factoryA(); }',
+    };
+    expect(reachesWithAuth(sources, 'entry')).toBe(false);
   });
 });
