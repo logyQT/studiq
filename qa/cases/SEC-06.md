@@ -46,7 +46,10 @@ bun scripts/qa-tenant.ts SEC-06 --fresh
 
 ## Expected result
 
-- Operacje odrzucone (403) – brak zmian ról/zaproszeń/ról niestandardowych.
+- Operacje odrzucone (403) – brak zmian ról/zaproszeń/ról niestandardowych. Od
+  2026-11-20 (2b-5) dotyczy to także zaproszenia organizacyjnego z rolą `member` od
+  nauczyciela: każde zaproszenie organizacyjne wymaga `org.invitation.manage`
+  (sekcja „Zmiana kontraktu” poniżej).
 
 ## Observed during the suite walk (qa-env-3, shared app 3010 / DB 54421)
 
@@ -67,13 +70,24 @@ bun scripts/qa-tenant.ts SEC-06 --fresh
   (**200**) i tworzy rolę niestandardową (**201**) — trasy i fixture są sprawne, a 403 to
   granica uprawnień.
 - Panel studenta (`/app`) i nauczyciela (`/edu`) nadal się ładuje — brak over-block.
+- **2026-11-20 (2b-5)**: `POST /organization/invites/bulk` wymaga teraz
+  `org.invitation.manage` dla każdej roli — także `member`; wyjątek nazwy roli
+  `teacher` w `can_assign_org_role` został usunięty (ADR-0015 §4.3, §10), więc
+  nauczyciel dostaje **403** również przy roli `member`. Ścieżką klasową nauczyciela
+  jest zaproszenie klasowe na grupie, którą prowadzi (`group.invite`).
 
-### Odstępstwo od dosłownego kroku 2 (nie usterka)
+### Zmiana kontraktu 2026-11-20 (2b-5) — nauczyciel nie wysyła zaproszeń organizacyjnych
 
-Nauczyciel organizacyjny **może** wysłać zaproszenie z rolą `member` — to przepływ
-zapraszania uczniów z klasy (`/edu/classroom/invite`); `can_assign_org_role` celowo
-pozwala roli `teacher` nadawać wyłącznie systemową rolę `member`, a odmawia ról `admin` /
-`teacher` (#189, kontrola w `__tests__/integration/invitations.test.ts`). Zakres
-przypadku „nauczyciel nie zarządza organizacją” to więc zmiany ról, role niestandardowe
-i zaproszenia z uprzywilejowaną rolą — i te operacje są odrzucane. Spec asertuje dozwolone
-zaproszenie `member` jako kontrolę „brak over-block”.
+Poprzedni przebieg (qa-env-3) odnotował tu odstępstwo od dosłownego kroku 2: nauczyciel
+organizacyjny **mógł** wysłać zaproszenie z rolą `member`, bo `can_assign_org_role`
+celowo pozwalał roli `teacher` nadawać wyłącznie systemową rolę `member`, a odmawiał
+ról `admin` / `teacher` (#189). **Od 2026-11-20 (2b-5) ten wyjątek jest usunięty**
+(ADR-0015 §4.3, §10; kontrola w `__tests__/integration/invitations.test.ts`):
+zaproszenie **organizacyjne** wymaga `org.invitation.manage` na dowolną rolę, więc
+nauczyciel organizacyjny dostaje **403** także przy roli `member`. Ścieżką klasową
+nauczyciela jest **zaproszenie klasowe** na grupie, którą prowadzi (wymaga
+`group.invite` na tej grupie), a nie zaproszenie organizacyjne. Zakres przypadku
+„nauczyciel nie zarządza organizacją” obejmuje więc także wszystkie zaproszenia
+organizacyjne — i te operacje są odrzucane. Spec asertuje kontrolę „brak over-block”
+dla ścieżki zaproszeń jako zaproszenie z rolą `member` wysłane przez **admina**
+organizacji (kontrola pozytywna powyżej), a nie przez nauczyciela.
