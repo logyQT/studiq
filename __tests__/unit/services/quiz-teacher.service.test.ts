@@ -163,6 +163,25 @@ describe('QuizTeacherService', () => {
   });
 
   describe('list', () => {
+    it('filters to the caller’s own quizzes outside organization scope (2b-6)', async () => {
+      const listChain = chain([]);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+    });
+
+    it('reads the whole org at organization scope (2b-6)', async () => {
+      const listChain = chain([]);
+      mock.from.mockReturnValue(listChain);
+
+      await service.list({ ...ctx, permissionScopes: { 'quiz.read': 'organization' } });
+
+      expect(listChain.eq).not.toHaveBeenCalledWith('created_by', userId);
+    });
+
     it('returns quizzes for the active org', async () => {
       const quizzes = [{ id: quizId, name: 'My Quiz' }];
       mock.from.mockReturnValue(chain(quizzes));
