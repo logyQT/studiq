@@ -291,10 +291,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # The nightly duplication trend (`--history`) walks the last 30
-          # commits, so a non-PR run needs real history; a PR only needs the
-          # merge base and fetches its base ref explicitly in the gate step.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
+          # Real history in both cases: the nightly duplication trend
+          # (`--history`) walks commits, and the PR duplication gate compares
+          # against the merge base — which a shallow clone does not have, even
+          # with the base ref fetched beside it.
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 22
