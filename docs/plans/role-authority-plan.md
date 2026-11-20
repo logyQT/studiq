@@ -44,11 +44,13 @@ lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
 which replaces their remaining gates with permissions.
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
-backfill) merged as `6ec591dd` (#1397), and **2b-2** (group permissions and their
+backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
 RLS twin) is written on `feat/authority-2b-2`, with its follow-up pass (the
-`/edu/groups` nav gate and EDU-GRP-05's settled text) on `feat/authority-2b-2-2`.
-It is **slice 2 of 9**. The
-phase-2 row stays `active` — two merged/written slices do not make phase 2 done.
+`/edu/groups` nav gate and EDU-GRP-05's settled text) on `feat/authority-2b-2-2`,
+and **2b-3** (the org-control route sweep and its RLS twin) is written on
+`feat/authority-2b-3`. It is **slice 3 of 9**; the settled order is recorded in
+the phase-2b table below. The
+phase-2 row stays `active` — three merged/written slices do not make phase 2 done.
 
 ## 2. How to update this file
 
@@ -88,6 +90,8 @@ phase-2 row stays `active` — two merged/written slices do not make phase 2 don
 | R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                     | the `org_role_permissions` predicate read its own table                                                                            |
 | R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                      | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit |
 | R20 | A dotted key makes `toHaveProperty` useless in both directions — assert `Object.keys(map)` or index the map, and grep the corpus when a payload's shape changes.                      | a flat `group.manage` map made the positive assertion fail and the negative one pass regardless of the map's contents              |
+| R21 | A read route's SELECT policy is part of its gate: a filter that runs after the gate turns a refusal into an empty page, not an error.                                                 | the seat-assignment list admitted a key holder and RLS filtered every row silently                                                 |
+| R22 | When one policy carries two authorities, moving one is a split, not a sweep — name the conjunct that still owns the other half, or the next reader calls its 42501 a bug.             | the invitation UPDATE kept `can_assign_org_role`'s membership-marker manager half                                                  |
 
 ## 4. Decisions
 
@@ -1307,20 +1311,32 @@ guard a probe key the other one lets through, one assertion per case.
 
 ### Phase 2b — authority and control-plane
 
-**Settled 2026-11-19 — nine slices.** Slice 1 is written; the rest is the
-rollout's remaining phase-2 work, split so each slice is one PR.
+**Settled 2026-11-19, re-numbered 2026-11-20 — nine slices.** The order below is
+the settled one: the org-control sweep (2b-3) lands before the remaining
+control-plane RLS (2b-4), because the routes and their predicates move together
+(R4) and the sweep is what names which policies 2b-4 still owns; class invites
+(2b-5) wait for the `invitations` shape they need.
 
-| Slice | Contents                                                                                                                                                                            |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                    |
-| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Written** on `feat/authority-2b-2`. |
-| 2b-3  | The five embedded membership checks the persona rule keeps.                                                                                                                         |
-| 2b-4  | `group.invite` at group scope; delete the `can_assign_org_role` teacher-name exception.                                                                                             |
-| 2b-5  | `rls_caller_has_permission` on members, settings, seats and invitations (replaces `is_org_manager`).                                                                                |
-| 2b-6  | The last-holder and system-role guards at RLS (2a-2's recorded security debt).                                                                                                      |
-| 2b-7  | Remove `role.builder`'s entitlement twin: `plan_entitlements` → `org_role_features` → `entitlement_flags` → `entitlement_catalog`.                                                  |
-| 2b-8  | Remove `org.manage`, `member.manage` and `group.manage` and their plan/flag/feature rows in the same order.                                                                         |
-| 2b-9  | The pricing copy and QA expectations that still advertise the removed markers.                                                                                                      |
+| Slice | Contents                                                                                                                                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                                                               |
+| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Written** on `feat/authority-2b-2`.                                            |
+| 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`. |
+| 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment family, and the `can_assign_org_role` manager half the invitation INSERT keeps.                                                                       |
+| 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, and the `can_assign_org_role` teacher-name exception deleted.                                                                      |
+| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption (2b-2's deferred route-layer shape).                                                                                                                          |
+| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them.                                  |
+| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                |
+| 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                     |
+
+**Re-numbered 2026-11-20 (R8).** The settled order changed the labels the
+2026-11-19 table carried: 2b-3 was "the five embedded membership checks", 2b-4
+`group.invite` + the teacher-name exception, 2b-5 "RLS on members, settings,
+seats and invitations", 2b-6 "the last-holder and system-role guards", 2b-7
+"remove `role.builder`'s entitlement twin", 2b-8 "remove the three legacy
+markers" and 2b-9 "the pricing copy and QA expectations". Nothing was dropped:
+the old 2b-5 is inside 2b-3 (routes + RLS together), the old 2b-6 is 2b-8, and
+the old 2b-7/2b-8/2b-9 are 2b-7 and 2b-9.
 
 **2b-1 merged as `6ec591dd` (#1397) — slice 1 of 9:**
 
@@ -1527,7 +1543,172 @@ and a reset that passes proves little until it has run twice.
   the case text and its spec now assert what the model guarantees (readable
   list, every manage control absent, four 403s) — see the review-pass entry.
 
+**2b-3 written on `feat/authority-2b-3` (PR pending) — slice 3 of 9:**
+
+- **The count, re-derived (R9/R10).** `grep -rn allowedAccountTypes
+apps/web/src/app/(backend)/api/v1/organization --include=route.ts` reports
+  **22 occurrences in 13 files**; one is the R5 org-creation exception
+  (`organization/route.ts` POST), so the sweep set is **21 persona gates in 12
+  files**. Those 12 files export **22 handlers** — the invitation `POST` carries
+  no persona today, and `invites/route.ts` keeps its public `?token=` branch. The
+  handoff said "19 handlers / 12 files": the files are right, the gates are 21
+  (two more) and the handlers 22 (three more).
+- **Route map** (the 12 files, method → key):
+  - `organization/[id]` — GET membership-only; PUT `org.settings.manage`.
+  - `organization/[id]/logo` — POST `org.settings.manage` **and**
+    `requireFeature(ctx, 'branding')` (ADR §7: permission AND entitlement).
+  - `organization/members` — GET/PUT/DELETE `org.member.manage`.
+  - `organization/roles` — GET membership-only; POST `org.role.manage` (2a-2's
+    controller gate, unchanged).
+  - `organization/roles/[id]` — GET membership-only; PUT/DELETE
+    `org.role.manage`.
+  - `organization/roles/[id]/permissions` — PUT `org.role.manage`.
+  - `organization/seats/pools` — GET/POST `org.seat.manage`;
+    `seats/pools/[id]` PUT `org.seat.manage`.
+  - `organization/seats/assignments` — GET/POST `org.seat.manage`;
+    `seats/assignments/[id]` DELETE `org.seat.manage`.
+  - `organization/invites` — GET (no `?token=`) `org.invitation.manage`; POST
+    unchanged (see below).
+  - `organization/invites/[id]` — PUT/DELETE `org.invitation.manage`.
+  - R5 exceptions untouched: `organization/route.ts` POST (org creation) and
+    `teacher/classrooms/route.ts` POST (class creation). `ai/*` waits for
+    phase 5.
+- **The shape.** The 12 route files use `authedRoute`/`authedRouteWithParams`
+  and drop `allowedAccountTypes`; the controllers own the keys
+  (`requirePermission`, first statement, before any schema parse) and the
+  services keep only tenant questions. `readsBody` is declared per route: the
+  body-less member and assignment DELETEs answer 403, never the 400 an empty
+  `req.json()` would raise. The logo route is the one `withAuth` holdout: it
+  reads `FormData` itself and gates `org.settings.manage` before the storage
+  write, then `organizationController.update` checks the same key again.
+- **The two read families that stay membership-only, deliberately.** `GET organization/[id]`
+  already proved `id === ctx.activeOrgId && ctx.orgRoleId`, and the role list /
+  role detail are read by every member (the member screens and `withAuth`'s own
+  role read). Dropping their persona adds **no** key — the active org
+  membership is the authority. The `GET members` read does move to
+  `org.member.manage`: the catalog has no `org.member.read`, and the service's
+  old `accountType === EDUCATOR` narrowing (an educator saw only their classes'
+  members) is deleted with it, because a capability must not be filtered by a
+  persona. That is the one behaviour the coordinator should re-check: the
+  teacher-facing surfaces that call this endpoint (`/edu/classroom/members`, the
+  assignment student picker, the `/edu` onboarding counts) now answer 403 for a
+  Teacher role, and the QA cases that use them as a teacher (EDU-GRP-02,
+  EDU-ASG-04) encode the old access.
+- **The RLS twin (R4).**
+  `20261120110000_org_control_permission_rls.sql` replaces
+  `rls_caller_is_org_manager` with 2a-2's `rls_caller_has_permission(org, key)`
+  on: `organizations` update (settings), `org_members` update/delete (members,
+  keeping `user_id <> auth.uid()` and the same-org role check),
+  `org_seat_pools` insert/update/delete and `org_seat_assignments`
+  insert/update/delete (seats), plus the manager branch of
+  `org_seat_assignments`' SELECT — that policy is not in the handoff list, but
+  the list route moved in this PR and a predicate that filters the rows after
+  the gate turns a 403 into a silently empty list. `invitations` update/delete
+  move (keeping `inviter_id = auth.uid()` and
+  `rls_caller_can_assign_org_role`). The file ends with a `do` block that raises
+  if any of the twelve policies still lacks a permission predicate, so a
+  reverted line fails a reset instead of passing a test.
+- **What the file deliberately does not move.** The `invitations` INSERT keeps
+  `rls_caller_can_assign_org_role`: it has no manager branch to move (the
+  manager half lives inside that helper), its API gate is the untouched create
+  route, and adding `org.invitation.manage` there would refuse the classroom
+  teacher→member invite the POST route deliberately keeps. 2b-4 owns the helper
+  rewrite; R4 says the two move together, so this half waits. The `invitations`
+  SELECT keeps its manager branch too: the list API moved, but an inviter may
+  still read their own row through PostgREST — a recorded read asymmetry, not
+  a leak.
+- **What can now 403 that did not.** A `MANAGER`-persona holder of the seeded
+  Member role loses the roster read/write, the seat reads/writes, the invitation
+  list/retarget/revoke, the settings update and the logo; an `EDUCATOR`-persona
+  Member loses the same. An org member can no longer read the admin seat views.
+  Through PostgREST the same callers lose `organizations` update, `org_members`
+  update/delete, the seat writes and the assignment manager read, and an
+  invitation retarget/revoke.
+- **What gains.** A Student-persona Admin-role holder (D13) reaches settings,
+  seats and invitations on authority alone — pinned by the API file's
+  invitation list. A custom role with `org.seat.manage` or
+  `org.member.manage` reaches its API (previously MANAGER-only), and an
+  `org.member.manage` holder who is an educator sees the whole roster.
+  **Residual:** a custom role holding only `org.invitation.manage` can list and
+  revoke but not retarget — the UPDATE's `can_assign_org_role` still reads the
+  `member.manage` marker (2b-4).
+- **Tests.** Unit: `organization.controller.test.ts` (new: settings gate,
+  branding ordering, gate-before-validation), `organization-member`,
+  `seat`, `invitation` and `org-role` controller suites (the holder/Member
+  truth tables, no-org 403, body-less DELETE 403, writes gated and reads
+  ungated), the two logo-route suites. Integration:
+  `org-control-permission-api.test.ts` (20 cases: every family through the real
+  route + `withAuth` with signed-in sessions, a Student-persona Admin, an
+  educator-persona key holder, the public token branch, no-active-org 403s,
+  the body-less DELETE 403) and `org-control-permission-rls.test.ts` (21 cases,
+  both directions through PostgREST against a legacy-marker control, the
+  inviter/`can_assign` conjuncts, the assignment manager read, a foreign org).
+- **Gates.** `env:ensure --profile api`, `env:reset-db --yes` (three times: before
+  the targeted runs, after the mutation proof and before the final serial run),
+  the serial integration run (**104 files / 924 passed, 11 skipped**),
+  `test:unit` (**4739 passed, 1 skipped**), `typecheck:all`, `typecheck:admin`, `lint:all`, `review:static`,
+  `knip`, `dup:base` (**0 new**), `format:check`, `pr:size` (**917/400, XL** —
+  tests excluded; the sweep rewrites 12 route files, so it needs a
+  `size:exception`). Mutation proof:
+  five unit invariants KILLED (`bun run mutate`) and five by hand (the RLS
+  predicates, the invitation list persona, the roster filter) — the table is in
+  the PR body.
+
+**Follow-ups this slice creates:**
+
+- **2b-4** closes the invitation write asymmetry: move the manager half of
+  `can_assign_org_role` onto the capability (or `group.invite`, per 2b-5), then
+  the INSERT predicate can move too.
+- The teacher surfaces that read the org roster need a decision before the QA
+  run: either phase 6 gives them a class-scoped read, or `GET members` keeps a
+  read authority. The slice follows the settled map, which is why the endpoint
+  is gated.
+- 2b-6's route sweep reconciles the two deliberate shape variations
+  (`roles/[id]/permissions` destructures the id, `seats/pools/[id]` hands the
+  body first) that keep `dup:base` at zero until the layer changes once.
+
 **Difficulty log**
+
+#### 2026-11-20 — the invitation write that the permission cannot finish
+
+What: moving the `invitations` UPDATE predicate onto
+`rls_caller_has_permission(org, 'org.invitation.manage')` exposed a second
+authority in the same policy: `rls_caller_can_assign_org_role(target_org_role_id)`,
+whose manager half is still `is_org_manager` (the `member.manage` feature
+marker). A custom role holding only `org.invitation.manage` lists and revokes,
+but a retarget is refused at the table with 42501 while the API allows it, so
+the working retarget caller is the Admin role. The integration case says so
+explicitly and uses a non-inviter holder, so the permission branch is the only
+one that can pass.
+Why: 2b-4 is where class invites become `group.invite` and the teacher-name
+exception dies; moving `can_assign_org_role` here would change the untouched
+create route and the accept flow, and adding the permission to the INSERT
+predicate would refuse the classroom teacher→member invite the POST route
+keeps. R4 says the API and the predicate move together, so the half with no API
+move stays.
+Fix: UPDATE/DELETE manager branches move, INSERT keeps the helper, and the
+asymmetry is named in the migration header, the delivered block and the PR.
+Rule: when a policy carries two authorities, moving one is a split, not a
+sweep — name the conjunct that still owns the other half, or the next reader
+will call the 42501 a bug.
+
+#### 2026-11-20 — the read predicate is part of the read gate
+
+What: wiring the seat-assignment list route to `org.seat.manage` while leaving
+the table's SELECT policy on `is_org_manager` would have answered 200 with an
+empty list for a role that holds the key but not the legacy marker: the
+controller admits the caller and RLS filters every row. The handoff listed only
+the seat-assignment writes, and the read policy is the one that makes the list
+work.
+Why: a write refused by RLS raises 42501; a read refused by USING returns no
+rows and no error. The divergence is silent in the direction that matters here,
+which is why R4 has to cover the SELECT's manager branch whenever a read route
+changes hands.
+Fix: the SELECT's manager branch moved in this migration (the
+`user_id = auth.uid()` self branch stays) and one RLS case pins the holder
+reading a row it does not own plus the legacy control reading nothing.
+Rule: a route gate and its SELECT policy move together; a filter that runs
+after the gate turns a refusal into an empty page, not an error.
 
 #### 2026-11-19 — a group-scope row could create a class, and the RLS helper said so
 

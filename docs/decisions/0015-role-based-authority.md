@@ -614,6 +614,17 @@ Concrete case: a `student` persona who is Admin in org B sees the admin links
 **while org B is active**; the same links are dead (and the API denies) while
 org A is active. Persona is irrelevant — the active org's role is the switch.
 
+> **2026-11-20 (phase 2b-3).** Three reads are membership, not capability.
+> `GET /organization/:id` and the role list/detail stay readable by any
+> `org_members` row of the active org: the member screens and `withAuth` itself
+> need them, and the catalog has no read key. `GET /organization/members` is a
+> capability (`org.member.manage`): the catalog has no `org.member.read`, and the
+> teacher surfaces that reach it through the `EDUCATOR` persona
+> (`/edu/classroom/members`, the assignment student picker) are a UI question
+> for phase 6. The invitation list is `org.invitation.manage` while its SELECT
+> policy keeps the `inviter_id = auth.uid()` branch — an inviter may still read
+> the row they minted; 2b-4 closes the write half.
+
 ---
 
 ## 8. Data model
