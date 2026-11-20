@@ -60,24 +60,28 @@ w `test.beforeAll`, więc każde niezależne uruchomienie startuje od świeżych
   - brak utworzenia zasobów staffowych: organizacja nie ma żadnych wierszy
     `teacher_assignments`, a żaden wiersz tej tabeli nie ma `created_by` studenta.
 
-## Observed during the suite walk (qa-env-3, shared app 3010 / DB 54421)
+## Observed during the suite walk (qa-env-3, shared app 3010 / DB 54421; the walk predates phase 2b-6 — the (2b-6) bullets are expected under 2b-6, not observed)
 
+- **2026-11-20 (2b-6):** the walk above predates the slice, so no (2b-6) bullet below is an
+  observation of it; each is the **expected** 2b-6 behaviour, pinned by
+  `__tests__/qa/SEC/SEC-05.spec.ts` and
+  `__tests__/integration/content-route-permission-api.test.ts`.
 - Konto `student` ma aktywną własną organizację (`GET /api/v1/me/orgs` →
   `orgRoleName: "member"`, `isActive: true`, `GET /api/v1/auth/me` → `account_type: "student"`),
   więc nie jest to „zalogowany bez organizacji”.
-- Krok 1 (2b-6): `POST /api/v1/teacher/quizzes {name:"x"}` → **201** — rola `member` ma
+- Krok 1 (2b-6, expected): `POST /api/v1/teacher/quizzes {name:"x"}` → **201** — rola `member` ma
   `quiz.create` w zakresie `own`, więc własnościowe utworzenie quizu jest dozwolone; wiersz
   ma `created_by` studenta. Spec usuwa go następnie jako właściciel (DELETE → 200).
 - Krok 2: `POST /api/v1/teacher/assignments {title:"x", …}` → **403 `FORBIDDEN`**, nagłówek
   `x-error-code: FORBIDDEN`, treść dokładnie `{"success":false,"error":"FORBIDDEN"}` — bez
   `data`. Ten sam request z niepoprawnym ciałem (`{}`) również zwraca **403**, a nie 422:
   bramka klucza działa przed walidacją wejścia (rola `member` nie ma `assignment.*`).
-- Krok 3 (2b-6): `GET /api/v1/stats/teacher` → **200** z własnymi statystykami studenta
+- Krok 3 (2b-6, expected): `GET /api/v1/stats/teacher` → **200** z własnymi statystykami studenta
   (`stats.read` w zakresie `own`, `totalQuestions` = 0) — bez jakichkolwiek danych nauczyciela.
 - „Brak utworzenia zasobów staffowych” potwierdzone w bazie klientem service-role: po próbach
   organizacja ma **0** wierszy w `teacher_assignments`, a żaden wiersz tej tabeli nie ma
   `created_by` studenta; quiz studenta został usunięty, więc `quizzes` też wraca do **0**.
-- Ścieżki sąsiednie (2b-6): `GET /api/v1/teacher/quizzes` → **200** z listą własnych quizów
+- Ścieżki sąsiednie (2b-6, expected): `GET /api/v1/teacher/quizzes` → **200** z listą własnych quizów
   studenta (pustą), `GET /api/v1/teacher/assignments` → **403** (brak `assignment.read`).
 - Kontrola pozytywna (ten sam tenant, ta sama aktywna organizacja): nauczyciel tworzy quiz i
   kartkówkę (**201**) oraz czyta statystyki nauczyciela (**200**) — odrzucenie studenta to

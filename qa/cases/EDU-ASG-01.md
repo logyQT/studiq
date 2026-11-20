@@ -38,7 +38,10 @@ legacy accounts.
   `tenantId(key, entity)`. The spec reads the ids through `loadTenant('EDU-ASG-01')`.
 - The active organization is required: `POST /api/v1/teacher/assignments` stores
   `organization_id` from the request context, and the route only admits account type
-  `educator`, which is exactly the tenant's `teacher`.
+  `educator`, which is exactly the tenant's `teacher`. 2026-11-20 (phase 2b-6 correction):
+  the route no longer admits by account type — it is key-gated on `assignment.create` in
+  the controller, which the tenant's `teacher` role holds, so the outcome the sentence
+  describes still stands.
 - The spec creates the assignment through the form (the case's own step) and does not need
   any pre-seeded content: the form's quiz is optional, so a draft assignment can be created
   from an empty organization.

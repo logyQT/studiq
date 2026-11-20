@@ -36,7 +36,11 @@ legacy accounts.
   `tenantId(key, entity)`. The spec reads the ids through `loadTenant('EDU-ASG-06')`.
 - The active organization is required: `POST /api/v1/teacher/assignments` stores
   `organization_id` from the request context, and both the create and delete routes only
-  admit account type `educator`, which is exactly the tenant's `teacher`.
+  admit account type `educator`, which is exactly the tenant's `teacher`. 2026-11-20
+  (phase 2b-6 correction): those routes no longer admit by account type — they are
+  key-gated on `assignment.create` / `assignment.delete` in the controller, which the
+  tenant's `teacher` role holds at `own`, so the outcome the sentence describes still
+  stands.
 - The prerequisite „Szkic kartkówki” is built by the spec through the same API the create
   form calls (`POST /api/v1/teacher/assignments`, title only → `status: 'draft'`), twice:
   the assignment the case deletes plus a control draft, so the test proves that confirming
