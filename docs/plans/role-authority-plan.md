@@ -1815,15 +1815,19 @@ and a reset that passes proves little until it has run twice.
   exclude Playwright).
 - **Gates.** `env:ensure --profile api`, `env:reset-db --yes`, the touched
   integration files serially, then the full serial integration run (**109 files:
-  1000 passed, 11 skipped**), `test:unit` (**310 files, 4808 passed, 1 skipped**),
+  1000 passed, 11 skipped** — re-measured on the review-pass HEAD, same as at
+  `c5dd2103`), `test:unit` (**310 files, 4816 passed, 1 skipped** — re-measured
+  2026-11-20 on the review-pass HEAD; 4812 at `c5dd2103` before the review pass
+  added four `api-auth-inventory` reachability cases),
   `typecheck:all`, `typecheck:admin`, `lint:all`, `review:static`, `knip`,
   `dup:base` (**0 new**), `format:check`, `pr:size`. No build/serve/Playwright/QA.
-- **`bun run pr:size` at the end: ~1700 reviewable lines (XL)** — the 29-file sweep
-  plus controllers, tests and docs. Split proposal for the coordinator: (a)
-  `teacher/*` alone (21 files, quiz+assignment families), (b) stats + flashcard
-  stats + questions ledger (8 files) + the migration, or one PR with
-  `size:exception`. The branch is committed as focused commits (sweep, then
-  migration+tests, then corpus/docs) so a split is a rebase, not a rewrite.
+- **`bun run pr:size` at the end: 1402 reviewable lines (XL)** — 1388 at `c5dd2103`,
+  re-measured on the review-pass HEAD. The 29-file sweep
+  plus controllers, tests and docs. The coordinator decided **one PR with
+  `size:exception`** — R4 binds the `teacher_assignments` INSERT migration to the
+  teacher routes, so the split below is not available. The branch is committed as
+  focused commits (sweep, then migration+tests, then corpus/docs) so a later split
+  would still be a rebase, not a rewrite.
 
 **Follow-ups this slice creates:**
 
@@ -1835,6 +1839,14 @@ and a reset that passes proves little until it has run twice.
   writes (`ownedClient` collapses foreign and unreached into `NOT_FOUND`). §7.1's
   tenant-non-leak rule is the reason the quiz side is preferred; the assignment side
   predates 2b-6 and no caller distinguishes the two today.
+- **2026-11-20 review pass (tried and reverted):** adding the quiz service's
+  `!ctx.activeOrgId` guard to `teacher-assignment.service#create` was reverted.
+  `teacher_assignments.organization_id` is nullable (unlike `quizzes`), so a null org
+  cannot raise 23502, and a real no-org session is refused at the table with 42501 —
+  which `PG_ERROR_MAP` already maps to 403 (`supabase-errors.test.ts` pins the mapping) —
+  while the service-layer guard broke the integration suites that seed personal
+  (null-org) assignments with RLS bypassed (`no-active-org-guards`, `item-states`).
+  No-org assignment create therefore answers 403 through the RLS denial, not a guard.
 
 **Difficulty log**
 
