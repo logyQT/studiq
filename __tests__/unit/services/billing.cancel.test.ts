@@ -26,6 +26,7 @@ const managerCtx: RequestContext = {
   userId: 'u-9',
   accountType: AccountType.MANAGER,
   activeOrgId: 'org-1',
+  permissionScopes: { 'org.billing.manage': 'organization' },
 };
 
 function activeSubscription(overrides: Partial<ActiveSubscription> = {}): ActiveSubscription {
@@ -105,10 +106,9 @@ describe('BillingService.cancelSubscription', () => {
     );
   });
 
-  it('re-checks org admin and uses the organization owner', async () => {
+  it('requires org.billing.manage and uses the organization owner', async () => {
     await service.cancelSubscription(managerCtx, true);
 
-    expect(repository.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-9');
     expect(gateway.cancelAtPeriodEnd).toHaveBeenCalledWith({
       owner: { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
       customerId: 'cus_1',
@@ -117,12 +117,11 @@ describe('BillingService.cancelSubscription', () => {
     });
   });
 
-  it('refuses a non-admin org caller without touching Stripe', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
+  it('refuses an org caller without org.billing.manage before touching Stripe', async () => {
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.cancelSubscription(managerCtx, true)).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
+    await expect(service.cancelSubscription(memberCtx, true)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
     });
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
     expect(gateway.cancelAtPeriodEnd).not.toHaveBeenCalled();
@@ -209,5 +208,18 @@ describe('BillingService.cancelSubscription', () => {
       success: false,
       error: 'NOT_FOUND',
     });
+  });
+
+  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
+    // Ordering proof: the authority check runs before the driver decision, so a
+    // non-holder is 403'd rather than told the mock has no provider action.
+    gateway = createGateway('mock');
+    service = new BillingService(gateway, repository);
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+
+    await expect(service.cancelSubscription(memberCtx, true)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    expect(gateway.cancelAtPeriodEnd).not.toHaveBeenCalled();
   });
 });

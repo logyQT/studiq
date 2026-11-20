@@ -37,6 +37,7 @@ const managerCtx: RequestContext = {
   userId: 'u-9',
   accountType: AccountType.MANAGER,
   activeOrgId: 'org-1',
+  permissionScopes: { 'org.billing.manage': 'organization' },
 };
 
 function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {

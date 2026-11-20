@@ -44,6 +44,7 @@ const managerCtx: RequestContext = {
   userId: 'u-9',
   accountType: AccountType.MANAGER,
   activeOrgId: 'org-1',
+  permissionScopes: { 'org.billing.manage': 'organization' },
 };
 
 function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
@@ -443,14 +444,14 @@ describe('BillingService.getSubscription', () => {
     });
   });
 
-  it('does not advertise org actions to a non-admin org manager', async () => {
+  it('does not advertise org actions without org.billing.manage', async () => {
     reads = createReads({
       findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
     });
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
     service = new BillingService(gateway, repository, reads, plans);
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.getSubscription(managerCtx)).resolves.toMatchObject({
+    await expect(service.getSubscription(memberCtx)).resolves.toMatchObject({
       success: true,
       data: { canManagePortal: false, canChangePlan: false, canCancel: false },
     });
@@ -545,7 +546,6 @@ describe('BillingService.createPortalSession', () => {
 
     await service.createPortalSession(managerWithoutOrg);
 
-    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
     expect(gateway.createPortalSession).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
@@ -554,10 +554,9 @@ describe('BillingService.createPortalSession', () => {
     );
   });
 
-  it('re-checks org admin and resolves the organization customer', async () => {
+  it('requires org.billing.manage and resolves the organization customer', async () => {
     await service.createPortalSession(managerCtx, 'en');
 
-    expect(repository.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-9');
     expect(repository.findCustomer).toHaveBeenCalledWith(
       { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
       false,
@@ -570,24 +569,14 @@ describe('BillingService.createPortalSession', () => {
     });
   });
 
-  it('refuses a non-admin organization caller without touching Stripe', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
+  it('refuses an organization caller without org.billing.manage', async () => {
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.createPortalSession(managerCtx)).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
+    await expect(service.createPortalSession(memberCtx)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
     });
     expect(repository.findCustomer).not.toHaveBeenCalled();
     expect(gateway.createPortalSession).not.toHaveBeenCalled();
-  });
-
-  it('propagates an org membership read failure', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
-
-    await expect(service.createPortalSession(managerCtx)).resolves.toEqual({
-      success: false,
-      error: 'INTERNAL_SERVER',
-    });
   });
 
   it('returns NOT_FOUND when the owner has no Stripe customer mapping', async () => {

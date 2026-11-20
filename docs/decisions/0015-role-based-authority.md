@@ -298,6 +298,13 @@ the hidden classroom UI dependency.
 - System roles cannot be renamed or deleted; their permission set may be
   extended only within the editor's own authority.
 
+> **2026-11-20 (phase 2b-4).** "Assigning a role requires `org.member.manage`" is
+> enforced by the member routes; the database helper every invite path still
+> calls, `can_assign_org_role`, resolves its manager half from the legacy
+> `member.manage` marker. It cannot move alone: PostgREST refuses an UPDATE whose
+> row the SELECT policy hides, so the invitation write and read move together in
+> 2b-5.
+
 ---
 
 ## 5. Entitlement model
@@ -630,7 +637,35 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > on the route stay `org.member.manage` and the Billing preset fails every such
 > write. The invitation list is `org.invitation.manage` while its SELECT policy
 > keeps the `inviter_id = auth.uid()` branch — an inviter may still read the row
-> they minted; 2b-4 closes the write half.
+> they minted; 2b-5 moves that read with the write half (2b-4 measured that
+> PostgREST refuses an UPDATE whose row the SELECT policy hides).
+>
+> **2026-11-20 (phase 2b-4).** The control plane now enforces the catalog at the
+> table: `billing_subscriptions`' org read and the subscription actions of
+> `BillingService` (change plan, cancel, release a scheduled change, reconcile,
+> and the Stripe portal) are `org.billing.manage`; the assignment writes are
+> `assignment.update` / `assignment.delete` (organization scope; the author
+> branch covers `own`), and composing a draft — the item set and the cohort,
+> including replacing the cohort — is an update on all three verbs, so only the
+> `teacher_assignments` DELETE asks for `assignment.delete`. The child tables
+> follow the parent's org, and the staff read of an assignment's item set is
+> `assignment.read`. `POST /stripe/create-checkout-session` stays on
+> `resolveCheckoutOwner`: its body names an org that need not be the active one,
+> and that resolver is shared with the mock-completion path, which has no
+> `RequestContext`; 2b-6 owns its per-target-org resolution. Three asymmetries
+> are recorded, not solved: `teacher_assignments` INSERT keeps its persona
+> conjunct while the route layer waits for 2b-6; `org_members` SELECT stays
+> membership-wide while the D25 roster read is four keys — narrowing it would
+> empty the readers whose gates are not among the four (org detail, report
+> inbox, role counts, the group roster, assignment target validation, teacher
+> stats), so phase 5 owns it; and the billing **owner** is still persona-keyed —
+> `ownerFromContext` and `BillingReadRepository.findSubscription` resolve an org
+> owner only for `accountType === MANAGER`, so a `student`/`educator` persona
+> holding Admin or the Billing preset never reaches the gate at all (D13 makes
+> the persona irrelevant). Deriving the owner from `activeOrgId` + membership is
+> a product decision — a member with a personal subscription in an org would
+> stop reading it — so **phase 5 (the 2b-9 slot) owns it**, together with the
+> read model's owner branch.
 
 ---
 
@@ -862,6 +897,18 @@ Options:
 **Recommendation:** ship this ADR (authority model) first; take option 3 as a
 separate security ADR before public launch. Do not pretend RLS enforces
 features/permissions in the meantime.
+
+> **2026-11-20 (phase 2b-4).** The control plane's one deliberate any-scope key
+> is the assignment cohort read. `rls_caller_can_read_assignment_items` asks
+> `rls_caller_has_permission(org, 'assignment.read')` without pinning
+> `organization` scope, so a Teacher holding that key at `own` reads a
+> colleague's item set through PostgREST while
+> `TeacherAssignmentService.getById` requires organization scope (or
+> authorship) for the same rows. The branch it replaced — any educator/manager
+> persona in the org — was org-wide too, and pinning the read to the write's
+> `organization` scope would be a third answer between the API and the data
+> plane inside one slice; the phase-5 closure owns the narrowing with the rest
+> of this section.
 
 ---
 

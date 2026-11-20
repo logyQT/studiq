@@ -1,4 +1,5 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { AccountType, Permission, type RequestContext } from '@studiq/authz';
+import { hasPermission, requirePermission } from '@studiq/server/lib/authz';
 import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
@@ -28,7 +29,9 @@ import type {
 } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import {
+  type ActiveSubscription,
   type CatalogPlan,
+  type CustomerMapping,
   type StripeBillingRepository,
   stripeBillingRepository,
   validateListedPrice,
@@ -94,7 +97,14 @@ export interface BillingSubscriptionView {
 
 const SUBSCRIBABLE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
-/** The owner is the authenticated context's, never the request body (#662 §9.2). */
+/**
+ * The owner is the authenticated context's, never the request body (#662 §9.2).
+ *
+ * The persona still decides between an org and a personal owner, so a
+ * `student`/`educator` holding Admin or the Billing preset resolves a personal
+ * owner and never reaches `org.billing.manage` — ADR-0015 §7.1's 2b-4 note
+ * records the gap and phase 5 owns the derivation.
+ */
 function ownerFromContext(ctx: RequestContext): PaymentOwner {
   if (ctx.accountType === AccountType.MANAGER && ctx.activeOrgId) {
     return {
@@ -105,6 +115,18 @@ function ownerFromContext(ctx: RequestContext): PaymentOwner {
     };
   }
   return { type: 'user', userId: ctx.userId, accountType: ctx.accountType };
+}
+
+/**
+ * An organization's billing actions are `org.billing.manage` (ADR-0015 §4.1, §7;
+ * D17's Billing preset is exactly this key plus `org.seat.manage`). The owner is
+ * always the active org here (`ownerFromContext`), so the request context's
+ * scopes are the authority; `withAuth` maps the throw to 403. A personal owner
+ * has no org gate — its own row is the boundary, and RLS enforces that read.
+ */
+async function assertOrgBillingAuthority(ctx: RequestContext, owner: PaymentOwner): Promise<void> {
+  if (owner.type !== 'org') return;
+  await requirePermission(ctx, Permission.ORG_BILLING_MANAGE);
 }
 
 function isBillingReadStatus(value: string): value is BillingReadStatus {
@@ -239,8 +261,8 @@ export class BillingService {
    * The shared billing read model (#662 §7.4).
    *
    * Stripe mode reads `billing_subscriptions` through the caller's session
-   * client, so the own-row/org-manager RLS policies decide visibility. Mock mode
-   * has no subscription row at all: it synthesizes the effective plan
+   * client, so the own-row/`org.billing.manage` RLS policies decide visibility.
+   * Mock mode has no subscription row at all: it synthesizes the effective plan
    * (`/me/plan`) and keeps every provider action disabled, which is exactly
    * what the existing mock QA specs expect.
    *
@@ -323,15 +345,11 @@ export class BillingService {
     const status = isBillingReadStatus(subscription.status) ? subscription.status : 'none';
     const subscribable = SUBSCRIBABLE_STATUSES.has(subscription.status);
 
-    // The read-side RLS accepts an org manager (the `member.manage` capability),
-    // while the provider actions below require the stricter `admin` role. Do
-    // not advertise an action the portal/change/cancel endpoints would refuse.
-    let canManage = true;
-    if (owner.type === 'org') {
-      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      canManage = admin.data;
-    }
+    // One capability decides both the read and the actions: `org.billing.manage`
+    // (the RLS org branch reads the same key). A viewer without it still reads
+    // the plan, but is not advertised an action the write endpoints would refuse.
+    const canManage =
+      owner.type === 'org' ? hasPermission(ctx, Permission.ORG_BILLING_MANAGE) : true;
 
     return success({
       ...base,
@@ -362,22 +380,17 @@ export class BillingService {
   /**
    * Open the Billing Portal for the authenticated owner (#662 §7.1).
    *
-   * The owner comes from `ctx` only. An organization call re-checks
-   * `org_members` + the `admin` role on every request because `active_org_id`
-   * is a cookie hint, not an authorization. A missing customer mapping is a
-   * clean `NOT_FOUND` ("buy a plan"), never a broken portal.
+   * The owner comes from `ctx` only. An organization call requires
+   * `org.billing.manage` on every request because `active_org_id` is a cookie
+   * hint, not an authorization. A missing customer mapping is a clean
+   * `NOT_FOUND` ("buy a plan"), never a broken portal.
    */
   async createPortalSession(
     ctx: RequestContext,
     locale: BillingLocale = 'pl',
   ): Promise<ServiceResult<{ url: string }>> {
     const owner = ownerFromContext(ctx);
-
-    if (owner.type === 'org') {
-      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      if (!admin.data) return failure('FORBIDDEN');
-    }
+    await assertOrgBillingAuthority(ctx, owner);
 
     const returnUrl = `${getSiteUrl()}${billingPath(ctx.accountType)}`;
 
@@ -408,7 +421,9 @@ export class BillingService {
     ctx: RequestContext,
     targetPlanKey: string,
   ): Promise<ServiceResult<ChangePlanResult>> {
-    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+    const prepared = await this.prepareProviderAction(ctx);
+    if (isFailure(prepared)) return prepared;
+    const owner = prepared.data;
 
     const targetResult = await resolvePurchasablePlan(
       this.repository,
@@ -418,18 +433,11 @@ export class BillingService {
     if (isFailure(targetResult)) return targetResult;
 
     const target = targetResult.data.plan;
-    const owner = ownerFromContext(ctx);
 
     // A plan belongs to exactly one family; an organization plan can never be
     // attached to a personal owner (and vice versa), even if a caller guesses
     // the key.
     if (targetResult.data.isOrgPlan !== (owner.type === 'org')) return failure('FORBIDDEN');
-
-    if (owner.type === 'org') {
-      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      if (!admin.data) return failure('FORBIDDEN');
-    }
 
     const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
     if (isFailure(activeResult)) return activeResult;
@@ -532,28 +540,14 @@ export class BillingService {
     ctx: RequestContext,
     cancel: boolean,
   ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean }>> {
-    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
-
-    const owner = ownerFromContext(ctx);
-
-    if (owner.type === 'org') {
-      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      if (!admin.data) return failure('FORBIDDEN');
-    }
-
-    const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
-    if (isFailure(activeResult)) return activeResult;
-    if (!activeResult.data) return failure('NOT_FOUND');
-
-    const customer = await this.repository.findCustomer(owner, this.gateway.livemode);
-    if (isFailure(customer)) return customer;
-    if (!customer.data) return failure('NOT_FOUND');
+    const prepared = await this.prepareLiveAction(ctx);
+    if (isFailure(prepared)) return prepared;
+    const { owner, subscription, customer } = prepared.data;
 
     const result = await this.gateway.cancelAtPeriodEnd({
       owner,
-      customerId: customer.data.stripeCustomerId,
-      subscriptionId: activeResult.data.stripeSubscriptionId,
+      customerId: customer.stripeCustomerId,
+      subscriptionId: subscription.stripeSubscriptionId,
       cancel,
     });
     if (isFailure(result)) return result;
@@ -562,13 +556,10 @@ export class BillingService {
     // happen; clear the display marker that described it. A `pending_payment`
     // upgrade has no schedule, so its marker stays.
     if (result.data.releasedSchedule) {
-      const marker = await this.repository.setPendingPlan(
-        activeResult.data.stripeSubscriptionId,
-        null,
-      );
+      const marker = await this.repository.setPendingPlan(subscription.stripeSubscriptionId, null);
       if (isFailure(marker)) {
         logWarn('billing.pending_plan_marker_failed', {
-          subscriptionId: activeResult.data.stripeSubscriptionId,
+          subscriptionId: subscription.stripeSubscriptionId,
         });
       }
     }
@@ -585,31 +576,16 @@ export class BillingService {
   async releaseScheduledChange(
     ctx: RequestContext,
   ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
-    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+    const prepared = await this.prepareLiveAction(ctx);
+    if (isFailure(prepared)) return prepared;
+    const { owner, subscription, customer } = prepared.data;
 
-    const owner = ownerFromContext(ctx);
-
-    if (owner.type === 'org') {
-      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      if (!admin.data) return failure('FORBIDDEN');
-    }
-
-    const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
-    if (isFailure(activeResult)) return activeResult;
-    const active = activeResult.data;
-    if (!active) return failure('NOT_FOUND');
-
-    const customer = await this.repository.findCustomer(owner, this.gateway.livemode);
-    if (isFailure(customer)) return customer;
-    if (!customer.data) return failure('NOT_FOUND');
-
-    const observedMarker = active.pendingPlanKey;
+    const observedMarker = subscription.pendingPlanKey;
     const result = await this.gateway.releaseScheduledPlan({
       owner,
-      customerId: customer.data.stripeCustomerId,
-      subscriptionId: active.stripeSubscriptionId,
-      currentPlanKey: active.planKey,
+      customerId: customer.stripeCustomerId,
+      subscriptionId: subscription.stripeSubscriptionId,
+      currentPlanKey: subscription.planKey,
     });
     if (isFailure(result)) return result;
 
@@ -617,14 +593,14 @@ export class BillingService {
       // Compare-and-clear on the marker we saw, not an unconditional wipe: a
       // concurrent change-plan may have written a newer scheduled target.
       const marker = await this.repository.clearPendingPlanIfApplied(
-        active.stripeSubscriptionId,
+        subscription.stripeSubscriptionId,
         observedMarker,
       );
       if (isFailure(marker)) {
         // The provider schedule is already gone; a stale display marker must
         // not turn a successful release into a retryable error.
         logWarn('billing.pending_plan_marker_failed', {
-          subscriptionId: active.stripeSubscriptionId,
+          subscriptionId: subscription.stripeSubscriptionId,
         });
       }
     }
@@ -642,17 +618,59 @@ export class BillingService {
     ctx: RequestContext,
     sessionId: string,
   ): Promise<ServiceResult<ReconcileCheckoutResult>> {
-    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+    const prepared = await this.prepareProviderAction(ctx);
+    if (isFailure(prepared)) return prepared;
 
+    return this.gateway.reconcileCheckout({ owner: prepared.data, sessionId });
+  }
+
+  /**
+   * Owner, authority and driver for a provider action, in that order: an
+   * unauthorized caller is refused before the driver decides, and mock mode has
+   * no provider action to take (`NOT_FOUND`, the shape the dashboards already
+   * expect).
+   */
+  private async prepareProviderAction(ctx: RequestContext): Promise<ServiceResult<PaymentOwner>> {
     const owner = ownerFromContext(ctx);
+    await assertOrgBillingAuthority(ctx, owner);
+    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+    return success(owner);
+  }
 
-    if (owner.type === 'org') {
-      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      if (!admin.data) return failure('FORBIDDEN');
-    }
+  /**
+   * The provider action that needs the live subscription: owner and authority
+   * first, then the subscription and its customer mapping (a missing one is a
+   * clean `NOT_FOUND`, "buy a plan", never a broken call).
+   */
+  private async prepareLiveAction(ctx: RequestContext): Promise<
+    ServiceResult<{
+      owner: PaymentOwner;
+      subscription: ActiveSubscription;
+      customer: CustomerMapping;
+    }>
+  > {
+    const prepared = await this.prepareProviderAction(ctx);
+    if (isFailure(prepared)) return prepared;
+    const owner = prepared.data;
 
-    return this.gateway.reconcileCheckout({ owner, sessionId });
+    const live = await this.loadLiveSubscription(owner);
+    if (isFailure(live)) return live;
+
+    return success({ owner, ...live.data });
+  }
+
+  private async loadLiveSubscription(
+    owner: PaymentOwner,
+  ): Promise<ServiceResult<{ subscription: ActiveSubscription; customer: CustomerMapping }>> {
+    const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
+    if (isFailure(activeResult)) return activeResult;
+    if (!activeResult.data) return failure('NOT_FOUND');
+
+    const customer = await this.repository.findCustomer(owner, this.gateway.livemode);
+    if (isFailure(customer)) return customer;
+    if (!customer.data) return failure('NOT_FOUND');
+
+    return success({ subscription: activeResult.data, customer: customer.data });
   }
 }
 

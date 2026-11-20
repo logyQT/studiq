@@ -15,7 +15,8 @@ import { type BillingService, billingService } from '@studiq/server/services/bil
 /**
  * Read model and subscription actions shared by the three dashboards (#662
  * phase 4). Every method delegates authorization to `BillingService`, which
- * resolves the owner from `RequestContext` and re-checks org admin membership.
+ * resolves the owner from `RequestContext` and requires `org.billing.manage` for
+ * an org owner.
  */
 export class BillingController {
   constructor(private readonly billing: BillingService) {}

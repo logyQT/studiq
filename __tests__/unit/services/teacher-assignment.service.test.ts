@@ -650,6 +650,44 @@ describe('TeacherAssignmentService', () => {
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
 
+    // The DELETE policy asks `assignment.delete`; a role that may edit a run it
+    // did not author is not therefore allowed to remove it (R4: the service
+    // check is the same key as the policy, so the API and the table agree).
+    it('requires assignment.delete for a run the caller did not author', async () => {
+      const otherCtx: RequestContext = {
+        ...ctx,
+        userId: 'other-user-id',
+        permissionScopes: { 'assignment.update': 'organization' },
+      };
+      mock.from.mockReturnValueOnce(
+        chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+      );
+
+      const refused = await service.delete(assignmentId, otherCtx);
+
+      expect(refused.success).toBe(false);
+      if (!refused.success) expect(refused.error).toBe('NOT_FOUND');
+    });
+
+    it('lets an org-scope assignment.delete holder remove a run it did not author', async () => {
+      const deleteChain = chain(null);
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(deleteChain);
+      const otherCtx: RequestContext = {
+        ...ctx,
+        userId: 'other-user-id',
+        permissionScopes: { 'assignment.delete': 'organization' },
+      };
+
+      const result = await service.delete(assignmentId, otherCtx);
+
+      expect(result.success).toBe(true);
+      expect(deleteChain.delete).toHaveBeenCalled();
+    });
+
     it('returns INTERNAL_SERVER on DB error', async () => {
       mock.from
         .mockReturnValueOnce(
@@ -1168,6 +1206,24 @@ describe('TeacherAssignmentService', () => {
       expect(mock.from).toHaveBeenCalledWith('assignment_targets');
       expect(clearChain.delete).toHaveBeenCalled();
       expect(clearChain.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
+    });
+
+    it('refuses to replace a cohort the delete could not remove', async () => {
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
+        .mockReturnValueOnce(chain([{ id: 't-1' }, { id: 't-2' }])) // rows the caller can see
+        .mockReturnValueOnce(chain([{ id: 't-1' }])) // the DELETE policy admitted only one
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, {}, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'FORBIDDEN' });
+      // Two `assignment_targets` calls (the count and the delete), no insert.
+      const targetCalls = mock.from.mock.calls.filter(
+        ([table]: [string]) => table === 'assignment_targets',
+      );
+      expect(targetCalls).toHaveLength(2);
     });
 
     it('refuses every target change once the run is published (#1171, R20)', async () => {

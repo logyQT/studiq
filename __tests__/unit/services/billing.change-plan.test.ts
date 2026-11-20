@@ -33,6 +33,7 @@ const managerCtx: RequestContext = {
   userId: 'u-9',
   accountType: AccountType.MANAGER,
   activeOrgId: 'org-1',
+  permissionScopes: { 'org.billing.manage': 'organization' },
 };
 
 const CATALOG: Record<string, CatalogPlan> = {
@@ -226,14 +227,12 @@ describe('BillingService.changePlan', () => {
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 
-  it('re-checks org admin before reading the subscription', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
+  it('requires org.billing.manage before reading the subscription', async () => {
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.changePlan(managerCtx, 'team')).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
+    await expect(service.changePlan(memberCtx, 'team')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
     });
-    expect(repository.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-9');
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
@@ -370,17 +369,7 @@ describe('BillingService.changePlan', () => {
     });
   });
 
-  it('propagates an org membership read failure', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
-
-    await expect(service.changePlan(managerCtx, 'team')).resolves.toEqual({
-      success: false,
-      error: 'INTERNAL_SERVER',
-    });
-    expect(gateway.changePlan).not.toHaveBeenCalled();
-  });
-
-  it('changes an organization plan for an admin', async () => {
+  it('changes an organization plan for a role holding org.billing.manage', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(
       success(activeSubscription({ planKey: 'hub', priceId: 'price_hub' })),
     );
@@ -388,7 +377,6 @@ describe('BillingService.changePlan', () => {
 
     await service.changePlan(managerCtx, 'team');
 
-    expect(repository.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-9');
     expect(gateway.changePlan).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: {
@@ -434,6 +422,19 @@ describe('BillingService.changePlan', () => {
       success: false,
       error: 'NOT_FOUND',
     });
+  });
+
+  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
+    // Ordering proof: the authority check runs before the driver decision, so a
+    // non-holder is 403'd rather than told the mock has no provider action.
+    gateway = createGateway('mock');
+    service = new BillingService(gateway, repository);
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+
+    await expect(service.changePlan(memberCtx, 'team')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 });
 

@@ -15,7 +15,7 @@
 --
 -- Not in this slice, deliberately:
 --   * `billing_subscriptions`, the assignment family and roles/role_permissions
---     (2a-2 owns roles; 2b-4 owns the rest).
+--     (2a-2 owns roles; 2b-4 owns billing and the assignment family).
 --   * The `invitations` SELECT policy. The list route moved, but a read
 --     asymmetry remains: an inviter without `org.invitation.manage` can still
 --     read the invitation they minted through PostgREST, while the list API
@@ -23,10 +23,12 @@
 --   * `invitations` INSERT. It has no `is_org_manager` branch to move: its
 --     authority is `rls_caller_can_assign_org_role`, which still resolves the
 --     manager half from `member.manage` and the teacher→member classroom
---     exception from the teacher role name. 2b-4 owns that rewrite (class
+--     exception from the teacher role name. 2b-5 owns that rewrite (class
 --     invites become `group.invite`), and moving it here would refuse the very
 --     classroom invite the untouched POST route keeps. R4 says the two move
---     together, so the INSERT predicate waits for its API gate.
+--     together, so the INSERT predicate waits for its API gate. 2b-4 measured
+--     why the half cannot move alone: PostgREST refuses an UPDATE whose row the
+--     SELECT policy hides (R25), so the helper and the read move in 2b-5.
 
 -- ==========================================
 -- organizations: settings (name/slug/branding) are `org.settings.manage`.
@@ -171,7 +173,8 @@ alter policy "Org managers or inviter delete invitations" on public.invitations
 -- a `with check` reverted to the legacy predicate is as wrong as a `using`
 -- clause, and passes a check that only looks for the key somewhere. The
 -- invitations SELECT policy must still be the unmatched legacy one (its rewrite
--- belongs to 2b-4), so the half this slice deliberately leaves is pinned too.
+-- belongs to 2b-5, together with the helper's manager half — R25), so the half
+-- this slice deliberately leaves is pinned too.
 -- A re-application is a no-op because `alter policy` replaces the predicate in
 -- place.
 -- ==========================================
@@ -222,7 +225,7 @@ begin
   into legacy_read;
 
   if not legacy_read then
-    raise exception 'the invitations SELECT policy no longer names rls_caller_is_org_manager (2b-4 owns its rewrite)';
+    raise exception 'the invitations SELECT policy no longer names rls_caller_is_org_manager (2b-5 owns its rewrite)';
   end if;
 end;
 $$;

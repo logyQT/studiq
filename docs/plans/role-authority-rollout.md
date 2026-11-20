@@ -297,7 +297,7 @@ slice below lands.
   `public.rls_caller_has_group_permission(group, key)` moves the six
   `groups`/`group_members` write policies in the same PR (R4). A Teacher-role
   holder reaches the classes it teaches (the seeded row is `group` scope); Admin
-  holds the keys at `organization`. `group.invite` stays unused until 2b-4.
+  holds the keys at `organization`. `group.invite` stays unused until 2b-5.
 - **2b-3 — org-control route sweep and its RLS twin. Delivered** (slice 3 of 9)
   on `feat/authority-2b-3`: the settings, roster, seat and invitation routes drop
   `allowedAccountTypes` and gate on `org.settings.manage` / `org.seat.manage` /
@@ -312,15 +312,36 @@ slice below lands.
   `is_org_manager` on the same PR's policies: `organizations` update, `org_members`
   update/delete, `org_seat_pools` insert/update/delete, `org_seat_assignments`
   insert/update/delete plus the manager branch of its select, and `invitations`
-  update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-4).
-- 2b-4 — the remaining control-plane RLS: `billing_subscriptions`, the assignment
-  family, the `can_assign_org_role` manager half, and the `org_members` SELECT
-  review D25 leaves open (the API is deliberately narrower than the data-plane
-  read until every reader is audited).
+  update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-5 moves
+  it with the invitation read).
+- **2b-4 — the remaining control-plane RLS. Delivered** (slice 4 of 9) on
+  `feat/authority-2b-4`: `billing_subscriptions`' org read moves to
+  `org.billing.manage`; the assignment writes move to `assignment.update`
+  (the UPDATE, the child tables' I/U and the child DELETE) and
+  `assignment.delete` (the `teacher_assignments` DELETE) at `organization`
+  scope, with the author branch covering `own`; the staff read of an
+  assignment's item set becomes `assignment.read`; and `BillingService`
+  requires `org.billing.manage` for the subscription actions (change-plan,
+  cancel, release-scheduled-plan, reconcile, portal) instead of re-checking the
+  system admin role. Composing a draft — its item set and its cohort,
+  including replacing the cohort — is an update, because that is the key the
+  service gates those paths on. The assignment INSERT persona and the
+  org-wide SELECTs stay for 2b-6, and the checkout path keeps
+  `resolveCheckoutOwner` (its org need not be the active one, and the resolver
+  is shared with the mock-completion path). `can_assign_org_role` and the
+  `invitations` SELECT stay for 2b-5: a write policy cannot move before the
+  read it depends on (PostgREST refuses an UPDATE whose row the SELECT policy
+  hides). `org_members` SELECT stays membership-wide — the audit names the
+  readers a narrowing would empty (org detail, report inbox, role counts, the
+  group roster, assignment target validation, teacher stats, and the request
+  path itself in `with-auth.ts`), and phase 5 owns it. The billing **owner** is
+  still persona-keyed (`ownerFromContext`), so a `student`/`educator` persona
+  holding Admin or the Billing preset never reaches the gate; phase 5 owns the
+  derivation.
 - 2b-5 — class invites use `group.invite` at group scope for existing org
-  members; add `invitations.group_id` + `target_group_role`, delete the
-  `can_assign_org_role` teacher-name exception, and reuse
-  `rls_caller_has_group_permission` for the invitation policy.
+  members; add `invitations.group_id` + `target_group_role`, move
+  `can_assign_org_role`'s manager half and the invitation SELECT together with
+  `rls_caller_has_group_permission`, and delete the teacher-name exception.
 - 2b-6 — content-route sweep and the cross-package `authedRoute` adoption (the
   route-layer shape 2b-2 deferred).
 - 2b-7 — marker deletion: `role.builder`, `org.manage`, `member.manage` and

@@ -23,6 +23,7 @@ const managerCtx: RequestContext = {
   userId: 'u-9',
   accountType: AccountType.MANAGER,
   activeOrgId: 'org-1',
+  permissionScopes: { 'org.billing.manage': 'organization' },
 };
 
 function createGateway(driver: 'mock' | 'stripe' = 'stripe'): PaymentGateway {
@@ -82,10 +83,9 @@ describe('BillingService.reconcileCheckout', () => {
     expect(repository.isOrgAdmin).not.toHaveBeenCalled();
   });
 
-  it('re-checks org admin before reconciling an organization session', async () => {
+  it('requires org.billing.manage before reconciling an organization session', async () => {
     await service.reconcileCheckout(managerCtx, 'cs_org');
 
-    expect(repository.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-9');
     expect(gateway.reconcileCheckout).toHaveBeenCalledWith({
       owner: { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
       sessionId: 'cs_org',
@@ -102,23 +102,13 @@ describe('BillingService.reconcileCheckout', () => {
     });
   });
 
-  it('refuses a non-admin organization caller', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
+  it('refuses an organization caller without org.billing.manage', async () => {
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.reconcileCheckout(managerCtx, 'cs_org')).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
+    await expect(service.reconcileCheckout(memberCtx, 'cs_org')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
     });
     expect(gateway.reconcileCheckout).not.toHaveBeenCalled();
-  });
-
-  it('propagates an org membership read failure', async () => {
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
-
-    await expect(service.reconcileCheckout(managerCtx, 'cs_org')).resolves.toEqual({
-      success: false,
-      error: 'INTERNAL_SERVER',
-    });
   });
 
   it('propagates a gateway failure', async () => {
@@ -130,7 +120,7 @@ describe('BillingService.reconcileCheckout', () => {
     });
   });
 
-  it('reports NOT_FOUND for the mock driver without an org admin lookup', async () => {
+  it('reports NOT_FOUND for the mock driver', async () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
 
@@ -139,5 +129,18 @@ describe('BillingService.reconcileCheckout', () => {
       error: 'NOT_FOUND',
     });
     expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+  });
+
+  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
+    // Ordering proof: the authority check runs before the driver decision, so a
+    // non-holder is 403'd rather than told the mock has no provider action.
+    gateway = createGateway('mock');
+    service = new BillingService(gateway, repository);
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+
+    await expect(service.reconcileCheckout(memberCtx, 'cs_org')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    expect(gateway.reconcileCheckout).not.toHaveBeenCalled();
   });
 });

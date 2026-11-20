@@ -530,7 +530,7 @@ export class TeacherAssignmentService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
+    const supabase = await this.ownedClient(id, ctx, 'assignment.delete');
     if (!supabase) return failure('NOT_FOUND');
 
     const { error } = await supabase.from('teacher_assignments').delete().eq('id', id);
@@ -1156,7 +1156,24 @@ export class TeacherAssignmentService {
     const foreign = await this.hasForeignTargets(supabase, id, data, ctx);
     if (foreign) return failure('BAD_REQUEST');
 
-    await supabase.from('assignment_targets').delete().eq('assignment_id', id);
+    // A DELETE policy that does not admit the caller filters the rows away
+    // without an error, and replacing the cohort then leaves the stale rows
+    // beside the new ones (no unique constraint splits them). Read the count
+    // first and refuse when the delete removed fewer rows than were there.
+    const { data: existingTargets, error: existingTargetsError } = await supabase
+      .from('assignment_targets')
+      .select('id')
+      .eq('assignment_id', id);
+    if (existingTargetsError) return toDbFailure(existingTargetsError);
+    const existingTargetCount = dbRows(existingTargets).length;
+
+    const { data: removedTargets, error: deleteError } = await supabase
+      .from('assignment_targets')
+      .delete()
+      .eq('assignment_id', id)
+      .select('id');
+    if (deleteError) return toDbFailure(deleteError);
+    if (dbRows(removedTargets).length !== existingTargetCount) return failure('FORBIDDEN');
 
     const rows: Array<{
       assignment_id: string;
@@ -2054,9 +2071,10 @@ export class TeacherAssignmentService {
   private async ownedClient(
     id: string,
     ctx: RequestContext,
+    permission = 'assignment.update',
   ): Promise<SupabaseClient<Database> | null> {
     const supabase = await this.clientFactory();
-    if (!(await this.verifyOwnership(id, ctx))) return null;
+    if (!(await this.verifyOwnership(id, ctx, permission))) return null;
     return supabase;
   }
 
@@ -2182,7 +2200,11 @@ export class TeacherAssignmentService {
     return success(data);
   }
 
-  private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {
+  private async verifyOwnership(
+    id: string,
+    ctx: RequestContext,
+    permission = 'assignment.update',
+  ): Promise<boolean> {
     const supabase = await this.clientFactory();
 
     const { data: assignment } = await supabase
@@ -2195,7 +2217,7 @@ export class TeacherAssignmentService {
 
     if (assignment.created_by === ctx.userId) return true;
 
-    const scope = ctx.permissionScopes['assignment.update'];
+    const scope = ctx.permissionScopes[permission];
     if (scope === 'organization' && assignment.organization_id === ctx.activeOrgId) return true;
 
     return false;
