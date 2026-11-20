@@ -359,11 +359,13 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       created_by: teacher.id,
     });
 
-    const teacherStats = await page.request.get(TEACHER_STATS);
-    expect(teacherStats.status(), 'the educator reads the teacher stats').toBe(200);
-    const teacherStatsBody = await json<ApiBody<Record<string, unknown>>>(teacherStats);
-    expect(teacherStatsBody.success).toBe(true);
-    expect(teacherStatsBody.data, 'teacher stats payload').toHaveProperty('totalQuestions');
+    const educatorStats = await page.request.get(TEACHER_STATS);
+    expect(educatorStats.status(), 'the educator reads the teacher stats').toBe(200);
+    const educatorStatsBody = await json<ApiBody<Record<string, unknown>>>(educatorStats);
+    expect(educatorStatsBody.success).toBe(true);
+    expect(educatorStatsBody.data, 'the educator’s org-scoped staff stats payload').toHaveProperty(
+      'totalQuestions',
+    );
 
     const teacherQuizzes = await page.request.get(TEACHER_QUIZZES);
     expect(teacherQuizzes.status(), 'the educator lists the teacher quizzes').toBe(200);
