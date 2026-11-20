@@ -167,43 +167,62 @@ alter policy "Org managers or inviter delete invitations" on public.invitations
   );
 
 -- ==========================================
--- Guard: every policy above must name its capability after this file runs,
--- and the SELECT policy of invitations must still be the unmatched old one (it
--- is deliberately out of this slice). A re-application is a no-op because
--- `alter policy` replaces the predicate in place.
+-- Guard: every policy above must name its capability in every clause it has —
+-- a `with check` reverted to the legacy predicate is as wrong as a `using`
+-- clause, and passes a check that only looks for the key somewhere. The
+-- invitations SELECT policy must still be the unmatched legacy one (its rewrite
+-- belongs to 2b-4), so the half this slice deliberately leaves is pinned too.
+-- A re-application is a no-op because `alter policy` replaces the predicate in
+-- place.
 -- ==========================================
 do $$
 declare
   missing text;
+  legacy_read boolean;
 begin
-  select string_agg(expected.policy, ', ')
+  select string_agg(expected.tablename || '.' || expected.policyname, ', ')
   into missing
   from (
     values
-      ('Org managers update organization'),
-      ('Org managers update other members'),
-      ('Org managers delete other members'),
-      ('Org managers insert seat pools'),
-      ('Org managers update seat pools'),
-      ('Org managers delete seat pools'),
-      ('Own or managed seat assignment read'),
-      ('Org managers insert seat assignments'),
-      ('Org managers update seat assignments'),
-      ('Org managers delete seat assignments'),
-      ('Org managers or inviter update invitations'),
-      ('Org managers or inviter delete invitations')
-  ) as expected(policy)
+      ('organizations', 'Org managers update organization', 'org.settings.manage'),
+      ('org_members', 'Org managers update other members', 'org.member.manage'),
+      ('org_members', 'Org managers delete other members', 'org.member.manage'),
+      ('org_seat_pools', 'Org managers insert seat pools', 'org.seat.manage'),
+      ('org_seat_pools', 'Org managers update seat pools', 'org.seat.manage'),
+      ('org_seat_pools', 'Org managers delete seat pools', 'org.seat.manage'),
+      ('org_seat_assignments', 'Own or managed seat assignment read', 'org.seat.manage'),
+      ('org_seat_assignments', 'Org managers insert seat assignments', 'org.seat.manage'),
+      ('org_seat_assignments', 'Org managers update seat assignments', 'org.seat.manage'),
+      ('org_seat_assignments', 'Org managers delete seat assignments', 'org.seat.manage'),
+      ('invitations', 'Org managers or inviter update invitations', 'org.invitation.manage'),
+      ('invitations', 'Org managers or inviter delete invitations', 'org.invitation.manage')
+  ) as expected(tablename, policyname, permission_key)
   where not exists (
     select 1
     from pg_policies p
     where p.schemaname = 'public'
-      and p.policyname = expected.policy
-      and (p.qual like '%rls_caller_has_permission%'
-        or p.with_check like '%rls_caller_has_permission%')
+      and p.tablename = expected.tablename
+      and p.policyname = expected.policyname
+      and (p.qual is null or p.qual like '%' || expected.permission_key || '%')
+      and (p.with_check is null or p.with_check like '%' || expected.permission_key || '%')
   );
 
   if missing is not null then
-    raise exception 'org-control policies without a permission predicate: %', missing;
+    raise exception 'org-control policies without the expected permission in every clause: %', missing;
+  end if;
+
+  select exists (
+    select 1
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'invitations'
+      and p.policyname = 'Org managers or inviter read invitations'
+      and p.qual like '%rls_caller_is_org_manager%'
+  )
+  into legacy_read;
+
+  if not legacy_read then
+    raise exception 'the invitations SELECT policy no longer names rls_caller_is_org_manager (2b-4 owns its rewrite)';
   end if;
 end;
 $$;
