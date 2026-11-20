@@ -184,4 +184,17 @@ describe('BillingService.releaseScheduledChange ("keep current plan")', () => {
     });
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
   });
+
+  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
+    // Ordering proof: the authority check runs before the driver decision, so a
+    // non-holder is 403'd rather than told the mock has no provider action.
+    gateway = createGateway('mock');
+    service = new BillingService(gateway, repository);
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+
+    await expect(service.releaseScheduledChange(memberCtx)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    expect(gateway.releaseScheduledPlan).not.toHaveBeenCalled();
+  });
 });

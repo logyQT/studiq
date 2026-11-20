@@ -97,7 +97,14 @@ export interface BillingSubscriptionView {
 
 const SUBSCRIBABLE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
-/** The owner is the authenticated context's, never the request body (#662 §9.2). */
+/**
+ * The owner is the authenticated context's, never the request body (#662 §9.2).
+ *
+ * The persona still decides between an org and a personal owner, so a
+ * `student`/`educator` holding Admin or the Billing preset resolves a personal
+ * owner and never reaches `org.billing.manage` — ADR-0015 §7.1's 2b-4 note
+ * records the gap and phase 5 owns the derivation.
+ */
 function ownerFromContext(ctx: RequestContext): PaymentOwner {
   if (ctx.accountType === AccountType.MANAGER && ctx.activeOrgId) {
     return {
@@ -373,10 +380,10 @@ export class BillingService {
   /**
    * Open the Billing Portal for the authenticated owner (#662 §7.1).
    *
-   * The owner comes from `ctx` only. An organization call re-checks
-   * `org_members` + the `admin` role on every request because `active_org_id`
-   * is a cookie hint, not an authorization. A missing customer mapping is a
-   * clean `NOT_FOUND` ("buy a plan"), never a broken portal.
+   * The owner comes from `ctx` only. An organization call requires
+   * `org.billing.manage` on every request because `active_org_id` is a cookie
+   * hint, not an authorization. A missing customer mapping is a clean
+   * `NOT_FOUND` ("buy a plan"), never a broken portal.
    */
   async createPortalSession(
     ctx: RequestContext,

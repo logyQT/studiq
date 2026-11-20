@@ -97,6 +97,7 @@ merged/written slices do not make phase 2 done.
 | R23 | An API gate may stay deliberately narrower than its data-plane policy when the policy predates it and narrowing it means auditing every reader; the asymmetry is recorded with a named owner in the same PR, never left as two unnamed answers. | D25 kept the roster read at four named keys while the `org_members` SELECT policy still admits any same-org member (2b-4)                                                     |
 | R24 | A QA persona's authority is its org-role row, not its account type: audit the seeded **default** accounts around a role change (not just the ones a profile promotes), and a case built on the old default declares its own roster.             | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                                                               |
 | R25 | A write policy cannot move before the read policy it depends on: PostgREST refuses an UPDATE whose row the SELECT policy hides, so the write and the read move in the same slice.                                                               | the half-moved `can_assign_org_role` left an `org.invitation.manage` + `org.member.manage` role unable to retarget an invitation it could not read; 2b-5 now owns both (2b-4) |
+| R26 | A guard that asserts a predicate must also assert the row exists: `count(*) = 0 … not like` is vacuously true when the policy is dropped, so the thing it guards can be deleted and the guard stays green.                                      | 2b-4's boundary block passed with `Visible teacher assignments` dropped; requiring the row (`count(*) = 1`) raised (2b-4 review pass)                                         |
 
 ## 4. Decisions
 
@@ -2512,11 +2513,13 @@ shard names them.
 **2b-4 written on `feat/authority-2b-4` — slice 4 of 9:**
 
 - **The inventory, re-derived (R9/R10).** On a fresh reset, `pg_policies` named
-  the two legacy helpers in **eleven** policies: `rls_caller_has_org_feature` in
-  **none** (2b-2 moved the six group policies), `rls_caller_is_org_manager` in
-  the rest. `git grep` over `supabase/migrations/` names the same set plus
-  `can_assign_org_role`, which calls `is_org_manager` rather than an RLS wrapper.
-  The moved set is **nine policies over four tables plus one helper**:
+  `rls_caller_is_org_manager` in **ten** policies: the nine this slice moved plus
+  the `invitations` SELECT it deliberately leaves. `rls_caller_has_org_feature`
+  was named in **none** (2b-2 moved the six group policies). The
+  **eleventh** reference in the audit was not a policy at all:
+  `can_assign_org_role` calls `is_org_manager` directly rather than through an
+  RLS wrapper. The moved set is **nine policies over four tables plus one
+  helper**:
 
 | Table                   | Policy                                 | Key                                      |
 | ----------------------- | -------------------------------------- | ---------------------------------------- |
@@ -2525,10 +2528,10 @@ shard names them.
 | `teacher_assignments`   | Authored teacher assignments delete    | `assignment.delete` at `organization`    |
 | `assignment_questions`  | Authored assignment questions insert   | `assignment.update` (parent's org)       |
 | `assignment_questions`  | Authored assignment questions update   | `assignment.update` (parent's org)       |
-| `assignment_questions`  | Authored assignment questions delete   | `assignment.delete` (parent's org)       |
+| `assignment_questions`  | Authored assignment questions delete   | `assignment.update` (parent's org)       |
 | `assignment_targets`    | Authored assignment targets insert     | `assignment.update` (parent's org)       |
 | `assignment_targets`    | Authored assignment targets update     | `assignment.update` (parent's org)       |
-| `assignment_targets`    | Authored assignment targets delete     | `assignment.delete` (parent's org)       |
+| `assignment_targets`    | Authored assignment targets delete     | `assignment.update` (parent's org)       |
 | helper                  | `rls_caller_can_read_assignment_items` | `assignment.read` (staff/manager branch) |
 
 Every existing conjunct stays: the billing `user_id = auth.uid()` self branch
@@ -2538,9 +2541,13 @@ author branch, and the tenant scope the helpers carry. The file ends with a
 clause it has** (`qual`/`with_check`, 2b-3's shape), when a policy on a moved
 table still names the legacy helper, when any policy anywhere still names
 `rls_caller_has_org_feature`, when the cohort helper names `account_type`, or
-when a recorded boundary moved (the assignment INSERT's persona conjunct, the
-two assignment SELECTs' cohort helpers). It applies twice — `env:reset-db`
-ran twice and the file was re-applied by hand.
+when a recorded boundary moved. Each boundary is an `exists` — the policy (or
+function) row **and** its positive predicate — because a `count(*) = 0` /
+`not like` check also passed when the policy was dropped: the assignment
+INSERT's persona conjunct, the two assignment SELECTs' cohort helpers, and the
+org-wide assignment SELECT by its exact
+`organization_id IN (SELECT … rls_caller_org_ids())` shape. It applies twice —
+`env:reset-db` ran twice and the file was re-applied by hand.
 
 - **The any-scope caveat had to be paid again.** A Teacher holds every
   `assignment.*` key at `own` scope, so
@@ -2554,17 +2561,30 @@ ran twice and the file was re-applied by hand.
 - **The billing gate, per path.** `org.billing.manage` replaces the
   `isOrgAdminRole` (system-role-name) re-check in `BillingService`, before the
   driver is consulted so an unauthorized caller is refused rather than told the
-  mock has no provider: `POST /billing/change-plan`, `POST /billing/cancel`,
-  `POST /billing/release-scheduled-plan`, `POST /billing/reconcile`,
+  mock has no provider. The gated subscription actions are
+  `POST /billing/change-plan`, `POST /billing/cancel`,
+  `POST /billing/release-scheduled-plan`, `POST /billing/reconcile` and
   `GET /stripe/portal`. `GET /billing/subscription` has no capability gate — the
   RLS read decides visibility (own row or the key) and the same key drives
   `canChangePlan`/`canCancel`/`canManagePortal`, so the view can never advertise
   an action the write endpoints refuse. `POST /stripe/create-checkout-session`
-  is **unchanged**: its body names an org that need not be the active one, and
-  `ctx.permissionScopes` resolve for the active org only (the same note
-  `invitation.service.resolveTargetOrganization` carries); a `billing` role
-  still cannot buy the org's first plan. The per-target-org resolution belongs
-  to 2b-6's route sweep.
+  is **unchanged** and is not one of those actions: its body names an org that
+  need not be the active one, `ctx.permissionScopes` resolve for the active org
+  only (the same note `invitation.service.resolveTargetOrganization` carries),
+  and `resolveCheckoutOwner` is shared with the mock-completion path, which has
+  no `RequestContext` at all — so a `billing` role still cannot buy the org's
+  first plan. The per-target-org resolution belongs to 2b-6's route sweep.
+- **The owner resolution is still persona-keyed (recorded, phase 5 owns it).**
+  `ownerFromContext` and `BillingReadRepository.findSubscription` resolve an org
+  owner only for `accountType === MANAGER`, so a `student`/`educator` persona
+  holding Admin or the Billing preset never reaches
+  `requirePermission(org.billing.manage)` — it resolves a personal owner
+  instead. D13 makes the persona irrelevant, but deriving the owner from
+  `activeOrgId` + membership is not a local edit: every member of an org with an
+  active org cookie would stop reading their own personal subscription, and the
+  read model branches on the same condition. **Phase 5 (the 2b-9 slot) owns the
+  derivation** for both the service and the read repository; 2b-6 keeps only the
+  checkout path's target-org scope.
 - **What can now 403 / what gains.** Gains: the shipped **Billing** preset reads
   the org subscription, changes the plan, cancels, releases a schedule,
   reconciles and opens the portal — every one of those refused the role before
@@ -2576,10 +2596,11 @@ ran twice and the file was re-applied by hand.
   legacy `member.manage` marker and no key loses the org subscription read and
   every assignment write (the marker is no longer authority); a Member-role
   educator loses the PostgREST item read the old persona branch granted; a role
-  with `assignment.update` but not `assignment.delete` loses DELETE through the
-  API as well as the table (the service's ownership check now asks the policy's
-  key — R4). A system Admin that had `org.billing.manage` stripped by a role
-  save is refused where the role name used to answer.
+  with `assignment.update` but not `assignment.delete` loses a **run's** DELETE
+  through the API as well as the table (the service's ownership check now asks
+  the policy's key — R4), while the draft's children stay an update. A system
+  Admin that had `org.billing.manage` stripped by a role save is refused where
+  the role name used to answer.
 - **`org_members` SELECT: left as it is, with the audit (R23/D25).** The policy
   is "own row or any org I belong to". Narrowing it to D25's four read
   authorities would silently empty every reader whose gate is **not** one of
@@ -2593,7 +2614,15 @@ ran twice and the file was re-applied by hand.
   `assignment.create`/`update`), `activity.service.ts` + `stats.service.ts`
   (persona-gated teacher stats), `seat.service.ts` (`org.seat.manage`, in the
   four), `organization-member.service.ts` (the D25 endpoint itself),
-  `notification.service.ts` (recipient membership). The needed set is therefore
+  `notification.service.ts` (recipient membership), plus the readers the first
+  pass missed: `with-auth.ts` (the membership row _is_ the active-org proof, so
+  a narrowed policy would break every request), `assignment-access.ts` (the
+  student's targeted-run read), `limits.resolver.ts` (seat/limit resolution),
+  `org.service.ts` (the org list a member switches between),
+  `invitation.service.ts` (invitee membership), `classroom.service.ts` (the
+  creator's membership insert), `question-seal.ts` (a targeted student's org)
+  and the two Stripe repositories (the webhook's owner fallback and
+  `isOrgAdmin`). The needed set is therefore
   "almost every control-plane reader", which is the policy as it stands:
   narrowing is not a policy tweak but a change of every reader to explicit
   service-role filters. **Phase 5 (the 2b-9 slot) owns it.** The data-plane
@@ -2614,16 +2643,20 @@ ran twice and the file was re-applied by hand.
     migration — replayed by its own suite — pins that read. 2b-5 owns both halves
     with the class-invite rewrite (R25).
 - **Tests.** `__tests__/integration/control-plane-permission-rls.test.ts` (new,
-  **19 cases**): real signed-in sessions through PostgREST, both directions —
+  **22 cases**): real signed-in sessions through PostgREST, both directions —
   the Billing preset and the Admin role read the org subscription, a Member-role
   manager and the legacy marker read nothing, the personal own-row branch stays;
   an `assignment.update`-at-`organization` holder edits another teacher's run,
   the Member role / legacy marker / `own`-scope holder / non-author Teacher are
   refused and the row is unchanged; the DELETE split (`assignment.delete`); the
-  child tables' I/U/D through the parent's org; the cohort read (`assignment.read`
-  holder and author read, a Member-role educator does not, a targeted student
-  reads the target list but not the items, an outsider reads nothing);
-  `billing_customers` stays closed; the recorded `org_members` width.
+  child tables' I/U/D through the parent's org **and through the updater role**
+  (a custom non-Admin role, because the Admin is also legacy-manager positive),
+  an `own`-scope holder refused on both tables with the rows unchanged, one
+  `assignment_targets` UPDATE, and the cohort replace (delete + insert, the
+  resulting set asserted); the cohort read (`assignment.read` holder with the
+  **student** persona and the author read, a Member-role educator does not, a
+  targeted student reads the target list but not the items, an outsider reads
+  nothing); `billing_customers` stays closed; the recorded `org_members` width.
   `__tests__/integration/billing-permission-api.test.ts` (new, **7 cases**)
   drives the real routes + `withAuth` + controller with a fake provider and real
   catalog/customer/subscription rows: the Billing preset reads with actions
@@ -2632,28 +2665,41 @@ ran twice and the file was re-applied by hand.
   and the org plan unchanged, and cancel / release / reconcile are gated on the
   same key. Unit: the six `billing.*` suites move from `isOrgAdmin` stubs to the
   permission (holder proceeds, non-holder throws `FORBIDDEN` without touching
-  the provider); `teacher-assignment.service.test.ts` gains the delete split.
-- **Gates (this tree).** `env:reset-db --yes` **twice**; the touched integration
-  files serially — **12 files / 172 passed** (then 66 again across the
-  assignment/assessment files after the delete-key change); the full integration suite —
-  **106 files / 959 passed, 11 skipped**; `test:unit` **4746 passed, 1 skipped**;
-  `typecheck:all`,
-  `typecheck:admin`, `lint:all`, `review:static`, `knip`, `format:check`
-  (**2211 files**), `dup:base` (**0 new**), `pr:size` **651/400 (XL** — the
-  migration is 441 of those lines; tests and docs excluded, so it needs a
-  `size:exception`).
+  the provider), each of the four provider actions gains a
+  mock-driver-plus-non-holder case (403 before the driver answers `NOT_FOUND`),
+  and `teacher-assignment.service.test.ts` gains the delete split plus the
+  filtered-delete refusal.
+- **Gates (this tree, review pass).** `env:reset-db --yes` **twice**; the touched
+  integration files serially — **4 files / 79 passed**; the full integration
+  suite — **106 files / 962 passed, 11 skipped**; `test:unit` **4751 passed,
+  1 skipped**; `typecheck:all`, `typecheck:admin`, `lint:all`, `review:static`,
+  `knip`, `format:check` (**2211 files**), `pr:size` **716/400 (XL** — 1564 test
+  and 441 doc lines excluded; the two migrations are most of what remains, so
+  the PR needs a `size:exception`).
 - **Mutation proof.** `bun run mutate` (KILLED, one line each): the
   `requirePermission(ORG_BILLING_MANAGE)` call vs the cancel unit case; the
   `hasPermission` read-model flag vs the "does not advertise" unit case;
   `createPortalSession`'s gate vs its unit case; the same gate line vs the API
-  403 case (`expected 200 to be 403`). By hand (a migration cannot be driven
+  403 case (`expected 200 to be 403`); the mock-driver line moved ahead of
+  `assertOrgBillingAuthority` vs the new cancel mock case (`resolved
+NOT_FOUND instead of rejecting`); the cohort count check weakened from `!==`
+  to `>` vs the new filtered-delete case. By hand (a migration cannot be driven
   through `bun run mutate`): the billing policy reverted to
   `rls_caller_is_org_manager` with its guard entry relaxed → the Billing read
   case red; `assignment.delete` reverted to `assignment.update` → the DELETE
   split red; the org-scope conjunct replaced by the any-scope helper (the guard
   is blind to this one — the key is still present) → the non-author Teacher case
   red; the cohort helper's staff branch reverted to the persona → the
-  Member-educator case red. Each was restored and the file re-applied.
+  Member-educator case red; **the child `assignment_targets` DELETE reverted to
+  `assignment.delete` (guard entry moved with it) → the cohort-replace case red
+  (`expected [] to have a length of 2`), everything else green**; and the
+  boundary half of the guard proved by dropping `Visible teacher assignments`
+  and replaying its `do` block — it raised
+  `recorded 2b-4 boundary no longer holds: teacher_assignments SELECT stays
+org-wide` where the old `count(*) = 0 … not like` shape was vacuously true for
+  a missing row; widening the same policy with an `assignment.read` disjunct
+  raised the same message. Each was restored; the second `env:reset-db` covers
+  the drops.
 
 **Follow-ups this slice creates:**
 
@@ -2689,6 +2735,35 @@ the 2b-5 row carry the handoff.
 Rule: a write policy cannot move before the read policy it depends on —
 PostgREST refuses an UPDATE whose row the SELECT policy hides, so the write and
 the read move in the same slice.
+
+#### 2026-11-20 — the child DELETE asked for a key the service never checks
+
+What: the two child DELETE policies (`assignment_questions`,
+`assignment_targets`) asked for `assignment.delete`, while every composing path
+gates on `assignment.update`: `removeQuestion` 403'd an update-holder for an
+edit the slice claims to enable, and `setTargets` — delete, then insert — had its
+delete silently filtered to zero rows and its insert accepted, so a non-author
+update-holder _replaced_ a cohort with the stale rows still in place beside the
+new ones. No unique constraint splits them, so publishing and sealing later read
+a cohort the caller never wrote.
+Why: the DELETE key had been copied from `teacher_assignments`' DELETE, where it
+is correct — deleting a run is the destructive act — but the child tables carry
+the _composition_ verbs, and the service's ownership prelude (`draftClient` →
+`ownedClient`) is `assignment.update` for all of them. The RLS suite did not
+catch it because its only non-author positive on those tables was the Admin role,
+which also satisfies the legacy `rls_caller_is_org_manager` marker: a reverted
+child policy stays green.
+Fix: both child DELETEs are `assignment.update` (only the `teacher_assignments`
+DELETE asks for `assignment.delete`), the guard's expected keys move with them,
+`setTargets` counts the rows before the delete and refuses when the delete
+removed fewer, and the suite gains an `updater`-role positive on both child
+tables, an `own`-scope negative, a target UPDATE, and the cohort replace with the
+resulting set asserted. Same pass: the boundary half of the guard became an
+`exists` (R26), the `org_members` audit list was completed, and the billing
+owner-resolution gap (persona still decides the owner) was recorded for phase 5.
+Rule: R4 in the direction the review found it — the data plane must ask the key
+the service asks for **the same operation**, and a positive that a legacy
+capability also satisfies proves nothing.
 
 ### Phase 3 — entitlements and limits
 

@@ -1208,6 +1208,24 @@ describe('TeacherAssignmentService', () => {
       expect(clearChain.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
     });
 
+    it('refuses to replace a cohort the delete could not remove', async () => {
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ status: 'draft' })) // the run is still editable
+        .mockReturnValueOnce(chain([{ id: 't-1' }, { id: 't-2' }])) // rows the caller can see
+        .mockReturnValueOnce(chain([{ id: 't-1' }])) // the DELETE policy admitted only one
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, {}, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'FORBIDDEN' });
+      // Two `assignment_targets` calls (the count and the delete), no insert.
+      const targetCalls = mock.from.mock.calls.filter(
+        ([table]: [string]) => table === 'assignment_targets',
+      );
+      expect(targetCalls).toHaveLength(2);
+    });
+
     it('refuses every target change once the run is published (#1171, R20)', async () => {
       const statusChain = chain({ status: 'published' });
       mock.from

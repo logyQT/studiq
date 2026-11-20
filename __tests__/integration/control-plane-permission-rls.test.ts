@@ -15,9 +15,13 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
  * RLS parity for the control-plane sweep (ADR-0015 §4.1, §4.4, §7; R4).
  *
  * 2b-4 is the last slice of the control plane: `billing_subscriptions` read,
- * the assignment writes, the staff read of an assignment's frozen item set and
- * `can_assign_org_role`'s manager half all stop asking the legacy
- * `member.manage` capability helper and ask the permission the API checks.
+ * the assignment writes and the staff read of an assignment's frozen item set
+ * stop asking the legacy `member.manage` capability helper and ask the
+ * permission the API checks. `can_assign_org_role` and the `invitations` SELECT
+ * deliberately stay legacy: PostgREST refuses an UPDATE whose row the SELECT
+ * policy hides, so moving the helper's manager half alone would leave the
+ * intended caller unable to retarget (R25), and 2b-5 moves both halves with the
+ * class-invite rewrite.
  *
  * Both directions are pinned with real signed-in sessions against PostgREST, the
  * path a hostile client actually uses. The "legacy" roles hold the old
@@ -131,8 +135,13 @@ describe('control-plane permission RLS (2b-4)', () => {
   let ownAssignmentId: string;
   let foreignAssignmentId: string;
   let deleteAssignmentId: string;
+  let updaterChildAssignmentId: string;
+  let ownScopeChildAssignmentId: string;
+  let cohortAssignmentId: string;
   let questionRowId: string;
   let targetRowId: string;
+  let ownScopeQuestionRowId: string;
+  let ownScopeTargetRowId: string;
 
   async function createUser(email: string, label: string, persona: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -293,7 +302,7 @@ describe('control-plane permission RLS (2b-4)', () => {
     studentId = await createUser(`control-plane-student-${tag}@dev.local`, 'student', 'student');
     updaterId = await createUser(`control-plane-updater-${tag}@dev.local`, 'updater', 'manager');
     ownUpdaterId = await createUser(`control-plane-own-${tag}@dev.local`, 'own updater', 'manager');
-    readerId = await createUser(`control-plane-reader-${tag}@dev.local`, 'reader', 'manager');
+    readerId = await createUser(`control-plane-reader-${tag}@dev.local`, 'reader', 'student');
     outsiderId = await createUser(`control-plane-outsider-${tag}@dev.local`, 'outsider', 'manager');
 
     await seedOrgMembership({ organizationId: orgId, userId: billingId, orgRoleId: billingRoleId });
@@ -375,6 +384,9 @@ describe('control-plane permission RLS (2b-4)', () => {
     ownAssignmentId = await insertAssignment(teacherId, 'own');
     foreignAssignmentId = await insertAssignment(otherTeacherId, 'foreign');
     deleteAssignmentId = await insertAssignment(teacherId, 'delete');
+    updaterChildAssignmentId = await insertAssignment(otherTeacherId, 'updater children');
+    ownScopeChildAssignmentId = await insertAssignment(otherTeacherId, 'own-scope children');
+    cohortAssignmentId = await insertAssignment(otherTeacherId, 'cohort');
 
     const { data: questionRow, error: questionRowError } = await service
       .from('assignment_questions')
@@ -398,6 +410,39 @@ describe('control-plane permission RLS (2b-4)', () => {
       .single();
     if (targetRowError) throw new Error(`assignment target: ${targetRowError.message}`);
     targetRowId = targetRow.id;
+
+    // Rows the own-scope holder must not touch: both child tables of a run its
+    // author owns, seeded with the service client so the write policies are the
+    // only thing a signed-in caller meets.
+    const { data: ownScopeQuestion, error: ownScopeQuestionError } = await service
+      .from('assignment_questions')
+      .insert({
+        assignment_id: ownScopeChildAssignmentId,
+        question_id: questionA,
+        order_index: 0,
+        points: 1,
+      })
+      .select('id')
+      .single();
+    if (ownScopeQuestionError) {
+      throw new Error(`own-scope question: ${ownScopeQuestionError.message}`);
+    }
+    ownScopeQuestionRowId = ownScopeQuestion.id;
+
+    const { data: ownScopeTarget, error: ownScopeTargetError } = await service
+      .from('assignment_targets')
+      .insert({ assignment_id: ownScopeChildAssignmentId, student_id: studentId })
+      .select('id')
+      .single();
+    if (ownScopeTargetError) throw new Error(`own-scope target: ${ownScopeTargetError.message}`);
+    ownScopeTargetRowId = ownScopeTarget.id;
+
+    // The cohort the updater replaces: two students, no group.
+    const { error: cohortError } = await service.from('assignment_targets').insert([
+      { assignment_id: cohortAssignmentId, student_id: studentId },
+      { assignment_id: cohortAssignmentId, student_id: memberEducatorId },
+    ]);
+    if (cohortError) throw new Error(`cohort targets: ${cohortError.message}`);
 
     await insertBillingOwner({ organizationId: orgId, label: 'org' });
     await insertBillingOwner({ organizationId: foreignOrgId, label: 'foreign-org' });
@@ -647,6 +692,125 @@ describe('control-plane permission RLS (2b-4)', () => {
       expect(removed.data).toHaveLength(1);
     });
 
+    it('lets an org-scope assignment.update holder — not an Admin — write a foreign run’s child rows', async () => {
+      // The Admin case above cannot carry this proof: the Admin system role also
+      // satisfies the legacy `rls_caller_is_org_manager` marker, so a reverted
+      // child policy would stay green. `updater` holds `assignment.update` at
+      // organization scope on a custom role and no marker.
+      const questionInsert = await updater
+        .from('assignment_questions')
+        .insert({
+          assignment_id: updaterChildAssignmentId,
+          question_id: questionB,
+          order_index: 0,
+          points: 1,
+        })
+        .select('points');
+      expect(questionInsert.error).toBeNull();
+      expect(questionInsert.data).toEqual([{ points: 1 }]);
+
+      const questionUpdate = await updater
+        .from('assignment_questions')
+        .update({ points: 3 })
+        .eq('assignment_id', updaterChildAssignmentId)
+        .eq('question_id', questionB)
+        .select('points');
+      expect(questionUpdate.data).toEqual([{ points: 3 }]);
+
+      const targetInsert = await updater
+        .from('assignment_targets')
+        .insert({ assignment_id: updaterChildAssignmentId, group_id: groupId })
+        .select('id');
+      expect(targetInsert.error).toBeNull();
+      expect(targetInsert.data).toHaveLength(1);
+
+      // The target UPDATE the suite otherwise never exercises.
+      const targetUpdate = await updater
+        .from('assignment_targets')
+        .update({ group_id: null, student_id: memberEducatorId })
+        .eq('assignment_id', updaterChildAssignmentId)
+        .eq('group_id', groupId)
+        .select('student_id, group_id');
+      expect(targetUpdate.error).toBeNull();
+      expect(targetUpdate.data).toEqual([{ student_id: memberEducatorId, group_id: null }]);
+
+      const questionDelete = await updater
+        .from('assignment_questions')
+        .delete()
+        .eq('assignment_id', updaterChildAssignmentId)
+        .select('id');
+      expect(questionDelete.data).toHaveLength(1);
+    });
+
+    it('refuses an own-scope assignment.update holder the same child writes', async () => {
+      // `own` scope is what the seeded Teacher holds; it reaches only the author
+      // branch. Neither child table may widen it to another teacher's run.
+      const questionInsert = await ownUpdater.from('assignment_questions').insert({
+        assignment_id: ownScopeChildAssignmentId,
+        question_id: questionC,
+        order_index: 1,
+        points: 1,
+      });
+      const targetInsert = await ownUpdater
+        .from('assignment_targets')
+        .insert({ assignment_id: ownScopeChildAssignmentId, group_id: groupId });
+      expect(questionInsert.error?.code).toBe('42501');
+      expect(targetInsert.error?.code).toBe('42501');
+
+      const questionUpdate = await ownUpdater
+        .from('assignment_questions')
+        .update({ points: 9 })
+        .eq('id', ownScopeQuestionRowId)
+        .select('id');
+      const targetUpdate = await ownUpdater
+        .from('assignment_targets')
+        .update({ student_id: memberEducatorId })
+        .eq('id', ownScopeTargetRowId)
+        .select('id');
+      expect(questionUpdate.data).toEqual([]);
+      expect(targetUpdate.data).toEqual([]);
+
+      const questions = await service
+        .from('assignment_questions')
+        .select('points')
+        .eq('id', ownScopeQuestionRowId)
+        .single();
+      const targets = await service
+        .from('assignment_targets')
+        .select('student_id')
+        .eq('id', ownScopeTargetRowId)
+        .single();
+      expect(questions.data?.points).toBe(1);
+      expect(targets.data?.student_id).toBe(studentId);
+    });
+
+    it('lets an org-scope updater replace a foreign run’s cohort and the old rows are gone', async () => {
+      // The service's `setTargets` deletes then inserts. A child DELETE left on
+      // `assignment.delete` would filter this delete to zero rows without an
+      // error, and the insert would leave the stale cohort beside the new one.
+      const removed = await updater
+        .from('assignment_targets')
+        .delete()
+        .eq('assignment_id', cohortAssignmentId)
+        .select('id, student_id');
+      expect(removed.error).toBeNull();
+      expect(removed.data).toHaveLength(2);
+
+      const inserted = await updater
+        .from('assignment_targets')
+        .insert({ assignment_id: cohortAssignmentId, group_id: groupId })
+        .select('id');
+      expect(inserted.error).toBeNull();
+
+      // The set, not the count: both student rows are gone and the group is the
+      // only remaining target.
+      const after = await service
+        .from('assignment_targets')
+        .select('group_id, student_id')
+        .eq('assignment_id', cohortAssignmentId);
+      expect(after.data).toEqual([{ group_id: groupId, student_id: null }]);
+    });
+
     it('refuses the Member role and a Teacher that did not author the run (42501)', async () => {
       const memberInsert = await member.from('assignment_questions').insert({
         assignment_id: ownAssignmentId,
@@ -715,7 +879,11 @@ describe('control-plane permission RLS (2b-4)', () => {
   });
 
   describe('assignments_items read — assignment.read replaces the staff persona', () => {
-    it('lets an assignment.read holder read another run’s items', async () => {
+    it('lets an assignment.read holder with the student persona read another run’s items', async () => {
+      // The reader is a `student` account type on purpose: D13 makes the persona
+      // irrelevant, so a re-added `account_type IN ('educator','manager')`
+      // conjunct would pass a manager-persona positive and the Member-educator
+      // negative below, and survive.
       const { data, error } = await reader
         .from('assignment_questions')
         .select('id, assignment_id')

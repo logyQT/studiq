@@ -71,7 +71,8 @@ export class SupabaseBillingReadRepository implements BillingReadRepository {
 
     // A manager's active organization owns the subscription; everyone else
     // reads their own row. The organization id is a hint from the session
-    // cookie, and the org-manager RLS policy decides whether the row is visible.
+    // cookie, and the `org.billing.manage` RLS branch decides whether the row
+    // is visible.
     const scoped =
       ctx.accountType === AccountType.MANAGER && ctx.activeOrgId
         ? base.eq('organization_id', ctx.activeOrgId)

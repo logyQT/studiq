@@ -423,6 +423,19 @@ describe('BillingService.changePlan', () => {
       error: 'NOT_FOUND',
     });
   });
+
+  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
+    // Ordering proof: the authority check runs before the driver decision, so a
+    // non-holder is 403'd rather than told the mock has no provider action.
+    gateway = createGateway('mock');
+    service = new BillingService(gateway, repository);
+    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+
+    await expect(service.changePlan(memberCtx, 'team')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    expect(gateway.changePlan).not.toHaveBeenCalled();
+  });
 });
 
 describe('changePlanIdempotencyKey', () => {

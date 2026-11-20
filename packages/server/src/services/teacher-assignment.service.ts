@@ -1156,7 +1156,24 @@ export class TeacherAssignmentService {
     const foreign = await this.hasForeignTargets(supabase, id, data, ctx);
     if (foreign) return failure('BAD_REQUEST');
 
-    await supabase.from('assignment_targets').delete().eq('assignment_id', id);
+    // A DELETE policy that does not admit the caller filters the rows away
+    // without an error, and replacing the cohort then leaves the stale rows
+    // beside the new ones (no unique constraint splits them). Read the count
+    // first and refuse when the delete removed fewer rows than were there.
+    const { data: existingTargets, error: existingTargetsError } = await supabase
+      .from('assignment_targets')
+      .select('id')
+      .eq('assignment_id', id);
+    if (existingTargetsError) return toDbFailure(existingTargetsError);
+    const existingTargetCount = dbRows(existingTargets).length;
+
+    const { data: removedTargets, error: deleteError } = await supabase
+      .from('assignment_targets')
+      .delete()
+      .eq('assignment_id', id)
+      .select('id');
+    if (deleteError) return toDbFailure(deleteError);
+    if (dbRows(removedTargets).length !== existingTargetCount) return failure('FORBIDDEN');
 
     const rows: Array<{
       assignment_id: string;

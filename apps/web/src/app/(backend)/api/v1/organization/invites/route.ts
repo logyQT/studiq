@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   )(req);
 }
 
-/** Create keeps its own authority until 2b-4 rewrites the invitation grant. */
+/** Create keeps its own authority until 2b-5 rewrites the invitation grant. */
 export const POST = authedRoute(
   ({ json }) => [json],
   (ctx, body) => invitationController.create(ctx, body),

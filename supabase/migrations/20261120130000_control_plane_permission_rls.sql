@@ -8,8 +8,13 @@
 --     `rls_caller_is_org_manager` (the `member.manage` entitlement marker) to
 --     `org.billing.manage`, the key the billing service now gates on.
 --   * `teacher_assignments` UPDATE/DELETE and the `assignment_questions` /
---     `assignment_targets` writes moved their manager branch to
---     `assignment.update` / `assignment.delete`.
+--     `assignment_targets` I/U/D moved their manager branch to
+--     `assignment.update` / `assignment.delete`. Only the `teacher_assignments`
+--     DELETE asks for `assignment.delete`: composing a draft (its item set and
+--     its cohort, including replacing the cohort) is an edit, and the service
+--     gates every one of those paths on `assignment.update` — a child DELETE on
+--     the delete key would 403 an update-holder for a composition edit, and
+--     silently filter the cohort replace to zero rows.
 --   * `rls_caller_can_read_assignment_items` replaced its staff-persona branch
 --     with `assignment.read`.
 --
@@ -21,11 +26,11 @@
 -- Deliberately not moved in this slice (recorded boundary):
 --
 --   * `teacher_assignments` INSERT keeps its persona conjunct and its SELECT
---     policy stays org-wide. The 17 `teacher/assignments/*` handlers are still
---     persona-gated and belong to 2b-6; moving the insert here would make the
---     API and the data plane disagree and regress EDU-ASG-04 (its fixture is a
---     Member org role). The guard below pins both predicates so a later sweep
---     flips them on purpose.
+--     policy stays org-wide. The 15 `teacher/assignments/*` route files (21
+--     exported handlers) are still persona-gated and belong to 2b-6; moving the
+--     insert here would make the API and the data plane disagree and regress
+--     EDU-ASG-04 (its fixture is a Member org role). The guard below pins both
+--     predicates so a later sweep flips them on purpose.
 --   * `can_assign_org_role` and the `invitations` SELECT policy keep
 --     `rls_caller_is_org_manager`. Moving the helper's manager half alone does
 --     not close 2b-3's recorded retarget asymmetry: measured on this stack,
@@ -111,9 +116,11 @@ alter policy "Authored teacher assignments delete" on public.teacher_assignments
   );
 
 -- ==========================================
--- The frozen item set and the target list: the same split, resolved on the
+-- The frozen item set and the target list: the same permission resolved on the
 -- PARENT assignment's organization (a child row carries no organization_id of
--- its own). `assignment.read` is unchanged and stays in the cohort helper.
+-- its own). Composing a draft is an edit, so all three verbs ask for
+-- `assignment.update` — the key `draftClient()` gates on. `assignment.read` is
+-- unchanged and stays in the cohort helper.
 -- ==========================================
 alter policy "Authored assignment questions insert" on public.assignment_questions
   with check (
@@ -179,7 +186,7 @@ alter policy "Authored assignment questions delete" on public.assignment_questio
           join public.org_role_permissions rp on rp.org_role_id = om.org_role_id
           where om.user_id = auth.uid()
             and om.organization_id = a.organization_id
-            and rp.permission_key = 'assignment.delete'
+            and rp.permission_key = 'assignment.update'
             and rp.scope = 'organization'
         )
     )
@@ -249,7 +256,7 @@ alter policy "Authored assignment targets delete" on public.assignment_targets
           join public.org_role_permissions rp on rp.org_role_id = om.org_role_id
           where om.user_id = auth.uid()
             and om.organization_id = a.organization_id
-            and rp.permission_key = 'assignment.delete'
+            and rp.permission_key = 'assignment.update'
             and rp.scope = 'organization'
         )
     )
@@ -291,15 +298,16 @@ grant execute on function public.rls_caller_can_read_assignment_items(uuid)
 -- ==========================================
 -- Guard: every policy above must name its key in every clause it has — a
 -- `with check` reverted to the legacy predicate passes a check that only looks
--- for the key somewhere. The recorded boundaries are pinned in the same block
--- so a later sweep flips them deliberately: the assignment INSERT keeps its
--- persona conjunct and the two assignment SELECTs keep the cohort helpers. The
--- remaining queries are the inventory claims: no policy on a moved table names
--- the legacy manager helper, no policy anywhere names `rls_caller_has_org_feature`
--- (2b-2's record) and the cohort helper reads `assignment.read`. The invitation
--- helper's legacy half is pinned by 2b-3's own migration, which its suite
--- replays, so a half-move here would break that guard instead of completing the
--- sweep — 2b-5 owns both halves.
+-- for the key somewhere. The recorded boundaries are required to *exist* with
+-- their positive predicate (a dropped policy must not satisfy a `not like`
+-- check) so a later sweep flips them deliberately: the assignment INSERT keeps
+-- its persona conjunct and the two assignment SELECTs keep the cohort helpers,
+-- the first of them org-wide and exact. The remaining queries are the inventory
+-- claims: no policy on a moved table names the legacy manager helper, no policy
+-- anywhere names `rls_caller_has_org_feature` (2b-2's record) and the cohort
+-- helper reads `assignment.read`. The invitation helper's legacy half is pinned
+-- by 2b-3's own migration, which its suite replays, so a half-move here would
+-- break that guard instead of completing the sweep — 2b-5 owns both halves.
 -- A re-application is a no-op because `alter policy` replaces the predicate in
 -- place.
 -- ==========================================
@@ -318,10 +326,10 @@ begin
       ('teacher_assignments', 'Authored teacher assignments delete', 'assignment.delete'),
       ('assignment_questions', 'Authored assignment questions insert', 'assignment.update'),
       ('assignment_questions', 'Authored assignment questions update', 'assignment.update'),
-      ('assignment_questions', 'Authored assignment questions delete', 'assignment.delete'),
+      ('assignment_questions', 'Authored assignment questions delete', 'assignment.update'),
       ('assignment_targets', 'Authored assignment targets insert', 'assignment.update'),
       ('assignment_targets', 'Authored assignment targets update', 'assignment.update'),
-      ('assignment_targets', 'Authored assignment targets delete', 'assignment.delete')
+      ('assignment_targets', 'Authored assignment targets delete', 'assignment.update')
   ) as expected(tablename, policyname, permission_key)
   where not exists (
     select 1
@@ -356,6 +364,10 @@ begin
     raise exception 'policies still reading the legacy manager helper after 2b-4: %', legacy_in_moved_tables;
   end if;
 
+  -- Each boundary is an `exists`: `count(*) = 1` over the policy (or function)
+  -- row *and* its positive predicate. A `not like`/`count(*) = 0` shape passed
+  -- when the policy was dropped altogether, which is the regression this half
+  -- exists to catch.
   select string_agg(boundary.label, ', ')
   into bad_boundary
   from (
@@ -363,60 +375,59 @@ begin
       (
         'teacher_assignments INSERT persona conjunct',
         (
-          select count(*) = 0
+          select count(*) = 1
           from pg_policies p
           where p.schemaname = 'public'
             and p.tablename = 'teacher_assignments'
             and p.policyname = 'Authored teacher assignments insert'
-            and coalesce(p.with_check, '') not like '%account_type%'
+            and coalesce(p.with_check, '') like '%account_type%'
         )
       ),
       (
         'teacher_assignments SELECT stays org-wide',
         (
-          select count(*) = 0
+          select count(*) = 1
           from pg_policies p
           where p.schemaname = 'public'
             and p.tablename = 'teacher_assignments'
             and p.policyname = 'Visible teacher assignments'
-            and coalesce(p.qual, '') like '%assignment.%'
+            and regexp_replace(coalesce(p.qual, ''), '[[:space:]]+', '', 'g')
+              = '(organization_idIN(SELECTc.organization_idFROMrls_caller_org_ids()c(organization_id)))'
         )
       ),
       (
         'assignment_questions SELECT keeps the cohort helper',
         (
-          select count(*) = 0
+          select count(*) = 1
           from pg_policies p
           where p.schemaname = 'public'
             and p.tablename = 'assignment_questions'
             and p.policyname = 'Visible assignment questions'
-            and coalesce(p.qual, '') not like '%rls_caller_can_read_assignment_items%'
+            and coalesce(p.qual, '') like '%rls_caller_can_read_assignment_items(%'
         )
       ),
       (
         'rls_caller_can_read_assignment_items reads assignment.read',
         (
-          select count(*) = 0
+          select count(*) = 1
           from pg_proc pr
           join pg_namespace n on n.oid = pr.pronamespace
           where n.nspname = 'public'
             and pr.proname = 'rls_caller_can_read_assignment_items'
-            and (
-              pr.prosrc not like '%assignment.read%'
-              or pr.prosrc like '%rls_caller_is_org_manager%'
-              or pr.prosrc like '%account_type%'
-            )
+            and pr.prosrc like '%assignment.read%'
+            and pr.prosrc not like '%rls_caller_is_org_manager%'
+            and pr.prosrc not like '%account_type%'
         )
       ),
       (
         'assignment_targets SELECT keeps the cohort helper',
         (
-          select count(*) = 0
+          select count(*) = 1
           from pg_policies p
           where p.schemaname = 'public'
             and p.tablename = 'assignment_targets'
             and p.policyname = 'Visible assignment targets'
-            and coalesce(p.qual, '') not like '%rls_caller_can_read_assignment_targets%'
+            and coalesce(p.qual, '') like '%rls_caller_can_read_assignment_targets(%'
         )
       ),
       (
