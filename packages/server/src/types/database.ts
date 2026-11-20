@@ -905,11 +905,13 @@ export type Database = {
           created_at: string;
           email: string;
           expires_at: string;
+          group_id: string | null;
           id: string;
           inviter_id: string | null;
           is_accepted: boolean | null;
           name: string | null;
           organization_id: string | null;
+          target_group_role: string | null;
           target_org_role_id: string;
           token: string;
         };
@@ -918,11 +920,13 @@ export type Database = {
           created_at?: string;
           email: string;
           expires_at: string;
+          group_id?: string | null;
           id?: string;
           inviter_id?: string | null;
           is_accepted?: boolean | null;
           name?: string | null;
           organization_id?: string | null;
+          target_group_role?: string | null;
           target_org_role_id: string;
           token?: string;
         };
@@ -930,15 +934,24 @@ export type Database = {
           created_at?: string;
           email?: string;
           expires_at?: string;
+          group_id?: string | null;
           id?: string;
           inviter_id?: string | null;
           is_accepted?: boolean | null;
           name?: string | null;
           organization_id?: string | null;
+          target_group_role?: string | null;
           target_org_role_id?: string;
           token?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: 'invitations_group_id_fkey';
+            columns: ['group_id'];
+            isOneToOne: false;
+            referencedRelation: 'groups';
+            referencedColumns: ['id'];
+          },
           {
             foreignKeyName: 'invitations_inviter_id_fkey';
             columns: ['inviter_id'];
@@ -2799,8 +2812,16 @@ export type Database = {
           group_id: string;
         }[];
       };
+      has_group_permission: {
+        Args: { p_actor: string; p_group_id: string; p_permission: string };
+        Returns: boolean;
+      };
       has_org_feature: {
         Args: { p_actor: string; p_feature: string; p_organization_id: string };
+        Returns: boolean;
+      };
+      has_permission: {
+        Args: { p_actor: string; p_organization_id: string; p_permission: string };
         Returns: boolean;
       };
       is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
@@ -2827,6 +2848,10 @@ export type Database = {
       rls_caller_can_read_assignment_items: { Args: { p_assignment_id: string }; Returns: boolean };
       rls_caller_can_read_assignment_targets: {
         Args: { p_assignment_id: string };
+        Returns: boolean;
+      };
+      rls_caller_has_group_permission: {
+        Args: { p_group_id: string; p_permission: string };
         Returns: boolean;
       };
       rls_caller_has_org_feature: {
