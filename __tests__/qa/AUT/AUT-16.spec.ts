@@ -173,8 +173,12 @@ test('a student is redirected from every teacher, manager and onboarding route t
   if (stats.status() === 403) {
     expect(await stats.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
   } else {
-    const statsBody = await json<{ success: boolean }>(stats);
+    const statsBody = await json<{ success: boolean; data?: { totalQuestions?: number } }>(stats);
     expect(statsBody).toMatchObject({ success: true });
+    expect(
+      statsBody.data?.totalQuestions,
+      'own-scope stats: the member owns no questions, so no teacher aggregate can leak',
+    ).toBe(0);
     expect(
       JSON.stringify(statsBody),
       'the member stats carry no teacher content (own-scope read)',
