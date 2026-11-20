@@ -59,12 +59,11 @@ pre-push:
     knip:
       run: bun run knip
     # Same gate as the CI PR step: new clones vs the base branch (the
-    # merge-conflict command above already fetched origin/main). `--silent`
-    # keeps the push log to one line; the failure path names the command that
-    # prints the blocks.
+    # merge-conflict command above already fetched origin/main). It prints one
+    # line when clean; the failure path names the command that lists the blocks.
     dup:
       run: |
-        if ! bun run dup:base --reporters silent; then
+        if ! bun run dup:base; then
           echo ''
           echo '  X Push blocked -- new duplicate block(s) vs origin/main.'
           echo ''

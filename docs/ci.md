@@ -134,10 +134,19 @@ The gate is **new clones only**, so it works on a codebase that already has
 duplication (measured at ~6% when this landed) without a baseline file to
 maintain:
 
-- **Pull request** — `--baseline-from-ref origin/<base> --fail-on-new-clones 0`.
-  jscpd scans the base branch's tree with the same config and fails only on
-  clones whose fingerprint is absent there. At most one duplicated block is
-  reported per new clone, with file, line range and token count.
+- **Pull request** — `scripts/dup-baseline.ts --ref origin/<base>`. The gate
+  scans the base ref's tree (`git worktree`, that tree's own `.jscpd.json`) and
+  the working tree with jscpd in JSON mode, then compares the reports itself. A
+  clone is identified by its **normalised block** (whitespace- and
+  comment-insensitive) and **the files that hold it** — never by a line number,
+  and never by the file pair jscpd reported: jscpd pairs a block shared by
+  several files with whichever two detection meets first, so one edit re-pairs
+  it and `--baseline-from-ref` calls the new pair new. On PR #1398 that produced
+  **9** "new" clones, only 1 of them real. A clone is new iff a file of its pair
+  changed and the base did not already hold that block in both files, which
+  keeps a copy of any existing route (duplicated or not) red while a re-pairing
+  stays quiet. Measured on that PR: **9 → 1**. Exit `0` clean, `1` new clones,
+  `2` the comparison could not run.
 - **Nightly / manual dispatch** — `--dashboard --history --threshold 6.5`. The
   dashboard prints health, size, duplication, complexity and dead code;
   `--history` recomputes the last 30 commits' trend from git, so nothing is
@@ -152,14 +161,16 @@ maintain:
   are matched relative to each scan root (`proxy.ts`, not
   `apps/web/src/proxy.ts`). Without them 19 live files read as dead — 3.4%
   instead of 0.2% — and the health score shows C 64 instead of B 70.
-- **Hooks** — `pre-commit` runs `bun run dup:changed` (working tree vs `HEAD`,
-  baseline kept in Git-ignored `.tmp/`); `pre-push` runs `bun run dup:base`
-  (the same comparison as CI). Hooks are local feedback; the CI step is the
-  actual gate, so `git push --no-verify` still gets caught.
+- **Hooks** — `pre-commit` runs `bun run dup:changed` (working tree vs `HEAD`)
+  and `pre-push` runs `bun run dup:base` (the same comparison as CI against
+  `origin/main`); both are `scripts/dup-baseline.ts --ref <ref>`, so the local
+  verdict and the CI one cannot disagree about what "new" means. Hooks are local
+  feedback; the CI step is the actual gate, so `git push --no-verify` still gets
+  caught.
 
 Locally, `bun run dup` scans the whole configured scope (console report),
-`bun run dup:changed` lists clones that touch uncommitted files, and
-`bun run dup:base` lists new clones vs `origin/main`. `--threshold` is
+`bun run dup:changed` lists clones new against `HEAD`, and `bun run dup:base`
+lists new clones against `origin/main`. `--threshold` is
 deliberately **not** in `.jscpd.json`: it is whole-tree and would fail the
 changed/new-clone runs on the duplication that already exists.
 
