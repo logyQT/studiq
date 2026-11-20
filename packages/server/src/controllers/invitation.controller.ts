@@ -1,4 +1,5 @@
-import type { RequestContext } from '@studiq/authz';
+import { Permission, type RequestContext } from '@studiq/authz';
+import { requirePermission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
@@ -67,6 +68,8 @@ export class InvitationController {
   }
 
   async list(ctx: RequestContext, query?: { isAccepted?: boolean }): Promise<ControllerResponse> {
+    await requirePermission(ctx, Permission.ORG_INVITATION_MANAGE);
+
     const parsed = InvitationListQuerySchema.safeParse(query ?? {});
 
     if (!parsed.success) {
@@ -83,6 +86,8 @@ export class InvitationController {
   }
 
   async update(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
+    await requirePermission(ctx, Permission.ORG_INVITATION_MANAGE);
+
     const parsed = UpdateInviteSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -99,6 +104,8 @@ export class InvitationController {
   }
 
   async delete(ctx: RequestContext, id: string): Promise<ControllerResponse> {
+    await requirePermission(ctx, Permission.ORG_INVITATION_MANAGE);
+
     const result = await this.service.deleteInvitation(ctx, id);
 
     if (isFailure(result)) {

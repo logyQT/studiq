@@ -1,4 +1,5 @@
-import type { RequestContext } from '@studiq/authz';
+import { Permission, type RequestContext } from '@studiq/authz';
+import { requirePermission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
@@ -92,6 +93,12 @@ export class OrganizationController {
   }
 
   async update(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
+    // ADR-0015 §7: settings are an `org.*` capability, decided from the context
+    // alone. Before the feature and the body: a caller without the key is not
+    // told which payload would have been refused, and branding is
+    // permission AND entitlement (§4.1).
+    await requirePermission(ctx, Permission.ORG_SETTINGS_MANAGE);
+
     // Branding is plan-gated, but a plain org rename is not — only gate the
     // request when it actually carries branding fields. Checked on the raw
     // body (before validation) so a disabled feature fails closed rather than

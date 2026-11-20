@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -17,10 +17,7 @@ interface MemberRow {
 
 type GroupMembership = { id: string; name: string; role: string };
 
-/**
- * One response shape for both `listMembers` branches (educator/group-scoped and
- * organization-wide), so their fields cannot drift.
- */
+/** One response shape for the member list, so its fields cannot drift. */
 function toMemberRows(
   rows: MemberRow[],
   organizationId: string,
@@ -70,33 +67,12 @@ export class OrganizationMemberService {
       return failure('FORBIDDEN');
     }
 
-    let memberUserIds: string[] | undefined;
-
-    if (ctx.accountType === AccountType.EDUCATOR) {
-      const { groupService } = await import('@studiq/server/services/group.service');
-      const groupResult = await groupService.getUserGroupIds(ctx);
-      if (!groupResult.success) return failure(groupResult.error);
-      const groupIds = groupResult.data;
-      if (groupIds.length === 0) return success([]);
-
-      const { data: gmData } = await supabase
-        .from('group_members')
-        .select('user_id')
-        .in('group_id', groupIds);
-      memberUserIds = [...new Set((gmData ?? []).map((gm) => gm.user_id))];
-      if (memberUserIds.length === 0) return success([]);
-    }
-
     let query = supabase
       .from('org_members')
       .select(
         'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
       )
       .eq('organization_id', ctx.activeOrgId);
-
-    if (memberUserIds) {
-      query = query.in('user_id', memberUserIds);
-    }
 
     if (roleFilter) {
       query = query.eq('org_roles.name', roleFilter);

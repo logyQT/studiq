@@ -1,26 +1,19 @@
-import { AccountType } from '@studiq/authz';
 import { orgRoleController } from '@studiq/server/controllers/org-role.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRoute } from '@studiq/server/lib/route-handler';
 
-export async function GET(req: NextRequest) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      return toNextResponse(await orgRoleController.listRoles(ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/**
+ * Readable by every member of the org (withAuth reads the caller's own role on
+ * every request, and the member screens need the list). No persona and no
+ * permission key: authority here is the active org membership.
+ */
+export const GET = authedRoute(
+  () => [],
+  (ctx) => orgRoleController.listRoles(ctx),
+);
 
-export async function POST(req: NextRequest) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const body: unknown = await req.json();
-      return toNextResponse(await orgRoleController.createRole(ctx, body));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Writes are gated on `org.role.manage` in the controller (2a-2). */
+export const POST = authedRoute(
+  ({ json }) => [json],
+  (ctx, body) => orgRoleController.createRole(ctx, body),
+  { readsBody: true },
+);

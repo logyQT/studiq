@@ -1,39 +1,21 @@
-import { AccountType } from '@studiq/authz';
 import { orgRoleController } from '@studiq/server/controllers/org-role.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return withAuth(
-    req,
-    async (ctx) => {
-      return toNextResponse(await orgRoleController.getRole(ctx, id));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+type Params = { id: string };
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return withAuth(
-    req,
-    async (ctx) => {
-      const body: unknown = await req.json();
-      return toNextResponse(await orgRoleController.updateRole(ctx, id, body));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Readable by every member of the org; writes gate on `org.role.manage`. */
+export const GET = authedRouteWithParams<Params, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => orgRoleController.getRole(ctx, id),
+);
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return withAuth(
-    req,
-    async (ctx) => {
-      return toNextResponse(await orgRoleController.deleteRole(ctx, id));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+export const PUT = authedRouteWithParams<Params, [string, unknown]>(
+  ({ params, json }) => [params.id, json],
+  (ctx, id, body) => orgRoleController.updateRole(ctx, id, body),
+  { readsBody: true },
+);
+
+export const DELETE = authedRouteWithParams<Params, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => orgRoleController.deleteRole(ctx, id),
+);

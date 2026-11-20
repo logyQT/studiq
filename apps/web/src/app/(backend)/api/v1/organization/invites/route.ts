@@ -1,33 +1,34 @@
-import { AccountType } from '@studiq/authz';
 import { invitationController } from '@studiq/server/controllers/invitation.controller';
+import { authedRoute } from '@studiq/server/lib/route-handler';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  return withAuth(req, async (ctx) => {
-    const body: unknown = await req.json();
-    return toNextResponse(await invitationController.create(ctx, body));
-  });
-}
-
+/**
+ * `?token=…` is the public preview (the token is the capability; the accept flow
+ * runs before the caller is a member), so it stays unauthenticated and outside
+ * the wrapper. Everything else is the authenticated list — built inline, after
+ * that branch, because the file cannot export two GETs.
+ */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get('token');
 
-  // ?token=xxx → getByToken (public)
   if (token) {
-    const response = await invitationController.getByToken(token);
-    return toNextResponse(response);
+    return toNextResponse(await invitationController.getByToken(token));
   }
 
-  // No token → list invitations (authenticated, manager/educator only)
-  return withAuth(
-    req,
-    async (ctx) => {
-      const isAccepted = searchParams.get('isAccepted') === 'true';
-      return toNextResponse(await invitationController.list(ctx, { isAccepted }));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
+  return authedRoute(
+    () => [],
+    (ctx) =>
+      invitationController.list(ctx, {
+        isAccepted: new URL(ctx.url).searchParams.get('isAccepted') === 'true',
+      }),
+  )(req);
 }
+
+/** Create keeps its own authority until 2b-4 rewrites the invitation grant. */
+export const POST = authedRoute(
+  ({ json }) => [json],
+  (ctx, body) => invitationController.create(ctx, body),
+  { readsBody: true },
+);

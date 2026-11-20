@@ -1,26 +1,14 @@
-import { AccountType } from '@studiq/authz';
 import { seatController } from '@studiq/server/controllers/seat.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRoute } from '@studiq/server/lib/route-handler';
 
-export async function GET(req: NextRequest) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      return toNextResponse(await seatController.listPools(ctx));
-    },
-    { allowedAccountTypes: [AccountType.MANAGER] },
-  );
-}
+/** The pool list is the `/manage/seats` read: `org.seat.manage`. */
+export const GET = authedRoute(
+  () => [],
+  (ctx) => seatController.listPools(ctx),
+);
 
-export async function POST(req: NextRequest) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const body: unknown = await req.json();
-      return toNextResponse(await seatController.createPool(ctx, body));
-    },
-    { allowedAccountTypes: [AccountType.MANAGER] },
-  );
-}
+export const POST = authedRoute(
+  ({ json }) => [json],
+  (ctx, body) => seatController.createPool(ctx, body),
+  { readsBody: true },
+);
