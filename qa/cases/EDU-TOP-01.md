@@ -81,3 +81,16 @@ version uses the case's own tenant and never the legacy accounts.
 - Not asserted: „pytania” in the expected result. The screen's counter is
   `flashcard_topic_assignments` only, and the case's own step 3 links the topic to flashcards;
   question linking is covered by the question-bank cases.
+
+## Observed 2026-11-20 (2b-3) — the roster is now declared
+
+The `content` profile's default educator is a real Teacher since 2b-3 (the roster read in
+D25 needs an org role that carries `group.manage`/`group.invite`), but this case's premise
+is the opposite: an educator on the org **Member** role, whose `topic.read` is `group`, so
+the manager's `G1`-shared topic is visible under „Wszystkie”. The spec now fails on the
+default (the shared topic is not visible), so the case declares its own roster instead:
+`__tests__/qa/profiles/EDU-TOP-01.json` keeps `"profile": "content"` and adds `members` —
+manager `admin`, educator `member`, student `member`, the same keys, account types, names,
+ids and e-mails as before, with the default group `G1` and its membership unchanged. The
+spec's own preparation (the shared topic created by the manager, the educator's own topic
+and the two-flashcard deck) is unchanged, as are the assertions.

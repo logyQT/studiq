@@ -2465,7 +2465,51 @@ Rule: an audit for a new read authority walks every caller — including a role
 preset shipped in code; and a guard that accepts the predicate in "either"
 clause does not guard the clause the mutation targets.
 
+#### 2026-11-20 — the QA shards named the three cases that depended on the old default
+
+What: CI run `44734178262` failed exactly three cases, all on the fixture, not
+the product. `qa-suite (edu)` — `EDU-DECK-01` (`spec.ts:245`: three readable
+decks expected, two returned; the manager's `G1` deck needs `deck.read` at
+`group`) and `EDU-TOP-01` (`spec.ts:418`: the `G1`-shared topic not visible, the
+same key shape). `qa-suite (mgr-sec-bil)` — `MGR-SEAT-03` (`spec.ts:188`: the
+control educator no longer holds `orgRoleName === 'member'`, so the role-aware
+`pro` seat refuses it). Each spec's header already documented the premise ("the
+educator holds the org `member` role"), i.e. each was built on the default that
+the D25 fix had to change. `EDU-02` timed out once on `/features/me` and passed
+on retry: a flake, not a dependent, and left alone.
+Fix: the default stays model-correct; the three cases declare their own roster
+through the same `members` shape `EDU-GRP-05` uses —
+`__tests__/qa/profiles/{EDU-DECK-01,EDU-TOP-01,MGR-SEAT-03}.json` carry manager
+`admin`, educator `member`, student `member` (MGR-SEAT-03 had no profile file, so
+it gains one). Same keys, account types, names, ids and e-mails, so the group
+counts and every seeded id stay where they were; `EDU-DECK-01` still promotes its
+educator to group `teacher` itself, and no `groupTeachers` was added anywhere.
+Case texts gained a dated observation; no spec assertion changed.
+
+**Known gap, recorded and not changed — follow-up: phase 3, the single
+resolver.** The seeded **Teacher** role holds every content key at `own`
+(`stats.read` at `group`), while **Member** reads content at `group`
+(`20261119180000_authority_entitlement_profile.sql`, `SYSTEM_ROLE_TEMPLATES` in
+`packages/authz/src/lib/org-roles.ts`). ADR-0015 §4.2 says Teacher is "content CRUD
+at `own`/`group`", which 2a-1 implemented as own-only — so a Teacher-role holder
+cannot read content shared to a class they are in, while a Member can. The three
+cases above are the visible edge: they need `deck.read` / `topic.read` at `group`
+to see a classmate's shared row, which is why they declare the Member role. This
+slice does not touch the seed, the template or a case for it; the scope
+composition belongs to phase 3's single resolver, and the pointer is repeated
+under that phase.
+
+Rule: none new — R24 in the direction this run measured: when a broad default
+becomes model-correct, the cases built on the old one fail as a group, and the
+shard names them.
+
 ### Phase 3 — entitlements and limits
+
+Carried from 2b-3 (recorded there, not fixed there): the Teacher template grants
+every content key at `own` while Member reads at `group`, so a Teacher cannot read
+content shared to a class they are in though ADR-0015 §4.2 says `own`/`group`. The
+single resolver in this phase decides the composition; no seed, template or case
+change before it.
 
 ### Phase 4 — seats and personal
 
