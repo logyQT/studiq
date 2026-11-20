@@ -40,7 +40,7 @@ export const CreateInviteSchema = registry.register(
         ctx.addIssue({
           code: 'custom',
           message: ValidationErrorCode.INVALID_INPUT,
-          path: [value.groupId === undefined ? 'groupRole' : 'groupId'],
+          path: [value.groupId === undefined ? 'groupId' : 'groupRole'],
         });
       }
     }),

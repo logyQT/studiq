@@ -95,6 +95,9 @@ function inviteRow(overrides: Record<string, unknown> = {}) {
     is_accepted: false,
     organization_id: 'uni-1',
     target_org_role_id: 'role-member',
+    group_id: null,
+    target_group_role: null,
+    groups: null,
     expires_at: new Date(Date.now() + 86400000).toISOString(),
     organizations: { name: 'Test Uni' },
     org_roles: { name: 'Member', organization_id: 'uni-1' },
@@ -251,6 +254,40 @@ describe('InvitationService', () => {
       .mockReturnValueOnce(roleQb)
       .mockReturnValueOnce(insertQb);
     return { membershipQb, roleQb, insertQb };
+  }
+
+  /**
+   * A successful CLASS-invite create: membership, role-in-org, the group in the
+   * target org, the invitee's org membership, insert. The grant-authority RPC
+   * is not part of this path (group.invite was decided by the controller).
+   */
+  function classBuilders({
+    membership = { organization_id: 'uni-1' },
+    role = { id: 'member' },
+    group = { id: 'group-1', organization_id: 'uni-1', created_by: 'teacher-1' },
+    invitee = { user_id: 'student-1' },
+    insert = { id: 'inv-class', token: 'class-token' },
+    insertError = null,
+  }: {
+    membership?: unknown;
+    role?: unknown;
+    group?: unknown;
+    invitee?: unknown;
+    insert?: unknown;
+    insertError?: DbError | null;
+  } = {}) {
+    const membershipQb = qb(membership);
+    const roleQb = qb(role);
+    const groupQb = qb(group);
+    const inviteeQb = qb(invitee);
+    const insertQb = qb(insert, insertError);
+    mock.from
+      .mockReturnValueOnce(membershipQb)
+      .mockReturnValueOnce(roleQb)
+      .mockReturnValueOnce(groupQb)
+      .mockReturnValueOnce(inviteeQb)
+      .mockReturnValueOnce(insertQb);
+    return { membershipQb, roleQb, groupQb, inviteeQb, insertQb };
   }
 
   describe('createInvitation', () => {
@@ -482,6 +519,88 @@ describe('InvitationService', () => {
 
       vi.unstubAllEnvs();
     });
+
+    // ── Class invites (ADR-0015 §4.3, D7) ──────────────────────────────────
+    describe('class target (groupId + groupRole)', () => {
+      const classInput = {
+        email: 'student@example.com',
+        targetOrgRoleId: 'member',
+        groupId: 'group-1',
+        groupRole: 'member' as const,
+      };
+
+      it('writes group_id/target_group_role and skips the org-role grant RPC', async () => {
+        const { groupQb, inviteeQb, insertQb } = classBuilders();
+
+        vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+        const result = await service.createInvitation(
+          { ...managerCtx, activeOrgId: 'uni-1' },
+          classInput,
+        );
+
+        expect(result.success).toBe(true);
+        // The group is re-scoped to the resolved target org (§7.1: a foreign
+        // group is 404).
+        expect(groupQb.eq).toHaveBeenCalledWith('id', 'group-1');
+        expect(groupQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+        // D7: the invitee must be an existing org member.
+        expect(inviteeQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+        expect(inviteeQb.eq).toHaveBeenCalledWith('profiles.email', 'student@example.com');
+        // A class invite needs no org-role grant: the accept flow never
+        // applies target_org_role_id to an existing member.
+        expect(mock.rpc).not.toHaveBeenCalledWith(
+          'can_assign_org_role',
+          expect.anything(),
+        );
+        expect(insertQb.insert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            organization_id: 'uni-1',
+            group_id: 'group-1',
+            target_group_role: 'member',
+          }),
+        );
+
+        vi.unstubAllEnvs();
+      });
+
+      it('returns NOT_FOUND when the group belongs to another organization and writes nothing', async () => {
+        classBuilders({ group: null });
+
+        vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+        const result = await service.createInvitation(
+          { ...managerCtx, activeOrgId: 'uni-1' },
+          classInput,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('NOT_FOUND');
+        expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+        vi.unstubAllEnvs();
+      });
+
+      it('returns UNPROCESSABLE_ENTITY naming the email when the invitee is not an org member (D7)', async () => {
+        classBuilders({ invitee: null });
+
+        vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+        const result = await service.createInvitation(
+          { ...managerCtx, activeOrgId: 'uni-1' },
+          classInput,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(result).toHaveProperty('details', [
+          expect.objectContaining({ path: ['email'] }),
+        ]);
+        expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+        vi.unstubAllEnvs();
+      });
+    });
   });
 
   // MGR-INV-02: bulk is all-or-nothing. Every entry is checked before any write
@@ -675,8 +794,7 @@ describe('InvitationService', () => {
       vi.unstubAllEnvs();
     });
 
-    it('returns UNPROCESSABLE_ENTITY when entries point at different organizations', async () => {
-      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
+    it('returns UNPROCESSABLE_ENTITY when entries point at different organizations', async () => {      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
@@ -696,6 +814,36 @@ describe('InvitationService', () => {
       // Stopped at the tenant boundary: no role lookup, no insert.
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(mock.from).not.toHaveBeenCalledWith('org_roles');
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    it('refuses a bulk entry that carries a class target and writes nothing', async () => {
+      // Bulk is the org-invitation surface: the batch's authority is one
+      // `org.invitation.manage` check, so an entry may not name a group.
+      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        [
+          {
+            email: 'john@example.com',
+            targetOrgRoleId: memberRole,
+            groupId: 'group-1',
+            groupRole: 'member',
+          },
+        ],
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result).toHaveProperty('details', [
+        expect.objectContaining({ path: ['invitations', 0, 'groupId'] }),
+      ]);
+      expect(mock.from).toHaveBeenCalledTimes(1);
       expect(mock.from).not.toHaveBeenCalledWith('invitations');
 
       vi.unstubAllEnvs();
@@ -929,6 +1077,55 @@ describe('InvitationService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('GONE');
     });
+
+    it('exposes the group name/role for a class invite and re-checks group.invite on the inviter', async () => {
+      mock.from.mockReturnValueOnce(
+        qb(
+          inviteRow({
+            group_id: 'group-1',
+            target_group_role: 'member',
+            groups: { name: 'Class 1A', organization_id: 'uni-1' },
+          }),
+        ),
+      );
+
+      const result = await service.getInvitationByToken('class-token');
+
+      expect(result.success).toBe(true);
+      expect(result).toMatchObject({
+        data: {
+          groupId: 'group-1',
+          groupName: 'Class 1A',
+          groupRole: 'member',
+        },
+      });
+      // A class invite's authority is group.invite on its group, re-checked
+      // with the actor-parameterized helper — not the org-role grant.
+      expect(mock.rpc).toHaveBeenCalledWith('has_group_permission', {
+        p_actor: 'manager-1',
+        p_group_id: 'group-1',
+        p_permission: 'group.invite',
+      });
+      expect(mock.rpc).not.toHaveBeenCalledWith('can_assign_org_role', expect.anything());
+    });
+
+    it('returns GONE for a class invite whose group belongs to another organization', async () => {
+      mock.from.mockReturnValueOnce(
+        qb(
+          inviteRow({
+            group_id: 'group-x',
+            target_group_role: 'member',
+            groups: { name: 'Foreign class', organization_id: 'other-org' },
+          }),
+        ),
+      );
+
+      const result = await service.getInvitationByToken('foreign-group');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(mock.rpc).not.toHaveBeenCalled();
+    });
   });
 
   describe('acceptInvitation', () => {
@@ -1143,6 +1340,78 @@ describe('InvitationService', () => {
       // No seat count, no membership upsert: the token did nothing.
       expect(admin.from).toHaveBeenCalledTimes(1);
       expect(limitsResolver.checkOrgLimit).not.toHaveBeenCalled();
+    });
+
+    it('re-checks group.invite (not the org-role grant) for a class invite on accept', async () => {
+      const classInvite = inviteRow({
+        email: 'member@example.com',
+        organization_id: 'org-1',
+        target_org_role_id: 'role-member',
+        group_id: 'group-1',
+        target_group_role: 'member',
+        groups: { name: 'Class 1A', organization_id: 'org-1' },
+        organizations: { name: 'Test Org' },
+        org_roles: { name: 'member', organization_id: 'org-1' },
+      });
+      const admin = adminClient();
+      acceptRpc(admin);
+      admin.rpc.mockImplementation((fn: string, args?: Record<string, unknown>) =>
+        Promise.resolve(
+          fn === 'accept_org_invitation'
+            ? { data: [acceptedRow], error: null }
+            : fn === 'has_group_permission'
+              ? { data: args?.p_group_id === 'group-1', error: null }
+              : { data: true, error: null },
+        ),
+      );
+      service = new InvitationService(
+        () => Promise.resolve(mock),
+        () => admin.client,
+      );
+      admin.from.mockReturnValueOnce(qb(classInvite)).mockReturnValueOnce(countQb(2));
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(true);
+      expect(admin.rpc).toHaveBeenCalledWith('has_group_permission', {
+        p_actor: 'manager-1',
+        p_group_id: 'group-1',
+        p_permission: 'group.invite',
+      });
+      expect(admin.rpc).not.toHaveBeenCalledWith('can_assign_org_role', expect.anything());
+      expect(admin.rpc).toHaveBeenCalledWith('accept_org_invitation', {
+        p_token: 'tok',
+        p_user_id: 'joining-user',
+      });
+    });
+
+    it('refuses a class invite whose inviter lost group.invite (GONE, token untouched)', async () => {
+      const classInvite = inviteRow({
+        organization_id: 'org-1',
+        group_id: 'group-1',
+        target_group_role: 'member',
+        groups: { name: 'Class 1A', organization_id: 'org-1' },
+        org_roles: { name: 'member', organization_id: 'org-1' },
+      });
+      const admin = adminClient();
+      admin.rpc.mockResolvedValue({ data: false, error: null });
+      admin.from.mockReturnValueOnce(qb(classInvite));
+      service = new InvitationService(
+        () => Promise.resolve(mock),
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(admin.rpc).toHaveBeenCalledWith('has_group_permission', {
+        p_actor: 'manager-1',
+        p_group_id: 'group-1',
+        p_permission: 'group.invite',
+      });
+      expect(admin.rpc).not.toHaveBeenCalledWith('accept_org_invitation', expect.anything());
+      expect(admin.from).toHaveBeenCalledTimes(1);
     });
 
     it('treats an authority-RPC error as an invalid invitation (GONE)', async () => {

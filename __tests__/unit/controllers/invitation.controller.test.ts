@@ -57,6 +57,7 @@ function createMockInvitationService() {
     listInvitations: vi.fn(),
     updateInvitation: vi.fn(),
     deleteInvitation: vi.fn(),
+    resolveInvitableGroup: vi.fn(),
   };
 }
 
@@ -72,6 +73,33 @@ const mockCtx: RequestContext = {
   permissionScopes: {},
 };
 
+/** A role holding `org.invitation.manage` at organization scope (the Admin role). */
+const orgManagerCtx: RequestContext = {
+  ...mockCtx,
+  accountType: AccountType.MANAGER,
+  orgRoleId: 'role-admin',
+  activeOrgId: 'org-1',
+  permissionScopes: { 'org.invitation.manage': 'organization' },
+};
+
+/** The seeded Teacher role: `group.invite` at group scope, teaching `group-1`. */
+const teacherCtx: RequestContext = {
+  ...mockCtx,
+  accountType: AccountType.EDUCATOR,
+  orgRoleId: 'role-teacher',
+  activeOrgId: 'org-1',
+  groupIds: ['550e8400-e29b-41d4-a716-446655440001'],
+  groupRoles: { '550e8400-e29b-41d4-a716-446655440001': 'teacher' },
+  permissionScopes: { 'group.invite': 'group' },
+};
+
+/** A role holding `group.invite` at organization scope reaches every class. */
+const orgScopeInviterCtx: RequestContext = {
+  ...teacherCtx,
+  groupRoles: {},
+  permissionScopes: { 'group.invite': 'organization' },
+};
+
 describe('InvitationController', () => {
   let mockService: ReturnType<typeof createMockInvitationService>;
   let controller: InvitationController;
@@ -83,11 +111,11 @@ describe('InvitationController', () => {
   });
 
   describe('create', () => {
-    it('returns success when invitation is created', async () => {
+    it('returns success when an org.invitation.manage holder creates an org invite', async () => {
       const result = { success: true, inviteLink: 'http://example.com/join?token=abc' };
       mockService.createInvitation.mockResolvedValueOnce(success(result));
 
-      const response = await controller.create(mockCtx, {
+      const response = await controller.create(orgManagerCtx, {
         email: 'john@example.com',
         targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
       });
@@ -97,10 +125,16 @@ describe('InvitationController', () => {
         statusCode: 201,
         data: result,
       });
+      // An org target asks `org.invitation.manage`, never a group lookup.
+      expect(mockService.resolveInvitableGroup).not.toHaveBeenCalled();
+      expect(mockService.createInvitation).toHaveBeenCalledWith(orgManagerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+      });
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
-      const response = await controller.create(mockCtx, {
+      const response = await controller.create(orgManagerCtx, {
         email: 'not-an-email',
         targetOrgRoleId: 'not-a-uuid',
       });
@@ -110,10 +144,147 @@ describe('InvitationController', () => {
       expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
+    it('returns 422 when only one of groupId/groupRole is set', async () => {
+      const response = await controller.create(teacherCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440001',
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((envelope(response).details ?? []).map((issue) => issue.path)).toContainEqual([
+        'groupRole',
+      ]);
+      expect(mockService.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 when groupRole is outside the group_members.role values', async () => {
+      const response = await controller.create(teacherCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440001',
+        groupRole: 'admin',
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((envelope(response).details ?? []).map((issue) => issue.path)).toContainEqual([
+        'groupRole',
+      ]);
+      expect(mockService.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('refuses an org target for a caller without org.invitation.manage before the service', async () => {
+      await expect(
+        controller.create(teacherCtx, {
+          email: 'john@example.com',
+          targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+      expect(mockService.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('refuses a class target for a group the caller does not teach', async () => {
+      mockService.resolveInvitableGroup.mockResolvedValueOnce(
+        success({ id: '550e8400-e29b-41d4-a716-446655440002', organization_id: 'org-1', created_by: null }),
+      );
+
+      await expect(
+        controller.create(teacherCtx, {
+          email: 'john@example.com',
+          targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+          groupId: '550e8400-e29b-41d4-a716-446655440002',
+          groupRole: 'member',
+        }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+      expect(mockService.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a class target whose group is in another org', async () => {
+      mockService.resolveInvitableGroup.mockResolvedValueOnce(failure('NOT_FOUND'));
+
+      const response = await controller.create(teacherCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440099',
+        groupRole: 'member',
+      });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 404,
+        error: 'NOT_FOUND',
+      });
+      expect(mockService.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('lets a teacher of the group create a class invite through group.invite', async () => {
+      mockService.resolveInvitableGroup.mockResolvedValueOnce(
+        success({ id: '550e8400-e29b-41d4-a716-446655440001', organization_id: 'org-1', created_by: 'someone-else' }),
+      );
+      const result = { success: true, inviteLink: 'http://example.com/join?token=abc' };
+      mockService.createInvitation.mockResolvedValueOnce(success(result));
+
+      const response = await controller.create(teacherCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440001',
+        groupRole: 'member',
+      });
+
+      expect(response).toEqual({ success: true, statusCode: 201, data: result });
+      expect(mockService.resolveInvitableGroup).toHaveBeenCalledWith(teacherCtx, '550e8400-e29b-41d4-a716-446655440001');
+      expect(mockService.createInvitation).toHaveBeenCalledWith(teacherCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440001',
+        groupRole: 'member',
+      });
+    });
+
+    it('lets an organization-scope group.invite holder create a class invite for any class', async () => {
+      mockService.resolveInvitableGroup.mockResolvedValueOnce(
+        success({ id: '550e8400-e29b-41d4-a716-446655440009', organization_id: 'org-1', created_by: null }),
+      );
+      const result = { success: true, inviteLink: 'http://example.com/join?token=abc' };
+      mockService.createInvitation.mockResolvedValueOnce(success(result));
+
+      const response = await controller.create(orgScopeInviterCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440009',
+        groupRole: 'teacher',
+      });
+
+      expect(response.statusCode).toBe(201);
+    });
+
+    it('refuses a class target for an own-scope group.invite row (no own in the catalog)', async () => {
+      mockService.resolveInvitableGroup.mockResolvedValueOnce(
+        success({ id: '550e8400-e29b-41d4-a716-446655440001', organization_id: 'org-1', created_by: mockCtx.userId }),
+      );
+      const ownScopeCtx: RequestContext = {
+        ...teacherCtx,
+        groupRoles: {},
+        permissionScopes: { 'group.invite': 'own' },
+      };
+
+      await expect(
+        controller.create(ownScopeCtx, {
+          email: 'john@example.com',
+          targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+          groupId: '550e8400-e29b-41d4-a716-446655440001',
+          groupRole: 'member',
+        }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+      expect(mockService.createInvitation).not.toHaveBeenCalled();
+    });
+
     it('returns NOT_FOUND when inviter profile not found', async () => {
       mockService.createInvitation.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await controller.create(mockCtx, {
+      const response = await controller.create(orgManagerCtx, {
         email: 'john@example.com',
         targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
       });
@@ -125,19 +296,29 @@ describe('InvitationController', () => {
       });
     });
 
-    it('returns FORBIDDEN when user lacks permissions', async () => {
-      mockService.createInvitation.mockResolvedValueOnce(failure('FORBIDDEN'));
+    it('forwards the service 422 for a class invite whose invitee is not an org member', async () => {
+      mockService.resolveInvitableGroup.mockResolvedValueOnce(
+        success({ id: '550e8400-e29b-41d4-a716-446655440001', organization_id: 'org-1', created_by: null }),
+      );
+      mockService.createInvitation.mockResolvedValueOnce(
+        failure('UNPROCESSABLE_ENTITY', [
+          { code: 'custom', message: 'VALIDATION_INVALID_INPUT', path: ['email'] },
+        ]),
+      );
 
-      const response = await controller.create(mockCtx, {
-        email: 'john@example.com',
+      const response = await controller.create(teacherCtx, {
+        email: 'outsider@example.com',
         targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
+        groupId: '550e8400-e29b-41d4-a716-446655440001',
+        groupRole: 'member',
       });
 
-      expect(response).toEqual({
-        success: false,
-        statusCode: 403,
-        error: 'FORBIDDEN',
-      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).details).toEqual([
+        expect.objectContaining({ path: ['email'] }),
+      ]);
     });
   });
 
@@ -229,6 +410,15 @@ describe('InvitationController', () => {
   });
 
   describe('createBulk', () => {
+    it('refuses the whole batch for a caller without org.invitation.manage, before parsing', async () => {
+      // Even a malformed body answers 403, not 422: the gate runs first.
+      await expect(controller.createBulk(mockCtx, { invitations: [] })).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+        statusCode: 403,
+      });
+      expect(mockService.createInvitationsBulk).not.toHaveBeenCalled();
+    });
+
     it('returns one result per invitation', async () => {
       mockService.createInvitationsBulk.mockResolvedValueOnce(
         success([
@@ -253,7 +443,7 @@ describe('InvitationController', () => {
         ]),
       );
 
-      const response = await controller.createBulk(mockCtx, {
+      const response = await controller.createBulk(orgManagerCtx, {
         invitations: [
           { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
           { email: 'jane@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440002' },
@@ -279,7 +469,7 @@ describe('InvitationController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY naming the incomplete entry', async () => {
-      const response = await controller.createBulk(mockCtx, {
+      const response = await controller.createBulk(orgManagerCtx, {
         invitations: [{ email: 'john@example.com' }],
       });
 
@@ -306,7 +496,7 @@ describe('InvitationController', () => {
         ]),
       );
 
-      const response = await controller.createBulk(mockCtx, {
+      const response = await controller.createBulk(orgManagerCtx, {
         invitations: [
           { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
           { email: 'jane@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440002' },
@@ -325,7 +515,7 @@ describe('InvitationController', () => {
     it('returns a non-200 when the service fails', async () => {
       mockService.createInvitationsBulk.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await controller.createBulk(mockCtx, {
+      const response = await controller.createBulk(orgManagerCtx, {
         invitations: [
           { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
         ],
