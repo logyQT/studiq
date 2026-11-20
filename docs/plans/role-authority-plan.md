@@ -93,6 +93,7 @@ phase-2 row stays `active` — three merged/written slices do not make phase 2 d
 | R21 | A read route's SELECT policy is part of its gate: a filter that runs after the gate turns a refusal into an empty page, not an error.                                                                                                           | the seat-assignment list admitted a key holder and RLS filtered every row silently                                                 |
 | R22 | When one policy carries two authorities, moving one is a split, not a sweep — name the conjunct that still owns the other half, or the next reader calls its 42501 a bug.                                                                       | the invitation UPDATE kept `can_assign_org_role`'s membership-marker manager half                                                  |
 | R23 | An API gate may stay deliberately narrower than its data-plane policy when the policy predates it and narrowing it means auditing every reader; the asymmetry is recorded with a named owner in the same PR, never left as two unnamed answers. | D25 kept the roster read at three keys while the `org_members` SELECT policy still admits any same-org member (2b-4)               |
+| R24 | A QA persona's authority is its org-role row, not its account type: a slice that gates on role keys audits the seeded **default** accounts, not only the accounts a profile explicitly promotes.                                                | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                    |
 
 ## 4. Decisions
 
@@ -2294,6 +2295,59 @@ body, and their case texts gained a dated observation.
 Rule: a shared directory denies with an empty list, not an error; and R23 — an
 API gate that stays deliberately narrower than its data-plane policy names the
 asymmetry and its owner in the same PR.
+
+#### 2026-11-20 — the fixture's "teacher" was a Member, and D25 is what said so
+
+What: the `content` profile in `scripts/seed/qa.ts` built its default roster
+with `buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' })`. The
+third argument is the **account type**; the org role comes from
+`SeedAccount.orgRole`, whose default is `member`
+(`__tests__/helpers/tenant-seed.ts`). So the account every case calls "teacher"
+was an educator persona holding the org **Member** row, and its `group.manage` /
+`group.invite` resolved to nothing. `teacher2` had already been migrated to
+`orgRole: 'teacher'`; the default never was.
+Why D25 exposed it: the roster read is `org.member.manage` **or** `group.manage`
+**or** `group.invite`, and all three arrive through the org-role layer, so a
+Member holding none of them gets the correct `{ success: true, data: [] }`.
+`AUT-19` (`spec.ts:174`, its "authorized teacher" must see the tenant student in
+`GET /organization/members`) and `EDU-ASG-04` (`spec.ts:366`, the single-student
+picker reads the roster with `?role=member`) then failed on the fixture while the
+product answered correctly — the failure D25 was supposed to surface, one layer
+below the gate.
+What it closes: the 2b-2-2 note that "EDU-GRP-01 and EDU-GRP-03 stay red on
+their fixture" no longer reproduces. The QA pass on this tree ran `EDU-GRP-01`,
+`EDU-GRP-02`, `EDU-GRP-03` (the `org-limit` profile, which promotes its teacher)
+and `EDU-GRP-05` green, with only `AUT-19` and `EDU-ASG-04` red. Those two
+EDU-GRP cases are org-scope read/create cases that the 2b-3 route set settles;
+the remaining gap in this slice was only the content profile's org role, so that
+2b-2-2 debt note is closed by this entry rather than edited in place.
+Fix: `teacher` now passes `orgRole: 'teacher'`, the same value `teacher2` carries.
+That is the org role row only: `seedTenantGraph` enrols every member in the
+default group with `group_members.role = 'member'` unconditionally, so the
+account still does not teach a class; content-profile cases that need class
+management keep declaring `groupTeachers`, and `org-limit` keeps its explicit
+`{ ...accounts.teacher, orgRole: 'teacher' }` (now redundant with the default,
+left in place because that profile's member-limit count depends on it).
+Profile audit: `bare` seeds `org: null`, so the field is inert; `org-limit`
+promotes through the same `teacher` param it always did; `two-org` builds its own
+`teacher-a` account and promotes it per org; the `--role` flag only selects
+which account the bare profile seeds. None of those paths changed.
+No seeder-level test exists, and this entry deliberately does not invent one: the
+module is Bun-only (`scripts/seed/cli.ts` value-imports `new SQL` from `bun`, and
+`scripts/seed/qa.ts` reads `import.meta.dir` at module scope), so importing it
+under Vitest fails first at `scripts/seed/cli.ts:14` (`Cannot find package
+'bun'`) and, with that mocked, at `scripts/seed/qa.ts:125` (`import.meta.dir`
+undefined); `seedCase` is in any case DB-bound and writes tenant files. The proof
+is the end-to-end one, and it is the pass condition the QA run carries rather
+than a result recorded here: `AUT-19` and `EDU-ASG-04` fail on the pre-fix
+seeder at the two lines above and must pass after it, with `EDU-GRP-02` /
+`EDU-GRP-05` as the regression sample — that run happens once, after this seeder
+change, so the entry records what to look for, not a green it has not seen. A
+unit test asserting the literal would have been a change detector over one
+fixture line, not a behaviour assertion.
+Rule: a QA persona's authority is its org-role row, not its account type — a
+slice that gates on role keys audits the seeded **default** accounts, not only
+the accounts a profile explicitly promotes (R24).
 
 ### Phase 3 — entitlements and limits
 
