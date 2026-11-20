@@ -72,6 +72,7 @@ beforeEach(() => {
     accountType: 'MANAGER',
     activeOrgId: 'org-1',
     orgRoleId: 'role-1',
+    permissionScopes: { 'org.settings.manage': 'organization' },
   };
   // Default: the org exists and has no logo yet, so the cleanup is a no-op.
   getByIdMock.mockResolvedValue({
@@ -183,6 +184,24 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     expect(firstRecorded(requireFeatureMock.mock.invocationCallOrder)).toBeLessThan(
       firstRecorded(uploadToBucketMock.mock.invocationCallOrder),
     );
+  });
+
+  it('refuses a caller without org.settings.manage before the upload', async () => {
+    mockCtx = { ...mockCtx, permissionScopes: {} };
+
+    // withAuth is stubbed in this file (it returns the handler's result), so the
+    // controller's gate surfaces as the AppError it is; the real wrapper maps it
+    // to the 403 asserted in the integration suite.
+    await expect(
+      POST(
+        fakeRequest(() => Promise.resolve(imageFormData())),
+        params,
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+
+    expect(requireFeatureMock).not.toHaveBeenCalled();
+    expect(uploadToBucketMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
   });
 });
 
