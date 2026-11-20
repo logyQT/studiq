@@ -1,16 +1,10 @@
-import { AccountType } from '@studiq/authz';
 import { flashcardStatsController } from '@studiq/server/controllers/flashcard-stats.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ bucket: string }> }) {
-  return withAuth(
-    _req,
-    async (ctx) => {
-      const { bucket } = await params;
-      return toNextResponse(await flashcardStatsController.getDifficultyCards({ bucket }, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+type Params = { bucket: string };
+
+/** The cards of one difficulty bucket; `stats.read` gates in the controller. */
+export const GET = authedRouteWithParams<Params, [string]>(
+  ({ params }) => [params.bucket],
+  (ctx, bucket) => flashcardStatsController.getDifficultyCards({ bucket }, ctx),
+);

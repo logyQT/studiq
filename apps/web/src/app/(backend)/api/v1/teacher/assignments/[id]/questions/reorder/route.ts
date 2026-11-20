@@ -1,17 +1,9 @@
-import { AccountType } from '@studiq/authz';
 import { teacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(await teacherAssignmentController.reorderQuestions(id, body, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR] },
-  );
-}
+/** Reorders one run's items; `assignment.update` gates in the controller. */
+export const PUT = authedRouteWithParams<{ id: string }, [string, unknown]>(
+  ({ params: { id }, json }) => [id, json],
+  (ctx, id, body) => teacherAssignmentController.reorderQuestions(id, body, ctx),
+  { readsBody: true },
+);

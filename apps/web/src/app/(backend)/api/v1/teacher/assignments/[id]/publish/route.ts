@@ -1,17 +1,11 @@
-import { AccountType } from '@studiq/authz';
 import { teacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(await teacherAssignmentController.publish(id, body, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR] },
-  );
-}
+type Params = { id: string };
+
+/** Publishes one run to its cohort; `assignment.update` gates in the controller. */
+export const POST = authedRouteWithParams<Params, [string, unknown]>(
+  ({ params, json }) => [params.id, json],
+  (ctx, id, body) => teacherAssignmentController.publish(id, body, ctx),
+  { readsBody: true },
+);

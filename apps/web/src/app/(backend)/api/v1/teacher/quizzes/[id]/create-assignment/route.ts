@@ -1,16 +1,12 @@
-import { AccountType } from '@studiq/authz';
 import { quizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await quizTeacherController.createAssignment(id, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR] },
-  );
-}
+/**
+ * Mints an assignment from one quiz. The child acts on the parent quiz's `quiz.update`
+ * key (resolved against the loaded row, so a foreign id is 404); the minted assignment is
+ * an `assignment.create` write, which the controller asks for as well.
+ */
+export const POST = authedRouteWithParams<{ id: string }, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => quizTeacherController.createAssignment(id, ctx),
+);

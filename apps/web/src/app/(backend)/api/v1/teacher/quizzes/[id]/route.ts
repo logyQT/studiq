@@ -1,39 +1,21 @@
-import { AccountType } from '@studiq/authz';
 import { quizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await quizTeacherController.getById(id, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Reads one quiz; `quiz.read` gates in the controller, resolved against the loaded row. */
+export const GET = authedRouteWithParams<{ id: string }, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => quizTeacherController.getById(id, ctx),
+);
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(await quizTeacherController.update(id, body, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR] },
-  );
-}
+/** Edits the quiz's name/description; `quiz.update` gates in the controller. */
+export const PUT = authedRouteWithParams<{ id: string }, [string, unknown]>(
+  ({ params, json }) => [params.id, json],
+  (ctx, id, body) => quizTeacherController.update(id, body, ctx),
+  { readsBody: true },
+);
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await quizTeacherController.delete(id, ctx));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR] },
-  );
-}
+/** Deleting has no body: the id is the whole input. `quiz.delete` gates in the controller. */
+export const DELETE = authedRouteWithParams<{ id: string }, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => quizTeacherController.delete(id, ctx),
+);

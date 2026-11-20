@@ -86,6 +86,10 @@ export class QuestionController {
 
   /** R8: the staff ledger of one item — who saw its key, when, and with which classes. */
   async ledger(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    // The service resolves the same staff key against the loaded row; the persona
+    // gate the route carried is gone (ADR-0015 §7).
+    if (!(await can(ctx, Permission.QUESTION_BANK_UPDATE)))
+      return controllerResponse.error('FORBIDDEN');
     const result = await this.service.exposureLedger(id, ctx);
     return isFailure(result)
       ? controllerResponse.error(result.error)

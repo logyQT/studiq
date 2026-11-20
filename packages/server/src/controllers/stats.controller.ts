@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { can, Permission } from '@studiq/server/lib/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -13,6 +14,7 @@ export class StatsController {
   constructor(private service: StatsService) {}
 
   async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = TeacherStatsQuerySchema.safeParse(query);
 
     if (!parsed.success) {
@@ -35,6 +37,7 @@ export class StatsController {
   }
 
   async getTeacherQuizStats(ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const result = await this.service.getTeacherQuizStats(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
@@ -67,13 +70,15 @@ export class StatsController {
     query: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
 
     if (!parsed.success) {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.service.getTeacherGroupPerformance(ctx, parsed.data.days);
+    const { days } = parsed.data;
+    const result = await this.service.getTeacherGroupPerformance(ctx, days);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -81,17 +86,14 @@ export class StatsController {
   }
 
   async getTeacherActivityFeed(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
-
-    if (!parsed.success) {
+    if (!parsed.success)
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    }
-
     const result = await this.service.getTeacherActivityFeed(ctx, parsed.data.limit);
-
-    if (isFailure(result)) return controllerResponse.error(result.error);
-
-    return controllerResponse.success(result.data);
+    return isFailure(result)
+      ? controllerResponse.error(result.error)
+      : controllerResponse.success(result.data);
   }
 }
 export const statsController = wrapService(new StatsController(statsService), 'stats.controller');

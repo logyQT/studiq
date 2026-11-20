@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { can, Permission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
@@ -18,6 +19,7 @@ export class FlashcardStatsController {
   constructor(private service: FlashcardStatsService) {}
 
   async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = TeacherFlashcardStatsQuerySchema.safeParse(query);
 
     if (!parsed.success) {
@@ -37,6 +39,7 @@ export class FlashcardStatsController {
     query: { bucket?: string },
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
+    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = DifficultyBucketSchema.safeParse(query.bucket);
 
     if (!parsed.success) {
