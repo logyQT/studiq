@@ -161,14 +161,23 @@ describe('org-control routes authorize on org permissions', () => {
   let outsider: TestUserFixture;
   let disposable: TestUserFixture;
   let educatorHolder: TestUserFixture;
+  let classManager: TestUserFixture;
+  let classInviter: TestUserFixture;
 
   let holderSession: Session;
   let educatorHolderSession: Session;
   let memberSession: Session;
   let studentAdminSession: Session;
   let outsiderSession: Session;
+  let classManagerSession: Session;
+  let classInviterSession: Session;
 
-  async function roleWith(organizationId: string, name: string, keys: string[]): Promise<string> {
+  async function roleWith(
+    organizationId: string,
+    name: string,
+    keys: string[],
+    scope: 'group' | 'organization' = 'organization',
+  ): Promise<string> {
     const { data: role, error } = await service
       .from('org_roles')
       .insert({ organization_id: organizationId, name, display_name: name, is_system: false })
@@ -179,9 +188,7 @@ describe('org-control routes authorize on org permissions', () => {
     if (keys.length > 0) {
       const { error: permissionError } = await service
         .from('org_role_permissions')
-        .insert(
-          keys.map((key) => ({ org_role_id: role.id, permission_key: key, scope: 'organization' })),
-        );
+        .insert(keys.map((key) => ({ org_role_id: role.id, permission_key: key, scope })));
       if (permissionError) {
         throw new Error(`[setup] permissions ${name}: ${permissionError.message}`);
       }
@@ -218,11 +225,38 @@ describe('org-control routes authorize on org permissions', () => {
     ]);
     educatorHolder = await createTestUser({ role: 'educator', password: PASSWORD });
 
+    // D25: a Teacher's roster keys sit at `group` scope and never carry
+    // `org.member.manage` (D18/FP-04). One caller per branch, nothing else.
+    const classManagerRoleId = await roleWith(
+      orgId,
+      `org-member-class-manager-${tag}`,
+      ['group.manage'],
+      'group',
+    );
+    const classInviterRoleId = await roleWith(
+      orgId,
+      `org-member-class-inviter-${tag}`,
+      ['group.invite'],
+      'group',
+    );
+    classManager = await createTestUser({ role: 'educator', password: PASSWORD });
+    classInviter = await createTestUser({ role: 'educator', password: PASSWORD });
+
     await seedOrgMembership({ organizationId: orgId, userId: holder.id, orgRoleId: holderRoleId });
     await seedOrgMembership({
       organizationId: orgId,
       userId: educatorHolder.id,
       orgRoleId: educatorHolderRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: classManager.id,
+      orgRoleId: classManagerRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: classInviter.id,
+      orgRoleId: classInviterRoleId,
     });
     await seedOrgMembership({
       organizationId: orgId,
@@ -251,6 +285,8 @@ describe('org-control routes authorize on org permissions', () => {
     memberSession = await signIn(member.email);
     studentAdminSession = await signIn(studentAdmin.email);
     outsiderSession = await signIn(outsider.email);
+    classManagerSession = await signIn(classManager.email);
+    classInviterSession = await signIn(classInviter.email);
   });
 
   afterAll(async () => {
@@ -304,24 +340,75 @@ describe('org-control routes authorize on org permissions', () => {
   });
 
   describe('org.member.manage', () => {
-    it('lists the roster for the holder and refuses a Member-role caller', async () => {
-      const holderCall = await call(
+    it('lists the roster for the holder', async () => {
+      const { status, body } = await call(
         holderSession,
         getMembers,
         '/api/v1/organization/members',
         undefined,
         orgId,
       );
-      expect(holderCall.status).toBe(200);
+      expect(status).toBe(200);
+      expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
+    });
 
-      const memberCall = await call(
+    // D25: the roster has three read authorities. Each case is a caller whose
+    // role carries one of them and nothing else, so it pins that branch.
+    it('lists the roster for a group.manage-only caller (a class manager)', async () => {
+      const { status, body } = await call(
+        classManagerSession,
+        getMembers,
+        '/api/v1/organization/members',
+        undefined,
+        orgId,
+      );
+
+      expect(status).toBe(200);
+      expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
+    });
+
+    it('lists the roster for a group.invite-only caller (a class inviter)', async () => {
+      const { status, body } = await call(
+        classInviterSession,
+        getMembers,
+        '/api/v1/organization/members',
+        undefined,
+        orgId,
+      );
+
+      expect(status).toBe(200);
+      expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
+    });
+
+    // The deny shape is an empty list, not a 403 (AUT-19 accepts either). The
+    // body is pinned exactly: a status-only assertion would pass on a leak.
+    it('answers a Member-role caller with an empty list and no roster data', async () => {
+      const { status, body } = await call(
         memberSession,
         getMembers,
         '/api/v1/organization/members',
         undefined,
         orgId,
       );
-      expect(memberCall.status).toBe(403);
+
+      expect(status).toBe(200);
+      expect(body).toEqual({ success: true, data: [] });
+
+      const raw = JSON.stringify(body);
+      for (const account of [
+        holder,
+        member,
+        studentAdmin,
+        educatorHolder,
+        classManager,
+        classInviter,
+        outsider,
+        disposable,
+      ]) {
+        expect(raw).not.toContain(account.email);
+        expect(raw).not.toContain(account.id);
+      }
+      expect(raw).not.toContain('@');
     });
 
     it('lists the whole org roster for an educator who holds the key, not only their classes', async () => {
@@ -336,6 +423,27 @@ describe('org-control routes authorize on org permissions', () => {
       expect(status).toBe(200);
       // This caller teaches no class; the retired persona branch would answer [].
       expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
+    });
+
+    it('still refuses a Member-role role change with a valid body', async () => {
+      const { status, body } = await call(
+        memberSession,
+        putMembers,
+        '/api/v1/organization/members',
+        jsonInit('PUT', { targetUserId: disposable.id, newOrgRoleId: teacherRoleId }),
+        orgId,
+      );
+
+      expect(status).toBe(403);
+      expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
+
+      const { data } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', disposable.id)
+        .single();
+      expect(data?.org_role_id).toBe(memberRoleId);
     });
 
     it('lets the holder move a member between roles', async () => {
@@ -600,15 +708,20 @@ describe('org-control routes authorize on org permissions', () => {
   });
 
   it('refuses a caller whose only membership is another org', async () => {
-    const { status } = await call(
+    // The cookie names THIS org, but the caller is a member of the foreign one
+    // only, so `withAuth` resolves no active org — not an observation of this
+    // org's roster (a roster read never crosses tenants).
+    const { status, body } = await call(
       outsiderSession,
       getMembers,
       '/api/v1/organization/members',
       undefined,
-      foreignOrgId,
+      orgId,
     );
 
     expect(status).toBe(403);
+    expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
+    expect(JSON.stringify(body)).not.toContain('@');
   });
 
   it('refuses every gated family when there is no active org', async () => {

@@ -300,17 +300,22 @@ slice below lands.
   holds the keys at `organization`. `group.invite` stays unused until 2b-4.
 - **2b-3 — org-control route sweep and its RLS twin. Delivered** (slice 3 of 9)
   on `feat/authority-2b-3`: the settings, roster, seat and invitation routes drop
-  `allowedAccountTypes` and gate on `org.settings.manage` / `org.member.manage` /
-  `org.seat.manage` / `org.invitation.manage` from the controller
-  (`requirePermission`), while roles keep 2a-2's `org.role.manage` on writes and
-  reads stay membership-only. Branding keeps `org.settings.manage` **and** the
-  `branding` entitlement. `public.rls_caller_has_permission` replaces
+  `allowedAccountTypes` and gate on `org.settings.manage` / `org.seat.manage` /
+  `org.invitation.manage` from the controller (`requirePermission`), while roles
+  keep 2a-2's `org.role.manage` on writes and reads stay membership-only. The
+  roster read is three authorities (D25): `org.member.manage`, or
+  `group.manage`, or `group.invite` at any scope; everyone else reads an empty
+  list, and `PUT`/`DELETE` stay `org.member.manage`. Branding keeps
+  `org.settings.manage` **and** the `branding` entitlement.
+  `public.rls_caller_has_permission` replaces
   `is_org_manager` on the same PR's policies: `organizations` update, `org_members`
   update/delete, `org_seat_pools` insert/update/delete, `org_seat_assignments`
   insert/update/delete plus the manager branch of its select, and `invitations`
   update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-4).
 - 2b-4 — the remaining control-plane RLS: `billing_subscriptions`, the assignment
-  family, and the `can_assign_org_role` manager half.
+  family, the `can_assign_org_role` manager half, and the `org_members` SELECT
+  review D25 leaves open (the API is deliberately narrower than the data-plane
+  read until every reader is audited).
 - 2b-5 — class invites use `group.invite` at group scope for existing org
   members; add `invitations.group_id` + `target_group_role`, delete the
   `can_assign_org_role` teacher-name exception, and reuse

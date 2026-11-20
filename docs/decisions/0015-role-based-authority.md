@@ -617,13 +617,18 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > **2026-11-20 (phase 2b-3).** Three reads are membership, not capability.
 > `GET /organization/:id` and the role list/detail stay readable by any
 > `org_members` row of the active org: the member screens and `withAuth` itself
-> need them, and the catalog has no read key. `GET /organization/members` is a
-> capability (`org.member.manage`): the catalog has no `org.member.read`, and the
-> teacher surfaces that reach it through the `EDUCATOR` persona
-> (`/edu/classroom/members`, the assignment student picker) are a UI question
-> for phase 6. The invitation list is `org.invitation.manage` while its SELECT
-> policy keeps the `inviter_id = auth.uid()` branch — an inviter may still read
-> the row they minted; 2b-4 closes the write half.
+> need them, and the catalog has no read key. `GET /organization/members` moves
+> onto permissions but with three read authorities (D25): `org.member.manage`
+> at org scope, **or** `group.manage`, **or** `group.invite` at any scope the
+> role holds them. The catalog has no `org.member.read`, a Teacher must not hold
+> `org.member.manage` (D18/FP-04), and a class manager and a class inviter pick
+> from the same org roster (`/edu/classroom/members`, the assignment student
+> picker, the `/edu` onboarding counts). A caller holding none of the three
+> reads an empty list, not a 403: the list leaks nothing and AUT-19 accepts it,
+> while `PUT`/`DELETE` on the route stay `org.member.manage`. The invitation
+> list is `org.invitation.manage` while its SELECT policy keeps the
+> `inviter_id = auth.uid()` branch — an inviter may still read the row they
+> minted; 2b-4 closes the write half.
 
 ---
 
@@ -1058,6 +1063,18 @@ interpretation.
 | 13  | Can a `student` persona hold the Admin role?                        | **Yes, if the org assigns it.** Authorization follows the role. A restriction, if product ever wants one, is a role-assignment policy — never a check inside each endpoint.                                                                                                                                              |
 | 14  | Does persona gate personal plan purchases?                          | **No — `audience` is a UI filter only.** Once permissions leave `plan_entitlements`, any persona may buy any personal plan.                                                                                                                                                                                              |
 | 15  | Does an org plan include seat licences?                             | **No — org plans grant ZERO licences; licences are sold separately.** A licence is the purchased unit: `org_seat_pools` is the licence pool (its `plan_key` must be `scope='personal'` + `seatEligible`), and `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
+
+> **2026-11-20 (D25).** `GET /organization/members` is readable by a caller
+> holding **any** of `org.member.manage` (org scope), `group.manage` or
+> `group.invite` (any scope) in the active org. The catalog has no
+> `org.member.read`; a Teacher must not hold `org.member.manage` (D18/FP-04);
+> and the roster is shared by org managers, class managers and class inviters
+> (`/edu/classroom/members`, the assignment student picker, the `/edu`
+> onboarding counts). A caller with none of the three gets `200` with `data: []`
+> — the empty list is the deny shape because it leaks nothing and AUT-19 accepts
+> it. `PUT`/`DELETE` stay `org.member.manage`. D16–D24 are recorded in the
+> sections they amend (§4.1, §4.2, §5); this one is here because it settles a
+> read the §7.1 note had got wrong.
 
 ---
 

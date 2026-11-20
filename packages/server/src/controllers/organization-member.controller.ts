@@ -1,5 +1,5 @@
 import { Permission, type RequestContext } from '@studiq/authz';
-import { requirePermission } from '@studiq/server/lib/authz';
+import { hasPermission, requirePermission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
@@ -13,16 +13,42 @@ import {
 } from '@studiq/server/services/organization-member.service';
 
 /**
- * The org roster is one capability (ADR-0015 §4.1, §7): reading it, moving a
- * member between roles and removing one all ask `org.member.manage`, decided from
- * the context alone. The old `member.manage` entitlement and the
+ * The org roster is a write capability (ADR-0015 §4.1, §7): moving a member
+ * between roles and removing one ask `org.member.manage`, decided from the
+ * context alone. The old `member.manage` entitlement and the
  * `EDUCATOR|MANAGER` persona are gone from the route.
+ *
+ * Reading the roster has three authorities (D25). `org.member.manage` is the
+ * roster's own key, but a class manager and a class inviter pick from the same
+ * org roster — `/edu/classroom/members`, the assignment student picker and the
+ * `/edu` onboarding counts — and neither may hold `org.member.manage`: the
+ * catalog has no `org.member.read`, and a Teacher must not be an org manager
+ * (D18/FP-04). Everyone else reads an empty list rather than a 403, which leaks
+ * nothing and is the shape AUT-19 accepts.
  */
+function canReadRoster(ctx: RequestContext): boolean {
+  // "Holds the key" at any scope is the whole test: a Teacher carries
+  // `group.manage`/`group.invite` at `group`, an org role at `organization`.
+  return (
+    hasPermission(ctx, Permission.ORG_MEMBER_MANAGE) ||
+    hasPermission(ctx, Permission.GROUP_MANAGE) ||
+    hasPermission(ctx, Permission.GROUP_INVITE)
+  );
+}
+
 export class OrganizationMemberController {
   constructor(private service: OrganizationMemberService) {}
 
   async listMembers(ctx: RequestContext, roleFilter?: string): Promise<ControllerResponse> {
-    await requirePermission(ctx, Permission.ORG_MEMBER_MANAGE);
+    // No active org is not "no rows": the roster is tenant data, so a cookie
+    // that names no membership stays a 403 (the service's own contract).
+    if (!ctx.activeOrgId) {
+      return controllerResponse.error('FORBIDDEN');
+    }
+
+    if (!canReadRoster(ctx)) {
+      return controllerResponse.success([]);
+    }
 
     const members = await this.service.listMembers(ctx, roleFilter);
 

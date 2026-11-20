@@ -24,6 +24,19 @@ const memberCtx: RequestContext = {
   permissionScopes: {},
 };
 
+/** A Teacher's roster-relevant keys sit at `group` scope (D18). */
+const groupManagerCtx: RequestContext = {
+  ...holderCtx,
+  accountType: AccountType.EDUCATOR,
+  orgRoleId: 'role-teacher',
+  permissionScopes: { 'group.manage': 'group' },
+};
+
+const groupInviterCtx: RequestContext = {
+  ...groupManagerCtx,
+  permissionScopes: { 'group.invite': 'group' },
+};
+
 /** A cookie that names an org with no membership row: with-auth leaves both null. */
 const noOrgCtx: RequestContext = {
   ...holderCtx,
@@ -53,11 +66,29 @@ describe('OrganizationMemberController', () => {
   });
 
   describe('listMembers', () => {
-    it('returns members', async () => {
-      mockService.listMembers.mockResolvedValueOnce({ success: true, data: [] });
+    // D25: the roster has three read authorities — its own key, a class
+    // manager's and a class inviter's. Each row pins one branch on a caller
+    // that holds nothing else, so dropping a branch cannot pass on another.
+    it('reads the roster for an org.member.manage holder', async () => {
+      mockService.listMembers.mockResolvedValueOnce({
+        success: true,
+        data: [{ id: 'u-2', email: 'member@example.com' }],
+      });
       const response = await controller.listMembers(holderCtx);
-      expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
+      expect(response.data).toEqual([{ id: 'u-2', email: 'member@example.com' }]);
+    });
+    it('reads the roster for a group.manage-only holder', async () => {
+      mockService.listMembers.mockResolvedValueOnce({ success: true, data: [{ id: 'u-2' }] });
+      const response = await controller.listMembers(groupManagerCtx);
+      expect(response.statusCode).toBe(200);
+      expect(response.data).toEqual([{ id: 'u-2' }]);
+    });
+    it('reads the roster for a group.invite-only holder', async () => {
+      mockService.listMembers.mockResolvedValueOnce({ success: true, data: [{ id: 'u-2' }] });
+      const response = await controller.listMembers(groupInviterCtx);
+      expect(response.statusCode).toBe(200);
+      expect(response.data).toEqual([{ id: 'u-2' }]);
     });
     it('returns members with role filter', async () => {
       mockService.listMembers.mockResolvedValueOnce({ success: true, data: [] });
@@ -71,16 +102,29 @@ describe('OrganizationMemberController', () => {
       expect(response.statusCode).toBe(403);
     });
 
-    it('refuses a Member-role caller without reaching the service', async () => {
-      await expect(controller.listMembers(memberCtx)).rejects.toMatchObject({
-        code: 'FORBIDDEN',
-        statusCode: 403,
-      });
+    // The deny shape is an empty list, not a 403: AUT-19 accepts either, and an
+    // empty body leaks nothing. `toEqual` pins that no row (and no e-mail)
+    // survives the branch; a status-only assertion would pass on a leaky body.
+    it('answers a Member-role caller with an empty list, never the service', async () => {
+      const response = await controller.listMembers(memberCtx);
+      expect(response).toEqual({ success: true, statusCode: 200, data: [] });
+      expect(JSON.stringify(response)).not.toContain('@');
+      expect(mockService.listMembers).not.toHaveBeenCalled();
+    });
+
+    it('does not widen the read to every key the caller holds', async () => {
+      const groupReaderCtx: RequestContext = {
+        ...groupManagerCtx,
+        permissionScopes: { 'group.read': 'group', 'org.settings.manage': 'organization' },
+      };
+      const response = await controller.listMembers(groupReaderCtx);
+      expect(response).toEqual({ success: true, statusCode: 200, data: [] });
       expect(mockService.listMembers).not.toHaveBeenCalled();
     });
 
     it('refuses a caller with no active org', async () => {
-      await expect(controller.listMembers(noOrgCtx)).rejects.toMatchObject({ statusCode: 403 });
+      const response = await controller.listMembers(noOrgCtx);
+      expect(response).toMatchObject({ success: false, statusCode: 403, error: 'FORBIDDEN' });
       expect(mockService.listMembers).not.toHaveBeenCalled();
     });
   });
@@ -105,6 +149,16 @@ describe('OrganizationMemberController', () => {
     it('answers 403 rather than 422 for an invalid body when the key is missing', async () => {
       await expect(
         controller.changeRole(memberCtx, { targetUserId: 'bad', newOrgRoleId: 'bad' }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockService.changeRole).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Member-role caller with a valid body', async () => {
+      await expect(
+        controller.changeRole(memberCtx, {
+          targetUserId: '550e8400-e29b-41d4-a716-446655440000',
+          newOrgRoleId: '550e8400-e29b-41d4-a716-446655440001',
+        }),
       ).rejects.toMatchObject({ statusCode: 403 });
       expect(mockService.changeRole).not.toHaveBeenCalled();
     });
@@ -138,6 +192,13 @@ describe('OrganizationMemberController', () => {
       await expect(controller.removeMember(memberCtx, '')).rejects.toMatchObject({
         statusCode: 403,
       });
+      expect(mockService.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Member-role caller with a valid target', async () => {
+      await expect(
+        controller.removeMember(memberCtx, '550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toMatchObject({ statusCode: 403 });
       expect(mockService.removeMember).not.toHaveBeenCalled();
     });
   });
