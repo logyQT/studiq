@@ -5,5 +5,6 @@
     { "key": "studentIn", "accountType": "student", "orgRole": "member" },
     { "key": "studentOut", "accountType": "student", "orgRole": "member" }
   ],
-  "groups": ["G1", "G2"]
+  "groups": ["G1", "G2"],
+  "groupTeachers": { "teacher": ["G1", "G2"] }
 }

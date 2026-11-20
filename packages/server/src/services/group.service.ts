@@ -1,8 +1,15 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { type RequestContext } from '@studiq/authz';
+import {
+  canCreateGroup,
+  canGroup,
+  resolveGroupScope,
+  resolveScope,
+} from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateGroupInput,
@@ -13,10 +20,6 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
-function canManageAnyGroup(ctx: RequestContext): boolean {
-  return ctx.accountType === AccountType.MANAGER;
-}
-
 /** Blank description -> null (clears it); absent key stays absent (no change). */
 function normalizeDescription<T extends { description?: string | null }>(data: T): T {
   if (data.description === undefined || data.description === null) return data;
@@ -24,7 +27,14 @@ function normalizeDescription<T extends { description?: string | null }>(data: T
 }
 
 export class GroupService {
-  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
+  constructor(
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
+    // Enrolling the creator (below) runs on the service role, the way org
+    // provisioning does: the roster's INSERT policy asks `group.member.manage`
+    // for that class, and the creator is not a teacher of it until this very
+    // row exists — the same bootstrap the org's default group takes.
+    private createEnrolmentClient: () => SupabaseClient<Database> = createServiceClient,
+  ) {}
 
   async listGroups(ctx: RequestContext): Promise<
     ServiceResult<
@@ -36,13 +46,30 @@ export class GroupService {
         created_at: string | null;
         memberCount: number;
         teacherCount: number;
-        canManage: boolean;
+        /**
+         * Which key lets the caller act on this row, as the endpoints resolve
+         * it: `group.manage` (the roster plus rename/delete), `group.member.manage`
+         * alone (the roster), or `null`. The UI gates each control on this, so a
+         * button cannot offer a call the route answers 403 for — the list asks
+         * `group.read`, which a caller may hold without either write key.
+         */
+        manageVia: 'group.manage' | 'group.member.manage' | null;
       }[]
     >
   > {
     const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
+      return failure('FORBIDDEN');
+    }
+
+    // `group` and `organization` list every class of the org; `own` reaches the
+    // ones the caller created (`created_by`, §4.3), which only a row can answer,
+    // so it is filtered below. Reading a row is not editing it: `manageVia`
+    // still asks `group.manage`. Any other scope reaches nothing.
+    const readScope = resolveScope(ctx, 'group.read');
+    const readsOrg = readScope === 'group' || readScope === 'organization';
+    if (!readsOrg && readScope !== 'own') {
       return failure('FORBIDDEN');
     }
 
@@ -61,10 +88,11 @@ export class GroupService {
 
     if (error) return toDbFailure(error);
 
-    const manageAny = canManageAnyGroup(ctx);
+    const userId = ctx.userId;
+    const visible = readsOrg ? data : data.filter((g) => g.created_by === userId);
 
     return success(
-      data.map((g) => {
+      visible.map((g) => {
         const total = dbCount(g.group_members);
         const teachers = dbCount(g.group_members_teachers);
         return {
@@ -74,7 +102,15 @@ export class GroupService {
           created_at: g.created_at,
           memberCount: total,
           teacherCount: teachers,
-          canManage: manageAny || g.created_by === ctx.userId,
+          // ADR-0015 §4.3, §6.3: the same rule `PUT`/`DELETE`/roster enforce, so
+          // a button cannot offer a call the route answers 403 for. A roster-only
+          // manager (`group.member.manage`, no `group.manage`) gets the members
+          // action and not the rename/delete pair.
+          manageVia: resolveGroupScope(ctx, 'group.manage', g.id, g)
+            ? 'group.manage'
+            : resolveGroupScope(ctx, 'group.member.manage', g.id, g)
+              ? 'group.member.manage'
+              : null,
         };
       }),
     );
@@ -97,6 +133,10 @@ export class GroupService {
       return failure('FORBIDDEN');
     }
 
+    // The controller checks this too; the service repeats it because it is a
+    // direct entry point (tests, scripts, seeds). Any scope authorizes it: the
+    // creator becomes the class's teacher (ADR-0015 §4.3, §10).
+    if (!canCreateGroup(ctx)) return failure('FORBIDDEN');
     const { count: groupCount } = await supabase
       .from('groups')
       .select('*', { count: 'exact', head: true })
@@ -115,45 +155,72 @@ export class GroupService {
 
     if (error) return toDbFailure(error);
 
+    // A class is the teaching surface (§10), so a create that left the author off
+    // its roster would hand back a class nobody can manage: `group.manage` at
+    // `group` scope needs a `teacher` row, and no endpoint can write the first
+    // one (the roster's INSERT policy asks `group.member.manage` for it). The
+    // creator becomes its teacher, which is the claim the create gate makes.
+    const enrolmentClient = this.createEnrolmentClient();
+    const { error: enrolmentError } = await enrolmentClient
+      .from('group_members')
+      .insert({ group_id: group.id, user_id: ctx.userId, role: 'teacher' });
+
+    if (enrolmentError) {
+      // Never leave an unmanaged class behind: the creator cannot delete it
+      // through the caller's client (they are not its teacher), so the same
+      // service-role client removes the row the enrolment was for.
+      await enrolmentClient.from('groups').delete().eq('id', group.id);
+      return toDbFailure(enrolmentError);
+    }
+
     return success(group);
   }
 
-  private async assertCanManage(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    if (canManageAnyGroup(ctx)) return success(undefined);
-
-    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+  /**
+   * The active-org group `id` names, or the failure that answers the request:
+   * NOT_FOUND when the id is not in the active org (tenant existence is never
+   * leaked, ADR-0015 §7.1), FORBIDDEN with no active org.
+   *
+   * `created_by` is selected because `canGroup` reads it: the creator branch is
+   * `own`'s whole rule (§4.3), and a lookup that dropped the column would leave
+   * `canGroup` unable to answer for a creator whose `group_members` row is not
+   * there — the state `setGroupMembers` leaves behind, since it replaces the
+   * roster wholesale.
+   */
+  private async groupInActiveOrg(
+    ctx: RequestContext,
+    id: string,
+  ): Promise<ServiceResult<{ id: string; organization_id: string; created_by: string | null }>> {
+    const orgId = ctx.activeOrgId;
+    if (!orgId) return failure('FORBIDDEN');
 
     const supabase = await this.clientFactory();
     const { data: group } = await supabase
       .from('groups')
-      .select('created_by')
+      .select('id, organization_id, created_by')
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId)
+      .eq('organization_id', orgId)
       .maybeSingle();
 
-    if (!group) return failure('NOT_FOUND');
-    if (group.created_by !== ctx.userId) return failure('FORBIDDEN');
-
-    return success(undefined);
+    return group ? success(group) : failure('NOT_FOUND');
   }
 
   /**
-   * Scoped client for a group the caller may modify. Returns the failure that
-   * answers the request instead of the scope: FORBIDDEN outside an active org or
-   * for a group they do not manage, NOT_FOUND when the id is not in the active
-   * org. `orgId` is passed back so callers can filter without re-narrowing ctx.
+   * Scoped client for a group the caller may modify, per `permission`
+   * (`group.manage` for the group itself, `group.member.manage` for its roster).
+   * `orgId` is passed back so callers can filter without re-narrowing ctx.
    */
   private async managedGroupScope(
     ctx: RequestContext,
     id: string,
+    permission: 'group.manage' | 'group.member.manage',
   ): Promise<ServiceResult<{ supabase: SupabaseClient<Database>; orgId: string }>> {
-    const orgId = ctx.activeOrgId;
-    if (!orgId) return failure('FORBIDDEN');
+    const group = await this.groupInActiveOrg(ctx, id);
+    if (isFailure(group)) return group;
 
-    const authCheck = await this.assertCanManage(ctx, id);
-    if (isFailure(authCheck)) return authCheck;
+    if (!canGroup(ctx, permission, group.data)) return failure('FORBIDDEN');
 
-    return success({ supabase: await this.clientFactory(), orgId });
+    return success({ supabase: await this.clientFactory(), orgId: group.data.organization_id });
   }
 
   async updateGroup(
@@ -168,7 +235,7 @@ export class GroupService {
       created_at: string | null;
     }>
   > {
-    const prepared = await this.managedGroupScope(ctx, id);
+    const prepared = await this.managedGroupScope(ctx, id, 'group.manage');
     if (isFailure(prepared)) return prepared;
     const { supabase, orgId } = prepared.data;
 
@@ -189,7 +256,7 @@ export class GroupService {
   }
 
   async deleteGroup(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    const prepared = await this.managedGroupScope(ctx, id);
+    const prepared = await this.managedGroupScope(ctx, id, 'group.manage');
     if (isFailure(prepared)) return prepared;
     const { supabase, orgId } = prepared.data;
 
@@ -243,9 +310,9 @@ export class GroupService {
    * Org members a group manager can pick from when building the group's
    * roster. Deliberately NOT scoped to the caller's existing groups (unlike
    * organization-member.service.ts's listMembers() for educators) — the
-   * assertCanManage check below is the authorization gate, and a teacher
-   * building a brand-new group's roster needs to see students they aren't
-   * associated with yet.
+   * `group.member.manage` check in `managedGroupScope` is the authorization
+   * gate, and a teacher building a brand-new group's roster needs to see
+   * students they aren't associated with yet.
    */
   async listAddableMembers(
     ctx: RequestContext,
@@ -257,8 +324,8 @@ export class GroupService {
       return failure('FORBIDDEN');
     }
 
-    const authCheck = await this.assertCanManage(ctx, groupId);
-    if (isFailure(authCheck)) return authCheck;
+    const prepared = await this.managedGroupScope(ctx, groupId, 'group.member.manage');
+    if (isFailure(prepared)) return prepared;
 
     const supabase = await this.clientFactory();
     const { data, error } = await supabase
@@ -294,17 +361,8 @@ export class GroupService {
       return failure('FORBIDDEN');
     }
 
-    const authCheck = await this.assertCanManage(ctx, groupId);
-    if (isFailure(authCheck)) return authCheck;
-
-    const { data: group } = await supabase
-      .from('groups')
-      .select('id')
-      .eq('id', groupId)
-      .eq('organization_id', ctx.activeOrgId)
-      .single();
-
-    if (!group) return failure('NOT_FOUND');
+    const prepared = await this.managedGroupScope(ctx, groupId, 'group.member.manage');
+    if (isFailure(prepared)) return prepared;
 
     const { error: deleteError } = await supabase
       .from('group_members')

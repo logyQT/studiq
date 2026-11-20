@@ -55,8 +55,10 @@ seeded tenant instead:
 - „Nowa grupa” opens the Radix dialog „Utwórz grupę” with two unlabelled textboxes
   („Nazwa”, „Opis” — the labels are not associated with the inputs) and the buttons
   „Anuluj” / „Utwórz”. Submitting shows the toast „Grupa utworzona”, closes the dialog and
-  the row appears immediately with the description under the name and 0 / 0 counts; the
-  description is stored by the API (`GET /api/v1/organization/groups`).
+  the row appears immediately with the description under the name and 1 / 1 counts — the
+  creator is on the roster as its `teacher` from the create itself, and `memberCount`
+  counts the whole roster — and the description is stored by the API
+  (`GET /api/v1/organization/groups`).
 - „Edytuj grupę <nazwa>” opens „Edytuj grupę” with the name and description pre-filled;
   „Zapisz” shows „Grupa zaktualizowana” and renames the row in place, keeping the
   description and the group id.

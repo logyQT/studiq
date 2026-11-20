@@ -85,7 +85,8 @@ interface GroupSummary {
   description: string | null;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface OrgMember {

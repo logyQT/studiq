@@ -1,3 +1,4 @@
+import { isPermissionCatalogKey, PERMISSIONS, type PermissionScope } from '@studiq/authz';
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
@@ -13,22 +14,25 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  *   bun scripts/qa-tenant.ts EDU-GRP-05 --fresh
  *
- * `group.manage` is an org-role entitlement: the org trigger seeds `org_role_features`
- * per role, and the `member` set is `flashcards`, `quiz`, `ai.chat` and `branding`;
- * `documents` is absent until its surface ships (open catalog, ADR §5.1 / D22).
- * The `content` profile's educator is an org `member`, i.e. exactly „konto bez tej
- * funkcji”; its manager (org `admin`) keeps the entitlement and is used as the contrast
- * that the nav filter is role-driven rather than broken for everyone. Every id comes from
+ * `group.manage` is a permission (ADR-0015 §4.1): the org `member` role holds `group.read`
+ * at `group` scope and no `group.manage`, `group.member.manage` or `group.invite`, so the
+ * `content` profile's educator is exactly „konto bez tej funkcji”; its manager (org
+ * `admin`) holds every `group.*` key at `organization` and is the contrast that the
+ * controls are permission-driven rather than missing for everyone. Every id comes from
  * `tenantKey('qa/cases/EDU-GRP-05.md', 'EDU-GRP-05#<suffix>', 'qa-shared')` +
  * `tenantId(key, entity)`; the spec reads them through `loadTenant('EDU-GRP-05')`.
  *
- * Acceptance points (confirmed on the shared app during the walk):
- * 1. The „Grupy” entry is absent from the `/edu` sidebar — before and after a reload —
- *    while the rest of the educator nav is still there.
- * 2. `/edu/groups` stays reachable and renders a read-only list: the seeded group with its
- *    real counts and the „not owned” lock, but no create/edit/delete/member controls.
- * 3. Every group write is rejected with `403` + `FORBIDDEN` (`POST` create, `PUT`/`DELETE`
- *    of the group, `PUT` of its members) and leaves the group untouched.
+ * Acceptance points, as the case text settles them (ADR-0015 §4.3, §7.1):
+ * 1. The „Grupy” entry is in the `/edu` sidebar — a holder of `group.read` always sees the
+ *    list they may read; the educator's row is at `group` scope, so before 2b-2 the nav's
+ *    scoped check hid a page the role could reach. Reloading keeps it there.
+ * 2. `group.read` opens `/edu/groups`, and the list renders: the columns, the seeded group
+ *    with its real counts and the „not owned” lock.
+ * 3. No manage control renders anywhere on the page — create, edit, delete, members — and
+ *    every group write is rejected with `403` + `FORBIDDEN` (`POST` create, `PUT`/`DELETE`
+ *    of the group, `PUT` of its members), leaving the group untouched.
+ * 4. A caller whose map has no `group.read` gets no entry: the gate is the key, not the
+ *    page being busy.
  *
  * The spec never creates or mutates anything: the write attempts are all expected to be
  * refused, so re-runs on one seeded tenant (CI `--retries=2`) start from the same state.
@@ -62,12 +66,21 @@ interface GroupRow {
   description: string | null;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface GroupMemberRow {
   userId: string;
   role: 'teacher' | 'member';
+}
+
+interface OrgMemberRow {
+  id: string;
+  orgRoleId: string;
+}
+
+interface OrgRoleDetail {
+  permissions: { permissionName: string; scope: PermissionScope }[];
 }
 
 /** `GET` the group list as the signed-in educator and unwrap the envelope. */
@@ -85,7 +98,9 @@ function groupRow(page: Page, name: string) {
 }
 
 test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage', () => {
-  test('hides the Grupy menu entry and rejects every group write with 403', async ({ page }) => {
+  test('shows the Grupy entry, a read-only list, and rejects every group write with 403', async ({
+    page,
+  }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -97,37 +112,43 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
     await loginAs(page, tenant, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
 
-    // Prerequisite: this educator is „konto bez tej funkcji”. `/features/me` resolving
-    // other keys proves the answer is a real feature set, not a failed request.
-    const features = await page.request.get('/api/v1/features/me');
-    expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = (await json<ApiEnvelope<{ features: string[] }>>(features)).data.features;
-    expect(enabled, 'the educator is not entitled to group management').not.toContain(
-      'group.manage',
-    );
-    expect(enabled, 'the feature resolution is not empty').toContain('flashcards');
+    // Prerequisite: this educator is „konto bez tej funkcji”. `/permissions/me` carries
+    // the resolved scope map (ADR-0015 §6.3): the read key present proves the map
+    // resolved, `group.manage` absent is the missing function. Read by key, never by
+    // `toHaveProperty('group.manage')`: the matcher splits on the dot, so the
+    // negative form passes against a map that DOES carry the key.
+    const permissions = await page.request.get('/api/v1/permissions/me');
+    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
+      .data.permissions;
+    expect(Object.keys(scopes), 'the educator holds no group.manage').not.toContain('group.manage');
+    expect(Object.keys(scopes), 'the permission map resolved').toContain('group.read');
 
     const sidebar = page.locator('[data-slot="sidebar"]');
 
-    // 1. The menu has no „Grupy” entry, and the rest of the nav is intact — an empty or
-    //    broken sidebar must not make this assertion pass for the wrong reason.
+    // 1. The holder of `group.read` sees the entry the role's key opens. The rest of the
+    //    nav is asserted too, so a sidebar that failed to render cannot pass this.
     await expect(sidebar.getByRole('link', { name: 'Talie', exact: true })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: COPY.title, exact: true })).toHaveCount(0);
-    await expect(sidebar.locator('a[href="/edu/groups"]')).toHaveCount(0);
+    await expect(sidebar.getByRole('link', { name: COPY.title, exact: true })).toBeVisible();
+    await expect(sidebar.locator('a[href="/edu/groups"]')).toHaveCount(1);
 
-    // Case step 1: refresh the teacher panel — the entry stays gone.
+    // Case step 1: refresh the teacher panel — the entry stays there, and the link itself
+    // is the way in (case step 2 opens the page by hand, below).
     await page.reload();
     await expect(sidebar.getByRole('link', { name: 'Talie', exact: true })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: COPY.title, exact: true })).toHaveCount(0);
-    await expect(sidebar.locator('a[href="/edu/groups"]')).toHaveCount(0);
+    await expect(sidebar.getByRole('link', { name: COPY.title, exact: true })).toBeVisible();
+    await sidebar.locator('a[href="/edu/groups"]').click();
 
-    // 2. Case step 2: open `/edu/groups` manually. The route stays reachable but is
-    //    read-only — no write control is exposed anywhere on the page.
-    await page.goto('/edu/groups');
+    // 2. The list renders, read-only: the rows and the summary line are there, and no
+    //    control that would write is offered anywhere on the page.
     await expect(page).toHaveURL(/\/edu\/groups$/);
     await expect(page.getByRole('heading', { name: COPY.title, exact: true })).toBeVisible();
-
-    await expect(page.getByRole('button', { name: COPY.newGroup })).toHaveCount(0);
+    // The table offers the class and nothing to do with it: no row-level manage
+    // control renders for a caller whose `manageVia` is `null`.
+    await expect(
+      page.getByRole('button', { name: /^(Zarządzaj członkami|Edytuj grupę|Usuń grupę)/ }),
+      'no manage control on any row',
+    ).toHaveCount(0);
 
     const seeded = groupRow(page, tenant.group!.name);
     await expect(seeded, 'the tenant’s own group is listed').toBeVisible();
@@ -138,11 +159,9 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
       SEEDED_GROUP_COUNTS.teachers,
     );
     await expect(seeded.getByTitle(COPY.notOwned), 'the read-only lock badge').toBeVisible();
-    await expect(seeded.getByRole('button', { name: COPY.edit })).toHaveCount(0);
-    await expect(seeded.getByRole('button', { name: COPY.remove })).toHaveCount(0);
     await expect(
-      page.getByRole('button', { name: /^(Edytuj grupę|Usuń grupę)/ }),
-      'no edit/delete control on the whole page',
+      page.getByRole('button', { name: /^(Nowa grupa|Edytuj grupę|Usuń grupę)/ }),
+      'no create/edit/delete control on the whole page',
     ).toHaveCount(0);
 
     // 3. Writes are rejected at the API, not just hidden in the UI. Every body is
@@ -151,7 +170,8 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
     const before = await listGroups(page);
     const stored = before.find((group) => group.id === tenant.group!.id);
     expect(stored, 'the seeded group is visible to its member').toBeTruthy();
-    expect(stored!.canManage, 'the educator does not own the group').toBe(false);
+    // The API's own answer for the row: no key lets this caller manage the class.
+    expect(stored!.manageVia, 'the educator manages neither the class nor its roster').toBeNull();
 
     const membersResponse = await page.request.get(`${GROUPS_URL}/${tenant.group!.id}/members`);
     expect(membersResponse.status(), 'GET group members').toBe(200);
@@ -221,9 +241,84 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
 
     expect(pageErrors, 'uncaught page errors on /edu/groups').toEqual([]);
 
-    // Adjacent regression: the same tenant's manager (org `admin`, i.e. `group.manage`
-    // present) still gets the „Grupy” entry and the create action, so the missing entry
-    // above is the feature gate and not a broken nav/translation.
+    // 4. The gate is the key, not the page: a role without `group.read` gets no entry and
+    //    no list. The tenant's own org `member` role is saved down to its content keys —
+    //    the mover is the manager (org `admin`, which may edit any role) and the target is
+    //    the role the educator holds. The role is restored before the manager phase, so the
+    //    tenant is left exactly as seeded.
+    await page.request.post('/api/v1/auth/logout');
+    await loginAs(page, tenant, 'manager', { locale: 'pl' });
+
+    const members = (
+      await json<ApiEnvelope<OrgMemberRow[]>>(
+        await page.request.get('/api/v1/organization/members'),
+      )
+    ).data;
+    const educator = members.find((member) => member.id === tenant.users.teacher?.id);
+    expect(educator, 'the educator is an org member').toBeTruthy();
+    const memberRoleId = educator!.orgRoleId;
+    const role = (
+      await json<ApiEnvelope<OrgRoleDetail>>(
+        await page.request.get(`/api/v1/organization/roles/${memberRoleId}`),
+      )
+    ).data;
+    // The editor replaces the role's whole set (D24), so the payload is one entry per
+    // catalog key: the role's stored rows as they are, every other key revoked.
+    const seededGrant = Object.keys(PERMISSIONS)
+      .filter(isPermissionCatalogKey)
+      .map((key) => ({
+        permissionName: key,
+        scope: role.permissions.find((grant) => grant.permissionName === key)?.scope ?? null,
+      }));
+
+    async function saveRolePermissions(entries: typeof seededGrant) {
+      const saved = await page.request.put(
+        `/api/v1/organization/roles/${memberRoleId}/permissions`,
+        {
+          data: { permissions: entries },
+        },
+      );
+      expect(saved.status(), `PUT role permissions → ${await saved.text()}`).toBe(200);
+    }
+
+    try {
+      await saveRolePermissions(
+        seededGrant.map((grant) =>
+          grant.permissionName.startsWith('group.') ? { ...grant, scope: null } : grant,
+        ),
+      );
+
+      await page.request.post('/api/v1/auth/logout');
+      await loginAs(page, tenant, 'teacher', { locale: 'pl' });
+
+      const withoutRead = await page.request.get('/api/v1/permissions/me');
+      const scopesAfterSave = (
+        await json<ApiEnvelope<{ permissions: Record<string, string> }>>(withoutRead)
+      ).data.permissions;
+      expect(Object.keys(scopesAfterSave), 'the saved role carries no group key').not.toContain(
+        'group.read',
+      );
+
+      await expect(sidebar.getByRole('link', { name: 'Talie', exact: true })).toBeVisible();
+      await expect(
+        sidebar.getByRole('link', { name: COPY.title, exact: true }),
+        'a role without group.read gets no Grupy entry',
+      ).toHaveCount(0);
+      await expect(sidebar.locator('a[href="/edu/groups"]')).toHaveCount(0);
+
+      const refusedList = await page.request.get(GROUPS_URL);
+      expect(refusedList.status(), 'GET groups without group.read').toBe(403);
+    } finally {
+      await page.request.post('/api/v1/auth/logout');
+      await loginAs(page, tenant, 'manager', { locale: 'pl' });
+      await saveRolePermissions(seededGrant);
+    }
+
+    // Adjacent regression: the same tenant's manager (org `admin`, i.e. every `group.*`
+    // key at `organization`) still gets the „Grupy” entry and the per-row actions, so the
+    // missing controls above are the permission gate and not a broken nav/translation.
+    // (`create` is a known QA-tenant gap — the `content` profile's manager gets no create
+    // control, EDU-GRP-01 is red for it — recorded in the ledger, not asserted here.)
     await page.request.post('/api/v1/auth/logout');
     await loginAs(page, tenant, 'manager', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'manager lands on /manage').toBe('/manage');
@@ -238,8 +333,8 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
     await page.goto('/manage/groups');
     await expect(page).toHaveURL(/\/manage\/groups$/);
     await expect(
-      page.getByRole('button', { name: COPY.newGroup }),
-      'an entitled manager still gets the create action',
+      page.getByRole('button', { name: `Edytuj grupę ${tenant.group!.name}` }),
+      'an entitled manager still gets the per-row manage actions',
     ).toBeVisible();
   });
 });

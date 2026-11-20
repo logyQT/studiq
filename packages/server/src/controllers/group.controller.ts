@@ -1,9 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
+import { canCreateGroup } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
-import { requireFeature } from '@studiq/server/lib/features';
+import { AppError } from '@studiq/server/lib/errors';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
@@ -18,6 +19,9 @@ export class GroupController {
   constructor(private service: GroupService) {}
 
   async listGroups(ctx: RequestContext): Promise<ControllerResponse> {
+    // No `requirePermission` here: `group.read` at `own` (§4.3) reaches the
+    // classes the caller created, and only a row knows who that is, so the
+    // service resolves the scope and is the single place the rule lives.
     const result = await this.service.listGroups(ctx);
 
     if (isFailure(result)) {
@@ -28,7 +32,10 @@ export class GroupController {
   }
 
   async createGroup(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'group.manage');
+    // A new group has no id yet, so the check is "does the role hold
+    // `group.manage` in this org at all" — at any scope (ADR-0015 §4.3, §10; the
+    // teacher-creates-a-class decision of 2b-2).
+    if (!canCreateGroup(ctx)) throw new AppError('FORBIDDEN');
 
     const parsed = CreateGroupSchema.safeParse(body);
 
@@ -46,8 +53,8 @@ export class GroupController {
   }
 
   async updateGroup(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'group.manage');
-
+    // No permission check here: the service resolves the group inside the
+    // active org and is the single place `group.manage` is evaluated for it.
     const paramsParsed = GroupIdParamsSchema.safeParse({ id });
 
     if (!paramsParsed.success) {
@@ -70,8 +77,6 @@ export class GroupController {
   }
 
   async deleteGroup(ctx: RequestContext, id: string): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'group.manage');
-
     const paramsParsed = GroupIdParamsSchema.safeParse({ id });
 
     if (!paramsParsed.success) {
@@ -124,8 +129,6 @@ export class GroupController {
     groupId: string,
     body: unknown,
   ): Promise<ControllerResponse> {
-    await requireFeature(ctx, 'group.manage');
-
     const paramsParsed = GroupIdParamsSchema.safeParse({ id: groupId });
 
     if (!paramsParsed.success) {

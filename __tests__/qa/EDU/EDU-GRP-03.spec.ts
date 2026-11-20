@@ -64,7 +64,8 @@ interface GroupSummary {
   created_at: string;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row — what each control is gated on. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 async function listGroups(api: APIRequestContext): Promise<GroupSummary[]> {
@@ -100,9 +101,9 @@ async function createGroup(
   });
   expect(res.status(), `POST ${GROUPS_URL} (${name}) → ${await res.text()}`).toBe(201);
   const body =
-    await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'canManage'>>>(res);
+    await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'manageVia'>>>(res);
   expect(body.success, `POST ${GROUPS_URL} success`).toBe(true);
-  return { ...body.data, memberCount: 0, teacherCount: 0, canManage: true };
+  return { ...body.data, memberCount: 0, teacherCount: 1, manageVia: 'group.manage' };
 }
 
 /** The table row whose name cell is exactly `name` (the description follows it). */
@@ -179,7 +180,7 @@ test.describe('@case:EDU-GRP-03 @area:EDU @prio:P2 teacher edits and deletes own
         (group) => group.id === foreignGroup.id,
       );
       expect(foreign, 'T2 group is visible to T1').toBeTruthy();
-      expect(foreign?.canManage, "T1 may not manage T2's group").toBe(false);
+      expect(foreign?.manageVia, "T1 may not manage T2's group").toBeNull();
 
       // --- Steps 1 + 2: /edu/groups ----------------------------------------
       await page.goto('/edu/groups');
@@ -253,7 +254,7 @@ test.describe('@case:EDU-GRP-03 @area:EDU @prio:P2 teacher edits and deletes own
       const afterEdit = (await listGroups(page.request)).find((group) => group.id === ownGroup.id);
       expect(afterEdit?.name, 'API keeps the renamed group').toBe(editedName);
       expect(afterEdit?.description, 'API keeps the edited description').toBe(editedDescription);
-      expect(afterEdit?.canManage, 'the group is still T1-owned').toBe(true);
+      expect(afterEdit?.manageVia, 'the group is still T1-owned').not.toBeNull();
 
       // --- Step 1b: delete — the window carries the warning ----------------
       await renamedRow.getByRole('button', { name: `Usuń grupę ${editedName}` }).click();
@@ -306,7 +307,7 @@ test.describe('@case:EDU-GRP-03 @area:EDU @prio:P2 teacher edits and deletes own
       const untouched = finalList.find((group) => group.id === foreignGroup.id);
       expect(untouched?.name, "T2's group name is unchanged").toBe(foreignName);
       expect(untouched?.description ?? null, "T2's group description is unchanged").toBe(null);
-      expect(untouched?.canManage, "T1 still may not manage T2's group").toBe(false);
+      expect(untouched?.manageVia, "T1 still may not manage T2's group").toBeNull();
 
       expect(pageErrors, 'uncaught page errors').toEqual([]);
     } finally {

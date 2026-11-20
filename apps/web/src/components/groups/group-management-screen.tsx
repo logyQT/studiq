@@ -34,7 +34,7 @@ import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
-import { useFeature } from '@/hooks/use-feature';
+import { usePermission } from '@/hooks/use-permission';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { isArrayOf } from '@/lib/unknown-value';
@@ -55,7 +55,8 @@ interface Group {
   created_at: string;
   memberCount: number;
   teacherCount: number;
-  canManage: boolean;
+  /** The key the API resolved for this row: the action each control needs. */
+  manageVia: 'group.manage' | 'group.member.manage' | null;
 }
 
 interface GroupManagementScreenProps {
@@ -63,11 +64,13 @@ interface GroupManagementScreenProps {
 }
 
 export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
-  // Write actions need the `group.manage` feature (the API enforces it with
-  // `requireFeature`). While `/features/me` is in flight the checker returns a
-  // provisional `false`, so the controls stay hidden until it resolves and
-  // entitled users never see a flash of actions that would fail with 403.
-  const canWrite = useFeature()('group.manage');
+  // Creating a class is the one action with no row to ask about, so it reads
+  // `group.manage` from `/permissions/me` — the same key the API's `POST`
+  // checks (ADR-0015 §4.3). While that request is in flight the checker answers
+  // `false`, so the control stays hidden until it resolves. Everything per row
+  // uses the API's own `manageVia`, because a Teacher holds the keys at group
+  // scope and an org-wide checker would hide the controls on classes they teach.
+  const canCreate = usePermission()('group.manage');
   const [data, setData] = useState<Group[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -118,20 +121,13 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
-        <Loader2 className="size-5 animate-spin mr-2" />
-        {t('common_loading')}
-      </div>
-    );
-  }
+  if (loading) return <Spinner t={t} />;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        {canWrite && (
+        {canCreate && (
           <Dialog open={creating} onOpenChange={setCreating}>
             <DialogTrigger asChild>
               <Button>
@@ -182,8 +178,19 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                   </TableCell>
                   <TableCell className="text-center">{group.teacherCount}</TableCell>
                   <TableCell className="text-right">
+                    {/* The API's answer, not the caller's `/permissions/me` scope:
+                        a Teacher holds these keys at group scope, so an org-wide
+                        checker would hide the roster on the classes they teach
+                        (ADR-0015 §4.3). */}
                     <div className="flex justify-end gap-1">
-                      {group.canManage && canWrite ? (
+                      {group.manageVia === null ? (
+                        <span
+                          title={t('not_owned')}
+                          className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
+                        >
+                          <Lock className="w-4 h-4" />
+                        </span>
+                      ) : (
                         <>
                           <Button
                             variant="ghost"
@@ -194,67 +201,68 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                           >
                             <Users className="w-4 h-4" />
                           </Button>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={() => setEditing(group)}>
-                                <Pencil className="w-4 h-4" />
-                                <SrLabel k="edit_group" values={{ name: group.name }} />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent aria-describedby={undefined}>
-                              <DialogHeader>
-                                <DialogTitle>{t('edit_title')}</DialogTitle>
-                              </DialogHeader>
-                              {editing?.id === group.id && (
-                                <GroupForm
-                                  initial={group}
-                                  onSave={(g) => handleSave(g, group.id)}
-                                  onCancel={() => setEditing(null)}
-                                  t={t}
-                                />
-                              )}
-                            </DialogContent>
-                          </Dialog>
-                          <Dialog
-                            open={deleting?.id === group.id}
-                            onOpenChange={(o) => !o && setDeleting(null)}
-                          >
-                            <Button variant="ghost" size="icon" onClick={() => setDeleting(group)}>
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                              <SrLabel k="delete_group" values={{ name: group.name }} />
-                            </Button>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>{t('delete_title')}</DialogTitle>
-                                <DialogDescription>{t('delete_desc')}</DialogDescription>
-                              </DialogHeader>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setDeleting(null)}>
-                                  {t('cancel')}
-                                </Button>
+                          {group.manageVia === 'group.manage' && (
+                            <>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setEditing(group)}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                    <SrLabel k="edit_group" values={{ name: group.name }} />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent aria-describedby={undefined}>
+                                  <DialogHeader>
+                                    <DialogTitle>{t('edit_title')}</DialogTitle>
+                                  </DialogHeader>
+                                  {editing?.id === group.id && (
+                                    <GroupForm
+                                      initial={group}
+                                      onSave={(g) => handleSave(g, group.id)}
+                                      onCancel={() => setEditing(null)}
+                                      t={t}
+                                    />
+                                  )}
+                                </DialogContent>
+                              </Dialog>
+                              <Dialog
+                                open={deleting?.id === group.id}
+                                onOpenChange={(o) => !o && setDeleting(null)}
+                              >
                                 <Button
-                                  variant="destructive"
-                                  onClick={() => handleDelete(group.id)}
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleting(group)}
                                 >
-                                  {t('delete')}
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                  <SrLabel k="delete_group" values={{ name: group.name }} />
                                 </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </>
-                      ) : (
-                        <>
-                          {!group.canManage && (
-                            <span
-                              title={t('not_owned')}
-                              className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
-                            >
-                              <Lock className="w-4 h-4" />
-                            </span>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>{t('delete_title')}</DialogTitle>
+                                    <DialogDescription>{t('delete_desc')}</DialogDescription>
+                                  </DialogHeader>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setDeleting(null)}>
+                                      {t('cancel')}
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      onClick={() => handleDelete(group.id)}
+                                    >
+                                      {t('delete')}
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            </>
                           )}
-                          <ReportQuestionDialog groupId={group.id} />
                         </>
                       )}
+                      <ReportQuestionDialog groupId={group.id} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -275,11 +283,11 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
         </CardContent>
       </Card>
 
-      <Dialog
-        open={canWrite && !!managingMembers}
-        onOpenChange={(o) => !o && setManagingMembers(null)}
-      >
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={managingMembers !== null} onOpenChange={(o) => !o && setManagingMembers(null)}>
+        <DialogContent
+          className="max-w-lg max-h-[90vh] overflow-y-auto"
+          aria-describedby={undefined}
+        >
           <DialogHeader>
             <DialogTitle>{t('manage_members')}</DialogTitle>
             <DialogDescription>{t('manage_members_desc')}</DialogDescription>
@@ -296,6 +304,15 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function Spinner({ t }: { t: (key: string) => string }) {
+  return (
+    <div className="flex items-center justify-center h-64 text-muted-foreground">
+      <Loader2 className="size-5 animate-spin mr-2" />
+      {t('common_loading')}
     </div>
   );
 }

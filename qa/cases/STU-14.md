@@ -18,7 +18,10 @@ Zalogowany student1.
   `qa/.tenants` file is needed, like EDU-DECK-02).
 - Accounts: the legacy `student1@dev.local` is the tenant's `users.student`
   (`loginAs(page, tenant, 'student')`); no legacy/manual account is used. The
-  teacher (`users.teacher`) is the org's `teacher` and the teacher of both groups.
+  teacher (`users.teacher`) is the org's `teacher` and the teacher of both groups —
+  declared in the profile's `groupTeachers`, because no endpoint lets a caller join a
+  class they neither teach nor created (`group.member.manage` at `group` scope needs an
+  existing `teacher` row).
 - Organization: one org with two groups — `O1G1` (default; the student is a member
   and the teacher is its teacher) and `O1G2` (teacher is its teacher, student is
   **not** a member).

@@ -64,13 +64,15 @@ bun scripts/qa-tenant.ts EDU-GRP-04 --fresh
   wchodzi przez `/edu` i klika „Grupy”, czyli ścieżką użytkownika opisaną w przypadku.
 - Strona pokazuje nagłówek/kartę „Grupy”, przycisk „Nowa grupa” i tabelę z kolumnami
   **Nazwa / Członkowie / Nauczyciele / Akcje**. Seedowana `G1` renderuje 4 / 1; grupy
-  utworzone przez nauczyciela renderują 0 / 0 i mają akcje edycji/usunięcia (są jego
-  własne), a `G1` — nie (należy do admina).
+  utworzone przez nauczyciela renderują 1 / 1 — twórca jest od razu zapisany do składu jako
+  `teacher` (`POST /organization/groups` zapisuje go przez service role), a `memberCount`
+  liczy cały skład, nauczycieli włącznie — i mają akcje edycji/usunięcia (są jego własne),
+  a `G1` — nie (należy do admina).
 - „Nowa grupa” otwiera dialog „Utwórz grupę” z polami „Nazwa”, „Opis” i przyciskami
   „Anuluj” / „Utwórz”. Nazwa krótsza niż 3 znaki jest odrzucana po stronie klienta bez
   żądania do API.
 - Grupa 2 i grupa 3 powstają: `POST /api/v1/organization/groups` → **201**, toast „Grupa
-  utworzona”, wiersz pojawia się od razu z 0 / 0.
+  utworzona”, wiersz pojawia się od razu z 1 / 1 (twórca jako `teacher`).
 - Czwarta próba: `POST /api/v1/organization/groups` → **429**
   `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}`, toast „Nie udało się utworzyć grupy”,
   dialog pozostaje otwarty z wpisaną nazwą, a lista nadal ma 3 grupy. Limit pochodzi z planu

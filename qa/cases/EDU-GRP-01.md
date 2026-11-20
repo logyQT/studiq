@@ -20,6 +20,10 @@ T1 (plan Lite – group.manage).
 
 - Lista grup z kolumnami Nazwa / Członkowie / Nauczyciele / Akcje.
 - Toast „Grupa utworzona”.
+- Nowa grupa pojawia się na liście z opisem, **1 członkiem i 1 nauczycielem** — autorem,
+  który od razu może ją edytować i usunąć (ADR-0015 §10: klasa to powierzchnia pracy
+  nauczyciela, więc utworzenie czyni autora jej nauczycielem; kolumna Członkowie liczy
+  cały skład klasy, nauczycieli włącznie).
 
 ## QA tenant fixture (reconciled)
 
@@ -32,11 +36,13 @@ the legacy accounts.
   group `G1` (every member enrolled, the manager as its group `teacher`). The case only uses
   the first educator (`teacher`) and `G1`; the extra accounts keep the profile shared with the
   member-limit case.
-- Why that profile: the prerequisite „group.manage” is an org-role entitlement, not a personal
-  plan. The org trigger seeds `org_role_features` per role, so an org-`member` educator (the
-  `content` profile's teacher) resolves no `group.manage` and sees a read-only list without
-  „Nowa grupa”. `org-limit` is the seeder's only shape whose educator holds the org `teacher`
-  role, which carries `group.manage` on the default `launch` org plan.
+- Why that profile: the prerequisite „group.manage” is a permission on the caller's org role
+  (ADR-0015 §4.1/§4.3), not a personal plan feature. An org-`member` educator (the `content`
+  profile's teacher) holds no `group.manage` at any scope and sees a read-only list without
+  „Nowa grupa”; `org-limit` is the seeder's only shape whose educator holds the org `teacher`
+  role, which carries every `group.*` key at `group` scope. Since the 2b-2 decision (§10: a
+  class is the teaching surface, and a create needs the key at **any** scope) that is also
+  what lets the teacher use „Nowa grupa” and own the class it creates.
 - Seed: `bun scripts/qa-tenant.ts EDU-GRP-01 --fresh` — a fresh run suffix per independent
   run, so every run gets its own org/group/users from
   `tenantKey('qa/cases/EDU-GRP-01.md', 'EDU-GRP-01#<suffix>', 'qa-shared')` +

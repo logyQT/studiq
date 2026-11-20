@@ -129,9 +129,11 @@ async function listDecks(page: Page): Promise<DeckRow[]> {
 
 /**
  * Only a group `teacher` may share a deck with the group
- * (`canShareContentToGroups`), and the seeder creates the extra groups empty.
- * Enrol the tenant teacher through the product's roster endpoint — the same
- * write `/manage/groups` performs — keeping every other member untouched.
+ * (`canShareContentToGroups`). The profile declares that the tenant teacher
+ * teaches both declared groups (`groupTeachers`), because no endpoint lets a
+ * caller join a class they neither teach nor created: `group.member.manage` at
+ * `group` scope needs a `teacher` row to exist first. This only asserts the
+ * seeded premise.
  */
 async function ensureTeacherLeadsGroup(
   page: Page,
@@ -143,20 +145,10 @@ async function ensureTeacherLeadsGroup(
 
   const url = `/api/v1/organization/groups/${groupId}/members`;
   const roster = await getData<GroupMemberRow[]>(page, url);
-  const member = roster.find((row) => row.userId === teacher.id);
-  if (member?.role === 'teacher') return;
-
-  const members = [
-    ...roster.filter((row) => row.userId !== teacher.id),
-    { userId: teacher.id, role: 'teacher' as const },
-  ];
-  const response = await page.request.put(url, { data: { members } });
-  expect(response.ok(), `PUT ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-
-  const after = await getData<GroupMemberRow[]>(page, url);
-  expect(after.find((row) => row.userId === teacher.id)?.role, 'the teacher now teaches O1G2').toBe(
-    'teacher',
-  );
+  expect(
+    roster.find((row) => row.userId === teacher.id)?.role,
+    'the seeded tenant has the teacher on O1G2 as its teacher',
+  ).toBe('teacher');
 }
 
 /**
