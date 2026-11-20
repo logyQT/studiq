@@ -1,28 +1,16 @@
-import { AccountType } from '@studiq/authz';
 import { invitationController } from '@studiq/server/controllers/invitation.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      const body: unknown = await req.json();
-      return toNextResponse(await invitationController.update(ctx, id, body));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+type Params = { id: string };
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const { id } = await params;
-      return toNextResponse(await invitationController.delete(ctx, id));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+/** Retarget and revoke are `org.invitation.manage`; the controller owns the key. */
+export const PUT = authedRouteWithParams<Params, [string, unknown]>(
+  ({ params, json }) => [params.id, json],
+  (ctx, id, body) => invitationController.update(ctx, id, body),
+  { readsBody: true },
+);
+
+export const DELETE = authedRouteWithParams<Params, [string]>(
+  ({ params }) => [params.id],
+  (ctx, id) => invitationController.delete(ctx, id),
+);

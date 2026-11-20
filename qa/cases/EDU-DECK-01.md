@@ -52,3 +52,17 @@ case's own tenant and never the legacy accounts.
   `group`, so the manager's deck shared to `G1` is visible under „Wszystkie” and excluded by
   „Moje”. That is the permission-rule behavior asserted; no guess is encoded for a second
   teacher account.
+
+## Observed 2026-11-20 (2b-3) — the roster is now declared
+
+The `content` profile's default educator is a real Teacher since 2b-3 (the roster read in
+D25 needs an org role that carries `group.manage`/`group.invite`), but this case's premise
+is the opposite: an educator on the org **Member** role, whose `deck.read` is `group`, so
+the manager's deck shared to `G1` is readable under „Wszystkie”. The spec now fails on the
+default (two decks, not three), so the case declares its own roster instead:
+`__tests__/qa/profiles/EDU-DECK-01.json` keeps `"profile": "content"` and adds `members` —
+manager `admin`, educator `member`, student `member`, the same keys, account types, names,
+ids and e-mails as before, with the default group `G1` and its membership unchanged. No
+`groupTeachers`: the spec still promotes the educator to group `teacher` itself, through
+the manager's roster endpoint, exactly as the step above describes. The assertions are
+untouched.

@@ -1,17 +1,11 @@
-import { AccountType } from '@studiq/authz';
 import { orgRoleController } from '@studiq/server/controllers/org-role.controller';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { withAuth } from '@studiq/server/lib/with-auth';
-import type { NextRequest } from 'next/server';
+import { authedRouteWithParams } from '@studiq/server/lib/route-handler';
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return withAuth(
-    req,
-    async (ctx) => {
-      const body: unknown = await req.json();
-      return toNextResponse(await orgRoleController.setPermissions(ctx, id, body));
-    },
-    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
-  );
-}
+type Params = { id: string };
+
+/** Replaces one role's permission set; `org.role.manage` is the controller's gate. */
+export const PUT = authedRouteWithParams<Params, [string, unknown]>(
+  ({ params: { id }, json }) => [id, json],
+  (ctx, id, body) => orgRoleController.setPermissions(ctx, id, body),
+  { readsBody: true },
+);

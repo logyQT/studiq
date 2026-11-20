@@ -81,7 +81,7 @@ case documents, 18 of which have no spec yet.)
 | ----------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ----- |
 | AUT-07      | persona landing dashboards; nav excludes plan-gated items                           | shell follows the active org's permissions                                   | 6     |
 | AUT-11      | `/login`, `/register` redirect by JWT `account_type`                                | redirect from role/active org                                                | 6     |
-| AUT-16      | student 3xx off `/edu`, `/manage`, `/setup`                                         | no persona gate on org routes; permission 403                                | 2     |
+| AUT-16      | student 3xx off `/edu`, `/manage`, `/setup`                                         | no persona gate on org routes; permission 403, roster read empty list (D25)  | 2     |
 | AUT-17      | teacher 3xx off `/app`, `/manage`                                                   | same                                                                         | 2     |
 | AUT-18      | manager 3xx off `/app`, `/edu`                                                      | role-derived shell                                                           | 6     |
 | AUT-19      | student 403 on `/teacher/*`, `/organization/members`                                | permission check replaces account-type gate                                  | 2     |
@@ -269,9 +269,12 @@ guards replaces the role's whole permission set and the gate is one of those row
   grant — the QA swarms (STU, SEC-05/06, MGR-ROL-03) must expect no edits outside
   that set.
 
-The remaining phase-2 work, in slice order. **Phase 2b is nine slices**: slice 1
-is merged and slice 2 is written. A merged 2b-1 (or a written 2b-2) does not
-mean phase 2 is done. The ledger's phase-2 row is `active` today (§1 of the
+The remaining phase-2 work, in slice order. **Phase 2b is nine slices**: slices
+1–2 are merged and 2b-3 is written (2b-3 is the settled re-numbering of this list on
+2026-11-20 — the org-control sweep moved ahead of the remaining RLS, and the
+older labels are recorded in the [plan](role-authority-plan.md#phase-2b--authority-and-control-plane)).
+A merged 2b-1/2b-2 (or a written 2b-3) does not mean phase 2 is done. The
+ledger's phase-2 row is `active` today (§1 of the
 [plan](role-authority-plan.md#1-status)) and is set to `merged` only when the last
 slice below lands.
 
@@ -282,8 +285,8 @@ slice below lands.
   constraint names corrected, and `database.ts` regenerated. Deferred from 2a-2,
   whose scope was the gate, the RLS predicate and the presets — the FK needed the
   old free-text names backfilled first.
-- **2b-2 — group permissions and their RLS twin. Delivered** (slice 2 of 9) on
-  `feat/authority-2b-2`: `resolveGroupScope`/`canGroup`/`requireGroupPermission`
+- **2b-2 — group permissions and their RLS twin. Merged** (`6b6554f2`, #1398;
+  slice 2 of 9): `resolveGroupScope`/`canGroup`/`requireGroupPermission`
   give `group.read/manage/member.manage` their ADR-0015 §4.3 meaning
   (org scope → any group, `group` scope → the classes the caller **teaches**,
   `own` → the classes the caller **created**), create needs the key at **any**
@@ -295,25 +298,39 @@ slice below lands.
   `groups`/`group_members` write policies in the same PR (R4). A Teacher-role
   holder reaches the classes it teaches (the seeded row is `group` scope); Admin
   holds the keys at `organization`. `group.invite` stays unused until 2b-4.
-- 2b-3 — replace `allowedAccountTypes` on the remaining org routes with
-  `requirePermission` (the group routes left the list in 2b-2), keeping the 2
-  legitimate persona exceptions (org creation, classroom creation).
-- 2b-4 — class invites use `group.invite` at group scope for existing org
-  members; delete the `can_assign_org_role` teacher-name exception (2a-5), and
-  reuse `rls_caller_has_group_permission` for the invitation policy.
-- 2b-5 — **control-plane RLS**: `rls_caller_has_permission(org, key)` replaces
-  `is_org_manager` / `has_org_feature` on members, settings, seat pools, seat
-  assignments and invitations (roles and role permissions moved in 2a-2).
-- 2b-6 — the RLS half of the role editor guards: the last-`org.role.manage`
+- **2b-3 — org-control route sweep and its RLS twin. Delivered** (slice 3 of 9)
+  on `feat/authority-2b-3`: the settings, roster, seat and invitation routes drop
+  `allowedAccountTypes` and gate on `org.settings.manage` / `org.seat.manage` /
+  `org.invitation.manage` from the controller (`requirePermission`), while roles
+  keep 2a-2's `org.role.manage` on writes and reads stay membership-only. The
+  roster read is four authorities (D25): `org.member.manage`, `group.manage`,
+  `group.invite` at any scope, or `org.seat.manage` (the shipped Billing preset's
+  seat picker); everyone else reads an empty list, and `PUT`/`DELETE` stay
+  `org.member.manage`. Branding keeps
+  `org.settings.manage` **and** the `branding` entitlement.
+  `public.rls_caller_has_permission` replaces
+  `is_org_manager` on the same PR's policies: `organizations` update, `org_members`
+  update/delete, `org_seat_pools` insert/update/delete, `org_seat_assignments`
+  insert/update/delete plus the manager branch of its select, and `invitations`
+  update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-4).
+- 2b-4 — the remaining control-plane RLS: `billing_subscriptions`, the assignment
+  family, the `can_assign_org_role` manager half, and the `org_members` SELECT
+  review D25 leaves open (the API is deliberately narrower than the data-plane
+  read until every reader is audited).
+- 2b-5 — class invites use `group.invite` at group scope for existing org
+  members; add `invitations.group_id` + `target_group_role`, delete the
+  `can_assign_org_role` teacher-name exception, and reuse
+  `rls_caller_has_group_permission` for the invitation policy.
+- 2b-6 — content-route sweep and the cross-package `authedRoute` adoption (the
+  route-layer shape 2b-2 deferred).
+- 2b-7 — marker deletion: `role.builder`, `org.manage`, `member.manage` and
+  `group.manage` from `ENTITLEMENTS`, `entitlement_catalog`,
+  `entitlement_flags`, `plan_entitlements` and `org_role_features`, in that
+  order, plus the pricing copy and QA expectations that advertise them.
+- 2b-8 — the RLS half of the role editor guards: the last-`org.role.manage`
   holder, system roles protected, no self-edit, no grant beyond your own
   authority (the API half shipped in 2a-2/2a-3; RLS has none of it).
-- 2b-7 — remove `role.builder` from `ENTITLEMENTS`, `entitlement_catalog`,
-  `entitlement_flags`, `plan_entitlements` and `org_role_features`, in that
-  order.
-- 2b-8 — the other three legacy management keys (`org.manage`, `member.manage`,
-  `group.manage`) in the same order.
-- 2b-9 — the pricing copy and QA expectations that still advertise the removed
-  markers.
+- 2b-9 — deferred to phase 5.
 
 **Exit:** permission matrix tests; group-teacher tests; 403 vs 404; no persona
 gate on an org resource; `AUT`, `MGR`, `EDU`, `SEC` green.

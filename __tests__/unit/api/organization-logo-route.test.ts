@@ -65,7 +65,12 @@ function imageForm(type = 'image/png', name = 'logo.png'): FormData {
 describe('POST /api/v1/organization/[id]/logo (#271)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCtx = { userId: USER_ID, activeOrgId: ORG_ID, orgRoleId: 'role-manager' };
+    mockCtx = {
+      userId: USER_ID,
+      activeOrgId: ORG_ID,
+      orgRoleId: 'role-manager',
+      permissionScopes: { 'org.settings.manage': 'organization' },
+    };
     requireFeatureMock.mockResolvedValue(undefined);
     // #281 reads the current row before uploading; these #271 cases start from
     // an org without a logo so the cleanup is a no-op.

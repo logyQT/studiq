@@ -22,11 +22,20 @@ const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
   accountType: AccountType.EDUCATOR,
-  orgRoleId: null,
+  orgRoleId: 'role-admin',
   activeOrgId: 'org-1',
   url: '',
   method: 'GET',
   groupIds: [],
+  // The Admin role's seat key; the refusal cases below replace this map.
+  permissionScopes: { 'org.seat.manage': 'organization' },
+};
+
+/** The seeded Member role: in the org, no `org.*` key. */
+const memberCtx: RequestContext = {
+  ...mockCtx,
+  accountType: AccountType.STUDENT,
+  orgRoleId: 'role-member',
   permissionScopes: {},
 };
 
@@ -153,6 +162,58 @@ describe('SeatController', () => {
       mockService.unassignSeat.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
       const response = await controller.unassignSeat(mockCtx, 'nonexistent');
       expect(response.success).toBe(false);
+    });
+  });
+
+  describe('org.seat.manage', () => {
+    // One capability for the whole `/manage/seats` surface (ADR-0015 §4.1/§7):
+    // the reads the page renders and every write. A Member-role holder is
+    // refused on each, and the service is never reached.
+    const calls = {
+      listPools: () => controller.listPools(memberCtx),
+      createPool: () => controller.createPool(memberCtx, { planKey: 'ace', quantity: 1 }),
+      updatePool: () => controller.updatePool(memberCtx, 'pool-1', { total: 1 }),
+      listAssignments: () => controller.listAssignments(memberCtx),
+      assignSeat: () =>
+        controller.assignSeat(memberCtx, {
+          userId: '550e8400-e29b-41d4-a716-446655440000',
+          poolId: '550e8400-e29b-41d4-a716-446655440001',
+        }),
+      unassignSeat: () => controller.unassignSeat(memberCtx, 'assignment-1'),
+    };
+
+    it.each(Object.entries(calls))(
+      '%s refuses a caller without org.seat.manage',
+      async (_method, call) => {
+        await expect(call()).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+        expect(mockService.listPools).not.toHaveBeenCalled();
+        expect(mockService.addPool).not.toHaveBeenCalled();
+        expect(mockService.updatePool).not.toHaveBeenCalled();
+        expect(mockService.listAssignments).not.toHaveBeenCalled();
+        expect(mockService.assignSeat).not.toHaveBeenCalled();
+        expect(mockService.unassignSeat).not.toHaveBeenCalled();
+      },
+    );
+
+    it('refuses a caller with no active org', async () => {
+      await expect(
+        controller.listPools({
+          ...mockCtx,
+          activeOrgId: null,
+          orgRoleId: null,
+          permissionScopes: {},
+        }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockService.listPools).not.toHaveBeenCalled();
+    });
+
+    it('gates before the body is validated', async () => {
+      // A 422 here would mean the schema ran before the gate; the refusal must
+      // not depend on what an unauthorised caller sent.
+      await expect(
+        controller.createPool(memberCtx, { planKey: '', quantity: -1 }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockService.addPool).not.toHaveBeenCalled();
     });
   });
 });

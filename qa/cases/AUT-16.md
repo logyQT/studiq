@@ -63,3 +63,17 @@ same tenant's teacher and manager. It therefore runs against the case's own tena
 - The default run locale is Polish and page copy differs per role, so the spec
   asserts URLs, redirect hops, redirect targets and its own tenant's data only — no
   translated labels.
+
+## Observation 2026-11-20 — the roster read (D25)
+
+- `GET /api/v1/organization/members` is no longer "403 because the route is
+  reserved for teachers/managers". D25 makes the roster a capability read with
+  three authorities in the active org — `org.member.manage`, or `group.manage`,
+  or `group.invite` — because the catalog has no `org.member.read` and a Teacher
+  must not hold `org.member.manage` (D18/FP-04). A plain Member-role student
+  holds none of them, so the route answers `200 {"success":true,"data":[]}`:
+  the empty list is the deny shape and carries no member row, e-mail or id.
+  `403 FORBIDDEN` remains accepted as the documented alternative;
+  `GET /api/v1/teacher/assignments` and `GET /api/v1/stats/teacher` stay `403`.
+  The spec accepts both shapes and asserts the exact empty body; the walk
+  recorded above is left as written.

@@ -602,7 +602,10 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   const groupId = tenantId(key, 'group:default');
   const accounts = {
     manager: buildAccount(key, 'manager', 'manager', { name: 'QA manager' }),
-    teacher: buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' }),
+    teacher: buildAccount(key, 'teacher', 'educator', {
+      name: 'QA teacher',
+      orgRole: 'teacher',
+    }),
     teacher2: buildAccount(key, 'teacher2', 'educator', {
       name: 'QA teacher 2',
       orgRole: 'teacher',

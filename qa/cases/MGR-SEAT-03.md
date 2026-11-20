@@ -74,3 +74,17 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 - Po zwolnieniu `GET /api/v1/me/plan` zwalnianego członka zwraca `base` (jego plan
   osobisty), a limity wracają do wartości planu bazowego; wcześniej (z przydziałem `pro`)
   zwracał `pro` z limitami `-1`.
+
+## Observed 2026-11-20 (2b-3) — the roster is now declared
+
+The `content` profile's default educator is a real Teacher since 2b-3 (the roster read in
+D25 needs an org role that carries `group.manage`/`group.invite`), but this case needs both
+seeded people on the org **Member** role: a `pro` seat assignment is role-aware and refuses
+an org teacher or admin, and the spec asserts `orgRoleName === 'member'` for
+`users.student` and `users.teacher` before it buys the pool. The spec now fails on the
+default (the untested control account is no longer a member), so the case declares its own
+roster: `__tests__/qa/profiles/MGR-SEAT-03.json` — the case had none — declares the same
+`"profile": "content"` the default implied and adds `members` (manager `admin`, educator
+`member`, student `member`), the same keys, account types, names, ids and e-mails the
+default produced. No `plan` field: the case buys its own seat pool. Assertions and steps
+untouched.

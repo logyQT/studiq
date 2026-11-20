@@ -44,11 +44,13 @@ lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
 which replaces their remaining gates with permissions.
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
-backfill) merged as `6ec591dd` (#1397), and **2b-2** (group permissions and their
-RLS twin) is written on `feat/authority-2b-2`, with its follow-up pass (the
-`/edu/groups` nav gate and EDU-GRP-05's settled text) on `feat/authority-2b-2-2`.
-It is **slice 2 of 9**. The
-phase-2 row stays `active` — two merged/written slices do not make phase 2 done.
+backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
+RLS twin) merged as `6b6554f2` (#1398) together with its follow-up pass (the
+`/edu/groups` nav gate and EDU-GRP-05's settled text), and **2b-3** (the
+org-control route sweep and its RLS twin) is written on
+`feat/authority-2b-3`. It is **slice 3 of 9**; the settled order is recorded in
+the phase-2b table below. The
+phase-2 row stays `active` — three merged/written slices do not make phase 2 done.
 
 ## 2. How to update this file
 
@@ -66,59 +68,64 @@ phase-2 row stays `active` — two merged/written slices do not make phase 2 don
 
 ## 3. Rules (earned, not invented)
 
-| #   | Rule                                                                                                                                                                                  | Earned from                                                                                                                        |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                   | `check-migration-timestamps` fails on duplicate prefixes                                                                           |
-| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project. | the pinned v3.1 generator emits a different shape and 7 RPC type errors                                                            |
-| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                         | both hooks run `knip --treat-config-hints-as-errors`                                                                               |
-| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                     | FP-01 is exploitable through PostgREST                                                                                             |
-| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                               | audit §0.2: 41 of 45 gates are permission checks                                                                                   |
-| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                            | the corpus is the product contract                                                                                                 |
-| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                              | prose is not a verdict                                                                                                             |
-| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                           | a v1 scope change left six sections describing the deferred table                                                                  |
-| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                        | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine                                                                 |
-| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                      | a six-day-old 0b checklist cited three already-shipped items                                                                       |
-| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                               | "only reference is the generated type file" missed a seed `REVOKE`                                                                 |
-| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                 | the role save drops the `assignment.*` rows the seed grants                                                                        |
-| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                       | the 0b regen produced a different shape and 7 RPC type errors                                                                      |
-| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                               | the committed `database.ts` carried a hand-added inline eslint-disable                                                             |
-| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                   | the phase-1b `group.manage` overlap                                                                                                |
-| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures. | 2a-1's branding fixture failed only in the CI shard                                                                                |
-| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                        | the `org.role.manage` gate would have been deletable by one role save                                                              |
-| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                     | the `org_role_permissions` predicate read its own table                                                                            |
-| R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                      | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit |
-| R20 | A dotted key makes `toHaveProperty` useless in both directions — assert `Object.keys(map)` or index the map, and grep the corpus when a payload's shape changes.                      | a flat `group.manage` map made the positive assertion fail and the negative one pass regardless of the map's contents              |
+| #   | Rule                                                                                                                                                                                                                                            | Earned from                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                                                                             | `check-migration-timestamps` fails on duplicate prefixes                                                                           |
+| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project.                                                           | the pinned v3.1 generator emits a different shape and 7 RPC type errors                                                            |
+| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                                                                                   | both hooks run `knip --treat-config-hints-as-errors`                                                                               |
+| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                                                                               | FP-01 is exploitable through PostgREST                                                                                             |
+| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                                                                                         | audit §0.2: 41 of 45 gates are permission checks                                                                                   |
+| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                                                                                      | the corpus is the product contract                                                                                                 |
+| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                                                                                        | prose is not a verdict                                                                                                             |
+| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                                                                                     | a v1 scope change left six sections describing the deferred table                                                                  |
+| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                                                                                  | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine                                                                 |
+| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                                                                                | a six-day-old 0b checklist cited three already-shipped items                                                                       |
+| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                                                                                         | "only reference is the generated type file" missed a seed `REVOKE`                                                                 |
+| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                                                                           | the role save drops the `assignment.*` rows the seed grants                                                                        |
+| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                                                                                 | the 0b regen produced a different shape and 7 RPC type errors                                                                      |
+| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                                                                                         | the committed `database.ts` carried a hand-added inline eslint-disable                                                             |
+| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                                                                             | the phase-1b `group.manage` overlap                                                                                                |
+| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures.                                                           | 2a-1's branding fixture failed only in the CI shard                                                                                |
+| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                                                                                  | the `org.role.manage` gate would have been deletable by one role save                                                              |
+| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                                                                               | the `org_role_permissions` predicate read its own table                                                                            |
+| R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                                                                                | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit |
+| R20 | A dotted key makes `toHaveProperty` useless in both directions — assert `Object.keys(map)` or index the map, and grep the corpus when a payload's shape changes.                                                                                | a flat `group.manage` map made the positive assertion fail and the negative one pass regardless of the map's contents              |
+| R21 | A read route's SELECT policy is part of its gate: a filter that runs after the gate turns a refusal into an empty page, not an error.                                                                                                           | the seat-assignment list admitted a key holder and RLS filtered every row silently                                                 |
+| R22 | When one policy carries two authorities, moving one is a split, not a sweep — name the conjunct that still owns the other half, or the next reader calls its 42501 a bug.                                                                       | the invitation UPDATE kept `can_assign_org_role`'s membership-marker manager half                                                  |
+| R23 | An API gate may stay deliberately narrower than its data-plane policy when the policy predates it and narrowing it means auditing every reader; the asymmetry is recorded with a named owner in the same PR, never left as two unnamed answers. | D25 kept the roster read at four named keys while the `org_members` SELECT policy still admits any same-org member (2b-4)          |
+| R24 | A QA persona's authority is its org-role row, not its account type: audit the seeded **default** accounts around a role change (not just the ones a profile promotes), and a case built on the old default declares its own roster.             | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                    |
 
 ## 4. Decisions
 
 All settled 2026-11-13; the full wording is ADR-0015 §15.
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | `org.admin` is a real permission for ownership only; no superuser override                                                                                                                                                                                                                                                                                                                                                                                         |
-| D2  | Managers get a free `solo` plan; `launch` is organization-only                                                                                                                                                                                                                                                                                                                                                                                                     |
-| D3  | Personal plans are portable for `personalPortable` keys and user-scope quotas only                                                                                                                                                                                                                                                                                                                                                                                 |
-| D4  | A seat can only raise a user-scope limit: `max(org, seat, personal)`, `-1` short-circuits                                                                                                                                                                                                                                                                                                                                                                          |
-| D5  | v1 ships `entitlement_profile` (`all \| learner \| none`); allocation is deferred                                                                                                                                                                                                                                                                                                                                                                                  |
-| D6  | Teacher `all`, Member `learner`, Custom `none`                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| D7  | Class invites use `group.invite` for existing org members; no external invites in v1                                                                                                                                                                                                                                                                                                                                                                               |
-| D8  | Flags are a kill switch only (`is_enabled = false`); no rollout percentage                                                                                                                                                                                                                                                                                                                                                                                         |
-| D9  | `flashcards` and `quiz` are baseline, always on, never gated                                                                                                                                                                                                                                                                                                                                                                                                       |
-| D10 | `account_type` is not renamed in this programme; the semantics change only                                                                                                                                                                                                                                                                                                                                                                                         |
-| D11 | This programme fixes control-plane RLS only; content RLS is a separate security ADR                                                                                                                                                                                                                                                                                                                                                                                |
-| D12 | Overrides bypass flags                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| D13 | A `student` persona may hold the Admin role                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                                                                                                                                                                              |
-| D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`.                                                                                                                                                         |
-| D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                                                                                                                                                                                 |
-| D17 | Role templates are editor presets, not extra org rows: every org keeps admin/teacher/member; Assistant/Billing/Read-only/Blank are created from a template via POST /organization/roles. ADR §4.2 is amended to match §9.                                                                                                                                                                                                                                          |
-| D18 | Teacher profile 'all' means the org ceiling minus the four legacy management markers; markers resolve only from org_role_features rows, so a Teacher never inherits member.manage/role.builder.                                                                                                                                                                                                                                                                    |
-| D19 | entitlement_profile is authoritative for non-marker entitlement keys; legacy rows are read only for marker grants and explicit is_enabled=false revokes. Phase 3 deletes the legacy writer.                                                                                                                                                                                                                                                                        |
-| D20 | Role changes are logged (actor, role, before, after) through @studiq/server/lib/log until an audit table exists; no audit subsystem is invented in phase 2.                                                                                                                                                                                                                                                                                                        |
-| D21 | Changing or removing a grant requires authority over the current scope as well as the target; org.admin holders are exempt from 'no self-edit', or a single-admin org could never edit its own Admin role.                                                                                                                                                                                                                                                         |
-| D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                                                                                                                                                                                 |
-| D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                                                                                                                                                                          |
-| D24 | **The editor lands before the gate flip.** 2a-3 (closed-catalog editor + complete payload) precedes 2a-2 (`requirePermission('org.role.manage')`): `setPermissions` deletes every row for the role and re-inserts only the payload, while the old editor rendered 20 hardcoded keys, so flipping the gate first would let one save on the Admin role delete `org.role.manage` and every `group.*`/`org.*` row and lock the org out of role management permanently. |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | `org.admin` is a real permission for ownership only; no superuser override                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D2  | Managers get a free `solo` plan; `launch` is organization-only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D3  | Personal plans are portable for `personalPortable` keys and user-scope quotas only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D4  | A seat can only raise a user-scope limit: `max(org, seat, personal)`, `-1` short-circuits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D5  | v1 ships `entitlement_profile` (`all \| learner \| none`); allocation is deferred                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D6  | Teacher `all`, Member `learner`, Custom `none`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D7  | Class invites use `group.invite` for existing org members; no external invites in v1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| D8  | Flags are a kill switch only (`is_enabled = false`); no rollout percentage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D9  | `flashcards` and `quiz` are baseline, always on, never gated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| D10 | `account_type` is not renamed in this programme; the semantics change only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D11 | This programme fixes control-plane RLS only; content RLS is a separate security ADR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D12 | Overrides bypass flags                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| D13 | A `student` persona may hold the Admin role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| D14 | Persona is a UI filter for plan purchases; the one server check is seat assignment against `audience`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D15 | Org plans grant ZERO licences; licences are sold separately. A licence is the purchased unit (`org_seat_pools` = the licence pool, its `plan_key` must be `scope='personal'` + `seatEligible`); `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D16 | `org.admin` is `assignable = false`: ownership (delete org, transfer ownership) is not grantable through a custom role. The system Admin template keeps it; every other catalog key is assignable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D17 | Role templates are editor presets, not extra org rows: every org keeps admin/teacher/member; Assistant/Billing/Read-only/Blank are created from a template via POST /organization/roles. ADR §4.2 is amended to match §9.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D18 | Teacher profile 'all' means the org ceiling minus the four legacy management markers; markers resolve only from org_role_features rows, so a Teacher never inherits member.manage/role.builder.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D19 | entitlement_profile is authoritative for non-marker entitlement keys; legacy rows are read only for marker grants and explicit is_enabled=false revokes. Phase 3 deletes the legacy writer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| D20 | Role changes are logged (actor, role, before, after) through @studiq/server/lib/log until an audit table exists; no audit subsystem is invented in phase 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| D21 | Changing or removing a grant requires authority over the current scope as well as the target; org.admin holders are exempt from 'no self-edit', or a single-admin org could never edit its own Admin role.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D22 | Entitlements are an open catalog: a key ships with its surface. `documents` is absent in v1 because the surface is not implemented (roadmap), not deleted permanently; re-entry is catalog + flag + plan rows, no resolver change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D24 | **The editor lands before the gate flip.** 2a-3 (closed-catalog editor + complete payload) precedes 2a-2 (`requirePermission('org.role.manage')`): `setPermissions` deletes every row for the role and re-inserts only the payload, while the old editor rendered 20 hardcoded keys, so flipping the gate first would let one save on the Admin role delete `org.role.manage` and every `group.*`/`org.*` row and lock the org out of role management permanently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D25 | **The roster read is four authorities, and its deny shape is an empty list.** `GET /organization/members` is readable with `org.member.manage` at org scope, or `group.manage`, or `group.invite`, or `org.seat.manage` at any scope the role holds them. The catalog has no `org.member.read`; a Teacher must not hold `org.member.manage` (D18/FP-04); and three teacher surfaces legitimately need the roster (`/edu/classroom/members`, the assignment student picker `?role=member`, the `/edu` onboarding counts). `org.seat.manage` is the fourth because the shipped **Billing** preset is exactly `org.billing.manage` + `org.seat.manage` and `/manage/seats` fills its assign dialog from this endpoint: the rule is "read the roster if you may act on it", and a code-owned preset is a consumer too (R24's lesson, one layer deeper than the QA seeds). Everyone else gets `200` + `data: []`, which leaks nothing and is the shape AUT-19 accepts; `PUT`/`DELETE` stay `org.member.manage`, so the Billing preset still fails every member/role/settings/invitation write. The `org_members` SELECT policy stays as it is (the API is now narrower than the data plane by design; the RLS read predates the slice and narrowing it must audit every `org_members` reader — 2b-4). |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -1307,20 +1314,32 @@ guard a probe key the other one lets through, one assertion per case.
 
 ### Phase 2b — authority and control-plane
 
-**Settled 2026-11-19 — nine slices.** Slice 1 is written; the rest is the
-rollout's remaining phase-2 work, split so each slice is one PR.
+**Settled 2026-11-19, re-numbered 2026-11-20 — nine slices.** The order below is
+the settled one: the org-control sweep (2b-3) lands before the remaining
+control-plane RLS (2b-4), because the routes and their predicates move together
+(R4) and the sweep is what names which policies 2b-4 still owns; class invites
+(2b-5) wait for the `invitations` shape they need.
 
-| Slice | Contents                                                                                                                                                                            |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                    |
-| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Written** on `feat/authority-2b-2`. |
-| 2b-3  | The five embedded membership checks the persona rule keeps.                                                                                                                         |
-| 2b-4  | `group.invite` at group scope; delete the `can_assign_org_role` teacher-name exception.                                                                                             |
-| 2b-5  | `rls_caller_has_permission` on members, settings, seats and invitations (replaces `is_org_manager`).                                                                                |
-| 2b-6  | The last-holder and system-role guards at RLS (2a-2's recorded security debt).                                                                                                      |
-| 2b-7  | Remove `role.builder`'s entitlement twin: `plan_entitlements` → `org_role_features` → `entitlement_flags` → `entitlement_catalog`.                                                  |
-| 2b-8  | Remove `org.manage`, `member.manage` and `group.manage` and their plan/flag/feature rows in the same order.                                                                         |
-| 2b-9  | The pricing copy and QA expectations that still advertise the removed markers.                                                                                                      |
+| Slice | Contents                                                                                                                                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                                                               |
+| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Merged** `6b6554f2` (#1398).                                                   |
+| 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`. |
+| 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment family, the `can_assign_org_role` manager half the invitation INSERT keeps, and the `org_members` SELECT review D25 leaves open.                      |
+| 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, and the `can_assign_org_role` teacher-name exception deleted.                                                                      |
+| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption (2b-2's deferred route-layer shape).                                                                                                                          |
+| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them.                                  |
+| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                |
+| 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                     |
+
+**Re-numbered 2026-11-20 (R8).** The settled order changed the labels the
+2026-11-19 table carried: 2b-3 was "the five embedded membership checks", 2b-4
+`group.invite` + the teacher-name exception, 2b-5 "RLS on members, settings,
+seats and invitations", 2b-6 "the last-holder and system-role guards", 2b-7
+"remove `role.builder`'s entitlement twin", 2b-8 "remove the three legacy
+markers" and 2b-9 "the pricing copy and QA expectations". Nothing was dropped:
+the old 2b-5 is inside 2b-3 (routes + RLS together), the old 2b-6 is 2b-8, and
+the old 2b-7/2b-8/2b-9 are 2b-7 and 2b-9.
 
 **2b-1 merged as `6ec591dd` (#1397) — slice 1 of 9:**
 
@@ -1397,7 +1416,7 @@ Rule: a migration is applied by file name, not by content — so a schema change
 that renames what earlier functions write must re-create those functions itself,
 and a reset that passes proves little until it has run twice.
 
-**2b-2 written on `feat/authority-2b-2` (PR pending) — slice 2 of 9:**
+**2b-2 merged as `6b6554f2` (#1398) — slice 2 of 9:**
 
 - **The rule.** `resolveGroupScope(ctx, key, groupId, group?)` in
   `packages/server/src/lib/authz.ts` is the one place a group key's authority is
@@ -1527,7 +1546,194 @@ and a reset that passes proves little until it has run twice.
   the case text and its spec now assert what the model guarantees (readable
   list, every manage control absent, four 403s) — see the review-pass entry.
 
+**2b-3 written on `feat/authority-2b-3` (PR pending) — slice 3 of 9:**
+
+- **The count, re-derived (R9/R10).** `git grep -n allowedAccountTypes
+6b6554f2 -- 'apps/web/src/app/(backend)/api/v1/organization'` reports **22
+  occurrences in 13 files**; one is the R5 org-creation exception
+  (`organization/route.ts` POST), so the sweep set is **21 persona gates in 12
+  files**. Those 12 files export **22 handlers** — the invitation `POST` carries
+  no persona today, and `invites/route.ts` keeps its public `?token=` branch. The
+  handoff said "19 handlers / 12 files": the files are right, the gates are 21
+  (two more) and the handlers 22 (three more). The command reads the base
+  commit because the sweep is what removed the matches from this tree.
+- **Route map** (the 12 files, method → key):
+  - `organization/[id]` — GET membership-only; PUT `org.settings.manage`.
+  - `organization/[id]/logo` — POST `org.settings.manage` **and**
+    `requireFeature(ctx, 'branding')` (ADR §7: permission AND entitlement).
+  - `organization/members` — GET `org.member.manage` **or** `group.manage`
+    **or** `group.invite` **or** `org.seat.manage` (D25); PUT/DELETE
+    `org.member.manage`.
+  - `organization/roles` — GET membership-only; POST `org.role.manage` (2a-2's
+    controller gate, unchanged).
+  - `organization/roles/[id]` — GET membership-only; PUT/DELETE
+    `org.role.manage`.
+  - `organization/roles/[id]/permissions` — PUT `org.role.manage`.
+  - `organization/seats/pools` — GET/POST `org.seat.manage`;
+    `seats/pools/[id]` PUT `org.seat.manage`.
+  - `organization/seats/assignments` — GET/POST `org.seat.manage`;
+    `seats/assignments/[id]` DELETE `org.seat.manage`.
+  - `organization/invites` — GET (no `?token=`) `org.invitation.manage`; POST
+    unchanged (see below).
+  - `organization/invites/[id]` — PUT/DELETE `org.invitation.manage`.
+  - R5 exceptions untouched: `organization/route.ts` POST (org creation) and
+    `teacher/classrooms/route.ts` POST (class creation). `ai/*` waits for
+    phase 5.
+- **The shape.** The 12 route files use `authedRoute`/`authedRouteWithParams`
+  and drop `allowedAccountTypes`; the controllers own the keys
+  (`requirePermission`, first statement, before any schema parse) and the
+  services keep only tenant questions. `readsBody` is declared per route: the
+  body-less member and assignment DELETEs answer 403, never the 400 an empty
+  `req.json()` would raise. The logo route is the one `withAuth` holdout: it
+  reads `FormData` itself and gates `org.settings.manage` before the storage
+  write, then `organizationController.update` checks the same key again.
+- **The two read families that stay membership-only, deliberately.** `GET organization/[id]`
+  already proved `id === ctx.activeOrgId && ctx.orgRoleId`, and the role list /
+  role detail are read by every member (the member screens and `withAuth`'s own
+  role read). Dropping their persona adds **no** key — the active org
+  membership is the authority. The `GET members` read does move off the persona:
+  the service's old `accountType === EDUCATOR` narrowing (an educator saw only
+  their classes' members) is deleted with it, because a capability must not be
+  filtered by a persona. **Corrected 2026-11-20 (D25):** the read is not
+  `org.member.manage` alone. A Teacher must not hold that key (D18/FP-04), yet
+  the teacher-facing surfaces that call this endpoint (`/edu/classroom/members`,
+  the assignment student picker, the `/edu` onboarding counts) legitimately need
+  the roster — as do QA EDU-GRP-02 and EDU-ASG-04. The read therefore admits
+  `org.member.manage` **or** `group.manage` **or** `group.invite` **or**
+  `org.seat.manage` at any scope, and everyone else gets an empty list. The
+  fourth key is the shipped **Billing** preset (`org.billing.manage` +
+  `org.seat.manage`), whose `/manage/seats` assign dialog reads this roster: a
+  preset is a consumer even though it is code, not a QA seed. See the
+  difficulty-log correction below.
+- **The RLS twin (R4).**
+  `20261120110000_org_control_permission_rls.sql` replaces
+  `rls_caller_is_org_manager` with 2a-2's `rls_caller_has_permission(org, key)`
+  on: `organizations` update (settings), `org_members` update/delete (members,
+  keeping `user_id <> auth.uid()` and the same-org role check),
+  `org_seat_pools` insert/update/delete and `org_seat_assignments`
+  insert/update/delete (seats), plus the manager branch of
+  `org_seat_assignments`' SELECT — that policy is not in the handoff list, but
+  the list route moved in this PR and a predicate that filters the rows after
+  the gate turns a 403 into a silently empty list. `invitations` update/delete
+  move (keeping `inviter_id = auth.uid()` and
+  `rls_caller_can_assign_org_role`). The file ends with a `do` block that raises
+  if any of the twelve policies lacks the expected key in a clause it has — a
+  `qual` _or_ a `with check`, whichever exists — and if the `invitations` SELECT
+  policy stops naming the legacy `rls_caller_is_org_manager` (the read half this
+  slice leaves for 2b-4), so a reverted line fails a reset instead of passing a
+  test.
+- **What the file deliberately does not move.** The `invitations` INSERT keeps
+  `rls_caller_can_assign_org_role`: it has no manager branch to move (the
+  manager half lives inside that helper), its API gate is the untouched create
+  route, and adding `org.invitation.manage` there would refuse the classroom
+  teacher→member invite the POST route deliberately keeps. 2b-4 owns the helper
+  rewrite; R4 says the two move together, so this half waits. The `invitations`
+  SELECT keeps its manager branch too: the list API moved, but an inviter may
+  still read their own row through PostgREST — a recorded read asymmetry, not
+  a leak.
+- **What can now 403 that did not.** A `MANAGER`-persona holder of the seeded
+  Member role loses the roster read/write, the seat reads/writes, the invitation
+  list/retarget/revoke, the settings update and the logo; an `EDUCATOR`-persona
+  Member loses the same. An org member can no longer read the admin seat views.
+  Through PostgREST the same callers lose `organizations` update, `org_members`
+  update/delete, the seat writes and the assignment manager read, and an
+  invitation retarget/revoke.
+- **What gains.** A Student-persona Admin-role holder (D13) reaches settings,
+  seats and invitations on authority alone — pinned by the API file's
+  invitation list. A custom role with `org.seat.manage` or
+  `org.member.manage` reaches its API (previously MANAGER-only), and an
+  `org.member.manage` holder who is an educator sees the whole roster.
+  **Residual:** a custom role holding only `org.invitation.manage` can list and
+  revoke but not retarget — the UPDATE's `can_assign_org_role` still reads the
+  `member.manage` marker (2b-4).
+- **Tests.** Unit: `organization.controller.test.ts` (new: settings gate,
+  branding ordering, gate-before-validation), `organization-member`,
+  `seat`, `invitation` and `org-role` controller suites (the holder/Member
+  truth tables, no-org 403, body-less DELETE 403, writes gated and reads
+  ungated), the two logo-route suites. Integration:
+  `org-control-permission-api.test.ts` (26 cases: every family through the real
+  route + `withAuth` with signed-in sessions, a Student-persona Admin, an
+  educator-persona key holder, the roster's four read authorities plus its
+  empty-list deny, a custom role with none of the four, a Billing-preset caller,
+  a Member-role write refusal, the anonymous `?token=` branch with no session,
+  no-active-org 403s, the body-less DELETE 403) and
+  `org-control-permission-rls.test.ts` (24 cases,
+  both directions through PostgREST against a legacy-marker control, the
+  inviter/`can_assign` conjuncts, the assignment manager read, seat-pool and
+  seat-assignment UPDATE, the self-DELETE refusal, a foreign org).
+- **Gates (review pass, 2026-11-20).** `env:reset-db --yes` twice (a re-apply
+  proves the file is `db push` safe), then again after the mutation proofs and
+  before the final serial run; the two touched integration files serially
+  (**50 passed**), `test:unit` (**4747 passed, 1 skipped**), `typecheck:all`,
+  `typecheck:admin`, `lint:all`, `review:static`, `format:check`, `pr:size`
+  (**977/400, XL** — tests and docs excluded; the sweep rewrites 12 route files,
+  so it needs a `size:exception`). The slice's first pass ran the full suite
+  (**104 files / 924 passed, 11 skipped**), `knip` and `dup:base` (**0 new**);
+  the review pass re-ran only what it touched, and the coordinator runs the full
+  suite again. Mutation proof (review pass, all by hand): the `org_seat_pools` UPDATE
+  `with check` reverted to `rls_caller_is_org_manager` is killed twice — the new
+  guard raises, and with the guard relaxed to its old `or` shape the new UPDATE
+  case fails with `42501`; dropping the `ORG_SEAT_MANAGE` branch fails the unit
+  and API Billing cases; wrapping the token branch in `authedRoute` turns the
+  anonymous 404 into a 500; `alter policy … using (true)` on the invitations
+  SELECT trips the new assertion. The original pass's table (six `bun run mutate`
+  invariants, five hand proofs) stands in the PR body.
+
+**Follow-ups this slice creates:**
+
+- **2b-4** closes the invitation write asymmetry: move the manager half of
+  `can_assign_org_role` onto the capability (or `group.invite`, per 2b-5), then
+  the INSERT predicate can move too. It also owns the `org_members` SELECT
+  policy: the API is now narrower than the data plane (a `group.read`-only
+  member is answered `[]` by the API but may still read every same-org row
+  through PostgREST), and narrowing the policy means auditing every
+  `org_members` reader — D25 records the asymmetry (R23).
+- 2b-6's route sweep reconciles the two deliberate shape variations
+  (`roles/[id]/permissions` destructures the id, `seats/pools/[id]` hands the
+  body first) that keep `dup:base` at zero until the layer changes once.
+
 **Difficulty log**
+
+#### 2026-11-20 — the invitation write that the permission cannot finish
+
+What: moving the `invitations` UPDATE predicate onto
+`rls_caller_has_permission(org, 'org.invitation.manage')` exposed a second
+authority in the same policy: `rls_caller_can_assign_org_role(target_org_role_id)`,
+whose manager half is still `is_org_manager` (the `member.manage` feature
+marker). A custom role holding only `org.invitation.manage` lists and revokes,
+but a retarget is refused at the table with 42501 while the API allows it, so
+the working retarget caller is the Admin role. The integration case says so
+explicitly and uses a non-inviter holder, so the permission branch is the only
+one that can pass.
+Why: 2b-4 is where class invites become `group.invite` and the teacher-name
+exception dies; moving `can_assign_org_role` here would change the untouched
+create route and the accept flow, and adding the permission to the INSERT
+predicate would refuse the classroom teacher→member invite the POST route
+keeps. R4 says the API and the predicate move together, so the half with no API
+move stays.
+Fix: UPDATE/DELETE manager branches move, INSERT keeps the helper, and the
+asymmetry is named in the migration header, the delivered block and the PR.
+Rule: when a policy carries two authorities, moving one is a split, not a
+sweep — name the conjunct that still owns the other half, or the next reader
+will call the 42501 a bug.
+
+#### 2026-11-20 — the read predicate is part of the read gate
+
+What: wiring the seat-assignment list route to `org.seat.manage` while leaving
+the table's SELECT policy on `is_org_manager` would have answered 200 with an
+empty list for a role that holds the key but not the legacy marker: the
+controller admits the caller and RLS filters every row. The handoff listed only
+the seat-assignment writes, and the read policy is the one that makes the list
+work.
+Why: a write refused by RLS raises 42501; a read refused by USING returns no
+rows and no error. The divergence is silent in the direction that matters here,
+which is why R4 has to cover the SELECT's manager branch whenever a read route
+changes hands.
+Fix: the SELECT's manager branch moved in this migration (the
+`user_id = auth.uid()` self branch stays) and one RLS case pins the holder
+reading a row it does not own plus the legacy control reading nothing.
+Rule: a route gate and its SELECT policy move together; a filter that runs
+after the gate turns a refusal into an empty page, not an error.
 
 #### 2026-11-19 — a group-scope row could create a class, and the RLS helper said so
 
@@ -2075,7 +2281,235 @@ What: the CI failures on `1f01fa08` (PR #1398) and what they turned out to be.
   STU-14 all pass; regressions EDU-GRP-01, EDU-GRP-03, EDU-GRP-05 pass. The
   slice's own integration suites (52 cases, API + RLS + tenant isolation) pass.
 
+#### 2026-11-20 — the roster read is three keys, and its deny shape is an empty list
+
+What: 2b-3 put `GET /organization/members` on `org.member.manage` alone and
+named the three teacher surfaces (`/edu/classroom/members`, the assignment
+student picker, the `/edu` onboarding counts) as a phase-6 UI question. That is
+wrong: a Teacher cannot hold `org.member.manage` (D18/FP-04) — the seeded
+Teacher row carries `group.*` at `group` scope — so the roster refused exactly
+the callers who need it, and EDU-GRP-02 / EDU-ASG-04 encode that need. The
+catalog has no `org.member.read`, and minting one would add a fourth read key to
+the org family for a directory that org managers, class managers and class
+inviters all share.
+Why: the roster is not an org-administration surface only. A class manager adds
+people to a class and a class inviter picks existing org members (ADR §4.3/D7);
+both need the org directory to choose from and both are legitimately narrower
+than `org.member.manage`. The deny shape is an empty list, not a 403: AUT-19
+already accepts `{ success: true, data: [] }`, the body carries no row, and a
+403 would make the three `/edu` surfaces fail rather than render empty.
+Fix: the controller admits `org.member.manage` **or** `group.manage` **or**
+`group.invite` at any scope — one `hasPermission` call per key, never "any key
+the caller holds" — and answers `{ success: true, data: [] }` without touching
+the service when none is held; the no-active-org 403 stays. `PUT`/`DELETE` stay
+`org.member.manage`. The `org_members` SELECT policy is deliberately **not**
+narrowed: it predates the slice and every `org_members` reader must be audited
+first, so the API is narrower than the data plane until 2b-4 (R23); D25, §7.1
+and the 2b-4 slice row carry that asymmetry. The unit truth table and the API
+integration matrix pin each branch, and `bun run mutate` kills the
+`group.manage` branch, the `group.invite` branch and the empty-list shape. R16
+sent the corpus with the change: AUT-16 and SEC-02 asserted `403` for a student
+reading the roster, so both now accept `[200, 403]` and pin the exact empty
+body, and their case texts gained a dated observation.
+Rule: a shared directory denies with an empty list, not an error; and R23 — an
+API gate that stays deliberately narrower than its data-plane policy names the
+asymmetry and its owner in the same PR.
+
+#### 2026-11-20 — the fixture's "teacher" was a Member, and D25 is what said so
+
+What: the `content` profile in `scripts/seed/qa.ts` built its default roster
+with `buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' })`. The
+third argument is the **account type**; the org role comes from
+`SeedAccount.orgRole`, whose default is `member`
+(`__tests__/helpers/tenant-seed.ts`). So the account every case calls "teacher"
+was an educator persona holding the org **Member** row, and its `group.manage` /
+`group.invite` resolved to nothing. `teacher2` had already been migrated to
+`orgRole: 'teacher'`; the default never was.
+Why D25 exposed it: the roster read is `org.member.manage` **or** `group.manage`
+**or** `group.invite`, and all three arrive through the org-role layer, so a
+Member holding none of them gets the correct `{ success: true, data: [] }`.
+`AUT-19` (`spec.ts:174`, its "authorized teacher" must see the tenant student in
+`GET /organization/members`) and `EDU-ASG-04` (`spec.ts:366`, the single-student
+picker reads the roster with `?role=member`) then failed on the fixture while the
+product answered correctly — the failure D25 was supposed to surface, one layer
+below the gate.
+What it closes: the 2b-2-2 note that "EDU-GRP-01 and EDU-GRP-03 stay red on
+their fixture" no longer reproduces. The QA pass on this tree ran `EDU-GRP-01`,
+`EDU-GRP-02`, `EDU-GRP-03` (the `org-limit` profile, which promotes its teacher)
+and `EDU-GRP-05` green, with only `AUT-19` and `EDU-ASG-04` red. Those two
+EDU-GRP cases are org-scope read/create cases that the 2b-3 route set settles;
+the remaining gap in this slice was only the content profile's org role, so that
+2b-2-2 debt note is closed by this entry rather than edited in place.
+Fix: `teacher` now passes `orgRole: 'teacher'`, the same value `teacher2` carries.
+That is the org role row only: `seedTenantGraph` enrols every member in the
+default group with `group_members.role = 'member'` unconditionally, so the
+account still does not teach a class; content-profile cases that need class
+management keep declaring `groupTeachers`, and `org-limit` keeps its explicit
+`{ ...accounts.teacher, orgRole: 'teacher' }` (now redundant with the default,
+left in place because that profile's member-limit count depends on it).
+Profile audit: `bare` seeds `org: null`, so the field is inert; `org-limit`
+promotes through the same `teacher` param it always did; `two-org` builds its own
+`teacher-a` account and promotes it per org; the `--role` flag only selects
+which account the bare profile seeds. None of those paths changed.
+No seeder-level test exists, and this entry deliberately does not invent one: the
+module is Bun-only (`scripts/seed/cli.ts` value-imports `new SQL` from `bun`, and
+`scripts/seed/qa.ts` reads `import.meta.dir` at module scope), so importing it
+under Vitest fails first at `scripts/seed/cli.ts:14` (`Cannot find package
+'bun'`) and, with that mocked, at `scripts/seed/qa.ts:125` (`import.meta.dir`
+undefined); `seedCase` is in any case DB-bound and writes tenant files. The proof
+is the end-to-end one, and it is the pass condition the QA run carries rather
+than a result recorded here: `AUT-19` and `EDU-ASG-04` fail on the pre-fix
+seeder at the two lines above and must pass after it, with `EDU-GRP-02` /
+`EDU-GRP-05` as the regression sample — that run happens once, after this seeder
+change, so the entry records what to look for, not a green it has not seen. A
+unit test asserting the literal would have been a change detector over one
+fixture line, not a behaviour assertion.
+Rule: a QA persona's authority is its org-role row, not its account type — a
+slice that gates on role keys audits the seeded **default** accounts, not only
+the accounts a profile explicitly promotes (R24).
+
+##### Correction (2026-11-20, after the QA pass on `41a275d0`) — the broad default broke EDU-GRP-05
+
+What: `AUT-19` and `EDU-ASG-04` pass, and `EDU-GRP-05` fails at
+`__tests__/qa/EDU/EDU-GRP-05.spec.ts:124` („the educator holds no
+`group.manage`”). That case is built on the _absence_ of the key — its premise
+was the old default, an educator on the org Member role — so making the default
+model-correct removed the fixture the case was testing against.
+Why not revert: the default has to carry the Teacher role, because a roster
+reader that is not an org manager needs `group.manage`/`group.invite` from
+somewhere and the persona is supposed to be an authority-bearing educator. A
+case whose subject is a _missing_ permission is the exception, and exceptions
+declare their own roster.
+Fix: `__tests__/qa/profiles/EDU-GRP-05.json` keeps `"profile": "content"` (the
+spec asserts it) and adds a `members` roster — manager `admin`, `teacher`
+`member`, `student` `member`, the same three keys and account types — with no
+`groups` (so the default group stays `G1`) and no `groupTeachers` (the educator
+must teach no class, or `group.manage` would resolve at `group` scope from the
+teacher row and `manageVia` would stop being `null`). The `members` shape
+defaults a name to `QA <key>`, so the accounts keep their old names, emails,
+ids and the group's 3-members/1-teacher counts. Case text gained a dated
+observation; the spec's header comment now names the declared roster.
+Rule: R24 read in both directions — audit the default accounts before a role
+change and the cases built on the old default after it; when the old default was
+the case's premise, the case declares its own roster and the default never goes
+back.
+
+#### 2026-11-20 — 2b-3 review pass: the fourth read key, and a guard that looked in either clause
+
+What: the review pass over 2b-3, and what each finding settled. The one that
+changed behaviour:
+D25 admitted three read authorities to the roster and missed the **Billing**
+preset. `ROLE_TEMPLATES.billing` is exactly `org.billing.manage` +
+`org.seat.manage` (`packages/authz/src/lib/org-roles.ts`), and `/manage/seats`
+fills its assign dialog from `GET /organization/members`
+(`apps/web/src/app/(frontend)/manage/seats/page.tsx`), so a Billing holder got an
+empty picker: the "read the roster if you may act on it" principle with a
+consumer the first decision did not look for. `canReadRoster` now also admits
+`Permission.ORG_SEAT_MANAGE`; no Member or Teacher role holds it, and the
+`org.seat.manage`-only role still fails `PUT`/`DELETE` on members, roles,
+settings and invitations, which the unit truth table pins in both directions.
+Why it was missed, and the general lesson: R24 was written about **seeded QA
+accounts**, but a role preset in code is a consumer too. The audit for a new read
+authority has to walk every caller of the endpoint, and a shipped preset is one —
+`/manage/seats` reads the roster while the Billing preset is the only role that
+can reach that page without `org.member.manage`.
+
+What else moved, and why:
+
+- **The migration's closing guard only looked in one clause.** It passed when
+  _either_ `qual` or `with_check` carried the permission, so a `with check`
+  reverted to the legacy predicate survived the guard. The `org_seat_pools`
+  UPDATE had no behavioural test either, so the mutation was invisible twice
+  over. The guard now keys on `(tablename, policyname, key)` and requires the key
+  in **every clause that exists** (`qual is null or …`, `with_check is null or
+…`), and it asserts the `invitations` SELECT policy still names
+  `rls_caller_is_org_manager` — the read half this slice deliberately leaves for
+  2b-4, which the header comment claimed but the block never read.
+- **The two UPDATE policies and the self-DELETE had no case.** `org_seat_pools`
+  UPDATE, `org_seat_assignments` UPDATE and a manager's `org_members` self-delete
+  are now pinned. A refused `USING` on UPDATE/DELETE answers zero rows rather
+  than 42501 (only `INSERT`, and an UPDATE whose `using` passes but whose `with
+check` fails, raise it), so those cases assert the row is untouched instead of
+  a code they cannot produce.
+- **The public token branch was tested signed in.** `GET /organization/invites?token=…`
+  ran with a member session, so a 404 proved only that the lookup missed. It now
+  runs with no session and no cookie jar, with `createClient` reset to reject: the
+  anonymous answer is 404, not 401/403, and the session client is never built.
+- **The invitation list case accepted an empty list**, and the "revoke has no
+  grant-authority conjunct" comment sat on a call whose session was the inviter.
+  The list now asserts the minted id; the comment moved to the RLS case that
+  actually pins it (a non-inviter holding only `org.invitation.manage` deletes the
+  row — the API's revoke pre-reads through the unmoved SELECT policy, so there the
+  inviter branch is what shows the row).
+- **Numbers and provenance.** `pr:size` is re-derived from the command below.
+  The `allowedAccountTypes` count now quotes
+  `git grep -n allowedAccountTypes 6b6554f2 -- 'apps/web/src/app/(backend)/api/v1/organization'`,
+  because the sweep is what removed the matches from this tree. 2b-2 is recorded
+  as merged (`6b6554f2`, #1398). The route-handler comment now says what the code
+  does: authentication runs first, authority runs in the controller after
+  `req.json()`, so a malformed body from an authorised-pending caller is a 400.
+
+Proof (by hand, because a migration cannot be driven through `bun run mutate`):
+the `org_seat_pools` UPDATE `with check` reverted to
+`rls_caller_is_org_manager` makes the new guard raise
+`org-control policies without the expected permission in every clause:
+org_seat_pools.Org managers update seat pools`; with the guard relaxed to its old
+`or` shape the same mutation passes the guard and the new UPDATE case fails with
+`42501`, so the guard and the test each kill it. Dropping the
+`ORG_SEAT_MANAGE` branch fails the new unit case (`[]` instead of the roster) and
+the API's Billing case (`0` rows). Wrapping the token branch in `authedRoute`
+turns the anonymous 404 into a 500. The `invitations` SELECT assertion was proven
+by temporarily adding `alter policy … using (true)` to the file.
+
+Rule: an audit for a new read authority walks every caller — including a role
+preset shipped in code; and a guard that accepts the predicate in "either"
+clause does not guard the clause the mutation targets.
+
+#### 2026-11-20 — the QA shards named the three cases that depended on the old default
+
+What: CI run `44734178262` failed exactly three cases, all on the fixture, not
+the product. `qa-suite (edu)` — `EDU-DECK-01` (`spec.ts:245`: three readable
+decks expected, two returned; the manager's `G1` deck needs `deck.read` at
+`group`) and `EDU-TOP-01` (`spec.ts:418`: the `G1`-shared topic not visible, the
+same key shape). `qa-suite (mgr-sec-bil)` — `MGR-SEAT-03` (`spec.ts:188`: the
+control educator no longer holds `orgRoleName === 'member'`, so the role-aware
+`pro` seat refuses it). Each spec's header already documented the premise ("the
+educator holds the org `member` role"), i.e. each was built on the default that
+the D25 fix had to change. `EDU-02` timed out once on `/features/me` and passed
+on retry: a flake, not a dependent, and left alone.
+Fix: the default stays model-correct; the three cases declare their own roster
+through the same `members` shape `EDU-GRP-05` uses —
+`__tests__/qa/profiles/{EDU-DECK-01,EDU-TOP-01,MGR-SEAT-03}.json` carry manager
+`admin`, educator `member`, student `member` (MGR-SEAT-03 had no profile file, so
+it gains one). Same keys, account types, names, ids and e-mails, so the group
+counts and every seeded id stay where they were; `EDU-DECK-01` still promotes its
+educator to group `teacher` itself, and no `groupTeachers` was added anywhere.
+Case texts gained a dated observation; no spec assertion changed.
+
+**Known gap, recorded and not changed — follow-up: phase 3, the single
+resolver.** The seeded **Teacher** role holds every content key at `own`
+(`stats.read` at `group`), while **Member** reads content at `group`
+(`20261119180000_authority_entitlement_profile.sql`, `SYSTEM_ROLE_TEMPLATES` in
+`packages/authz/src/lib/org-roles.ts`). ADR-0015 §4.2 says Teacher is "content CRUD
+at `own`/`group`", which 2a-1 implemented as own-only — so a Teacher-role holder
+cannot read content shared to a class they are in, while a Member can. The three
+cases above are the visible edge: they need `deck.read` / `topic.read` at `group`
+to see a classmate's shared row, which is why they declare the Member role. This
+slice does not touch the seed, the template or a case for it; the scope
+composition belongs to phase 3's single resolver, and the pointer is repeated
+under that phase.
+
+Rule: none new — R24 in the direction this run measured: when a broad default
+becomes model-correct, the cases built on the old one fail as a group, and the
+shard names them.
+
 ### Phase 3 — entitlements and limits
+
+Carried from 2b-3 (recorded there, not fixed there): the Teacher template grants
+every content key at `own` while Member reads at `group`, so a Teacher cannot read
+content shared to a class they are in though ADR-0015 §4.2 says `own`/`group`. The
+single resolver in this phase decides the composition; no seed, template or case
+change before it.
 
 ### Phase 4 — seats and personal
 

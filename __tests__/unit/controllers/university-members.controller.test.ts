@@ -26,12 +26,13 @@ const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
   accountType: AccountType.STUDENT,
-  orgRoleId: null,
-  activeOrgId: null,
+  orgRoleId: 'role-admin',
+  activeOrgId: 'org-1',
   url: 'http://localhost',
   method: 'GET',
   groupIds: [],
-  permissionScopes: {},
+  // The Admin role's roster key; every method is gated on it (ADR-0015 §7).
+  permissionScopes: { 'org.member.manage': 'organization' },
 };
 
 describe('OrganizationMemberController', () => {

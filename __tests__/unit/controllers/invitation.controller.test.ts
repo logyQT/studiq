@@ -54,6 +54,9 @@ function createMockInvitationService() {
     createInvitationsBulk: vi.fn(),
     getInvitationByToken: vi.fn(),
     acceptInvitation: vi.fn(),
+    listInvitations: vi.fn(),
+    updateInvitation: vi.fn(),
+    deleteInvitation: vi.fn(),
   };
 }
 
@@ -331,6 +334,83 @@ describe('InvitationController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
       expect(envelope(response).data).toBeUndefined();
+    });
+  });
+
+  describe('org.invitation.manage', () => {
+    /** A role holding the key at organization scope (the Admin role). */
+    const holderCtx: RequestContext = {
+      ...mockCtx,
+      accountType: AccountType.MANAGER,
+      orgRoleId: 'role-admin',
+      activeOrgId: 'org-1',
+      permissionScopes: { 'org.invitation.manage': 'organization' },
+    };
+    /** The seeded Member role: in the org, no `org.*` key. */
+    const memberCtx: RequestContext = {
+      ...mockCtx,
+      orgRoleId: 'role-member',
+      activeOrgId: 'org-1',
+    };
+
+    it('lists invitations for a holder', async () => {
+      const service = mockService;
+      service.listInvitations.mockResolvedValueOnce(success([]));
+
+      const response = await controller.list(holderCtx, { isAccepted: false });
+
+      expect(response).toMatchObject({ success: true, statusCode: 200 });
+      expect(service.listInvitations).toHaveBeenCalledWith(holderCtx, false);
+    });
+
+    it('updates and deletes for a holder', async () => {
+      const service = mockService;
+      service.updateInvitation.mockResolvedValueOnce(success(undefined));
+      service.deleteInvitation.mockResolvedValueOnce(success(undefined));
+
+      await expect(
+        controller.update(holderCtx, 'inv-1', {
+          targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001',
+        }),
+      ).resolves.toMatchObject({ success: true });
+      await expect(controller.delete(holderCtx, 'inv-1')).resolves.toMatchObject({
+        success: true,
+      });
+
+      expect(service.updateInvitation).toHaveBeenCalledTimes(1);
+      expect(service.deleteInvitation).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['list', () => controller.list(memberCtx, {})],
+      ['update', () => controller.update(memberCtx, 'inv-1', { targetOrgRoleId: 'not-a-uuid' })],
+      ['delete', () => controller.delete(memberCtx, 'inv-1')],
+    ])('refuses a Member-role caller on %s without reaching the service', async (_op, call) => {
+      const service = mockService;
+
+      await expect(call()).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+      expect(service.listInvitations).not.toHaveBeenCalled();
+      expect(service.updateInvitation).not.toHaveBeenCalled();
+      expect(service.deleteInvitation).not.toHaveBeenCalled();
+    });
+
+    it('refuses a caller with no active org', async () => {
+      const service = mockService;
+
+      await expect(controller.list({ ...memberCtx, activeOrgId: null })).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(service.listInvitations).not.toHaveBeenCalled();
+    });
+
+    it('gates before the body is validated', async () => {
+      const service = mockService;
+
+      // The update schema would answer 422; a refused caller must see 403.
+      await expect(controller.update(memberCtx, 'inv-1', {})).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(service.updateInvitation).not.toHaveBeenCalled();
     });
   });
 });

@@ -25,12 +25,13 @@ const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
   accountType: AccountType.STUDENT,
-  orgRoleId: null,
-  activeOrgId: null,
+  orgRoleId: 'role-admin',
+  activeOrgId: 'org-1',
   url: 'http://localhost',
   method: 'POST',
   groupIds: [],
-  permissionScopes: {},
+  // The Admin role's settings key; update is gated on it (ADR-0015 §7).
+  permissionScopes: { 'org.settings.manage': 'organization' },
 };
 
 function dataOf<T>(response: ControllerResponse<T>): T | undefined {

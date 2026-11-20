@@ -82,3 +82,16 @@ przypadek bez zgadywania kształtu tenanta. Spec nie wywołuje `seedTenantGraph(
   organizację A (403) i talię A (404).
 - Strona talii renderuje front fiszki dwa razy w DOM (jedna kopia jest ukryta — układ
   mobilny), więc asercje widoczności filtrują do widocznych elementów.
+
+## Obserwacja 2026-11-20 — odczyt listy członków (D25)
+
+- `GET /api/v1/organization/members` nie jest już „403, bo trasa jest zastrzeżona
+  dla edukatora/managera". Od D25 lista członków jest odczytem uprawnieniowym
+  z trzema władzami w aktywnej organizacji — `org.member.manage`, `group.manage`
+  albo `group.invite` — bo katalog nie ma `org.member.read`, a Teacher nie może
+  mieć `org.member.manage` (D18/FP-04). Student B z rolą Member nie ma żadnej
+  z nich, więc trasa zwraca `200 {"success":true,"data":[]}`; pusta lista jest
+  kształtem odmowy i nie zawiera żadnego wiersza, adresu e-mail ani
+  identyfikatora, a `403 FORBIDDEN` pozostaje akceptowane jako udokumentowana
+  alternatywa. Odpowiedź jest pusta także dla organizacji B, więc organizacja A
+  nadal nie wycieka. Wcześniejsza obserwacja z 2026-10-28 pozostaje bez zmian.

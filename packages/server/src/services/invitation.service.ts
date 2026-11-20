@@ -202,29 +202,15 @@ export class InvitationService {
   }
 
   /**
-   * Resolve the organization an invitation is written to and prove the caller
-   * may act in it.
-   *
-   * `organizationId` may name any org the caller belongs to (API contract),
-   * never a foreign one. `ctx.activeOrgId` is a client-controlled cookie, so
-   * membership is always verified against `org_members` — a cookie pointing at
-   * a foreign org must not become a write target (#242).
-   *
-   * Note for future work: `ctx.permissionScopes` is resolved for `activeOrgId`
-   * only. If an invite permission is ever added, scopes must be resolved for
-   * the resolved target org (or `organizationId` must be restricted to
-   * `activeOrgId`).
+   * The caller's membership proof for one organization: a cookie that names a
+   * foreign org, or a body-selected id the caller does not belong to, is
+   * rejected before any write (#242).
    */
-  private async resolveTargetOrganization(
+  private async resolveMemberOrganization(
     supabase: SupabaseClient<Database>,
     ctx: RequestContext,
-    requestedOrganizationId?: string,
+    organizationId: string | undefined,
   ): Promise<ServiceResult<string>> {
-    if (ctx.accountType !== AccountType.MANAGER && ctx.accountType !== AccountType.EDUCATOR) {
-      return failure('FORBIDDEN');
-    }
-
-    const organizationId = requestedOrganizationId ?? ctx.activeOrgId ?? undefined;
     if (!organizationId) return failure('FORBIDDEN');
 
     const { data: membership, error } = await supabase
@@ -238,6 +224,43 @@ export class InvitationService {
     if (!membership) return failure('FORBIDDEN');
 
     return success(organizationId);
+  }
+
+  /**
+   * Resolve the organization an invitation is written to and prove the caller
+   * may act in it.
+   *
+   * `organizationId` may name any org the caller belongs to (API contract),
+   * never a foreign one. `ctx.activeOrgId` is a client-controlled cookie, so
+   * membership is always verified against `org_members` — a cookie pointing at
+   * a foreign org must not become a write target (#242).
+   *
+   * The persona half is the create and bulk routes' until 2b-4 rewrites the
+   * invitation authority: they reach the classroom teacher→member exception
+   * through `can_assign_org_role`, and that flow is a Teacher. The list holds no
+   * invite-authority RPC at all — its capability is `org.invitation.manage`,
+   * decided by the controller from the context alone (ADR-0015 §7, D13 — persona
+   * is not authority).
+   *
+   * Note for future work: `ctx.permissionScopes` is resolved for `activeOrgId`
+   * only. If `org.invitation.manage` ever gates a *write* whose body can select
+   * another org, scopes must be resolved for the resolved target org (or
+   * `organizationId` must be restricted to `activeOrgId`).
+   */
+  private async resolveTargetOrganization(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+    requestedOrganizationId?: string,
+  ): Promise<ServiceResult<string>> {
+    if (ctx.accountType !== AccountType.MANAGER && ctx.accountType !== AccountType.EDUCATOR) {
+      return failure('FORBIDDEN');
+    }
+
+    return this.resolveMemberOrganization(
+      supabase,
+      ctx,
+      requestedOrganizationId ?? ctx.activeOrgId ?? undefined,
+    );
   }
 
   /** An invite may only grant a role that belongs to the target organization. */
@@ -689,9 +712,16 @@ export class InvitationService {
   > {
     const supabase = await this.clientFactory();
 
-    // Same tenant boundary as create: the cookie is client-controlled, so the
-    // list scope is the caller's verified membership, not the raw cookie (#242).
-    const targetOrg = await this.resolveTargetOrganization(supabase, ctx);
+    // Tenant boundary only: the cookie is client-controlled, so the list scope
+    // is the caller's verified membership, not the raw cookie (#242). The
+    // capability is `org.invitation.manage`, already decided by the controller
+    // from the context alone — no persona and no invite-authority RPC here
+    // (ADR-0015 §7, D13).
+    const targetOrg = await this.resolveMemberOrganization(
+      supabase,
+      ctx,
+      ctx.activeOrgId ?? undefined,
+    );
     if (!targetOrg.success) return targetOrg;
 
     let query = supabase
