@@ -24,8 +24,7 @@ function resolveTimeZone(value: string | null): string | undefined {
 /**
  * The answers export answers CSV, not the JSON envelope, so this handler stays a `withAuth`
  * holdout the way the logo route does — it cannot return through `authedRoute`'s
- * `toNextResponse`. The persona gate is gone: the parent's key gates in the controller
- * before any work happens.
+ * `toNextResponse`. The parent's key gates in the controller before any work happens.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {

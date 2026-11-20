@@ -13,8 +13,7 @@ export type ItemFlagHandler = (
  * `PUT`/`PATCH …/questions/:questionId/<flag>` for a teacher's per-item decisions (the review
  * hold, the taught declaration). Both flags take the same id, body and `assignment.update`
  * gate, so the wrapper lives here instead of being copied into the route file: it is the
- * shared `authedRouteWithParams` shape, and the persona gate the route used to carry is gone
- * (ADR-0015 §7) — the controller decides from the context.
+ * shared `authedRouteWithParams` shape (ADR-0015 §7); the controller decides from the context.
  */
 export function itemFlagRoute(action: ItemFlagHandler) {
   return authedRouteWithParams<{ id: string; questionId: string }, [string, string, unknown]>(

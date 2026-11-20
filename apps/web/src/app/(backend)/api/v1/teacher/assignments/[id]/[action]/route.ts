@@ -11,12 +11,12 @@ import type { NextRequest } from 'next/server';
  * identical route files.
  *
  * `cancel` ends a scheduled or live run without a reveal, `extend` moves the close forward for the
- * whole cohort, and `override` moves either bound. The persona split between them is gone
- * (ADR-0015 §7): every action asks for the run's `assignment.update` key in the controller,
- * resolved against the loaded row, so a foreign id is 404 and a same-org run the caller's scope
- * does not reach is 403. This handler stays outside `authedRouteWithParams` because `cancel` is
- * called with no body at all and the route tolerates an unreadable one (`null`, never the 400 an
- * empty stream would raise in front of the controller's own answer).
+ * whole cohort, and `override` moves either bound. Every action asks for the run's
+ * `assignment.update` key in the controller, resolved against the loaded row (ADR-0015 §7), so a
+ * foreign id is 404 and a same-org run the caller's scope does not reach is 403. This handler
+ * stays outside `authedRouteWithParams` because `cancel` is called with no body at all and the
+ * route tolerates an unreadable one (`null`, never the 400 an empty stream would raise in front
+ * of the controller's own answer).
  */
 interface LifecycleAction {
   run: (id: string, body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;

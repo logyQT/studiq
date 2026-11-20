@@ -28,10 +28,9 @@ export class TeacherAssignmentController {
   constructor(private service: TeacherAssignmentService) {}
 
   /**
-   * The route-layer persona gate is gone (ADR-0015 §7): the catalog key decides from
-   * the context alone, before any schema parse. The service resolves the same key
-   * against the loaded assignment row, so a foreign id is 404 and a same-org run the
-   * caller's scope does not reach is 403.
+   * The catalog key decides from the context alone, before any schema parse (ADR-0015 §7).
+   * The service resolves the same key against the loaded assignment row, so a foreign id is
+   * 404 and a same-org run the caller's scope does not reach is 403.
    */
   private async gate<T>(
     ctx: RequestContext,
