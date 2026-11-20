@@ -549,10 +549,7 @@ describe('InvitationService', () => {
         expect(inviteeQb.eq).toHaveBeenCalledWith('profiles.email', 'student@example.com');
         // A class invite needs no org-role grant: the accept flow never
         // applies target_org_role_id to an existing member.
-        expect(mock.rpc).not.toHaveBeenCalledWith(
-          'can_assign_org_role',
-          expect.anything(),
-        );
+        expect(mock.rpc).not.toHaveBeenCalledWith('can_assign_org_role', expect.anything());
         expect(insertQb.insert).toHaveBeenCalledWith(
           expect.objectContaining({
             organization_id: 'uni-1',
@@ -593,9 +590,7 @@ describe('InvitationService', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(result).toHaveProperty('details', [
-          expect.objectContaining({ path: ['email'] }),
-        ]);
+        expect(result).toHaveProperty('details', [expect.objectContaining({ path: ['email'] })]);
         expect(mock.from).not.toHaveBeenCalledWith('invitations');
 
         vi.unstubAllEnvs();
@@ -794,7 +789,8 @@ describe('InvitationService', () => {
       vi.unstubAllEnvs();
     });
 
-    it('returns UNPROCESSABLE_ENTITY when entries point at different organizations', async () => {      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
+    it('returns UNPROCESSABLE_ENTITY when entries point at different organizations', async () => {
+      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
@@ -826,17 +822,14 @@ describe('InvitationService', () => {
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
-      const result = await service.createInvitationsBulk(
-        { ...managerCtx, activeOrgId: 'uni-1' },
-        [
-          {
-            email: 'john@example.com',
-            targetOrgRoleId: memberRole,
-            groupId: 'group-1',
-            groupRole: 'member',
-          },
-        ],
-      );
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        {
+          email: 'john@example.com',
+          targetOrgRoleId: memberRole,
+          groupId: 'group-1',
+          groupRole: 'member',
+        },
+      ]);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');

@@ -41,17 +41,22 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 `Permission` set) are written on `feat/authority-2a-3`, `feat/authority-2a-1`,
 `feat/authority-2a-2`, `feat/authority-2a-4` and `feat/authority-2a-5`; 2a-3
 lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
-which replaces their remaining gates with permissions.
+which replaces their remaining gates with permissions. Phase 2b: 2b-1…2b-4 are
+merged and **2b-5 (class invites) is written on `feat/authority-2b-5`** — the
+next slice is 2b-6 (the content-route sweep and the `authedRoute` adoption).
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
 backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
 RLS twin) merged as `6b6554f2` (#1398) together with its follow-up pass (the
 `/edu/groups` nav gate and EDU-GRP-05's settled text), **2b-3** (the
-org-control route sweep and its RLS twin) is written on
-`feat/authority-2b-3`, and **2b-4** (the remaining control-plane RLS and the
-billing gate) is written on `feat/authority-2b-4`. It is **slice 4 of 9**; the
-settled order is recorded in the phase-2b table below, and 2b-4's block records
-the one row item it hands to 2b-5. The phase-2 row stays `active` — four
+org-control route sweep and its RLS twin) merged as `929b3cd9` (#1399),
+**2b-4** (the remaining control-plane RLS and the billing gate) merged as
+`9da8c9b3` (#1400), and **2b-5** (class invites: `invitations.group_id` +
+`target_group_role`, `group.invite` at group scope, the invitation read moved
+with the write, `can_assign_org_role`'s manager half onto
+`org.invitation.manage`, the teacher-name exception deleted) is written on
+`feat/authority-2b-5`. It is **slice 5 of 9**; the settled order is recorded in
+the phase-2b table below. The phase-2 row stays `active` — five
 merged/written slices do not make phase 2 done.
 
 ## 2. How to update this file
@@ -70,34 +75,35 @@ merged/written slices do not make phase 2 done.
 
 ## 3. Rules (earned, not invented)
 
-| #   | Rule                                                                                                                                                                                                                                            | Earned from                                                                                                                                                                   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                                                                             | `check-migration-timestamps` fails on duplicate prefixes                                                                                                                      |
-| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project.                                                           | the pinned v3.1 generator emits a different shape and 7 RPC type errors                                                                                                       |
-| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                                                                                   | both hooks run `knip --treat-config-hints-as-errors`                                                                                                                          |
-| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                                                                               | FP-01 is exploitable through PostgREST                                                                                                                                        |
-| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                                                                                         | audit §0.2: 41 of 45 gates are permission checks                                                                                                                              |
-| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                                                                                      | the corpus is the product contract                                                                                                                                            |
-| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                                                                                        | prose is not a verdict                                                                                                                                                        |
-| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                                                                                     | a v1 scope change left six sections describing the deferred table                                                                                                             |
-| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                                                                                  | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine                                                                                                            |
-| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                                                                                | a six-day-old 0b checklist cited three already-shipped items                                                                                                                  |
-| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                                                                                         | "only reference is the generated type file" missed a seed `REVOKE`                                                                                                            |
-| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                                                                           | the role save drops the `assignment.*` rows the seed grants                                                                                                                   |
-| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                                                                                 | the 0b regen produced a different shape and 7 RPC type errors                                                                                                                 |
-| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                                                                                         | the committed `database.ts` carried a hand-added inline eslint-disable                                                                                                        |
-| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                                                                             | the phase-1b `group.manage` overlap                                                                                                                                           |
-| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures.                                                           | 2a-1's branding fixture failed only in the CI shard                                                                                                                           |
-| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                                                                                  | the `org.role.manage` gate would have been deletable by one role save                                                                                                         |
-| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                                                                               | the `org_role_permissions` predicate read its own table                                                                                                                       |
-| R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                                                                                | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit                                            |
-| R20 | A dotted key makes `toHaveProperty` useless in both directions — assert `Object.keys(map)` or index the map, and grep the corpus when a payload's shape changes.                                                                                | a flat `group.manage` map made the positive assertion fail and the negative one pass regardless of the map's contents                                                         |
-| R21 | A read route's SELECT policy is part of its gate: a filter that runs after the gate turns a refusal into an empty page, not an error.                                                                                                           | the seat-assignment list admitted a key holder and RLS filtered every row silently                                                                                            |
-| R22 | When one policy carries two authorities, moving one is a split, not a sweep — name the conjunct that still owns the other half, or the next reader calls its 42501 a bug.                                                                       | the invitation UPDATE kept `can_assign_org_role`'s membership-marker manager half                                                                                             |
-| R23 | An API gate may stay deliberately narrower than its data-plane policy when the policy predates it and narrowing it means auditing every reader; the asymmetry is recorded with a named owner in the same PR, never left as two unnamed answers. | D25 kept the roster read at four named keys while the `org_members` SELECT policy still admits any same-org member (2b-4)                                                     |
-| R24 | A QA persona's authority is its org-role row, not its account type: audit the seeded **default** accounts around a role change (not just the ones a profile promotes), and a case built on the old default declares its own roster.             | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                                                               |
-| R25 | A write policy cannot move before the read policy it depends on: PostgREST refuses an UPDATE whose row the SELECT policy hides, so the write and the read move in the same slice.                                                               | the half-moved `can_assign_org_role` left an `org.invitation.manage` + `org.member.manage` role unable to retarget an invitation it could not read; 2b-5 now owns both (2b-4) |
-| R26 | A guard that asserts a predicate must also assert the row exists: `count(*) = 0 … not like` is vacuously true when the policy is dropped, so the thing it guards can be deleted and the guard stays green.                                      | 2b-4's boundary block passed with `Visible teacher assignments` dropped; requiring the row (`count(*) = 1`) raised (2b-4 review pass)                                         |
+| #   | Rule                                                                                                                                                                                                                                                       | Earned from                                                                                                                                                                             |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Workers never author migrations. SQL goes in the PR body; the integrator renumbers.                                                                                                                                                                        | `check-migration-timestamps` fails on duplicate prefixes                                                                                                                                |
+| R2  | Regenerate `database.ts` in the same PR as any schema change typed code consumes; phase 1a performed the generator cutover, so regeneration is a routine step, not a tooling project.                                                                      | the pinned v3.1 generator emits a different shape and 7 RPC type errors                                                                                                                 |
+| R3  | `knip.ts` and `eslint-suppressions.json` are integrator-only.                                                                                                                                                                                              | both hooks run `knip --treat-config-hints-as-errors`                                                                                                                                    |
+| R4  | A rule that lives in both the API and RLS changes in the same PR.                                                                                                                                                                                          | FP-01 is exploitable through PostgREST                                                                                                                                                  |
+| R5  | No `allowedAccountTypes` on an org-resource route; the only persona exceptions are org creation and classroom creation.                                                                                                                                    | audit §0.2: 41 of 45 gates are permission checks                                                                                                                                        |
+| R6  | A QA case that encodes a bug is edited with its spec; it is never skipped.                                                                                                                                                                                 | the corpus is the product contract                                                                                                                                                      |
+| R7  | Workers may not merge to `main` and may not report a phase done without a CI conclusion.                                                                                                                                                                   | prose is not a verdict                                                                                                                                                                  |
+| R8  | When a decision narrows scope, grep the whole document for every mention of the removed thing and label it.                                                                                                                                                | a v1 scope change left six sections describing the deferred table                                                                                                                       |
+| R9  | Every number in a doc is produced by a command, not by memory.                                                                                                                                                                                             | "176 specs / 188 cases" mixed two corpora; "seven tables" was nine                                                                                                                      |
+| R10 | Re-verify every checklist line against the tree before dispatch.                                                                                                                                                                                           | a six-day-old 0b checklist cited three already-shipped items                                                                                                                            |
+| R11 | Grep a named "single reference" across the whole tree; never trust one.                                                                                                                                                                                    | "only reference is the generated type file" missed a seed `REVOKE`                                                                                                                      |
+| R12 | A fix is not closed until the write path that can undo it has a test.                                                                                                                                                                                      | the role save drops the `assignment.*` rows the seed grants                                                                                                                             |
+| R13 | A generated file you cannot regenerate deterministically is a tooling task, not a cleanup edit.                                                                                                                                                            | the 0b regen produced a different shape and 7 RPC type errors                                                                                                                           |
+| R14 | Never hand-edit a generated file: the next regeneration deletes the edit, including lint suppressions. Fix the call sites or exempt the file in config.                                                                                                    | the committed `database.ts` carried a hand-added inline eslint-disable                                                                                                                  |
+| R15 | When a phase deliberately keeps a legacy key, pin the exact exception in the invariant; never delete the assertion.                                                                                                                                        | the phase-1b `group.manage` overlap                                                                                                                                                     |
+| R16 | When a phase makes a producer non-authoritative, grep the QA corpus for fixtures writing to it in the same PR and run one full shard; a case-ID smoke set misses old-writer fixtures.                                                                      | 2a-1's branding fixture failed only in the CI shard                                                                                                                                     |
+| R17 | A gate flip comes last: make the write path behind it unable to destroy the authority it guards before the gate changes hands.                                                                                                                             | the `org.role.manage` gate would have been deletable by one role save                                                                                                                   |
+| R18 | A SECURITY DEFINER helper whose policy lives on a table it reads must bypass RLS itself (`security definer`, `search_path = ''`), or the policy recurses (42P17).                                                                                          | the `org_role_permissions` predicate read its own table                                                                                                                                 |
+| R19 | Migrations own every grant: `db reset` and `db push` must end with the same privileges, and a dev-only seed may never revoke or re-grant a production privilege.                                                                                           | 2a-2's seed-revoked helper 403'd every role write after a reset while the suite stayed green; the seed was retired after the audit                                                      |
+| R20 | A dotted key makes `toHaveProperty` useless in both directions — assert `Object.keys(map)` or index the map, and grep the corpus when a payload's shape changes.                                                                                           | a flat `group.manage` map made the positive assertion fail and the negative one pass regardless of the map's contents                                                                   |
+| R21 | A read route's SELECT policy is part of its gate: a filter that runs after the gate turns a refusal into an empty page, not an error.                                                                                                                      | the seat-assignment list admitted a key holder and RLS filtered every row silently                                                                                                      |
+| R22 | When one policy carries two authorities, moving one is a split, not a sweep — name the conjunct that still owns the other half, or the next reader calls its 42501 a bug.                                                                                  | the invitation UPDATE kept `can_assign_org_role`'s membership-marker manager half                                                                                                       |
+| R23 | An API gate may stay deliberately narrower than its data-plane policy when the policy predates it and narrowing it means auditing every reader; the asymmetry is recorded with a named owner in the same PR, never left as two unnamed answers.            | D25 kept the roster read at four named keys while the `org_members` SELECT policy still admits any same-org member (2b-4)                                                               |
+| R24 | A QA persona's authority is its org-role row, not its account type: audit the seeded **default** accounts around a role change (not just the ones a profile promotes), and a case built on the old default declares its own roster.                        | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                                                                         |
+| R25 | A write policy cannot move before the read policy it depends on: PostgREST refuses an UPDATE whose row the SELECT policy hides, so the write and the read move in the same slice.                                                                          | the half-moved `can_assign_org_role` left an `org.invitation.manage` + `org.member.manage` role unable to retarget an invitation it could not read; 2b-5 now owns both (2b-4)           |
+| R26 | A guard that asserts a predicate must also assert the row exists: `count(*) = 0 … not like` is vacuously true when the policy is dropped, so the thing it guards can be deleted and the guard stays green.                                                 | 2b-4's boundary block passed with `Visible teacher assignments` dropped; requiring the row (`count(*) = 1`) raised (2b-4 review pass)                                                   |
+| R27 | A migration's closing guard pins the state its own file creates, so once a later slice rewrites the same object, the earlier file can no longer be replayed on top — the suite's replay list is the newest file that owns the object, not the whole chain. | 2b-5 rewrote the four `invitations` policies, and replaying 2b-3's file afterwards raised at 2b-3's own guard (it pins the pre-2b-5 SELECT); the RLS suite now replays only 2b-5's file |
 
 ## 4. Decisions
 
@@ -1324,17 +1330,17 @@ control-plane RLS (2b-4), because the routes and their predicates move together
 (R4) and the sweep is what names which policies 2b-4 still owns; class invites
 (2b-5) wait for the `invitations` shape they need.
 
-| Slice | Contents                                                                                                                                                                                                                                                                        |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                                                                                                                |
-| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Merged** `6b6554f2` (#1398).                                                                                                    |
-| 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`.                                                  |
-| 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment writes and cohort read, the billing service gate, and the `org_members` SELECT review D25 leaves open. **Written** on `feat/authority-2b-4`; `can_assign_org_role` and the invitation read are 2b-5's. |
-| 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted.                                      |
-| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption (2b-2's deferred route-layer shape).                                                                                                                                                                           |
-| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them.                                                                                   |
-| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                                                                 |
-| 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                      |
+| Slice | Contents                                                                                                                                                                                                                                                                         |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                                                                                                                 |
+| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Merged** `6b6554f2` (#1398).                                                                                                     |
+| 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`.                                                   |
+| 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment writes and cohort read, the billing service gate, and the `org_members` SELECT review D25 leaves open. **Merged** `9da8c9b3` (#1400); `can_assign_org_role` and the invitation read were 2b-5's.        |
+| 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Written** on `feat/authority-2b-5`. |
+| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption (2b-2's deferred route-layer shape).                                                                                                                                                                            |
+| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them.                                                                                    |
+| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                                                                  |
+| 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                       |
 
 **Re-numbered 2026-11-20 (R8).** The settled order changed the labels the
 2026-11-19 table carried: 2b-3 was "the five embedded membership checks", 2b-4
@@ -2709,7 +2715,154 @@ org-wide` where the old `count(*) = 0 … not like` shape was vacuously true for
   SELECTs, and the checkout path's per-target-org scope resolution.
 - **Phase 5** owns the `org_members` SELECT narrowing, with the audit above.
 
+**2b-5 written on `feat/authority-2b-5` — slice 5 of 9:**
+
+- **The schema (one migration, `20261120170000_class_invites.sql`).**
+  `invitations.group_id uuid null references groups(id) on delete cascade` and
+  `invitations.target_group_role text null`, with
+  `invitations_target_group_role_check` (`teacher | member`, the same two
+  literals as `group_members.role`'s CHECK), the pair CHECK
+  `invitations_group_pair_check` (`(group_id is null) = (target_group_role is
+null)` — an org invite has neither, a class invite both) and
+  `invitations_group_id_idx`. The write trigger
+  `validate_invitation_target_org_role` is re-created to also reject a group
+  whose organization differs from the invitation's (23514). The accept RPC
+  `accept_org_invitation` gains the class branch: the invitee must already be an
+  `org_members` row (checked **before** the claim, so a refused accept never
+  consumes the token), the org-membership write becomes `DO NOTHING` for that
+  member (a class invite never grants or changes an org role), and
+  `group_members` is upserted with `target_group_role` (`DO UPDATE SET role =
+EXCLUDED.role` — idempotent). The org branch is byte-for-byte the old
+  behaviour. `database.ts` regenerated with the pinned CLI 3.1, byte-identical
+  on a second run (25 added lines: the two columns, the FK relationship, the
+  three new RPCs).
+- **The helpers.** New actor-parameterized `public.has_permission(actor, org,
+key)` and `public.has_group_permission(actor, group, key)` (SECURITY DEFINER,
+  `search_path = ''`, `service_role` only, PUBLIC/anon revoked) so the
+  service-role preview/accept flow can re-check the **inviter's** authority;
+  the `rls_caller_has_permission` / `rls_caller_has_group_permission` wrappers
+  now delegate to them (one definition of each rule, grants restated). **`can_assign_org_role`**
+  is rewritten to `has_permission(p_actor, target.organization_id,
+'org.invitation.manage')` and its **teacher-role-name exception is deleted**.
+- **The four `invitations` policies, split by row shape (R4, R25).** Tenant
+  floor and `inviter_id = auth.uid()` stay on every read/write; the capability
+  branch is, per row: org invite (`group_id is null`) →
+  `rls_caller_has_permission(organization_id, 'org.invitation.manage')` (+ the
+  `rls_caller_can_assign_org_role(target_org_role_id)` conjunct on INSERT and
+  on the UPDATE's `with_check` only — it refers to the NEW row), class invite
+  (`group_id` set) → `rls_caller_has_group_permission(group_id,
+'group.invite')`. The SELECT moved **in this slice together with the
+  writes** — **R25 is closed**: 2b-4 measured that PostgREST refuses an UPDATE
+  whose row the SELECT hides, so the half-moved read left an
+  `org.invitation.manage` holder unable to retarget; both halves now read the
+  permission. No `invitations` policy names `rls_caller_is_org_manager` any
+  more (verified: `pg_policies` query returns zero rows). The helper is 2b-2's,
+  unchanged; §4.1 gives `group.invite` no `own`, so its creator branch grants
+  nothing here, and the API applies the role-row conjunct where it already
+  does (`resolveGroupScope`/`requireGroupPermission` in the controller) — the
+  same scope-agnostic-teacher asymmetry `group.manage`/`group.member.manage`
+  already carry, recorded in the migration header.
+- **The API.** `CreateInviteSchema` gains the paired class target (`groupId` +
+  `groupRole`, 422 when only one is set; `groupRole` is `z.enum(GROUP_ROLES)`).
+  `InvitationController.create` parses, then decides **from the context
+  alone**: a class target resolves the group in the active org first (404 for a
+  foreign id, §7.1 — via the new shared `groupInOrg` lookup, also adopted by
+  `group.service`) and asks `requireGroupPermission(ctx, 'group.invite',
+group)`; an org target asks `requirePermission(ctx, 'org.invitation.manage')`.
+  `createBulk` gates the whole batch on `org.invitation.manage` and the service
+  refuses entries carrying a class target (422 naming the entry) — bulk stays
+  the org surface. The service's class path re-scopes the group to the resolved
+  target org (404), enforces **D7** (the invitee's email must name an existing
+  `org_members` row, else 422 on the `email` path) and writes
+  `group_id`/`target_group_role`; the persona half of
+  `resolveTargetOrganization` is deleted (the controller owns the capability).
+  The token preview re-checks the inviter with `has_group_permission` for class
+  invites (`can_assign_org_role` for org invites) and exposes
+  `groupId`/`groupName`/`groupRole` — the group-org check in `isInviteUsable`
+  keeps the preview inside the invite's own org. No UI surface posts a group
+  target today (`/manage/invites`, `/edu/classroom/invite`, `/setup/classroom`
+  all post org-shaped bodies), so the UI is **phase 6** and deliberately left
+  out.
+- **What can now 403 / what changes.** A Teacher-role holder loses every
+  org-invite write (the teacher-name exception is gone — an org teacher's
+  `POST /organization/invites` without a group target is now 403, and through
+  PostgREST 42501), and gains class invites for the classes they teach
+  (`group.invite`): API 201 and PostgREST insert succeed for a taught class,
+  403/42501 for another class of the same org. A Member-role caller is refused
+  everywhere (API 403, PostgREST 42501, SELECT hides every row). A role holding
+  only `org.invitation.manage` (the Assistant preset) can list/retarget/revoke
+  **and now actually retarget** — the read half moved with the write (R25):
+  before, the legacy SELECT hid the row from a non-inviter permission holder
+  and the UPDATE answered a silent `200 []`. A class invite can never create an
+  org membership or grant/change an org role: the RPC refuses a non-member
+  invitee before the claim (pinned by a tampered-row test: 410, no
+  `org_members`/`group_members` row, token left unconsumed). A foreign-org
+  group is 404 at the API and refused at the table (the write trigger's 23514
+  fires before the policy's 42501 — the trigger reads `org_roles` under the
+  caller's RLS, so a cross-org row trips there first; either way nothing is
+  written).
+- **Tests.** New `__tests__/integration/class-invite-permission.test.ts` (17
+  cases: the whole matrix above through real routes + `withAuth` and through
+  PostgREST with signed-in sessions, including the preview and the idempotent
+  accept). Updated: `invitations.test.ts` (the #189 teacher org-invite control
+  now expects 403), `org-control-permission-rls.test.ts` (replays the 2b-5
+  migration — see R27 — drops the now-unneeded legacy marker on the inviter
+  fixture, rewrites the teacher cases around the class branch),
+  `rls-tenant-isolation.test.ts` (`can_assign_org_role` is false for a Teacher
+  on every role, true for Admin via the permission; B1 drives the class invite),
+  `anon-grants.test.ts` (the two new internal helpers are anon-denied). Unit:
+  the controller truth table (which key each path asks, 404/403/422 shapes) and
+  the service truth table (class path, D7 422, foreign group 404, bulk
+  refusal, preview/accept `has_group_permission` re-check) in the two invitation
+  suites. **Mutation proof:** 8 `bun run mutate` invariants KILLED (the
+  `requireGroupPermission` call, the `requirePermission` on create, the bulk
+  gate, the schema pairing `superRefine`, the D7 member check, the group
+  re-scope, the bulk class-target refusal, the `isInviteAuthorized` class
+  branch). SQL/RLS by hand: the migration's closing `do` block raised on three
+  mutations (SELECT reverted to the legacy helper, INSERT class branch removed,
+  teacher-name exception re-added), a re-apply of the file is a no-op, and a
+  live `alter policy` that dropped the INSERT class branch turned the
+  teacher's PostgREST class insert `42501` (restored, then OK again) — the
+  suite's own `beforeAll` re-applies the shipped file, so a mid-run revert is
+  healed before the tests run.
+- **Gates (this tree).** `env:reset-db --yes` **twice**; the touched
+  integration files serially, then the full serial suite — **107 files / 981
+  passed, 11 skipped**; `test:unit` **310 files / 4768 passed, 1 skipped**;
+  `typecheck:all`, `typecheck:admin`, `lint:all`, `review:static`, `knip`,
+  `dup:base` (0 new), `format:check`, `bun run pr:size` (see the PR body).
+
+**Follow-ups this slice creates:**
+
+- **2b-6** owns the content-route sweep and the `authedRoute` adoption; the
+  class-invite UI (a group picker on the invite dialogs) is **phase 6** — no
+  surface posts a group target today.
+- **Phase 5** still owns the `org_members` SELECT narrowing (2b-4's audit).
+- The `group.invite` creator-branch asymmetry (API `resolveGroupScope` accepts
+  the creator in the `group` scope for any `group.*` key; the RLS helper's
+  creator branch is guarded by `allowed_scopes @> '{own}'`, which
+  `group.invite` lacks) is recorded in the migration header; a creator is
+  normally also the class's teacher (2b-2-3), so the divergence needs a roster
+  rewrite to remove their teacher row first.
+
 **Difficulty log**
+
+#### 2026-11-20 — the guard needed a per-key clause, and 2b-3's file can no longer be replayed
+
+What: the first version of 2b-5's closing `do` block required every expected
+key in every clause the policy has, and the first `db reset` failed on the
+UPDATE policy's `rls_caller_can_assign_org_role` — that conjunct refers to the
+NEW row, so it belongs to the `with_check` alone, not the `using`. The guard
+now carries a per-key clause (`any` = every clause that exists, `check` =
+`with_check` only and present there). Separately, replaying 2b-3's migration
+file on a 2b-5 database raises at 2b-3's own guard (it pins the pre-2b-5
+invitations SELECT), so the org-control RLS suite now replays only 2b-5's
+file, which re-states all four invitations policies in full.
+Why: a guard that assumes one clause shape guards the clause the mutation
+targets in the other shape; and a closing guard pins the state its file
+creates, so it is a snapshot of that slice, not a permanent invariant.
+Fix: per-key clause in the guard; replay list = newest owner of the object.
+Rule: R27 (and the clause split is the 2b-3 review pass's lesson again — a guard
+must look in the clause the predicate lives in).
 
 #### 2026-11-20 — the invitation write the read policy still holds
 

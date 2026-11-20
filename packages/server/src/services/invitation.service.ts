@@ -477,9 +477,7 @@ export class InvitationService {
         expires_at: expiresAt.toISOString(),
         // A class invite carries the class target; the pair CHECK on the table
         // rejects a half-set pair, and the schema already did.
-        ...(isClassInvite
-          ? { group_id: data.groupId, target_group_role: data.groupRole }
-          : {}),
+        ...(isClassInvite ? { group_id: data.groupId, target_group_role: data.groupRole } : {}),
       })
       .select('id, token')
       .single();

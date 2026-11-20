@@ -187,7 +187,11 @@ describe('InvitationController', () => {
 
     it('refuses a class target for a group the caller does not teach', async () => {
       mockService.resolveInvitableGroup.mockResolvedValueOnce(
-        success({ id: '550e8400-e29b-41d4-a716-446655440002', organization_id: 'org-1', created_by: null }),
+        success({
+          id: '550e8400-e29b-41d4-a716-446655440002',
+          organization_id: 'org-1',
+          created_by: null,
+        }),
       );
 
       await expect(
@@ -221,7 +225,11 @@ describe('InvitationController', () => {
 
     it('lets a teacher of the group create a class invite through group.invite', async () => {
       mockService.resolveInvitableGroup.mockResolvedValueOnce(
-        success({ id: '550e8400-e29b-41d4-a716-446655440001', organization_id: 'org-1', created_by: 'someone-else' }),
+        success({
+          id: '550e8400-e29b-41d4-a716-446655440001',
+          organization_id: 'org-1',
+          created_by: 'someone-else',
+        }),
       );
       const result = { success: true, inviteLink: 'http://example.com/join?token=abc' };
       mockService.createInvitation.mockResolvedValueOnce(success(result));
@@ -234,7 +242,10 @@ describe('InvitationController', () => {
       });
 
       expect(response).toEqual({ success: true, statusCode: 201, data: result });
-      expect(mockService.resolveInvitableGroup).toHaveBeenCalledWith(teacherCtx, '550e8400-e29b-41d4-a716-446655440001');
+      expect(mockService.resolveInvitableGroup).toHaveBeenCalledWith(
+        teacherCtx,
+        '550e8400-e29b-41d4-a716-446655440001',
+      );
       expect(mockService.createInvitation).toHaveBeenCalledWith(teacherCtx, {
         email: 'john@example.com',
         targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
@@ -245,7 +256,11 @@ describe('InvitationController', () => {
 
     it('lets an organization-scope group.invite holder create a class invite for any class', async () => {
       mockService.resolveInvitableGroup.mockResolvedValueOnce(
-        success({ id: '550e8400-e29b-41d4-a716-446655440009', organization_id: 'org-1', created_by: null }),
+        success({
+          id: '550e8400-e29b-41d4-a716-446655440009',
+          organization_id: 'org-1',
+          created_by: null,
+        }),
       );
       const result = { success: true, inviteLink: 'http://example.com/join?token=abc' };
       mockService.createInvitation.mockResolvedValueOnce(success(result));
@@ -262,7 +277,11 @@ describe('InvitationController', () => {
 
     it('refuses a class target for an own-scope group.invite row (no own in the catalog)', async () => {
       mockService.resolveInvitableGroup.mockResolvedValueOnce(
-        success({ id: '550e8400-e29b-41d4-a716-446655440001', organization_id: 'org-1', created_by: mockCtx.userId }),
+        success({
+          id: '550e8400-e29b-41d4-a716-446655440001',
+          organization_id: 'org-1',
+          created_by: mockCtx.userId,
+        }),
       );
       const ownScopeCtx: RequestContext = {
         ...teacherCtx,
@@ -298,7 +317,11 @@ describe('InvitationController', () => {
 
     it('forwards the service 422 for a class invite whose invitee is not an org member', async () => {
       mockService.resolveInvitableGroup.mockResolvedValueOnce(
-        success({ id: '550e8400-e29b-41d4-a716-446655440001', organization_id: 'org-1', created_by: null }),
+        success({
+          id: '550e8400-e29b-41d4-a716-446655440001',
+          organization_id: 'org-1',
+          created_by: null,
+        }),
       );
       mockService.createInvitation.mockResolvedValueOnce(
         failure('UNPROCESSABLE_ENTITY', [
@@ -316,9 +339,7 @@ describe('InvitationController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
       expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
-      expect(envelope(response).details).toEqual([
-        expect.objectContaining({ path: ['email'] }),
-      ]);
+      expect(envelope(response).details).toEqual([expect.objectContaining({ path: ['email'] })]);
     });
   });
 
