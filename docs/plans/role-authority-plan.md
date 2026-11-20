@@ -1772,8 +1772,10 @@ and a reset that passes proves little until it has run twice.
 - **What can now 403 that did not** (and what now passes): a caller holding the
   family key at any scope passes regardless of persona — a Student-persona Admin
   creates quizzes and assignments (D13, pinned through the real routes and the moved
-  INSERT policy). A role without the key is 403 before any schema parse (a
-  malformed body still answers 403, never 422). A foreign-org id is 404 for a key
+  INSERT policy). A role without the key is 403 before any schema parse — a
+  well-formed but schema-invalid body still answers 403, never 422; a syntactically
+  malformed JSON body 400s at the route's own body parse (`authedRoute`'s
+  `readsBody`), before the controller runs. A foreign-org id is 404 for a key
   holder; a same-org row the caller's scope does not reach is 403. A Member-role
   caller is refused every `assignment.*` route (the member template carries none)
   but may create own-scope content (`quiz.create` at `own`) and read `stats.read`
@@ -1793,12 +1795,15 @@ and a reset that passes proves little until it has run twice.
   route-option suites (`stats-teacher-route`, `teacher-dashboard-routes`) now assert
   **no** `allowedAccountTypes` reaches `withAuth`, `assessment-lifecycle` (override
   refused for a member-role caller), `api-auth-inventory` (a gated factory may
-  delegate to another gated factory). Mutation proofs, all KILLED with
+  delegate to another gated factory, and the delegation chain must reach
+  `withAuth`). Mutation proofs, all KILLED with
   `bun run mutate`: the create/read/delete gates in the quiz, assignment, stats,
   activity, flashcard-stats and question controllers, the quiz service's
   resource-scope check, and the quiz list scope filter. The route-layer persona
   gate itself cannot be mutated — it no longer exists; `api-auth-inventory` proves
-  every handler is gated.
+  every handler is wrapped in `withAuth`, while the key gates are what the
+  controller truth tables and `content-route-permission-api.test.ts` prove
+  through the real routes.
 - **Corpus (R16).** `SEC-05`, `AUT-19` and `AUT-16` depended on the removed persona
   gates and were reconciled with spec + case text together (R6): the Member student
   now gets 201 on own-scope quiz create, 403 on every `assignment.*` route, 200
@@ -1819,6 +1824,17 @@ and a reset that passes proves little until it has run twice.
   stats + questions ledger (8 files) + the migration, or one PR with
   `size:exception`. The branch is committed as focused commits (sweep, then
   migration+tests, then corpus/docs) so a split is a rebase, not a rewrite.
+
+**Follow-ups this slice creates:**
+
+- **2026-11-20 review pass:** the 403-vs-404 split between the two content families is
+  pre-existing and cosmetic, recorded here, not changed: a foreign-org id answers **404**
+  on the quiz paths (`ownedQuiz` maps it to `NOT_FOUND`) but **403** on the assignment
+  read (`getById`), and a same-org row the caller's scope does not reach answers **403**
+  on the quiz writes (`ownedQuiz`'s scope evaluate) but **404** on the assignment
+  writes (`ownedClient` collapses foreign and unreached into `NOT_FOUND`). §7.1's
+  tenant-non-leak rule is the reason the quiz side is preferred; the assignment side
+  predates 2b-6 and no caller distinguishes the two today.
 
 **Difficulty log**
 
