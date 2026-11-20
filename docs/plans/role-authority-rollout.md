@@ -313,14 +313,25 @@ slice below lands.
   update/delete, `org_seat_pools` insert/update/delete, `org_seat_assignments`
   insert/update/delete plus the manager branch of its select, and `invitations`
   update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-4).
-- 2b-4 — the remaining control-plane RLS: `billing_subscriptions`, the assignment
-  family, the `can_assign_org_role` manager half, and the `org_members` SELECT
-  review D25 leaves open (the API is deliberately narrower than the data-plane
-  read until every reader is audited).
+- **2b-4 — the remaining control-plane RLS. Delivered** (slice 4 of 9) on
+  `feat/authority-2b-4`: `billing_subscriptions`' org read moves to
+  `org.billing.manage`; the assignment writes move to `assignment.update`
+  (UPDATE and the child tables) and `assignment.delete` (DELETE and the child
+  tables) at `organization` scope, with the author branch covering `own`; the
+  staff read of an assignment's item set becomes `assignment.read`; and
+  `BillingService` requires `org.billing.manage` for every org-plan action
+  (change-plan, cancel, release-scheduled-plan, reconcile, portal) instead of
+  re-checking the system admin role. The assignment INSERT persona and the
+  org-wide SELECTs stay for 2b-6. `can_assign_org_role` and the `invitations`
+  SELECT stay for 2b-5: a write policy cannot move before the read it depends
+  on (PostgREST refuses an UPDATE whose row the SELECT policy hides).
+  `org_members` SELECT stays membership-wide — the audit names the readers a
+  narrowing would empty (org detail, report inbox, role counts, the group
+  roster, assignment target validation, teacher stats), and phase 5 owns it.
 - 2b-5 — class invites use `group.invite` at group scope for existing org
-  members; add `invitations.group_id` + `target_group_role`, delete the
-  `can_assign_org_role` teacher-name exception, and reuse
-  `rls_caller_has_group_permission` for the invitation policy.
+  members; add `invitations.group_id` + `target_group_role`, move
+  `can_assign_org_role`'s manager half and the invitation SELECT together with
+  `rls_caller_has_group_permission`, and delete the teacher-name exception.
 - 2b-6 — content-route sweep and the cross-package `authedRoute` adoption (the
   route-layer shape 2b-2 deferred).
 - 2b-7 — marker deletion: `role.builder`, `org.manage`, `member.manage` and

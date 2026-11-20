@@ -650,6 +650,44 @@ describe('TeacherAssignmentService', () => {
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
 
+    // The DELETE policy asks `assignment.delete`; a role that may edit a run it
+    // did not author is not therefore allowed to remove it (R4: the service
+    // check is the same key as the policy, so the API and the table agree).
+    it('requires assignment.delete for a run the caller did not author', async () => {
+      const otherCtx: RequestContext = {
+        ...ctx,
+        userId: 'other-user-id',
+        permissionScopes: { 'assignment.update': 'organization' },
+      };
+      mock.from.mockReturnValueOnce(
+        chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+      );
+
+      const refused = await service.delete(assignmentId, otherCtx);
+
+      expect(refused.success).toBe(false);
+      if (!refused.success) expect(refused.error).toBe('NOT_FOUND');
+    });
+
+    it('lets an org-scope assignment.delete holder remove a run it did not author', async () => {
+      const deleteChain = chain(null);
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(deleteChain);
+      const otherCtx: RequestContext = {
+        ...ctx,
+        userId: 'other-user-id',
+        permissionScopes: { 'assignment.delete': 'organization' },
+      };
+
+      const result = await service.delete(assignmentId, otherCtx);
+
+      expect(result.success).toBe(true);
+      expect(deleteChain.delete).toHaveBeenCalled();
+    });
+
     it('returns INTERNAL_SERVER on DB error', async () => {
       mock.from
         .mockReturnValueOnce(

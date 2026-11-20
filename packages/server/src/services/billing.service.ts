@@ -254,8 +254,8 @@ export class BillingService {
    * The shared billing read model (#662 §7.4).
    *
    * Stripe mode reads `billing_subscriptions` through the caller's session
-   * client, so the own-row/`org.billing.manage` RLS policies decide visibility. Mock mode
-   * has no subscription row at all: it synthesizes the effective plan
+   * client, so the own-row/`org.billing.manage` RLS policies decide visibility.
+   * Mock mode has no subscription row at all: it synthesizes the effective plan
    * (`/me/plan`) and keeps every provider action disabled, which is exactly
    * what the existing mock QA specs expect.
    *
@@ -571,12 +571,12 @@ export class BillingService {
   ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
     const prepared = await this.prepareLiveAction(ctx);
     if (isFailure(prepared)) return prepared;
-    const { owner, subscription } = prepared.data;
+    const { owner, subscription, customer } = prepared.data;
 
     const observedMarker = subscription.pendingPlanKey;
     const result = await this.gateway.releaseScheduledPlan({
       owner,
-      customerId: prepared.data.customer.stripeCustomerId,
+      customerId: customer.stripeCustomerId,
       subscriptionId: subscription.stripeSubscriptionId,
       currentPlanKey: subscription.planKey,
     });

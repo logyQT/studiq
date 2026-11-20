@@ -298,6 +298,13 @@ the hidden classroom UI dependency.
 - System roles cannot be renamed or deleted; their permission set may be
   extended only within the editor's own authority.
 
+> **2026-11-20 (phase 2b-4).** "Assigning a role requires `org.member.manage`" is
+> enforced by the member routes; the database helper every invite path still
+> calls, `can_assign_org_role`, resolves its manager half from the legacy
+> `member.manage` marker. It cannot move alone: PostgREST refuses an UPDATE whose
+> row the SELECT policy hides, so the invitation write and read move together in
+> 2b-5.
+
 ---
 
 ## 5. Entitlement model
@@ -630,7 +637,20 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > on the route stay `org.member.manage` and the Billing preset fails every such
 > write. The invitation list is `org.invitation.manage` while its SELECT policy
 > keeps the `inviter_id = auth.uid()` branch — an inviter may still read the row
-> they minted; 2b-4 closes the write half.
+> they minted; 2b-5 moves that read with the write half (2b-4 measured that
+> PostgREST refuses an UPDATE whose row the SELECT policy hides).
+>
+> **2026-11-20 (phase 2b-4).** The control plane now enforces the catalog at the
+> table: `billing_subscriptions`' org read and every `BillingService` org action
+> are `org.billing.manage`; the assignment writes are `assignment.update` /
+> `assignment.delete` (organization scope; the author branch covers `own`), its
+> child tables follow the parent's org, and the staff read of an assignment's
+> item set is `assignment.read`. Two asymmetries are recorded, not solved:
+> `teacher_assignments` INSERT keeps its persona conjunct while the route layer
+> waits for 2b-6 and `org_members` SELECT stays membership-wide while the D25
+> roster read is four keys — narrowing it would empty the readers whose gates
+> are not among the four (org detail, report inbox, role counts, the group
+> roster, assignment target validation, teacher stats), so phase 5 owns it.
 
 ---
 

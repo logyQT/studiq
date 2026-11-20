@@ -530,7 +530,7 @@ export class TeacherAssignmentService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.ownedClient(id, ctx);
+    const supabase = await this.ownedClient(id, ctx, 'assignment.delete');
     if (!supabase) return failure('NOT_FOUND');
 
     const { error } = await supabase.from('teacher_assignments').delete().eq('id', id);
@@ -2054,9 +2054,10 @@ export class TeacherAssignmentService {
   private async ownedClient(
     id: string,
     ctx: RequestContext,
+    permission = 'assignment.update',
   ): Promise<SupabaseClient<Database> | null> {
     const supabase = await this.clientFactory();
-    if (!(await this.verifyOwnership(id, ctx))) return null;
+    if (!(await this.verifyOwnership(id, ctx, permission))) return null;
     return supabase;
   }
 
@@ -2182,7 +2183,11 @@ export class TeacherAssignmentService {
     return success(data);
   }
 
-  private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {
+  private async verifyOwnership(
+    id: string,
+    ctx: RequestContext,
+    permission = 'assignment.update',
+  ): Promise<boolean> {
     const supabase = await this.clientFactory();
 
     const { data: assignment } = await supabase
@@ -2195,7 +2200,7 @@ export class TeacherAssignmentService {
 
     if (assignment.created_by === ctx.userId) return true;
 
-    const scope = ctx.permissionScopes['assignment.update'];
+    const scope = ctx.permissionScopes[permission];
     if (scope === 'organization' && assignment.organization_id === ctx.activeOrgId) return true;
 
     return false;
