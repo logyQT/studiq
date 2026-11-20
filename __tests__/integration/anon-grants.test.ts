@@ -156,6 +156,24 @@ describe('anon role grants (#191)', () => {
         p_role_id: '00000000-0000-4000-8000-00000000000e',
       },
     ],
+    // 2b-5: the actor-parameterized capability twins are internal too — only
+    // the rls_caller_* wrappers may be executed by `authenticated`.
+    [
+      'has_permission',
+      {
+        p_actor: '00000000-0000-4000-8001-000000000009',
+        p_organization_id: '00000000-0000-4000-8000-00000000000e',
+        p_permission: 'org.invitation.manage',
+      },
+    ],
+    [
+      'has_group_permission',
+      {
+        p_actor: '00000000-0000-4000-8001-000000000009',
+        p_group_id: '00000000-0000-4000-8000-00000000000f',
+        p_permission: 'group.invite',
+      },
+    ],
     ['rls_caller_is_org_manager', { p_organization_id: '00000000-0000-4000-8000-00000000000e' }],
   ])('anon cannot execute the %s RPC', async (fn, args) => {
     const response = await anon.rpc(fn, args);

@@ -430,7 +430,10 @@ describe(`Invitations Integration`, () => {
     });
 
     // #189: grant authority is evaluated by the endpoint, not just by the
-    // INSERT policy — a teacher may only grant the system `member` role.
+    // INSERT policy — and since 2b-5 the create route itself requires
+    // `org.invitation.manage`, which an org teacher does not hold (the
+    // teacher-name exception is deleted; the classroom path is a class
+    // invite gated on `group.invite`).
     it('returns 403 when an org teacher invites the admin role (#189)', async () => {
       mockUser(teacher);
       const email = `qa-teacher-admin-${suiteId}-${Date.now()}@example.com`;
@@ -459,9 +462,11 @@ describe(`Invitations Integration`, () => {
       expect(data).toEqual([]);
     });
 
-    // #189 control: teachers must keep inviting students, so the new gate
-    // must not over-restrict the classroom flow.
-    it('allows an org teacher to invite the member role (#189 control)', async () => {
+    // 2b-5: the teacher-role-name exception is deleted (ADR-0015 §8.3, §15 #7).
+    // An org teacher no longer holds org-invite authority at all — the
+    // classroom flow is a CLASS invite (`groupId` + `groupRole`, gated on
+    // `group.invite`), pinned in class-invite-permission.test.ts.
+    it('returns 403 for an org teacher org-invite (2b-5: class invites are the classroom path)', async () => {
       mockUser(teacher);
       const email = `qa-teacher-member-${suiteId}-${Date.now()}@example.com`;
 
@@ -476,10 +481,17 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await json<InviteCreatedBody>(response);
+      const body = await json<ApiErrorBody>(response);
 
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
+      expect(response.status).toBe(403);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('FORBIDDEN');
+
+      const { data } = await createTypedServiceClient()
+        .from('invitations')
+        .select('id')
+        .eq('email', email);
+      expect(data).toEqual([]);
     });
   });
 
@@ -737,7 +749,8 @@ describe(`Invitations Integration`, () => {
     });
 
     // #189: the endpoint itself rejects a role the caller may not grant,
-    // before any write — a teacher may only grant the system member role.
+    // before any write — since 2b-5 the whole create route requires
+    // `org.invitation.manage`, so an org teacher is refused here at the gate.
     it('returns 403 when an org teacher bulk-invites the admin role (#189)', async () => {
       mockUser(teacher);
       const email = `qa-bulk-teacher-admin-${suiteId}-${Date.now()}@example.com`;
