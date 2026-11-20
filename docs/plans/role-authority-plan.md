@@ -1539,6 +1539,7 @@ and a reset that passes proves little until it has run twice.
 - **2b-4** should reuse `rls_caller_has_group_permission` for `group.invite` and
   can add the `group`/`organization`-only restriction the API already applies —
   the helper is scope-agnostic on purpose until an `own` invite row has a writer.
+  _(Superseded: 2b-4's block hands class invites to 2b-5, which owns that row.)_
 - **`group.read` on the list** is a new 403 for a role that holds neither
   `group.read` at `group`/`organization` nor a class it created: a custom role
   built from a blank preset used to get every class and now gets an empty list.
@@ -1630,7 +1631,9 @@ and a reset that passes proves little until it has run twice.
   manager half lives inside that helper), its API gate is the untouched create
   route, and adding `org.invitation.manage` there would refuse the classroom
   teacher→member invite the POST route deliberately keeps. 2b-4 owns the helper
-  rewrite; R4 says the two move together, so this half waits. The `invitations`
+  rewrite; R4 says the two move together, so this half waits. _(Superseded:
+  2b-4's block measured that the write cannot move without the invitation read,
+  so 2b-5 owns both.)_ The `invitations`
   SELECT keeps its manager branch too: the list API moved, but an inviter may
   still read their own row through PostgREST — a recorded read asymmetry, not
   a leak.

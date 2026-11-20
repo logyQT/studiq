@@ -297,7 +297,7 @@ slice below lands.
   `public.rls_caller_has_group_permission(group, key)` moves the six
   `groups`/`group_members` write policies in the same PR (R4). A Teacher-role
   holder reaches the classes it teaches (the seeded row is `group` scope); Admin
-  holds the keys at `organization`. `group.invite` stays unused until 2b-4.
+  holds the keys at `organization`. `group.invite` stays unused until 2b-5.
 - **2b-3 — org-control route sweep and its RLS twin. Delivered** (slice 3 of 9)
   on `feat/authority-2b-3`: the settings, roster, seat and invitation routes drop
   `allowedAccountTypes` and gate on `org.settings.manage` / `org.seat.manage` /
@@ -312,7 +312,8 @@ slice below lands.
   `is_org_manager` on the same PR's policies: `organizations` update, `org_members`
   update/delete, `org_seat_pools` insert/update/delete, `org_seat_assignments`
   insert/update/delete plus the manager branch of its select, and `invitations`
-  update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-4).
+  update/delete. The invitation INSERT keeps `can_assign_org_role` (2b-5 moves
+  it with the invitation read).
 - **2b-4 — the remaining control-plane RLS. Delivered** (slice 4 of 9) on
   `feat/authority-2b-4`: `billing_subscriptions`' org read moves to
   `org.billing.manage`; the assignment writes move to `assignment.update`
