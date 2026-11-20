@@ -270,10 +270,10 @@ guards replaces the role's whole permission set and the gate is one of those row
   that set.
 
 The remaining phase-2 work, in slice order. **Phase 2b is nine slices**: slices
-1–3 are merged/written (2b-3 is the settled re-numbering of this list on
+1–2 are merged and 2b-3 is written (2b-3 is the settled re-numbering of this list on
 2026-11-20 — the org-control sweep moved ahead of the remaining RLS, and the
 older labels are recorded in the [plan](role-authority-plan.md#phase-2b--authority-and-control-plane)).
-A merged 2b-1 (or a written 2b-2/2b-3) does not mean phase 2 is done. The
+A merged 2b-1/2b-2 (or a written 2b-3) does not mean phase 2 is done. The
 ledger's phase-2 row is `active` today (§1 of the
 [plan](role-authority-plan.md#1-status)) and is set to `merged` only when the last
 slice below lands.
@@ -285,8 +285,8 @@ slice below lands.
   constraint names corrected, and `database.ts` regenerated. Deferred from 2a-2,
   whose scope was the gate, the RLS predicate and the presets — the FK needed the
   old free-text names backfilled first.
-- **2b-2 — group permissions and their RLS twin. Delivered** (slice 2 of 9) on
-  `feat/authority-2b-2`: `resolveGroupScope`/`canGroup`/`requireGroupPermission`
+- **2b-2 — group permissions and their RLS twin. Merged** (`6b6554f2`, #1398;
+  slice 2 of 9): `resolveGroupScope`/`canGroup`/`requireGroupPermission`
   give `group.read/manage/member.manage` their ADR-0015 §4.3 meaning
   (org scope → any group, `group` scope → the classes the caller **teaches**,
   `own` → the classes the caller **created**), create needs the key at **any**
@@ -303,9 +303,10 @@ slice below lands.
   `allowedAccountTypes` and gate on `org.settings.manage` / `org.seat.manage` /
   `org.invitation.manage` from the controller (`requirePermission`), while roles
   keep 2a-2's `org.role.manage` on writes and reads stay membership-only. The
-  roster read is three authorities (D25): `org.member.manage`, or
-  `group.manage`, or `group.invite` at any scope; everyone else reads an empty
-  list, and `PUT`/`DELETE` stay `org.member.manage`. Branding keeps
+  roster read is four authorities (D25): `org.member.manage`, `group.manage`,
+  `group.invite` at any scope, or `org.seat.manage` (the shipped Billing preset's
+  seat picker); everyone else reads an empty list, and `PUT`/`DELETE` stay
+  `org.member.manage`. Branding keeps
   `org.settings.manage` **and** the `branding` entitlement.
   `public.rls_caller_has_permission` replaces
   `is_org_manager` on the same PR's policies: `organizations` update, `org_members`

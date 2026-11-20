@@ -618,17 +618,19 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > `GET /organization/:id` and the role list/detail stay readable by any
 > `org_members` row of the active org: the member screens and `withAuth` itself
 > need them, and the catalog has no read key. `GET /organization/members` moves
-> onto permissions but with three read authorities (D25): `org.member.manage`
-> at org scope, **or** `group.manage`, **or** `group.invite` at any scope the
-> role holds them. The catalog has no `org.member.read`, a Teacher must not hold
-> `org.member.manage` (D18/FP-04), and a class manager and a class inviter pick
-> from the same org roster (`/edu/classroom/members`, the assignment student
-> picker, the `/edu` onboarding counts). A caller holding none of the three
-> reads an empty list, not a 403: the list leaks nothing and AUT-19 accepts it,
-> while `PUT`/`DELETE` on the route stay `org.member.manage`. The invitation
-> list is `org.invitation.manage` while its SELECT policy keeps the
-> `inviter_id = auth.uid()` branch — an inviter may still read the row they
-> minted; 2b-4 closes the write half.
+> onto permissions but with four read authorities (D25): `org.member.manage` at
+> org scope, or `group.manage`, or `group.invite`, or `org.seat.manage` at any
+> scope the role holds them. The catalog has no `org.member.read`, a Teacher must
+> not hold `org.member.manage` (D18/FP-04), a class manager and a class inviter
+> pick from the same org roster (`/edu/classroom/members`, the assignment student
+> picker, the `/edu` onboarding counts), and the shipped Billing preset is exactly
+> `org.billing.manage` + `org.seat.manage` while `/manage/seats` fills its assign
+> dialog from this roster. A caller holding none of the four reads an empty list,
+> not a 403: the list leaks nothing and AUT-19 accepts it, while `PUT`/`DELETE`
+> on the route stay `org.member.manage` and the Billing preset fails every such
+> write. The invitation list is `org.invitation.manage` while its SELECT policy
+> keeps the `inviter_id = auth.uid()` branch — an inviter may still read the row
+> they minted; 2b-4 closes the write half.
 
 ---
 
@@ -1065,16 +1067,19 @@ interpretation.
 | 15  | Does an org plan include seat licences?                             | **No — org plans grant ZERO licences; licences are sold separately.** A licence is the purchased unit: `org_seat_pools` is the licence pool (its `plan_key` must be `scope='personal'` + `seatEligible`), and `org_seat_assignments` is one member occupying one licence. No `plan_seat_grants`, no `org_seat_licenses`. |
 
 > **2026-11-20 (D25).** `GET /organization/members` is readable by a caller
-> holding **any** of `org.member.manage` (org scope), `group.manage` or
-> `group.invite` (any scope) in the active org. The catalog has no
-> `org.member.read`; a Teacher must not hold `org.member.manage` (D18/FP-04);
-> and the roster is shared by org managers, class managers and class inviters
-> (`/edu/classroom/members`, the assignment student picker, the `/edu`
-> onboarding counts). A caller with none of the three gets `200` with `data: []`
-> — the empty list is the deny shape because it leaks nothing and AUT-19 accepts
-> it. `PUT`/`DELETE` stay `org.member.manage`. D16–D24 are recorded in the
-> sections they amend (§4.1, §4.2, §5); this one is here because it settles a
-> read the §7.1 note had got wrong.
+> holding **any** of `org.member.manage` (org scope), `group.manage`,
+> `group.invite` or `org.seat.manage` (any scope) in the active org. The catalog
+> has no `org.member.read`; a Teacher must not hold `org.member.manage`
+> (D18/FP-04); the roster is shared by org managers, class managers and class
+> inviters (`/edu/classroom/members`, the assignment student picker, the `/edu`
+> onboarding counts); and the shipped **Billing** preset
+> (`org.billing.manage` + `org.seat.manage`) fills `/manage/seats`' assign dialog
+> from the same endpoint. A caller with none of the four gets `200` with
+> `data: []` — the empty list is the deny shape because it leaks nothing and
+> AUT-19 accepts it. `PUT`/`DELETE` stay `org.member.manage`, so the Billing
+> preset reads the roster and writes nothing on members, roles, settings or
+> invitations. D16–D24 are recorded in the sections they amend (§4.1, §4.2, §5);
+> this one is here because it settles a read the §7.1 note had got wrong.
 
 ---
 
