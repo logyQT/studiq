@@ -5,6 +5,7 @@ import {
   resolveGroupScope,
   resolveScope,
 } from '@studiq/server/lib/authz';
+import { groupInOrg, type GroupInOrgRow } from '@studiq/server/lib/group-in-org';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -190,19 +191,10 @@ export class GroupService {
   private async groupInActiveOrg(
     ctx: RequestContext,
     id: string,
-  ): Promise<ServiceResult<{ id: string; organization_id: string; created_by: string | null }>> {
+  ): Promise<ServiceResult<GroupInOrgRow>> {
     const orgId = ctx.activeOrgId;
     if (!orgId) return failure('FORBIDDEN');
-
-    const supabase = await this.clientFactory();
-    const { data: group } = await supabase
-      .from('groups')
-      .select('id, organization_id, created_by')
-      .eq('id', id)
-      .eq('organization_id', orgId)
-      .maybeSingle();
-
-    return group ? success(group) : failure('NOT_FOUND');
+    return groupInOrg(await this.clientFactory(), orgId, id);
   }
 
   /**
