@@ -322,6 +322,12 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 > with the writes (R25), and the teacher-name exception is deleted — a teacher
 > grants no org role through an invite at all; class invites are `group.invite`
 > on the group and never touch the invitee's org role on accept.
+>
+> **2026-11-20 (phase 2b-5 review).** Still open, and pre-existing on `main`:
+> `can_assign_org_role` checks only `org.invitation.manage`, not the "grant
+> only what you hold" rule above, so any holder of the capability can mint an
+> org invite targeting the Admin role. Phase 5 (the §4.4 enforcement pass)
+> owns the conjunct; 2b-5 deliberately did not add it.
 
 ---
 
@@ -875,6 +881,16 @@ without any org-wide management capability.
 > existing org member, and accepting it adds the group membership with
 > `target_group_role` (idempotent) without granting or changing the org role;
 > the invite UI that posts a group target is phase 6.
+>
+> **2026-11-20 (phase 2b-5 review).** The D7 invariant is now structural at
+> both planes: the accept RPC's class branch inserts `org_members` only
+> `where exists` in the same statement snapshot (`insert … select … where
+exists … on conflict do nothing`), so a membership row deleted between the
+> pre-check and the insert (READ COMMITTED re-snapshots every statement) is
+> not re-created with the invite's target role; and the write trigger
+> normalizes a class row's `target_org_role_id` to the system `member` role,
+> so a `group.invite` holder cannot persist a class invite carrying another
+> org role.
 
 ---
 
