@@ -1650,9 +1650,9 @@ apps/web/src/app/(backend)/api/v1/organization --include=route.ts` reports
   `knip`, `dup:base` (**0 new**), `format:check`, `pr:size` (**917/400, XL** —
   tests excluded; the sweep rewrites 12 route files, so it needs a
   `size:exception`). Mutation proof:
-  five unit invariants KILLED (`bun run mutate`) and five by hand (the RLS
-  predicates, the invitation list persona, the roster filter) — the table is in
-  the PR body.
+  six unit invariants KILLED (`bun run mutate`) and five by hand (the two RLS
+  predicates, the invitation UPDATE branch, the invitation list persona, the
+  roster filter) — the table is in the PR body.
 
 **Follow-ups this slice creates:**
 
