@@ -27,26 +27,45 @@ alter policy "Authored teacher assignments insert" on public.teacher_assignments
     and organization_id in (select c.organization_id from public.rls_caller_org_ids() c)
   );
 
--- Guard: the insert policy exists, asks the catalog key, and no longer reads the
--- JWT persona. A re-application is a no-op because `alter policy` replaces the
--- predicate in place.
+-- Guard (R26): each boundary is a `count(*) = 1` over the policy row AND its
+-- predicate, so a dropped or renamed policy raises here instead of passing
+-- vacuously (`count(*) = 0 … not like` stays green when the row is gone). A
+-- re-application is a no-op because `alter policy` replaces the predicate in place.
 do $$
 declare
-  bad text;
+  bad_boundary text;
 begin
-  select string_agg(p.policyname, ', ')
-  into bad
-  from pg_policies p
-  where p.schemaname = 'public'
-    and p.tablename = 'teacher_assignments'
-    and p.policyname = 'Authored teacher assignments insert'
-    and (
-      coalesce(p.with_check, '') not like '%assignment.create%'
-      or coalesce(p.with_check, '') like '%account_type%'
-    );
+  select string_agg(boundary.label, ', ')
+  into bad_boundary
+  from (
+    values
+      (
+        'Authored teacher assignments insert policy is missing',
+        (
+          select count(*) = 1
+          from pg_policies p
+          where p.schemaname = 'public'
+            and p.tablename = 'teacher_assignments'
+            and p.policyname = 'Authored teacher assignments insert'
+        )
+      ),
+      (
+        'Authored teacher assignments insert not on assignment.create, or still persona-keyed',
+        (
+          select count(*) = 1
+          from pg_policies p
+          where p.schemaname = 'public'
+            and p.tablename = 'teacher_assignments'
+            and p.policyname = 'Authored teacher assignments insert'
+            and coalesce(p.with_check, '') like '%assignment.create%'
+            and coalesce(p.with_check, '') not like '%account_type%'
+        )
+      )
+  ) as boundary(label, ok)
+  where not ok;
 
-  if bad is not null then
-    raise exception 'teacher_assignments insert not on assignment.create, or still persona-keyed: %', bad;
+  if bad_boundary is not null then
+    raise exception 'teacher_assignments insert policy does not hold the 2b-6 boundary: %', bad_boundary;
   end if;
 end;
 $$;
