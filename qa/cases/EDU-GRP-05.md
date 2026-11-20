@@ -81,3 +81,20 @@ funkcji”_ — instead of mutating a global admin setting.
 - The spec never writes: it only attempts the four group write endpoints and asserts they
   are rejected, so the tenant is left exactly as seeded and re-runs on one seeded tenant
   (CI `--retries=2`) stay deterministic.
+
+## Observed 2026-11-20 (2b-3) — the default educator is now a Teacher
+
+The fixture premise above stopped holding when 2b-3 fixed the seed: the `content`
+profile's default `teacher` account now carries the org **Teacher** role, because the
+roster read (`org.member.manage` OR `group.manage` OR `group.invite`) refused an educator
+seeded on the Member role, and `AUT-19` / `EDU-ASG-04` need an authorized staff account to
+read the roster. That is the model-correct default; this case is the exception that needs
+the opposite (`spec.ts:124`, „the educator holds no group.manage”).
+
+So the case declares its own roster instead of the default: `__tests__/qa/profiles/EDU-GRP-05.json`
+keeps `"profile": "content"` and adds `members` — manager on `admin`, educator and student
+on `member`, the same three account keys and types as before, and the same default group
+`G1` with all three enrolled (the manager as its group `teacher`, so the 3 members / 1
+teacher counts are unchanged). It declares no `groupTeachers`: the educator must teach no
+class, so `G1`'s `manageVia` stays `null` and the four writes stay `403 FORBIDDEN`. The
+assertions are untouched; only the tenant the case runs on is now explicit.

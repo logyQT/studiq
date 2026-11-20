@@ -93,7 +93,7 @@ phase-2 row stays `active` — three merged/written slices do not make phase 2 d
 | R21 | A read route's SELECT policy is part of its gate: a filter that runs after the gate turns a refusal into an empty page, not an error.                                                                                                           | the seat-assignment list admitted a key holder and RLS filtered every row silently                                                 |
 | R22 | When one policy carries two authorities, moving one is a split, not a sweep — name the conjunct that still owns the other half, or the next reader calls its 42501 a bug.                                                                       | the invitation UPDATE kept `can_assign_org_role`'s membership-marker manager half                                                  |
 | R23 | An API gate may stay deliberately narrower than its data-plane policy when the policy predates it and narrowing it means auditing every reader; the asymmetry is recorded with a named owner in the same PR, never left as two unnamed answers. | D25 kept the roster read at three keys while the `org_members` SELECT policy still admits any same-org member (2b-4)               |
-| R24 | A QA persona's authority is its org-role row, not its account type: a slice that gates on role keys audits the seeded **default** accounts, not only the accounts a profile explicitly promotes.                                                | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                    |
+| R24 | A QA persona's authority is its org-role row, not its account type: audit the seeded **default** accounts around a role change (not just the ones a profile promotes), and a case built on the old default declares its own roster.             | the `content` profile's "teacher" was an educator persona on the Member role until D25's roster read refused it                    |
 
 ## 4. Decisions
 
@@ -2348,6 +2348,32 @@ fixture line, not a behaviour assertion.
 Rule: a QA persona's authority is its org-role row, not its account type — a
 slice that gates on role keys audits the seeded **default** accounts, not only
 the accounts a profile explicitly promotes (R24).
+
+##### Correction (2026-11-20, after the QA pass on `41a275d0`) — the broad default broke EDU-GRP-05
+
+What: `AUT-19` and `EDU-ASG-04` pass, and `EDU-GRP-05` fails at
+`__tests__/qa/EDU/EDU-GRP-05.spec.ts:124` („the educator holds no
+`group.manage`”). That case is built on the _absence_ of the key — its premise
+was the old default, an educator on the org Member role — so making the default
+model-correct removed the fixture the case was testing against.
+Why not revert: the default has to carry the Teacher role, because a roster
+reader that is not an org manager needs `group.manage`/`group.invite` from
+somewhere and the persona is supposed to be an authority-bearing educator. A
+case whose subject is a _missing_ permission is the exception, and exceptions
+declare their own roster.
+Fix: `__tests__/qa/profiles/EDU-GRP-05.json` keeps `"profile": "content"` (the
+spec asserts it) and adds a `members` roster — manager `admin`, `teacher`
+`member`, `student` `member`, the same three keys and account types — with no
+`groups` (so the default group stays `G1`) and no `groupTeachers` (the educator
+must teach no class, or `group.manage` would resolve at `group` scope from the
+teacher row and `manageVia` would stop being `null`). The `members` shape
+defaults a name to `QA <key>`, so the accounts keep their old names, emails,
+ids and the group's 3-members/1-teacher counts. Case text gained a dated
+observation; the spec's header comment now names the declared roster.
+Rule: R24 read in both directions — audit the default accounts before a role
+change and the cases built on the old default after it; when the old default was
+the case's premise, the case declares its own roster and the default never goes
+back.
 
 ### Phase 3 — entitlements and limits
 

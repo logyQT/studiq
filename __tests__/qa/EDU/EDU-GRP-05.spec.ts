@@ -15,10 +15,14 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *   bun scripts/qa-tenant.ts EDU-GRP-05 --fresh
  *
  * `group.manage` is a permission (ADR-0015 §4.1): the org `member` role holds `group.read`
- * at `group` scope and no `group.manage`, `group.member.manage` or `group.invite`, so the
- * `content` profile's educator is exactly „konto bez tej funkcji”; its manager (org
- * `admin`) holds every `group.*` key at `organization` and is the contrast that the
- * controls are permission-driven rather than missing for everyone. Every id comes from
+ * at `group` scope and no `group.manage`, `group.member.manage` or `group.invite`, so an
+ * educator on that role is exactly „konto bez tej funkcji”. The `content` profile's
+ * default educator is a real Teacher since 2b-3, so this case declares its own roster
+ * (`members` in `__tests__/qa/profiles/EDU-GRP-05.json`: an `admin` manager, a `member`
+ * educator and a `member` student) instead of leaning on a default that now carries
+ * `group.manage`; its manager (org `admin`) holds every `group.*` key at `organization` and
+ * is the contrast that the controls are permission-driven rather than missing for
+ * everyone. Every id comes from
  * `tenantKey('qa/cases/EDU-GRP-05.md', 'EDU-GRP-05#<suffix>', 'qa-shared')` +
  * `tenantId(key, entity)`; the spec reads them through `loadTenant('EDU-GRP-05')`.
  *
