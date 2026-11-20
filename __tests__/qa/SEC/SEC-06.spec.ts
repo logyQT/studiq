@@ -35,20 +35,23 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    route gates on the account type (the gate runs before validation: 403, not 422).
  * 2. As the **teacher** (org role `teacher`, Hub plan): `PUT /organization/members`
  *    and `POST /organization/roles` → **403 FORBIDDEN** (the teacher role holds
- *    neither `org.member.manage` nor `org.role.manage`), and a bulk invitation that
- *    would grant a privileged role (`admin`, `teacher`) → **403 FORBIDDEN**
- *    (`can_assign_org_role`, #189).
+ *    neither `org.member.manage` nor `org.role.manage`), and **every** bulk org
+ *    invitation — `admin`, `teacher` or the plain `member` — → **403 FORBIDDEN**:
+ *    since 2b-5 the bulk route requires `org.invitation.manage` and
+ *    `can_assign_org_role`'s teacher-name exception is deleted (ADR-0015 §4.3,
+ *    §10; pinned in `__tests__/integration/invitations.test.ts`).
  * 3. Nothing changed: the organization's `org_members` rows and role ids are exactly
  *    the seeded baseline, no invitation row exists for any address the rejected
  *    attempts used, and no custom role was created.
  *
- * Deliberate deviation from the literal step 2 (verified in the walk, not a defect):
- * an org teacher **may** bulk-invite the plain `member` role — that is the classroom
- * invite flow (#189 "allows an org teacher to invite the member role", see
- * `__tests__/integration/invitations.test.ts`), so the teacher's rejection is scoped
- * to organization management: role changes, custom roles and privileged invitations.
- * The spec asserts that legitimate teacher invite as the "no over-block" control and
- * documents it in the case file.
+ * 2b-5 contract (2026-11-20): an **org** invite requires `org.invitation.manage`
+ * on any role, including the plain `member` — the old `can_assign_org_role`
+ * teacher-name exception (#189 "allows an org teacher to invite the member role")
+ * is deleted (ADR-0015 §4.3, §10). A Teacher's classroom path is a **class**
+ * invite on a group they teach, gated on `group.invite`, not an org invite. The
+ * spec therefore expects the teacher's member-role bulk invite to be refused too,
+ * and the "no over-block" control for the invite surface is the **manager's**
+ * bulk invite asserted below.
  *
  * Adjacent regression that matters: the same three calls succeed for the tenant's
  * organization admin on the same active organization (member role change → 200,
@@ -209,13 +212,14 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
     const studentRoleName = `SEC-06 student role ${run}`;
     const teacherInviteEmail = email('teacher', 'admin-invite');
     const teacherRoleName = `SEC-06 teacher role ${run}`;
-    const teacherAllowedEmail = email('teacher', 'member-invite');
+    const teacherMemberInviteEmail = email('teacher', 'member-invite');
     const managerInviteEmail = email('manager', 'member-invite');
     const managerRoleName = `SEC-06 role ${run}`;
     const rejectedEmails = [
       studentInviteEmail,
       teacherInviteEmail,
       email('teacher', 'role-invite'),
+      teacherMemberInviteEmail,
     ];
 
     /** `org_members` rows of this tenant, sorted so the comparison is stable. */
@@ -362,8 +366,11 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       'teacher POST /organization/roles with an invalid body',
     );
 
-    // Privileged invitations are refused: a teacher may grant the plain `member`
-    // role only, never `admin`/`teacher` (#189).
+    // Every org invitation is refused: the bulk route requires
+    // `org.invitation.manage`, which the teacher role does not hold — for
+    // privileged roles and for the plain `member` alike (2b-5: the
+    // `can_assign_org_role` teacher-name exception is deleted; the classroom
+    // path is a class invite on `group.invite`, not an org invite).
     expectForbidden(
       await call(page, 'POST', BULK_INVITES_URL, {
         invitations: [{ email: teacherInviteEmail, targetOrgRoleId: adminRoleId }],
@@ -380,6 +387,12 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
         ],
       }),
       'teacher POST /organization/invites/bulk with the teacher role',
+    );
+    expectForbidden(
+      await call(page, 'POST', BULK_INVITES_URL, {
+        invitations: [{ email: teacherMemberInviteEmail, targetOrgRoleId: memberRoleId }],
+      }),
+      'teacher POST /organization/invites/bulk with the member role',
     );
 
     // --- "brak zmian ról/zaproszeń/ról niestandardowych" -------------------
@@ -403,40 +416,10 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
     await page.goto('/edu');
     await expect(page).toHaveURL(/\/edu(\/|$)/, { timeout: 20_000 });
 
-    // --- Adjacent control: the teacher's classroom invite still works ------
-    // Deliberate deviation from the literal case step 2, confirmed in the walk:
-    // an org teacher may invite the plain `member` role (#189); only organization
-    // management and privileged grants are forbidden.
-    const teacherInvite = await call(page, 'POST', BULK_INVITES_URL, {
-      invitations: [{ email: teacherAllowedEmail, targetOrgRoleId: memberRoleId }],
-    });
-    expect(
-      teacherInvite.status,
-      `teacher bulk invite with the member role → ${teacherInvite.body}`,
-    ).toBe(200);
-    const teacherInviteBody = asJson<Envelope<{ results: BulkResult[] }>>(
-      JSON.parse(teacherInvite.body),
-    );
-    expect(teacherInviteBody.success).toBe(true);
-    const teacherInviteResults = teacherInviteBody.data?.results ?? [];
-    expect(teacherInviteResults).toHaveLength(1);
-    const [teacherInviteResult] = teacherInviteResults;
-    if (!teacherInviteResult) throw new Error(`${CASE} the teacher invite returned no result`);
-    expect(teacherInviteResult).toMatchObject({
-      email: teacherAllowedEmail,
-      success: true,
-    });
-
-    expect(await invitationsFor([teacherAllowedEmail])).toEqual([
-      {
-        id: teacherInviteResult.data.invitationId,
-        email: teacherAllowedEmail,
-        target_org_role_id: memberRoleId,
-        inviter_id: teacher.id,
-      },
-    ]);
-
-    // --- Positive control: the admin may do all three operations ------------
+    // --- No over-block control: the manager's invite still works -----------
+    // Since 2b-5 an org invite needs `org.invitation.manage`, so no teacher org
+    // invite is legitimate — the manager's bulk member invite below is the
+    // "no over-block" control for the invite surface.
     await switchUser(page, tenant, 'manager');
 
     const managerInvite = await call(page, 'POST', BULK_INVITES_URL, {
@@ -486,7 +469,7 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       'the control role is listed for the organization',
     ).toMatchObject([{ id: createdRole.id, name: managerRoleName, isSystem: false }]);
 
-    // --- Final state: exactly the two allowed invitations, nothing else ----
+    // --- Final state: exactly the manager's one invitation, nothing else ---
     expect(await memberSnapshot(), 'the organization’s roles are back at the baseline').toEqual(
       baseline,
     );
@@ -496,30 +479,30 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       'the student still created no invitation',
     ).toEqual([]);
     expect(
-      await invitationsFor([teacherInviteEmail, email('teacher', 'role-invite')]),
-      'the teacher created no privileged invitation',
+      await invitationsFor([
+        teacherInviteEmail,
+        email('teacher', 'role-invite'),
+        teacherMemberInviteEmail,
+      ]),
+      'the teacher created no invitation at all — any org role needs `org.invitation.manage`',
     ).toEqual([]);
 
-    const allowedInvites = await invitationsFor([teacherAllowedEmail, managerInviteEmail]);
+    const allowedInvites = await invitationsFor([managerInviteEmail]);
     expect(
       allowedInvites.map((row) => ({
         email: row.email,
         target_org_role_id: row.target_org_role_id,
       })),
-      'only the two allowed member invitations exist',
-    ).toEqual(
-      expect.arrayContaining([
-        { email: teacherAllowedEmail, target_org_role_id: memberRoleId },
-        { email: managerInviteEmail, target_org_role_id: memberRoleId },
-      ]),
-    );
-    expect(allowedInvites, 'exactly two allowed invitations').toHaveLength(2);
+      'only the manager’s member invitation exists',
+    ).toEqual([{ email: managerInviteEmail, target_org_role_id: memberRoleId }]);
 
-    // The invitation list the manager UI reads contains both allowed rows.
+    // The invitation list the manager UI reads contains the allowed row only.
     const pending = await getData<Array<{ email: string; orgRoleName: string }>>(page, INVITES_URL);
-    expect(pending.map((row) => row.email)).toEqual(
-      expect.arrayContaining([teacherAllowedEmail, managerInviteEmail]),
-    );
+    const pendingEmails = pending.map((row) => row.email);
+    expect(pendingEmails, 'the manager’s invite is listed').toContain(managerInviteEmail);
+    for (const rejected of rejectedEmails) {
+      expect(pendingEmails, `no refused address ${rejected} is listed`).not.toContain(rejected);
+    }
 
     // The manager's own panel still loads with the created role in it.
     await page.goto('/manage/roles');

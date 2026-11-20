@@ -18,9 +18,9 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
  * the assignment writes and the staff read of an assignment's frozen item set
  * stop asking the legacy `member.manage` capability helper and ask the
  * permission the API checks. `can_assign_org_role` and the `invitations` SELECT
- * deliberately stay legacy: PostgREST refuses an UPDATE whose row the SELECT
- * policy hides, so moving the helper's manager half alone would leave the
- * intended caller unable to retarget (R25), and 2b-5 moves both halves with the
+ * deliberately stayed legacy in 2b-4: PostgREST refuses an UPDATE whose row the
+ * SELECT policy hides, so moving the helper's manager half alone would leave
+ * the intended caller unable to retarget (R25); 2b-5 moved both halves with the
  * class-invite rewrite.
  *
  * Both directions are pinned with real signed-in sessions against PostgREST, the

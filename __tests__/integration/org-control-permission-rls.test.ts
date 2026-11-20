@@ -27,7 +27,12 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const MIGRATION = 'supabase/migrations/20261120110000_org_control_permission_rls.sql';
+// 2b-5 owns the invitations policies now: its file re-states all four in full
+// (`alter policy` replaces in place), so replaying it restores the shipped
+// state. 2b-3's own file can no longer be replayed on a 2b-5 database — it
+// ends with a guard that pins the PRE-2b-5 invitations SELECT (the legacy
+// helper), which 2b-5 replaced — so the replay list is the newest file only.
+const MIGRATIONS = ['supabase/migrations/20261120170000_class_invites.sql'];
 
 const localDatabaseUrl = (() => {
   const raw = process.env.SUPABASE_DB_URL;
@@ -54,11 +59,13 @@ function requireLocalDatabaseUrl(): string {
   return localDatabaseUrl;
 }
 
-/** Install the shipped migration the way a reset would (`alter policy` is idempotent). */
+/** Install the shipped migrations the way a reset would (`alter policy` is idempotent). */
 async function installShippedSql(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
-    await sql.unsafe(readFileSync(MIGRATION, 'utf8'));
+    for (const migration of MIGRATIONS) {
+      await sql.unsafe(readFileSync(migration, 'utf8'));
+    }
   } finally {
     await sql.end();
   }
@@ -103,6 +110,11 @@ describe('org-control permission RLS', () => {
   let member: SupabaseClient<Database>;
   let teacher: SupabaseClient<Database>;
   let outsider: SupabaseClient<Database>;
+
+  /** A class the fixture teacher TEACHES (group.invite applies to it). */
+  let taughtGroupId: string;
+  /** A class of the same org the teacher does NOT teach. */
+  let otherGroupId: string;
 
   async function createUser(email: string, label: string, role: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -212,27 +224,21 @@ describe('org-control permission RLS', () => {
     // with no permission key. It must lose every predicate this slice moved.
     legacyRoleId = await customRole(orgId, `org-control-legacy-${tag}`, []);
 
-    // Invitation writes keep `rls_caller_can_assign_org_role` until 2b-5, and
-    // that helper still resolves the manager half from the legacy marker. The
-    // positive invitation caller therefore carries the permission AND the
-    // marker; the legacy control below carries only the marker and must still
-    // be refused, which is what proves the permission branch moved.
-    //
-    // The marker is also what keeps the row SELECT-visible: PostgREST refuses an
-    // UPDATE whose row the SELECT policy hides, and 2b-4 deliberately leaves the
-    // invitation read on the legacy branch (2b-5 moves both halves together).
+    // 2b-5 moved the invitation read+write onto the permissions: the
+    // `org.invitation.manage` branch of the SELECT policy is what keeps the
+    // row visible to the retarget caller below, so the marker is no longer
+    // needed on this role. The legacy control keeps the marker (it must lose
+    // every predicate the slices moved).
     invitationManagerRoleId = await customRole(orgId, `org-control-inviter-${tag}`, [
       'org.invitation.manage',
     ]);
 
-    for (const roleId of [legacyRoleId, invitationManagerRoleId]) {
-      const { error: featureError } = await service.from('org_role_features').insert({
-        org_role_id: roleId,
-        feature_key: 'member.manage',
-        is_enabled: true,
-      });
-      if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);
-    }
+    const { error: featureError } = await service.from('org_role_features').insert({
+      org_role_id: legacyRoleId,
+      feature_key: 'member.manage',
+      is_enabled: true,
+    });
+    if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);
 
     holderId = await createUser(`org-control-holder-${tag}@dev.local`, 'holder', 'manager');
     legacyId = await createUser(`org-control-legacy-${tag}@dev.local`, 'legacy', 'manager');
@@ -269,6 +275,29 @@ describe('org-control permission RLS', () => {
       userId: outsiderId,
       orgRoleId: foreignOrg.memberRoleId,
     });
+
+    // 2b-5: the teacher teaches one class of the org (group.invite applies to
+    // it) and not another.
+    const { data: taughtGroup, error: taughtError } = await service
+      .from('groups')
+      .insert({ organization_id: orgId, name: `taught-class-${tag}` })
+      .select('id')
+      .single();
+    if (taughtError) throw new Error(`taught group insert failed: ${taughtError.message}`);
+    taughtGroupId = taughtGroup.id;
+    const { data: otherGroup, error: otherError } = await service
+      .from('groups')
+      .insert({ organization_id: orgId, name: `other-class-${tag}` })
+      .select('id')
+      .single();
+    if (otherError) throw new Error(`other group insert failed: ${otherError.message}`);
+    otherGroupId = otherGroup.id;
+    const { error: rosterError } = await service.from('group_members').insert({
+      group_id: taughtGroupId,
+      user_id: teacherId,
+      role: 'teacher',
+    });
+    if (rosterError) throw new Error(`roster insert failed: ${rosterError.message}`);
 
     holder = await signIn(`org-control-holder-${tag}@dev.local`);
     legacy = await signIn(`org-control-legacy-${tag}@dev.local`);
@@ -772,11 +801,13 @@ describe('org-control permission RLS', () => {
       expect(data).toHaveLength(1);
     });
 
-    it('keeps the inviter branch and the grant-authority conjunct', async () => {
-      // A Teacher may invite into the system member role (the classroom flow
-      // 2b-5 rewrites). The inviter branch is what lets them edit their own
-      // row, and `rls_caller_can_assign_org_role`'s teacher-role-name half
-      // still bounds the target.
+    it('keeps the inviter read branch but refuses the retarget without org.invitation.manage', async () => {
+      // 2b-5 deleted `can_assign_org_role`'s teacher-name exception: the
+      // inviter branch still lets a teacher READ their own row through
+      // PostgREST, but the UPDATE's WITH CHECK asks
+      // `rls_caller_can_assign_org_role` (now `org.invitation.manage`) on the
+      // org branch, so a teacher can no longer retarget even to the member
+      // role — the classroom path is a class invite instead.
       const invitationId = await insertInvitation({
         organizationId: orgId,
         inviterId: teacherId,
@@ -784,13 +815,16 @@ describe('org-control permission RLS', () => {
         email: `teacher-invite-${tag}@example.com`,
       });
 
+      const ownRead = await teacher.from('invitations').select('id').eq('id', invitationId);
+      expect(ownRead.error).toBeNull();
+      expect(ownRead.data).toHaveLength(1);
+
       const ownEdit = await teacher
         .from('invitations')
         .update({ target_org_role_id: memberRoleId })
         .eq('id', invitationId)
         .select('id');
-      expect(ownEdit.error).toBeNull();
-      expect(ownEdit.data).toHaveLength(1);
+      expect(ownEdit.error?.code).toBe('42501');
 
       const escalation = await teacher
         .from('invitations')
@@ -798,20 +832,50 @@ describe('org-control permission RLS', () => {
         .eq('id', invitationId)
         .select('id');
       expect(escalation.error?.code, 'a Teacher cannot grant the Admin role').toBe('42501');
+
+      const { data: persisted } = await service
+        .from('invitations')
+        .select('target_org_role_id')
+        .eq('id', invitationId)
+        .single();
+      expect(persisted?.target_org_role_id).toBe(memberRoleId);
     });
 
-    it('still lets a Teacher INSERT the classroom invitation (2b-5 owns this policy)', async () => {
-      // The INSERT policy keeps `rls_caller_can_assign_org_role`'s teacher half:
-      // adding the org.invitation.manage conjunct here would refuse the
-      // classroom invite its POST route deliberately keeps.
-      const { error } = await teacher.from('invitations').insert({
-        email: `teacher-create-${tag}@example.com`,
+    it('refuses an org-invite INSERT for a teacher, but lets them INSERT a class invite for a class they teach', async () => {
+      // Org invite (group_id null): the INSERT's org branch asks
+      // `org.invitation.manage`, which the seeded Teacher role does not hold.
+      const orgInsert = await teacher.from('invitations').insert({
+        email: `teacher-org-create-${tag}@example.com`,
         target_org_role_id: memberRoleId,
         organization_id: orgId,
         inviter_id: teacherId,
         expires_at: new Date(Date.now() + 86_400_000).toISOString(),
       });
-      expect(error).toBeNull();
+      expect(orgInsert.error?.code).toBe('42501');
+
+      // Class invite (group_id set): `group.invite` on the taught class.
+      const classInsert = await teacher.from('invitations').insert({
+        email: `teacher-class-create-${tag}@example.com`,
+        target_org_role_id: memberRoleId,
+        organization_id: orgId,
+        inviter_id: teacherId,
+        group_id: taughtGroupId,
+        target_group_role: 'member',
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      expect(classInsert.error).toBeNull();
+
+      // ...but not for a class of the same org they do not teach.
+      const otherInsert = await teacher.from('invitations').insert({
+        email: `teacher-other-class-${tag}@example.com`,
+        target_org_role_id: memberRoleId,
+        organization_id: orgId,
+        inviter_id: teacherId,
+        group_id: otherGroupId,
+        target_group_role: 'member',
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      expect(otherInsert.error?.code).toBe('42501');
     });
 
     it('keeps the tenant scope on a foreign invitation', async () => {

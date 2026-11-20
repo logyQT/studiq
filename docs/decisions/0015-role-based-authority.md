@@ -287,6 +287,18 @@ carries `group_id` and `target_group_role`; RLS checks `group.invite` for that
 group. This removes the `can_assign_org_role` teacher-role-name exception and
 the hidden classroom UI dependency.
 
+> **2026-11-20 (phase 2b-5).** The row now exists: `invitations.group_id uuid
+null references groups(id)` + `target_group_role text null` (pair CHECK — an
+> org invite has neither, a class invite both; role CHECK = the
+> `group_members.role` values), and the four `invitations` policies split by
+> row shape — org invite → `org.invitation.manage`, class invite →
+> `rls_caller_has_group_permission(group_id, 'group.invite')`. The
+> teacher-role-name exception is deleted: `can_assign_org_role` resolves its
+> manager half from `org.invitation.manage`, and a teacher invites through a
+> class invite only. D7 in v1: a class invite targets an **existing org
+> member**, and accept adds the group membership with `target_group_role`
+> without granting or changing the member's org role.
+
 ### 4.4 Role assignment
 
 - `org_members.org_role_id` stays; one role per member per org.
@@ -304,6 +316,18 @@ the hidden classroom UI dependency.
 > `member.manage` marker. It cannot move alone: PostgREST refuses an UPDATE whose
 > row the SELECT policy hides, so the invitation write and read move together in
 > 2b-5.
+>
+> **2026-11-20 (phase 2b-5).** Done: `can_assign_org_role` now resolves its
+> manager half from `org.invitation.manage`, the `invitations` SELECT moved
+> with the writes (R25), and the teacher-name exception is deleted — a teacher
+> grants no org role through an invite at all; class invites are `group.invite`
+> on the group and never touch the invitee's org role on accept.
+>
+> **2026-11-20 (phase 2b-5 review).** Still open, and pre-existing on `main`:
+> `can_assign_org_role` checks only `org.invitation.manage`, not the "grant
+> only what you hold" rule above, so any holder of the capability can mint an
+> org invite targeting the Admin role. Phase 5 (the §4.4 enforcement pass)
+> owns the conjunct; 2b-5 deliberately did not add it.
 
 ---
 
@@ -640,6 +664,12 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > they minted; 2b-5 moves that read with the write half (2b-4 measured that
 > PostgREST refuses an UPDATE whose row the SELECT policy hides).
 >
+> **2026-11-20 (phase 2b-5).** Moved: the `invitations` SELECT now reads
+> `org.invitation.manage` on org-invite rows or `group.invite` on a class
+> invite's group (plus the `inviter_id = auth.uid()` branch), together with the
+> write policies — R25 closed. An `org.invitation.manage` holder can now
+> retarget a row they did not mint (previously a silent `200 []`).
+>
 > **2026-11-20 (phase 2b-4).** The control plane now enforces the catalog at the
 > table: `billing_subscriptions`' org read and the subscription actions of
 > `BillingService` (change plan, cancel, release a scheduled change, reconcile,
@@ -768,6 +798,14 @@ invitations ( ..., group_id uuid null references groups(id), target_group_role t
   `org.manage`, `study.*`, `test.*`).
 - `resource_permissions` (dead; dropped in phase 0b).
 - `can_assign_org_role` teacher-role-name exception.
+
+> **2026-11-20 (phase 2b-5).** Deleted: `can_assign_org_role` is now
+> `has_permission(actor, role's org, 'org.invitation.manage')` alone. A teacher
+> invites students through a class invite (`invitations.group_id` +
+> `target_group_role`, `group.invite` on that group), never through an org
+> invite; the invitation SELECT moved off `rls_caller_is_org_manager` in the
+> same slice (R25).
+
 - `has_org_feature` in RLS (or regenerate it from permissions only).
 
 > **Truth notes (2026-11-19, phase 0b).** `assignment.*` **stays**: the
@@ -833,6 +871,26 @@ The role editor is a first-class admin screen, not an API-only feature.
 
 This is the direct fix for the original intent: a teacher runs their class
 without any org-wide management capability.
+
+> **2026-11-20 (phase 2b-5).** Both invite shapes exist now:
+> `invitations.group_id` + `target_group_role` are set together on a class
+> invite (pair CHECK) and both null on an org invite. `POST
+/organization/invites` accepts either: a class target (`groupId` +
+> `groupRole`) is decided by `group.invite` on that group, an org target by
+> `org.invitation.manage`. D7 in v1: a class invite's invitee must be an
+> existing org member, and accepting it adds the group membership with
+> `target_group_role` (idempotent) without granting or changing the org role;
+> the invite UI that posts a group target is phase 6.
+>
+> **2026-11-20 (phase 2b-5 review).** The D7 invariant is now structural at
+> both planes: the accept RPC's class branch inserts `org_members` only
+> `where exists` in the same statement snapshot (`insert … select … where
+exists … on conflict do nothing`), so a membership row deleted between the
+> pre-check and the insert (READ COMMITTED re-snapshots every statement) is
+> not re-created with the invite's target role; and the write trigger
+> normalizes a class row's `target_org_role_id` to the system `member` role,
+> so a `group.invite` holder cannot persist a class invite carrying another
+> org role.
 
 ---
 

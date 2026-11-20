@@ -1,5 +1,5 @@
 import { Permission, type RequestContext } from '@studiq/authz';
-import { requirePermission } from '@studiq/server/lib/authz';
+import { requireGroupPermission, requirePermission } from '@studiq/server/lib/authz';
 import {
   type ControllerResponse,
   controllerResponse,
@@ -21,6 +21,14 @@ import {
 export class InvitationController {
   constructor(private service: InvitationService) {}
 
+  /**
+   * Create decides the invite's authority from the context alone
+   * (ADR-0015 §4.3, §7; D7): a CLASS target (`groupId` + `groupRole`) asks
+   * `group.invite` on that group — the group is resolved in the active org
+   * first, so a foreign id answers 404, not 403 (§7.1) — while an ORG target
+   * asks `org.invitation.manage`. The teacher-name exception is gone: a
+   * teacher invites through a class invite, never through an org invite.
+   */
   async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const parsedData = CreateInviteSchema.safeParse(body);
 
@@ -28,10 +36,20 @@ export class InvitationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsedData.error.issues);
     }
 
-    const result = await this.service.createInvitation(ctx, parsedData.data);
+    const data = parsedData.data;
+
+    if (data.groupId !== undefined) {
+      const group = await this.service.resolveInvitableGroup(ctx, data.groupId);
+      if (isFailure(group)) return controllerResponse.error(group.error);
+      requireGroupPermission(ctx, Permission.GROUP_INVITE, group.data);
+    } else {
+      await requirePermission(ctx, Permission.ORG_INVITATION_MANAGE);
+    }
+
+    const result = await this.service.createInvitation(ctx, data);
 
     if (isFailure(result)) {
-      return controllerResponse.error(result.error);
+      return controllerResponse.error(result.error, result.details);
     }
 
     return controllerResponse.created(result.data);
@@ -116,6 +134,11 @@ export class InvitationController {
   }
 
   async createBulk(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    // Bulk is the org-invitation surface: one `org.invitation.manage` check
+    // gates the whole batch (entries may not carry a class target — the
+    // service refuses them with a 422 naming the entry).
+    await requirePermission(ctx, Permission.ORG_INVITATION_MANAGE);
+
     const parsed = BulkInviteSchema.safeParse(body);
 
     if (!parsed.success) {

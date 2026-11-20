@@ -26,7 +26,11 @@ export async function GET(req: NextRequest) {
   )(req);
 }
 
-/** Create keeps its own authority until 2b-5 rewrites the invitation grant. */
+/**
+ * Create decides its authority in the controller: an org target asks
+ * `org.invitation.manage`, a class target (`groupId` + `groupRole`) asks
+ * `group.invite` on that group (ADR-0015 §4.3, D7).
+ */
 export const POST = authedRoute(
   ({ json }) => [json],
   (ctx, body) => invitationController.create(ctx, body),

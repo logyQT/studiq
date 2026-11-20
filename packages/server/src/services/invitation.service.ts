@@ -1,4 +1,5 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { type RequestContext } from '@studiq/authz';
+import { groupInOrg, type GroupInOrgRow } from '@studiq/server/lib/group-in-org';
 import { normalizeInviteToken } from '@studiq/server/lib/invite-token';
 import { error as logError, log, warn } from '@studiq/server/lib/log';
 import { getMailer } from '@studiq/server/lib/mailer';
@@ -66,6 +67,12 @@ interface LoadedInvite {
   orgRoleName: string;
   /** Organization the target role belongs to — must match `organizationId`. */
   roleOrganizationId: string | null;
+  /** Class target (ADR-0015 §4.3): null for an org invite. */
+  groupId: string | null;
+  targetGroupRole: string | null;
+  groupName: string | null;
+  /** Organization the target group belongs to — must match `organizationId`. */
+  groupOrganizationId: string | null;
 }
 
 export class InvitationService {
@@ -164,7 +171,7 @@ export class InvitationService {
     const { data, error } = await supabase
       .from('invitations')
       .select(
-        'email, inviter_id, is_accepted, expires_at, organization_id, target_org_role_id, organizations!inner(name), org_roles!inner(name, organization_id)',
+        'email, inviter_id, is_accepted, expires_at, organization_id, target_org_role_id, group_id, target_group_role, organizations!inner(name), org_roles!inner(name, organization_id), groups(name, organization_id)',
       )
       .eq('token', token)
       .maybeSingle();
@@ -181,14 +188,18 @@ export class InvitationService {
       organizationName: data.organizations.name,
       orgRoleName: data.org_roles.name,
       roleOrganizationId: data.org_roles.organization_id,
+      groupId: data.group_id ?? null,
+      targetGroupRole: data.target_group_role ?? null,
+      groupName: data.groups?.name ?? null,
+      groupOrganizationId: data.groups?.organization_id ?? null,
     };
   }
 
   /**
    * Common validity gate for preview and accept. An invitation is gone once it
-   * is expired, already used, or points at a role that is not part of its own
-   * organization (a cross-tenant reference would leak that org's permission
-   * scopes through the member row).
+   * is expired, already used, or points at a role or group that is not part of
+   * its own organization (a cross-tenant reference would leak that org's
+   * permission scopes / class through the member row).
    */
   private isInviteUsable(
     invite: LoadedInvite,
@@ -197,7 +208,8 @@ export class InvitationService {
       !invite.isAccepted &&
       new Date(invite.expiresAt) >= new Date() &&
       invite.organizationId !== null &&
-      invite.roleOrganizationId === invite.organizationId
+      invite.roleOrganizationId === invite.organizationId &&
+      (invite.groupId === null || invite.groupOrganizationId === invite.organizationId)
     );
   }
 
@@ -235,35 +247,72 @@ export class InvitationService {
    * membership is always verified against `org_members` — a cookie pointing at
    * a foreign org must not become a write target (#242).
    *
-   * The persona half is the create and bulk routes' until 2b-5 rewrites the
-   * invitation authority: they reach the classroom teacher→member exception
-   * through `can_assign_org_role`, and that flow is a Teacher. `can_assign_org_role`
-   * still resolves its manager half from the legacy `member.manage` marker, and
-   * 2b-5 moves that half with the read policy it depends on (PostgREST refuses an
-   * UPDATE whose row the SELECT policy hides). The list holds no invite-authority
-   * RPC at all — its capability is `org.invitation.manage`, decided by the
-   * controller from the context alone (ADR-0015 §7, D13 — persona is not
-   * authority).
+   * The capability is decided by the controller from the context alone
+   * (`org.invitation.manage` for an org invite, `group.invite` on the class for
+   * a class invite — ADR-0015 §7, D13: persona is not authority), so this
+   * method carries no persona check of its own.
    *
    * Note for future work: `ctx.permissionScopes` is resolved for `activeOrgId`
-   * only. If `org.invitation.manage` ever gates a *write* whose body can select
-   * another org, scopes must be resolved for the resolved target org (or
-   * `organizationId` must be restricted to `activeOrgId`).
+   * only. A class invite therefore targets a group of the ACTIVE org — the
+   * controller resolves the group there before the permission, and this method
+   * re-scopes the group lookup to the resolved target org, so a body naming a
+   * different member org cannot retarget the invite.
    */
   private async resolveTargetOrganization(
     supabase: SupabaseClient<Database>,
     ctx: RequestContext,
     requestedOrganizationId?: string,
   ): Promise<ServiceResult<string>> {
-    if (ctx.accountType !== AccountType.MANAGER && ctx.accountType !== AccountType.EDUCATOR) {
-      return failure('FORBIDDEN');
-    }
-
     return this.resolveMemberOrganization(
       supabase,
       ctx,
       requestedOrganizationId ?? ctx.activeOrgId ?? undefined,
     );
+  }
+
+  /**
+   * The group a class invite targets, resolved inside the caller's ACTIVE org
+   * (the only org `ctx.groupRoles`/`ctx.permissionScopes` answer for). A group
+   * of another org — or an unknown id — is NOT_FOUND, so the caller does not
+   * learn whether another tenant has it (§7.1).
+   */
+  async resolveInvitableGroup(
+    ctx: RequestContext,
+    groupId: string,
+  ): Promise<ServiceResult<GroupInOrgRow>> {
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+    return groupInOrg(await this.clientFactory(), ctx.activeOrgId, groupId);
+  }
+
+  /**
+   * D7: a class invite targets an EXISTING org member — external invites are a
+   * later phase. The email must name a profile that already holds an
+   * `org_members` row in the target org; anything else is a 422 on the entry,
+   * never a silent org invite.
+   */
+  private async findOrgMemberByEmail(
+    supabase: SupabaseClient<Database>,
+    organizationId: string,
+    email: string,
+  ): Promise<ServiceResult<{ userId: string }>> {
+    const { data: member, error } = await supabase
+      .from('org_members')
+      .select('user_id, profiles!inner(email)')
+      .eq('organization_id', organizationId)
+      .eq('profiles.email', email)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!member) {
+      return failure('UNPROCESSABLE_ENTITY', [
+        {
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_INPUT,
+          path: ['email'],
+        },
+      ]);
+    }
+    return success({ userId: member.user_id });
   }
 
   /** An invite may only grant a role that belongs to the target organization. */
@@ -286,15 +335,38 @@ export class InvitationService {
 
   /**
    * Single source of truth for "may `userId` grant `orgRoleId`?" — the same
-   * function the invitations INSERT policy calls. Runs on the service-role
-   * client with an explicit actor, so it also works under the integration
-   * harness (whose user client is a service client) and cannot be spoofed:
-   * `p_actor` is always `ctx.userId` from the verified JWT.
+   * function the invitations INSERT/UPDATE policies call on their org branch.
+   * Runs on the service-role client with an explicit actor, so it also works
+   * under the integration harness (whose user client is a service client) and
+   * cannot be spoofed: `p_actor` is always `ctx.userId` from the verified JWT.
+   *
+   * Since 2b-5 its manager half is `org.invitation.manage`; the teacher-name
+   * exception is deleted (a teacher invites through a class invite's
+   * `group.invite` instead).
    */
   private async canAssignRole(userId: string, orgRoleId: string): Promise<ServiceResult<boolean>> {
     const { data, error } = await this.createAdminClient().rpc('can_assign_org_role', {
       p_actor: userId,
       p_role_id: orgRoleId,
+    });
+
+    if (error) return toDbFailure(error);
+    return success(data);
+  }
+
+  /**
+   * The actor-parameterized twin of 2b-2's `rls_caller_has_group_permission`, for
+   * the service-role preview/accept re-check of a CLASS invite's inviter.
+   */
+  private async hasGroupPermission(
+    userId: string,
+    groupId: string,
+    permission: string,
+  ): Promise<ServiceResult<boolean>> {
+    const { data, error } = await this.createAdminClient().rpc('has_group_permission', {
+      p_actor: userId,
+      p_group_id: groupId,
+      p_permission: permission,
     });
 
     if (error) return toDbFailure(error);
@@ -319,14 +391,19 @@ export class InvitationService {
   }
 
   /**
-   * The inviter must still be allowed to grant the target role. Re-checked at
-   * preview and accept: an invitation minted by a manager who was later demoted
-   * (or by a member who should never have had the capability) is dead.
+   * The inviter must still be allowed to grant the invite. Re-checked at
+   * preview and accept: an invitation minted by someone whose authority was
+   * later revoked is dead. An ORG invite re-checks the org-role grant
+   * (`can_assign_org_role`, now `org.invitation.manage`); a CLASS invite
+   * re-checks `group.invite` on its group, because that — not an org-role
+   * grant — is what authorizes a class invite (ADR-0015 §4.3, D7).
    */
   private async isInviteAuthorized(invite: LoadedInvite): Promise<boolean> {
     if (!invite.inviterId) return false;
 
-    const authority = await this.canAssignRole(invite.inviterId, invite.targetOrgRoleId);
+    const authority = invite.groupId
+      ? await this.hasGroupPermission(invite.inviterId, invite.groupId, 'group.invite')
+      : await this.canAssignRole(invite.inviterId, invite.targetOrgRoleId);
     // An RPC error means the invitation cannot be proven valid, as before.
     return authority.success && authority.data;
   }
@@ -357,11 +434,28 @@ export class InvitationService {
     );
     if (!roleCheck.success) return roleCheck;
 
-    // May this caller grant that role at all? The INSERT policy asks the same
-    // question, but RLS is bypassed by the service-role client (integration
-    // harness, admin flows), so the endpoint must not rely on it (#189).
-    const authority = await this.assertCanAssignRoles(ctx, [data.targetOrgRoleId]);
-    if (!authority.success) return authority;
+    const isClassInvite = data.groupId !== undefined;
+
+    if (isClassInvite) {
+      // The controller resolved the group in the ACTIVE org before its
+      // `group.invite` check; re-scope the lookup to the resolved target org so
+      // a body naming a different member org cannot retarget the invite
+      // (a foreign group is 404, §7.1).
+      const group = await groupInOrg(supabase, targetOrg.data, data.groupId!);
+      if (!group.success) return group;
+
+      // D7: a class invite targets an existing org member only.
+      const invitee = await this.findOrgMemberByEmail(supabase, targetOrg.data, data.email);
+      if (!invitee.success) return invitee;
+    } else {
+      // May this caller grant that role at all? The INSERT policy asks the same
+      // question on its org branch, but RLS is bypassed by the service-role
+      // client (integration harness, admin flows), so the endpoint must not
+      // rely on it (#189). A class invite needs no org-role grant: the accept
+      // flow never applies `target_org_role_id` to an existing member.
+      const authority = await this.assertCanAssignRoles(ctx, [data.targetOrgRoleId]);
+      if (!authority.success) return authority;
+    }
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -381,6 +475,9 @@ export class InvitationService {
         organization_id: targetOrg.data,
         inviter_id: ctx.userId,
         expires_at: expiresAt.toISOString(),
+        // A class invite carries the class target; the pair CHECK on the table
+        // rejects a half-set pair, and the schema already did.
+        ...(isClassInvite ? { group_id: data.groupId, target_group_role: data.groupRole } : {}),
       })
       .select('id, token')
       .single();
@@ -453,6 +550,17 @@ export class InvitationService {
           code: 'custom',
           message: ValidationErrorCode.INVALID_INPUT,
           path: ['invitations', index, 'organizationId'],
+        });
+      }
+      // Bulk is the org-invitation surface: the batch's authority is one
+      // `org.invitation.manage` check for the whole batch, so an entry may not
+      // carry a class target. Class invites go through the single POST, whose
+      // controller decides `group.invite` on each entry's group.
+      if (invite.groupId !== undefined || invite.groupRole !== undefined) {
+        foreignOrgIssues.push({
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_INPUT,
+          path: ['invitations', index, 'groupId'],
         });
       }
     });
@@ -575,6 +683,10 @@ export class InvitationService {
         organizationName: string;
         targetRole: string;
         orgRoleName: string;
+        /** Class target (ADR-0015 §4.3): null for an org invite. */
+        groupId: string | null;
+        groupName: string | null;
+        groupRole: string | null;
       },
       'NOT_FOUND' | 'GONE'
     >
@@ -590,13 +702,18 @@ export class InvitationService {
     if (!(await this.isInviteAuthorized(invite))) return failure('GONE');
 
     // `inviterId` deliberately stays server-side: the public preview only needs
-    // the org/role names.
+    // the org/role names — and, for a class invite, the class name/role of the
+    // SAME org (the group-org check in `isInviteUsable` guarantees it), so no
+    // other tenant's data can leak through the preview.
     return success({
       email: invite.email,
       organizationId: invite.organizationId,
       organizationName: invite.organizationName,
       targetRole: invite.targetOrgRoleId,
       orgRoleName: invite.orgRoleName,
+      groupId: invite.groupId,
+      groupName: invite.groupName,
+      groupRole: invite.targetGroupRole,
     });
   }
 

@@ -745,19 +745,58 @@ describe('RLS tenant isolation (#191)', () => {
     });
     expect(spoofError?.code).toBe('42501');
 
-    // The teacher flow may invite students (member role) only.
+    // 2b-5: the teacher flow is a CLASS invite now. An org invite is refused
+    // for a teacher (the teacher-role-name exception is deleted), while a
+    // class invite for a class they teach goes through `group.invite`.
+    const { data: taughtGroup, error: taughtGroupError } = await service
+      .from('groups')
+      .insert({ organization_id: orgA.orgId, name: `taught-${tag}` })
+      .select('id')
+      .single();
+    expect(taughtGroupError).toBeNull();
+    await seedGroupMembership({ groupId: taughtGroup!.id, userId: teacherId, role: 'teacher' });
+
+    const { error: teacherOrgError } = await teacherSession.from('invitations').insert({
+      email: `rls191-b1-teacher-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: teacherId,
+      target_org_role_id: orgA.memberRoleId,
+      expires_at: expiry,
+    });
+    expect(teacherOrgError?.code).toBe('42501');
+
     const { data: teacherInvite, error: teacherInviteError } = await teacherSession
       .from('invitations')
       .insert({
-        email: `rls191-b1-teacher-${tag}@dev.local`,
+        email: `rls191-b1-teacher-class-${tag}@dev.local`,
         organization_id: orgA.orgId,
         inviter_id: teacherId,
         target_org_role_id: orgA.memberRoleId,
+        group_id: taughtGroup!.id,
+        target_group_role: 'member',
         expires_at: expiry,
       })
       .select('id, token')
       .single();
     expect(teacherInviteError).toBeNull();
+
+    // ...and not for a class they do not teach (a second, untaught group).
+    const { data: otherGroup, error: otherGroupError } = await service
+      .from('groups')
+      .insert({ organization_id: orgA.orgId, name: `untaught-${tag}` })
+      .select('id')
+      .single();
+    expect(otherGroupError).toBeNull();
+    const { error: teacherOtherClassError } = await teacherSession.from('invitations').insert({
+      email: `rls191-b1-teacher-other-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: teacherId,
+      target_org_role_id: orgA.memberRoleId,
+      group_id: otherGroup!.id,
+      target_group_role: 'member',
+      expires_at: expiry,
+    });
+    expect(teacherOtherClassError?.code).toBe('42501');
 
     const { error: teacherAdminError } = await teacherSession.from('invitations').insert({
       email: `rls191-b1-teacher-admin-${tag}@dev.local`,
@@ -1505,16 +1544,26 @@ describe('RLS tenant isolation (#191)', () => {
       p_role_id: orgA.adminRoleId,
     });
     expect(studentCanAssign).toBe(false);
+    // 2b-5: the teacher-role-name exception is deleted — a Teacher may not
+    // grant even the member role through an org invite any more (the
+    // classroom path is a class invite gated on `group.invite`).
     const { data: teacherCanAssignMember } = await teacherSession.rpc(
       'rls_caller_can_assign_org_role',
       { p_role_id: orgA.memberRoleId },
     );
-    expect(teacherCanAssignMember).toBe(true);
+    expect(teacherCanAssignMember).toBe(false);
     const { data: teacherCanAssignAdmin } = await teacherSession.rpc(
       'rls_caller_can_assign_org_role',
       { p_role_id: orgA.adminRoleId },
     );
     expect(teacherCanAssignAdmin).toBe(false);
+    // The manager half now resolves from `org.invitation.manage`, which the
+    // Admin role holds at organization scope.
+    const { data: adminCanAssignMember } = await adminSession.rpc(
+      'rls_caller_can_assign_org_role',
+      { p_role_id: orgA.memberRoleId },
+    );
+    expect(adminCanAssignMember).toBe(true);
 
     const { data: teacherGroupManage } = await teacherSession.rpc('rls_caller_has_org_feature', {
       p_organization_id: orgA.orgId,

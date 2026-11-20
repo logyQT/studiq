@@ -338,10 +338,19 @@ slice below lands.
   still persona-keyed (`ownerFromContext`), so a `student`/`educator` persona
   holding Admin or the Billing preset never reaches the gate; phase 5 owns the
   derivation.
-- 2b-5 — class invites use `group.invite` at group scope for existing org
-  members; add `invitations.group_id` + `target_group_role`, move
-  `can_assign_org_role`'s manager half and the invitation SELECT together with
-  `rls_caller_has_group_permission`, and delete the teacher-name exception.
+- **2b-5 — class invites. Delivered** (slice 5 of 9) on `feat/authority-2b-5`:
+  `invitations.group_id` + `target_group_role` (pair CHECK, index, group-org
+  trigger), class invites use `group.invite` at group scope for existing org
+  members (D7) via 2b-2's `rls_caller_has_group_permission`, the four
+  `invitations` policies split by row shape (org invite →
+  `org.invitation.manage`, class invite → `group.invite` on the group) with the
+  SELECT moved together with the writes (R25 closed),
+  `can_assign_org_role`'s manager half moved onto `org.invitation.manage` and
+  its teacher-name exception deleted, and the accept RPC adds the invitee to
+  the group with `target_group_role` (idempotent upsert) without touching an
+  existing member's org role. `POST /organization/invites` takes the paired
+  `groupId`/`groupRole`; the UI is phase 6 (no surface posts a group target
+  today).
 - 2b-6 — content-route sweep and the cross-package `authedRoute` adoption (the
   route-layer shape 2b-2 deferred).
 - 2b-7 — marker deletion: `role.builder`, `org.manage`, `member.manage` and
