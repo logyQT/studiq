@@ -27,6 +27,11 @@ TC.
 - Quiz name: the case's „Quiz próbny” carries the run suffix („Quiz próbny <suffix>”) so two
   runs on the same tenant never share a card; the spec addresses the quiz by the id the create
   response returns, never by name alone.
+- Own-only list check (2b-6): the spec also logs in as the tenant's `users.manager` (org
+  `admin`, holds `quiz.create` at `organization`), creates one quiz in the same organization
+  through `POST /api/v1/teacher/quizzes`, asserts it does **not** appear in the educator's
+  `GET /api/v1/teacher/quizzes`, and deletes it again as its creator, so the tenant ends as
+  the case found it.
 - Nothing shared is read or written: no admin setting, feature flag, plan, platform stat or
   singleton row, and no other tenant.
 
@@ -61,3 +66,7 @@ TC.
 
 - Przejście do edytora quizu (/edu/quizzes/<id>/edit).
 - Przycisk „Utwórz quiz” nieaktywny przy pustej nazwie.
+- Lista quizów nauczyciela pokazuje tylko quizy własne (2b-6: rola `teacher` ma
+  `quiz.read` w zakresie `own`): quiz utworzony przez admina organizacji w tej samej
+  organizacji nie pojawia się na liście (`GET /api/v1/teacher/quizzes` → 200, każdy
+  wiersz z `created_by` nauczyciela), a własny quiz tak.
