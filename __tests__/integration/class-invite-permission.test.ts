@@ -39,7 +39,12 @@ import { DELETE as inviteDelete } from '@/app/(backend)/api/v1/organization/invi
  * - accept adds the group membership with `target_group_role` (idempotent
  *   upsert) and never touches the existing member's org role; a tampered
  *   class invite for a non-member is refused by the RPC itself (GONE, no
- *   membership written);
+ *   membership written), and a tampered class invite for an EXISTING member
+ *   carrying the Admin target still leaves `org_members.org_role_id` alone
+ *   (the accept branch's org_members write is a no-op — mutation-proven);
+ * - the write trigger normalizes a class row's `target_org_role_id` to the
+ *   system `member` role, so a `group.invite` holder cannot persist a class
+ *   invite whose target org role is Admin;
  * - the token preview exposes the group name/role of the invite's own org.
  */
 
@@ -593,6 +598,28 @@ describe('class invites (2b-5) — API + PostgREST', () => {
         .eq('email', `pg-foreign-${tag}@example.com`);
       expect(rows).toEqual([]);
     });
+
+    it('normalizes a class invite target org role to the system member role at the table', async () => {
+      // A `group.invite` holder can mint the row, but the write trigger forces
+      // a class row's `target_org_role_id` to the system `member` role: the
+      // row cannot carry the Admin target (or any other org authority).
+      const teacherId = (await teacherSession.auth.getUser()).data.user!.id;
+      const { data: row, error } = await teacherSession
+        .from('invitations')
+        .insert({
+          email: `pg-admin-target-${tag}@example.com`,
+          target_org_role_id: adminRoleId,
+          organization_id: orgId,
+          inviter_id: teacherId,
+          group_id: taughtGroupId,
+          target_group_role: 'member',
+          expires_at: expiry(),
+        })
+        .select('id, target_org_role_id')
+        .single();
+      expect(error).toBeNull();
+      expect(row?.target_org_role_id).toBe(memberRoleId);
+    });
   });
 
   /** Mint a class invite for the seeded student through the real POST route. */
@@ -775,6 +802,58 @@ describe('class invites (2b-5) — API + PostgREST', () => {
         .eq('id', row.id)
         .single();
       expect(invite?.is_accepted).not.toBe(true);
+    });
+
+    it('accept of a tampered class invite (target org role Admin) keeps the existing member org role', async () => {
+      // Seeded past the write trigger (`session_replication_role = replica` on
+      // a direct connection): a class row still carrying the Admin target is
+      // exactly what a manual write or a future regression can leave behind,
+      // and the accept branch ALONE must be safe against it. The mutation
+      // proof for this case flips the class branch's `do nothing` to
+      // `do update set org_role_id = excluded.org_role_id` and must go red.
+      const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+      try {
+        await sql`set session_replication_role = replica`;
+        const [seeded] = await sql<Array<{ id: string; token: string }>>`
+          insert into public.invitations
+            (email, target_org_role_id, organization_id, inviter_id, group_id, target_group_role, expires_at)
+          values
+            (${student.email}, ${adminRoleId}, ${orgId}, ${admin.id}, ${otherGroupId}, 'teacher', ${expiry()})
+          returning id, token
+        `;
+        if (!seeded) throw new Error('tampered class invite seed failed');
+
+        mockUser(student);
+        const acceptRes = await acceptPost(
+          createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: seeded.token }),
+          }),
+        );
+        expect(acceptRes.status).toBe(200);
+      } finally {
+        await sql.end();
+      }
+
+      // The group membership IS added, with the invited group role.
+      const { data: groupRows } = await service
+        .from('group_members')
+        .select('group_id, user_id, role')
+        .eq('group_id', otherGroupId)
+        .eq('user_id', student.id);
+      expect(groupRows).toHaveLength(1);
+      expect(groupRows?.[0]?.role).toBe('teacher');
+
+      // The org membership is untouched: still exactly the member role — a
+      // class invite never grants or changes it, whatever the row carries.
+      const { data: membership } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', student.id)
+        .single();
+      expect(membership?.org_role_id).toBe(memberRoleId);
     });
   });
 });

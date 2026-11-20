@@ -27,10 +27,18 @@
 --
 -- The accept RPC gains the class branch: a class invite's invitee must already
 -- be an org member (D7 — checked BEFORE the claim so a refused accept never
--- consumes the token), the org-role upsert becomes a no-op for that member, and
--- the target group is joined with `target_group_role` (idempotent upsert). A
--- class invite can therefore never create an org membership or grant/change an
--- org role, no matter what `target_org_role_id` the row carries.
+-- consumes the token), the org-membership write is a no-op for that member
+-- (DO NOTHING keeps their current org role), and the target group is joined
+-- with `target_group_role` (idempotent upsert). A class invite can therefore
+-- never create an org membership or grant/change an org role, no matter what
+-- `target_org_role_id` the row carries. The class branch's org_members insert
+-- is SELF-GUARDING (`insert … select … where exists (…)`): the membership row
+-- must exist in the SAME statement snapshot, so a row deleted between the D7
+-- pre-check and the insert (READ COMMITTED gives every statement a fresh
+-- snapshot) writes nothing instead of re-creating the membership with the
+-- invite's target role. The write trigger additionally normalizes a class
+-- row's `target_org_role_id` to the organization's system `member` role, so a
+-- `group.invite` holder cannot even persist a class row carrying another role.
 --
 -- Re-runnable: `add column if not exists`, guarded constraint DO blocks,
 -- `if not exists` index, `alter policy` (replaces in place), `create or replace`
@@ -81,7 +89,10 @@ create index if not exists invitations_group_id_idx on public.invitations (group
 -- ==========================================
 -- The write trigger also validates the group: a class invite whose group
 -- belongs to another organization would write that tenant's class into this
--- org's `group_members` on accept.
+-- org's `group_members` on accept. For a class row it additionally NORMALIZES
+-- `target_org_role_id` to the organization's system `member` role: the accept
+-- RPC's class branch never applies that column (D7), so the row must not be
+-- able to carry org authority (Admin included) in the first place.
 -- ==========================================
 create or replace function public.validate_invitation_target_org_role()
 returns trigger
@@ -89,8 +100,9 @@ language plpgsql
 set search_path = ''
 as $$
 declare
-  v_role_org  uuid;
-  v_group_org uuid;
+  v_role_org      uuid;
+  v_group_org     uuid;
+  v_member_role_id uuid;
 begin
   select r.organization_id into v_role_org
   from public.org_roles r
@@ -112,6 +124,21 @@ begin
         new.group_id, new.organization_id
         using errcode = '23514';
     end if;
+
+    -- A class invite never grants or changes an org role (D7), so its target
+    -- org role is forced to the system `member` role of the invitation's org.
+    select r.id into v_member_role_id
+    from public.org_roles r
+    where r.organization_id = new.organization_id
+      and r.is_system
+      and r.name = 'member';
+
+    if v_member_role_id is null then
+      raise exception 'organization % has no system member role', new.organization_id
+        using errcode = '23514';
+    end if;
+
+    new.target_org_role_id := v_member_role_id;
   end if;
 
   return new;
@@ -354,8 +381,9 @@ alter policy "Org managers or inviter delete invitations" on public.invitations
 -- The accept RPC gains the class branch (see the header). The org branch is
 -- byte-for-byte the old behaviour; the class branch refuses a non-member
 -- BEFORE the claim (a refused accept never consumes the token), performs the
--- org-membership write as a no-op for the existing member (the org role is
--- NOT granted or changed by a class invite), upserts the target group with
+-- org-membership write as a self-guarding no-op for the existing member (the
+-- org role is NOT granted or changed by a class invite, and a membership row
+-- deleted mid-flight is not re-created), upserts the target group with
 -- `target_group_role`, and joins the default group as the org path does.
 -- ==========================================
 create or replace function public.accept_org_invitation(p_token text, p_user_id uuid)
@@ -442,9 +470,20 @@ begin
     -- Class invite: the org-membership write is a no-op for the existing
     -- member (DO NOTHING keeps their current org role), the target group is
     -- joined with the invited role (idempotent upsert), and the default group
-    -- join matches the org path.
+    -- join matches the org path. The org_members insert is SELF-GUARDING: the
+    -- membership row must exist in this statement's own snapshot, so a row
+    -- deleted between the D7 pre-check above and this statement (READ
+    -- COMMITTED re-snapshots every statement) inserts nothing — the previous
+    -- `values (…)` shape re-created the membership with
+    -- `v_invite.target_org_role_id` in exactly that window.
     insert into public.org_members (organization_id, user_id, org_role_id)
-    values (v_invite.organization_id, p_user_id, v_invite.target_org_role_id)
+    select v_invite.organization_id, p_user_id, v_invite.target_org_role_id
+    where exists (
+      select 1
+      from public.org_members m
+      where m.organization_id = v_invite.organization_id
+        and m.user_id = p_user_id
+    )
     on conflict on constraint org_members_organization_id_user_id_key
     do nothing;
 
@@ -499,7 +538,9 @@ grant execute on function public.accept_org_invitation(text, uuid) to service_ro
 -- policy is dropped), no invitations policy may still name the legacy
 -- `rls_caller_is_org_manager`, `can_assign_org_role` must resolve its manager
 -- half from `org.invitation.manage` and carry no teacher-name exception, the
--- accept RPC must carry the class branch, and the schema objects must exist.
+-- accept RPC must carry the class branch with its org_members insert
+-- self-guarding (same-snapshot `where exists`), the write trigger must
+-- normalize a class row's target org role, and the schema objects must exist.
 -- A re-application is a no-op because every statement above replaces in place.
 -- ==========================================
 do $$
@@ -615,6 +656,36 @@ begin
       and pg_get_functiondef(p.oid) like '%v_invite.target_group_role%'
   ) then
     raise exception 'accept_org_invitation no longer carries the class-invite branch';
+  end if;
+
+  -- The class branch's org_members insert is self-guarding: it selects the
+  -- membership only `where exists` in the same statement, so a membership row
+  -- absent at insert time is never (re-)created. The org branch keeps the
+  -- `values (…)` shape, so the pin is the `select v_invite.…` line plus the
+  -- `where exists (` clause, both unique to the class branch.
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'accept_org_invitation'
+      and pg_get_functiondef(p.oid) like '%select v_invite.organization_id, p_user_id, v_invite.target_org_role_id%'
+      and pg_get_functiondef(p.oid) like '%where exists (%'
+  ) then
+    raise exception 'accept_org_invitation''s class branch is no longer self-guarding (org_members insert without the same-snapshot exists check)';
+  end if;
+
+  -- The write trigger normalizes a class row's target org role to the system
+  -- member role, so a group.invite holder cannot persist Admin on a class row.
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'validate_invitation_target_org_role'
+      and pg_get_functiondef(p.oid) like '%new.target_org_role_id := v_member_role_id%'
+  ) then
+    raise exception 'the invitations write trigger no longer normalizes a class row''s target org role to the system member role';
   end if;
 
   -- Schema objects: both columns, both CHECKs, the index, the group-org trigger clause.
