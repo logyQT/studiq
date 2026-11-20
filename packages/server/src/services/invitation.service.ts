@@ -235,12 +235,12 @@ export class InvitationService {
    * membership is always verified against `org_members` — a cookie pointing at
    * a foreign org must not become a write target (#242).
    *
-   * The persona half stays until 2b-4 rewrites the invitation authority: the
-   * create and bulk routes still reach the classroom teacher→member exception
-   * through `can_assign_org_role`, and that flow is a Teacher. The list route
-   * no longer comes here: its capability is `org.invitation.manage`, decided by
-   * the controller from the context alone (ADR-0015 §7, D13 — persona is not
-   * authority).
+   * The persona half is the create and bulk routes' until 2b-4 rewrites the
+   * invitation authority: they reach the classroom teacher→member exception
+   * through `can_assign_org_role`, and that flow is a Teacher. The list holds no
+   * invite-authority RPC at all — its capability is `org.invitation.manage`,
+   * decided by the controller from the context alone (ADR-0015 §7, D13 — persona
+   * is not authority).
    *
    * Note for future work: `ctx.permissionScopes` is resolved for `activeOrgId`
    * only. If `org.invitation.manage` ever gates a *write* whose body can select

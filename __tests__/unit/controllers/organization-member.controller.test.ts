@@ -37,6 +37,17 @@ const groupInviterCtx: RequestContext = {
   permissionScopes: { 'group.invite': 'group' },
 };
 
+/**
+ * The shipped Billing preset: `org.billing.manage` + `org.seat.manage` and
+ * nothing else, yet `/manage/seats` fills its assign dialog from this endpoint.
+ */
+const seatManagerCtx: RequestContext = {
+  ...holderCtx,
+  accountType: AccountType.MANAGER,
+  orgRoleId: 'role-billing',
+  permissionScopes: { 'org.billing.manage': 'organization', 'org.seat.manage': 'organization' },
+};
+
 /** A cookie that names an org with no membership row: with-auth leaves both null. */
 const noOrgCtx: RequestContext = {
   ...holderCtx,
@@ -66,9 +77,10 @@ describe('OrganizationMemberController', () => {
   });
 
   describe('listMembers', () => {
-    // D25: the roster has three read authorities — its own key, a class
-    // manager's and a class inviter's. Each row pins one branch on a caller
-    // that holds nothing else, so dropping a branch cannot pass on another.
+    // D25: the roster has four read authorities — its own key, a class
+    // manager's, a class inviter's and the seat manager's. Each row pins one
+    // branch on a caller that holds nothing else, so dropping a branch cannot
+    // pass on another.
     it('reads the roster for an org.member.manage holder', async () => {
       mockService.listMembers.mockResolvedValueOnce({
         success: true,
@@ -87,6 +99,12 @@ describe('OrganizationMemberController', () => {
     it('reads the roster for a group.invite-only holder', async () => {
       mockService.listMembers.mockResolvedValueOnce({ success: true, data: [{ id: 'u-2' }] });
       const response = await controller.listMembers(groupInviterCtx);
+      expect(response.statusCode).toBe(200);
+      expect(response.data).toEqual([{ id: 'u-2' }]);
+    });
+    it('reads the roster for an org.seat.manage-only holder (the Billing preset)', async () => {
+      mockService.listMembers.mockResolvedValueOnce({ success: true, data: [{ id: 'u-2' }] });
+      const response = await controller.listMembers(seatManagerCtx);
       expect(response.statusCode).toBe(200);
       expect(response.data).toEqual([{ id: 'u-2' }]);
     });
@@ -162,6 +180,18 @@ describe('OrganizationMemberController', () => {
       ).rejects.toMatchObject({ statusCode: 403 });
       expect(mockService.changeRole).not.toHaveBeenCalled();
     });
+
+    // The read authority is not a write authority: the Billing preset reads the
+    // roster for its seat picker and still cannot change a role (D25).
+    it('refuses an org.seat.manage-only holder the role change', async () => {
+      await expect(
+        controller.changeRole(seatManagerCtx, {
+          targetUserId: '550e8400-e29b-41d4-a716-446655440000',
+          newOrgRoleId: '550e8400-e29b-41d4-a716-446655440001',
+        }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockService.changeRole).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeMember', () => {
@@ -198,6 +228,13 @@ describe('OrganizationMemberController', () => {
     it('refuses a Member-role caller with a valid target', async () => {
       await expect(
         controller.removeMember(memberCtx, '550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockService.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('refuses an org.seat.manage-only holder the removal', async () => {
+      await expect(
+        controller.removeMember(seatManagerCtx, '550e8400-e29b-41d4-a716-446655440000'),
       ).rejects.toMatchObject({ statusCode: 403 });
       expect(mockService.removeMember).not.toHaveBeenCalled();
     });

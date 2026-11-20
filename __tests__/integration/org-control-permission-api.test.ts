@@ -102,6 +102,22 @@ async function call(
   return { status: response.status, body: await response.json() };
 }
 
+/** One request through a route handler with no session and no cookie jar at all. */
+async function callAnonymous(
+  handler: (req: Request) => Promise<Response>,
+  url: string,
+): Promise<{ status: number; body: unknown }> {
+  // A session client must not be built at all: if the handler reaches the
+  // authenticated wrapper, `withAuth` calls this and the request fails loudly
+  // instead of borrowing the implementation a previous case installed.
+  vi.mocked(supabaseModule.createClient).mockReset();
+  vi.mocked(supabaseModule.createClient).mockRejectedValue(
+    new Error('an anonymous request reached the session client'),
+  );
+  const response = await handler(createNextRequest(`http://localhost${url}`));
+  return { status: response.status, body: await response.json() };
+}
+
 /** One request through a route handler whose path carries `[id]`. */
 async function callWithId(
   session: Session,
@@ -163,6 +179,8 @@ describe('org-control routes authorize on org permissions', () => {
   let educatorHolder: TestUserFixture;
   let classManager: TestUserFixture;
   let classInviter: TestUserFixture;
+  let billing: TestUserFixture;
+  let settingsOnly: TestUserFixture;
 
   let holderSession: Session;
   let educatorHolderSession: Session;
@@ -171,6 +189,8 @@ describe('org-control routes authorize on org permissions', () => {
   let outsiderSession: Session;
   let classManagerSession: Session;
   let classInviterSession: Session;
+  let billingSession: Session;
+  let settingsOnlySession: Session;
 
   async function roleWith(
     organizationId: string,
@@ -242,6 +262,22 @@ describe('org-control routes authorize on org permissions', () => {
     classManager = await createTestUser({ role: 'educator', password: PASSWORD });
     classInviter = await createTestUser({ role: 'educator', password: PASSWORD });
 
+    // D25's fourth branch, as shipped: the Billing preset is exactly
+    // `org.billing.manage` + `org.seat.manage`, and `/manage/seats` fills its
+    // assign dialog from this endpoint.
+    const billingRoleId = await roleWith(orgId, `org-member-billing-${tag}`, [
+      'org.billing.manage',
+      'org.seat.manage',
+    ]);
+    billing = await createTestUser({ role: 'manager', password: PASSWORD });
+
+    // The deny control is a *custom* role with keys and none of them the four
+    // read authorities, so the empty answer cannot be the Member role's alone.
+    const settingsOnlyRoleId = await roleWith(orgId, `org-member-settings-${tag}`, [
+      'org.settings.manage',
+    ]);
+    settingsOnly = await createTestUser({ role: 'manager', password: PASSWORD });
+
     await seedOrgMembership({ organizationId: orgId, userId: holder.id, orgRoleId: holderRoleId });
     await seedOrgMembership({
       organizationId: orgId,
@@ -257,6 +293,16 @@ describe('org-control routes authorize on org permissions', () => {
       organizationId: orgId,
       userId: classInviter.id,
       orgRoleId: classInviterRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: billing.id,
+      orgRoleId: billingRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: settingsOnly.id,
+      orgRoleId: settingsOnlyRoleId,
     });
     await seedOrgMembership({
       organizationId: orgId,
@@ -287,6 +333,8 @@ describe('org-control routes authorize on org permissions', () => {
     outsiderSession = await signIn(outsider.email);
     classManagerSession = await signIn(classManager.email);
     classInviterSession = await signIn(classInviter.email);
+    billingSession = await signIn(billing.email);
+    settingsOnlySession = await signIn(settingsOnly.email);
   });
 
   afterAll(async () => {
@@ -352,7 +400,7 @@ describe('org-control routes authorize on org permissions', () => {
       expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
     });
 
-    // D25: the roster has three read authorities. Each case is a caller whose
+    // D25: the roster has four read authorities. Each case is a caller whose
     // role carries one of them and nothing else, so it pins that branch.
     it('lists the roster for a group.manage-only caller (a class manager)', async () => {
       const { status, body } = await call(
@@ -380,6 +428,21 @@ describe('org-control routes authorize on org permissions', () => {
       expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
     });
 
+    it('lists the roster for the Billing preset (org.billing.manage + org.seat.manage)', async () => {
+      const { status, body } = await call(
+        billingSession,
+        getMembers,
+        '/api/v1/organization/members',
+        undefined,
+        orgId,
+      );
+
+      expect(status).toBe(200);
+      expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
+      // The seat picker needs the people, not just a non-empty envelope.
+      expect(JSON.stringify(body)).toContain(member.email);
+    });
+
     // The deny shape is an empty list, not a 403 (AUT-19 accepts either). The
     // body is pinned exactly: a status-only assertion would pass on a leak.
     it('answers a Member-role caller with an empty list and no roster data', async () => {
@@ -402,6 +465,8 @@ describe('org-control routes authorize on org permissions', () => {
         educatorHolder,
         classManager,
         classInviter,
+        billing,
+        settingsOnly,
         outsider,
         disposable,
       ]) {
@@ -409,6 +474,19 @@ describe('org-control routes authorize on org permissions', () => {
         expect(raw).not.toContain(account.id);
       }
       expect(raw).not.toContain('@');
+    });
+
+    it('answers a custom role with none of the four read keys with an empty list', async () => {
+      const { status, body } = await call(
+        settingsOnlySession,
+        getMembers,
+        '/api/v1/organization/members',
+        undefined,
+        orgId,
+      );
+
+      expect(status).toBe(200);
+      expect(body).toEqual({ success: true, data: [] });
     });
 
     it('lists the whole org roster for an educator who holds the key, not only their classes', async () => {
@@ -587,7 +665,10 @@ describe('org-control routes authorize on org permissions', () => {
       );
 
       expect(status).toBe(200);
+      // A non-null envelope is not enough: an empty list satisfies it. The row
+      // the setup minted has to be in the answer.
       expect(listData(body)).not.toBeNull();
+      expect(JSON.stringify(body)).toContain(invitationId);
     });
 
     it('lets a Student-persona Admin list invitations (D13: persona is not authority)', async () => {
@@ -646,7 +727,6 @@ describe('org-control routes authorize on org permissions', () => {
       );
       expect(retarget.status).toBe(200);
 
-      // Revoke has no grant-authority conjunct: the permission alone is enough.
       const revoke = await callWithId(
         holderSession,
         removeInvite,
@@ -659,16 +739,18 @@ describe('org-control routes authorize on org permissions', () => {
     });
 
     it('keeps the ?token= preview public', async () => {
-      // Route order: the token branch runs before the authenticated wrapper.
-      const { status } = await call(
-        memberSession,
+      // No session and no cookie jar: the token is the capability, so the branch
+      // must answer without one. `createClient` is not mocked for this call, and
+      // the assertion below proves the authenticated wrapper never ran.
+      const { status } = await callAnonymous(
         getInvites,
         '/api/v1/organization/invites?token=does-not-exist',
-        undefined,
-        null,
       );
 
       expect(status).toBe(404);
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(supabaseModule.createClient).not.toHaveBeenCalled();
     });
   });
 

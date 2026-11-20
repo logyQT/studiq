@@ -411,6 +411,28 @@ describe('org-control permission RLS', () => {
       expect(data).toEqual([]);
     });
 
+    // The self clause is on the DELETE policy's USING, so a manager's own row is
+    // filtered out of the statement: zero rows, no error, and the membership
+    // survives.
+    it('never lets a manager delete their own membership row', async () => {
+      const { data, error } = await holder
+        .from('org_members')
+        .delete()
+        .eq('organization_id', orgId)
+        .eq('user_id', holderId)
+        .select('user_id');
+
+      expect(error).toBeNull();
+      expect(data).toEqual([]);
+
+      const { data: kept } = await service
+        .from('org_members')
+        .select('user_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', holderId);
+      expect(kept).toHaveLength(1);
+    });
+
     it('lets the holder remove another member and refuses the rest', async () => {
       const removal = await holder
         .from('org_members')
@@ -498,6 +520,44 @@ describe('org-control permission RLS', () => {
       const { data } = await service.from('org_seat_pools').select('id').eq('id', poolId);
       expect(data).toHaveLength(1);
     });
+
+    // The UPDATE policy carries the capability twice (USING and WITH CHECK). A
+    // `with check` left on the legacy predicate keeps the holder's row visible
+    // and then refuses the write with 42501, so this case pins the write itself
+    // and the untouched row for everybody else.
+    it('lets the holder UPDATE a pool and refuses everyone else without touching it', async () => {
+      const poolId = await insertPool(orgId, `ace-update-${tag}`, 1);
+
+      const holderUpdate = await holder
+        .from('org_seat_pools')
+        .update({ total: 4 })
+        .eq('id', poolId)
+        .select('id, total');
+      expect(holderUpdate.error).toBeNull();
+      expect(holderUpdate.data).toHaveLength(1);
+
+      const memberUpdate = await member
+        .from('org_seat_pools')
+        .update({ total: 99 })
+        .eq('id', poolId)
+        .select('id');
+      const legacyUpdate = await legacy
+        .from('org_seat_pools')
+        .update({ total: 99 })
+        .eq('id', poolId)
+        .select('id');
+
+      // A refused USING filters the row, so the answer is no rows, not 42501.
+      expect(memberUpdate.data).toEqual([]);
+      expect(legacyUpdate.data).toEqual([]);
+
+      const { data } = await service
+        .from('org_seat_pools')
+        .select('total')
+        .eq('id', poolId)
+        .single();
+      expect(data?.total).toBe(4);
+    });
   });
 
   describe('org_seat_assignments writes — org.seat.manage', () => {
@@ -556,6 +616,43 @@ describe('org-control permission RLS', () => {
         .eq('id', assignmentId);
       expect(data).toHaveLength(1);
     });
+
+    it('lets the holder UPDATE an assignment and refuses everyone else without touching it', async () => {
+      const poolId = await ensurePool(orgId, `assign-update-${tag}`, 2);
+      const otherPoolId = await ensurePool(orgId, `assign-update-target-${tag}`, 2);
+      const assignmentId = await insertAssignment(orgId, poolId, legacyId);
+
+      const holderUpdate = await holder
+        .from('org_seat_assignments')
+        .update({ pool_id: otherPoolId })
+        .eq('id', assignmentId)
+        .select('id, pool_id');
+      expect(holderUpdate.error).toBeNull();
+      expect(holderUpdate.data).toHaveLength(1);
+
+      // The member's own SELECT branch does not reach the write: the UPDATE
+      // policy has no self clause, so a refused USING answers zero rows.
+      const memberUpdate = await member
+        .from('org_seat_assignments')
+        .update({ pool_id: otherPoolId })
+        .eq('user_id', memberId)
+        .select('id');
+      const legacyUpdate = await legacy
+        .from('org_seat_assignments')
+        .update({ pool_id: poolId })
+        .eq('id', assignmentId)
+        .select('id');
+
+      expect(memberUpdate.data).toEqual([]);
+      expect(legacyUpdate.data).toEqual([]);
+
+      const { data } = await service
+        .from('org_seat_assignments')
+        .select('pool_id')
+        .eq('id', assignmentId)
+        .single();
+      expect(data?.pool_id).toBe(otherPoolId);
+    });
   });
 
   describe('org_seat_assignments read — the manager branch moved with the list route', () => {
@@ -611,6 +708,10 @@ describe('org-control permission RLS', () => {
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
 
+      // The revoking session is not the inviter, and the DELETE predicate has no
+      // `rls_caller_can_assign_org_role` conjunct: the permission alone is
+      // enough. (The API's revoke additionally pre-reads the row through the
+      // unmoved SELECT policy, so there the inviter branch is what shows it.)
       const { error: deleteError } = await invitationManager
         .from('invitations')
         .delete()

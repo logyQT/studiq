@@ -37,9 +37,12 @@ export interface RouteOptions extends WithAuthOptions {
  * `readsBody` is the route's own declaration that it consumes a body, not a guess
  * from the method: a `DELETE` that takes none must not have `req.json()` run on
  * it, or an empty stream becomes a parse error (400) in front of the controller's
- * own 403. Authentication runs first, so a refused caller never has its body
- * parsed. Throwing stays the controller's error path — `withAuth`'s
- * instrumentation turns an `AppError` into the envelope, so nothing here catches.
+ * own 403. Authentication runs first, so an unauthenticated caller never has its
+ * body parsed; authority is the controller's check and runs after it, so an
+ * authenticated caller without the permission whose JSON is malformed gets 400
+ * from the parse rather than the controller's 403. Throwing stays the
+ * controller's error path — `withAuth`'s instrumentation turns an `AppError`
+ * into the envelope, so nothing here catches.
  */
 async function respond<Body extends unknown[]>(
   req: NextRequest,
