@@ -351,8 +351,18 @@ slice below lands.
   existing member's org role. `POST /organization/invites` takes the paired
   `groupId`/`groupRole`; the UI is phase 6 (no surface posts a group target
   today).
-- 2b-6 — content-route sweep and the cross-package `authedRoute` adoption (the
-  route-layer shape 2b-2 deferred).
+- **2b-6 — content-route sweep and the cross-package `authedRoute` adoption. Delivered**
+  (slice 6 of 9) on `feat/authority-2b-6`: the 29 in-scope route files under
+  `teacher/`, `stats/`, `flashcards/stats/teacher` and `questions/[id]/ledger` drop
+  `allowedAccountTypes` and route through `authedRoute`/`authedRouteWithParams` with a
+  declared `readsBody`; the controllers enforce the family key from the context before
+  any schema parse (`quiz.*`, `assignment.*`, `stats.read`, `question_bank.update` on
+  the ledger), the quiz service resolves the same key against the loaded parent row
+  (foreign id 404, unreached same-org row 403) and the quiz list follows the caller's
+  `quiz.read` scope. The `teacher_assignments` INSERT policy moves off the JWT persona
+  onto `assignment.create` in the same PR (R4). R5 exceptions (`organization/route.ts`,
+  `teacher/classrooms/route.ts`) and `ai/*` (2b-9) stay. QA corpus: SEC-05, AUT-19 and
+  AUT-16 reconciled with the own-scope key model (spec + case text together).
 - 2b-7 — marker deletion: `role.builder`, `org.manage`, `member.manage` and
   `group.manage` from `ENTITLEMENTS`, `entitlement_catalog`,
   `entitlement_flags`, `plan_entitlements` and `org_role_features`, in that

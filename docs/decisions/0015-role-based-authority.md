@@ -697,6 +697,18 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > stop reading it — so **phase 5 (the 2b-9 slot) owns it**, together with the
 > read model's owner branch.
 
+> **2026-11-20 (phase 2b-6).** The first of the three asymmetries above is
+> resolved: the 29 content/stats/teacher route files no longer carry
+> `allowedAccountTypes` (the controllers gate on `quiz.*`, `assignment.*`,
+> `stats.read` and the ledger's `question_bank.update` from the context), and
+> the `teacher_assignments` INSERT policy moved off the JWT persona onto
+> `assignment.create` in the same PR (R4), so a student-persona Admin mints
+> runs like any other holder (D13). The org-wide `teacher_assignments` SELECT,
+> the `quiz_attempts` staff branch and the teacher-dashboard RPCs still read
+> the persona — they sit on shared multi-reader paths (five services read
+> `quiz_attempts` under different keys) and are phase 5's (2b-9) with the
+> `org_members` SELECT.
+
 ---
 
 ## 8. Data model

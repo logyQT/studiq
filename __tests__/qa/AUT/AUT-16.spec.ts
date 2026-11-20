@@ -158,12 +158,27 @@ test('a student is redirected from every teacher, manager and onboarding route t
     expect(await panelChrome(), `${route} must not paint teacher/manager chrome`).toEqual([]);
   }
 
-  // The panel data is gated as well, not only the pages: these two have no
-  // deny shape other than the error.
-  for (const api of ['/api/v1/teacher/assignments', '/api/v1/stats/teacher']) {
-    const response = await page.request.get(api);
-    expect(response.status(), `GET ${api} as a student`).toBe(403);
-    expect(await response.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
+  // The panel data is gated as well, not only the pages. The assignment list
+  // has no deny shape other than the error: a Member role carries no
+  // assignment.read, so it stays 403 (2b-6: the key, not the persona, decides).
+  const assignments = await page.request.get('/api/v1/teacher/assignments');
+  expect(assignments.status(), 'GET /api/v1/teacher/assignments as a student').toBe(403);
+  expect(await assignments.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
+
+  // The stats read is a content key the Member role holds at `own` (2b-6), so
+  // the teacher-stats route answers 200 with the caller's OWN content only —
+  // never the teacher's aggregates. 403 stays accepted as an alternative.
+  const stats = await page.request.get('/api/v1/stats/teacher');
+  expect([403, 200], 'GET /api/v1/stats/teacher as a student').toContain(stats.status());
+  if (stats.status() === 403) {
+    expect(await stats.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
+  } else {
+    const statsBody = await json<{ success: boolean }>(stats);
+    expect(statsBody).toMatchObject({ success: true });
+    expect(
+      JSON.stringify(statsBody),
+      'the member stats carry no teacher content (own-scope read)',
+    ).not.toContain('teacher');
   }
 
   // D25: the roster read is a capability a plain Member role lacks, and its

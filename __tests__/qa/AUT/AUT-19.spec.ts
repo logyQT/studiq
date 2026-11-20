@@ -21,7 +21,9 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * Acceptance criteria:
  * 1. signed out, `GET /api/v1/flashcards/decks` and `GET /api/v1/teacher/quizzes`
  *    answer `401` with the JSON envelope `{success:false, error:"UNAUTHORIZED"}`;
- * 2. as a student, `GET /api/v1/teacher/*` answers `403 FORBIDDEN`;
+ * 2. as a student, `GET /api/v1/teacher/*` answers `403 FORBIDDEN` or an
+ *    own-scoped empty list (2b-6: the quiz.read key, not the persona, decides
+ *    and a `group`-scope read reaches no quiz but the caller's own);
  * 3. as a student, `GET /api/v1/organization/members` returns either `403` or an
  *    empty list — no other user's member data may leak. The observed behaviour
  *    (walk on the shared app) is `403 FORBIDDEN`; the empty-list branch stays
@@ -123,7 +125,22 @@ test.describe('AUT-19 — API route protection matrix', () => {
     expect(me.data?.user?.email).toBe(student.email);
 
     // --- Case step 2: teacher-only endpoint ------------------------------
-    expectError(await call(page, TEACHER_QUIZZES), 403, 'FORBIDDEN');
+    // 2b-6: the persona gate is gone; the quiz.read key decides. A Member-role
+    // student holds quiz.read at `group`, which reaches no quiz but its own,
+    // so the list answers 200 with an own-scoped (here: empty) payload — never
+    // the teacher's quizzes. 403 stays accepted as the documented alternative.
+    const quizzes = await call(page, TEACHER_QUIZZES);
+    expect([403, 200], `${TEACHER_QUIZZES} must be 403 or an own-scoped list`).toContain(
+      quizzes.status,
+    );
+    if (quizzes.status === 403) {
+      expectError(quizzes, 403, 'FORBIDDEN');
+    } else {
+      const body = JSON.parse(quizzes.raw) as { data?: Array<{ created_by?: string }> }; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- untyped API envelope read for the leak check
+      for (const row of body.data ?? []) {
+        expect(row.created_by, 'the student list carries only own quizzes').toBe(student.id);
+      }
+    }
 
     // --- Case step 2: organization members -------------------------------
     // The case allows 403 or an empty list; anything else is a defect.

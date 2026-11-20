@@ -42,29 +42,43 @@ w `test.beforeAll`, więc każde niezależne uruchomienie startuje od świeżych
 1. POST /api/v1/teacher/quizzes {name:"x"}.
 2. POST /api/v1/teacher/assignments {...}.
 3. GET /api/v1/stats/teacher.
+4. GET /api/v1/teacher/quizzes oraz GET /api/v1/teacher/assignments.
 
 ## Expected result
 
-- Każde wywołanie: 403 FORBIDDEN (reguły tras) – brak utworzenia zasobów.
+- Od fazy 2b-6 bramką nie jest typ konta, lecz klucz katalogu uprawnień:
+  - POST /api/v1/teacher/quizzes → **201** (rola `member` ma `quiz.create` w
+    zakresie `own`; utworzony quiz należy do studenta; spec usuwa go potem jako
+    właściciel);
+  - POST /api/v1/teacher/assignments → **403 FORBIDDEN** (rola `member` nie ma
+    żadnego klucza `assignment.*`; nieprawidłowe ciało również 403, nigdy 422);
+  - GET /api/v1/teacher/assignments → **403 FORBIDDEN**;
+  - GET /api/v1/stats/teacher → **200** z własnymi statystykami studenta
+    (`stats.read` w zakresie `own`) – bez danych nauczyciela;
+  - GET /api/v1/teacher/quizzes → **200** z listą quizów własnych studenta
+    (pustą) – bez quizów nauczyciela;
+  - brak utworzenia zasobów staffowych: organizacja nie ma żadnych wierszy
+    `teacher_assignments`, a żaden wiersz tej tabeli nie ma `created_by` studenta.
 
 ## Observed during the suite walk (qa-env-3, shared app 3010 / DB 54421)
 
 - Konto `student` ma aktywną własną organizację (`GET /api/v1/me/orgs` →
   `orgRoleName: "member"`, `isActive: true`, `GET /api/v1/auth/me` → `account_type: "student"`),
   więc nie jest to „zalogowany bez organizacji”.
-- Krok 1: `POST /api/v1/teacher/quizzes {name:"x"}` → **403 `FORBIDDEN`**, nagłówek
+- Krok 1 (2b-6): `POST /api/v1/teacher/quizzes {name:"x"}` → **201** — rola `member` ma
+  `quiz.create` w zakresie `own`, więc własnościowe utworzenie quizu jest dozwolone; wiersz
+  ma `created_by` studenta. Spec usuwa go następnie jako właściciel (DELETE → 200).
+- Krok 2: `POST /api/v1/teacher/assignments {title:"x", …}` → **403 `FORBIDDEN`**, nagłówek
   `x-error-code: FORBIDDEN`, treść dokładnie `{"success":false,"error":"FORBIDDEN"}` — bez
   `data`. Ten sam request z niepoprawnym ciałem (`{}`) również zwraca **403**, a nie 422:
-  reguła konta działa przed walidacją wejścia.
-- Krok 2: `POST /api/v1/teacher/assignments {title:"x", …}` → **403 `FORBIDDEN`** (identyczna
-  koperta), także z pustym ciałem.
-- Krok 3: `GET /api/v1/stats/teacher` → **403 `FORBIDDEN`**, bez jakichkolwiek danych
-  nauczyciela w odpowiedzi.
-- „Brak utworzenia zasobów” potwierdzone w bazie klientem service-role: po trzech próbach
-  organizacja ma **0** wierszy w `quizzes` i **0** w `teacher_assignments`, a żaden wiersz w
-  tych tabelach nie ma `created_by` studenta.
-- Ścieżki sąsiednie: `GET /api/v1/teacher/quizzes` i `GET /api/v1/teacher/assignments` również
-  zwracają **403** dla studenta (ta sama reguła tras).
+  bramka klucza działa przed walidacją wejścia (rola `member` nie ma `assignment.*`).
+- Krok 3 (2b-6): `GET /api/v1/stats/teacher` → **200** z własnymi statystykami studenta
+  (`stats.read` w zakresie `own`, `totalQuestions` = 0) — bez jakichkolwiek danych nauczyciela.
+- „Brak utworzenia zasobów staffowych” potwierdzone w bazie klientem service-role: po próbach
+  organizacja ma **0** wierszy w `teacher_assignments`, a żaden wiersz tej tabeli nie ma
+  `created_by` studenta; quiz studenta został usunięty, więc `quizzes` też wraca do **0**.
+- Ścieżki sąsiednie (2b-6): `GET /api/v1/teacher/quizzes` → **200** z listą własnych quizów
+  studenta (pustą), `GET /api/v1/teacher/assignments` → **403** (brak `assignment.read`).
 - Kontrola pozytywna (ten sam tenant, ta sama aktywna organizacja): nauczyciel tworzy quiz i
   kartkówkę (**201**) oraz czyta statystyki nauczyciela (**200**) — odrzucenie studenta to
   granica uprawnień, nie zepsuta trasa ani fixture. Student nadal korzysta z własnego panelu:
