@@ -558,11 +558,47 @@ describe('org-control permission RLS', () => {
     });
   });
 
+  describe('org_seat_assignments read — the manager branch moved with the list route', () => {
+    it('lets the holder read an assignment it does not own', async () => {
+      const poolId = await ensurePool(orgId, 'spark', 2);
+      const assignmentId = await insertAssignment(orgId, poolId, teacherId);
+
+      const { data, error } = await holder
+        .from('org_seat_assignments')
+        .select('id, user_id')
+        .eq('id', assignmentId);
+
+      expect(error).toBeNull();
+      expect(data).toHaveLength(1);
+      expect(data?.[0]?.user_id).toBe(teacherId);
+    });
+
+    it('refuses the legacy manager marker and a plain member (only their own row)', async () => {
+      const poolId = await ensurePool(orgId, 'spark', 2);
+      const assignmentId = await insertAssignment(orgId, poolId, invitationManagerId);
+
+      const legacyRead = await legacy
+        .from('org_seat_assignments')
+        .select('id')
+        .eq('id', assignmentId);
+      // The member reads their OWN assignment by design; the row is another user's.
+      const memberRead = await member
+        .from('org_seat_assignments')
+        .select('id')
+        .eq('id', assignmentId);
+
+      expect(legacyRead.data).toEqual([]);
+      expect(memberRead.data).toEqual([]);
+    });
+  });
+
   describe('invitations writes — org.invitation.manage', () => {
     it('lets the holder retarget and revoke an invitation', async () => {
+      // Minted by someone else, so only the permission branch can authorize
+      // the retarget — the inviter branch is pinned separately below.
       const invitationId = await insertInvitation({
         organizationId: orgId,
-        inviterId: invitationManagerId,
+        inviterId: holderId,
         targetOrgRoleId: memberRoleId,
         email: `holder-${tag}@example.com`,
       });
@@ -585,7 +621,7 @@ describe('org-control permission RLS', () => {
     it('refuses retarget/revoke for the Member role and the legacy manager marker', async () => {
       const invitationId = await insertInvitation({
         organizationId: orgId,
-        inviterId: invitationManagerId,
+        inviterId: holderId,
         targetOrgRoleId: memberRoleId,
         email: `member-refused-${tag}@example.com`,
       });

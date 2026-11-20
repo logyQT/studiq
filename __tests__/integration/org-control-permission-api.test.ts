@@ -160,8 +160,10 @@ describe('org-control routes authorize on org permissions', () => {
   let studentAdmin: TestUserFixture;
   let outsider: TestUserFixture;
   let disposable: TestUserFixture;
+  let educatorHolder: TestUserFixture;
 
   let holderSession: Session;
+  let educatorHolderSession: Session;
   let memberSession: Session;
   let studentAdminSession: Session;
   let outsiderSession: Session;
@@ -209,8 +211,19 @@ describe('org-control routes authorize on org permissions', () => {
     studentAdmin = await createTestUser({ role: 'student', password: PASSWORD });
     outsider = await createTestUser({ role: 'manager', password: PASSWORD });
     disposable = await createTestUser({ role: 'student', password: PASSWORD });
+    // An educator persona holding the roster key: the old service narrowed an
+    // educator's list to the classes they belong to, which is a persona rule.
+    const educatorHolderRoleId = await roleWith(orgId, `org-member-educator-${tag}`, [
+      'org.member.manage',
+    ]);
+    educatorHolder = await createTestUser({ role: 'educator', password: PASSWORD });
 
     await seedOrgMembership({ organizationId: orgId, userId: holder.id, orgRoleId: holderRoleId });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: educatorHolder.id,
+      orgRoleId: educatorHolderRoleId,
+    });
     await seedOrgMembership({
       organizationId: orgId,
       userId: member.id,
@@ -234,6 +247,7 @@ describe('org-control routes authorize on org permissions', () => {
     });
 
     holderSession = await signIn(holder.email);
+    educatorHolderSession = await signIn(educatorHolder.email);
     memberSession = await signIn(member.email);
     studentAdminSession = await signIn(studentAdmin.email);
     outsiderSession = await signIn(outsider.email);
@@ -308,6 +322,20 @@ describe('org-control routes authorize on org permissions', () => {
         orgId,
       );
       expect(memberCall.status).toBe(403);
+    });
+
+    it('lists the whole org roster for an educator who holds the key, not only their classes', async () => {
+      const { status, body } = await call(
+        educatorHolderSession,
+        getMembers,
+        '/api/v1/organization/members',
+        undefined,
+        orgId,
+      );
+
+      expect(status).toBe(200);
+      // This caller teaches no class; the retired persona branch would answer [].
+      expect(listData(body)?.length ?? 0).toBeGreaterThanOrEqual(5);
     });
 
     it('lets the holder move a member between roles', async () => {
