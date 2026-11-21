@@ -19,14 +19,17 @@ import {
 import { createTypedServiceClient, latestShippedFunction } from '#test/integration/test-utils';
 
 // Phase 2a-1 (ADR-0015 §5.3, D18/D19): the role profile is the entitlement
-// subject for non-marker keys, and `has_org_feature` reads it in its zero-row
-// fallback. Both halves are pinned here:
+// subject, and `has_org_feature` reads it in its zero-row fallback. Both halves
+// are pinned here:
 //
 //  - the trigger writes admin/teacher `all`, member `learner`, custom `none`;
 //  - `seed_system_role_permissions()` is idempotent and mirrors
 //    `SYSTEM_ROLE_TEMPLATES`;
 //  - a user-authenticated PostgREST caller gets the profile (not the org plan)
 //    through the RLS fallback, which is where FP-01 was exploitable.
+//
+// Since 2b-7 the four legacy management markers are gone from the catalog, so
+// the profile governs every key and the `all` branch is the plan ceiling alone.
 
 const PASSWORD = 'Prof4Test!';
 const MIGRATION = 'supabase/migrations/20261119180000_authority_entitlement_profile.sql';
@@ -70,9 +73,6 @@ const HUB_ENTITLEMENTS = [
   'quiz',
   'ai.chat',
   'quiz.builder',
-  'group.manage',
-  'member.manage',
-  'role.builder',
   'advanced.stats',
   'branding',
 ] as const;
@@ -286,7 +286,7 @@ describe('org_roles.entitlement_profile', () => {
     }
   });
 
-  it('RLS: a zero-row all role gets the ceiling surface keys without markers', async () => {
+  it('RLS: a zero-row all role gets the whole plan ceiling', async () => {
     const { error } = await service
       .from('org_roles')
       .update({ entitlement_profile: 'all' })
@@ -297,10 +297,10 @@ describe('org_roles.entitlement_profile', () => {
     expect(await hasOrgFeature('branding')).toBe(true);
     expect(await hasOrgFeature('quiz.builder')).toBe(true);
     expect(await hasOrgFeature('advanced.stats')).toBe(true);
-    expect(await hasOrgFeature('member.manage')).toBe(false);
-    expect(await hasOrgFeature('role.builder')).toBe(false);
-    expect(await hasOrgFeature('org.manage')).toBe(false);
-    expect(await hasOrgFeature('group.manage')).toBe(false);
+
+    // A key no plan carries (the 1c-removed `documents`) is denied: the `all`
+    // branch is the plan ceiling alone since 2b-7 removed the marker lists.
+    expect(await hasOrgFeature('documents')).toBe(false);
   });
 
   it('RLS: a zero-row learner role gets only the learner set', async () => {

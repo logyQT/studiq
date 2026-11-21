@@ -6,23 +6,23 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * EDU-02 — Menu boczne nauczyciela (/edu).
  *
  * Prerequisite (reconciled with the tenant seeder): an educator signed in to
- * `/edu` whose entitlements include `group.manage` (the case's „plan Lite”) and
- * `ai.chat` (the case lists „Asystent Q” in the main section). The legacy manual
- * account (`teacher1@dev.local`, password `pass`) is never used.
+ * `/edu` whose org role carries the `group.manage` permission and whose
+ * entitlements include `ai.chat` (the case lists „Asystent Q” in the main
+ * section). The legacy manual account (`teacher1@dev.local`, password `pass`)
+ * is never used.
  *
  * Tenant: `__tests__/qa/profiles/EDU-02.json`, seeded once before Playwright starts
  * (`bun scripts/qa-tenant.ts EDU-02 --fresh`) and read through `loadTenant(CASE)`
  * — the spec never seeds at runtime. The profile is the `content` shape with a
  * declarative roster and the case's `hub` entitlement:
  *   - `manager`  — org role `admin`;
- *   - `teacher`  — org role `teacher` → `ai.chat` + `group.manage`;
- *   - `teacher2` — org role `member`  → `ai.chat`, no `group.manage`;
+ *   - `teacher`  — org role `teacher` → `ai.chat` + the `group.manage` permission;
+ *   - `teacher2` — org role `member`  → `ai.chat`, no `group.manage` permission;
  *   - `student`  — org role `member`, member of the default group `G1`.
- * The second educator is the negative control for the case's „Grupy widoczne tylko
- * gdy plan ma funkcję group.manage”: every organization plan includes
- * `group.manage`, so the absence branch is exercised through the role's resolved
- * feature set, which is exactly what `/api/v1/features/me` returns and what the
- * sidebar filters on.
+ * The second educator is the negative control for the case's „Grupy widoczne
+ * tylko gdy rola ma `group.manage`”: since 2b-7 `group.manage` exists only as
+ * a permission, so the absence branch is exercised through the role's
+ * permission map — exactly what `/api/v1/permissions/me` returns.
  *
  * The `hub` plan is applied to this tenant's own organization by the seeder with
  * `apply_org_plan` (the same RPC the billing webhook calls), so no global plan,
@@ -38,10 +38,10 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  *    `/edu/ai` exists since #433 and renders the assistant, so the intended
  *    behaviour is a working page, not the predicted 404.
  * 3. The „Klasa”/classroom section stays hidden (commented out in the sidebar).
- * 4. „Grupy” follows `group.read` (the key the class routes enforce), not the
- *    `group.manage` entitlement: a `member` role keeps the entry and reaches a
- *    read-only list, while „Asystent Q” (ai.chat) stays for the same account —
- *    so neither gate is a persona check.
+ * 4. „Grupy” follows `group.read` (the key the class routes enforce), not a plan
+ *    feature: a `member` role keeps the entry and reaches a read-only list,
+ *    while „Asystent Q” (ai.chat) stays for the same account — so neither gate
+ *    is a persona check.
  */
 
 const CASE = 'EDU-02';
@@ -50,6 +50,12 @@ const CASE = 'EDU-02';
 const tenant = loadTenant(CASE);
 
 const NOT_FOUND_COPY = 'Nie znaleziono strony';
+
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
 
 interface NavEntry {
   /** Sidebar item label, exactly as the Polish UI renders it. */
@@ -141,8 +147,18 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     expect(features.status(), 'GET /api/v1/features/me').toBe(200);
     const enabled = (await json<{ data: { features: string[] } }>(features)).data.features;
     expect(enabled, 'the teacher is entitled to the menu items under test').toEqual(
-      expect.arrayContaining(['ai.chat', 'group.manage']),
+      expect.arrayContaining(['ai.chat', 'branding']),
     );
+
+    // `group.manage` is a permission since 2b-7 (the entitlement marker is
+    // gone): the org `teacher` role holds it at `group` scope, which is what
+    // renders the class list's write controls.
+    const permissions = await page.request.get('/api/v1/permissions/me');
+    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
+      .data.permissions;
+    expect(Object.keys(scopes), 'the teacher may manage classes').toContain('group.manage');
+    expect(scopes['group.manage'], 'at the group scope').toBe('group');
 
     // 1. The three sections and their items, in order. The feature query resolves
     //    after the first paint, so poll until the gated items are in place.
@@ -217,11 +233,21 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     expect(features.status(), 'GET /api/v1/features/me').toBe(200);
     const enabled = (await json<{ data: { features: string[] } }>(features)).data.features;
     expect(enabled, 'ai.chat is entitled').toContain('ai.chat');
-    expect(enabled, 'group.manage is not entitled').not.toContain('group.manage');
 
-    // The entry follows `group.read` (what the class routes ask for), not the
-    // `group.manage` entitlement: a `member` role may read the class list it
-    // cannot edit, and the link must not lie about that.
+    // The negative half since 2b-7 reads the permission map: the org `member`
+    // role holds `group.read` but no `group.manage` at any scope.
+    const permissions = await page.request.get('/api/v1/permissions/me');
+    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
+      .data.permissions;
+    expect(Object.keys(scopes), 'the member role holds group.read').toContain('group.read');
+    expect(Object.keys(scopes), 'the member role holds no group.manage').not.toContain(
+      'group.manage',
+    );
+
+    // The entry follows `group.read` (what the class routes ask for), not a
+    // plan feature: a `member` role may read the class list it cannot edit,
+    // and the link must not lie about that.
     await expect
       .poll(() => readSidebar(page), { timeout: 15_000, message: 'educator sidebar menu' })
       .toEqual(SIDEBAR_GROUPS);
@@ -236,7 +262,7 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     await expect(nav, 'the classroom section is hidden').not.toContainText('Klasa');
 
     // Reading is not editing: the list opens, and every write control a
-    // `group.manage` holder would see is absent for this role.
+    // `group.manage` permission holder would see is absent for this role.
     await navLink(page, '/edu/groups').click();
     await expect(page).toHaveURL(/\/edu\/groups$/);
     await expect(page.getByRole('button', { name: 'Nowa grupa' })).toHaveCount(0);

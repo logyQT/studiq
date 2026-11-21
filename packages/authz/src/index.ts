@@ -5,7 +5,6 @@
 
 // ── Entitlement flags ───────────────────────────────────────────────────────
 export {
-  ADMIN_ONLY_ENTITLEMENTS,
   type Entitlement,
   type EntitlementKey,
   ENTITLEMENT_KEYS,
@@ -16,7 +15,6 @@ export {
   isEntitlementKey,
   isEntitlementProfile,
   LEARNER_ENTITLEMENTS,
-  LEGACY_MANAGEMENT_ENTITLEMENTS,
   ORG_SCOPED_ENTITLEMENTS,
   rolloutBucket,
   SURFACE_ENTITLEMENT_KEYS,

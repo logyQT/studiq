@@ -19,9 +19,9 @@ import { createTypedServiceClient, latestShippedFunction } from '#test/integrati
  * refused by RLS — reachable through PostgREST, not only through a UI bug.
  *
  * Both directions are pinned with real signed-in sessions (the PostgREST path a
- * browser uses): the permission holder may write, and a role that holds only the
- * old manager feature may not. The control is what proves the predicate moved
- * rather than widened.
+ * browser uses): the permission holder may write, and a role that holds only an
+ * entitlement row (not the permission) may not. The control is what proves the
+ * predicate moved rather than widened.
  */
 
 const PASSWORD = 'RoleManageRls!';
@@ -200,12 +200,13 @@ describe('org.role.manage RLS predicate', () => {
     const roleHolderRole = await customRole(orgId, `role-holder-${tag}`, 'org.role.manage');
     const managerFeatureRole = await customRole(orgId, `manager-feature-${tag}`, null);
 
-    // The legacy manager capability `is_org_manager` reads: a custom role granted
-    // `member.manage` through the role builder. It must keep manager authority on
-    // every table 2b has not moved yet, but lose the role write to the permission.
+    // The control reads an entitlement row, not the permission: a custom role
+    // granted `branding` through `org_role_features`. The row branch of
+    // `has_org_feature` still honours it, but no role-write policy asks for an
+    // entitlement any more, so the role must lose the write to the permission.
     const { error: featureError } = await service.from('org_role_features').insert({
       org_role_id: managerFeatureRole,
-      feature_key: 'member.manage',
+      feature_key: 'branding',
       is_enabled: true,
     });
     if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);
@@ -308,21 +309,21 @@ describe('org.role.manage RLS predicate', () => {
     expect(deleteError, 'DELETE is allowed by the permission predicate').toBeNull();
   });
 
-  it('still refuses a role that holds only the old manager feature (member.manage)', async () => {
-    // Prove the control actually holds the legacy capability, so the 42501 below
+  it('still refuses a role that holds only an entitlement row, not the permission', async () => {
+    // Prove the control actually holds the entitlement, so the 42501 below
     // is the moved predicate and not a role with no authority at all.
     const { data: legacyManager } = await managerFeatureHolder.rpc('rls_caller_has_org_feature', {
       p_organization_id: orgId,
-      p_feature: 'member.manage',
+      p_feature: 'branding',
     });
-    expect(legacyManager, 'the control holds the legacy member.manage feature').toBe(true);
+    expect(legacyManager, 'the control holds the branding entitlement row').toBe(true);
 
     const error = await orgRoleInsertError(
       managerFeatureHolder,
       orgId,
       `denied-manager-feature-${tag}`,
     );
-    expect(error?.code, 'org_roles INSERT needs org.role.manage, not member.manage').toBe('42501');
+    expect(error?.code, 'org_roles INSERT needs org.role.manage, not an entitlement').toBe('42501');
 
     const { error: permissionError } = await managerFeatureHolder
       .from('org_role_permissions')
@@ -333,7 +334,7 @@ describe('org.role.manage RLS predicate', () => {
       });
     expect(
       permissionError?.code,
-      'org_role_permissions INSERT needs org.role.manage, not member.manage',
+      'org_role_permissions INSERT needs org.role.manage, not an entitlement',
     ).toBe('42501');
   });
 

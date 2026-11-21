@@ -164,7 +164,7 @@ export class OrganizationMemberService {
     // group_members rows for this org are removed by the
     // cleanup_group_members_on_org_member_delete trigger (no FK exists — see
     // #249). Do not add a duplicate DELETE here: it would be filtered by the
-    // group.manage RLS policy while removal is gated on member.manage.
+    // `group.manage` permission policy while removal is gated on `org.member.manage`.
     const { data: removed, error } = await supabase
       .from('org_members')
       .delete()

@@ -8,9 +8,8 @@ import type { LimitKey } from './limits';
  * `__tests__/integration/catalog-invariants.test.ts`.
  *
  * Entitlements are product access, never authority. `Permission` owns
- * authorization; the namespaces are disjoint once phase 2 removes the four
- * legacy management markers (`group.manage` is a permission today, so it is the
- * one deliberate overlap until then — §3.1).
+ * authorization; the two namespaces are disjoint (phase 2b-7 removed the four
+ * legacy management markers — `group.manage` is a permission, §4.1).
  */
 export type Entitlement = {
   category: 'baseline' | 'surface';
@@ -59,36 +58,6 @@ export const ENTITLEMENTS = {
     personalPortable: true,
     quota: null,
   },
-  // Legacy management markers: the route and RLS gates still read them as
-  // entitlements until phase 2 turns them into permissions. Removed in phase 2.
-  'org.manage': {
-    category: 'surface',
-    scope: 'org',
-    seatEligible: false,
-    personalPortable: false,
-    quota: null,
-  },
-  'group.manage': {
-    category: 'surface',
-    scope: 'org',
-    seatEligible: false,
-    personalPortable: false,
-    quota: null,
-  },
-  'member.manage': {
-    category: 'surface',
-    scope: 'org',
-    seatEligible: false,
-    personalPortable: false,
-    quota: null,
-  },
-  'role.builder': {
-    category: 'surface',
-    scope: 'org',
-    seatEligible: false,
-    personalPortable: false,
-    quota: null,
-  },
   'advanced.stats': {
     category: 'surface',
     scope: 'personal',
@@ -126,32 +95,8 @@ export const SURFACE_ENTITLEMENT_KEYS: readonly EntitlementKey[] = ENTITLEMENT_K
 );
 
 /**
- * Structure privileges that belong to the org admin role only. A seat or a
- * personal plan can never hand them to a non-admin role. `group.manage` is
- * deliberately absent: a Teacher holds it through the role's own rows, and the
- * resolver's seat strip must not start denying it.
+ * The three-valued role entitlement profile (ADR-0015 §5.3, D5).
  */
-export const ADMIN_ONLY_ENTITLEMENTS: ReadonlySet<EntitlementKey> = new Set<EntitlementKey>([
-  'org.manage',
-  'member.manage',
-  'role.builder',
-]);
-
-/**
- * The four legacy management markers. Until phase 2b replaces their route and
- * RLS gates with permissions they stay in the entitlement catalog, but they are
- * never granted by an `entitlement_profile`: a Teacher profile is `all` and
- * must not inherit `member.manage`/`role.builder` (D6/D18, FP-04). They resolve
- * only from an enabled `org_role_features` row.
- */
-export const LEGACY_MANAGEMENT_ENTITLEMENTS: readonly EntitlementKey[] = [
-  'org.manage',
-  'member.manage',
-  'role.builder',
-  'group.manage',
-];
-
-/** The three-valued role entitlement profile (ADR-0015 §5.3, D5). */
 export const ENTITLEMENT_PROFILES = ['all', 'learner', 'none'] as const;
 
 export type EntitlementProfile = (typeof ENTITLEMENT_PROFILES)[number];

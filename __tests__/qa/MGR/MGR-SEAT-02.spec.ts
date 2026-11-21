@@ -45,19 +45,20 @@ import {
  * 3. The member receives the seat plan's features and limits on their next login:
  *    the sidebar exposes the „Asystent Q” entry (`ai.chat`), `/app/ai` renders the
  *    composer instead of the plan gate, `/api/v1/me/plan` resolves the seat plan,
- *    and the AI-token limit becomes the seat plan's own limit. Admin-only features
- *    (`org.manage`/`member.manage`/`role.builder`) are never granted through the
- *    seat.
+ *    and the AI-token limit becomes the seat plan's own limit. Org-scoped
+ *    entitlements (`branding`) are never granted through a seat — the legacy
+ *    management markers left the catalog in 2b-7, and a seat plan is
+ *    personal-scope only.
  * 4. Adjacent regression: the guards behind the pickers hold server-side — a
  *    second seat for the same member is rejected (`USAGE_LIMIT_EXCEEDED`) and a
  *    tier-mismatched pool is rejected (`BAD_REQUEST`), with the pool counters left
  *    unchanged. The member drops out of the picker once seated.
  *
- * Not asserted (out of scope, see the case's walk observations): a **teacher**
- * seated on an educator plan (Creator) keeps `member.manage`, because the resolver
- * treats any role already carrying `org.manage` as an admin. The case assigns a
- * seat to a member; the escalation path is noted in the case file rather than
- * encoded as a test.
+ * Not asserted (out of scope, settled in 2b-7, see the case's walk observations):
+ * a **teacher** seated on an educator plan (Creator) receives no management key —
+ * the markers are permissions now, so a seat plan cannot carry them. The case
+ * assigns a seat to a member; the spec pins that no org-scoped entitlement
+ * (`branding`) arrives through the seat.
  */
 
 declare global {
@@ -89,8 +90,8 @@ const POOLS = [
   { planKey: 'campus', quantity: 1 },
 ] as const;
 
-/** Entitlements a seat must never hand to a non-admin role (`ADMIN_ONLY_ENTITLEMENTS`). */
-const ADMIN_ONLY_ENTITLEMENTS = ['org.manage', 'member.manage', 'role.builder'] as const;
+/** Org-scoped entitlements a seat must never grant (a seat plan is personal-scope). */
+const SEAT_NEVER_GRANTS = ['branding'] as const;
 
 /** Polish copy the case quotes; the fixture pins `NEXT_LOCALE=pl`. */
 const COPY = {
@@ -567,12 +568,11 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       expect(afterFeatures, `additive: the member keeps ${key}`).toContain(key);
     }
     for (const key of ace.features) {
-      if ((ADMIN_ONLY_ENTITLEMENTS as readonly string[]).includes(key)) continue;
       expect(afterFeatures, `the member receives the seat plan feature ${key}`).toContain(key);
     }
     expect(afterFeatures, 'the case example: AI access from the premium seat').toContain('ai.chat');
-    for (const key of ADMIN_ONLY_ENTITLEMENTS) {
-      expect(afterFeatures, `admin-only ${key} must not be granted through a seat`).not.toContain(
+    for (const key of SEAT_NEVER_GRANTS) {
+      expect(afterFeatures, `org-scoped ${key} must not be granted through a seat`).not.toContain(
         key,
       );
     }

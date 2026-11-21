@@ -84,16 +84,18 @@ seeded tenant instead:
   jest dostępny w Twoim planie”. `GET /api/v1/features/me` grows from
   `flashcards, quiz` to `ai.chat, flashcards, quiz, advanced.stats` (the Ace
   additions; `documents` is absent until its surface ships — open catalog,
-  ADR §5.1), with no `org.manage` / `member.manage` / `role.builder`;
+  ADR §5.1), with no org-scoped key such as `branding` — a seat is a
+  personal plan and never grants one (the legacy management markers left the
+  catalog in 2b-7);
   `GET /api/v1/me/plan` returns `ace`, and `GET /api/v1/ai/usage` moves from limit `0` to
   Ace's `max_ai_tokens_per_day` (200000 at seed time).
 - The guards behind the pickers hold server-side too: a second seat for the already-seated
   member → **429** `USAGE_LIMIT_EXCEEDED`; a Creator (educator) pool for the student
   `member` → **400** `BAD_REQUEST`; no assignment is created and the counters do not move.
-- Not asserted (out of scope, ambiguity to triage): a **teacher** seated on „StudiQ
-  Creator” receives `member.manage`. `teacher` roles of a `launch` org already carry
-  `org.manage` (the org trigger gives teachers everything except `member.manage` and
-  `role.builder`), and `FeatureResolver` treats „has `org.manage`” as „admin”, so the
-  admin-only strip does not run. The case's step 1 assigns a seat to a member, so the spec
-  asserts the member path; the teacher/educator-seat path is a separate decision (feature
-  exposure only — the API permission scopes for `teacher` still deny member management).
+- Not asserted (out of scope, settled in 2b-7): a **teacher** seated on „StudiQ Creator”
+  receives no management key. The legacy management markers (`org.manage`,
+  `member.manage`, `role.builder`, `group.manage`) left the entitlement catalog in
+  2b-7 — they are permissions now — so a seat plan, which must be all-`seatEligible`,
+  can no longer carry them and no admin-only strip is needed. The case's step 1
+  assigns a seat to a member, so the spec asserts the member path and pins that no
+  org-scoped entitlement (`branding`) arrives through the seat.

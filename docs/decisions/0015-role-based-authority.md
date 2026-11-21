@@ -223,6 +223,14 @@ never a single `isAdmin` flag.
 > **2026-11-19 (D16).** `org.admin` is `assignable = false`: ownership is not
 > grantable through a custom role. The system Admin template keeps it. Every
 > other catalog key is assignable.
+>
+> **2026-11-21 (phase 2b-7).** The four legacy management entitlements
+> (`role.builder`, `org.manage`, `member.manage`, `group.manage`) are deleted
+> from `ENTITLEMENTS`, `entitlement_catalog`, `entitlement_flags`,
+> `plan_entitlements` and `org_role_features`. `group.manage` stays in this
+> catalog **as a permission** — the entitlement namespace and `permissions` are
+> now disjoint, so `permissions ∩ entitlements = ∅` holds without an exception
+> (the 1b pin of `['group.manage']` is retired).
 
 ### 4.2 Roles
 
@@ -252,8 +260,8 @@ role, so it can be renamed, edited and deleted like any other custom role):
 | **Read-only** | every `content`/`group` `*.read` key plus `org.audit.read`, at `organization` (auditors)                              |
 | **Blank**     | none — a custom role built from scratch                                                                               |
 
-The `org.*` keys in a preset take effect when 2b replaces the legacy feature
-gates; the content keys are live now.
+The `org.*` keys in a preset took effect when 2b replaced the legacy feature
+gates (done in 2b-3…2b-6); the content keys have been live since 2a.
 
 Custom roles start **empty** (no permissions, `entitlement_profile = 'none'`).
 An empty role can do nothing and gets no paid surface. This is the inverse of
@@ -442,6 +450,14 @@ It contains only entitlement keys (never permissions).
 > resolves nothing for the org layer — fail closed, with no plan read. The
 > `has_org_feature` zero-row fallback resolves the same profile and unions the
 > seat plan, so PostgREST is never wider than the resolver (FP-01).
+>
+> **2026-11-21 (phase 2b-7).** The four markers are gone from the catalog, so
+> the qualifier above is history: `all` is simply the plan ceiling, the
+> resolver's `org_role_features` read keeps only its `is_enabled = false`
+> revoke semantics (D19), and `has_org_feature`'s `all` branch is the ceiling
+> with the system Admin role as the only special case. No plan carries a
+> management key any more, which is also what makes every seat plan
+> all-`seatEligible` possible (§5.4, D15).
 
 **v1.1 — per-role allocation (deferred).** The target shape, kept here so the
 follow-up has a contract: an `org_role_entitlements (org_role_id,
@@ -810,6 +826,14 @@ invitations ( ..., group_id uuid null references groups(id), target_group_role t
   `org.manage`, `study.*`, `test.*`).
 - `resource_permissions` (dead; dropped in phase 0b).
 - `can_assign_org_role` teacher-role-name exception.
+
+> **2026-11-21 (phase 2b-7).** The four legacy management entitlements
+> (`role.builder`, `org.manage`, `member.manage`, `group.manage`) are deleted
+> from every entitlement table in
+> `supabase/migrations/20261121090000_legacy_management_markers_removed.sql`,
+> and `has_org_feature` / `apply_org_plan` / `handle_new_organization` are
+> re-created without their marker lists. `group.manage` remains as a permission
+> (§4.1); the audit keeps its pre-cutover identifiers as history.
 
 > **2026-11-20 (phase 2b-5).** Deleted: `can_assign_org_role` is now
 > `has_permission(actor, role's org, 'org.invitation.manage')` alone. A teacher

@@ -101,8 +101,9 @@ test('creates „Asystent”, renames it with a description and keeps the custom
   await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
 
   // --- Prerequisite: the caller's role holds the role-management key ---------
-  // ADR-0015 §4.4 (2a-2): the write gate is `org.role.manage`, not the
-  // `role.builder` plan feature. The Admin role carries both on every plan.
+  // ADR-0015 §4.4 (2a-2): the write gate is `org.role.manage`, not a plan
+  // feature (the `role.builder` marker left the catalog in 2b-7). The Admin
+  // role carries the gate on every plan.
   const permissions = await getJson<{ permissions: Record<string, string | null> }>(
     page,
     '/api/v1/permissions/me',

@@ -134,7 +134,7 @@ async function readPayments(page: Page): Promise<PaymentItem[]> {
 }
 
 test.describe('BIL-04 — organization plan purchase', () => {
-  test('buys Hub for the organization and unlocks branding and the role builder', async ({
+  test('buys Hub for the organization and unlocks branding and the quiz builder', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -255,7 +255,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
 
     const featuresAfter = await readFeatures(page);
     expect(featuresAfter, 'Hub unlocks branding').toContain('branding');
-    expect(featuresAfter, 'Hub unlocks the role builder').toContain('role.builder');
+    expect(featuresAfter, 'Hub unlocks the quiz builder').toContain('quiz.builder');
 
     // The organization purchase must not touch the buyer's personal plan: a
     // manager's personal plan is the free tier and applies only outside an org.

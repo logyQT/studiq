@@ -16,17 +16,14 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
  *
  * 2b-4 is the last slice of the control plane: `billing_subscriptions` read,
  * the assignment writes and the staff read of an assignment's frozen item set
- * stop asking the legacy `member.manage` capability helper and ask the
- * permission the API checks. `can_assign_org_role` and the `invitations` SELECT
- * deliberately stayed legacy in 2b-4: PostgREST refuses an UPDATE whose row the
- * SELECT policy hides, so moving the helper's manager half alone would leave
- * the intended caller unable to retarget (R25); 2b-5 moved both halves with the
- * class-invite rewrite.
+ * stop asking the legacy capability helper and ask the permission the API
+ * checks. `can_assign_org_role` and the `invitations` SELECT were moved by 2b-5
+ * with the class-invite rewrite (R25).
  *
  * Both directions are pinned with real signed-in sessions against PostgREST, the
- * path a hostile client actually uses. The "legacy" roles hold the old
- * `member.manage` marker and no key, so they prove the predicate moved rather
- * than widened. The Teacher rows are the other half of the proof: a Teacher
+ * path a hostile client actually uses. The control roles hold an entitlement
+ * row and no permission key, so they prove the predicate moved rather than
+ * widened. The Teacher rows are the other half of the proof: a Teacher
  * holds every `assignment.*` key at `own` scope, and the write policies must
  * still refuse a run they did not author.
  */
@@ -270,7 +267,7 @@ describe('control-plane permission RLS (2b-4)', () => {
       ['org.billing.manage', 'organization'],
       ['org.seat.manage', 'organization'],
     ]);
-    // The control: the legacy `member.manage` marker the old policies read.
+    // The control: an entitlement row the old policies no longer read.
     legacyBillingRoleId = await customRole(orgId, `control-plane-legacy-${tag}`);
 
     updaterRoleId = await customRole(orgId, `control-plane-updater-${tag}`, [
@@ -285,7 +282,7 @@ describe('control-plane permission RLS (2b-4)', () => {
       ['assignment.read', 'organization'],
     ]);
 
-    await grantLegacyMarker(legacyBillingRoleId, 'member.manage');
+    await grantLegacyMarker(legacyBillingRoleId, 'branding');
 
     billingId = await createUser(`control-plane-billing-${tag}@dev.local`, 'billing', 'manager');
     legacyBillingId = await createUser(

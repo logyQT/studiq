@@ -185,9 +185,9 @@ describe(`org_role_features RLS`, () => {
 
     // The member role's org_role_features rows are the entitlement:
     // ['flashcards', 'quiz'] (org trigger filters the launch plan down to basic
-    // features for this role; `documents` left the catalog in phase 1c).
-    // Without the RLS fix the query returns [], the resolver falls through to
-    // the org plan and over-grants member.manage / org.manage / group.manage.
+    // features for this role; `documents` left the catalog in phase 1c, the
+    // four management markers in 2b-7). Without the RLS fix the query returns
+    // [], the resolver falls through to the org plan and over-grants.
     expect(features).toEqual(['flashcards', 'quiz']);
   });
 
