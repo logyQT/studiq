@@ -341,7 +341,7 @@ describe('role-editor guards at RLS (2b-8)', () => {
     expect(survivors ?? []).toHaveLength(3);
   });
 
-  it('refuses to create or flip into a system role through PostgREST', async () => {
+  it('refuses to create a system role through PostgREST (INSERT WITH CHECK)', async () => {
     const { error: insertError } = await gateUser.from('org_roles').insert({
       organization_id: orgId,
       name: `fake-system-${tag}`,
@@ -350,21 +350,53 @@ describe('role-editor guards at RLS (2b-8)', () => {
       is_system: true,
     });
     expect(insertError?.code, 'INSERT with is_system = true violates WITH CHECK').toBe('42501');
+  });
 
-    const { error: updateError } = await gateUser
+  it('refuses to flip is_system in either direction (the flip trigger, not WITH CHECK)', async () => {
+    // The UPDATE policy carries no `not is_system` conjunct (it would refuse
+    // every legitimate edit of a system row), so the flip is refused by the
+    // guard_org_role_system_flip trigger instead.
+    const { error: toSystem } = await gateUser
       .from('org_roles')
       .update({ is_system: true })
       .eq('id', targetRoleId);
-    expect(updateError?.code, 'flipping a custom role to is_system violates WITH CHECK').toBe(
-      '42501',
-    );
+    expect(toSystem?.code, 'custom -> system is refused by the flip trigger').toBe('42501');
+    expect(toSystem?.message).toContain('flipped into or out of system roles');
 
-    const { data: row } = await service
+    const { error: fromSystem } = await gateUser
       .from('org_roles')
-      .select('is_system')
-      .eq('id', targetRoleId)
+      .update({ is_system: false })
+      .eq('id', teacherRoleId);
+    expect(fromSystem?.code, 'system -> custom is refused too').toBe('42501');
+
+    const { data: rows } = await service
+      .from('org_roles')
+      .select('id, is_system')
+      .in('id', [targetRoleId, teacherRoleId]);
+    const byId = new Map((rows ?? []).map((r) => [r.id, r.is_system]));
+    expect(byId.get(targetRoleId) ?? false, 'the target role is still a custom one').toBe(false);
+    expect(byId.get(teacherRoleId) ?? false, 'the system role is still a system one').toBe(true);
+  });
+
+  it("lets an org.role.manage holder edit a system role's description (positive control)", async () => {
+    // updateRole only forbids renaming a system role; description/display_name/
+    // entitlement_profile edits must pass RLS and persist.
+    const description = `edited-${tag}`;
+    const { data, error } = await gateUser
+      .from('org_roles')
+      .update({ description })
+      .eq('id', teacherRoleId)
+      .select('id, description')
       .single();
-    expect(row?.is_system ?? false, 'the target role is still a custom one').toBe(false);
+    expect(error, 'the description edit passes USING + WITH CHECK').toBeNull();
+    expect(data?.description).toBe(description);
+
+    const { data: persisted } = await service
+      .from('org_roles')
+      .select('description')
+      .eq('id', teacherRoleId)
+      .single();
+    expect(persisted?.description, 'the edit persists').toBe(description);
   });
 
   it('refuses to rename a system role (the 20261024 identity trigger)', async () => {
@@ -631,7 +663,7 @@ describe('role-editor guards at RLS (2b-8)', () => {
     }
   });
 
-  it('raises when a policy loses its is_system conjunct (R26)', async () => {
+  it('raises when the DELETE policy loses its is_system conjunct (R26)', async () => {
     const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
     try {
       // Weaken the shipped delete policy back to the pre-2b-8 predicate.
@@ -640,9 +672,70 @@ describe('role-editor guards at RLS (2b-8)', () => {
            using (organization_id in (select c.organization_id from public.rls_caller_org_ids() c)
                   and public.rls_caller_has_permission(organization_id, 'org.role.manage'))`,
       );
-      await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(/is_system conjunct/);
+      await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(
+        /DELETE using lost .* is_system conjunct/,
+      );
     } finally {
       // Restore the shipped state for the remaining tests.
+      await sql.unsafe(SHIPPED_SQL);
+      await sql.end();
+    }
+  });
+
+  it('raises when the UPDATE with_check loses its gate (R26)', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      // Keep the USING clause intact, drop the gate from WITH CHECK only — a
+      // clause-blind guard would pass on the concatenation.
+      await sql.unsafe(
+        `alter policy "Org managers update roles" on public.org_roles
+           using (organization_id in (select c.organization_id from public.rls_caller_org_ids() c)
+                  and public.rls_caller_has_permission(organization_id, 'org.role.manage'))
+           with check (organization_id in (select c.organization_id from public.rls_caller_org_ids() c))`,
+      );
+      await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(
+        /UPDATE with_check lost the tenant floor or the org.role.manage gate/,
+      );
+    } finally {
+      await sql.unsafe(SHIPPED_SQL);
+      await sql.end();
+    }
+  });
+
+  it('raises when the UPDATE policy regains the is_system conjunct (R26)', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      // The pre-fix shape: a WITH CHECK on the new row refuses every edit of a
+      // system role, so the guard pins its absence.
+      await sql.unsafe(
+        `alter policy "Org managers update roles" on public.org_roles
+           using (organization_id in (select c.organization_id from public.rls_caller_org_ids() c)
+                  and public.rls_caller_has_permission(organization_id, 'org.role.manage'))
+           with check (organization_id in (select c.organization_id from public.rls_caller_org_ids() c)
+                  and public.rls_caller_has_permission(organization_id, 'org.role.manage')
+                  and not coalesce(is_system, false))`,
+      );
+      await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(
+        /UPDATE policy carries the is_system conjunct/,
+      );
+    } finally {
+      await sql.unsafe(SHIPPED_SQL);
+      await sql.end();
+    }
+  });
+
+  it('raises when the org_role_permissions UPDATE loses the helper from one clause (R26)', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      await sql.unsafe(
+        `alter policy "Org managers update role permissions" on public.org_role_permissions
+           using (public.rls_caller_may_set_role_permission(org_role_id, permission_key, scope))
+           with check (true)`,
+      );
+      await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(
+        /UPDATE must carry the §4.4 helper in both using and with_check/,
+      );
+    } finally {
       await sql.unsafe(SHIPPED_SQL);
       await sql.end();
     }
@@ -655,6 +748,17 @@ describe('role-editor guards at RLS (2b-8)', () => {
         'drop trigger if exists guard_org_role_permissions_last_role_manage_holder on public.org_role_permissions',
       );
       await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(/last-holder guard triggers/);
+    } finally {
+      await sql.unsafe(SHIPPED_SQL);
+      await sql.end();
+    }
+  });
+
+  it('raises when the system-flip guard trigger is dropped (R26)', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      await sql.unsafe('drop trigger if exists guard_org_role_system_flip on public.org_roles');
+      await expect(sql.unsafe(GUARD_BLOCK)).rejects.toThrow(/guard_org_role_system_flip/);
     } finally {
       await sql.unsafe(SHIPPED_SQL);
       await sql.end();

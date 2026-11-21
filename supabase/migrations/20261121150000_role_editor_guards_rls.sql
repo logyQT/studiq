@@ -7,14 +7,16 @@
 -- every one was bypassable through PostgREST (R4, the FP-01 shape). This
 -- migration mirrors them in the data plane without changing API behaviour:
 --
---   1. `org_roles` DELETE refuses `is_system = true` (a policy conjunct), and
---      INSERT/UPDATE refuse to create or flip into a system role through
---      PostgREST. The API hardcodes `is_system = false`; the system rows come
---      from `handle_new_organization`, which runs as the table owner. The
---      rename half of "system roles cannot be renamed" is already enforced at
---      the data plane by the `guard_system_org_role_identity` trigger
---      (20261024124756) — this slice pins it with a test instead of adding a
---      second trigger.
+--   1. `org_roles` DELETE refuses `is_system = true` (a policy conjunct) and
+--      INSERT refuses to create a system role through PostgREST; UPDATE keeps
+--      allowing legitimate edits to a system row (description, display_name,
+--      entitlement_profile) and instead refuses flipping `is_system` either
+--      way through the `guard_org_role_system_flip` trigger. The API hardcodes
+--      `is_system = false`; the system rows come from `handle_new_organization`,
+--      which runs as the table owner. The rename half of "system roles cannot
+--      be renamed" is already enforced at the data plane by the
+--      `guard_system_org_role_identity` trigger (20261024124756) — this slice
+--      pins it with a test instead of adding a second trigger.
 --   2. The last `org.role.manage` holder of an org cannot be removed. A
 --      `USING` subquery alone is not atomic (R29): READ COMMITTED gives every
 --      statement a fresh snapshot, so two concurrent removals of the last two
@@ -179,9 +181,10 @@ alter policy "Org managers update roles" on public.org_roles
   with check (
     organization_id in (select c.organization_id from public.rls_caller_org_ids() c)
     and public.rls_caller_has_permission(organization_id, 'org.role.manage')
-    -- 2b-8: a custom role cannot be flipped into a system one. Renaming or
-    -- moving a system role is the guard_system_org_role_identity trigger.
-    and not coalesce(is_system, false)
+    -- No `not is_system` conjunct here: the API legitimately edits a system
+    -- role's description/display_name/entitlement_profile, and a WITH CHECK
+    -- that evaluates the new row would refuse every such update. Flipping
+    -- is_system either way is the guard_org_role_system_flip trigger below.
   );
 
 alter policy "Org managers delete roles" on public.org_roles
@@ -364,6 +367,40 @@ create trigger guard_org_role_permissions_last_role_manage_holder
   for each row execute function public.guard_org_role_permissions_last_role_manage_holder();
 
 -- ==========================================
+-- Flipping `is_system` either way is refused (the UPDATE policy deliberately
+-- carries no `not is_system` conjunct — that would refuse every legitimate
+-- edit of a system row, which evaluates the new row). Like the last-holder
+-- guards, this applies to the `authenticated` (PostgREST) surface only:
+-- service-role and owner writes are trusted.
+-- ==========================================
+create or replace function public.guard_org_role_system_flip()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.role() <> 'authenticated' then
+    return new;
+  end if;
+
+  if new.is_system is distinct from old.is_system then
+    raise exception 'org roles cannot be flipped into or out of system roles'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_org_role_system_flip() from public, anon;
+
+drop trigger if exists guard_org_role_system_flip on public.org_roles;
+create trigger guard_org_role_system_flip
+  before update on public.org_roles
+  for each row execute function public.guard_org_role_system_flip();
+
+-- ==========================================
 -- Closing guard (R26): every object this file creates exists AND carries the
 -- predicate it is supposed to carry — a dropped policy, a dropped trigger or
 -- a weakened conjunct must fail the migration, not pass vacuously.
@@ -389,32 +426,103 @@ begin
     raise exception 'expected the six role write policies on org_roles/org_role_permissions, found %', v_bad;
   end if;
 
-  -- 2. The org_roles writes still carry the tenant floor and the
-  --    org.role.manage gate, and the insert/update/delete conjunct that keeps
-  --    system roles out of PostgREST writes (whitespace-stripped, the way
-  --    pg_policies decompiles the qual / with_check).
+  -- 2. The org_roles policies carry their predicates per clause (R26: a
+  --    conjunct dropped from only one clause of one policy must fail, not
+  --    pass on the concatenation). Clauses are whitespace-stripped the way
+  --    pg_policies decompiles qual / with_check; an INSERT has no qual, a
+  --    DELETE has no with_check, so coalesce keeps the per-clause match honest.
+  -- 2a. INSERT: the WITH CHECK alone carries the tenant floor, the
+  --     org.role.manage gate and the is_system refusal (no system role can be
+  --     created through PostgREST).
   select count(*) into v_bad
   from pg_policies p
   where p.schemaname = 'public' and p.tablename = 'org_roles'
-    and p.policyname in ('Org managers insert roles', 'Org managers update roles', 'Org managers delete roles')
-    and (regexp_replace(coalesce(p.qual, '') || coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_org_ids(%'
-    and (regexp_replace(coalesce(p.qual, '') || coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_has_permission(%'
-    and (regexp_replace(coalesce(p.qual, '') || coalesce(p.with_check, ''), '\s+', '', 'g')) like '%NOTCOALESCE(is_system,false)%';
-  if v_bad <> 3 then
-    raise exception 'org_roles write policies lost the tenant floor, the gate or the is_system conjunct: % of 3 carry them', v_bad;
+    and p.policyname = 'Org managers insert roles'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_org_ids(%'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_has_permission(%'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%NOTCOALESCE(is_system,false)%';
+  if v_bad <> 1 then
+    raise exception 'org_roles INSERT with_check lost the tenant floor, the org.role.manage gate or the is_system conjunct: % of 1 carry all three', v_bad;
   end if;
 
-  -- 3. The org_role_permissions writes carry the §4.4 helper.
+  -- 2b. UPDATE USING carries the tenant floor and the gate (the stored row must
+  --     be visible to the editor).
+  select count(*) into v_bad
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'org_roles'
+    and p.policyname = 'Org managers update roles'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%rls_caller_org_ids(%'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%rls_caller_has_permission(%';
+  if v_bad <> 1 then
+    raise exception 'org_roles UPDATE using lost the tenant floor or the org.role.manage gate: % of 1 carry both', v_bad;
+  end if;
+
+  -- 2c. UPDATE WITH CHECK carries the tenant floor and the gate on the new row.
+  select count(*) into v_bad
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'org_roles'
+    and p.policyname = 'Org managers update roles'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_org_ids(%'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_has_permission(%';
+  if v_bad <> 1 then
+    raise exception 'org_roles UPDATE with_check lost the tenant floor or the org.role.manage gate: % of 1 carry both', v_bad;
+  end if;
+
+  -- 2d. UPDATE must NOT carry the is_system conjunct in either clause: a WITH
+  --     CHECK that evaluates the new row would refuse every legitimate edit of
+  --     a system row. The is_system flip is the guard_org_role_system_flip
+  --     trigger's job (group 6).
+  select count(*) into v_bad
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'org_roles'
+    and p.policyname = 'Org managers update roles'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) not like '%NOTCOALESCE(is_system,false)%'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) not like '%NOTCOALESCE(is_system,false)%';
+  if v_bad <> 1 then
+    raise exception 'org_roles UPDATE policy carries the is_system conjunct: % of 1 must not (it refuses legitimate system-role edits; the flip trigger owns is_system changes)', v_bad;
+  end if;
+
+  -- 2e. DELETE USING carries the tenant floor, the gate and the is_system
+  --     refusal (system roles cannot be deleted through PostgREST).
+  select count(*) into v_bad
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'org_roles'
+    and p.policyname = 'Org managers delete roles'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%rls_caller_org_ids(%'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%rls_caller_has_permission(%'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%NOTCOALESCE(is_system,false)%';
+  if v_bad <> 1 then
+    raise exception 'org_roles DELETE using lost the tenant floor, the org.role.manage gate or the is_system conjunct: % of 1 carry all three', v_bad;
+  end if;
+
+  -- 3. The org_role_permissions policies carry the §4.4 helper per clause:
+  --    INSERT in with_check, UPDATE in both clauses, DELETE in qual.
   select count(*) into v_bad
   from pg_policies p
   where p.schemaname = 'public' and p.tablename = 'org_role_permissions'
-    and p.policyname in (
-      'Org managers insert role permissions', 'Org managers update role permissions',
-      'Org managers delete role permissions'
-    )
-    and (regexp_replace(coalesce(p.qual, '') || coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_may_set_role_permission(%';
-  if v_bad <> 3 then
-    raise exception 'org_role_permissions write policies lost the §4.4 helper: % of 3 carry it', v_bad;
+    and p.policyname = 'Org managers insert role permissions'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_may_set_role_permission(%';
+  if v_bad <> 1 then
+    raise exception 'org_role_permissions INSERT with_check lost the §4.4 helper: % of 1 carry it', v_bad;
+  end if;
+
+  select count(*) into v_bad
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'org_role_permissions'
+    and p.policyname = 'Org managers update role permissions'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%rls_caller_may_set_role_permission(%'
+    and (regexp_replace(coalesce(p.with_check, ''), '\s+', '', 'g')) like '%rls_caller_may_set_role_permission(%';
+  if v_bad <> 1 then
+    raise exception 'org_role_permissions UPDATE must carry the §4.4 helper in both using and with_check: % of 1 carry both', v_bad;
+  end if;
+
+  select count(*) into v_bad
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'org_role_permissions'
+    and p.policyname = 'Org managers delete role permissions'
+    and (regexp_replace(coalesce(p.qual, ''), '\s+', '', 'g')) like '%rls_caller_may_set_role_permission(%';
+  if v_bad <> 1 then
+    raise exception 'org_role_permissions DELETE using lost the §4.4 helper: % of 1 carry it', v_bad;
   end if;
 
   -- 4. The two §4.4 helpers exist, bypass RLS themselves (R18: security
@@ -447,6 +555,25 @@ begin
     and lower(regexp_replace(pg_get_functiondef(p.oid), '\s+', '', 'g')) like '%pg_trigger_depth()%';
   if v_bad <> 2 then
     raise exception 'expected both last-holder guard triggers (org row FOR UPDATE + gate count), found %', v_bad;
+  end if;
+
+  -- 6. The system-flip trigger exists on org_roles: security definer, guarded
+  --    to the authenticated surface, and it refuses is_system changes (both
+  --    directions) while leaving legitimate system-role edits alone.
+  select count(*) into v_bad
+  from pg_trigger t
+  join pg_proc p on p.oid = t.tgfoid
+  where t.tgrelid = 'public.org_roles'::regclass
+    and not t.tgisinternal
+    and t.tgname = 'guard_org_role_system_flip'
+    and p.prosecdef
+    and p.proconfig @> array['search_path=""']::text[]
+    and lower(regexp_replace(pg_get_functiondef(p.oid), '\s+', '', 'g')) like '%is_system%'
+    and lower(regexp_replace(pg_get_functiondef(p.oid), '\s+', '', 'g')) like '%distinctfrom%'
+    and lower(regexp_replace(pg_get_functiondef(p.oid), '\s+', '', 'g')) like '%auth.role()%'
+    and lower(regexp_replace(pg_get_functiondef(p.oid), '\s+', '', 'g')) like '%42501%';
+  if v_bad <> 1 then
+    raise exception 'expected the guard_org_role_system_flip trigger on org_roles (security definer, search_path pinned, refuses is_system flips with 42501 for authenticated), found %', v_bad;
   end if;
 end;
 $$;

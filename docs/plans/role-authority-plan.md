@@ -3210,12 +3210,18 @@ role-editor guards):**
   `20261119190000` to this file) and adds:
   - `org_roles` DELETE gets `and not coalesce(is_system, false)` — system
     roles cannot be deleted through PostgREST (the service answers FORBIDDEN
-    on the same row). INSERT/UPDATE get the same conjunct on the new row, so a
-    system role can also not be **created** or flipped into through PostgREST
-    (the API hardcodes `is_system = false`; the system rows come from the
-    org-creation trigger, which runs as the owner). The rename half was
-    already covered at the data plane by `guard_system_org_role_identity`
-    (20261024124756) — no second trigger, but a new test pins it.
+    on the same row). INSERT gets the same conjunct on the new row, so a
+    system role can also not be **created** through PostgREST (the API
+    hardcodes `is_system = false`; the system rows come from the
+    org-creation trigger, which runs as the owner). UPDATE deliberately
+    carries **no** `not is_system` conjunct — a WITH CHECK evaluates the new
+    row, so the conjunct refused every legitimate edit of a system row
+    (description/display_name/entitlement_profile, which `updateRole` allows);
+    flipping `is_system` in either direction is instead refused by the new
+    `guard_org_role_system_flip` BEFORE UPDATE trigger (42501 on the
+    `authenticated` surface). The rename half was already covered at the
+    data plane by `guard_system_org_role_identity` (20261024124756) — pinned
+    by a test, not a second trigger.
   - Two SECURITY DEFINER helpers (`search_path = ''`, grants in the same file,
     R18/R19): `rls_caller_covers_permission(org, key, scope)` (scope ranks
     mirror `scopeCovers`; D21's `org.admin`@organization exemption included)
@@ -3238,22 +3244,37 @@ role-editor guards):**
     by hand on the stack (two sessions deleting the last two holders: one
     commits, the other gets 42501, exactly one row remains) and is also an
     integration test.
-  - A closing guard (R26) asserting all six policies exist **and** carry their
-    predicate, both helpers exist as security-definer with `search_path`
-    pinned and EXECUTE for `authenticated`, and both triggers exist with the
-    lock, the gate key, the `auth.role()` and the depth checks in their bodies.
+  - A closing guard (R26) asserting per **clause**, not on the
+    `qual || with_check` concatenation (the 2b-3/2b-5 lesson): all six
+    policies exist; `org_roles` INSERT's `with_check` carries the tenant
+    floor + gate + `is_system` refusal, UPDATE's `using` **and** `with_check`
+    each carry the tenant floor + gate and neither carries the `is_system`
+    conjunct (a re-added conjunct fails the guard — it would refuse
+    legitimate system-role edits), DELETE's `using` carries all three;
+    `org_role_permissions` INSERT's `with_check`, UPDATE's `using` **and**
+    `with_check`, and DELETE's `using` each carry the §4.4 helper; both
+    helpers exist as security-definer with `search_path` pinned and EXECUTE
+    for `authenticated`; both last-holder triggers exist with the lock, the
+    gate key, the `auth.role()` and the depth checks in their bodies; and the
+    `guard_org_role_system_flip` trigger exists, security-definer, and its
+    body mentions `is_system`, `IS DISTINCT FROM`, `auth.role()` and 42501.
 - **Tests**: new `__tests__/integration/org-role-editor-guards-rls.test.ts`
-  (18 tests, all through PostgREST as signed-in sessions): system-role
-  delete/insert/flip/rename refusals with surviving-row assertions; scope
-  coverage refusals (own-only holder cannot grant at organization, cannot
-  delete/update a row stored at organization, can write at own — positive
-  control); self-edit refusal and the D21 org.admin self-edit positive
-  control; D16 `org.admin` insert/update/delete refusals including by an
-  org.admin holder; last-holder refusals for the permission-row DELETE, the
-  key-moving UPDATE and the role DELETE, each with a second-holder positive
-  control; the two-session concurrency test; and two guard tests that weaken
-  a policy / drop a trigger and assert the closing guard raises. The replay
-  suite `org-role-manage-rls.test.ts` moved to the new file and its holder
+  (24 tests, all through PostgREST as signed-in sessions): system-role
+  delete/insert/rename refusals with surviving-row assertions; the
+  `is_system` flip refused in **both** directions by the flip trigger; a
+  positive control that an `org.role.manage` holder can update a system
+  role's `description` and the row persists; scope coverage refusals
+  (own-only holder cannot grant at organization, cannot delete/update a row
+  stored at organization, can write at own — positive control); self-edit
+  refusal and the D21 org.admin self-edit positive control; D16 `org.admin`
+  insert/update/delete refusals including by an org.admin holder; last-holder
+  refusals for the permission-row DELETE, the key-moving UPDATE and the role
+  DELETE, each with a second-holder positive control; the two-session
+  concurrency test; and guard tests that weaken the DELETE conjunct, drop
+  the UPDATE `with_check` gate, re-add the UPDATE `is_system` conjunct,
+  strip the helper from one UPDATE clause, or drop either trigger, and
+  assert the closing guard raises. The replay suite
+  `org-role-manage-rls.test.ts` moved to the new file and its holder
   role now carries the key it writes (the §4.4 coverage rule applies to it
   too). `database.ts` regenerated with the pinned CLI — the diff is exactly
   the two new RPC signatures, byte-identical on a second run.
