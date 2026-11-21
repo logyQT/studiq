@@ -311,7 +311,12 @@ describe('OrgRoleService', () => {
       const permissionsQb = qb(null);
       mock.from.mockReturnValueOnce(insertQb).mockReturnValueOnce(permissionsQb);
 
-      const result = await service.createRole(ctx, { name: 'Assistant', template: 'assistant' });
+      // D21: an org.admin holder at organization scope is exempt from the
+      // per-row coverage check, so it may materialise any preset.
+      const result = await service.createRole(
+        { ...ctx, permissionScopes: adminScopes() },
+        { name: 'Assistant', template: 'assistant' },
+      );
 
       expect(result.success).toBe(true);
       expect(insertQb.insert).toHaveBeenCalledWith(
@@ -325,6 +330,70 @@ describe('OrgRoleService', () => {
         }),
       );
       expect(permissionsQb.insert).toHaveBeenCalledWith(expected);
+    });
+
+    it('materialises a template whose rows the caller covers, without org.admin', async () => {
+      // Coverage, not ownership, is the rule: a caller holding exactly the
+      // Assistant matrix at organization scope (and no org.admin) may create it.
+      const scopes: Partial<Record<string, PermissionScope>> = Object.fromEntries(
+        Object.keys(ROLE_TEMPLATES.assistant.permissions).map((key) => [key, 'organization']),
+      );
+      const insertQb = qb({
+        id: 'r-1',
+        name: 'Assistant',
+        display_name: 'Assistant',
+        description: null,
+        is_system: false,
+        entitlement_profile: 'none',
+      });
+      const permissionsQb = qb(null);
+      mock.from.mockReturnValueOnce(insertQb).mockReturnValueOnce(permissionsQb);
+
+      const result = await service.createRole(
+        { ...ctx, permissionScopes: scopes },
+        { name: 'Assistant', template: 'assistant' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(permissionsQb.insert).toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN before any write when a template row exceeds the caller own scope', async () => {
+      // Holds org.role.manage (so the controller gate passes) and
+      // org.member.manage at group only — the Assistant preset wants it at
+      // organization, which this scope does not cover.
+      const gateOnlyCtx: RequestContext = {
+        ...ctx,
+        permissionScopes: { 'org.role.manage': 'organization', 'org.member.manage': 'group' },
+      };
+
+      const result = await service.createRole(gateOnlyCtx, {
+        name: 'Assistant',
+        template: 'assistant',
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('FORBIDDEN');
+      // Authorized before the role exists: not one query ran.
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN before any write for a template key the caller does not hold at all', async () => {
+      const gateOnlyCtx: RequestContext = {
+        ...ctx,
+        permissionScopes: { 'org.role.manage': 'organization' },
+      };
+
+      const result = await service.createRole(gateOnlyCtx, {
+        name: 'Billing',
+        template: 'billing',
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('creates zero permission rows for the blank template', async () => {
@@ -361,7 +430,10 @@ describe('OrgRoleService', () => {
         .mockReturnValueOnce(permissionsQb)
         .mockReturnValueOnce(deleteQb);
 
-      const result = await service.createRole(ctx, { name: 'Assistant', template: 'assistant' });
+      const result = await service.createRole(
+        { ...ctx, permissionScopes: adminScopes() },
+        { name: 'Assistant', template: 'assistant' },
+      );
 
       expect(result.success).toBe(false);
       if (result.success) throw new Error('unreachable');
@@ -572,6 +644,74 @@ describe('OrgRoleService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('CONFLICT');
+    });
+
+    it('returns CONFLICT without deleting when the role is the last org.role.manage holder', async () => {
+      const roleQb = qb({
+        is_system: false,
+        org_role_permissions: [{ permission_key: 'org.role.manage', scope: 'organization' }],
+      });
+      mock.from.mockReturnValueOnce(roleQb);
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // members
+      const gateQb = qb([], null, 0); // other gate holders
+      mock.from.mockReturnValueOnce(gateQb);
+      // Stubbed so a service that deleted anyway fails on the assertion below,
+      // not on an unstubbed client call.
+      const deleteQb = qb(undefined);
+      mock.from.mockReturnValueOnce(deleteQb);
+
+      const result = await service.deleteRole(ctx, 'r-1');
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('CONFLICT');
+      expect(roleQb.select).toHaveBeenCalledWith('is_system, org_role_permissions(permission_key)');
+      expect(gateQb.eq).toHaveBeenCalledWith('permission_key', 'org.role.manage');
+      expect(gateQb.eq).toHaveBeenCalledWith('org_roles.organization_id', 'org-1');
+      expect(gateQb.neq).toHaveBeenCalledWith('org_role_id', 'r-1');
+      expect(deleteQb.delete).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('counts a legacy any-scope gate row as a holder on delete', async () => {
+      // The row is outside the catalog the editor renders, but the stored row
+      // still holds the gate, so deleting the role would leave no holder.
+      mock.from.mockReturnValueOnce(
+        qb({
+          is_system: false,
+          org_role_permissions: [{ permission_key: 'org.role.manage', scope: 'any' }],
+        }),
+      );
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // members
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // other gate holders
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete, must not run
+
+      const result = await service.deleteRole(ctx, 'r-1');
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('CONFLICT');
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('deletes a gate-holder role when another role still holds org.role.manage', async () => {
+      mock.from.mockReturnValueOnce(
+        qb({
+          is_system: false,
+          org_role_permissions: [{ permission_key: 'org.role.manage', scope: 'organization' }],
+        }),
+      );
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // members
+      mock.from.mockReturnValueOnce(qb([], null, 1)); // another holder
+      const deleteQb = qb(undefined);
+      mock.from.mockReturnValueOnce(deleteQb);
+
+      const result = await service.deleteRole(ctx, 'r-1');
+
+      expect(result.success).toBe(true);
+      expect(deleteQb.delete).toHaveBeenCalled();
+      expect(deleteQb.eq).toHaveBeenCalledWith('id', 'r-1');
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('returns error on fetch failure', async () => {
