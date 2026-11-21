@@ -27,13 +27,6 @@ export const CreateFeatureFlagSchema = registry.register(
       .nullable()
       .default(null),
     isEnabled: z.boolean({ error: ValidationErrorCode.BOOL }).optional().default(true),
-    rolloutPercentage: z
-      .number({ error: ValidationErrorCode.NUMBER })
-      .int({ error: ValidationErrorCode.INTEGER })
-      .min(0, { error: ValidationErrorCode.TOO_SMALL })
-      .max(100, { error: ValidationErrorCode.TOO_BIG })
-      .optional()
-      .default(100),
   }),
 );
 
@@ -63,12 +56,6 @@ export const UpdateFeatureFlagSchema = registry.register(
       .optional()
       .nullable(),
     isEnabled: z.boolean({ error: ValidationErrorCode.BOOL }).optional(),
-    rolloutPercentage: z
-      .number({ error: ValidationErrorCode.NUMBER })
-      .int({ error: ValidationErrorCode.INTEGER })
-      .min(0, { error: ValidationErrorCode.TOO_SMALL })
-      .max(100, { error: ValidationErrorCode.TOO_BIG })
-      .optional(),
   }),
 );
 

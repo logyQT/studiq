@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR          | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ----------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162       | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387       | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388       | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389       | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | pending | —           | —   | LIM, BIL, STU             |            |
-| 4     | seats and personal plans                       | pending | —           | —   | MGR, BIL, LIM             |            |
-| 5     | enforcement closure                            | pending | —           | —   | STU, EDU, MGR, PUB        |            |
-| 6     | UI and cache                                   | pending | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
-| 7     | delete, full QA, close                         | pending | —           | —   | all 188 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —           | —   | all 188 + E2E             | 2026-11-19 |
+| Phase | What                                           | State                            | PR          | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | -------------------------------- | ----------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged                           | #1162       | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged                           | #1387       | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged                           | #1388       | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged                           | #1389       | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged                           | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged                           | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | active (3a, `feat/authority-3a`) | —           | —   | LIM, BIL, STU             | 2026-11-21 |
+| 4     | seats and personal plans                       | pending                          | —           | —   | MGR, BIL, LIM             |            |
+| 5     | enforcement closure                            | pending                          | —           | —   | STU, EDU, MGR, PUB        |            |
+| 6     | UI and cache                                   | pending                          | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
+| 7     | delete, full QA, close                         | pending                          | —           | —   | all 188 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending                          | —           | —   | all 188 + E2E             | 2026-11-19 |
 
 **Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389), 1c (#1390,
 `67cfeb16`) and **2 are merged — phase 2 closed 2026-11-21 with 2b-9**
@@ -111,6 +111,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R29 | A check and the write it guards must be ONE statement when the guarded row can change concurrently: READ COMMITTED gives every statement a fresh snapshot, so `not exists` in one statement and `insert … on conflict do nothing` in the next leaves a window — fold the check into the insert (`insert … select … where exists …`). | the 2b-5 review TOCTOU: a membership row deleted between the accept RPC's D7 pre-check and its class-branch insert was re-created with the invite's target role (reproduced by hand: `INSERT 0 1` with the Admin role); the self-guarding insert wrote `INSERT 0 0`                                                             |
 | R30 | A `WITH CHECK` evaluates the NEW row, so it cannot express "this column may not change" — column/identity immutability belongs in a `BEFORE` trigger; a policy decides which rows may be written.                                                                                                                                    | 2b-8: the `org_roles` UPDATE `is_system` conjunct refused every legitimate system-role edit, while the `custom → is_system` flip it targeted passed `guard_system_org_role_identity`, which checks only `OLD.is_system`                                                                                                         |
 | R31 | A phase closes when every remaining branch is named with an owner and a phase, and the exit criterion is pinned by a source-scan guard, not a promise.                                                                                                                                                                               | 2b-9: the phase-2 closure shipped a deferral register plus `persona-gates.test.ts` instead of "the only gates left are the declared ones" prose — a fifth gate or a stale entry now fails a test, not a review                                                                                                                  |
+| R32 | A blacklist→whitelist switch is behaviour-preserving only if the metadata already partitions the key space; pin the key that differs in a ported case.                                                                                                                                                                               | 3a: the `personalPortable` whitelist dropped `flashcards`/`quiz` from the personal layer inside orgs — the design had called the switch "equivalent for today's catalog" because `scope` and `personalPortable` are different axes                                                                                              |
 
 ## 4. Decisions
 
@@ -143,6 +144,10 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D23 | **Extendability is a release gate.** Phase 7 is not closed until a new entitlement can be added to a **live** app as data + one surface call, with no resolver change and no user-visible surface broken; any code change required for a data-only change is a defect fixed before close.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | D24 | **The editor lands before the gate flip.** 2a-3 (closed-catalog editor + complete payload) precedes 2a-2 (`requirePermission('org.role.manage')`): `setPermissions` deletes every row for the role and re-inserts only the payload, while the old editor rendered 20 hardcoded keys, so flipping the gate first would let one save on the Admin role delete `org.role.manage` and every `group.*`/`org.*` row and lock the org out of role management permanently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | D25 | **The roster read is four authorities, and its deny shape is an empty list.** `GET /organization/members` is readable with `org.member.manage` at org scope, or `group.manage`, or `group.invite`, or `org.seat.manage` at any scope the role holds them. The catalog has no `org.member.read`; a Teacher must not hold `org.member.manage` (D18/FP-04); and three teacher surfaces legitimately need the roster (`/edu/classroom/members`, the assignment student picker `?role=member`, the `/edu` onboarding counts). `org.seat.manage` is the fourth because the shipped **Billing** preset is exactly `org.billing.manage` + `org.seat.manage` and `/manage/seats` fills its assign dialog from this endpoint: the rule is "read the roster if you may act on it", and a code-owned preset is a consumer too (R24's lesson, one layer deeper than the QA seeds). Everyone else gets `200` + `data: []`, which leaks nothing and is the shape AUT-19 accepts; `PUT`/`DELETE` stay `org.member.manage`, so the Billing preset still fails every member/role/settings/invitation write. The `org_members` SELECT policy stays as it is (the API is now narrower than the data plane by design; the RLS read predates the slice and narrowing it must audit every `org_members` reader). **2b-4 audited it and left it: the readers it would empty need keys D25 does not name, so phase 5 (the 2b-9 slot) owns the narrowing.** |
+| D26 | An **active** user override is the final word on its key in both directions; a flag never cuts an override-granted key (D12 made explicit). ADR §6.1's pseudocode order is corrected accordingly: the flag pass skips keys an active override owns.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D27 | Per-role `org_role_features` revokes have no product surface in v1; the legacy writer is deleted in 3c (`change_org_plan`), and revoke rows stay readable until phase 7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| D28 | `/me/plan` may show the effective union (org + personal/seat) from phase 3; the `PlanInfo` envelope stays stable until phase 6 renames the endpoint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D29 | Teacher content `*.read` keys move to `group`, writes stay `own`, `assignment.read` included — landed in 3d, recorded here now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -3459,6 +3464,45 @@ tree.
 Rule: R31.
 
 ### Phase 3 — entitlements and limits
+
+**3a active on `feat/authority-3a` (2026-11-21).** The single entitlement
+resolver ships: `packages/server/src/services/entitlement.resolver.ts`
+(`resolveEntitlements(ctx)` — the only reader of `plan_entitlements`,
+`org_role_features` (revoke-only, D19), `org_roles.entitlement_profile`,
+`entitlement_flags`, `user_feature_overrides`, `org_seat_*`,
+`organizations.plan`, `profiles.personal_plan_key`), memoized once per
+request on the ctx (instance-level `WeakMap` keyed on the ctx object — no
+change to the shared `RequestContext` type, nothing extra serializable on
+ctx, and the entry dies with the request). `FeatureResolver` is deleted;
+`lib/features.ts` is the thin wrapper (`resolveFeatures`/`getEnabledFeatures`/
+`requireFeature`, same 403 + `x-error-code` semantics) until phase 6. The
+rollout layer is dropped: migration `20261121160000` drops
+`entitlement_flags.rollout_percentage` (CHECK goes with it), and
+`EntitlementResolution.rollout` / `rolloutBucket` / the admin flag field go
+with it; `/features/me` keeps its body minus `rollout`. Flags are a kill
+switch only and a **missing row fails closed**; an active override beats a
+flag (D26); the personal layer inside an org is the `personalPortable`
+whitelist; the seat plan intersects the ceiling; an entitlement whose quota
+resolves to 0 is not effective (`requireFeature` fails on it too). The
+resolver's `limits` field is still composed through `LimitsResolver`
+(TEMPORARY, replaced by the in-resolver composition in 3b).
+
+**Difficulty log**
+
+#### 2026-11-21 — the design's "equivalent for today's catalog" was not
+
+What: the phase-3 design pass claimed switching the personal layer inside an
+org from the `ORG_SCOPED_ENTITLEMENTS` blacklist to the `personalPortable`
+whitelist was "equivalent for today's catalog". It is not: `flashcards` and
+`quiz` are personal-scope but `personalPortable: false`, so inside an org a
+personal plan no longer re-adds them — they come from the org layer (profile
+∩ ceiling, seat ∩ ceiling) now. The ported unit cases pin the differing keys
+(`__tests__/unit/services/entitlement.resolver.test.ts`).
+Why: a blacklist and a whitelist are only equivalent when the catalog metadata
+already partitions the key space; `scope` and `personalPortable` are two
+different axes, and the catalog crosses them.
+Fix: the whitelist ships (D3); the differing keys are pinned in tests.
+Rule: R32.
 
 Carried from 2b-3 (recorded there, not fixed there): the Teacher template grants
 every content key at `own` while Member reads at `group`, so a Teacher cannot read

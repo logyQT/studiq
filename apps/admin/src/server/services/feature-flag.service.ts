@@ -43,7 +43,6 @@ export class FeatureFlagService {
         name: input.name,
         description: input.description,
         is_enabled: input.isEnabled,
-        rollout_percentage: input.rolloutPercentage,
       })
       .select()
       .single();
@@ -58,8 +57,6 @@ export class FeatureFlagService {
     if (input.name !== undefined) updateData.name = input.name;
     if (input.description !== undefined) updateData.description = input.description;
     if (input.isEnabled !== undefined) updateData.is_enabled = input.isEnabled;
-    if (input.rolloutPercentage !== undefined)
-      updateData.rollout_percentage = input.rolloutPercentage;
 
     const { data, error } = await supabase
       .from('entitlement_flags')

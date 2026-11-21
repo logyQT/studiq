@@ -6,13 +6,12 @@ import type { EntitlementKey } from '@studiq/authz';
 
 export interface MyFeaturesData {
   features: EntitlementKey[];
-  rollout: Partial<Record<EntitlementKey, number>>;
 }
 
 export class FeaturesController {
   async myFeatures(ctx: RequestContext): Promise<ControllerResponse<MyFeaturesData>> {
-    const { features, rollout } = await resolveFeatures(ctx);
-    return { success: true, statusCode: 200, data: { features, rollout } };
+    const { entitlements } = await resolveFeatures(ctx);
+    return { success: true, statusCode: 200, data: { features: entitlements } };
   }
 }
 export const featuresController = wrapService(new FeaturesController(), 'features.controller');

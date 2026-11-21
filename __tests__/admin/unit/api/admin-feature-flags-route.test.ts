@@ -47,7 +47,7 @@ describe('admin feature-flags [id] route', () => {
   });
 
   it('PUT forwards the dynamic segment and body to update', async () => {
-    const body = { name: 'Branding', isEnabled: false, rolloutPercentage: 50 };
+    const body = { name: 'Branding', isEnabled: false };
 
     await PUT(jsonRequest(body), context({ id: FLAG_ID }));
 

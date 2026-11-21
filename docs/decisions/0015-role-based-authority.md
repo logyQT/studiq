@@ -555,8 +555,10 @@ resolveEntitlements(ctx):
     limits.user = combine(orgPlan, seatPlan, personalPlan) // max, -1 short-circuit
     limits.org  = orgPlan                                   // never personal/seat
 
-  set = applyOverrides(set)          // entitlement keys only
-  set = applyFlags(set)              // kill switch only; overrides bypass flags (D12)
+  set = applyOverrides(set)          // entitlement keys only; an ACTIVE override is the
+                                      // final word on its key in both directions (D26)
+  set = applyFlags(set)              // kill switch only; a missing row fails closed;
+                                      // skips keys an active override owns (D12/D26)
 
   effective = { k ∈ set | quota(k) == null OR limits[k.quota] != 0 }
 
@@ -1265,6 +1267,32 @@ interpretation.
 > preset reads the roster and writes nothing on members, roles, settings or
 > invitations. D16–D24 are recorded in the sections they amend (§4.1, §4.2, §5);
 > this one is here because it settles a read the §7.1 note had got wrong.
+
+> **2026-11-21 (D26).** An **active** `user_feature_overrides` row (no expiry, or
+> `expires_at` in the future) is the final word on its key in **both**
+> directions: an `is_enabled = false` flag never cuts an override-granted key,
+> and an override revoke stays revoked even when the flag is on. This makes D12
+> explicit and corrects §6.1's pseudocode order — the flag pass skips keys an
+> active override owns. (Phase 3a, `feat/authority-3a`.)
+
+> **2026-11-21 (D27).** Per-role `org_role_features` revokes
+> (`is_enabled = false`) have no product surface in v1: nothing in the app
+> writes them once `change_org_plan` replaces `apply_org_plan` (3c). The
+> resolver keeps reading them until phase 7 (D19); the writer is deleted in
+> 3c, so in v1 a revoke row can only be inserted by hand. (Phase 3a,
+> `feat/authority-3a`.)
+
+> **2026-11-21 (D28).** `/me/plan` may show the **effective union** (org +
+> personal/seat, e.g. "Hub (org) + Pro (personal)") from phase 3 — the resolver
+> returns it as `plan: { primary, sources[] }`. The `PlanInfo` envelope stays
+> stable (no field renamed or removed) until phase 6 renames the endpoint, so
+> 3a does not change `/me/plan` itself. (Phase 3a, `feat/authority-3a`.)
+
+> **2026-11-21 (D29).** Teacher content reads move to `group` scope, writes stay
+> `own`, and `assignment.read` moves with the other content reads — the §4.2
+> "own/group" reading, since `group` is a superset of `own` in the API layer.
+> Landed in 3d (a separate PR after the resolver slice); recorded here now.
+> (Phase 3a, `feat/authority-3a`.)
 
 ---
 

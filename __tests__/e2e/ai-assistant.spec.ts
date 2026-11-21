@@ -42,7 +42,7 @@ async function mockAiChatEntitled(page: Page) {
       body: JSON.stringify({
         success: true,
         statusCode: 200,
-        data: { features: ['ai.chat'], rollout: {} },
+        data: { features: ['ai.chat'] },
       }),
     }),
   );

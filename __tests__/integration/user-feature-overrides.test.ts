@@ -1,5 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
-import { FeatureResolver } from '@studiq/server/services/feature.resolver';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -26,7 +26,7 @@ describe('User feature override expiry', () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   let service!: SupabaseClient<Database>;
-  let resolver!: FeatureResolver;
+  let resolver!: EntitlementResolver;
 
   beforeAll(async () => {
     const student = await createTestUser({ role: 'student' });
@@ -77,7 +77,7 @@ describe('User feature override expiry', () => {
 
   beforeEach(async () => {
     service = createSeedDb();
-    resolver = new FeatureResolver(() => Promise.resolve(service));
+    resolver = new EntitlementResolver(() => Promise.resolve(service));
     await clearOverrides();
   });
 
@@ -85,47 +85,76 @@ describe('User feature override expiry', () => {
     await clearOverrides();
   });
 
+  // `quiz.builder` is the grant/revoke probe key here: it has no quota, so
+  // the quota-0 exclusion never masks the override semantics. `ai.chat` on the
+  // `base` plan has `max_ai_tokens_per_day = 0` and is excluded regardless —
+  // pinned separately below.
+  const GRANT_KEY = 'quiz.builder';
+
   it('resolves the base plan baseline without overrides', async () => {
-    await expect(resolver.getEnabledFeatures(ctx())).resolves.toEqual(['flashcards', 'quiz']);
+    await expect(resolver.resolveEntitlements(ctx()).then((r) => r.entitlements)).resolves.toEqual([
+      'flashcards',
+      'quiz',
+    ]);
   });
 
   it('ignores an expired grant stored as a real timestamptz', async () => {
-    await setOverride('ai.chat', true, fromNow(-9 * DAY_MS));
+    await setOverride(GRANT_KEY, true, fromNow(-9 * DAY_MS));
 
-    await expect(resolver.getEnabledFeatures(ctx())).resolves.toEqual(['flashcards', 'quiz']);
+    await expect(resolver.resolveEntitlements(ctx()).then((r) => r.entitlements)).resolves.toEqual([
+      'flashcards',
+      'quiz',
+    ]);
   });
 
   it('applies a grant whose expiry is still in the future', async () => {
-    await setOverride('ai.chat', true, fromNow(DAY_MS));
+    await setOverride(GRANT_KEY, true, fromNow(DAY_MS));
 
-    await expect(resolver.getEnabledFeatures(ctx())).resolves.toContain('ai.chat');
+    await expect(
+      resolver.resolveEntitlements(ctx()).then((r) => r.entitlements),
+    ).resolves.toContain(GRANT_KEY);
   });
 
   it('ignores an expired revoke', async () => {
     await setOverride('quiz', false, fromNow(-DAY_MS));
 
-    await expect(resolver.getEnabledFeatures(ctx())).resolves.toEqual(['flashcards', 'quiz']);
+    await expect(resolver.resolveEntitlements(ctx()).then((r) => r.entitlements)).resolves.toEqual([
+      'flashcards',
+      'quiz',
+    ]);
   });
 
   it('applies a revoke whose expiry is still in the future', async () => {
     await setOverride('quiz', false, fromNow(DAY_MS));
 
-    await expect(resolver.getEnabledFeatures(ctx())).resolves.toEqual(['flashcards']);
+    await expect(resolver.resolveEntitlements(ctx()).then((r) => r.entitlements)).resolves.toEqual([
+      'flashcards',
+    ]);
   });
 
   it('keeps permanent overrides working (expires_at NULL)', async () => {
-    await setOverride('ai.chat', true, null);
+    await setOverride(GRANT_KEY, true, null);
     await setOverride('quiz', false, null);
 
-    await expect(resolver.getEnabledFeatures(ctx())).resolves.toEqual(['ai.chat', 'flashcards']);
+    await expect(resolver.resolveEntitlements(ctx()).then((r) => r.entitlements)).resolves.toEqual([
+      'flashcards',
+      GRANT_KEY,
+    ]);
   });
 
-  it('enforces expiry through requireFeature as well as features/me', async () => {
-    await setOverride('ai.chat', true, fromNow(-DAY_MS));
+  it('enforces expiry through the resolved set as well as features/me', async () => {
+    await setOverride(GRANT_KEY, true, fromNow(-DAY_MS));
 
-    const result = await resolver.requireFeature(ctx(), 'ai.chat');
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error).toBe('FORBIDDEN');
+    const { entitlements } = await resolver.resolveEntitlements(ctx());
+    expect(entitlements).not.toContain(GRANT_KEY);
+  });
+
+  it('an override grant does not lift a quota-0 entitlement (ai.chat on base)', async () => {
+    // `base` carries `max_ai_tokens_per_day = 0`, so `ai.chat` is excluded by
+    // the quota-0 filter even when an active override grants it (§6.1 order).
+    await setOverride('ai.chat', true, null);
+
+    const { entitlements } = await resolver.resolveEntitlements(ctx());
+    expect(entitlements).not.toContain('ai.chat');
   });
 });

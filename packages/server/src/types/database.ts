@@ -412,7 +412,6 @@ export type Database = {
           is_enabled: boolean | null;
           key: string;
           name: string;
-          rollout_percentage: number | null;
           updated_at: string | null;
         };
         ComputedFields: never;
@@ -423,7 +422,6 @@ export type Database = {
           is_enabled?: boolean | null;
           key: string;
           name: string;
-          rollout_percentage?: number | null;
           updated_at?: string | null;
         };
         Update: {
@@ -433,7 +431,6 @@ export type Database = {
           is_enabled?: boolean | null;
           key?: string;
           name?: string;
-          rollout_percentage?: number | null;
           updated_at?: string | null;
         };
         Relationships: [];

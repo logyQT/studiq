@@ -1,17 +1,26 @@
-import type { RequestContext } from '@studiq/authz';
+import type { EntitlementKey, RequestContext, ResolvedEntitlements } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
-import type { EntitlementKey, EntitlementResolution } from '@studiq/authz';
-import { featureResolver } from '@studiq/server/services/feature.resolver';
+import { entitlementResolver } from '@studiq/server/services/entitlement.resolver';
 
-export async function resolveFeatures(ctx: RequestContext): Promise<EntitlementResolution> {
-  return featureResolver.resolveFeatures(ctx);
+// Thin wrappers over the single resolver (ADR-0015 phase 3a) until phase 6
+// renames the module and the `/features/me` endpoint; the HTTP semantics are
+// unchanged (`requireFeature` throws `AppError('FORBIDDEN')` → 403 +
+// `x-error-code`).
+
+export async function resolveFeatures(ctx: RequestContext): Promise<ResolvedEntitlements> {
+  return entitlementResolver.resolveEntitlements(ctx);
 }
 
 export async function getEnabledFeatures(ctx: RequestContext): Promise<EntitlementKey[]> {
-  return featureResolver.getEnabledFeatures(ctx);
+  return (await entitlementResolver.resolveEntitlements(ctx)).entitlements;
 }
 
+/**
+ * Throws `FORBIDDEN` when the key is not effective for the caller — which
+ * includes the quota-0 case: an entitlement whose quota limit resolves to `0`
+ * is excluded from the resolved set (§6.1).
+ */
 export async function requireFeature(ctx: RequestContext, key: EntitlementKey): Promise<void> {
-  const result = await featureResolver.requireFeature(ctx, key);
-  if (!result.success) throw new AppError(result.error);
+  const { entitlements } = await entitlementResolver.resolveEntitlements(ctx);
+  if (!entitlements.includes(key)) throw new AppError('FORBIDDEN');
 }
