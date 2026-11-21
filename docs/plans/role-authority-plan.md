@@ -18,45 +18,49 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR    | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ----- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162 | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387 | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388 | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389 | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390 | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | active  | —     | —   | AUT, MGR, EDU, SEC        | 2026-11-19 |
-| 3     | entitlements and limits                        | pending | —     | —   | LIM, BIL, STU             |            |
-| 4     | seats and personal plans                       | pending | —     | —   | MGR, BIL, LIM             |            |
-| 5     | enforcement closure                            | pending | —     | —   | STU, EDU, MGR, PUB        |            |
-| 6     | UI and cache                                   | pending | —     | —   | PUB, AUT, MGR, STU, EDU   |            |
-| 7     | delete, full QA, close                         | pending | —     | —   | all 188 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —     | —   | all 188 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR          | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ----------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162       | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387       | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388       | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389       | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | pending | —           | —   | LIM, BIL, STU             |            |
+| 4     | seats and personal plans                       | pending | —           | —   | MGR, BIL, LIM             |            |
+| 5     | enforcement closure                            | pending | —           | —   | STU, EDU, MGR, PUB        |            |
+| 6     | UI and cache                                   | pending | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
+| 7     | delete, full QA, close                         | pending | —           | —   | all 188 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —           | —   | all 188 + E2E             | 2026-11-19 |
 
-**Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389) and 1c (#1390,
-`67cfeb16`) are merged. Phase 2 is active: **2a-3** (the closed-catalog editor),
-**2a-1** (the entitlement profile), **2a-2** (role presets + the
-`org.role.manage` gate and its RLS twin), **2a-4** (org-scoped
-`ctx.groupRoles`) and **2a-5** (fail-closed scope defaults + the full
-`Permission` set) are merged with the 2b slices. Phase 2b: 2b-1…2b-6 are merged
-(2b-6 as `67fab892`, #1402) and **2b-7 (the legacy-marker deletion) is written on
-`feat/authority-2b-7`**; **2b-8 (the RLS half of the role-editor guards) is
-written on `feat/authority-2b-8`** (delivered block below); the remaining slice
-is 2b-9 (deferred to phase 5).
+**Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389), 1c (#1390,
+`67cfeb16`) and **2 are merged — phase 2 closed 2026-11-21 with 2b-9**
+(`feat/authority-2b-9`, delivered block below): the 2a slices plus all nine 2b
+slices are on `main`, 2b-7 as `f62b896d` (#1403) and 2b-8 as `9747f372` (#1404).
+The only `allowedAccountTypes` left on the API surface are the four declared
+exceptions (R5 org/classroom creation ×2, phase-5 `ai/*` ×2), pinned by
+`__tests__/unit/guards/persona-gates.test.ts`; the remaining persona branches
+are named with owners in the 2b-9 deferral register. **Next action: phase 3**
+(entitlements and limits) — its Teacher content-read gap is recorded in the
+phase-3 block below.
 
-Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
+Phase 2b is complete — nine slices, in the settled order recorded in the
+phase-2b table below: **2b-1** (the `permission_key` foreign key and its
 backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
 RLS twin) merged as `6b6554f2` (#1398) together with its follow-up pass (the
 `/edu/groups` nav gate and EDU-GRP-05's settled text), **2b-3** (the
 org-control route sweep and its RLS twin) merged as `929b3cd9` (#1399),
 **2b-4** (the remaining control-plane RLS and the billing gate) merged as
-`9da8c9b3` (#1400), and **2b-5** (class invites: `invitations.group_id` +
+`9da8c9b3` (#1400), **2b-5** (class invites: `invitations.group_id` +
 `target_group_role`, `group.invite` at group scope, the invitation read moved
 with the write, `can_assign_org_role`'s manager half onto
-`org.invitation.manage`, the teacher-name exception deleted) is written on
-`feat/authority-2b-5`. It is **slice 5 of 9**; the settled order is recorded in
-the phase-2b table below. The phase-2 row stays `active` — five
-merged/written slices do not make phase 2 done.
+`org.invitation.manage`, the teacher-name exception deleted) merged as
+`e2f90bb9` (#1401), **2b-6** (the content-route sweep) merged as `67fab892`
+(#1402), **2b-7** (the legacy-marker deletion) merged as `f62b896d` (#1403),
+**2b-8** (the RLS half of the role-editor guards) merged as `9747f372` (#1404),
+and **2b-9** (the phase-2 closure: the deferral register and its source-scan
+guard) delivered on `feat/authority-2b-9`. The phase-2 row is `merged` — nine
+slices plus 2b-9's guard make phase 2 done.
 
 ## 2. How to update this file
 
@@ -106,6 +110,7 @@ merged/written slices do not make phase 2 done.
 | R28 | An authority invariant is proven from the path that APPLIES the value, with a fixture that differs from the asserted outcome — a test minted and asserted with the same value (the invitee's own role as the invite's target) cannot fail on the escalation it claims to guard.                                                      | the 2b-5 review: the class-invite accept test minted with `targetOrgRoleId = memberRoleId` and asserted `org_role_id === memberRoleId`, so flipping the RPC's class branch to `do update set org_role_id = excluded.org_role_id` stayed green; the tampered-row case used Admin only for a non-member, refused before any write |
 | R29 | A check and the write it guards must be ONE statement when the guarded row can change concurrently: READ COMMITTED gives every statement a fresh snapshot, so `not exists` in one statement and `insert … on conflict do nothing` in the next leaves a window — fold the check into the insert (`insert … select … where exists …`). | the 2b-5 review TOCTOU: a membership row deleted between the accept RPC's D7 pre-check and its class-branch insert was re-created with the invite's target role (reproduced by hand: `INSERT 0 1` with the Admin role); the self-guarding insert wrote `INSERT 0 0`                                                             |
 | R30 | A `WITH CHECK` evaluates the NEW row, so it cannot express "this column may not change" — column/identity immutability belongs in a `BEFORE` trigger; a policy decides which rows may be written.                                                                                                                                    | 2b-8: the `org_roles` UPDATE `is_system` conjunct refused every legitimate system-role edit, while the `custom → is_system` flip it targeted passed `guard_system_org_role_identity`, which checks only `OLD.is_system`                                                                                                         |
+| R31 | A phase closes when every remaining branch is named with an owner and a phase, and the exit criterion is pinned by a source-scan guard, not a promise.                                                                                                                                                                               | 2b-9: the phase-2 closure shipped a deferral register plus `persona-gates.test.ts` instead of "the only gates left are the declared ones" prose — a fifth gate or a stale entry now fails a test, not a review                                                                                                                  |
 
 ## 4. Decisions
 
@@ -1332,17 +1337,17 @@ control-plane RLS (2b-4), because the routes and their predicates move together
 (R4) and the sweep is what names which policies 2b-4 still owns; class invites
 (2b-5) wait for the `invitations` shape they need.
 
-| Slice | Contents                                                                                                                                                                                                                                                                         |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                                                                                                                 |
-| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Merged** `6b6554f2` (#1398).                                                                                                     |
-| 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`.                                                   |
-| 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment writes and cohort read, the billing service gate, and the `org_members` SELECT review D25 leaves open. **Merged** `9da8c9b3` (#1400); `can_assign_org_role` and the invitation read were 2b-5's.        |
-| 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Written** on `feat/authority-2b-5`. |
-| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Merged** `67fab892` (#1402).                                                                                                                                                                                 |
-| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them. **Written on `feat/authority-2b-7`** (delivered block below).                      |
-| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS. **Written on `feat/authority-2b-8`** (delivered block below).                                                                                                                    |
-| 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                       |
+| Slice | Contents                                                                                                                                                                                                                                                                  |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2b-1  | `org_role_permissions.permission_key` → `permissions(key)`, the backfill, the closed scope CHECK. **Merged** `6ec591dd` (#1397).                                                                                                                                          |
+| 2b-2  | Group permissions (`group.read/manage/member.manage`) + `rls_caller_has_group_permission` on the six `groups`/`group_members` write policies. **Merged** `6b6554f2` (#1398).                                                                                              |
+| 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Merged** `929b3cd9` (#1399).                                                   |
+| 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment writes and cohort read, the billing service gate, and the `org_members` SELECT review D25 leaves open. **Merged** `9da8c9b3` (#1400); `can_assign_org_role` and the invitation read were 2b-5's. |
+| 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Merged** `e2f90bb9` (#1401). |
+| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Merged** `67fab892` (#1402).                                                                                                                                                                          |
+| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them. **Merged** `f62b896d` (#1403).                                              |
+| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS. **Merged** `9747f372` (#1404).                                                                                                                                            |
+| 2b-9  | Phase-2 closure: the deferral register (every remaining persona branch named with an owner and a phase) and its source-scan guard `__tests__/unit/guards/persona-gates.test.ts`. No product code. **Delivered on `feat/authority-2b-9`** (delivered block below).         |
 
 **Re-numbered 2026-11-20 (R8).** The settled order changed the labels the
 2026-11-19 table carried: 2b-3 was "the five embedded membership checks", 2b-4
@@ -3342,6 +3347,116 @@ would keep a holder after the move — the BEFORE UPDATE count excludes
 unreachable through the editor (which writes per role and answers its own
 409 first), accepted.
 Rule: R30.
+
+**2b-9 delivered on `feat/authority-2b-9` — slice 9 of 9 (the phase-2 closure:
+the deferral register and its guard; no product code, no migration, no seed,
+no phase-5 enforcement):**
+
+- **Guard** `__tests__/unit/guards/persona-gates.test.ts` (8 tests, source
+  scan, no DB). It walks every `apps/web/src/app/(backend)/api/v1/**/route.ts`
+  and asserts the set of `allowedAccountTypes` occurrences is **exactly** the
+  four declared exceptions, each with a named reason — `organization/route.ts`
+  and `teacher/classrooms/route.ts` POST (R5: org creation, classroom
+  creation), `ai/chat/route.ts` and `ai/usage/route.ts` (phase 5: the `ai.chat`
+  audience) — and that every declared file still exists and still carries its
+  gate, so a stale allowlist entry fails. It also scans
+  `packages/server/src/controllers` and `packages/server/src/services` for a
+  real `allowedAccountTypes: [` usage (a route-authority mechanism below the
+  route layer); comment/string mentions lack the call shape and are not
+  flagged. Failure messages name `file:line` and the remedy: authorize with
+  `withAuth()` + a catalog permission, or add a declared exception with a phase
+  owner. Hand-proven red in all three directions — a fifth gate appended to
+  `flashcards/route.ts`, the `ai/usage` gate removed, a gate appended to
+  `flashcard.controller.ts` — each run red, each reverted, re-run green.
+  `bun run mutate` does not apply: the guard's input is the whole route tree,
+  not one tracked production line, so the proofs were done by hand.
+- **Audit (R9 — every number below was produced by the command shown, not
+  remembered):**
+  - `git grep -n "allowedAccountTypes" -- "apps/web/src/app/(backend)/api/v1"`
+    → exactly four hits: `ai/chat/route.ts:73` and `ai/usage/route.ts:11`
+    (`[STUDENT, EDUCATOR]`), `organization/route.ts:24` and
+    `teacher/classrooms/route.ts:24` (`[EDUCATOR, MANAGER]`). Nothing else
+    remained, so there was no stop-and-report finding.
+  - `git grep -n "requireFeature(" -- apps packages` → only `branding`:
+    `apps/web/src/app/(backend)/api/v1/organization/[id]/logo/route.ts:34` and
+    `packages/server/src/controllers/organization.controller.ts:108`, plus the
+    two definitions (`packages/server/src/lib/features.ts:14`,
+    `packages/server/src/services/feature.resolver.ts:194`). No legacy marker
+    caller survives.
+  - Live stack `stack-b97ab97290af` (this branch, `bun run env:ensure
+--profile api`; SQL over the stack's `DB_URL` with the `postgres` driver):
+    - policies whose `qual`/`with_check` name `has_org_feature` or
+      `is_org_manager`: **0**;
+    - rows of the four deleted markers in `org_role_features`,
+      `plan_entitlements`, `user_feature_overrides`, `entitlement_flags`:
+      **0 / 0 / 0 / 0**;
+    - `permissions`: **44** rows; `entitlement_catalog`: **6** keys
+      (`advanced.stats`, `ai.chat`, `branding`, `flashcards`, `quiz`,
+      `quiz.builder`);
+    - policies still reading the JWT `account_type`: **2** (`quiz_attempts`
+      "Own or staff quiz attempts", `exposure_events` "Exposure events
+      readable by owner or org staff"); functions still reading it:
+      `get_teacher_activity_feed`, `get_teacher_group_performance`,
+      `rls_caller_is_sealed_item`, `handle_new_user` (the last mints
+      `app_metadata`, it decides nothing).
+- **Deferral register** — every remaining branch that still decides authority
+  outside the permission model, each with its owning phase:
+
+  | Branch                                                                                                              | file:line (live-verified where marked)                                                                                                      | Phase | Why it is not authority-modelled yet                                                                                                                                                                               |
+  | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `resolveScope` persona default: no active org + student/educator + content verb → `own`                             | `packages/server/src/lib/authz.ts:46`                                                                                                       | 5     | §6.3's personal-content rule — inside an org the role row is the whole answer; the no-org default still keys on persona until personal-scope permissions ship                                                      |
+  | Seal: staff get an empty seal                                                                                       | `packages/server/src/lib/question-seal.ts:183` + SQL `rls_caller_is_sealed_item` (live def)                                                 | 5     | the student/staff split over sealed answer keys should key on `assignment_targets`, not the JWT persona                                                                                                            |
+  | Exposure recorded only for a STUDENT caller                                                                         | `packages/server/src/services/assessment-review.service.ts:202`                                                                             | 3     | #1172: a staff preview must not mint a learner event; phase 3's eligibility consumes the ledger                                                                                                                    |
+  | Org-wide report inbox needs MANAGER persona + system role name `admin`                                              | `packages/server/src/services/question-report.service.ts:444` (recipient fallback `:116`)                                                   | 5     | should be `org.report.manage` — D13 says a student-persona Admin must reach it                                                                                                                                     |
+  | Bank export refuses a STUDENT persona                                                                               | `packages/server/src/services/question-transfer.service.ts:56`                                                                              | 5     | the staff branch right below already checks `question_bank.update`; the persona conjunct is the redundant legacy half                                                                                              |
+  | Topic default visibility `group` for EDUCATOR                                                                       | `packages/server/src/services/topic.service.ts:39,222`                                                                                      | 5     | visibility should derive from the `topic.*` scope and the group share, not persona                                                                                                                                 |
+  | Billing owner resolved only for MANAGER persona                                                                     | `packages/server/src/services/billing.service.ts:109` (`ownerFromContext`), `packages/server/src/lib/payment/billing-read.repository.ts:77` | 5     | ADR §7.1's 2b-4 note: derive the owner from `activeOrgId` + membership — a product decision (a member's personal subscription inside an org would stop reading)                                                    |
+  | Org checkout requires a role-name admin (`isOrgAdmin`)                                                              | `packages/server/src/lib/payment/checkout-rules.ts:87` (`resolveCheckoutOwner`), `packages/server/src/lib/payment/stripe-repository.ts:188` | 5     | the resolver is shared with the mock-completion path (no ctx) and names a target org that need not be the active one; it should check `org.billing.manage` there                                                   |
+  | Org delete authorizes via `rls_caller_is_org_manager` → `is_org_manager` → `has_org_feature('member.manage')`       | `packages/server/src/services/organization.service.ts:305` (live defs of all three)                                                         | 5     | should be `org.admin`; the marker rows are gone, so today only the system-Admin branch of `has_org_feature` can answer true — a role-name check in disguise                                                        |
+  | `getMyPlan`: seat plan for non-MANAGER, org plan for MANAGER; paid org plan demoted to the free manager tier        | `packages/server/src/services/subscription-plan.service.ts:172,176,256`                                                                     | 4     | plan composition keyed on persona instead of seat/org scope (D2/D3)                                                                                                                                                |
+  | Personal plan applies inside an org only for non-MANAGER                                                            | `packages/server/src/services/personal-plan.ts:21`                                                                                          | 4     | same persona-keyed plan composition                                                                                                                                                                                |
+  | Plan applicability: `resolveApplicablePlan` answers FORBIDDEN when `plan.forAccountType` names another persona      | `packages/server/src/lib/payment/checkout-rules.ts:34,59`                                                                                   | 4     | plan composition/applicability keyed on `forAccountType` — same family as the `getMyPlan`/`personal-plan` rows                                                                                                     |
+  | `can_assign_org_role` checks `org.invitation.manage` only — the §4.4 "grant only what you hold" conjunct is missing | `supabase/migrations/20261120170000_class_invites.sql:292` (live def)                                                                       | 5     | ADR §4.4's 2b-5 review note owns the conjunct                                                                                                                                                                      |
+  | `org_members` SELECT stays membership-wide                                                                          | live policy "Own or same-org membership read"                                                                                               | 5     | D25: narrowing would empty readers whose gates are not among the four keys (the 2b-4 census: org detail, report inbox, role counts, group roster, assignment target validation, teacher stats, `with-auth` itself) |
+  | `teacher_assignments` org-wide SELECT                                                                               | live policy "Visible teacher assignments"                                                                                                   | 5     | its readers (student attempt flows, cohort helpers) are audited in phase 5 (20261120190000's comment)                                                                                                              |
+  | `quiz_attempts` staff branch reads `account_type IN ('educator','manager')`                                         | live policy "Own or staff quiz attempts"                                                                                                    | 5     | shared multi-reader path — five services read `quiz_attempts` under different keys (2b-6 note)                                                                                                                     |
+  | `exposure_events` staff branch reads `account_type`                                                                 | live policy "Exposure events readable by owner or org staff"                                                                                | 5     | together with phase 3's eligibility (#1172)                                                                                                                                                                        |
+  | Teacher-dashboard RPCs return empty for a non-educator/manager persona                                              | `get_teacher_group_performance`, `get_teacher_activity_feed` (20261028100100; live defs)                                                    | 5     | should key on `stats.read` / group teacher, not the JWT                                                                                                                                                            |
+  | 403-vs-404 asymmetry applied per service by hand (foreign org → NOT_FOUND, same-org unreadable → FORBIDDEN)         | `packages/server/src/services/quiz-teacher.service.ts:31,87` (`foreignOrgError`)                                                            | 5     | §7.1's rule (404 not-a-member / 403 lacks-permission) is hand-applied per service; the enforcement matrix owns making it uniform                                                                                   |
+  | `teacher-assignment.service.create` with no active org fails only at the RLS tenant floor — no API-level org check  | `packages/server/src/services/teacher-assignment.service.ts:324`                                                                            | 5     | the controller gates `assignment.create` but not the org binding of the inserted row                                                                                                                               |
+  | `seatEligible` metadata not yet consumed by pool validation                                                         | `packages/authz/src/entitlements.ts:18,36-71`, `entitlement_catalog.seat_eligible` (20261119140000:57)                                      | 4     | MGR-SEAT-01 / D15: the pool's `plan_key` must be `scope='personal'` + `seatEligible` — phase 4 owns `addPool`                                                                                                      |
+
+- **QA map:** no case changes — this slice changes no product behaviour, and
+  SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
+- **Gates:** `test:unit`, `typecheck:all` + `typecheck:admin`, `lint:all`,
+  `review:static`, `knip`, `format:check`, `pr:size`. No build/serve/Playwright;
+  the api stack used for the live audit (`stack-b97ab97290af`) is stopped
+  before this slice finishes.
+
+#### 2026-11-21 — phase 2 closes with a deferral register
+
+What: the plan's 2b-9 line said "deferred to phase 5 — documentation plus
+whatever is genuinely left", and closing phase 2 needed two proofs prose
+cannot give: that the four remaining `allowedAccountTypes` really are the only
+ones on the API surface (a fifth gate added anywhere must fail something), and
+that the remaining persona branches are enumerated with owners instead of
+remembered. The first closure draft was a docs paragraph claiming "only the
+four exceptions remain"; nothing enforced it.
+Why: R5's audit was a one-time grep, and the persona branches that survive in
+services and SQL (the register above) had no single list — each 2b slice
+recorded its own deferral in its own note (ADR §7.1's 2b-4/2b-6 notes, §4.4's
+2b-5 review note), so "what is left" was scattered across dated notes and a
+reader could not tell a closed item from an open one.
+Fix: 2b-9 ships the register in this block (each row: branch, `file:line`,
+owning phase, why) plus `__tests__/unit/guards/persona-gates.test.ts`, which
+pins the route-layer half — exactly the four declared exceptions, stale
+declarations fail, no persona gate in controllers/services — with the live
+DB numbers measured on this branch's stack (0 marker-helper policies, 0/0/0/0
+marker rows, 44 permissions, 6 entitlement keys). The three red proofs were
+done by hand (fifth gate / removed gate / controller gate) because `bun run
+mutate` needs one tracked production line and this guard's input is the route
+tree.
+Rule: R31.
 
 ### Phase 3 — entitlements and limits
 

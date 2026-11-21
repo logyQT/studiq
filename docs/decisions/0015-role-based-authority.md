@@ -730,6 +730,30 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > the persona — they sit on shared multi-reader paths (five services read
 > `quiz_attempts` under different keys) and are phase 5's (2b-9) with the
 > `org_members` SELECT.
+>
+> **2026-11-21 (phase 2b-9).** **Phase 2 is complete** (2b-1…2b-9 merged, 2b-7 as
+> `f62b896d`, 2b-8 as `9747f372`). What now holds: org-resource authority is
+> permissions-only — the control plane gates on `org.*`/`group.*` keys from
+> `ctx` and enforces the same keys at RLS (`rls_caller_has_permission` and its
+> group/role-editor twins, R4); the role editor's guards (system roles, last
+> `org.role.manage` holder, §4.4 write predicate) hold at both the API and the
+> table; class invites are `group.invite` on the group and never touch the
+> invitee's org role; the four legacy management entitlements are deleted from
+> every table (0 rows, 0 policies referencing `has_org_feature`/`is_org_manager`,
+> `permissions` = 44, `entitlement_catalog` = 6, measured on the branch's live
+> stack); and the only `allowedAccountTypes` left on the API surface are the
+> four declared exceptions — R5 org creation and classroom creation, plus the
+> phase-5 `ai/chat` and `ai/usage` pair — pinned by
+> `__tests__/unit/guards/persona-gates.test.ts`, so a fifth persona gate (or a
+> stale exception) fails a unit test. The remaining persona/role-name branches
+> that still decide authority — the `org_members` SELECT, the org-wide
+> `teacher_assignments` SELECT, the `quiz_attempts`/`exposure_events` staff
+> branches, the teacher-dashboard RPCs, the billing owner and checkout resolver,
+> `can_assign_org_role`'s §4.4 gap, the seal, and the plan-resolution persona
+> branches — are enumerated with `file:line`, an owning phase (3/4/5) and a
+> reason in the **deferral register** in
+> [role-authority-plan.md §5, phase 2b](role-authority-plan.md#phase-2b--authority-and-control-plane);
+> phase 5 does not rediscover them one note at a time.
 
 ---
 
