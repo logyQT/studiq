@@ -3487,6 +3487,31 @@ resolves to 0 is not effective (`requireFeature` fails on it too). The
 resolver's `limits` field is still composed through `LimitsResolver`
 (TEMPORARY, replaced by the in-resolver composition in 3b).
 
+**3b delivered on `feat/authority-3b` (2026-11-21).** The limits composition
+moved into `EntitlementResolver` (§6.2 truth table): `scope:'user'` keys take
+`max(org, seat, personal)` with `-1` short-circuiting, `scope:'org'` keys come
+from the verified org's plan only (0 outside one), a missing `plan_limits` row
+is `0` + warn in every path. The composition is batched — one
+`plan_entitlements` and one `plan_limits` read (`.in('plan_key', …)`) for all
+layer plans, and the org layer plus the seat pool ride FK embeds on the
+`org_members` / `org_seat_assignments` rows — so one resolution is at most
+seven queries, one per table, never a per-limit fan-out (pinned by
+`entitlement.resolver.limits.test.ts`; 7 in the full org+seat case, 5 outside
+an org). Membership is verified **before** the seat plan is consulted, so a
+forged `active_org_id` plus a stale seat row resolves the personal plan for
+user keys and 0 for org keys — the 3a review's deferred note is closed for
+limits (entitlements already verified). `limits.resolver.ts` is deleted;
+`services/limits.ts` keeps the public helpers (`checkLimit`, `checkOrgLimit`,
+`getUsage`, `getEffectiveLimit`, `trackTokenUsage`) as wrappers over
+`resolveEntitlements`, with `limitsResolver` preserving the call-site shape, so
+the 8 `checkLimit` services, `ai/chat/route.ts` and `ai-usage.controller.ts`
+only changed their import path. `/me/plan` keeps `PlanInfo.key`'s historical
+value (seat → seat plan, manager member → org plan, else personal — now
+membership-verified through the resolver) and its `features`/`limits` became
+the effective resolved set/limits, with the union `sources` added (D28).
+`/api/v1/ai/usage`'s `plan` now reports the effective primary (org first);
+no web or QA reader asserts the old personal-key value (recorded as D30).
+
 **Difficulty log**
 
 #### 2026-11-21 — the design's "equivalent for today's catalog" was not

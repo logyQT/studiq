@@ -8,7 +8,7 @@ import {
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { TransferQuestion } from '@studiq/server/models/question-transfer.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import { questionService } from '@studiq/server/services/question.service';
 import { questionBankService } from '@studiq/server/services/question-bank.service';
 import { QuestionTransferService } from '@studiq/server/services/question-transfer.service';
@@ -25,7 +25,7 @@ vi.mock('@studiq/server/lib/authz', () => ({
     QUESTION_BANK_UPDATE: 'question_bank.update',
   },
 }));
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock('@studiq/server/services/question.service', () => ({

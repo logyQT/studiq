@@ -19,7 +19,7 @@ import type {
   FlashcardListQueryInput,
   UpdateFlashcardInput,
 } from '@studiq/server/models/flashcard.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 

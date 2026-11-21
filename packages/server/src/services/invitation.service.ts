@@ -13,7 +13,7 @@ import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 import type { ZodIssue } from 'zod';
@@ -781,7 +781,7 @@ export class InvitationService {
     );
 
     // The seat/provisioning reads above stay in the app layer (they need
-    // `limitsResolver`). Everything that writes is one statement: the function
+    // `limits.checkOrgLimit`). Everything that writes is one statement: the function
     // claims the token, upserts the membership and joins the default group in a
     // single transaction, so a failure at any step rolls the claim back and the
     // invitation stays usable for a retry (#1067).

@@ -17,7 +17,7 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
   readQuestionKeys: vi.fn(() => Promise.resolve(new Map())),
 }));
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

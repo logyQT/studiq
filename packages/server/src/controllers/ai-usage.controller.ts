@@ -8,7 +8,7 @@ import {
   AI_TOKENS_LIMIT_KEY,
   limitsResolver,
   type UsageInfo,
-} from '@studiq/server/services/limits.resolver';
+} from '@studiq/server/services/limits';
 
 /**
  * Read-only view of the caller's AI token budget (#379). The chat route already

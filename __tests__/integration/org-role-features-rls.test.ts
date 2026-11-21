@@ -1,6 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
-import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -100,7 +99,7 @@ describe(`org_role_features RLS`, () => {
 
     // A paid plan makes org-derived limits differ from the member's personal
     // (`base`) plan, so an RLS-hidden `organizations` row cannot masquerade
-    // as a correct answer in the LimitsResolver test below.
+    // as a correct answer in the resolver limit test below.
     const { error: planError } = await service
       .from('organizations')
       .update({ plan: 'hub' })
@@ -191,8 +190,8 @@ describe(`org_role_features RLS`, () => {
     expect(entitlements).toEqual(['flashcards', 'quiz']);
   });
 
-  it('LimitsResolver resolves org capacity from a real member session (RLS path)', async () => {
-    const resolver = new LimitsResolver(() => Promise.resolve(memberSession));
+  it('the resolver resolves org capacity from a real member session (RLS path)', async () => {
+    const resolver = new EntitlementResolver(() => Promise.resolve(memberSession));
     const ctx: RequestContext = {
       traceId: `rls-limits-${suiteId}`,
       userId: memberId,
@@ -208,11 +207,12 @@ describe(`org_role_features RLS`, () => {
     // `hub` raises max_flashcards to 2000, while the member's personal `base`
     // plan caps it at 100. If RLS hid the `organizations` row the resolver
     // would silently fall back to 100 — the #124/#182 class of regression.
-    await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(2000);
+    const { limits } = await resolver.resolveEntitlements(ctx);
+    expect(limits.max_flashcards).toBe(2000);
   });
 
-  it('LimitsResolver cannot read a foreign org plan through RLS', async () => {
-    const resolver = new LimitsResolver(() => Promise.resolve(outsiderSession));
+  it('the resolver cannot read a foreign org plan through RLS', async () => {
+    const resolver = new EntitlementResolver(() => Promise.resolve(outsiderSession));
     const ctx: RequestContext = {
       traceId: `rls-limits-outsider-${suiteId}`,
       userId: outsiderId,
@@ -227,6 +227,7 @@ describe(`org_role_features RLS`, () => {
 
     // Not a member of the hub org: its plan row must stay invisible, so only
     // the outsider's own `base` plan (max_flashcards 100) applies.
-    await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+    const { limits } = await resolver.resolveEntitlements(ctx);
+    expect(limits.max_flashcards).toBe(100);
   });
 });

@@ -7,7 +7,7 @@ const getUsageMock = vi.fn<(...args: unknown[]) => unknown>();
 const trackTokenUsageMock = vi
   .fn<(...args: unknown[]) => Promise<unknown>>()
   .mockResolvedValue(undefined);
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   AI_TOKENS_LIMIT_KEY: 'max_ai_tokens_per_day',
   limitsResolver: {
     getUsage: (...args: unknown[]) => getUsageMock(...args),

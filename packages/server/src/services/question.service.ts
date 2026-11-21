@@ -23,7 +23,7 @@ import type {
   QuestionListQuery,
   UpdateQuestionInput,
 } from '@studiq/server/models/question.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 

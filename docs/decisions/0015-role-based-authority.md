@@ -1293,6 +1293,21 @@ interpretation.
 > "own/group" reading, since `group` is a superset of `own` in the API layer.
 > Landed in 3d (a separate PR after the resolver slice); recorded here now.
 > (Phase 3a, `feat/authority-3a`.)
+>
+> **2026-11-21 (D30).** Phase 3b lands the limits composition in the single
+> resolver: `max(org, seat, personal)` for `scope:'user'` keys with `-1`
+> short-circuit, the verified org's plan for `scope:'org'` keys, missing
+> `plan_limits` row = `0`. Membership is verified before the seat plan is
+> consulted, closing the 3a review's deferred note (a forged `active_org_id`
+> plus a stale seat row now yields the personal values, never the seat's).
+> `/me/plan` keeps `PlanInfo.key`'s historical value and reports the effective
+> `features`/`limits` plus the additive union `sources` (D28). Decision:
+> `/api/v1/ai/usage`'s `plan` field now reports the effective primary
+> (`resolveEntitlements().plan.primary`, org first) instead of the personal
+> plan key — inventoried first: no web component reads `usage.plan` (the badge
+> renders only `current`/`limit`) and no QA case asserts it (SEC-07 matches
+> `current`/`limit` only; MGR-SEAT-02 reads `limit`), so the widened meaning
+> is safe. (Phase 3b, `feat/authority-3b`.)
 
 ---
 

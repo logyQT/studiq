@@ -27,7 +27,7 @@ vi.mock('@studiq/server/lib/authz', () => {
   };
 });
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

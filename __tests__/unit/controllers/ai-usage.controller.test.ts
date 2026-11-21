@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getUsageMock = vi.fn<(...args: unknown[]) => unknown>();
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   AI_TOKENS_LIMIT_KEY: 'max_ai_tokens_per_day',
   limitsResolver: {
     getUsage: (...args: unknown[]) => getUsageMock(...args),

@@ -11,7 +11,7 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: {
     checkLimit: vi.fn().mockResolvedValue(undefined),
     checkOrgLimit: vi.fn().mockResolvedValue(undefined),

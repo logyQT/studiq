@@ -1,9 +1,7 @@
 import { AccountType, type EntitlementKey, type RequestContext } from '@studiq/authz';
-import {
-  EntitlementResolver,
-  type EntitlementLimitsSource,
-} from '@studiq/server/services/entitlement.resolver';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockResolverTables } from '#test/helpers/entitlement-resolver-mock';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 // The resolver contract (ADR-0015 §5.3/§6.1, D18/D19), after 2b-7 removed the
@@ -18,27 +16,6 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 // Expected arrays are literals, deliberately: deriving them from `ENTITLEMENTS`
 // or `LEARNER_ENTITLEMENTS` would make the assertions restate the production
 // constant instead of pinning the resolved outcome.
-
-function chain(result: unknown) {
-  const resolved = { data: result, error: null };
-  const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: Record<string, unknown> = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: (value: unknown) => unknown) =>
-    Promise.resolve(resolved).then(onfulfilled);
-  return c;
-}
 
 type EntitlementRows = Record<string, readonly string[]>;
 
@@ -182,46 +159,19 @@ const CASES: Scenario[] = [
 
 function buildClient(scenario: Scenario) {
   const mock = mockSupabaseClient();
-  const orgId = scenario.activeOrgId === undefined ? 'org-1' : scenario.activeOrgId;
 
-  mock.from.mockImplementation((table: string) => {
-    if (table === 'org_members') {
-      return chain(orgId == null || scenario.member === false ? null : { organization_id: orgId });
-    }
-    if (table === 'org_roles') return chain({ entitlement_profile: scenario.profile });
-    if (table === 'org_role_features') return chain(scenario.rows);
-    if (table === 'organizations') return chain({ plan: scenario.plan });
-    if (table === 'plan_entitlements') {
-      const c = chain([]);
-      c.eq = vi.fn((_column: string, planKey: string) =>
-        chain((PLANS[planKey] ?? []).map((key) => ({ entitlement_key: key }))),
-      );
-      return c;
-    }
-    if (table === 'org_seat_assignments') {
-      return chain(scenario.seatPlanKey ? { pool_id: 'pool-1' } : null);
-    }
-    if (table === 'org_seat_pools') return chain({ plan_key: scenario.seatPlanKey ?? null });
-    if (table === 'profiles') return chain(null);
-    if (table === 'user_feature_overrides') return chain([]);
-    if (table === 'entitlement_flags') {
-      // Surface keys all have an enabled row; baseline keys none (D9).
-      return chain([
-        { key: 'ai.chat', is_enabled: true },
-        { key: 'quiz.builder', is_enabled: true },
-        { key: 'advanced.stats', is_enabled: true },
-        { key: 'branding', is_enabled: true },
-      ]);
-    }
-    return chain(null);
+  mockResolverTables(mock, {
+    member: scenario.member,
+    orgPlan: scenario.plan,
+    roleProfile: scenario.profile,
+    roleRows: scenario.rows,
+    seatPlanKey: scenario.seatPlanKey,
+    personalPlanKey: null,
+    planEntitlements: PLANS,
   });
 
   return mock;
 }
-
-const unlimitedLimits: EntitlementLimitsSource = {
-  getEffectiveLimit: () => Promise.resolve(-1),
-};
 
 function ctxFor(scenario: Scenario): RequestContext {
   return {
@@ -247,7 +197,7 @@ describe('EntitlementResolver org entitlement profile (D18/D19)', () => {
   for (const scenario of CASES) {
     it(scenario.name, async () => {
       const mock = buildClient(scenario);
-      const resolver = new EntitlementResolver(() => Promise.resolve(mock), unlimitedLimits);
+      const resolver = new EntitlementResolver(() => Promise.resolve(mock));
 
       const { entitlements } = await resolver.resolveEntitlements(ctxFor(scenario));
 
@@ -258,7 +208,7 @@ describe('EntitlementResolver org entitlement profile (D18/D19)', () => {
   it('does not read the role or the plan when there is no verified role', async () => {
     const scenario = CASES.find((c) => c.name.startsWith('no verified role'))!;
     const mock = buildClient(scenario);
-    const resolver = new EntitlementResolver(() => Promise.resolve(mock), unlimitedLimits);
+    const resolver = new EntitlementResolver(() => Promise.resolve(mock));
 
     await resolver.resolveEntitlements(ctxFor(scenario));
 
@@ -270,7 +220,7 @@ describe('EntitlementResolver org entitlement profile (D18/D19)', () => {
   it('does not read the org tables when the membership row is missing (forged cookie)', async () => {
     const scenario = CASES.find((c) => c.name.startsWith('forged active_org_id'))!;
     const mock = buildClient(scenario);
-    const resolver = new EntitlementResolver(() => Promise.resolve(mock), unlimitedLimits);
+    const resolver = new EntitlementResolver(() => Promise.resolve(mock));
 
     await resolver.resolveEntitlements(ctxFor(scenario));
 
@@ -289,7 +239,7 @@ describe('EntitlementResolver org entitlement profile (D18/D19)', () => {
       expected: [],
     };
     const mock = buildClient(scenario);
-    const resolver = new EntitlementResolver(() => Promise.resolve(mock), unlimitedLimits);
+    const resolver = new EntitlementResolver(() => Promise.resolve(mock));
 
     const { entitlements } = await resolver.resolveEntitlements(ctxFor(scenario));
 
