@@ -7,6 +7,7 @@ import {
   LIMIT_KEYS,
   type EntitlementKey,
   type EntitlementProfile,
+  type LimitKey,
   type PlanSource,
   type RequestContext,
   type ResolvedEntitlements,
@@ -245,9 +246,20 @@ export class EntitlementResolver {
     // ── 8. Limits + quota-0 exclusion ─────────────────────────────────────
     // TEMPORARY(3b): the limits half still composes through `LimitsResolver`;
     // 3b moves the `max(org, seat, personal)` composition into this resolver.
+    // Only the quotas the enabled entitlements actually reference are
+    // resolved, in limit-catalog order. The `limits` record below therefore
+    // contains exactly those keys — every enabled key's quota is in the set,
+    // so the `limits[quota] !== 0` check can never see a missing entry — and
+    // an empty set issues no `getEffectiveLimit` call at all.
+    const neededQuotas = new Set(
+      ENTITLEMENT_KEYS.filter((key) => enabled.has(key))
+        .map((key): LimitKey | null => ENTITLEMENTS[key].quota)
+        .filter((quota): quota is LimitKey => quota !== null),
+    );
+    const quotaKeys = LIMIT_KEYS.filter((limitKey) => neededQuotas.has(limitKey));
     const limits: Record<string, number> = Object.fromEntries(
       await Promise.all(
-        LIMIT_KEYS.map(
+        quotaKeys.map(
           async (limitKey) =>
             [limitKey, await this.limits.getEffectiveLimit(ctx, limitKey)] as const,
         ),

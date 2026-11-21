@@ -547,6 +547,65 @@ describe('EntitlementResolver', () => {
     });
   });
 
+  describe('limits narrowing (step 8 resolves only the quotas the enabled entitlements need)', () => {
+    it('resolves only the quota keys of the enabled entitlements', async () => {
+      const getEffectiveLimit = vi.fn((_ctx: RequestContext, _key: LimitKey) =>
+        Promise.resolve(-1),
+      );
+      resolver = new EntitlementResolver(() => Promise.resolve(mock), { getEffectiveLimit });
+      // `base` grants flashcards + quiz, the override adds ai.chat: no other
+      // entitlement is enabled, so only their three quotas may be resolved.
+      mockTables({
+        personalPlanKey: 'base',
+        overrides: [{ feature_key: 'ai.chat', is_enabled: true }],
+      });
+
+      const { entitlements, limits } = await resolver.resolveEntitlements(baseCtx);
+
+      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz']);
+      const resolvedKeys = getEffectiveLimit.mock.calls.map((call) => call[1]);
+      expect(resolvedKeys).toHaveLength(3);
+      expect(new Set(resolvedKeys)).toEqual(
+        new Set(['max_ai_tokens_per_day', 'max_flashcards', 'max_quiz_attempts_per_day']),
+      );
+      expect(Object.keys(limits).toSorted()).toEqual(
+        ['max_ai_tokens_per_day', 'max_flashcards', 'max_quiz_attempts_per_day'].toSorted(),
+      );
+    });
+
+    it('calls getEffectiveLimit zero times when no entitlement is enabled', async () => {
+      const getEffectiveLimit = vi.fn((_ctx: RequestContext, _key: LimitKey) =>
+        Promise.resolve(-1),
+      );
+      resolver = new EntitlementResolver(() => Promise.resolve(mock), { getEffectiveLimit });
+      mockTables({ personalPlanKey: null });
+
+      const { entitlements, limits } = await resolver.resolveEntitlements(baseCtx);
+
+      expect(entitlements).toEqual([]);
+      expect(getEffectiveLimit).not.toHaveBeenCalled();
+      expect(limits).toEqual({});
+    });
+
+    it('still excludes a quota-0 entitlement under the narrowed computation', async () => {
+      const getEffectiveLimit = vi.fn((_ctx: RequestContext, key: LimitKey) =>
+        Promise.resolve(key === 'max_ai_tokens_per_day' ? 0 : -1),
+      );
+      resolver = new EntitlementResolver(() => Promise.resolve(mock), { getEffectiveLimit });
+      mockTables({ personalPlanKey: 'ace' });
+
+      const { entitlements } = await resolver.resolveEntitlements(baseCtx);
+
+      // `ace` enables ai.chat, flashcards, quiz, advanced.stats; ai.chat's
+      // quota resolves to 0, so it is not effective even though its quota was
+      // one of the resolved keys.
+      expect(entitlements).toEqual(['flashcards', 'quiz', 'advanced.stats']);
+      expect(new Set(getEffectiveLimit.mock.calls.map((call) => call[1]))).toEqual(
+        new Set(['max_ai_tokens_per_day', 'max_flashcards', 'max_quiz_attempts_per_day']),
+      );
+    });
+  });
+
   describe('per-request memo', () => {
     it('resolves once per request context (memoized on the ctx object)', async () => {
       mockTables({ personalPlanKey: 'ace' });
