@@ -169,7 +169,7 @@ export class EntitlementResolver {
       }
 
       // A seat plan intersects the ceiling: it can add a key the org plan
-      // carries, never one it does not (§6.1).
+      // carries, never one it does not (§6.1); `ceiling === null` (org row without a plan — unreachable today, `organizations.plan` has a default) skips the seat.
       const seatPlanKey = await getSeatPlanKey(ctx, supabase);
       if (seatPlanKey && ceiling) {
         for (const key of await this.planEntitlements(seatPlanKey, supabase)) {

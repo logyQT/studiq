@@ -1,10 +1,19 @@
-import { AccountType, ENTITLEMENT_KEYS, type LimitKey, type RequestContext } from '@studiq/authz';
+import {
+  AccountType,
+  ENTITLEMENT_KEYS,
+  type LimitKey,
+  type RequestContext,
+  type ResolvedEntitlements,
+} from '@studiq/authz';
+import { AppError } from '@studiq/server/lib/errors';
+import { requireFeature } from '@studiq/server/lib/features';
 import {
   EntitlementResolver,
+  entitlementResolver,
   type EntitlementLimitsSource,
   isUserOverrideActive,
 } from '@studiq/server/services/entitlement.resolver';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 function chain(result: unknown) {
@@ -82,6 +91,10 @@ describe('EntitlementResolver', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     resolver = new EntitlementResolver(() => Promise.resolve(mock), limitsWith());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   /** Standard table mock: a verified member of `org-1` unless `member: false`. */
@@ -535,15 +548,38 @@ describe('EntitlementResolver', () => {
       expect(entitlements).toContain('ai.chat');
     });
 
-    it('requireFeature semantics: a quota-0 key is not in the resolved set', async () => {
-      resolver = new EntitlementResolver(
-        () => Promise.resolve(mock),
-        limitsWith({ max_ai_tokens_per_day: 0 }),
-      );
-      mockTables({ personalPlanKey: 'ace' });
+    it('requireFeature: resolves an effective key, rejects FORBIDDEN outside the resolved set and for a quota-0 key', async () => {
+      // `ai.chat` is absent from the fixture because its quota resolved to 0:
+      // a quota-0 key never reaches the resolved set (§6.1), so requireFeature
+      // must reject it exactly like any other non-effective key.
+      const fixture: ResolvedEntitlements = {
+        entitlements: ['flashcards', 'quiz', 'advanced.stats'],
+        limits: {},
+        sources: {
+          org: null,
+          seat: null,
+          personal: { planKey: 'ace', origin: 'personal' },
+          overrides: [],
+          revokedOverrides: [],
+          revokedRoleRows: [],
+          flagsOff: [],
+        },
+        plan: { primary: 'ace', sources: [{ planKey: 'ace', origin: 'personal' }] },
+      };
+      const spy = vi.spyOn(entitlementResolver, 'resolveEntitlements').mockResolvedValue(fixture);
 
-      const { entitlements } = await resolver.resolveEntitlements(baseCtx);
-      expect(entitlements).not.toContain('ai.chat');
+      await expect(requireFeature(baseCtx, 'flashcards')).resolves.toBeUndefined();
+
+      const outside = await requireFeature(baseCtx, 'quiz.builder').catch((e: unknown) => e);
+      expect(outside).toBeInstanceOf(AppError);
+      expect(outside).toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+
+      await expect(requireFeature(baseCtx, 'ai.chat')).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+        statusCode: 403,
+      });
+
+      expect(spy).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -627,6 +663,23 @@ describe('EntitlementResolver', () => {
       await resolver.resolveEntitlements({ ...baseCtx });
 
       expect(vi.mocked(mock.from).mock.calls.length).toBeGreaterThan(fromCallsAfterFirst);
+    });
+
+    it('retries with a fresh resolution after a rejected one (evicted from the memo)', async () => {
+      let clientCalls = 0;
+      const flakyFactory = () => {
+        clientCalls += 1;
+        return clientCalls === 1 ? Promise.reject(new Error('db down')) : Promise.resolve(mock);
+      };
+      const retryResolver = new EntitlementResolver(flakyFactory, limitsWith());
+      mockTables({ personalPlanKey: 'ace' });
+      const ctx: RequestContext = { ...baseCtx };
+
+      await expect(retryResolver.resolveEntitlements(ctx)).rejects.toThrow('db down');
+      const second = await retryResolver.resolveEntitlements(ctx);
+
+      expect(clientCalls).toBe(2);
+      expect(second.entitlements).toContain('ai.chat');
     });
   });
 
