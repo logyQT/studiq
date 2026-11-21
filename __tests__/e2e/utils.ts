@@ -34,3 +34,26 @@ export const t = (path: string) => {
 export function sidebarLink(page: Page, key: string) {
   return page.locator('a[data-sidebar="menu-button"]', { hasText: t(key) });
 }
+
+/**
+ * No seed account — shared or isolated tenant — is entitled to `ai.chat`
+ * (personal `lite` / org `launch`, neither grants it), so the reset cases below
+ * would take an entitlement early-return and assert nothing. Fulfilling the
+ * feature query makes entitlement deterministic and lets the real page render.
+ * Registered before the first navigation so the value is fixed for the dashboard
+ * shell and the AI page alike; the locked branch is covered by the #375
+ * plan-gate suite.
+ */
+export async function mockAiChatEntitled(page: Page) {
+  await page.route('**/api/v1/features/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        statusCode: 200,
+        data: { features: ['ai.chat'], rollout: {} },
+      }),
+    }),
+  );
+}

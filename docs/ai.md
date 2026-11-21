@@ -30,21 +30,23 @@ Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispa
 
 ### Key files
 
-| File                                         | Role                                                                 |
-| -------------------------------------------- | -------------------------------------------------------------------- |
-| `src/app/(backend)/api/v1/ai/chat/route.ts`  | Entry point — auth, streamText, tool registration                    |
-| `src/server/agents/core/base.agent.ts`       | Abstract ReAct loop                                                  |
-| `src/server/agents/general.agent.ts`         | Agent Q orchestrator (9 generic tools)                               |
-| `src/server/agents/flashcard.agent.ts`       | Flashcard sub-agent (5 tools)                                        |
-| `src/server/agents/agent-registry.ts`        | Singleton — maps agent names to instances                            |
-| `src/server/agents/system.ts`                | Agent Q system prompt                                                |
-| `src/server/services/agent.service.ts`       | Entry point — constructs ToolContext, calls GeneralAgent             |
-| `src/server/ai/model.ts`                     | LLM model config (provider-agnostic via `@ai-sdk/openai-compatible`) |
-| `src/server/config/agent-models.config.ts`   | Per-agent model overrides                                            |
-| `src/server/services/agent-trace.service.ts` | In-memory + SQLite trace storage                                     |
-| `src/lib/conversation-context.ts`            | `AsyncLocalStorage` for conversation ID                              |
-| `src/hooks/use-ai-chat.ts`                   | Client hook — SSE parsing, message state                             |
-| `src/components/ai/*.tsx`                    | UI: ChatScreen, FlashcardBlock, ThinkingBlock, QuestionBlock         |
+| File                                         | Role                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| `src/app/(backend)/api/v1/ai/chat/route.ts`  | Entry point — auth, streamText, tool registration                     |
+| `src/server/agents/core/base.agent.ts`       | Abstract ReAct loop                                                   |
+| `src/server/agents/general.agent.ts`         | Agent Q orchestrator (9 generic tools)                                |
+| `src/server/agents/flashcard.agent.ts`       | Flashcard sub-agent (5 tools)                                         |
+| `src/server/agents/agent-registry.ts`        | Singleton — maps agent names to instances                             |
+| `src/server/agents/system.ts`                | Agent Q system prompt                                                 |
+| `src/server/services/agent.service.ts`       | Entry point — constructs ToolContext, calls GeneralAgent              |
+| `src/server/ai/model.ts`                     | LLM model config (provider-agnostic via `@ai-sdk/openai-compatible`)  |
+| `src/server/config/agent-models.config.ts`   | Per-agent model overrides                                             |
+| `src/server/services/agent-trace.service.ts` | In-memory + SQLite trace storage                                      |
+| `src/lib/conversation-context.ts`            | `AsyncLocalStorage` for conversation ID                               |
+| `src/hooks/use-ai-chat.ts`                   | Client hook — SSE parsing, message state                              |
+| `src/components/ai/*.tsx`                    | UI: ChatScreen, FlashcardBlock, ThinkingBlock, QuestionBlock          |
+| `packages/server/src/lib/ai/commands.ts`     | Slash-command registry and parser, read by the composer and the route |
+| `src/components/ai/ai-command-menu.tsx`      | The command menu above the composer                                   |
 
 ---
 
@@ -81,6 +83,34 @@ All tools are **stateless processors**. They receive input from the LLM, process
 This is an intentional architectural constraint — see [Security](#security).
 
 ---
+
+## Slash commands
+
+A message that starts with a command (`/explain photosynthesis`) is a command. One registry,
+`packages/server/src/lib/ai/commands.ts`, is read on both sides; it is data and pure functions
+only, with no imports, because the client bundles it (a tool object in it would pull
+`node:async_hooks` into the bundle, so a command that needs a tool names it as a string).
+
+| Side     | What it does                                                                                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Composer | Opens a menu when the text is only a command name (`/`, `/ex`), filters it, and closes it once a space follows. Arrows move, Tab and Enter pick, Escape dismisses it for the text typed so far. The text field keeps the focus, and an input method confirming a candidate with Enter neither picks nor sends. |
+| Route    | Derives the command from the **last message** of the stored transcript on every request and adds its instruction to the system prompt. No new endpoint.                                                                                                                                                        |
+
+The transcript is never rewritten: the user sees `/explain photosynthesis`, and the model gets that
+same text as the last user message, plus the instruction in the system prompt. Because the route
+derives it from the transcript, a retry (`regenerate()`, which re-sends the stored messages with no
+options) behaves like the first send, and a command applies to its own turn only.
+
+A command is `{ name, descriptionKey, argumentHintKey, policy }`. Names stay English in every locale; the
+description and the hint are keys under `AiChatPage` in both catalogs. Today every policy is a
+`prompt` (`{args}` is replaced by the text after the command, `emptyTemplate` is used without one).
+A command that forces a tool (`/quiz`, #1152) will add a second policy kind; nothing forces a tool yet.
+
+**Not the global search shortcut.** A bare `/` outside a text field opens the global search. Inside
+the composer (a text field) the shortcuts do not fire, so `/` starts the command menu there.
+
+To add a command: add an entry to `SLASH_COMMANDS`, add its two message keys in `pl` and `en`, and extend
+`__tests__/unit/lib/ai-commands.test.ts` and the cases of `__tests__/integration/ai-chat-command.test.ts`.
 
 ## Agent lifecycle
 
