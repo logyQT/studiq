@@ -2850,6 +2850,10 @@ export type Database = {
         Args: { p_assignment_id: string };
         Returns: boolean;
       };
+      rls_caller_covers_permission: {
+        Args: { p_organization_id: string; p_permission: string; p_scope: string };
+        Returns: boolean;
+      };
       rls_caller_has_group_permission: {
         Args: { p_group_id: string; p_permission: string };
         Returns: boolean;
@@ -2864,6 +2868,10 @@ export type Database = {
       };
       rls_caller_is_org_manager: { Args: { p_organization_id: string }; Returns: boolean };
       rls_caller_is_sealed_item: { Args: { p_question_id: string }; Returns: boolean };
+      rls_caller_may_set_role_permission: {
+        Args: { p_org_role_id: string; p_permission_key: string; p_scope: string };
+        Returns: boolean;
+      };
       rls_caller_org_ids: {
         Args: Record<PropertyKey, never>;
         Returns: {

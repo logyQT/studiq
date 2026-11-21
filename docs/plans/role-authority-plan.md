@@ -40,8 +40,9 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 `ctx.groupRoles`) and **2a-5** (fail-closed scope defaults + the full
 `Permission` set) are merged with the 2b slices. Phase 2b: 2b-1…2b-6 are merged
 (2b-6 as `67fab892`, #1402) and **2b-7 (the legacy-marker deletion) is written on
-`feat/authority-2b-7`**; the remaining slices are 2b-8 (the RLS half of the
-role-editor guards) and 2b-9 (deferred to phase 5).
+`feat/authority-2b-7`**; **2b-8 (the RLS half of the role-editor guards) is
+written on `feat/authority-2b-8`** (delivered block below); the remaining slice
+is 2b-9 (deferred to phase 5).
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
 backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
@@ -1339,7 +1340,7 @@ control-plane RLS (2b-4), because the routes and their predicates move together
 | 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Written** on `feat/authority-2b-5`. |
 | 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Merged** `67fab892` (#1402).                                                                                                                                                                                 |
 | 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them. **Written on `feat/authority-2b-7`** (delivered block below).                      |
-| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                                                                  |
+| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS. **Written on `feat/authority-2b-8`** (delivered block below).                                                                                                                    |
 | 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                       |
 
 **Re-numbered 2026-11-20 (R8).** The settled order changed the labels the
@@ -3200,6 +3201,86 @@ permission intact) so it cannot pass on an emptied catalog (R26).
 Rule: a key deletion is checked against every reader of the key in both layers —
 `requireFeature(` on the server, `feature('…')`/`useFeature` on the client —
 and a typed subset of a catalog is deleted in the same PR as the keys it lists.
+
+**2b-8 written on `feat/authority-2b-8` — slice 8 of 9 (the RLS half of the
+role-editor guards):**
+
+- **Migration** `20261121150000_role_editor_guards_rls.sql` re-states all six
+  role write policies in full (R27 — the RLS suites' replay list moves from
+  `20261119190000` to this file) and adds:
+  - `org_roles` DELETE gets `and not coalesce(is_system, false)` — system
+    roles cannot be deleted through PostgREST (the service answers FORBIDDEN
+    on the same row). INSERT/UPDATE get the same conjunct on the new row, so a
+    system role can also not be **created** or flipped into through PostgREST
+    (the API hardcodes `is_system = false`; the system rows come from the
+    org-creation trigger, which runs as the owner). The rename half was
+    already covered at the data plane by `guard_system_org_role_identity`
+    (20261024124756) — no second trigger, but a new test pins it.
+  - Two SECURITY DEFINER helpers (`search_path = ''`, grants in the same file,
+    R18/R19): `rls_caller_covers_permission(org, key, scope)` (scope ranks
+    mirror `scopeCovers`; D21's `org.admin`@organization exemption included)
+    and `rls_caller_may_set_role_permission(role, key, scope)`, which carries
+    the whole §4.4 write predicate for `org_role_permissions`
+    INSERT/UPDATE/DELETE: tenant floor + `org.role.manage` gate + D16
+    (`permissions.assignable` — `org.admin` is never granted, moved into, or
+    withdrawn, and the check precedes the ownership exemption) + no self-edit
+    unless the caller holds `org.admin`@organization (D21) + the caller's own
+    scope covering the stored scope (removal, the USING clause) and the new
+    scope (addition, the WITH CHECK clause).
+  - The last-`org.role.manage`-holder guard as two BEFORE DELETE/UPDATE
+    triggers (`guard_org_roles_last_role_manage_holder`,
+    `guard_org_role_permissions_last_role_manage_holder`) that lock the
+    organization row `FOR UPDATE` and then count the remaining holders — R29:
+    a `USING` subquery alone is not atomic under READ COMMITTED. Both skip
+    non-`authenticated` roles (like `guard_system_org_role_identity`) and FK
+    cascades (`pg_trigger_depth() > 1`), so org deletion and test cleanup do
+    not raise on their own last holder; the concurrency property was proven
+    by hand on the stack (two sessions deleting the last two holders: one
+    commits, the other gets 42501, exactly one row remains) and is also an
+    integration test.
+  - A closing guard (R26) asserting all six policies exist **and** carry their
+    predicate, both helpers exist as security-definer with `search_path`
+    pinned and EXECUTE for `authenticated`, and both triggers exist with the
+    lock, the gate key, the `auth.role()` and the depth checks in their bodies.
+- **Tests**: new `__tests__/integration/org-role-editor-guards-rls.test.ts`
+  (18 tests, all through PostgREST as signed-in sessions): system-role
+  delete/insert/flip/rename refusals with surviving-row assertions; scope
+  coverage refusals (own-only holder cannot grant at organization, cannot
+  delete/update a row stored at organization, can write at own — positive
+  control); self-edit refusal and the D21 org.admin self-edit positive
+  control; D16 `org.admin` insert/update/delete refusals including by an
+  org.admin holder; last-holder refusals for the permission-row DELETE, the
+  key-moving UPDATE and the role DELETE, each with a second-holder positive
+  control; the two-session concurrency test; and two guard tests that weaken
+  a policy / drop a trigger and assert the closing guard raises. The replay
+  suite `org-role-manage-rls.test.ts` moved to the new file and its holder
+  role now carries the key it writes (the §4.4 coverage rule applies to it
+  too). `database.ts` regenerated with the pinned CLI — the diff is exactly
+  the two new RPC signatures, byte-identical on a second run.
+- **API/data-plane divergences found (reported, not changed):** (1)
+  `createRole` applies a template's rows without the §4.4 coverage check, so
+  a custom `org.role.manage` holder creating a non-blank template role now
+  fails at the table (42501) where the API used to succeed — the API half of
+  that guard is phase-5 work; (2) `deleteRole` has no last-holder check (only
+  `setPermissions` does), so deleting the last gate-holder role through the
+  API now surfaces as a DB error instead of a clean CONFLICT. Neither changes
+  a legitimate API flow; both fail closed.
+- **D25 / `org_members` SELECT asymmetry: stays with phase 5 (2b-9).** 2b-4's
+  reader census is unchanged — the readers the narrowing would empty still
+  need keys D25 does not name — so this slice records the asymmetry as
+  deliberate and does not narrow the policy.
+- **`can_assign_org_role`'s "grant only what you hold" gap: untouched**, owned
+  by phase 5 as recorded in ADR-0015 §4.4 (2b-5 note).
+- **Mutation gate:** `bun run mutate` drives unit tests only and this slice
+  changes no unit-tested code, so there is nothing for it to kill; the RLS
+  invariants are proven by the integration suite above plus the by-hand
+  probes (each refusal re-run manually on the stack, including the
+  concurrency race).
+- **Gates:** `env:ensure --profile api`, `env:reset-db --yes` (twice — the
+  file applies cleanly from scratch), the full serial integration run
+  (109 files, 1019 passed, 11 skipped), `test:unit`, `typecheck:all` +
+  `typecheck:admin`, `lint:all`, `review:static`, `knip`, `dup:base`,
+  `format:check`, `pr:size`. No build/serve/Playwright/QA.
 
 ### Phase 3 — entitlements and limits
 
