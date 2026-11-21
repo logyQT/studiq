@@ -751,7 +751,7 @@ export class InvitationService {
     if (!invite) return failure('NOT_FOUND');
     if (!this.isInviteUsable(invite)) return failure('GONE');
 
-    // A demoted inviter (or one who never had `member.manage`) cannot promote
+    // A demoted inviter (or one who never had `org.invitation.manage`) cannot promote
     // the acceptor. service_role may call the internal helper directly; any
     // error is treated as an invalid invitation rather than a 500 so a forged
     // token cannot probe the inviter's role.

@@ -17,8 +17,8 @@
 --   * `user_feature_overrides.feature_key` → `entitlement_flags(key)` cascades,
 --     but the delete is explicit as well so the intent does not depend on the
 --     constraint (the 1c lesson);
---   * `entitlement_flags` rows for the markers go before the catalog rows for
---     the same reason.
+--   * `entitlement_flags` rows for the markers are deleted as a guard, not
+--     an FK: `entitlement_flags.key` has no foreign key to the catalog.
 -- A later plan/flag write cannot reintroduce a key: the plan row fails the
 -- catalog foreign key (23503, which the admin services map to BAD_REQUEST).
 

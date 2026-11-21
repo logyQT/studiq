@@ -134,7 +134,7 @@ async function readPayments(page: Page): Promise<PaymentItem[]> {
 }
 
 test.describe('BIL-04 — organization plan purchase', () => {
-  test('buys Hub for the organization and unlocks branding and the role builder', async ({
+  test('buys Hub for the organization and unlocks branding and the quiz builder', async ({
     page,
   }) => {
     test.setTimeout(180_000);
