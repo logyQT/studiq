@@ -10,13 +10,12 @@ export {
   ENTITLEMENT_KEYS,
   type EntitlementProfile,
   ENTITLEMENT_PROFILES,
-  type EntitlementResolution,
   ENTITLEMENTS,
   isEntitlementKey,
   isEntitlementProfile,
   LEARNER_ENTITLEMENTS,
-  ORG_SCOPED_ENTITLEMENTS,
-  rolloutBucket,
+  type PlanSource,
+  type ResolvedEntitlements,
   SURFACE_ENTITLEMENT_KEYS,
 } from './entitlements';
 // ── Limits ──────────────────────────────────────────────────────────────────

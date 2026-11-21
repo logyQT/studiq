@@ -59,8 +59,10 @@ seeded tenant instead:
 ## Expected result
 
 - Toast „Miejsce przydzielone pomyślnie”; w „Przydziałach” nowy wpis; w puli przydzielone +1, dostępne −1.
-- Członek otrzymuje funkcje/limity planu miejsca (np. dostęp do AI dla planu premium) – role administracyjne nie otrzymują funkcji wyłącznie-adminowych.
+- Seat entitlements are intersected with the org ceiling (ADR-0015 §5.4): a seat cannot grant an entitlement the org did not buy. The org here is on `launch` (only `flashcards`, `quiz`), so after the Ace seat the member's `/api/v1/features/me` is **unchanged** — no `ai.chat`, no org-scoped key such as `branding`; the sidebar keeps no „Asystent Q” entry and `/app/ai` keeps the plan gate. The seat is still the member's effective plan (`/api/v1/me/plan` → `ace`) and, in phase 3a, the user-scope AI-token limit is the seat plan's own (`ace.limits.max_ai_tokens_per_day`) even though `ai.chat` is not entitled.
 - Dostępne są tylko pule pasujące do poziomu (tier) członka.
+
+> 2026-11-21 (phase 3a) — ADR §5.4: a seat cannot grant an entitlement the org did not buy; a launch-org seat therefore grants no feature. The positive seat-upgrade demonstration moves to phase 4, which owns audience validation, `seat ∩ ceiling` and `max(org, seat, personal)` (candidate: a non-learner key such as `advanced.stats` on an org plan that carries it; the plan data currently has no lower-tier org plan with `ai.chat`, so an "AI limit rises" story needs a phase-4 plan-data decision).
 
 ## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f`)
 
@@ -79,16 +81,8 @@ seeded tenant instead:
   appears in „Przydziały” (member name, plan „StudiQ Ace”, date), and the pool row moves
   from 3 / 0 / 3 to **3 / 1 / 2** (assigned +1, available −1). The Creator and Campus pools
   keep their counters. The seated member disappears from the member picker.
-- The member's next login shows the seat plan: the sidebar gains the „Asystent Q” entry
-  (`ai.chat`) and `/app/ai` renders the composer instead of the plan gate „Asystent Q nie
-  jest dostępny w Twoim planie”. `GET /api/v1/features/me` grows from
-  `flashcards, quiz` to `ai.chat, flashcards, quiz, advanced.stats` (the Ace
-  additions; `documents` is absent until its surface ships — open catalog,
-  ADR §5.1), with no org-scoped key such as `branding` — a seat is a
-  personal plan and never grants one (the legacy management markers left the
-  catalog in 2b-7);
-  `GET /api/v1/me/plan` returns `ace`, and `GET /api/v1/ai/usage` moves from limit `0` to
-  Ace's `max_ai_tokens_per_day` (200000 at seed time).
+- The member's next login under phase 3a shows the ceiling rule, not the seat plan: the sidebar keeps no „Asystent Q” entry (`ai.chat`) and `/app/ai` keeps the plan gate „Asystent Q nie jest dostępny w Twoim planie”, because `GET /api/v1/features/me` stays at `flashcards, quiz` — the seat's entitlements are intersected with the org ceiling and the launch org did not buy `ai.chat` (superseded: the pre-3a walk below observed the additive behaviour, `ai.chat, flashcards, quiz, advanced.stats` growing from `flashcards, quiz`; `documents` is absent until its surface ships — open catalog, ADR §5.1), with no org-scoped key such as `branding` — a seat is a personal plan and never grants one (the legacy management markers left the catalog in 2b-7);
+  `GET /api/v1/me/plan` returns `ace`, and `GET /api/v1/ai/usage` reports Ace's `max_ai_tokens_per_day` (200000 at seed time) because the phase-3a limit composition is seat-exclusive.
 - The guards behind the pickers hold server-side too: a second seat for the already-seated
   member → **429** `USAGE_LIMIT_EXCEEDED`; a Creator (educator) pool for the student
   `member` → **400** `BAD_REQUEST`; no assignment is created and the counters do not move.

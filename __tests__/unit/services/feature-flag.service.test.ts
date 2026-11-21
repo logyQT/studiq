@@ -95,7 +95,6 @@ describe('FeatureFlagService', () => {
         key: 'quiz',
         name: 'Quiz',
         is_enabled: true,
-        rollout_percentage: 100,
       };
       mock.from.mockReturnValueOnce(qb(flag));
 

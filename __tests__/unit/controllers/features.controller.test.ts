@@ -5,7 +5,12 @@ vi.mock('@studiq/server/lib/features', () => ({
   resolveFeatures: vi.fn(),
 }));
 
-import { AccountType, type RequestContext } from '@studiq/authz';
+import {
+  AccountType,
+  LIMIT_KEYS,
+  type RequestContext,
+  type ResolvedEntitlements,
+} from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { resolveFeatures } from '@studiq/server/lib/features';
 
@@ -32,13 +37,23 @@ describe('FeaturesController', () => {
     vi.clearAllMocks();
     controller = new FeaturesController();
     vi.mocked(resolveFeatures).mockResolvedValue({
-      features: ['flashcards', 'quiz'],
-      rollout: { 'ai.chat': 25 },
-    });
+      entitlements: ['flashcards', 'quiz'],
+      limits: Object.fromEntries(LIMIT_KEYS.map((key) => [key, -1])),
+      sources: {
+        org: null,
+        seat: null,
+        personal: null,
+        overrides: [],
+        revokedOverrides: [],
+        revokedRoleRows: [],
+        flagsOff: [],
+      },
+      plan: { primary: 'free', sources: [] },
+    } satisfies ResolvedEntitlements);
   });
 
   describe('myFeatures', () => {
-    it('returns enabled features and the rollout map', async () => {
+    it('returns the resolved entitlement keys as `features`', async () => {
       const response = await controller.myFeatures(mockCtx);
 
       expect(response.success).toBe(true);
@@ -46,7 +61,6 @@ describe('FeaturesController', () => {
       expect(resolveFeatures).toHaveBeenCalledWith(mockCtx);
       expect(dataOf(response)).toEqual({
         features: ['flashcards', 'quiz'],
-        rollout: { 'ai.chat': 25 },
       });
     });
   });

@@ -7,7 +7,7 @@ import type { Database } from '../types/database';
  * active organization. Returns `null` when the user is not seated (no
  * `org_seat_assignments` row), meaning personal/org plan entitlements apply.
  *
- * Shared by `FeatureResolver` (features) and `LimitsResolver` (limits) so
+ * Shared by the entitlement resolver (features) and `LimitsResolver` (limits) so
  * seat-based entitlements resolve identically in both systems.
  */
 export async function getSeatPlanKey(

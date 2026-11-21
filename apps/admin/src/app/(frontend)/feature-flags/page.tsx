@@ -42,7 +42,6 @@ type FeatureFlag = {
   name: string;
   description: string | null;
   is_enabled: boolean;
-  rollout_percentage: number;
   created_at: string;
 };
 
@@ -51,7 +50,6 @@ type FormData = {
   name: string;
   description: string;
   isEnabled: boolean;
-  rolloutPercentage: number;
 };
 
 const EMPTY_FORM: FormData = {
@@ -59,7 +57,6 @@ const EMPTY_FORM: FormData = {
   name: '',
   description: '',
   isEnabled: true,
-  rolloutPercentage: 100,
 };
 
 export default function FeatureFlagsPage() {
@@ -105,14 +102,8 @@ export default function FeatureFlagsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      name,
-      description,
-      isEnabled,
-      rolloutPercentage,
-    }: FormData & { id: string }) =>
-      apiPut(`/feature-flags/${id}`, { name, description, isEnabled, rolloutPercentage }),
+    mutationFn: ({ id, name, description, isEnabled }: FormData & { id: string }) =>
+      apiPut(`/feature-flags/${id}`, { name, description, isEnabled }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
@@ -146,7 +137,6 @@ export default function FeatureFlagsPage() {
       name: flag.name,
       description: flag.description ?? '',
       isEnabled: flag.is_enabled,
-      rolloutPercentage: flag.rollout_percentage,
     });
     setDialogOpen(true);
   }
@@ -191,7 +181,6 @@ export default function FeatureFlagsPage() {
                   <TableHead>{t('col_key')}</TableHead>
                   <TableHead>{t('col_name')}</TableHead>
                   <TableHead>{t('col_enabled')}</TableHead>
-                  <TableHead>{t('col_rollout')}</TableHead>
                   <TableHead className="w-24" />
                 </TableRow>
               </TableHeader>
@@ -207,7 +196,6 @@ export default function FeatureFlagsPage() {
                         {flag.is_enabled ? t('enabled') : t('disabled')}
                       </span>
                     </TableCell>
-                    <TableCell>{flag.rollout_percentage}%</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(flag)}>
@@ -284,17 +272,6 @@ export default function FeatureFlagsPage() {
                 id="description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="rollout">{t('col_rollout')}</Label>
-              <Input
-                id="rollout"
-                type="number"
-                min={0}
-                max={100}
-                value={form.rolloutPercentage}
-                onChange={(e) => setForm({ ...form, rolloutPercentage: Number(e.target.value) })}
               />
             </div>
             <div className="flex items-center gap-2">

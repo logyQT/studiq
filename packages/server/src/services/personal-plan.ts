@@ -2,7 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 
 /**
  * Whether `profiles.personal_plan_key` is a real, independent entitlement for
- * this caller — used by both `FeatureResolver` and `LimitsResolver` so the two
+ * this caller — used by both the entitlement resolver and `LimitsResolver` so the two
  * always agree.
  *
  * Manager plans are organization plans mirrored onto the buyer (#228): a manager

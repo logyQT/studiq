@@ -150,7 +150,7 @@ export class SubscriptionPlanService {
    *
    * A student's/educator's seat assignment in the active org is the entitlement
    * they actually hold: `LimitsResolver` resolves limits from the seat plan only
-   * and `FeatureResolver` adds the seat plan's features, so the plan page shows
+   * and the entitlement resolver adds the seat plan's features, so the plan page shows
    * that same seat plan (#270). Without a seat, a student's/educator's
    * `active_org_id` membership must not replace their own plan with the
    * organization's (#181).

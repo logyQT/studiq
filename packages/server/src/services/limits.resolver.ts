@@ -3,6 +3,7 @@ import { AppError } from '@studiq/server/lib/errors';
 import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { isOrgMember } from '@studiq/server/services/org-membership';
 import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -66,12 +67,12 @@ export class LimitsResolver {
       // `active_org_id` is a client cookie: only a real membership is an org
       // context, both for the org floor and for excluding a manager's mirrored
       // personal plan (#228).
-      const isOrgMember = await this.isMember(supabase, orgId, ctx.userId);
-      const candidates: number[] = personalPlanApplies(ctx, isOrgMember)
+      const isMember = await isOrgMember(supabase, orgId, ctx.userId);
+      const candidates: number[] = personalPlanApplies(ctx, isMember)
         ? [await this.personalLimit(supabase, ctx.userId, limitKey)]
         : [];
 
-      if (isOrgMember) {
+      if (isMember) {
         const orgPlanKey = await this.orgPlanKey(supabase, orgId);
         if (orgPlanKey) {
           candidates.push(await this.planLimit(supabase, orgPlanKey, limitKey));
@@ -86,7 +87,7 @@ export class LimitsResolver {
 
     // `active_org_id` is a client-controlled cookie: only a real `org_members`
     // row makes it a tenant scope. A forged/stale id grants no org capacity.
-    if (!(await this.isMember(supabase, orgId, ctx.userId))) {
+    if (!(await isOrgMember(supabase, orgId, ctx.userId))) {
       return 0;
     }
 
@@ -240,21 +241,6 @@ export class LimitsResolver {
       .maybeSingle();
 
     return org?.plan ?? null;
-  }
-
-  private async isMember(
-    supabase: SupabaseClient<Database>,
-    organizationId: string,
-    userId: string,
-  ): Promise<boolean> {
-    const { data: membership } = await supabase
-      .from('org_members')
-      .select('organization_id')
-      .eq('organization_id', organizationId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    return membership != null;
   }
 
   /** One plan's value for a key. A missing row is `0` (blocked) — never unlimited. */

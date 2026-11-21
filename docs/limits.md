@@ -33,7 +33,7 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 | `org_role_features (org_role_id, feature_key, is_enabled)`              | Per-org-role feature snapshot.                                                                                                    |
 | `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` is the seat plan.                                                                     |
 | `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                |
-| `entitlement_flags (key, is_enabled, rollout_percentage)`               | Global kill switch + rollout gate.                                                                                                |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                         |
 
 The `base` / `launch` defaults come from the seed
 (`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
@@ -89,38 +89,40 @@ the template on every request.
 
 ## Feature resolution
 
-`FeatureResolver.resolveFeatures(ctx)` —
-`packages/server/src/services/feature.resolver.ts`
+`EntitlementResolver.resolveEntitlements(ctx)` —
+`packages/server/src/services/entitlement.resolver.ts` (ADR-0015 §6.1; the
+only reader of the plan/role/seat/override/flag tables, memoized once per
+request on the ctx). Resolution order:
 
-1. **Plan entitlement** (profile layer, ADR-0015 §5.3)
-   - No `activeOrgId` → skip to the personal fallback.
+1. **Verified membership** — `active_org_id` is a cookie; only a real
+   `org_members` row makes it an org context.
+2. **Plan entitlement** (profile layer, ADR-0015 §5.3)
    - `org_roles.entitlement_profile`: `all` → the org plan ceiling, `learner` →
      `flashcards`, `quiz`, `ai.chat`, `branding` ∩ ceiling, `none` → nothing.
    - `org_role_features` rows then apply their `is_enabled = false` revokes
      only (D19) — an enabled row adds nothing, since 2b-7 removed the markers
      that were the only row-granted keys.
    - Seated (`org_seat_assignments` via `getSeatPlanKey`): the seat plan's
-     `plan_entitlements` are added on top (additive; seat plans carry
-     personal-scope keys only).
-2. **Personal plan** — always applied on top of the entitlement above:
+     `plan_entitlements` are intersected with the ceiling (a seat adds only
+     keys the org plan carries).
+3. **Personal plan** — applied on top of the entitlement above:
    `profiles.personal_plan_key` → `plan_entitlements`. A plan the member pays for
    personally is never shadowed by an org on a lower tier — a student on StudiQ
-   Pro inside a free `launch` org keeps `ai.chat`.
-   Inside an org the personal layer only adds _personal-use_ features: the
-   org-scoped keys (`branding` — the only one left after 2b-7) are dropped
-   unless the org layer above already entitled them — the profile/ceiling, the
-   seat plan. A personal plan therefore cannot hand a `member` role an
-   org-scoped entitlement. Manager plans are
+   Pro inside a free `launch` org keeps `ai.chat`. Inside an org the personal
+   layer only adds `personalPortable` keys (D3): a personal plan cannot hand a
+   `member` role an org-scoped entitlement such as `branding`. Manager plans are
    organization plans mirrored onto the buyer (#228), so a manager's
    `personal_plan_key` adds nothing in an org
    (`personalPlanApplies()`, `packages/server/src/services/personal-plan.ts`).
-3. **User overrides** — active `user_feature_overrides` rows add/remove keys.
-   Rows with `expires_at` in the past stay in the table for audit but are
-   ignored.
-4. **Rollout** — `entitlement_flags.rollout_percentage < 100` gates
-   deterministically per `(key, user_id)`.
-5. **Kill switch** — `entitlement_flags.is_enabled = false` removes the key for
-   everyone.
+4. **User overrides** — an active `user_feature_overrides` row is the final word
+   on its key in both directions (D26). Rows with `expires_at` in the past stay
+   in the table for audit but are ignored.
+5. **Kill switch** — `entitlement_flags.is_enabled = false` removes a surface
+   key for everyone; a **missing row fails closed** (D8). Baseline keys
+   (`flashcards`, `quiz`) are never gated (D9), and keys an active override owns
+   are skipped (D26).
+6. **Quota-0 exclusion** — an entitlement whose quota limit resolves to `0` is
+   not effective, so the API and the UI agree.
 
 ## Limit resolution
 

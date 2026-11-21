@@ -403,6 +403,13 @@ gate on an org resource; `AUT`, `MGR`, `EDU`, `SEC` green.
 
 ### 3 — entitlements and limits
 
+**3a active on `feat/authority-3a` (2026-11-21):** the single resolver's
+entitlement half (`resolveEntitlements(ctx)`, ctx-memoized), the dropped
+rollout layer (kill-switch-only flags, missing row fails closed), D26's
+override-beats-flag rule, the `personalPortable` whitelist, the seat ∩ ceiling
+intersection and the quota-0 exclusion. 3b (limits composition), 3c
+(`change_org_plan`) and 3d (teacher reads) follow.
+
 - `org_roles.entitlement_profile` (`all | learner | none`) ships in 2a-1
   (phase 2); phase 3 consumes it in the single resolver.
   `LEARNER_ENTITLEMENTS` lives in `@studiq/authz`.

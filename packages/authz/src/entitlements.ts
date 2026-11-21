@@ -22,8 +22,8 @@ export type Entitlement = {
 };
 
 /**
- * Declaration order is the `/features/me` payload order (`FeatureResolver` emits
- * it), so it is kept stable across the catalog rename: adding a key appends.
+ * Declaration order is the `/features/me` payload order (`EntitlementResolver`
+ * emits it), so it is kept stable across the catalog rename: adding a key appends.
  *
  * `documents` is absent in v1 (phase 1c): it has no surface, and ADR §5.1 keeps
  * it out of the catalog until it does. Phase 5 has no surface to gate;
@@ -117,40 +117,37 @@ export const LEARNER_ENTITLEMENTS: readonly EntitlementKey[] = [
   'branding',
 ];
 
-/**
- * Entitlements describing control over the organization rather than the member's
- * own study surface. Derived from the catalog's `scope`, so the denylist can no
- * longer drift from the metadata: a personal plan adds none of these inside an
- * org.
- */
-export const ORG_SCOPED_ENTITLEMENTS: ReadonlySet<EntitlementKey> = new Set<EntitlementKey>(
-  ENTITLEMENT_KEYS.filter((key) => ENTITLEMENTS[key].scope === 'org'),
-);
-
-export interface EntitlementResolution {
-  /** Enabled entitlement keys, ordered by `ENTITLEMENT_KEYS`. */
-  features: EntitlementKey[];
-  /**
-   * The rollout percentage that was actually applied for each enabled
-   * entitlement currently gated by a live rollout (i.e.
-   * `rollout_percentage < 100`). The field still ships in the `/features/me`
-   * response body; only the `X-Feature-Rollout` header was removed (phase 0b),
-   * and phase 3 / D8 removes the field and the column.
-   */
-  rollout: Partial<Record<EntitlementKey, number>>;
+/** Where one plan layer of a resolution came from (ADR-0015 §6.1 `sources`). */
+export interface PlanSource {
+  planKey: string;
+  origin: 'org' | 'seat' | 'personal';
 }
 
 /**
- * Deterministic per-(key, user) rollout bucket in `0..99`. Stable across
- * requests (FNV-1a over `${key}:${userId}`), so a given user either always
- * sees a partially-rolled-out entitlement or never does — no flapping.
+ * The single resolution result (ADR-0015 §6.1): entitlements, limits and the
+ * provenance of every layer, produced by `resolveEntitlements(ctx)` in
+ * `packages/server/src/services/entitlement.resolver.ts` — the only reader of
+ * the plan/role/seat/override/flag tables.
  */
-export function rolloutBucket(userId: string, key: EntitlementKey): number {
-  let hash = 0x811c9dc5;
-  const input = `${key}:${userId}`;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash % 100;
+export interface ResolvedEntitlements {
+  /** Effective entitlement keys, ordered by `ENTITLEMENT_KEYS`; quota==0 keys excluded (§6.1). */
+  entitlements: EntitlementKey[];
+  /** Effective limits keyed by limit key; a missing `plan_limits` row is `0`. */
+  limits: Record<string, number>;
+  /** Where each layer came from, for `/me/plan` and debugging. */
+  sources: {
+    org: PlanSource | null;
+    seat: PlanSource | null;
+    personal: PlanSource | null;
+    /** Keys an active user override added. */
+    overrides: EntitlementKey[];
+    /** Keys an active user override removed. */
+    revokedOverrides: EntitlementKey[];
+    /** `org_role_features` `is_enabled=false` rows (D19, readable until phase 7). */
+    revokedRoleRows: EntitlementKey[];
+    /** Surface keys removed by a kill-switched or missing flag row (fails closed). */
+    flagsOff: EntitlementKey[];
+  };
+  /** Union descriptor, not a single key (ADR-0015 §6.1). */
+  plan: { primary: string; sources: PlanSource[] };
 }

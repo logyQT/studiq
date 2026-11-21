@@ -1,5 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
-import { FeatureResolver } from '@studiq/server/services/feature.resolver';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -16,7 +16,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 // Regression tests for issue #124: org_role_features had RLS enabled with zero
 // policies, so every user-session query silently returned [] (service_role
 // bypasses RLS, which is why nothing noticed). These tests sign in a REAL user
-// with the anon key — the exact access path feature.resolver.ts uses in
+// with the anon key — the exact access path entitlement.resolver.ts uses in
 // production — and assert the rows are visible, scoped to the caller's own
 // organizations. org_limits carried the same bug but was dropped in #229; org
 // capacity now resolves from `organizations.plan → plan_limits` through the
@@ -167,8 +167,8 @@ describe(`org_role_features RLS`, () => {
     expect(outsiderRows).toEqual([]);
   });
 
-  it('FeatureResolver uses the org-role entitlement for a non-seated member', async () => {
-    const resolver = new FeatureResolver(() => Promise.resolve(memberSession));
+  it('EntitlementResolver uses the org-role profile for a non-seated member', async () => {
+    const resolver = new EntitlementResolver(() => Promise.resolve(memberSession));
     const ctx: RequestContext = {
       traceId: `rls-${suiteId}`,
       userId: memberId,
@@ -181,14 +181,14 @@ describe(`org_role_features RLS`, () => {
       permissionScopes: {},
     };
 
-    const { features } = await resolver.resolveFeatures(ctx);
+    const { entitlements } = await resolver.resolveEntitlements(ctx);
 
-    // The member role's org_role_features rows are the entitlement:
-    // ['flashcards', 'quiz'] (org trigger filters the launch plan down to basic
-    // features for this role; `documents` left the catalog in phase 1c, the
-    // four management markers in 2b-7). Without the RLS fix the query returns
-    // [], the resolver falls through to the org plan and over-grants.
-    expect(features).toEqual(['flashcards', 'quiz']);
+    // The member role's profile is `learner` on the `launch` org: the learner
+    // set intersected with the launch ceiling is exactly ['flashcards', 'quiz']
+    // (`documents` left the catalog in phase 1c, the four management markers
+    // in 2b-7). Without the RLS fix the org_roles/org_role_features reads
+    // return [], and a resolver that trusted them would over- or under-grant.
+    expect(entitlements).toEqual(['flashcards', 'quiz']);
   });
 
   it('LimitsResolver resolves org capacity from a real member session (RLS path)', async () => {
