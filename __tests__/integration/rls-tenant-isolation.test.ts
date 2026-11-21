@@ -725,7 +725,7 @@ describe('RLS tenant isolation (#191)', () => {
     });
     expect(adminTargetError?.code).toBe('42501');
 
-    // ...nor mint any other invite (no member.manage, member role is not teacher).
+    // ...nor mint any other invite (no invitation authority on the member role).
     const { error: memberTargetError } = await studentSession.from('invitations').insert({
       email: `rls191-b1-member-${tag}@dev.local`,
       organization_id: orgA.orgId,
@@ -1099,8 +1099,7 @@ describe('RLS tenant isolation (#191)', () => {
     });
     expect(teacherOtherGroupError?.code).toBe('42501');
 
-    // Managers hold member.manage: they may create roles, but a system role's
-    // identity is immutable (the manager helper keys on the `admin` name).
+    // Admins may create roles, but a system role's identity is immutable.
     const { error: managerRoleError } = await adminSession.from('org_roles').insert({
       organization_id: orgA.orgId,
       name: `rls191-custom-manager-${tag}`,
@@ -1118,11 +1117,11 @@ describe('RLS tenant isolation (#191)', () => {
     expect(renameSystemError?.code).toBe('42501');
   });
 
-  it('a seated custom role cannot resolve manager authority (RLS mirrors FeatureResolver)', async () => {
-    // A custom role from the role builder has ZERO org_role_features rows, so
-    // the org-plan fallback used to grant every plan capability. FeatureResolver
-    // strips ADMIN_ONLY_ENTITLEMENTS (org.manage/member.manage/role.builder) for a
-    // seated non-admin role; RLS must not be wider (review-1-r2 B1).
+  it('a seated custom role resolves the seat plan, not management authority (RLS mirrors FeatureResolver)', async () => {
+    // A custom role has ZERO org_role_features rows, so the org-plan fallback
+    // used to grant every plan capability. Since 2b-7 no plan carries a
+    // management marker, the seat adds seat-eligible surface keys only
+    // (review-1-r2 B1, retargeted from `group.manage` to `advanced.stats`).
     const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
     const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;
 
@@ -1181,25 +1180,25 @@ describe('RLS tenant isolation (#191)', () => {
       });
       expect(unseatedManager).toBe(false);
 
-      const { data: unseatedGroupManage } = await unseatedSession.rpc(
-        'rls_caller_has_org_feature',
-        { p_organization_id: orgA.orgId, p_feature: 'group.manage' },
-      );
-      expect(unseatedGroupManage).toBe(false);
+      const { data: unseatedStats } = await unseatedSession.rpc('rls_caller_has_org_feature', {
+        p_organization_id: orgA.orgId,
+        p_feature: 'advanced.stats',
+      });
+      expect(unseatedStats).toBe(false);
 
-      // A seat must not add management authority the app withholds. The seat
-      // plan is additive, so it does hand over `group.manage` (not one of the
-      // three admin-only markers); org management stays stripped.
+      // A seat must not add management authority the app withholds: no plan
+      // carries a marker any more, and the seat plan is additive for
+      // seat-eligible surface keys only — `advanced.stats` arrives through it.
       const { data: seatedManager } = await seatedSession.rpc('rls_caller_is_org_manager', {
         p_organization_id: orgA.orgId,
       });
       expect(seatedManager).toBe(false);
 
-      const { data: seatedGroupManage } = await seatedSession.rpc('rls_caller_has_org_feature', {
+      const { data: seatedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
-        p_feature: 'group.manage',
+        p_feature: 'advanced.stats',
       });
-      expect(seatedGroupManage).toBe(true);
+      expect(seatedStats).toBe(true);
 
       // Peer promotion is filtered out by the org_members UPDATE policy.
       const { data: promoted, error: promoteError } = await seatedSession
@@ -1254,19 +1253,26 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
-    // Zero-`org_role_features` custom role in a `launch` org (group.manage) with
-    // a `pro` seat (advanced.stats, NO group.manage). FeatureResolver resolves a
-    // seated actor against the seat plan only, so RLS must agree; before the r4
-    // fix the org-plan fallback still granted group.manage through PostgREST.
+    // Zero-`org_role_features` custom role in a `hub` org (branding in the org
+    // plan) with a `pro` seat (advanced.stats, NO branding). FeatureResolver
+    // resolves a seated actor against the seat plan only, so RLS must agree;
+    // before the r4 fix the org-plan fallback still granted the org plan through
+    // PostgREST. (Retargeted in 2b-7: `group.manage` left the catalog, so the
+    // org-plan key probed here is the org-scoped `branding`.)
     const seatedEmail = `rls191-seat-plan-${tag}@dev.local`;
     const controlEmail = `rls191-seat-plan-control-${tag}@dev.local`;
 
-    const { data: orgPlan } = await service
+    const { data: orgPlanBefore } = await service
       .from('organizations')
       .select('plan')
       .eq('id', orgA.orgId)
       .single();
-    expect(orgPlan?.plan).toBe('launch');
+    expect(orgPlanBefore?.plan).toBe('launch');
+    const { error: planError } = await service
+      .from('organizations')
+      .update({ plan: 'hub' })
+      .eq('id', orgA.orgId);
+    expect(planError).toBeNull();
 
     const { data: customRole, error: customRoleError } = await service
       .from('org_roles')
@@ -1318,15 +1324,17 @@ describe('RLS tenant isolation (#191)', () => {
       const seatedSession = await signIn(seatedEmail);
       const controlSession = await signIn(controlEmail);
 
-      // `pro` has no group.manage, `launch` does: RLS must follow the seat plan.
-      const { data: seatedGroupManage } = await seatedSession.rpc('rls_caller_has_org_feature', {
+      // `hub` has branding, `pro` does not: RLS must follow the seat plan, so
+      // the org-plan key stays denied for the seated custom role.
+      const { data: seatedBranding } = await seatedSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
-        p_feature: 'group.manage',
+        p_feature: 'branding',
       });
-      expect(seatedGroupManage).toBe(false);
+      expect(seatedBranding).toBe(false);
 
       // ...and it must be reading the seat plan, not just denying everything:
-      // `pro` has advanced.stats, `launch` does not.
+      // the `none` profile grants nothing, so `advanced.stats` can only arrive
+      // through the seat branch.
       const { data: seatedAdvancedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
         p_feature: 'advanced.stats',
@@ -1357,11 +1365,11 @@ describe('RLS tenant isolation (#191)', () => {
       expect(readableGroups?.length ?? 0).toBeGreaterThan(0);
 
       // An unseated custom role is on the `none` profile and holds nothing.
-      const { data: controlGroupManage } = await controlSession.rpc('rls_caller_has_org_feature', {
+      const { data: controlBranding } = await controlSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
-        p_feature: 'group.manage',
+        p_feature: 'branding',
       });
-      expect(controlGroupManage).toBe(false);
+      expect(controlBranding).toBe(false);
 
       const { data: controlAdvancedStats } = await controlSession.rpc(
         'rls_caller_has_org_feature',
@@ -1378,16 +1386,17 @@ describe('RLS tenant isolation (#191)', () => {
         .eq('user_id', seatedId);
       expect(unassignError).toBeNull();
 
-      const { data: unseatedGroupManage } = await seatedSession.rpc('rls_caller_has_org_feature', {
-        p_organization_id: orgA.orgId,
-        p_feature: 'group.manage',
-      });
-      expect(unseatedGroupManage).toBe(false);
+      const { data: unseatedAdvancedStats } = await seatedSession.rpc(
+        'rls_caller_has_org_feature',
+        { p_organization_id: orgA.orgId, p_feature: 'advanced.stats' },
+      );
+      expect(unseatedAdvancedStats).toBe(false);
     } finally {
       await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
       await service.from('org_members').delete().in('user_id', [seatedId, controlId]);
       await service.from('org_roles').delete().eq('id', customRole!.id);
+      await service.from('organizations').update({ plan: 'launch' }).eq('id', orgA.orgId);
       for (const userId of [seatedId, controlId]) {
         await service.auth.admin.deleteUser(userId).catch(() => {});
       }
@@ -1505,7 +1514,7 @@ describe('RLS tenant isolation (#191)', () => {
           studentSession.rpc('has_org_feature', {
             p_actor: studentId,
             p_organization_id: orgA.orgId,
-            p_feature: 'member.manage',
+            p_feature: 'advanced.stats',
           }),
       ],
       [
@@ -1565,16 +1574,19 @@ describe('RLS tenant isolation (#191)', () => {
     );
     expect(adminCanAssignMember).toBe(true);
 
-    const { data: teacherGroupManage } = await teacherSession.rpc('rls_caller_has_org_feature', {
+    // The admin branch is the only special case left since 2b-7: the system
+    // Admin role holds every key, a member-role student holds none beyond its
+    // own rows.
+    const { data: adminStats } = await adminSession.rpc('rls_caller_has_org_feature', {
       p_organization_id: orgA.orgId,
-      p_feature: 'group.manage',
+      p_feature: 'advanced.stats',
     });
-    expect(teacherGroupManage).toBe(true);
-    const { data: studentGroupManage } = await studentSession.rpc('rls_caller_has_org_feature', {
+    expect(adminStats).toBe(true);
+    const { data: studentStats } = await studentSession.rpc('rls_caller_has_org_feature', {
       p_organization_id: orgA.orgId,
-      p_feature: 'group.manage',
+      p_feature: 'advanced.stats',
     });
-    expect(studentGroupManage).toBe(false);
+    expect(studentStats).toBe(false);
   });
 
   it('a signed-in user with no organization can still use personal flashcards', async () => {

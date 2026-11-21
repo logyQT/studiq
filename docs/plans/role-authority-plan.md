@@ -38,14 +38,10 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 **2a-1** (the entitlement profile), **2a-2** (role presets + the
 `org.role.manage` gate and its RLS twin), **2a-4** (org-scoped
 `ctx.groupRoles`) and **2a-5** (fail-closed scope defaults + the full
-`Permission` set) are written on `feat/authority-2a-3`, `feat/authority-2a-1`,
-`feat/authority-2a-2`, `feat/authority-2a-4` and `feat/authority-2a-5`; 2a-3
-lands before 2a-2 by D24. The four legacy management keys stay until slice 2b,
-which replaces their remaining gates with permissions. Phase 2b: 2b-1…2b-4 are
-merged and **2b-5 (class invites) is written on `feat/authority-2b-5`** — the
-next slice is 2b-6 (the content-route sweep and the `authedRoute` adoption) —
-**written on `feat/authority-2b-6`**; the remaining slices are 2b-7 (marker deletion),
-2b-8 (the RLS half of the role-editor guards) and 2b-9 (deferred to phase 5).
+`Permission` set) are merged with the 2b slices. Phase 2b: 2b-1…2b-6 are merged
+(2b-6 as `67fab892`, #1402) and **2b-7 (the legacy-marker deletion) is written on
+`feat/authority-2b-7`**; the remaining slices are 2b-8 (the RLS half of the
+role-editor guards) and 2b-9 (deferred to phase 5).
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
 backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
@@ -1341,8 +1337,8 @@ control-plane RLS (2b-4), because the routes and their predicates move together
 | 2b-3  | Org-control route sweep: settings, members, seats and invitations lose `allowedAccountTypes` and gate on `org.*`; their RLS policies move to `rls_caller_has_permission` in the same PR. **Written** on `feat/authority-2b-3`.                                                   |
 | 2b-4  | The remaining control-plane RLS: `billing_subscriptions`, the assignment writes and cohort read, the billing service gate, and the `org_members` SELECT review D25 leaves open. **Merged** `9da8c9b3` (#1400); `can_assign_org_role` and the invitation read were 2b-5's.        |
 | 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Written** on `feat/authority-2b-5`. |
-| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Written on `feat/authority-2b-6`** (delivered block below).                                                                                                                                                  |
-| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them.                                                                                    |
+| 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Merged** `67fab892` (#1402).                                                                                                                                                                                 |
+| 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them. **Written on `feat/authority-2b-7`** (delivered block below).                      |
 | 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                                                                  |
 | 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                       |
 
@@ -3132,6 +3128,78 @@ KILLED by the PostgREST pin: a teacher's class insert with the Admin target
 persists the member role), so a `group.invite` holder cannot persist Admin on
 a class row in the first place.
 Rule: R29.
+
+**2b-7 written on `feat/authority-2b-7` — slice 7 of 9 (legacy-marker deletion):**
+
+- **Migration** `20261121090000_legacy_management_markers_removed.sql`: deletes
+  `role.builder`, `org.manage`, `member.manage`, `group.manage` from
+  `org_role_features`, `plan_entitlements`, `user_feature_overrides`,
+  `entitlement_flags` and `entitlement_catalog` — in that order, with an
+  explicit `where … in (…)` list — then re-creates `handle_new_organization`,
+  `apply_org_plan` and `has_org_feature` without their marker lists (`all` is
+  the plain plan ceiling; the `is_system and name='admin'` branch is the only
+  special case left) and ends with a `do` block that raises when any marker row
+  survives in those tables, when the catalog lost one of its six remaining keys
+  (so "zero rows" is not the vacuous answer of an emptied catalog), or when the
+  `group.manage` **permission** row is missing (R26). Old migration files are
+  not edited.
+- **`@studiq/authz`**: the four keys leave `ENTITLEMENTS`;
+  `ADMIN_ONLY_ENTITLEMENTS` and `LEGACY_MANAGEMENT_ENTITLEMENTS` are deleted
+  with their exports — no remaining guard needed a typed subset, so none was
+  kept. `ORG_SCOPED_ENTITLEMENTS` stays (derived from `scope = 'org'`, now just
+  `branding`).
+- **Resolver** (`feature.resolver.ts`): `all` is `ENTITLEMENT_KEYS ∩ ceiling`
+  (the marker filter is gone), the seat layer has no admin-only strip, and
+  `org_role_features` keeps only its `is_enabled = false` revoke semantics
+  (D19) — the `applyRows` grant mode for role rows is now revoke-only.
+- **Seeds**: `00_plans.sql` drops the three marker flag rows and every marker
+  `plan_entitlements` row (`launch` is now `flashcards, quiz`); `09_perms.sql`
+  keeps the `group.manage` permission.
+- **Pricing/UI**: `FEATURE_PRIORITY` loses the three markers,
+  `ROLE_MARKER_FEATURES` is deleted (no key left to exclude),
+  `deck-detail-screen`'s groups query gates on the `group.manage`
+  **permission** instead of the entitlement, and the four `feature_*` marker
+  labels leave both i18n locales.
+- **Tests**: `catalog-invariants` retires the R15 pin (`overlap` is now `[]`)
+  and gains the absence assertion (four keys gone from all four tables,
+  `group.manage` still in `permissions`/`PERMISSIONS`); the fixtures probing
+  `has_org_feature`/`rls_caller_is_org_manager` with a removed key are
+  retargeted to surviving keys on the same branch (`branding` org-scoped,
+  `advanced.stats` seat-eligible); resolver/pricing unit suites rewritten.
+  QA (in-map only): BIL-04 asserts a surviving Hub feature, EDU-02 reads
+  `group.manage` from `/permissions/me`, MGR-SEAT-02 pins that no org-scoped
+  entitlement arrives through a seat; spec + case text moved together (R6).
+- **Gates:** `env:ensure --profile api`, `env:reset-db --yes`, the full serial
+  integration run, `test:unit`, `typecheck:all` + `typecheck:admin`,
+  `lint:all`, `review:static`, `knip`, `dup:base`, `format:check`,
+  `pr:size`; `database.ts` regenerated with the pinned CLI (byte-identical on
+  a second run — no generated type changed). No build/serve/Playwright/QA.
+
+**Difficulty log**
+
+#### 2026-11-21 — the no-live-caller check has to grep the client, and the catalog's typed subsets die with it
+
+What: the dispatch check (`git grep "requireFeature(" -- apps packages`) proved
+no API caller of the four markers remained — only `branding` — but the client
+still had one: `deck-detail-screen.tsx` gated its groups query on
+`feature('group.manage')`, which the marker deletion silently turned into
+always-false (the share dialog would have lost its group picker with no failed
+test, because no Playwright case covers that dialog's enabled state). And the
+two typed subsets over `ENTITLEMENTS` (`ADMIN_ONLY_ENTITLEMENTS`,
+`LEGACY_MANAGEMENT_ENTITLEMENTS`) became empty the moment the keys left the
+catalog, so their resolver branches (`all` minus markers, the seat strip) were
+vacuous but still read as if the keys existed.
+Why: `requireFeature` is the server gate, but `useFeature()('…')` literals gate
+UI queries the same way, and a constant that is a subset of a catalog is a
+second copy of the catalog that must shrink in the same PR.
+Fix: grep `feature(` (not just `requireFeature(`) before deleting a key — the
+deck-detail query now gates on the `group.manage` permission; the two constants
+and their branches are deleted with the catalog edit; the migration's closing
+guard asserts both directions (markers gone, catalog and the `group.manage`
+permission intact) so it cannot pass on an emptied catalog (R26).
+Rule: a key deletion is checked against every reader of the key in both layers —
+`requireFeature(` on the server, `feature('…')`/`useFeature` on the client —
+and a typed subset of a catalog is deleted in the same PR as the keys it lists.
 
 ### Phase 3 — entitlements and limits
 

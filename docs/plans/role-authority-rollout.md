@@ -367,6 +367,11 @@ slice below lands.
   `group.manage` from `ENTITLEMENTS`, `entitlement_catalog`,
   `entitlement_flags`, `plan_entitlements` and `org_role_features`, in that
   order, plus the pricing copy and QA expectations that advertise them.
+  **Delivered** (slice 7 of 9) on `feat/authority-2b-7`: one migration with a
+  closing guard, the two typed-subset constants deleted with the catalog, the
+  resolver's marker branches simplified (`all` = the ceiling, role rows
+  revoke-only), and the R15 overlap pin in `catalog-invariants` retired —
+  `group.manage` survives as a permission only, so the namespaces are disjoint.
 - 2b-8 — the RLS half of the role editor guards: the last-`org.role.manage`
   holder, system roles protected, no self-edit, no grant beyond your own
   authority (the API half shipped in 2a-2/2a-3; RLS has none of it).

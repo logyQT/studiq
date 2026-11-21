@@ -98,23 +98,15 @@ export type FeatureRows = {
 };
 
 /**
- * Features that are not plan entitlements. `org.manage` marks an org admin —
- * `feature.resolver.ts` reads it that way, and `apply_org_plan` strips it from
- * the plan before an org's seat features are applied — so the seed maps it to
- * the free Launch plan alone. Tabulating it would print the paid ladder below
- * its own free tier.
- */
-const ROLE_MARKER_FEATURES: readonly string[] = ['org.manage'];
-
-/**
  * Splits a ladder's features so no string is printed twice: the intersection
  * becomes the "all plans include" line, the rest becomes the comparison rows.
+ * Every plan feature is tabulated — the legacy management markers left the
+ * catalog in phase 2b-7, so there is no key left to exclude here.
  */
 export function splitFeatureRows(plans: readonly PlanInfo[]): FeatureRows {
   const carriers = new Map<string, number>();
   for (const plan of plans) {
     for (const feature of plan.features) {
-      if (ROLE_MARKER_FEATURES.includes(feature)) continue;
       carriers.set(feature, (carriers.get(feature) ?? 0) + 1);
     }
   }

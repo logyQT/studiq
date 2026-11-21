@@ -49,6 +49,8 @@ describe('catalog invariants', () => {
   }>;
   let limitRows: Array<{ key: string; scope: string }>;
   let flagKeys: string[];
+  let planEntitlementKeys: string[];
+  let roleFeatureKeys: string[];
 
   beforeAll(async () => {
     service = createServiceClient();
@@ -84,19 +86,57 @@ describe('catalog invariants', () => {
       throw new Error(`[catalog] entitlement_flags lookup failed: ${flagsError.message}`);
     }
     flagKeys = dbRows(flags).map((row) => row.key);
+
+    const { data: planEntitlements, error: planError } = await service
+      .from('plan_entitlements')
+      .select('entitlement_key');
+    if (planError) {
+      throw new Error(`[catalog] plan_entitlements lookup failed: ${planError.message}`);
+    }
+    planEntitlementKeys = dbRows(planEntitlements).map((row) => row.entitlement_key);
+
+    const { data: roleFeatures, error: roleFeaturesError } = await service
+      .from('org_role_features')
+      .select('feature_key');
+    if (roleFeaturesError) {
+      throw new Error(`[catalog] org_role_features lookup failed: ${roleFeaturesError.message}`);
+    }
+    roleFeatureKeys = dbRows(roleFeatures).map((row) => row.feature_key);
   });
 
-  it('no permission is an entitlement key, except the phase-2 management marker', () => {
+  it('no permission is an entitlement key: the namespaces are disjoint', () => {
     const entitlements = new Set<string>(ENTITLEMENT_KEYS);
     const overlap = permissionRows.map((row) => row.key).filter((key) => entitlements.has(key));
 
-    // `group.manage` is a catalog permission (§4.1) and still a legacy
-    // entitlement key: phase 2 deletes the four management markers
-    // (`org.manage`, `group.manage`, `member.manage`, `role.builder`) from
-    // `entitlement_catalog`/`plan_entitlements` once the gates read
-    // permissions. Pinning the exact overlap keeps the rest of the namespace
-    // split under test until then.
-    expect(overlap).toEqual(['group.manage']);
+    // Phase 1b pinned the exact overlap (`['group.manage']`) while the four
+    // legacy management markers were still entitlement keys (R15). Phase 2b-7
+    // deleted them — `group.manage` survives only as a permission — so the
+    // exception is gone and the namespace split holds without one.
+    expect(overlap).toEqual([]);
+  });
+
+  it('the four legacy management markers are gone from every entitlement table', () => {
+    // The 2b-7 migration deleted `role.builder`, `org.manage`, `member.manage`
+    // and `group.manage` from `org_role_features`, `plan_entitlements`,
+    // `entitlement_flags` and `entitlement_catalog`. The surviving half of the
+    // old overlap is asserted too: `group.manage` is still a permission, in the
+    // DB catalog and in `PERMISSIONS`.
+    const markers = ['role.builder', 'org.manage', 'member.manage', 'group.manage'];
+
+    const catalogKeys = new Set(entitlementRows.map((row) => row.key));
+    const flagSet = new Set(flagKeys);
+    expect(markers.filter((key) => catalogKeys.has(key))).toEqual([]);
+    expect(markers.filter((key) => flagSet.has(key))).toEqual([]);
+
+    const planKeys = new Set(planEntitlementKeys);
+    expect(markers.filter((key) => planKeys.has(key))).toEqual([]);
+
+    const roleFeatureSet = new Set(roleFeatureKeys);
+    expect(markers.filter((key) => roleFeatureSet.has(key))).toEqual([]);
+
+    const permissionKeys = new Set(permissionRows.map((row) => row.key));
+    expect(permissionKeys.has('group.manage')).toBe(true);
+    expect('group.manage' in PERMISSIONS).toBe(true);
   });
 
   it('the permissions table is exactly the PERMISSIONS catalog', () => {

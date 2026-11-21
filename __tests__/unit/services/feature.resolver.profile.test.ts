@@ -3,11 +3,12 @@ import { FeatureResolver } from '@studiq/server/services/feature.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-// The phase-2a-1 resolver contract (ADR-0015 §5.3/§6.1, D18/D19):
+// The phase-2a-1 resolver contract (ADR-0015 §5.3/§6.1, D18/D19), after 2b-7
+// removed the four legacy management markers from the catalog:
 //
 //   profile (all | learner | none) ∩ plan ceiling
-//     → legacy rows (markers grant, is_enabled=false revokes)
-//     → seat plan (additive) → admin-only strip for a seated non-admin.
+//     → legacy rows (is_enabled=false revokes only — enabled rows add nothing)
+//     → seat plan (additive)
 //
 // Expected arrays are literals, deliberately: deriving them from `ENTITLEMENTS`
 // or `LEARNER_ENTITLEMENTS` would make the assertions restate the production
@@ -37,30 +38,11 @@ function chain(result: unknown) {
 type EntitlementRows = Record<string, readonly string[]>;
 
 const PLANS: EntitlementRows = {
-  // A `hub` organization: all six surfaced keys plus the three plan-shaped
-  // markers (`org.manage` arrives through a launch→hub upgrade, not the plan).
-  hub: [
-    'flashcards',
-    'quiz',
-    'ai.chat',
-    'quiz.builder',
-    'group.manage',
-    'member.manage',
-    'role.builder',
-    'advanced.stats',
-    'branding',
-  ],
-  launch: ['flashcards', 'quiz', 'group.manage', 'member.manage', 'org.manage'],
-  // Seat plans carry surface keys plus the management markers the resolver
-  // must strip from a non-admin.
-  seat: [
-    'ai.chat',
-    'advanced.stats',
-    'group.manage',
-    'member.manage',
-    'role.builder',
-    'org.manage',
-  ],
+  // A `hub` organization: the whole remaining catalog.
+  hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.builder', 'advanced.stats', 'branding'],
+  launch: ['flashcards', 'quiz'],
+  // Seat plans carry seat-eligible (personal-scope) surface keys only.
+  seat: ['ai.chat', 'advanced.stats'],
 };
 
 type Scenario = {
@@ -77,65 +59,33 @@ type Scenario = {
 
 const CASES: Scenario[] = [
   {
-    name: 'admin/all on hub: surface ceiling plus the rows management markers',
+    name: 'admin/all on hub: the whole plan ceiling',
     orgRoleId: 'role-admin',
     profile: 'all',
-    rows: [
-      { feature_key: 'group.manage', is_enabled: true },
-      { feature_key: 'member.manage', is_enabled: true },
-      { feature_key: 'org.manage', is_enabled: true },
-      { feature_key: 'role.builder', is_enabled: true },
-    ],
+    rows: [],
     plan: 'hub',
-    expected: [
-      'ai.chat',
-      'flashcards',
-      'quiz',
-      'quiz.builder',
-      'org.manage',
-      'group.manage',
-      'member.manage',
-      'role.builder',
-      'advanced.stats',
-      'branding',
-    ],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'advanced.stats', 'branding'],
   },
   {
-    name: 'admin/all on launch: plan ceiling plus the rows markers, and an enabled non-marker row adds nothing',
+    name: 'admin/all on launch: the launch ceiling, and an enabled role row adds nothing',
     orgRoleId: 'role-admin',
     profile: 'all',
     rows: [
       { feature_key: 'flashcards', is_enabled: true },
-      { feature_key: 'quiz', is_enabled: true },
-      { feature_key: 'group.manage', is_enabled: true },
-      { feature_key: 'member.manage', is_enabled: true },
-      { feature_key: 'org.manage', is_enabled: true },
-      // Not in the launch ceiling, and a non-marker: the profile is
-      // authoritative for it, so this row must not grant it.
+      // Not in the launch ceiling: the profile is authoritative, so this row
+      // must not grant it.
       { feature_key: 'ai.chat', is_enabled: true },
     ],
     plan: 'launch',
-    expected: ['flashcards', 'quiz', 'org.manage', 'group.manage', 'member.manage'],
+    expected: ['flashcards', 'quiz'],
   },
   {
-    name: 'teacher/all on hub: admin minus member.manage and role.builder, the D6/FP-04 line',
+    name: 'teacher/all on hub: the ceiling, identical to admin',
     orgRoleId: 'role-teacher',
     profile: 'all',
-    rows: [
-      { feature_key: 'org.manage', is_enabled: true },
-      { feature_key: 'group.manage', is_enabled: true },
-    ],
+    rows: [],
     plan: 'hub',
-    expected: [
-      'ai.chat',
-      'flashcards',
-      'quiz',
-      'quiz.builder',
-      'org.manage',
-      'group.manage',
-      'advanced.stats',
-      'branding',
-    ],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'advanced.stats', 'branding'],
   },
   {
     name: 'member/learner on hub: exactly the learner set',
@@ -176,7 +126,7 @@ const CASES: Scenario[] = [
     expected: [],
   },
   {
-    name: 'custom role/all with zero rows on hub: ceiling surface keys, no markers',
+    name: 'custom role/all with zero rows on hub: the ceiling',
     orgRoleId: 'role-custom',
     profile: 'all',
     rows: [],
@@ -184,13 +134,13 @@ const CASES: Scenario[] = [
     expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'advanced.stats', 'branding'],
   },
   {
-    name: 'seated non-admin: keeps a seat-only key, loses the three admin-only markers',
+    name: 'seated learner on launch: the seat plan adds seat-only keys on top of the learner set',
     orgRoleId: 'role-member',
     profile: 'learner',
     rows: [],
-    plan: 'hub',
+    plan: 'launch',
     seatPlanKey: 'seat',
-    expected: ['ai.chat', 'flashcards', 'quiz', 'group.manage', 'advanced.stats', 'branding'],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'advanced.stats'],
   },
 ];
 

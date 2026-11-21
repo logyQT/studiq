@@ -15,11 +15,10 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
  *
  * The settings, roster, seat and invitation routes gate on `org.*` permissions,
  * so the tables must too. Before this migration every policy asked
- * `is_org_manager` — a `member.manage` entitlement marker — which meant a custom
- * role holding the new key passed the API and was refused by RLS (FP-01 through
- * PostgREST). Both directions are pinned with real signed-in sessions, and the
- * legacy-marker role is the control that proves the predicate moved rather than
- * widened.
+ * `is_org_manager`, which meant a custom role holding the new key passed the API
+ * and was refused by RLS (FP-01 through PostgREST). Both directions are pinned
+ * with real signed-in sessions, and the entitlement-row control role proves the
+ * predicate moved rather than widened.
  */
 
 const PASSWORD = 'OrgControlRls!';
@@ -220,22 +219,20 @@ describe('org-control permission RLS', () => {
       'org.seat.manage',
       'org.invitation.manage',
     ]);
-    // The control: the legacy `member.manage` marker the old policies read,
+    // The control: an entitlement row the moved policies no longer read,
     // with no permission key. It must lose every predicate this slice moved.
     legacyRoleId = await customRole(orgId, `org-control-legacy-${tag}`, []);
 
     // 2b-5 moved the invitation read+write onto the permissions: the
     // `org.invitation.manage` branch of the SELECT policy is what keeps the
-    // row visible to the retarget caller below, so the marker is no longer
-    // needed on this role. The legacy control keeps the marker (it must lose
-    // every predicate the slices moved).
+    // row visible to the retarget caller below.
     invitationManagerRoleId = await customRole(orgId, `org-control-inviter-${tag}`, [
       'org.invitation.manage',
     ]);
 
     const { error: featureError } = await service.from('org_role_features').insert({
       org_role_id: legacyRoleId,
-      feature_key: 'member.manage',
+      feature_key: 'branding',
       is_enabled: true,
     });
     if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);

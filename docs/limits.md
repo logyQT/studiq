@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-19.
+> Last updated: 2026-11-21 (phase 2b-7: legacy management markers removed).
 
 ## Summary
 
@@ -41,12 +41,13 @@ original table migrations.
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
-`quiz`, `quiz.builder`, `org.manage`, `group.manage`,
-`member.manage`, `role.builder`, `advanced.stats`, `branding`). `documents` is
-on the roadmap but has no surface yet, so it is absent in v1 — excluded from the
-catalog, plans and pricing until it ships; re-entry is data-only (catalog
-metadata, a flag row and the plan rows), not a resolver change (ADR-0015 §5.1,
-open catalog).
+`quiz`, `quiz.builder`, `advanced.stats`, `branding`). The four legacy
+management markers (`org.manage`, `group.manage`, `member.manage`,
+`role.builder`) left the catalog in phase 2b-7 — authority is permissions only
+(ADR-0015 §4.1). `documents` is on the roadmap but has no surface yet, so it is
+absent in v1 — excluded from the catalog, plans and pricing until it ships;
+re-entry is data-only (catalog metadata, a flag row and the plan rows), not a
+resolver change (ADR-0015 §5.1, open catalog).
 
 Limit keys: `LIMITS` in
 `packages/authz/src/limits.ts` — the single source of truth
@@ -65,8 +66,8 @@ for both the resolver and the DB rows:
 1. creates the `admin` / `teacher` / `member` system roles;
 2. seeds their RBAC permissions;
 3. copies `plan_entitlements` for the org's plan into `org_role_features`:
-   admin = all; teacher = all except `member.manage` / `role.builder`;
-   member = `flashcards`, `quiz`, `ai.chat`, `branding`.
+   admin = teacher = all; member = `flashcards`, `quiz`, `ai.chat`, `branding`
+   (the marker exclusion left with the markers in 2b-7).
 
 It copies **no limits** and creates **no seat pools** (pools are created
 on demand since Phase B.5).
@@ -74,8 +75,8 @@ on demand since Phase B.5).
 `apply_org_plan(org_id, plan)` — plan change:
 
 1. updates `organizations.plan`;
-2. deletes from every role any feature the new plan does not include
-   (`org.manage` is kept — it marks an org admin);
+2. deletes from every role any feature the new plan does not include (a plain
+   ceiling diff since 2b-7 — no key is exempt from the revoke);
 3. adds the new plan's features to the system roles (existing rows and
    `is_enabled` toggles are preserved via `ON CONFLICT DO NOTHING`).
 
@@ -91,26 +92,25 @@ the template on every request.
 `FeatureResolver.resolveFeatures(ctx)` —
 `packages/server/src/services/feature.resolver.ts`
 
-1. **Plan entitlement**
+1. **Plan entitlement** (profile layer, ADR-0015 §5.3)
    - No `activeOrgId` → skip to the personal fallback.
-   - Seated (`org_seat_assignments` via `getSeatPlanKey`): start from the role's
-     `org_role_features` (if any), then add the seat plan's `plan_entitlements`.
-     Strip `org.manage`, `member.manage`, `role.builder` unless the role already
-     has `org.manage`.
-   - Not seated, role has `org_role_features` rows: those rows are
-     authoritative (a missing key is off).
-   - Not seated, role has no rows (custom role): `organizations.plan` →
-     `plan_entitlements`.
+   - `org_roles.entitlement_profile`: `all` → the org plan ceiling, `learner` →
+     `flashcards`, `quiz`, `ai.chat`, `branding` ∩ ceiling, `none` → nothing.
+   - `org_role_features` rows then apply their `is_enabled = false` revokes
+     only (D19) — an enabled row adds nothing, since 2b-7 removed the markers
+     that were the only row-granted keys.
+   - Seated (`org_seat_assignments` via `getSeatPlanKey`): the seat plan's
+     `plan_entitlements` are added on top (additive; seat plans carry
+     personal-scope keys only).
 2. **Personal plan** — always applied on top of the entitlement above:
    `profiles.personal_plan_key` → `plan_entitlements`. A plan the member pays for
    personally is never shadowed by an org on a lower tier — a student on StudiQ
    Pro inside a free `launch` org keeps `ai.chat`.
    Inside an org the personal layer only adds _personal-use_ features: the
-   org-scoped keys (`org.manage`, `group.manage`, `member.manage`,
-   `role.builder`, `branding`) are dropped unless the org layer above already
-   entitled them — the role's `org_role_features` rows, the seat plan, or, for a
-   role with no rows (custom role), the org plan. A free `lite` educator plan
-   therefore cannot hand a `member` role group management. Manager plans are
+   org-scoped keys (`branding` — the only one left after 2b-7) are dropped
+   unless the org layer above already entitled them — the profile/ceiling, the
+   seat plan. A personal plan therefore cannot hand a `member` role an
+   org-scoped entitlement. Manager plans are
    organization plans mirrored onto the buyer (#228), so a manager's
    `personal_plan_key` adds nothing in an org
    (`personalPlanApplies()`, `packages/server/src/services/personal-plan.ts`).

@@ -188,11 +188,12 @@ describe('splitFeatureRows', () => {
     expect(differing).toEqual(['ai.chat']);
   });
 
-  it('leaves the org-admin role marker out of the comparison', () => {
-    // The seed maps `org.manage` to the free Launch plan only; printing it would
-    // make every paid organization plan look worse than the free one.
+  it('tabulates every plan feature, common and differing', () => {
+    // No feature is excluded from the comparison any more: the legacy
+    // management markers left the catalog in 2b-7, so a plan-specific key
+    // lands in `differing` instead of being silently dropped.
     const ladder = [
-      plan('launch', 'manager', 1, { features: ['flashcards', 'org.manage'] }),
+      plan('launch', 'manager', 1, { features: ['flashcards'] }),
       plan('team', 'manager', 2, { features: ['flashcards', 'branding'] }),
     ];
 

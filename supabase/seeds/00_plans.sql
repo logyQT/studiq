@@ -13,9 +13,6 @@ ALTER TABLE public.organizations ALTER COLUMN plan SET DEFAULT 'launch';
 -- 3. Add new feature flags
 -- ==========================================================
 INSERT INTO public.entitlement_flags (key, name, description) VALUES
-  ('group.manage', 'Group Management', 'Create and manage groups'),
-  ('member.manage', 'Member Management', 'Change member roles and remove members'),
-  ('role.builder', 'Role Builder', 'Create custom roles with custom permissions'),
   ('branding', 'Custom Branding', 'Organization logo and brand color across the app')
 ON CONFLICT DO NOTHING;
 
@@ -68,13 +65,8 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('base', 'quiz'),
   ('lite', 'flashcards'),
   ('lite', 'quiz'),
-  ('lite', 'group.manage'),
-  ('lite', 'member.manage'),
   ('launch', 'flashcards'),
-  ('launch', 'quiz'),
-  ('launch', 'group.manage'),
-  ('launch', 'member.manage'),
-  ('launch', 'org.manage')
+  ('launch', 'quiz')
 ON CONFLICT DO NOTHING;
 
 -- Basic tier
@@ -84,13 +76,9 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('guide', 'flashcards'),
   ('guide', 'quiz'),
   ('guide', 'quiz.builder'),
-  ('guide', 'group.manage'),
-  ('guide', 'member.manage'),
   ('team', 'flashcards'),
   ('team', 'quiz'),
-  ('team', 'quiz.builder'),
-  ('team', 'group.manage'),
-  ('team', 'member.manage')
+  ('team', 'quiz.builder')
 ON CONFLICT DO NOTHING;
 
 -- Premium tier
@@ -103,16 +91,11 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('creator', 'quiz'),
   ('creator', 'ai.chat'),
   ('creator', 'quiz.builder'),
-  ('creator', 'group.manage'),
-  ('creator', 'member.manage'),
   ('creator', 'advanced.stats'),
   ('hub', 'flashcards'),
   ('hub', 'quiz'),
   ('hub', 'ai.chat'),
   ('hub', 'quiz.builder'),
-  ('hub', 'group.manage'),
-  ('hub', 'member.manage'),
-  ('hub', 'role.builder'),
   ('hub', 'advanced.stats'),
   ('hub', 'branding')
 ON CONFLICT DO NOTHING;
@@ -127,17 +110,11 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('master', 'quiz'),
   ('master', 'ai.chat'),
   ('master', 'quiz.builder'),
-  ('master', 'group.manage'),
-  ('master', 'member.manage'),
-  ('master', 'role.builder'),
   ('master', 'advanced.stats'),
   ('campus', 'flashcards'),
   ('campus', 'quiz'),
   ('campus', 'ai.chat'),
   ('campus', 'quiz.builder'),
-  ('campus', 'group.manage'),
-  ('campus', 'member.manage'),
-  ('campus', 'role.builder'),
   ('campus', 'advanced.stats'),
   ('campus', 'branding')
 ON CONFLICT DO NOTHING;

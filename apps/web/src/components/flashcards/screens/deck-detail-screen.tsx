@@ -168,7 +168,9 @@ export function DeckDetailScreen({
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && feature('group.manage'),
+    // The dialog's visibility switch is for callers who may manage classes —
+    // the `group.manage` permission, not an entitlement (2b-7).
+    enabled: !!activeOrg?.id && permission('group.manage'),
   });
 
   const deckLoading = decksLoading;

@@ -45,12 +45,14 @@ describe('getHighlightedFeatures', () => {
       'quiz.builder',
       'ai.chat',
     ];
+    // The removed legacy markers are unknown keys now: they sort after the
+    // known priority keys, so the cap still takes the five differentiators.
     expect(getHighlightedFeatures(features)).toEqual([
       'ai.chat',
       'quiz.builder',
       'advanced.stats',
-      'role.builder',
       'branding',
+      'flashcards',
     ]);
   });
 

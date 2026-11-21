@@ -5,12 +5,10 @@ import type {
   RequestContext,
 } from '@studiq/authz';
 import {
-  ADMIN_ONLY_ENTITLEMENTS,
   ENTITLEMENT_KEYS,
   isEntitlementKey,
   isEntitlementProfile,
   LEARNER_ENTITLEMENTS,
-  LEGACY_MANAGEMENT_ENTITLEMENTS,
   ORG_SCOPED_ENTITLEMENTS,
   rolloutBucket,
 } from '@studiq/authz';
@@ -52,18 +50,16 @@ export class FeatureResolver {
    * Resolve the entitlement set with the documented precedence:
    *
    *   1. Role profile      — `org_roles.entitlement_profile` intersected with
-   *      the org plan ceiling: `all` → ceiling minus the four legacy management
-   *      markers, `learner` → `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` → nothing.
+   *      the org plan ceiling: `all` → the ceiling, `learner` →
+   *      `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` → nothing.
    *      A member with no verified role (`orgRoleId: null`) resolves nothing.
-   *   2. Legacy rows       — `org_role_features` is read only for the four
-   *      management markers (an enabled row adds one) and for explicit
-   *      `is_enabled = false` revokes (a row removes any key). The profile is
-   *      authoritative for non-marker keys (D18/D19), so a Teacher's `all`
-   *      profile cannot pick up `member.manage`/`role.builder` from a row.
-   *   3. Seat plan         — additive on top, then the three admin-only markers
-   *      stripped for a non-admin role.
+   *   2. Legacy rows       — `org_role_features` keeps only its
+   *      `is_enabled = false` revoke semantics (D19); an enabled row adds
+   *      nothing, because the profile is authoritative for every key since
+   *      the legacy management markers left the catalog (phase 2b-7).
+   *   3. Seat plan         — additive on top of the profile layer.
    *   4. Personal plan     — additive, inside an org only for personal-use keys
-   *      (a purchase must not escalate structure privileges).
+   *      (a purchase must not escalate org-scoped entitlements).
    *   5. User override     — add/remove anything; expired rows are ignored.
    *   6. Rollout % + flag  — `entitlement_flags.rollout_percentage < 100` gates
    *      deterministically per (key, user_id); `is_enabled = false` is a hard
@@ -91,12 +87,6 @@ export class FeatureResolver {
 
       const rows: FeatureRow[] = roleFeatures ?? [];
 
-      // `org.manage` marks an org admin. Only they may hold the structure
-      // privileges in ADMIN_ONLY_ENTITLEMENTS through a seat; everyone else gets
-      // them stripped once the seat plan is applied. (The personal layer is
-      // bounded separately by ORG_SCOPED_ENTITLEMENTS — see below.)
-      const isOrgAdmin = rows.some((r) => r.feature_key === 'org.manage' && r.is_enabled !== false);
-
       // A `none` profile has no ceiling read at all: custom roles resolve
       // nothing by construction.
       if (entitlementProfile !== 'none') {
@@ -116,13 +106,12 @@ export class FeatureResolver {
       }
 
       // Legacy rows come after the profile so an explicit revoke wins over a
-      // profile grant, exactly as the row first-semantics always did.
-      this.applyRows(enabled, rows, 'markers');
+      // profile grant, exactly as the row semantics always did (D19).
+      this.applyRows(enabled, rows, 'revoke-only');
 
       const seatPlanKey = await getSeatPlanKey(ctx, supabase);
       if (seatPlanKey) {
         await this.addPlanFeatures(enabled, seatPlanKey, supabase);
-        this.stripAdminOnlyForNonAdmin(enabled, isOrgAdmin);
       }
     }
 
@@ -229,19 +218,16 @@ export class FeatureResolver {
   }
 
   /**
-   * The profile layer: `all` is the ceiling minus the four legacy management
-   * markers, `learner` is the fixed member set. Both intersect the plan ceiling,
-   * so a plan change narrows every role with no prune step.
+   * The profile layer: `all` is the whole plan ceiling, `learner` is the fixed
+   * member set. Both intersect the plan ceiling, so a plan change narrows every
+   * role with no prune step.
    */
   private applyProfile(
     enabled: Set<EntitlementKey>,
     profile: Exclude<EntitlementProfile, 'none'>,
     ceiling: ReadonlySet<EntitlementKey>,
   ): void {
-    const keys =
-      profile === 'all'
-        ? ENTITLEMENT_KEYS.filter((key) => !LEGACY_MANAGEMENT_ENTITLEMENTS.includes(key))
-        : LEARNER_ENTITLEMENTS;
+    const keys = profile === 'all' ? ENTITLEMENT_KEYS : LEARNER_ENTITLEMENTS;
 
     for (const key of keys) {
       if (ceiling.has(key)) enabled.add(key);
@@ -267,35 +253,25 @@ export class FeatureResolver {
 
   /**
    * Applies `is_enabled` rows. A `false` row always revokes (a per-role revoke is
-   * a role decision); what an enabled row may grant depends on the writer —
-   * overrides may add anything, `org_role_features` only a management marker
-   * until phase 3 removes that writer (D19).
+   * a role decision, D19); an enabled row adds only for user overrides —
+   * `org_role_features` lost its grant semantics when the legacy management
+   * markers left the entitlement catalog (phase 2b-7), so for role rows this
+   * mode is revoke-only.
    */
   private applyRows(
     enabled: Set<EntitlementKey>,
     rows: FeatureRow[],
-    grant: 'any' | 'markers',
+    grant: 'any' | 'revoke-only',
   ): void {
     for (const row of rows) {
       if (!isEntitlementKey(row.feature_key)) continue;
-      // Explicit `is_enabled: false` removes; true/undefined adds.
+      // Explicit `is_enabled: false` removes; true/undefined adds only when the
+      // writer may grant.
       if (row.is_enabled === false) {
         enabled.delete(row.feature_key);
-      } else if (grant === 'any' || LEGACY_MANAGEMENT_ENTITLEMENTS.includes(row.feature_key)) {
+      } else if (grant === 'any') {
         enabled.add(row.feature_key);
       }
-    }
-  }
-
-  /**
-   * Structure privileges belong to the org admin role only. Applied after every
-   * plan layer inside an org, so neither a seat nor a personal purchase can
-   * escalate a non-admin role.
-   */
-  private stripAdminOnlyForNonAdmin(enabled: Set<EntitlementKey>, isOrgAdmin: boolean): void {
-    if (isOrgAdmin) return;
-    for (const key of ADMIN_ONLY_ENTITLEMENTS) {
-      enabled.delete(key);
     }
   }
 }

@@ -49,7 +49,7 @@
  *
  * `--plan <key>` puts the tenant's own organization on that plan through the same
  * `apply_org_plan` RPC the billing webhook calls, so a case whose prerequisite is
- * a paid entitlement (e.g. `role.builder` on Hub) gets it inside its own tenant
+ * a paid entitlement (e.g. `branding` on Hub) gets it inside its own tenant
  * instead of depending on the global plan catalogue or another org's purchase.
  *
  * Profiles:

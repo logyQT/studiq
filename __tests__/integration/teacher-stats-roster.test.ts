@@ -41,7 +41,7 @@ import { GET as getTeacherStats } from '@/app/(backend)/api/v1/flashcards/stats/
  * has no flashcards yet, which is exactly when the class size matters.
  *
  * Learners are enrolled straight through the service client: the API group
- * endpoint is gated on the `group.manage` feature, which a freshly created
+ * endpoint is gated on the `group.manage` permission, which a freshly created
  * educator organization does not hold — the fixture would otherwise fail for
  * a reason unrelated to this RPC.
  */

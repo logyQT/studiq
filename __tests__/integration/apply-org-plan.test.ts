@@ -54,17 +54,19 @@ describe('apply_org_plan()', () => {
 
   it('upgrades the plan and role features, and downgrades them back', async () => {
     expect(await plan()).toBe('launch');
-    expect(await roleFeatures('admin')).not.toContain('role.builder');
+    // `launch` carries only the baseline keys since 2b-7 removed the markers.
+    expect(await roleFeatures('admin')).toEqual(['flashcards', 'quiz']);
 
     const up = await service.rpc('apply_org_plan', { p_org_id: orgId, p_plan: 'hub' });
     expect(up.error).toBeNull();
 
     expect(await plan()).toBe('hub');
     expect(await roleFeatures('admin')).toEqual(
-      expect.arrayContaining(['role.builder', 'branding', 'quiz.builder']),
+      expect.arrayContaining(['branding', 'quiz.builder', 'advanced.stats']),
     );
-    // teacher never gets member.manage / role.builder; member only the learner features
-    expect(await roleFeatures('teacher')).not.toContain('role.builder');
+    // teacher gets the whole plan ceiling too — the marker exclusion is gone
+    // with the markers (2b-7); member only the learner set.
+    expect(await roleFeatures('teacher')).toEqual(await roleFeatures('admin'));
     expect(await roleFeatures('member')).not.toContain('quiz.builder');
     expect(await roleFeatures('member')).toContain('branding');
 
@@ -72,11 +74,9 @@ describe('apply_org_plan()', () => {
     expect(down.error).toBeNull();
 
     expect(await plan()).toBe('launch');
-    const adminFeatures = await roleFeatures('admin');
-    expect(adminFeatures).not.toContain('role.builder');
-    expect(adminFeatures).not.toContain('branding');
-    // org.manage marks an org admin for FeatureResolver and is never revoked
-    expect(adminFeatures).toContain('org.manage');
+    // The plan sync is a plain ceiling diff now: no key is exempt from the
+    // revoke, because the `org.manage` exception left with the marker.
+    expect(await roleFeatures('admin')).toEqual(['flashcards', 'quiz']);
   });
 
   it('rejects an unknown organization or plan', async () => {

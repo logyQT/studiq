@@ -96,15 +96,13 @@ describe(`Org Features (trigger)`, () => {
       .select('feature_key, is_enabled')
       .eq('org_role_id', adminRole!.id);
 
-    // Admin should get all features from the default 'launch' plan
-    expect(features?.length).toBeGreaterThanOrEqual(5);
+    // Admin gets every key of the default 'launch' plan — the baseline pair
+    // since 2b-7 removed the legacy management markers from the catalog.
+    expect(features?.map((f) => f.feature_key).toSorted()).toEqual(['flashcards', 'quiz']);
     expect(features?.every((f) => f.is_enabled)).toBe(true);
-    expect(features?.map((f) => f.feature_key)).toContain('flashcards');
-    expect(features?.map((f) => f.feature_key)).toContain('group.manage');
-    expect(features?.map((f) => f.feature_key)).toContain('member.manage');
   });
 
-  it('seeds features for teacher role excluding member.manage and role.builder', async () => {
+  it('seeds features for teacher role from the plan template too', async () => {
     const supabase = createTypedServiceClient();
 
     const { data: teacherRole } = await supabase
@@ -119,11 +117,10 @@ describe(`Org Features (trigger)`, () => {
       .select('feature_key, is_enabled')
       .eq('org_role_id', teacherRole!.id);
 
-    const featureKeys = features?.map((f) => f.feature_key) ?? [];
-    expect(featureKeys).toContain('flashcards');
-    expect(featureKeys).toContain('group.manage');
-    expect(featureKeys).not.toContain('member.manage');
-    expect(featureKeys).not.toContain('role.builder');
+    // The teacher marker exclusion (`member.manage`/`role.builder`) left with
+    // the markers in 2b-7: teacher and admin rows are identical now.
+    const featureKeys = features?.map((f) => f.feature_key).toSorted() ?? [];
+    expect(featureKeys).toEqual(['flashcards', 'quiz']);
     expect(features?.every((f) => f.is_enabled)).toBe(true);
   });
 
