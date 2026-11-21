@@ -1,7 +1,8 @@
 # Role-authority rollout — a PR queue into `main`
 
 **Status:** In progress — phase 0 merged (#1162), 0b merged (#1387), 1a
-merged (#1388), 1b merged (#1389), 1c in PR.
+merged (#1388), 1b merged (#1389), 1c merged (#1390) and **phase 2 merged**
+(#1397–#1404, closed by 2b-9's deferral register and guard). Next: phase 3.
 **Date:** 2026-11-13. Supersedes the 2026-10-31 integration-branch draft.
 **Decision record:** [ADR-0015](../decisions/0015-role-based-authority.md)
 **Evidence:** [audit §0](../audits/features-perms-weak-spots.md) (originally verified against `b4186312`; re-verified 2026-11-19 at `8aab828e`).
@@ -221,7 +222,21 @@ tables. It reflects only the current table names, so phase 1b regenerates the
 file again after its `plan_features` → `plan_entitlements` and `feature_flags`
 → `entitlement_flags` rename.
 
-### 2 — authority cutover (the largest; five slices)
+### 2 — authority cutover (the largest; five slices) — **DONE 2026-11-21**
+
+> **Delivered 2026-11-21, closed by 2b-9 (#1397–#1404).** Phase 2 is merged:
+> the 2a slices and all nine 2b slices (2b-7 `f62b896d` #1403, 2b-8
+> `9747f372` #1404) are on `main`, and 2b-9 shipped the closure — the
+> deferral register (every remaining persona/role-name branch with a
+> `file:line`, an owning phase and a reason) plus
+> `__tests__/unit/guards/persona-gates.test.ts`, which pins that the only
+> `allowedAccountTypes` on the API surface are the four declared exceptions
+> (R5 org/classroom creation ×2, phase-5 `ai/*` ×2). Exit met: permission
+> matrix tests, group-teacher tests, 403 vs 404, no persona gate on an org
+> resource; `AUT`, `MGR`, `EDU`, `SEC` green. The live audit behind the
+> closure: 0 policies referencing `has_org_feature`/`is_org_manager`, 0
+> marker rows in the four entitlement tables, `permissions` = 44,
+> `entitlement_catalog` = 6.
 
 Split into five slices on one short-lived branch, each independently
 reviewable. The slice list and shipped contents live in
@@ -269,14 +284,12 @@ guards replaces the role's whole permission set and the gate is one of those row
   grant — the QA swarms (STU, SEC-05/06, MGR-ROL-03) must expect no edits outside
   that set.
 
-The remaining phase-2 work, in slice order. **Phase 2b is nine slices**: slices
-1–2 are merged and 2b-3 is written (2b-3 is the settled re-numbering of this list on
+The phase-2b work, in slice order. **Phase 2b is nine slices**: all
+nine have landed (2b-3 is the settled re-numbering of this list on
 2026-11-20 — the org-control sweep moved ahead of the remaining RLS, and the
 older labels are recorded in the [plan](role-authority-plan.md#phase-2b--authority-and-control-plane)).
-A merged 2b-1/2b-2 (or a written 2b-3) does not mean phase 2 is done. The
-ledger's phase-2 row is `active` today (§1 of the
-[plan](role-authority-plan.md#1-status)) and is set to `merged` only when the last
-slice below lands.
+The ledger's phase-2 row was `active` until the last slice below (2b-9) landed;
+it is `merged` now (§1 of the [plan](role-authority-plan.md#1-status)).
 
 - **2b-1 — `org_role_permissions.permission_key` FKs the permission catalog.
   Merged** (`6ec591dd`, #1397; slice 1 of 9): the column rename, the backfill
@@ -367,7 +380,7 @@ slice below lands.
   `group.manage` from `ENTITLEMENTS`, `entitlement_catalog`,
   `entitlement_flags`, `plan_entitlements` and `org_role_features`, in that
   order, plus the pricing copy and QA expectations that advertise them.
-  **Delivered** (slice 7 of 9) on `feat/authority-2b-7`: one migration with a
+  **Merged** `f62b896d` (#1403; slice 7 of 9): one migration with a
   closing guard, the two typed-subset constants deleted with the catalog, the
   resolver's marker branches simplified (`all` = the ceiling, role rows
   revoke-only), and the R15 overlap pin in `catalog-invariants` retired —
@@ -375,7 +388,15 @@ slice below lands.
 - 2b-8 — the RLS half of the role editor guards: the last-`org.role.manage`
   holder, system roles protected, no self-edit, no grant beyond your own
   authority (the API half shipped in 2a-2/2a-3; RLS has none of it).
-- 2b-9 — deferred to phase 5.
+  **Merged** `9747f372` (#1404; slice 8 of 9).
+- 2b-9 — **delivered** on `feat/authority-2b-9` (slice 9 of 9, the phase-2
+  closure): no product code — the deferral register (every remaining
+  persona/role-name branch with `file:line`, owning phase and reason; see the
+  [plan](role-authority-plan.md#phase-2b--authority-and-control-plane)) plus
+  the source-scan guard `__tests__/unit/guards/persona-gates.test.ts` pinning
+  the four remaining `allowedAccountTypes` exceptions. The enforcement work
+  itself (`ai/*` persona gates → `requireEntitlement`, and everything the
+  register names to phase 5) stays phase 5's, below.
 
 **Exit:** permission matrix tests; group-teacher tests; 403 vs 404; no persona
 gate on an org resource; `AUT`, `MGR`, `EDU`, `SEC` green.
@@ -418,14 +439,29 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 
 ### 5 — enforcement closure
 
+> **2026-11-21 (2b-9): work from the deferral register, not from this list.**
+> The [plan's phase-2b block](role-authority-plan.md#phase-2b--authority-and-control-plane)
+> now carries the register: every remaining persona/role-name branch that
+> still decides authority — the `ai/chat` + `ai/usage` route gates, the
+> `org_members` and org-wide `teacher_assignments` SELECTs, the
+> `quiz_attempts`/`exposure_events` staff branches, the teacher-dashboard
+> RPCs, the billing owner and checkout resolver, org delete via
+> `rls_caller_is_org_manager`, `can_assign_org_role`'s §4.4 gap, the seal, the
+> report inbox, the 403-vs-404 per-service asymmetry, the null-org assignment
+> create — each with `file:line`, its owning phase (3/4/5) and why it is not
+> authority-modelled yet. Phase 5 closes them from that register;
+> `persona-gates.test.ts` keeps the route-layer half honest meanwhile (the
+> only `allowedAccountTypes` on the API surface are the four declared
+> exceptions: R5 org/classroom creation ×2 and this phase's `ai/*` ×2).
+
 - `requireEntitlement` on AI, quiz builder, advanced stats; `documents` is
   excluded from the catalog and plans **until its surface ships** — there is
   nothing to gate today, and re-entry is data-only (ADR §5.1, open catalog).
 - Branding write = `org.settings.manage` **and** the `branding` entitlement.
 - `requirePermission` on members, roles, seats, billing, invitations, settings,
   groups — replacing the remaining four mechanisms.
-- No `allowedAccountTypes` on a product or org-management API. The four
-  persona exceptions are the only ones left.
+- No `allowedAccountTypes` on a product or org-management API beyond the four
+  declared exceptions (pinned by the guard above).
 
 **Exit:** enforcement matrix (one API status per key); no UI-only gate;
 `STU`, `EDU`, `MGR`, `PUB` green.
