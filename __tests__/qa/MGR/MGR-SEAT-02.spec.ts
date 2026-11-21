@@ -22,9 +22,10 @@ import {
  *   bun scripts/qa-tenant.ts --all --run <suffix>
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *
- * The profile stays on the free Launch plan on purpose: the case checks that a member
- * has **no** AI entitlement before the seat and receives the seat plan's features
- * after it, and Hub already grants `ai.chat` to every member.
+ * The profile stays on the free Launch plan on purpose: the case checks the org
+ * ceiling rule (ADR-0015 §5.4) — the member has **no** AI entitlement before the
+ * seat, and the seat cannot grant one afterwards either, because the launch org
+ * did not buy `ai.chat`.
  *
  * The spec then provisions the rest through the product API: it promotes the teacher
  * account to the org's `teacher` role (so the picker's tier matrix has all three
@@ -42,10 +43,13 @@ import {
  * 2. „Przydziel” shows the toast „Miejsce przydzielone pomyślnie”, a new row in
  *    „Przydziały” for that member with the seat plan, and the pool moves from
  *    3/0/3 to 3/1/2 (assigned +1, available −1); the other pools are untouched.
- * 3. The member receives the seat plan's features and limits on their next login:
- *    the sidebar exposes the „Asystent Q” entry (`ai.chat`), `/app/ai` renders the
- *    composer instead of the plan gate, `/api/v1/me/plan` resolves the seat plan,
- *    and the AI-token limit becomes the seat plan's own limit. Org-scoped
+ * 3. On their next login the member's entitlements are **unchanged** (§5.4: seat
+ *    entitlements are intersected with the org ceiling, so a seat cannot grant an
+ *    entitlement the org did not buy — on the launch org the Ace seat adds no
+ *    feature): the sidebar keeps no „Asystent Q” entry (`ai.chat`), `/app/ai`
+ *    keeps the plan gate, and `/api/v1/features/me` is identical to before the
+ *    seat. The seat is still the member's effective plan (`/api/v1/me/plan`
+ *    resolves `ace`) and governs the user-scope AI-token limit. Org-scoped
  *    entitlements (`branding`) are never granted through a seat — the legacy
  *    management markers left the catalog in 2b-7, and a seat plan is
  *    personal-scope only.
@@ -311,7 +315,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
   let catalog: PlanInfo[];
   let pools: Map<string, Pool>;
 
-  test('a manager assigns a tier-matched seat and the member is upgraded', async ({
+  test('a manager assigns a tier-matched seat and the seat cannot exceed the org ceiling', async ({
     page,
     request,
   }) => {
@@ -337,7 +341,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const ace = plan('ace');
     const creator = plan('creator');
     const campus = plan('campus');
-    // The case's own example: a premium seat plan grants AI.
+    // Catalog fact the ceiling rule turns away on the launch org: the premium
+    // seat plan declares AI, which the org plan did not buy.
     expect(ace.features, 'catalog: Ace must include ai.chat').toContain('ai.chat');
     expect(
       typeof ace.limits.max_ai_tokens_per_day,
@@ -375,10 +380,6 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       beforeFeatures,
       'fixture: the unseated member has no AI entitlement before the seat',
     ).not.toContain('ai.chat');
-    const beforeUsage = (
-      await readEnvelope<{ limit: number }>(await page.request.get('/api/v1/ai/usage'))
-    ).data;
-
     // User-visible pre-state: no AI entry in the sidebar and the plan gate on /app/ai.
     await expect(page.getByRole('link', { name: COPY.aiNav })).toHaveCount(0);
     await page.goto('/app/ai');
@@ -560,24 +561,29 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
-    // The seat plan's features are now live for the member.
+    // ADR-0015 §5.4: seat entitlements are intersected with the org ceiling, so on
+    // the launch org (which carries only flashcards and quiz) the Ace seat grants
+    // no new feature — the member's feature set is unchanged by the seat.
     const afterFeatures = (
       await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
     ).data.features;
-    for (const key of beforeFeatures) {
-      expect(afterFeatures, `additive: the member keeps ${key}`).toContain(key);
-    }
-    for (const key of ace.features) {
-      expect(afterFeatures, `the member receives the seat plan feature ${key}`).toContain(key);
-    }
-    expect(afterFeatures, 'the case example: AI access from the premium seat').toContain('ai.chat');
+    expect(afterFeatures.toSorted(), 'the seat cannot exceed the org ceiling').toEqual(
+      beforeFeatures.toSorted(),
+    );
+    expect(
+      afterFeatures,
+      'the launch org did not buy ai.chat, so the seat grants none',
+    ).not.toContain('ai.chat');
     for (const key of SEAT_NEVER_GRANTS) {
       expect(afterFeatures, `org-scoped ${key} must not be granted through a seat`).not.toContain(
         key,
       );
     }
 
-    // The seat plan is the member's effective plan, and its limits apply.
+    // The seat plan is still the member's effective plan, and in phase 3a the
+    // user-scope limit composition is seat-exclusive, so the limit is the seat
+    // plan's own even though ai.chat is not entitled.
+    // 3b moves to max(org, seat, personal) and phase 4 reworks this case.
     const memberPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
       .data;
     expect(memberPlan.key).toBe('ace');
@@ -587,15 +593,13 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(afterUsage.limit, 'the seat plan’s AI token limit applies').toBe(
       ace.limits.max_ai_tokens_per_day,
     );
-    expect(afterUsage.limit).toBeGreaterThan(beforeUsage.limit);
 
-    // User-visible effect: the AI entry appears and /app/ai is no longer gated.
-    const aiNav = page.getByRole('link', { name: COPY.aiNav });
-    await expect(aiNav).toHaveCount(1);
-    await aiNav.click();
-    await page.waitForURL(/\/app\/ai$/);
-    await expect(page.getByPlaceholder(COPY.aiPlaceholder)).toBeVisible();
-    await expect(page.getByText(COPY.aiLocked)).toHaveCount(0);
+    // User-visible effect of the ceiling rule: the AI entry stays absent and
+    // /app/ai keeps the plan gate — the org did not buy ai.chat.
+    await expect(page.getByRole('link', { name: COPY.aiNav })).toHaveCount(0);
+    await page.goto('/app/ai');
+    await expect(page.getByText(COPY.aiLocked)).toBeVisible();
+    await expect(page.getByPlaceholder(COPY.aiPlaceholder)).toHaveCount(0);
 
     expect(pageErrors, 'uncaught page errors while assigning and using the seat').toEqual([]);
   });
