@@ -15,12 +15,18 @@
  *
  * This is a source scan, not a behavioural test: it fails before the database
  * is needed, and it fails in both directions — a **new** gate anywhere in the
- * API surface is reported, and a declared exception whose file or gate
- * disappears (a stale allowlist entry) is reported too. The server package is
- * scanned as well: controllers and services authorize from `ctx` permissions,
- * never from the account type, so a real `allowedAccountTypes` usage there is
- * a route-authority mechanism sneaking in below the route layer. A mention in
- * a comment or a string has no `: [` call shape and is not flagged.
+ * scanned scope is reported, and a declared exception whose file or gate
+ * disappears (a stale allowlist entry) is reported too. The scope is every
+ * `route.ts` beneath `apps/web/src/app/(backend)/api/v1` (141 files today);
+ * the top-level `apps/web/src/app/(backend)/api/route.ts` carries no gate, and
+ * `apps/admin` is out of scope by design (ADR-0009: not deployed) and carries
+ * no `allowedAccountTypes` today. The server package is scanned as well:
+ * controllers and services authorize from `ctx` permissions, never from the
+ * account type, so a real `allowedAccountTypes` usage there is a
+ * route-authority mechanism sneaking in below the route layer. A mention in a
+ * comment or a string without the `: [` call shape is not flagged — but a
+ * comment containing the literal `allowedAccountTypes: […]` call shape
+ * **would** be flagged; that is fail-closed and desirable.
  */
 
 import fs from 'node:fs';
