@@ -2,9 +2,11 @@ import {
   AccountType,
   ROLE_TEMPLATE_NAMES,
   ROLE_TEMPLATES,
+  type PermissionScope,
   type RoleTemplateName,
   type RequestContext,
 } from '@studiq/authz';
+import { isPermissionScope } from '@studiq/server/lib/authz';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import type { Database } from '@studiq/server/types/database';
@@ -33,6 +35,8 @@ describe('OrgRoleService.createRole — presets', () => {
   let orgId: string;
   let adminRoleId: string;
   let client: SupabaseClient<Database>;
+  /** The caller's own scopes, read from its Admin role the way `withAuth` builds them. */
+  let callerScopes: Partial<Record<string, PermissionScope>>;
 
   function ctx(): RequestContext {
     return {
@@ -44,7 +48,8 @@ describe('OrgRoleService.createRole — presets', () => {
       url: '/api/v1/organization/roles',
       method: 'POST',
       groupIds: [],
-      permissionScopes: {},
+      groupRoles: {},
+      permissionScopes: callerScopes,
     };
   }
 
@@ -87,6 +92,19 @@ describe('OrgRoleService.createRole — presets', () => {
     const seeded = await seedOrganization(`templates-${tag}`);
     orgId = seeded.org.id;
     adminRoleId = seeded.adminRoleId;
+
+    // The caller is the org's Admin: its scopes are the seeded Admin matrix, so
+    // the preset authorization (2b-8 follow-up) sees an org.admin holder and
+    // the presets materialise — exactly what withAuth would hand the service.
+    const { data: rows, error } = await service
+      .from('org_role_permissions')
+      .select('permission_key, scope')
+      .eq('org_role_id', adminRoleId);
+    if (error) throw new Error(`admin scopes read failed: ${error.message}`);
+    callerScopes = {};
+    for (const row of dbRows(rows)) {
+      if (isPermissionScope(row.scope)) callerScopes[row.permission_key] = row.scope;
+    }
   });
 
   afterAll(async () => {

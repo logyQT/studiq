@@ -336,6 +336,12 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 > only what you hold" rule above, so any holder of the capability can mint an
 > org invite targeting the Admin role. Phase 5 (the §4.4 enforcement pass)
 > owns the conjunct; 2b-5 deliberately did not add it.
+>
+> **2026-11-21 (phase 2b-8).** The §4.4 write rules ("grant only what you
+> hold", no `org.admin` grant/withdrawal, no self-edit without
+> `org.admin`@organization, system roles not deletable) now hold at the
+> table as well as the API — `org_role_permissions` writes go through
+> `rls_caller_may_set_role_permission`; see the §9 note (R4/FP-01 closed).
 
 ---
 
@@ -888,6 +894,20 @@ The role editor is a first-class admin screen, not an API-only feature.
 > the service answers 403 for self-edit and escalation. The write is target-first
 > (upsert the granted rows, then prune the rest), so a failed save leaves a
 > superset rather than an emptied role.
+>
+> **2026-11-21 (phase 2b-8).** The three role-editor guards now hold **at the
+> table** as well as the API, closing the PostgREST bypass (R4/FP-01):
+> system-role delete is a policy conjunct on `org_roles` DELETE and
+> `is_system` flips are refused in both directions by the
+> `guard_org_role_system_flip` BEFORE UPDATE trigger, while system-role
+> description / display-name / `entitlement_profile` edits remain allowed;
+> the last `org.role.manage` holder is protected by an organization-row
+> `FOR UPDATE` count in the BEFORE DELETE/UPDATE triggers (R29) — the API's
+> 409 is the normal path and the trigger's 42501→403 the race backstop;
+> `org.admin` stays non-assignable (D16), and the `org.admin@organization`
+> exemption (D21) applies to removals/grants but never to `org.admin` itself;
+> service-role/owner writes are exempt by design (trusted plane); and the
+> `org_members` SELECT asymmetry stays with phase 5 (D25).
 
 ---
 

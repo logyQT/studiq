@@ -12,7 +12,7 @@ import {
 } from '@studiq/authz';
 import { log } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -43,6 +43,49 @@ function templateRows(
     permission_key,
     scope,
   }));
+}
+
+/**
+ * §4.4 on one permission row a caller is about to grant: the key must be
+ * assignable (D16 — `org.admin` never is, and the check precedes the ownership
+ * exemption, so even an `org.admin` holder cannot move it), and unless the
+ * caller holds `org.admin` at organization scope (D21), the caller's own scope
+ * must cover the granted one. Returns the failure code to answer, or null when
+ * the row is authorized. Shared by `createRole`'s preset check and
+ * `setPermissions`, so the two cannot drift apart.
+ */
+function grantDenied(
+  ctx: RequestContext,
+  key: string,
+  scope: CatalogScope | null,
+  callerHoldsOwnership: boolean,
+): 'UNPROCESSABLE_ENTITY' | 'FORBIDDEN' | null {
+  if (!CATALOG[key]?.assignable) return 'UNPROCESSABLE_ENTITY';
+  if (callerHoldsOwnership) return null;
+  if (scope && !scopeCovers(ctx.permissionScopes[key], scope)) return 'FORBIDDEN';
+  return null;
+}
+
+/**
+ * How many roles of `organizationId` other than `excludeRoleId` hold
+ * `org.role.manage`. The count reads the raw stored rows with no scope filter,
+ * so a legacy `any` row still counts — exactly the predicate the RLS guard
+ * triggers behind role and permission writes count, so the two agree.
+ */
+async function countOtherGateHolders(
+  supabase: SupabaseClient<Database>,
+  organizationId: string,
+  excludeRoleId: string,
+): Promise<ServiceResult<number>> {
+  const { count, error } = await supabase
+    .from('org_role_permissions')
+    .select('org_role_id, org_roles!inner(organization_id)', { count: 'exact', head: true })
+    .eq('permission_key', 'org.role.manage')
+    .eq('org_roles.organization_id', organizationId)
+    .neq('org_role_id', excludeRoleId);
+
+  if (error) return toDbFailure(error);
+  return success(count ?? 0);
 }
 
 interface OrgRoleSummary {
@@ -167,6 +210,17 @@ export class OrgRoleService {
     // (fail-closed). The schema owns the closed list; `data.template` is typed.
     const template = ROLE_TEMPLATES[data.template ?? 'blank'];
 
+    // §4.4 on the preset itself: every row the template would seed is authorized
+    // before the role exists, exactly the way setPermissions authorizes a grant.
+    // Without this the data plane (2b-8) refuses the permission insert with
+    // 42501 and the caller gets a 403 only after the role was inserted and
+    // rolled back.
+    const callerHoldsOwnership = scopeCovers(ctx.permissionScopes['org.admin'], 'organization');
+    for (const [key, scope] of Object.entries(template.permissions)) {
+      const denied = grantDenied(ctx, key, scope, callerHoldsOwnership);
+      if (denied) return failure(denied);
+    }
+
     const { data: role, error } = await supabase
       .from('org_roles')
       .insert({
@@ -272,7 +326,7 @@ export class OrgRoleService {
 
     const { data: row, error: rowError } = await supabase
       .from('org_roles')
-      .select('is_system')
+      .select('is_system, org_role_permissions(permission_key)')
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .single();
@@ -288,6 +342,20 @@ export class OrgRoleService {
 
     if (count && count > 0) {
       return failure('CONFLICT');
+    }
+
+    // The last `org.role.manage` holder of the org cannot be deleted — the same
+    // rule setPermissions enforces on the permission row. The DB trigger
+    // (guard_org_roles_last_role_manage_holder) stays as the concurrency
+    // backstop — its 42501 → 403 is the race answer; this CONFLICT before any
+    // write is the normal path.
+    const holdsGate = dbRows(row.org_role_permissions).some(
+      (permission) => permission.permission_key === 'org.role.manage',
+    );
+    if (holdsGate) {
+      const holders = await countOtherGateHolders(supabase, ctx.activeOrgId, id);
+      if (isFailure(holders)) return holders;
+      if (!holders.data) return failure('CONFLICT');
     }
 
     const { error } = await supabase
@@ -371,14 +439,13 @@ export class OrgRoleService {
       const held = current.get(key) ?? null;
       if (held === next) continue;
 
-      // D16: ownership is not a grant the role editor may hand out or withdraw.
-      if (!CATALOG[key]?.assignable) return failure('UNPROCESSABLE_ENTITY');
-
-      if (callerHoldsOwnership) continue;
-
-      const mine = ctx.permissionScopes[key];
-      if (held && !scopeCovers(mine, held)) return failure('FORBIDDEN');
-      if (next && !scopeCovers(mine, next)) return failure('FORBIDDEN');
+      // D16, D21 and the scope-coverage rule, shared with createRole's preset
+      // check: removal needs authority over what is removed, addition over
+      // what is added.
+      const denied =
+        (held ? grantDenied(ctx, key, held, callerHoldsOwnership) : null) ??
+        (next ? grantDenied(ctx, key, next, callerHoldsOwnership) : null);
+      if (denied) return failure(denied);
     }
 
     // The gate must survive its own editor: an `org.admin` holder may self-edit, so
@@ -393,15 +460,9 @@ export class OrgRoleService {
     // `org-role.service.test.ts` pins that row as a holder.
     const holdsGate = storedRows.some((row) => row.permission_key === 'org.role.manage');
     if (holdsGate && !target.get('org.role.manage')) {
-      const { count, error: gateError } = await supabase
-        .from('org_role_permissions')
-        .select('org_role_id, org_roles!inner(organization_id)', { count: 'exact', head: true })
-        .eq('permission_key', 'org.role.manage')
-        .eq('org_roles.organization_id', ctx.activeOrgId)
-        .neq('org_role_id', id);
-
-      if (gateError) return toDbFailure(gateError);
-      if (!count) return failure('CONFLICT');
+      const holders = await countOtherGateHolders(supabase, ctx.activeOrgId, id);
+      if (isFailure(holders)) return holders;
+      if (!holders.data) return failure('CONFLICT');
     }
 
     const rows: { org_role_id: string; permission_key: string; scope: CatalogScope }[] = [];

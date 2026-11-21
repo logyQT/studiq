@@ -40,8 +40,9 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 `ctx.groupRoles`) and **2a-5** (fail-closed scope defaults + the full
 `Permission` set) are merged with the 2b slices. Phase 2b: 2b-1…2b-6 are merged
 (2b-6 as `67fab892`, #1402) and **2b-7 (the legacy-marker deletion) is written on
-`feat/authority-2b-7`**; the remaining slices are 2b-8 (the RLS half of the
-role-editor guards) and 2b-9 (deferred to phase 5).
+`feat/authority-2b-7`**; **2b-8 (the RLS half of the role-editor guards) is
+written on `feat/authority-2b-8`** (delivered block below); the remaining slice
+is 2b-9 (deferred to phase 5).
 
 Phase 2b has started: **2b-1** (the `permission_key` foreign key and its
 backfill) merged as `6ec591dd` (#1397), **2b-2** (group permissions and their
@@ -104,6 +105,7 @@ merged/written slices do not make phase 2 done.
 | R27 | A migration's closing guard pins the state its own file creates, so once a later slice rewrites the same object, the earlier file can no longer be replayed on top — the suite's replay list is the newest file that owns the object, not the whole chain.                                                                           | 2b-5 rewrote the four `invitations` policies, and replaying 2b-3's file afterwards raised at 2b-3's own guard (it pins the pre-2b-5 SELECT); the RLS suite now replays only 2b-5's file                                                                                                                                         |
 | R28 | An authority invariant is proven from the path that APPLIES the value, with a fixture that differs from the asserted outcome — a test minted and asserted with the same value (the invitee's own role as the invite's target) cannot fail on the escalation it claims to guard.                                                      | the 2b-5 review: the class-invite accept test minted with `targetOrgRoleId = memberRoleId` and asserted `org_role_id === memberRoleId`, so flipping the RPC's class branch to `do update set org_role_id = excluded.org_role_id` stayed green; the tampered-row case used Admin only for a non-member, refused before any write |
 | R29 | A check and the write it guards must be ONE statement when the guarded row can change concurrently: READ COMMITTED gives every statement a fresh snapshot, so `not exists` in one statement and `insert … on conflict do nothing` in the next leaves a window — fold the check into the insert (`insert … select … where exists …`). | the 2b-5 review TOCTOU: a membership row deleted between the accept RPC's D7 pre-check and its class-branch insert was re-created with the invite's target role (reproduced by hand: `INSERT 0 1` with the Admin role); the self-guarding insert wrote `INSERT 0 0`                                                             |
+| R30 | A `WITH CHECK` evaluates the NEW row, so it cannot express "this column may not change" — column/identity immutability belongs in a `BEFORE` trigger; a policy decides which rows may be written.                                                                                                                                    | 2b-8: the `org_roles` UPDATE `is_system` conjunct refused every legitimate system-role edit, while the `custom → is_system` flip it targeted passed `guard_system_org_role_identity`, which checks only `OLD.is_system`                                                                                                         |
 
 ## 4. Decisions
 
@@ -1339,7 +1341,7 @@ control-plane RLS (2b-4), because the routes and their predicates move together
 | 2b-5  | Class invites: `invitations.group_id` + `target_group_role`, `group.invite` at group scope, `can_assign_org_role`'s manager half moved with the invitation read (PostgREST gates the write on it), and the teacher-name exception deleted. **Written** on `feat/authority-2b-5`. |
 | 2b-6  | Content-route sweep and the cross-package `authedRoute` adoption. **Merged** `67fab892` (#1402).                                                                                                                                                                                 |
 | 2b-7  | Marker deletion: `role.builder`, `org.manage`, `member.manage`, `group.manage` and their plan/flag/feature rows in that order, plus the pricing copy and QA expectations that advertise them. **Written on `feat/authority-2b-7`** (delivered block below).                      |
-| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS.                                                                                                                                                                                  |
+| 2b-8  | 2a-2's recorded security debt: the last-`org.role.manage`-holder and system-role guards at RLS. **Written on `feat/authority-2b-8`** (delivered block below).                                                                                                                    |
 | 2b-9  | Deferred to phase 5 (enforcement closure).                                                                                                                                                                                                                                       |
 
 **Re-numbered 2026-11-20 (R8).** The settled order changed the labels the
@@ -3200,6 +3202,146 @@ permission intact) so it cannot pass on an emptied catalog (R26).
 Rule: a key deletion is checked against every reader of the key in both layers —
 `requireFeature(` on the server, `feature('…')`/`useFeature` on the client —
 and a typed subset of a catalog is deleted in the same PR as the keys it lists.
+
+**2b-8 written on `feat/authority-2b-8` — slice 8 of 9 (the RLS half of the
+role-editor guards):**
+
+- **Migration** `20261121150000_role_editor_guards_rls.sql` re-states all six
+  role write policies in full (R27 — the RLS suites' replay list moves from
+  `20261119190000` to this file) and adds:
+  - `org_roles` DELETE gets `and not coalesce(is_system, false)` — system
+    roles cannot be deleted through PostgREST (the service answers FORBIDDEN
+    on the same row). INSERT gets the same conjunct on the new row, so a
+    system role can also not be **created** through PostgREST (the API
+    hardcodes `is_system = false`; the system rows come from the
+    org-creation trigger, which runs as the owner). UPDATE deliberately
+    carries **no** `not is_system` conjunct — a WITH CHECK evaluates the new
+    row, so the conjunct refused every legitimate edit of a system row
+    (description/display_name/entitlement_profile, which `updateRole` allows);
+    flipping `is_system` in either direction is instead refused by the new
+    `guard_org_role_system_flip` BEFORE UPDATE trigger (42501 on the
+    `authenticated` surface). The rename half was already covered at the
+    data plane by `guard_system_org_role_identity` (20261024124756) — pinned
+    by a test, not a second trigger.
+  - Two SECURITY DEFINER helpers (`search_path = ''`, grants in the same file,
+    R18/R19): `rls_caller_covers_permission(org, key, scope)` (scope ranks
+    mirror `scopeCovers`; D21's `org.admin`@organization exemption included)
+    and `rls_caller_may_set_role_permission(role, key, scope)`, which carries
+    the whole §4.4 write predicate for `org_role_permissions`
+    INSERT/UPDATE/DELETE: tenant floor + `org.role.manage` gate + D16
+    (`permissions.assignable` — `org.admin` is never granted, moved into, or
+    withdrawn, and the check precedes the ownership exemption) + no self-edit
+    unless the caller holds `org.admin`@organization (D21) + the caller's own
+    scope covering the stored scope (removal, the USING clause) and the new
+    scope (addition, the WITH CHECK clause).
+  - The last-`org.role.manage`-holder guard as two BEFORE DELETE/UPDATE
+    triggers (`guard_org_roles_last_role_manage_holder`,
+    `guard_org_role_permissions_last_role_manage_holder`) that lock the
+    organization row `FOR UPDATE` and then count the remaining holders — R29:
+    a `USING` subquery alone is not atomic under READ COMMITTED. Both skip
+    non-`authenticated` roles (like `guard_system_org_role_identity`) and FK
+    cascades (`pg_trigger_depth() > 1`), so org deletion and test cleanup do
+    not raise on their own last holder; the concurrency property was proven
+    by hand on the stack (two sessions deleting the last two holders: one
+    commits, the other gets 42501, exactly one row remains) and is also an
+    integration test.
+  - A closing guard (R26) asserting per **clause**, not on the
+    `qual || with_check` concatenation (the 2b-3/2b-5 lesson): all six
+    policies exist; `org_roles` INSERT's `with_check` carries the tenant
+    floor + gate + `is_system` refusal, UPDATE's `using` **and** `with_check`
+    each carry the tenant floor + gate and neither carries the `is_system`
+    conjunct (a re-added conjunct fails the guard — it would refuse
+    legitimate system-role edits), DELETE's `using` carries all three;
+    `org_role_permissions` INSERT's `with_check`, UPDATE's `using` **and**
+    `with_check`, and DELETE's `using` each carry the §4.4 helper; both
+    helpers exist as security-definer with `search_path` pinned and EXECUTE
+    for `authenticated`; both last-holder triggers exist with the lock, the
+    gate key, the `auth.role()` and the depth checks in their bodies; and the
+    `guard_org_role_system_flip` trigger exists, security-definer, and its
+    body mentions `is_system`, `IS DISTINCT FROM`, `auth.role()` and 42501.
+- **Tests**: new `__tests__/integration/org-role-editor-guards-rls.test.ts`
+  (24 tests, all through PostgREST as signed-in sessions): system-role
+  delete/insert/rename refusals with surviving-row assertions; the
+  `is_system` flip refused in **both** directions by the flip trigger; a
+  positive control that an `org.role.manage` holder can update a system
+  role's `description` and the row persists; scope coverage refusals
+  (own-only holder cannot grant at organization, cannot delete/update a row
+  stored at organization, can write at own — positive control); self-edit
+  refusal and the D21 org.admin self-edit positive control; D16 `org.admin`
+  insert/update/delete refusals including by an org.admin holder; last-holder
+  refusals for the permission-row DELETE, the key-moving UPDATE and the role
+  DELETE, each with a second-holder positive control; the two-session
+  concurrency test; and guard tests that weaken the DELETE conjunct, drop
+  the UPDATE `with_check` gate, re-add the UPDATE `is_system` conjunct,
+  strip the helper from one UPDATE clause, or drop either trigger, and
+  assert the closing guard raises. The replay suite
+  `org-role-manage-rls.test.ts` moved to the new file and its holder
+  role now carries the key it writes (the §4.4 coverage rule applies to it
+  too). `database.ts` regenerated with the pinned CLI — the diff is exactly
+  the two new RPC signatures, byte-identical on a second run. `d9cffd42`
+  adds the API half: `__tests__/integration/org-role-editor-guards-api.test.ts`
+  (template-create 403 with no role row on an over-authority preset, blank
+  preset still allowed for a caller with no permissions, D21 `org.admin`
+  positive; `deleteRole` 200 with a second holder and 409 keeping the row on
+  the last gate holder; the service-level CONFLICT with the trigger live)
+  plus new unit cases in `org-role.service.test.ts`.
+- **API/data-plane divergences — closed in `d9cffd42` (the service half of
+  the guards):** (1) `createRole` now authorizes every template row
+  **before any write** — `grantDenied` restates the §4.4 predicate (D16
+  assignability, D21 ownership exemption, caller-scope coverage) and is
+  shared with `setPermissions`, so the two cannot drift — and answers 403/422
+  with **no role row written**, where the RLS-only first version failed at
+  the table (42501) only after the insert; (2) `deleteRole` now counts the
+  org's other `org.role.manage` holders (`countOtherGateHolders` — raw
+  stored rows, no scope filter, so a legacy `any` row still counts, exactly
+  the predicate the RLS triggers count) and answers `CONFLICT` (409)
+  **before the delete** when the role is the last holder; the
+  `guard_org_roles_last_role_manage_holder` trigger's 42501→403 is only the
+  concurrency backstop.
+- **D25 / `org_members` SELECT asymmetry: stays with phase 5 (2b-9).** 2b-4's
+  reader census is unchanged — the readers the narrowing would empty still
+  need keys D25 does not name — so this slice records the asymmetry as
+  deliberate and does not narrow the policy.
+- **`can_assign_org_role`'s "grant only what you hold" gap: untouched**, owned
+  by phase 5 as recorded in ADR-0015 §4.4 (2b-5 note).
+- **Mutation gate:** `bun run mutate` drives unit tests only and this slice
+  changes no unit-tested code, so there is nothing for it to kill; the RLS
+  invariants are proven by the integration suite above plus the by-hand
+  probes (each refusal re-run manually on the stack, including the
+  concurrency race).
+- **Gates:** `env:ensure --profile api`, `env:reset-db --yes` (twice — the
+  file applies cleanly from scratch), the full serial integration run
+  (109 files, 1019 passed, 11 skipped), `test:unit`, `typecheck:all` +
+  `typecheck:admin`, `lint:all`, `review:static`, `knip`, `dup:base`,
+  `format:check`, `pr:size`. No build/serve/Playwright/QA.
+
+#### 2026-11-21 — a WITH CHECK sees only the NEW row: the system-role UPDATE conjunct refused every edit and missed the flip
+
+What: the first version of 2b-8 put `and not coalesce(is_system, false)`
+into the `org_roles` UPDATE `with check`. A `WITH CHECK` is evaluated
+against the NEW row, so the conjunct refused **every** PostgREST update of
+a system role — including the description / display_name /
+`entitlement_profile` edits `updateRole` allows — while the flip it targeted
+was not caught at all: `guard_system_org_role_identity` (20261024124756)
+checks only `OLD.is_system`, so a `custom → is_system` UPDATE passed it.
+Why: a row policy decides which **rows** may be written; "this column may not
+change" is a property of the OLD→NEW transition, and a `WITH CHECK` cannot
+see the OLD row to express it.
+Fix: the conjunct is dropped from the UPDATE `with check` (INSERT and DELETE
+keep it), a bidirectional `BEFORE UPDATE` `guard_org_role_system_flip`
+trigger refuses `NEW.is_system IS DISTINCT FROM OLD.is_system` in either
+direction (42501 on the `authenticated` surface), and the closing guard
+became clause-aware — `qual` and `with_check` are asserted separately,
+including the negative assertion that neither UPDATE clause carries the
+`is_system` conjunct, so re-adding it fails the guard (`7be9988a`). Review
+note (F7): an `UPDATE org_role_permissions SET org_role_id = <other same-org
+role>` on the last holder's gate row is refused by
+`guard_org_role_permissions_last_role_manage_holder` even though the org
+would keep a holder after the move — the BEFORE UPDATE count excludes
+`OLD.org_role_id` and cannot see the row's new home; fail-closed,
+unreachable through the editor (which writes per role and answers its own
+409 first), accepted.
+Rule: R30.
 
 ### Phase 3 — entitlements and limits
 

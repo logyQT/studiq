@@ -29,21 +29,22 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const MIGRATION = 'supabase/migrations/20261119190000_org_role_manage_rls.sql';
+// R27: 2b-8 rewrote the six role write policies in
+// 20261121150000_role_editor_guards_rls.sql, so that file — which re-states all
+// six in full — is the newest owner of them and the replay list below. The 2a-2
+// file can no longer be replayed on top: its policies lack the 2b-8 conjuncts,
+// and its own file's guard pins the pre-2b-8 state.
+const MIGRATION = 'supabase/migrations/20261121150000_role_editor_guards_rls.sql';
 
 /**
- * The 2a-2 file, with the one definition phase 2b moved.
+ * The 2b-8 file, with the one definition it references but does not own.
  *
- * Its helper body reads `permission_name`, which phase 2b renamed; replaying the
- * file as shipped would install a helper that fails on its first read (the 2b
- * migration re-creates the same helper against the new column). The helper is
- * therefore stripped here and installed from the migration that defines it last,
- * so the policies pinned below stay the shipped 2a-2 policies.
+ * Its `org_roles` policies still call `rls_caller_has_permission`, whose body
+ * lives in 2b-1's migration (renamed column). The definition is therefore
+ * installed from the migration that defines it last, so the policies pinned
+ * below stay the shipped ones.
  */
-const SHIPPED_SQL = `${readFileSync(MIGRATION, 'utf8').replace(
-  /create or replace function public\.rls_caller_has_permission[\s\S]*?\$\$;\n/,
-  '',
-)}${latestShippedFunction('rls_caller_has_permission')}
+const SHIPPED_SQL = `${readFileSync(MIGRATION, 'utf8')}${latestShippedFunction('rls_caller_has_permission')}
 grant execute on function public.rls_caller_has_permission(uuid, text) to authenticated;`;
 
 const localDatabaseUrl = (() => {
@@ -86,7 +87,11 @@ async function installShippedSql(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await sql.unsafe(
-      'revoke all on function public.rls_caller_has_permission(uuid, text) from authenticated',
+      `do $$ begin
+         revoke all on function public.rls_caller_has_permission(uuid, text) from public, anon, authenticated, service_role;
+         revoke all on function public.rls_caller_may_set_role_permission(uuid, text, text) from public, anon, authenticated, service_role;
+         revoke all on function public.rls_caller_covers_permission(uuid, text, text) from public, anon, authenticated, service_role;
+       exception when undefined_function then null; end $$;`,
     );
     await sql.unsafe(SHIPPED_SQL);
   } finally {
@@ -198,6 +203,14 @@ describe('org.role.manage RLS predicate', () => {
     );
 
     const roleHolderRole = await customRole(orgId, `role-holder-${tag}`, 'org.role.manage');
+    // 2b-8: the permission-row writes below are covered by the caller's own
+    // scope, so the holder role also carries deck.read at organization scope.
+    const { error: deckError } = await service.from('org_role_permissions').insert({
+      org_role_id: roleHolderRole,
+      permission_key: 'deck.read',
+      scope: 'organization',
+    });
+    if (deckError) throw new Error(`deck.read grant failed: ${deckError.message}`);
     const managerFeatureRole = await customRole(orgId, `manager-feature-${tag}`, null);
 
     // The control reads an entitlement row, not the permission: a custom role
