@@ -112,6 +112,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R30 | A `WITH CHECK` evaluates the NEW row, so it cannot express "this column may not change" — column/identity immutability belongs in a `BEFORE` trigger; a policy decides which rows may be written.                                                                                                                                    | 2b-8: the `org_roles` UPDATE `is_system` conjunct refused every legitimate system-role edit, while the `custom → is_system` flip it targeted passed `guard_system_org_role_identity`, which checks only `OLD.is_system`                                                                                                         |
 | R31 | A phase closes when every remaining branch is named with an owner and a phase, and the exit criterion is pinned by a source-scan guard, not a promise.                                                                                                                                                                               | 2b-9: the phase-2 closure shipped a deferral register plus `persona-gates.test.ts` instead of "the only gates left are the declared ones" prose — a fifth gate or a stale entry now fails a test, not a review                                                                                                                  |
 | R32 | A blacklist→whitelist switch is behaviour-preserving only if the metadata already partitions the key space; pin the key that differs in a ported case.                                                                                                                                                                               | 3a: the `personalPortable` whitelist dropped `flashcards`/`quiz` from the personal layer inside orgs — the design had called the switch "equivalent for today's catalog" because `scope` and `personalPortable` are different axes                                                                                              |
+| R33 | A per-request query-count target is a structural claim, not a loop-count claim: count the tables the resolution actually reads and pin the number in a test, because "one per table" can exceed the target if the table list is longer than the target.                                                                              | 3b: `resolveEntitlements` reads 11 tables, so flat reads cost 11 queries in the full case; FK embeds plus batched catalog reads brought it to 7, pinned by `entitlement.resolver.limits.test.ts`                                                                                                                                |
 
 ## 4. Decisions
 
@@ -3528,6 +3529,24 @@ already partitions the key space; `scope` and `personalPortable` are two
 different axes, and the catalog crosses them.
 Fix: the whitelist ships (D3); the differing keys are pinned in tests.
 Rule: R32.
+
+#### 2026-11-21 — the ≤7-query target was unreachable with flat per-table reads
+
+What: the design's "one query per table, target ≤7" for one `resolveEntitlements`
+call assumed ~7 tables are read; the resolver actually reads 11 (`org_members`,
+`organizations`, `org_roles`, `org_role_features`, `org_seat_assignments`,
+`org_seat_pools`, `profiles`, `plan_entitlements`, `plan_limits`,
+`user_feature_overrides`, `entitlement_flags`). Flat per-table reads cost 11 in
+the full org+seat case — and the pre-3b code was worse still, because every
+`getEffectiveLimit` call re-ran the membership/seat/org lookups per limit key.
+Why: the target is only reachable by riding FK embeds — the org plan, role
+profile and revoke rows embed on the `org_members` row, the seat pool on the
+`org_seat_assignments` row, and `plan_entitlements`/`plan_limits` batch over
+`.in('plan_key', …)` — which lands at exactly 7 (5 outside an org), pinned by a
+unit test that counts `from()` calls.
+Fix: embeds + batched catalog reads ship in 3b; the count is pinned, not
+remembered.
+Rule: R33.
 
 Carried from 2b-3 (recorded there, not fixed there): the Teacher template grants
 every content key at `own` while Member reads at `group`, so a Teacher cannot read

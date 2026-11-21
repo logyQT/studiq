@@ -126,39 +126,50 @@ request on the ctx). Resolution order:
 
 ## Limit resolution
 
-`LimitsResolver.getEffectiveLimit(ctx, limitKey)` —
-`packages/server/src/services/limits.resolver.ts`
+`getEffectiveLimit(ctx, limitKey)` — `packages/server/src/services/limits.ts`,
+a wrapper over the single resolver's composed `limits`
+(`packages/server/src/services/entitlement.resolver.ts`, `composeLimits`).
 
-**Rule (#233):** org-scope capacity (`scope: 'org'`) always comes from the
-organization's plan — no seat and no personal plan can widen it. Per-member keys
-(`scope: 'user'`) take the most permissive layer: a seat governs for the seated
-member (Q3), otherwise the higher of the member's personal plan and the org plan
-wins, so an org on the free tier never undercuts a plan the member bought. A
-manager's personal plan is excluded inside an org — it mirrors an org purchase
-(#228). A missing `plan_limits` row is `0` (blocked) in every path.
+> **2026-11-21 (phase 3b, ADR-0015 §6.2):** the seat is no longer exclusive
+> (#233 Q1/Q3 reversed for user-scope keys): per-member keys now take
+> `max(org, seat, personal)` with `-1` short-circuiting, so a `base` seat in a
+> `hub` org keeps the hub allowance instead of the seat's `0`. Membership is
+> verified before the seat plan is consulted, so a forged `active_org_id`
+> plus a stale seat row resolves the personal plan (user keys) / `0` (org
+> keys), never the seat's values. The resolution is batched — one
+> `plan_entitlements` and one `plan_limits` read per resolution — at most
+> seven queries in total.
 
-| Context                                          | `scope: 'user'` keys | `scope: 'org'` keys            |
-| ------------------------------------------------ | -------------------- | ------------------------------ |
-| No active org                                    | personal plan        | `0` (no org capacity to grant) |
-| Active org, seated                               | seat plan            | org plan                       |
-| Active org, unseated verified member             | personal ∪ org plan  | org plan                       |
-| Active org, manager (personal plan is a mirror)  | org plan             | org plan                       |
-| Active org id without membership (forged cookie) | personal plan        | `0`                            |
-| Plan lacks the key                               | `0` + `warn()`       | `0` + `warn()`                 |
+**Rule (#233, org scope unchanged):** org-scope capacity (`scope: 'org'`) always
+comes from the verified organization's plan — no seat and no personal plan can
+widen it. Per-member keys (`scope: 'user'`) take the most permissive layer:
+`max(org, seat, personal)`, so an org on the free tier never undercuts a plan
+the member bought. A manager's personal plan is excluded inside an org — it
+mirrors an org purchase (#228). A missing `plan_limits` row is `0` (blocked) in
+every path.
+
+| Context                                          | `scope: 'user'` keys     | `scope: 'org'` keys            |
+| ------------------------------------------------ | ------------------------ | ------------------------------ |
+| No active org                                    | personal plan            | `0` (no org capacity to grant) |
+| Active org, seated verified member               | max(org, seat, personal) | org plan                       |
+| Active org, unseated verified member             | max(org, personal)       | org plan                       |
+| Active org, manager (personal plan is a mirror)  | org plan                 | org plan                       |
+| Active org id without membership (forged cookie) | personal plan            | `0`                            |
+| Plan lacks the key                               | `0` + `warn()`           | `0` + `warn()`                 |
 
 `ctx.activeOrgId` comes from a client cookie, so the resolver verifies the
-`org_members` row before treating it as a tenant scope: a spoofed org id has no
-row and falls back to the personal plan (user keys) or `0` (org keys).
+`org_members` row before treating it as a tenant scope — and before reading the
+seat plan: a spoofed org id has no row and falls back to the personal plan
+(user keys) or `0` (org keys), ignoring any stale seat row.
 
 **Managers (#228):** a manager has no paid personal plan — their
 `profiles.personal_plan_key` is the free `launch` tier. In a verified org a
 manager therefore resolves limits from the org plan only — their personal key is
-a mirror of an org plan, never a second entitlement (#228; a seat still governs
-per-member keys); the free personal tier applies only when there is no active
-org. A manager carrying a paid org plan in `personal_plan_key` from an old
-purchase cannot widen any org's limits.
+a mirror of an org plan, never a second entitlement (#228); the free personal
+tier applies only when there is no active org. A manager carrying a paid org
+plan in `personal_plan_key` from an old purchase cannot widen any org's limits.
 
-`LimitsResolver.checkOrgLimit(orgId, limitKey, count, increment, client?)`
+`checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`
 (blocked). An unknown organization throws `NOT_FOUND` (404). It is used before
 the caller is a member — invite accept (`max_students`, with the service-role
@@ -177,13 +188,13 @@ already count per user.
 `packages/server/src/services/subscription-plan.service.ts`
 
 The plan page must show the plan the caller's limits and features are actually
-resolved from, so it follows the same precedence as the resolvers:
+resolved from, so `key` follows the same precedence as the resolvers — all three
+layers now membership-verified through the single resolver (phase 3b):
 
-1. **Seated student/educator in the active org** → the seat plan
-   (`getSeatPlanKey` → `org_seat_pools.plan_key`). The page then shows that
-   plan's `plan_entitlements` / `plan_limits`, matching the seat's per-member limit
-   resolution (#233) and the seat feature upgrade (#270).
-2. **Manager in the active org** → `organizations.plan`, falling back to the
+1. **Seated student/educator in a verified org** → the seat plan
+   (`org_seat_assignments` → `org_seat_pools.plan_key`). The seat feature
+   upgrade (#270) is unchanged.
+2. **Manager in a verified org** → `organizations.plan`, falling back to the
    manager's personal plan when the org has no plan row. Managers are the org's
    billing contact, so they keep seeing the org subscription (#181). An
    organization purchase changes only `organizations.plan`: it never writes the
@@ -193,11 +204,15 @@ resolved from, so it follows the same precedence as the resolvers:
    unseated member's `active_org_id` membership never replaces their personal
    plan on this page (#181).
 
-Plan display is a single plan, not the effective union/max: an unseated
-member's limits come from the org plan while this page shows their personal
-plan, and a seated member's features are `org role features ∪ seat plan
-features`, so the displayed plan can be narrower than enforcement in those
-mixes (#181/#270).
+> **2026-11-21 (phase 3b, D28):** `key` keeps the single-plan value above, but
+> `features` and `limits` are now the **effective** resolved set/limits
+> (`max(org, seat, personal)` for user-scope keys), and the response carries the
+> additive `sources` array naming every layer that contributed. A forged
+> `active_org_id` with a stale seat row resolves the personal plan here too.
+
+Plan display is still a single `key`, not the union: an unseated member's
+limits can come from the org plan while this page shows their personal plan
+(#181/#270).
 
 The organization ladder on `/pricing?audience=organization` badges its "current
 plan" from the same precedence (#228): a manager reads `/api/v1/me/plan` (the
