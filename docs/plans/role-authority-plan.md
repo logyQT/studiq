@@ -105,6 +105,7 @@ merged/written slices do not make phase 2 done.
 | R27 | A migration's closing guard pins the state its own file creates, so once a later slice rewrites the same object, the earlier file can no longer be replayed on top — the suite's replay list is the newest file that owns the object, not the whole chain.                                                                           | 2b-5 rewrote the four `invitations` policies, and replaying 2b-3's file afterwards raised at 2b-3's own guard (it pins the pre-2b-5 SELECT); the RLS suite now replays only 2b-5's file                                                                                                                                         |
 | R28 | An authority invariant is proven from the path that APPLIES the value, with a fixture that differs from the asserted outcome — a test minted and asserted with the same value (the invitee's own role as the invite's target) cannot fail on the escalation it claims to guard.                                                      | the 2b-5 review: the class-invite accept test minted with `targetOrgRoleId = memberRoleId` and asserted `org_role_id === memberRoleId`, so flipping the RPC's class branch to `do update set org_role_id = excluded.org_role_id` stayed green; the tampered-row case used Admin only for a non-member, refused before any write |
 | R29 | A check and the write it guards must be ONE statement when the guarded row can change concurrently: READ COMMITTED gives every statement a fresh snapshot, so `not exists` in one statement and `insert … on conflict do nothing` in the next leaves a window — fold the check into the insert (`insert … select … where exists …`). | the 2b-5 review TOCTOU: a membership row deleted between the accept RPC's D7 pre-check and its class-branch insert was re-created with the invite's target role (reproduced by hand: `INSERT 0 1` with the Admin role); the self-guarding insert wrote `INSERT 0 0`                                                             |
+| R30 | A `WITH CHECK` evaluates the NEW row, so it cannot express "this column may not change" — column/identity immutability belongs in a `BEFORE` trigger; a policy decides which rows may be written.                                                                                                                                    | 2b-8: the `org_roles` UPDATE `is_system` conjunct refused every legitimate system-role edit, while the `custom → is_system` flip it targeted passed `guard_system_org_role_identity`, which checks only `OLD.is_system`                                                                                                         |
 
 ## 4. Decisions
 
@@ -3277,15 +3278,26 @@ role-editor guards):**
   `org-role-manage-rls.test.ts` moved to the new file and its holder
   role now carries the key it writes (the §4.4 coverage rule applies to it
   too). `database.ts` regenerated with the pinned CLI — the diff is exactly
-  the two new RPC signatures, byte-identical on a second run.
-- **API/data-plane divergences found (reported, not changed):** (1)
-  `createRole` applies a template's rows without the §4.4 coverage check, so
-  a custom `org.role.manage` holder creating a non-blank template role now
-  fails at the table (42501) where the API used to succeed — the API half of
-  that guard is phase-5 work; (2) `deleteRole` has no last-holder check (only
-  `setPermissions` does), so deleting the last gate-holder role through the
-  API now surfaces as a DB error instead of a clean CONFLICT. Neither changes
-  a legitimate API flow; both fail closed.
+  the two new RPC signatures, byte-identical on a second run. `d9cffd42`
+  adds the API half: `__tests__/integration/org-role-editor-guards-api.test.ts`
+  (template-create 403 with no role row on an over-authority preset, blank
+  preset still allowed for a caller with no permissions, D21 `org.admin`
+  positive; `deleteRole` 200 with a second holder and 409 keeping the row on
+  the last gate holder; the service-level CONFLICT with the trigger live)
+  plus new unit cases in `org-role.service.test.ts`.
+- **API/data-plane divergences — closed in `d9cffd42` (the service half of
+  the guards):** (1) `createRole` now authorizes every template row
+  **before any write** — `grantDenied` restates the §4.4 predicate (D16
+  assignability, D21 ownership exemption, caller-scope coverage) and is
+  shared with `setPermissions`, so the two cannot drift — and answers 403/422
+  with **no role row written**, where the RLS-only first version failed at
+  the table (42501) only after the insert; (2) `deleteRole` now counts the
+  org's other `org.role.manage` holders (`countOtherGateHolders` — raw
+  stored rows, no scope filter, so a legacy `any` row still counts, exactly
+  the predicate the RLS triggers count) and answers `CONFLICT` (409)
+  **before the delete** when the role is the last holder; the
+  `guard_org_roles_last_role_manage_holder` trigger's 42501→403 is only the
+  concurrency backstop.
 - **D25 / `org_members` SELECT asymmetry: stays with phase 5 (2b-9).** 2b-4's
   reader census is unchanged — the readers the narrowing would empty still
   need keys D25 does not name — so this slice records the asymmetry as
@@ -3302,6 +3314,34 @@ role-editor guards):**
   (109 files, 1019 passed, 11 skipped), `test:unit`, `typecheck:all` +
   `typecheck:admin`, `lint:all`, `review:static`, `knip`, `dup:base`,
   `format:check`, `pr:size`. No build/serve/Playwright/QA.
+
+#### 2026-11-21 — a WITH CHECK sees only the NEW row: the system-role UPDATE conjunct refused every edit and missed the flip
+
+What: the first version of 2b-8 put `and not coalesce(is_system, false)`
+into the `org_roles` UPDATE `with check`. A `WITH CHECK` is evaluated
+against the NEW row, so the conjunct refused **every** PostgREST update of
+a system role — including the description / display_name /
+`entitlement_profile` edits `updateRole` allows — while the flip it targeted
+was not caught at all: `guard_system_org_role_identity` (20261024124756)
+checks only `OLD.is_system`, so a `custom → is_system` UPDATE passed it.
+Why: a row policy decides which **rows** may be written; "this column may not
+change" is a property of the OLD→NEW transition, and a `WITH CHECK` cannot
+see the OLD row to express it.
+Fix: the conjunct is dropped from the UPDATE `with check` (INSERT and DELETE
+keep it), a bidirectional `BEFORE UPDATE` `guard_org_role_system_flip`
+trigger refuses `NEW.is_system IS DISTINCT FROM OLD.is_system` in either
+direction (42501 on the `authenticated` surface), and the closing guard
+became clause-aware — `qual` and `with_check` are asserted separately,
+including the negative assertion that neither UPDATE clause carries the
+`is_system` conjunct, so re-adding it fails the guard (`7be9988a`). Review
+note (F7): an `UPDATE org_role_permissions SET org_role_id = <other same-org
+role>` on the last holder's gate row is refused by
+`guard_org_role_permissions_last_role_manage_holder` even though the org
+would keep a holder after the move — the BEFORE UPDATE count excludes
+`OLD.org_role_id` and cannot see the row's new home; fail-closed,
+unreachable through the editor (which writes per role and answers its own
+409 first), accepted.
+Rule: R30.
 
 ### Phase 3 — entitlements and limits
 
