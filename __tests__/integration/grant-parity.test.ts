@@ -18,7 +18,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // `GRANT ALL ON ALL TABLES … TO authenticated`, an `ALTER DEFAULT PRIVILEGES`
 // grant to `anon`, or a dropped `GRANT EXECUTE` on a helper a policy calls.
 
-const PRICING_TABLES = ['plan_entitlements', 'plan_limits', 'subscription_plans'];
+  // `entitlement_catalog` is pricing metadata: `PlanInfo.seatEligible` embeds it
+  // from `plan_entitlements` on every plan read, and the public catalogue is
+  // anonymous (phase 4a).
+  const PRICING_TABLES = [
+    'entitlement_catalog',
+    'plan_entitlements',
+    'plan_limits',
+    'subscription_plans',
+  ];
 
 /** Columns an answer key may not leak to a signed-in session. */
 const ANSWER_KEY_COLUMNS: Array<[table: string, column: string]> = [

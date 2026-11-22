@@ -220,7 +220,15 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ==========================================================
--- 7. Closing guard: pin the state this file creates.
+-- 7. `PlanInfo.seatEligible` reads `entitlement_catalog` on every plan read,
+--    including the anonymous pricing catalogue (which embeds the catalog from
+--    `plan_entitlements`). Without this grant that embed raises 42501 for
+--    `anon` and the public catalogue answers 403.
+-- ==========================================================
+GRANT SELECT ON public.entitlement_catalog TO anon;
+
+-- ==========================================================
+-- 8. Closing guard: pin the state this file creates.
 -- ==========================================================
 DO $$
 DECLARE
