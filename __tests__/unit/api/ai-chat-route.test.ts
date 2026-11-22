@@ -101,6 +101,23 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     expect(streamTextMock).not.toHaveBeenCalled();
   });
 
+  it('answers 403 for an unparseable body, so the handler never reads it', async () => {
+    requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+
+    const res = await POST(
+      new NextRequest('http://localhost/api/v1/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json',
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'ai.chat');
+    expect(rateLimitCheckMock).not.toHaveBeenCalled();
+    expect(streamTextMock).not.toHaveBeenCalled();
+  });
+
   it('blocks with 429 before checking usage or calling the model when rate limited', async () => {
     rateLimitCheckMock.mockReturnValue({ allowed: false, retryAfterMs: 5000 });
 

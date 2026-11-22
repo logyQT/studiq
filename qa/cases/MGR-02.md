@@ -95,8 +95,8 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   | Ustawienia  | `/manage/settings` | Ustawienia        |
 
 - Pulpit (`/manage`) nie ma nagłówka; rozpoznają go kafelki „Łączna liczba członków”,
-  „Wykładowcy”, „Studenci” i karta „Szybkie akcje”. Strony „Role” i „Licencje” działają
-  i przy planie `hub` pokazują pełne funkcje (kreator ról, pule miejsc) — to
-  zachowanie planu, nie brak strony.
+  „Wykładowcy”, „Studenci” i karta „Szybkie akcje”. Strony „Role” i „Licencje” otwierają
+  się na planie `hub` z własnym nagłówkiem i kodem 200; spec asertuje nagłówek i brak
+  strony 404, a zawartość kart planu nie jest przedmiotem przypadku.
 - Nagłówek „Licencje miejsc” różni się od etykiety menu „Licencje”; etykieta w teście
   pochodzi z paska bocznego, a nagłówek z treści strony.
