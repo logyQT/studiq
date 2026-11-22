@@ -11,7 +11,10 @@
 -- `org_role_features` flips to revokes-only (D19/D27): the plan-shaped grant
 -- rows created by the old writer and the org-creation trigger are deleted, and
 -- only a hand-inserted `is_enabled = false` row can still subtract a key from
--- the profile. Revoke rows stay readable until phase 7.
+-- the profile. An enabled row is inert — the resolver ignores it and so does
+-- the RLS twin — so the column keeps its `true` default: a natural insert that
+-- omits `is_enabled` changes nothing, while a `false` default would silently
+-- revoke that key. Revoke rows stay readable until phase 7.
 --
 -- The function redefinitions come before the delete on purpose: a fresh replay
 -- must never run a trigger body or an RLS twin that still expects the grant
@@ -40,8 +43,8 @@ BEGIN
     RAISE EXCEPTION 'plan % not found', p_plan USING ERRCODE = 'P0002';
   END IF;
 
-  -- The org layer is derived live (`plan_entitlements`/`plan_limits` plus the
-  -- role's `entitlement_profile`), so a snapshot write here would only drift.
+  -- The org layer is derived live from the plan catalog plus the role's
+  -- `entitlement_profile`, so a snapshot write here would only drift.
   UPDATE public.organizations SET plan = p_plan WHERE id = p_org_id;
 END;
 $$;
@@ -173,23 +176,22 @@ $$;
 -- ==========================================
 -- RLS twin of the resolver's org layer (FP-01).
 --
--- `org_role_features` is revokes-only since this migration, so the
--- explicit-grant branch is gone: a row can no longer grant a key. The fallback
--- keeps the admin branch and the profile CASE (`all` = plan ceiling,
--- `learner` = the learner keys ∩ ceiling, else false) plus the additive seat
--- union, and subtracts any revoked key:
+-- `org_role_features` is revokes-only since this migration, so no row can
+-- grant a key and the twin never tests for one: an enabled row is inert in the
+-- resolver and here. The composition follows the resolver's order:
 --
---   enabled grant rows  → none exist (the table is revokes-only); the
---                         `NOT EXISTS (enabled row)` check keeps a hand-inserted
---                         grant from falling back to the profile
---   profile 'all'       → ceiling
+--   profile 'all'      → the plan ceiling
 --   profile 'learner'  → LEARNER_ENTITLEMENTS ∩ ceiling
---   profile 'none'      → nothing
---   + seat plan keys    → additive, exactly as before
---   − revoke rows       → `is_enabled = false` subtracts its key
+--   profile 'none'     → nothing
+--   − revoke rows      → `is_enabled = false` subtracts its key from the
+--                        profile arm only
+--   + seat plan keys   → seat plan ∩ ceiling, added after the revokes, so a
+--                        seat key re-adds a revoked one
 --
--- That is the resolver's D19 semantics: profile minus revokes, never a grant
--- snapshot.
+-- One deliberate divergence, owned by phase 5: the system Admin role holds
+-- every key. The resolver has no admin branch (admin is profile `all` ∩
+-- ceiling); the wildcard is what keeps the deferred org-delete path working
+-- until phase 5 aligns the two.
 -- ==========================================
 create or replace function public.has_org_feature(
   p_actor uuid,
@@ -212,19 +214,13 @@ as $$
     WHERE om.user_id = p_actor
       AND om.organization_id = p_organization_id
       AND (
-        -- The system Admin role holds every entitlement.
+        -- The one deliberate divergence from the resolver (phase 5 owns it).
         (r.is_system AND r.name = 'admin')
         OR (
-          -- No enabled grant row exists any more (the table is revokes-only);
-          -- this keeps a hand-inserted grant from falling back to the profile.
-          NOT EXISTS (
-            SELECT 1
-            FROM public.org_role_features fe
-            WHERE fe.org_role_id = r.id
-              AND fe.is_enabled
-          )
-          AND (
-            -- Profile base layer (ADR-0015 §5.3).
+          (
+            -- Profile base layer (ADR-0015 §5.3), then the revokes: the
+            -- resolver applies revokes before the seat plan, so a revoke only
+            -- subtracts what the profile granted.
             CASE r.entitlement_profile
               WHEN 'all' THEN
                 EXISTS (
@@ -243,30 +239,35 @@ as $$
                 )
               ELSE false
             END
-            -- Seat plan: additive, exactly as the resolver composes it.
-            OR EXISTS (
+            AND NOT EXISTS (
               SELECT 1
-              FROM public.plan_entitlements pfs
-              WHERE pfs.entitlement_key = p_feature
-                AND pfs.plan_key = (
-                  SELECT sp.plan_key
-                  FROM public.org_seat_assignments sa
-                  JOIN public.org_seat_pools sp ON sp.id = sa.pool_id
-                  WHERE sa.user_id = p_actor
-                    AND sa.organization_id = p_organization_id
-                    AND sp.plan_key IS NOT NULL
-                  LIMIT 1
-                )
+              FROM public.org_role_features fr
+              WHERE fr.org_role_id = r.id
+                AND fr.feature_key = p_feature
+                AND NOT fr.is_enabled
             )
           )
-          -- Revoke subtraction (D19): a role with revoke rows still gets the
-          -- profile minus the revoked keys.
-          AND NOT EXISTS (
+          -- Seat plan ∩ ceiling: the seat can add a key the org plan carries,
+          -- never one it does not, and it runs after the revokes.
+          OR EXISTS (
             SELECT 1
-            FROM public.org_role_features fr
-            WHERE fr.org_role_id = r.id
-              AND fr.feature_key = p_feature
-              AND NOT fr.is_enabled
+            FROM public.plan_entitlements pfs
+            WHERE pfs.entitlement_key = p_feature
+              AND pfs.plan_key = (
+                SELECT sp.plan_key
+                FROM public.org_seat_assignments sa
+                JOIN public.org_seat_pools sp ON sp.id = sa.pool_id
+                WHERE sa.user_id = p_actor
+                  AND sa.organization_id = p_organization_id
+                  AND sp.plan_key IS NOT NULL
+                LIMIT 1
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM public.plan_entitlements pfc
+                WHERE pfc.entitlement_key = p_feature
+                  AND pfc.plan_key = o.plan
+              )
           )
         )
       )
@@ -283,25 +284,30 @@ $$;
 drop function if exists public.apply_org_plan(uuid, text);
 
 -- The plan-shaped grant rows are inert state that contradicts the live
--- resolution. Revoke rows (`is_enabled = false`) stay: they are readable until
--- phase 7 (D19/D27) and a role that carries one still subtracts it.
+-- resolution. Only explicit revokes (`is_enabled = false`) survive: an enabled
+-- row is inert (ignored by both the resolver and the RLS twin), which is why
+-- the column keeps its `true` default — a natural insert changes nothing.
+-- Revoke rows are readable until phase 7 (D19/D27) and a role that carries
+-- one still subtracts it.
 delete from public.org_role_features
 where is_enabled;
 
 comment on table public.org_role_features is
-  'Revokes-only since ADR-0015 phase 3c (D19/D27): a row with is_enabled = false '
-  'subtracts its key from the role''s entitlement_profile; grant rows do not exist. '
-  'Resolved live by resolveEntitlements() and has_org_feature().';
+  'Revokes-only since ADR-0015 phase 3c (D19/D27): an enabled row is inert '
+  '(ignored by both resolveEntitlements() and has_org_feature()); only '
+  'is_enabled = false has an effect, and it must be explicit.';
 
 -- ==========================================
--- Closing guard (R26/R34): the writer is gone, the two callsites move, the RLS
--- twin reads revokes and never grants, and no enabled row survives. Every
--- assertion is idempotent, so re-running this file on an already-migrated
--- database passes.
+-- Closing guard (R26/R34): the writer is gone, the two callsites move, the
+-- plan move is the whole write, the RLS twin reads revokes and never grants,
+-- and no enabled row survives. Every assertion is idempotent, so re-running
+-- this file on an already-migrated database passes.
 -- ==========================================
 do $$
 declare
   v_body text;
+  v_stripped text;
+  v_forbidden text;
   v_enabled int;
   v_comment text;
 begin
@@ -321,22 +327,53 @@ begin
     raise exception 'apply_entitlement_fenced still calls apply_org_plan';
   end if;
 
+  -- `change_org_plan` is the plan move and nothing else: it names
+  -- `organizations` and no other entitlements-bearing table.
+  v_body := lower(pg_get_functiondef('public.change_org_plan(uuid,text)'::regprocedure));
+  if position('organizations' in v_body) = 0 then
+    raise exception 'change_org_plan does not move organizations.plan';
+  end if;
+  foreach v_forbidden in array array[
+    'org_role_features',
+    'plan_limits',
+    'org_role_permissions',
+    'plan_entitlements'
+  ] loop
+    if position(v_forbidden in v_body) > 0 then
+      raise exception 'change_org_plan still writes % (the plan move is the whole write)', v_forbidden;
+    end if;
+  end loop;
+
   v_body := lower(pg_get_functiondef('public.handle_new_organization()'::regprocedure));
   if position('org_role_features' in v_body) > 0 then
     raise exception 'handle_new_organization still touches org_role_features';
   end if;
 
   v_body := lower(pg_get_functiondef('public.has_org_feature(uuid,uuid,text)'::regprocedure));
-  if position('f.is_enabled' in v_body) > 0 then
-    raise exception 'has_org_feature still has an explicit is_enabled grant branch';
-  end if;
-  if position('fe.is_enabled' in v_body) = 0 then
-    raise exception 'has_org_feature does not test enabled rows (R34)';
-  end if;
-  if position('not fr.is_enabled' in v_body) = 0 then
-    raise exception 'has_org_feature has no revoke subtraction';
+
+  -- The twin names the table exactly once: the revoke subtraction. A second
+  -- reference is a grant row or a row-existence gate, which the table's
+  -- polarity no longer supports.
+  if regexp_count(v_body, 'org_role_features') <> 1 then
+    raise exception 'has_org_feature must name org_role_features exactly once (revoke subtraction), found %',
+      regexp_count(v_body, 'org_role_features');
   end if;
 
+  -- `is_enabled` appears exactly once, negated. Strip the shapes a revoke may
+  -- take and any remainder is a positive predicate — keyed on the shape, not an
+  -- alias, so renaming `fr` cannot evade it.
+  if regexp_count(v_body, 'is_enabled') <> 1 then
+    raise exception 'has_org_feature references is_enabled % time(s), expected the one negated revoke', regexp_count(v_body, 'is_enabled');
+  end if;
+  v_stripped := regexp_replace(v_body, 'not[[:space:]]+[a-z_][a-z0-9_]*\.is_enabled', '', 'g');
+  v_stripped := regexp_replace(v_stripped, 'is_enabled[[:space:]]*=[[:space:]]*false', '', 'g');
+  if position('is_enabled' in v_stripped) > 0 then
+    raise exception 'has_org_feature has a positive is_enabled predicate';
+  end if;
+
+  -- Only meaningful on the upgrade path: a from-scratch database has no orgs,
+  -- so this counts zero because there is nothing to count, not because the
+  -- delete ran.
   select count(*) into v_enabled from public.org_role_features where is_enabled;
   if v_enabled <> 0 then
     raise exception 'org_role_features still holds % enabled row(s)', v_enabled;
