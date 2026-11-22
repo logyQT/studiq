@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { AppError } from '@studiq/server/lib/errors';
 import { isRecord, readNumber, readString } from '@studiq/server/lib/record';
 import { json } from '#test/helpers/json';
+
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
+}));
 
 const getUsageMock = vi.fn<(...args: unknown[]) => unknown>();
 const trackTokenUsageMock = vi
@@ -76,7 +82,40 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     capturedOnFinish = undefined;
     capturedStoreAtCallTime = undefined;
     mockCtx = { userId: 'user-1', accountType: 'student', activeOrgId: null };
+    requireEntitlementMock.mockResolvedValue(undefined);
     rateLimitCheckMock.mockReturnValue({ allowed: true });
+  });
+
+  it('refuses with 403 before rate limiting, body parsing or usage when the ai.chat entitlement is missing', async () => {
+    requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+
+    // An invalid body: the entitlement gate answers 403, not the handler's 400.
+    const res = await POST(jsonRequest({}));
+
+    expect(res.status).toBe(403);
+    const body = await json<{ error: string }>(res);
+    expect(body.error).toBe('FORBIDDEN');
+    expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'ai.chat');
+    expect(rateLimitCheckMock).not.toHaveBeenCalled();
+    expect(getUsageMock).not.toHaveBeenCalled();
+    expect(streamTextMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 for an unparseable body, so the handler never reads it', async () => {
+    requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+
+    const res = await POST(
+      new NextRequest('http://localhost/api/v1/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json',
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'ai.chat');
+    expect(rateLimitCheckMock).not.toHaveBeenCalled();
+    expect(streamTextMock).not.toHaveBeenCalled();
   });
 
   it('blocks with 429 before checking usage or calling the model when rate limited', async () => {

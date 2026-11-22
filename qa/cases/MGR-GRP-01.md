@@ -32,8 +32,9 @@ seeded tenant instead:
   `tenantId(key, entity)`.
 - **Organization**: one org with `plan = launch` (the seeder default), whose **manager**
   is its `admin` — the only role the case uses. The org role carries `group.manage`, which
-  both the page (`useFeature()`) and `POST/PUT/DELETE /api/v1/organization/groups`
-  (`requireFeature`) enforce, so the write controls are only there for this tenant.
+  both the page (`usePermission()('group.manage')`) and
+  `POST/PUT/DELETE /api/v1/organization/groups` (the same permission on `ctx`) enforce, so the
+  write controls are only there for this tenant.
 - **Groups** (the case's „2 grupy”): the default `G1`, where the manager is the `teacher`
   and a seeded teacher + student are members (renders 3 / 1), plus an empty `G2`
   (0 / 0). Both are created through `seedTenantGraph()`.

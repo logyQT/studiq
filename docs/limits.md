@@ -233,16 +233,16 @@ Value semantics:
 
 Enforcement points:
 
-| Limit key                   | Checked in                                    |
-| --------------------------- | --------------------------------------------- |
-| `max_flashcards`            | `flashcard.service` (create + bulk)           |
-| `max_decks`                 | `flashcard-deck.service`                      |
-| `max_questions`             | `question.service`                            |
-| `max_question_banks`        | `question-bank.service` (create + bulk)       |
-| `max_quiz_attempts_per_day` | `quiz.service`                                |
-| `max_groups`                | `group.service` (`checkOrgLimit`)             |
-| `max_students`              | `invitation.service` accept (`checkOrgLimit`) |
-| `max_ai_tokens_per_day`     | `/api/v1/ai/chat` via `getUsage`              |
+| Limit key                   | Checked in                                                                                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `max_flashcards`            | `flashcard.service` (create + bulk)                                                                       |
+| `max_decks`                 | `flashcard-deck.service`                                                                                  |
+| `max_questions`             | `question.service`                                                                                        |
+| `max_question_banks`        | `question-bank.service` (create + bulk)                                                                   |
+| `max_quiz_attempts_per_day` | `quiz.service`                                                                                            |
+| `max_groups`                | `group.service` (`checkOrgLimit`)                                                                         |
+| `max_students`              | `invitation.service` accept (`checkOrgLimit`)                                                             |
+| `max_ai_tokens_per_day`     | `/api/v1/ai/chat` via `getUsage` — the same surface also requires the `ai.chat` entitlement (ADR-0015 §7) |
 
 `getUsage(ctx, key)` returns `{ current, limit, plan, resetsAt }`; `current` is
 today's `user_daily_activity.ai_input_tokens + ai_output_tokens`, `plan` is the

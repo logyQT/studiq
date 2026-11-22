@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { partialList, partialObject, partialText } from '@studiq/server/lib/partial-result';
 import { systemPrompt } from '@studiq/server/agents/system';
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
@@ -11,6 +11,7 @@ import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/gene
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
+import { requireEntitlement } from '@studiq/server/lib/entitlements';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
@@ -38,40 +39,41 @@ async function parseMessages(body: unknown): Promise<UIMessage[] | undefined> {
 }
 
 export async function POST(req: NextRequest) {
-  return withAuth(
-    req,
-    async (ctx) => {
-      const rateLimit = rateLimiter.check(ctx.userId);
-      if (!rateLimit.allowed) {
-        return NextResponse.json(
-          { success: false, error: 'RATE_LIMITED', retryAfterMs: rateLimit.retryAfterMs },
-          { status: 429 },
-        );
-      }
+  return withAuth(req, async (ctx) => {
+    // Authority first (ADR-0015 §7): the entitlement gate runs before rate
+    // limiting, body parsing and the usage check, so a caller without
+    // `ai.chat` gets 403 rather than 429/400.
+    await requireEntitlement(ctx, 'ai.chat');
 
-      let body: unknown;
-      try {
-        body = await req.json();
-      } catch {
-        return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-      }
+    const rateLimit = rateLimiter.check(ctx.userId);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'RATE_LIMITED', retryAfterMs: rateLimit.retryAfterMs },
+        { status: 429 },
+      );
+    }
 
-      const messages = await parseMessages(body);
-      if (!messages) {
-        return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-      }
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+    }
 
-      const usage = await limitsResolver.getUsage(ctx, AI_TOKENS_LIMIT_KEY);
-      if (usage.limit !== -1 && usage.current >= usage.limit) {
-        throw new AppError('USAGE_LIMIT_EXCEEDED');
-      }
+    const messages = await parseMessages(body);
+    if (!messages) {
+      return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+    }
 
-      const conversationId = messages[0]?.id || crypto.randomUUID();
+    const usage = await limitsResolver.getUsage(ctx, AI_TOKENS_LIMIT_KEY);
+    if (usage.limit !== -1 && usage.current >= usage.limit) {
+      throw new AppError('USAGE_LIMIT_EXCEEDED');
+    }
 
-      return runAgentChat(ctx, conversationId, messages);
-    },
-    { allowedAccountTypes: [AccountType.STUDENT, AccountType.EDUCATOR] },
-  );
+    const conversationId = messages[0]?.id || crypto.randomUUID();
+
+    return runAgentChat(ctx, conversationId, messages);
+  });
 }
 
 async function runAgentChat(ctx: RequestContext, conversationId: string, messages: UIMessage[]) {

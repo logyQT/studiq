@@ -2,17 +2,15 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrganizationController } from '@studiq/server/controllers/organization.controller';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { AppError } from '@studiq/server/lib/errors';
-import { requireFeature } from '@studiq/server/lib/features';
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { OrganizationService } from '@studiq/server/services/organization.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asService } from '#test/helpers/service-double';
 
-vi.mock('@studiq/server/lib/features', () => ({
-  requireFeature: vi.fn().mockResolvedValue(undefined),
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => unknown>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
 }));
-
-const mockRequireFeature = vi.mocked(requireFeature);
 
 function createMockService() {
   return { create: vi.fn(), getAll: vi.fn(), getById: vi.fn(), update: vi.fn(), delete: vi.fn() };
@@ -46,6 +44,7 @@ function failureOf(response: ControllerResponse) {
 describe('OrganizationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireEntitlementMock.mockResolvedValue(undefined);
     mockService = createMockService();
     controller = new OrganizationController(asService<OrganizationService>(mockService));
   });
@@ -227,7 +226,7 @@ describe('OrganizationController', () => {
     });
   });
 
-  describe('update — branding feature gate (issue #108)', () => {
+  describe('update — branding entitlement gate (issue #108)', () => {
     const validId = '550e8400-e29b-41d4-a716-446655440000';
 
     it('gates the request when body carries logoUrl', async () => {
@@ -238,8 +237,8 @@ describe('OrganizationController', () => {
       });
 
       expect(response.success).toBe(true);
-      expect(mockRequireFeature).toHaveBeenCalledTimes(1);
-      expect(mockRequireFeature).toHaveBeenCalledWith(mockCtx, 'branding');
+      expect(requireEntitlementMock).toHaveBeenCalledTimes(1);
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'branding');
     });
 
     it('gates the request when body carries brandColor', async () => {
@@ -248,7 +247,7 @@ describe('OrganizationController', () => {
       const response = await controller.update(mockCtx, validId, { brandColor: '#FF6600' });
 
       expect(response.success).toBe(true);
-      expect(mockRequireFeature).toHaveBeenCalledWith(mockCtx, 'branding');
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'branding');
     });
 
     it('does NOT gate a plain rename — non-branding updates stay unaffected', async () => {
@@ -257,12 +256,12 @@ describe('OrganizationController', () => {
       const response = await controller.update(mockCtx, validId, { name: 'Renamed University' });
 
       expect(response.success).toBe(true);
-      expect(mockRequireFeature).not.toHaveBeenCalled();
+      expect(requireEntitlementMock).not.toHaveBeenCalled();
       expect(mockService.update).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects with FORBIDDEN before touching the service when the feature is off', async () => {
-      mockRequireFeature.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+    it('rejects with FORBIDDEN before touching the service when the entitlement is missing', async () => {
+      requireEntitlementMock.mockRejectedValueOnce(new AppError('FORBIDDEN'));
 
       await expect(controller.update(mockCtx, validId, { brandColor: '#FF6600' })).rejects.toThrow(
         'FORBIDDEN',
@@ -278,7 +277,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(mockRequireFeature).toHaveBeenCalledWith(mockCtx, 'branding');
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'branding');
       expect(mockService.update).not.toHaveBeenCalled();
     });
 
@@ -287,7 +286,7 @@ describe('OrganizationController', () => {
 
       await controller.update(mockCtx, validId, { name: 'Only a name', slug: 'only-a-slug' });
 
-      expect(mockRequireFeature).not.toHaveBeenCalled();
+      expect(requireEntitlementMock).not.toHaveBeenCalled();
     });
   });
 

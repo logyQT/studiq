@@ -1,17 +1,18 @@
 /**
  * Guard for R5 (ADR-0015 §7): no `allowedAccountTypes` on an org-resource API
- * route. Phase 2 (slices 2b-1…2b-8) removed every persona gate from the API
- * surface except four declared exceptions, each with a named owner:
+ * route. Phase 2 (slices 2b-1…2b-9) removed every persona gate from the API
+ * surface except the declared exceptions, each with a named owner:
  *
  * - `organization/route.ts` POST — org creation (R5's first exception; the
  *   persona check may become an `org.create` permission later).
  * - `teacher/classrooms/route.ts` POST — classroom creation (R5's second
  *   exception; the classroom is an org + an Admin membership, not a permission
  *   yet).
- * - `ai/chat/route.ts` POST — the `ai.chat` surface, deferred to phase 5
- *   (`requireEntitlement`).
- * - `ai/usage/route.ts` GET — the counter the chat route reports into; same
- *   phase-5 audience.
+ *
+ * Phase 5a (2026-11-22) removed the AI pair — `ai/chat/route.ts` POST and
+ * `ai/usage/route.ts` GET now gate on the `ai.chat` entitlement
+ * (`requireEntitlement`), so the only remaining exceptions are the two R5
+ * creation routes above.
  *
  * This is a source scan, not a behavioural test: it fails before the database
  * is needed, and it fails in both directions — a **new** gate anywhere in the
@@ -61,16 +62,6 @@ const DECLARED_EXCEPTIONS: DeclaredException[] = [
     file: 'apps/web/src/app/(backend)/api/v1/teacher/classrooms/route.ts',
     types: [AccountType.EDUCATOR, AccountType.MANAGER],
     reason: 'R5 exception: classroom creation (POST /api/v1/teacher/classrooms)',
-  },
-  {
-    file: 'apps/web/src/app/(backend)/api/v1/ai/chat/route.ts',
-    types: [AccountType.STUDENT, AccountType.EDUCATOR],
-    reason: 'phase 5: the ai.chat surface waits for requireEntitlement',
-  },
-  {
-    file: 'apps/web/src/app/(backend)/api/v1/ai/usage/route.ts',
-    types: [AccountType.STUDENT, AccountType.EDUCATOR],
-    reason: 'phase 5: same audience as the ai/chat route it reports on',
   },
 ];
 
@@ -140,7 +131,7 @@ function formatGate(gate: Gate): string {
 }
 
 describe('persona gates on the API surface (R5)', () => {
-  it('walks the route files, including the four declared exceptions', () => {
+  it('walks the route files, including the two declared exceptions', () => {
     const routes = routeFiles().map(relative);
     expect(routes.length).toBeGreaterThan(50);
     for (const exception of DECLARED_EXCEPTIONS) {
@@ -148,7 +139,7 @@ describe('persona gates on the API surface (R5)', () => {
     }
   });
 
-  it('carries exactly the four declared exceptions — no fifth gate, none removed', () => {
+  it('carries exactly the two declared exceptions — no fifth gate, none removed', () => {
     const gates = personaGates();
     const declaredByFile = new Map(DECLARED_EXCEPTIONS.map((e) => [e.file, e]));
 
@@ -221,7 +212,7 @@ describe('gatesInSource()', () => {
   it('ignores a mention in a comment or a string — no call shape, no gate', () => {
     const source = [
       '// allowedAccountTypes is banned on org routes',
-      "const note = 'allowedAccountTypes stays only on the four declared exceptions';",
+      "const note = 'allowedAccountTypes stays only on the two declared exceptions';",
       'export async function GET(req: NextRequest) { return withAuth(req, h); }',
     ].join('\n');
     expect(gatesInSource('x/route.ts', source)).toEqual([]);

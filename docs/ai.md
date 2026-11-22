@@ -28,6 +28,10 @@ POST /api/v1/ai/chat
 
 Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispatches between them.
 
+> **Enforcement (ADR-0015 §7):** `POST /api/v1/ai/chat` and `GET /api/v1/ai/usage`
+> require the `ai.chat` entitlement — `requireEntitlement(ctx, 'ai.chat')` is the
+> first statement of each handler. The routes no longer admit by account type.
+
 ### Key files
 
 | File                                         | Role                                                                 |
@@ -164,19 +168,19 @@ This means:
 
 - ✅ User is authenticated
 - ❌ No `RequestContext` built (no org context, no permission scopes)
-- ❌ No `allowedAccountTypes` enforcement (route config says STUDENT/EDUCATOR but handler doesn't check)
+- ✅ No account-type gate: access is the `ai.chat` entitlement (ADR-0015 §7) — `requireEntitlement(ctx, 'ai.chat')` is the first handler statement, so no persona is admitted or refused by type
 - ❌ No token budget enforcement (the simpler `ChatController` path enforces limits, agent route doesn't)
 - ❌ No rate limiting
 
 ### Security posture
 
-| Aspect                             | Status                                            |
-| ---------------------------------- | ------------------------------------------------- |
-| Agent tools access DB              | ❌ No — tools are stateless                       |
-| Flashcard saving goes through RBAC | ✅ Yes — client-side API calls                    |
-| RLS enabled                        | ❌ No — disabled system-wide, app-layer auth only |
-| SSRF protection on `webfetch`      | ❌ No — arbitrary URLs allowed                    |
-| Account type enforced              | ❌ No — declared in route config, not enforced    |
+| Aspect                             | Status                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| Agent tools access DB              | ❌ No — tools are stateless                                               |
+| Flashcard saving goes through RBAC | ✅ Yes — client-side API calls                                            |
+| RLS enabled                        | ❌ No — disabled system-wide, app-layer auth only                         |
+| SSRF protection on `webfetch`      | ❌ No — arbitrary URLs allowed                                            |
+| Account access gated               | ✅ Yes — on the `ai.chat` entitlement, not the account type (ADR-0015 §7) |
 
 **Full audit and hardening plan:** [`docs/plans/agent-security.md`](plans/agent-security.md)
 
@@ -232,18 +236,18 @@ export const agentModels = {
 
 ## Known issues & planned work
 
-| Priority | Issue                                        | Status      |
-| -------- | -------------------------------------------- | ----------- |
-| P0       | No account type enforcement on agent route   | 🔴 Open     |
-| P0       | No URL allowlist for `webfetch` (SSRF risk)  | 🔴 Open     |
-| P0       | No token budget enforcement on agent route   | 🔴 Open     |
-| P1       | No `RequestContext` in agent execution       | 🔴 Open     |
-| P1       | No rate limiting on `/api/v1/ai/chat`        | 🟡 Open     |
-| P2       | `evaluate_quality` is a no-op                | 🟡 Open     |
-| P2       | Per-sub-agent timeout in `batch_call_agent`  | 📋 Planned  |
-| P2       | Per-task error isolation in batch            | 📋 Planned  |
-| P3       | Conversation state persistence to PostgreSQL | 💤 Deferred |
-| P3       | Trace viewer UI                              | 💤 Deferred |
+| Priority | Issue                                        | Status                                                                                      |
+| -------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| P0       | No account type enforcement on agent route   | ✅ Closed — phase 5a replaced the persona gate with the `ai.chat` entitlement (ADR-0015 §7) |
+| P0       | No URL allowlist for `webfetch` (SSRF risk)  | 🔴 Open                                                                                     |
+| P0       | No token budget enforcement on agent route   | 🔴 Open                                                                                     |
+| P1       | No `RequestContext` in agent execution       | 🔴 Open                                                                                     |
+| P1       | No rate limiting on `/api/v1/ai/chat`        | 🟡 Open                                                                                     |
+| P2       | `evaluate_quality` is a no-op                | 🟡 Open                                                                                     |
+| P2       | Per-sub-agent timeout in `batch_call_agent`  | 📋 Planned                                                                                  |
+| P2       | Per-task error isolation in batch            | 📋 Planned                                                                                  |
+| P3       | Conversation state persistence to PostgreSQL | 💤 Deferred                                                                                 |
+| P3       | Trace viewer UI                              | 💤 Deferred                                                                                 |
 
 ### Dead code removed ✅
 

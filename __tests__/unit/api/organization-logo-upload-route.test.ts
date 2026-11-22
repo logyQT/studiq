@@ -20,9 +20,9 @@ vi.mock('@studiq/server/controllers/organization.controller', () => ({
   },
 }));
 
-const requireFeatureMock = vi.fn<(...args: unknown[]) => unknown>();
-vi.mock('@studiq/server/lib/features', () => ({
-  requireFeature: (...args: unknown[]) => requireFeatureMock(...args),
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => unknown>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
 }));
 
 let mockCtx: Record<string, unknown>;
@@ -171,7 +171,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     expect(await res.json()).toEqual({ success: true, data: { id: 'org-1', logoUrl: url } });
   });
 
-  it('requires the branding feature before uploading', async () => {
+  it('requires the branding entitlement before uploading', async () => {
     uploadToBucketMock.mockResolvedValue({ url: 'https://storage.test/org-logos/org-1/x.png' });
     updateMock.mockResolvedValue({ success: true, statusCode: 200, data: { id: 'org-1' } });
 
@@ -180,8 +180,8 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
       params,
     );
 
-    expect(requireFeatureMock).toHaveBeenCalledWith(mockCtx, 'branding');
-    expect(firstRecorded(requireFeatureMock.mock.invocationCallOrder)).toBeLessThan(
+    expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'branding');
+    expect(firstRecorded(requireEntitlementMock.mock.invocationCallOrder)).toBeLessThan(
       firstRecorded(uploadToBucketMock.mock.invocationCallOrder),
     );
   });
@@ -199,7 +199,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
       ),
     ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
 
-    expect(requireFeatureMock).not.toHaveBeenCalled();
+    expect(requireEntitlementMock).not.toHaveBeenCalled();
     expect(uploadToBucketMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
   });

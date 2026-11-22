@@ -4,9 +4,9 @@ import type { OrganizationService } from '@studiq/server/services/organization.s
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asService } from '#test/helpers/service-double';
 
-const requireFeatureMock = vi.fn<(...args: unknown[]) => unknown>();
-vi.mock('@studiq/server/lib/features', () => ({
-  requireFeature: (...args: unknown[]) => requireFeatureMock(...args),
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => unknown>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
 }));
 
 const ORG_ID = '550e8400-e29b-41d4-a716-446655440000';
@@ -42,7 +42,7 @@ let controller: OrganizationController;
 describe('OrganizationController.update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireFeatureMock.mockResolvedValue(undefined);
+    requireEntitlementMock.mockResolvedValue(undefined);
     mockService = createMockService();
     mockService.update.mockResolvedValue({ success: true, data: { id: ORG_ID } });
     controller = new OrganizationController(asService<OrganizationService>(mockService));
@@ -52,7 +52,7 @@ describe('OrganizationController.update', () => {
     const response = await controller.update(holderCtx, ORG_ID, { name: 'Nowa nazwa' });
 
     expect(response).toMatchObject({ success: true, statusCode: 200 });
-    expect(requireFeatureMock).not.toHaveBeenCalled();
+    expect(requireEntitlementMock).not.toHaveBeenCalled();
     expect(mockService.update).toHaveBeenCalledWith(ORG_ID, { name: 'Nowa nazwa' });
   });
 
@@ -60,7 +60,7 @@ describe('OrganizationController.update', () => {
     const response = await controller.update(holderCtx, ORG_ID, { brandColor: '#123456' });
 
     expect(response).toMatchObject({ success: true });
-    expect(requireFeatureMock).toHaveBeenCalledWith(holderCtx, 'branding');
+    expect(requireEntitlementMock).toHaveBeenCalledWith(holderCtx, 'branding');
   });
 
   it('refuses a Member-role caller before the body or the feature is touched', async () => {
@@ -68,7 +68,7 @@ describe('OrganizationController.update', () => {
       controller.update(memberCtx, ORG_ID, { logoUrl: 'https://example.test/logo.png' }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
 
-    expect(requireFeatureMock).not.toHaveBeenCalled();
+    expect(requireEntitlementMock).not.toHaveBeenCalled();
     expect(mockService.update).not.toHaveBeenCalled();
   });
 

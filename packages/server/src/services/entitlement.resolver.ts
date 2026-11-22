@@ -107,7 +107,7 @@ export class EntitlementResolver {
   /**
    * Per-request memo, keyed on the `RequestContext` object. `withAuth` builds
    * exactly one ctx per request and hands the same object to every controller
-   * and service, so one resolution serves `requireFeature` + limit checks in
+   * and service, so one resolution serves `requireEntitlement` + limit checks in
    * the same request. A `WeakMap` (not a field on ctx) needs no change to the
    * shared `RequestContext` type, cannot leak into ctx serialization or logs,
    * and dies with the request's ctx — no cross-request cache exists in

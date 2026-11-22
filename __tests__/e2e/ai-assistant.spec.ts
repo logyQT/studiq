@@ -197,8 +197,10 @@ test.describe('AI assistant routes (#134)', () => {
     await expect(
       page.getByRole('link', { name: t('DashboardLayout.manage_overview') }),
     ).toBeVisible();
-    // Manager AI is denied by the `/api/v1/ai/*` account-type guard, so the entry
-    // that pointed at the never-existing `/manage/ai` is gone rather than dead.
+    // The `/api/v1/ai/*` routes are gated on the `ai.chat` entitlement, not the
+    // account type (ADR-0015 §7), and this seed manager resolves none (org
+    // `launch`, personal `solo`), so the entry that pointed at the
+    // never-existing `/manage/ai` is gone rather than dead.
     await expect(page.locator('a[href="/manage/ai"]')).toHaveCount(0);
   });
 });

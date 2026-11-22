@@ -1,6 +1,6 @@
 import { AccountType, type RequestContext, type ResolvedEntitlements } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
-import { requireFeature } from '@studiq/server/lib/features';
+import { requireEntitlement } from '@studiq/server/lib/entitlements';
 import {
   EntitlementResolver,
   entitlementResolver,
@@ -466,10 +466,11 @@ describe('EntitlementResolver', () => {
       expect(entitlements).toContain('ai.chat');
     });
 
-    it('requireFeature: resolves an effective key, rejects FORBIDDEN outside the resolved set and for a quota-0 key', async () => {
+    it('requireEntitlement: resolves an effective key, rejects FORBIDDEN outside the resolved set and for a quota-0 key', async () => {
       // `ai.chat` is absent from the fixture because its quota resolved to 0:
-      // a quota-0 key never reaches the resolved set (§6.1), so requireFeature
-      // must reject it exactly like any other non-effective key.
+      // a quota-0 key never reaches the resolved set (§6.1), so
+      // requireEntitlement must reject it exactly like any other non-effective
+      // key.
       const fixture: ResolvedEntitlements = {
         entitlements: ['flashcards', 'quiz', 'advanced.stats'],
         limits: {},
@@ -486,13 +487,13 @@ describe('EntitlementResolver', () => {
       };
       const spy = vi.spyOn(entitlementResolver, 'resolveEntitlements').mockResolvedValue(fixture);
 
-      await expect(requireFeature(baseCtx, 'flashcards')).resolves.toBeUndefined();
+      await expect(requireEntitlement(baseCtx, 'flashcards')).resolves.toBeUndefined();
 
-      const outside = await requireFeature(baseCtx, 'quiz.builder').catch((e: unknown) => e);
+      const outside = await requireEntitlement(baseCtx, 'quiz.builder').catch((e: unknown) => e);
       expect(outside).toBeInstanceOf(AppError);
       expect(outside).toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
 
-      await expect(requireFeature(baseCtx, 'ai.chat')).rejects.toMatchObject({
+      await expect(requireEntitlement(baseCtx, 'ai.chat')).rejects.toMatchObject({
         code: 'FORBIDDEN',
         statusCode: 403,
       });

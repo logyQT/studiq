@@ -681,6 +681,11 @@ Hard rules:
 - `requireFeature`/`/features/me` are replaced by `requireEntitlement`/
   `/me/entitlements`; the rename is intentional so call sites are reviewed.
 
+> **2026-11-22 (phase 5a).** `requireFeature` and `lib/features.ts` are deleted;
+> the server gate is `requireEntitlement` in
+> `packages/server/src/lib/entitlements.ts` (resolver-backed, fail-closed).
+> `/features/me` keeps its HTTP shape until phase 6 renames the endpoint.
+
 ### 7.1 Links, routes, and the active org
 
 A link is navigation, not authorization. **Link visibility is a function of the
@@ -801,6 +806,11 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > reason in the **deferral register** in
 > [role-authority-plan.md §5, phase 2b](role-authority-plan.md#phase-2b--authority-and-control-plane);
 > phase 5 does not rediscover them one note at a time.
+>
+> **2026-11-22 (phase 5a).** The `ai/chat` + `ai/usage` pair is gone from that
+> list: both routes now gate on `requireEntitlement(ctx, 'ai.chat')` as the
+> first handler statement, so exactly two declared exceptions remain (the R5
+> creation routes), pinned by `persona-gates.test.ts`.
 
 ---
 

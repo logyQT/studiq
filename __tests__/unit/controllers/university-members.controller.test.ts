@@ -4,11 +4,6 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import { OrganizationMemberService } from '@studiq/server/services/organization-member.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@studiq/server/lib/features', () => ({
-  requireFeature: vi.fn().mockResolvedValue(undefined),
-  getEnabledFeatures: vi.fn().mockResolvedValue([]),
-}));
-
 function createMockService() {
   // The mocked methods never touch the database, so the client factory only
   // has to satisfy the constructor's type.
