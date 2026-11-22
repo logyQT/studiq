@@ -420,8 +420,9 @@ removes the ADR-0007 dual-purpose problem without adding a paid manager family.
 > the same migration, `20261122150000`), with the pair CHECK (organization ⇒
 > audience NULL, personal ⇒ audience NOT NULL) and a fail-closed backfill that
 > raises on any unknown legacy value. `solo` (key `solo`, price 0, PLN, active,
-> sort 13, `flashcards`+`quiz`, limits copied from `base`) is inserted
-> idempotently; `launch` became organization-only through the backfill.
+> sort 13, `flashcards`+`quiz`, the eight free-tier limit rows mirroring
+> `base` but spelled out in the migration so a seed-less `db push` gets them)
+> is inserted idempotently; `launch` became organization-only through the backfill.
 > `handle_new_user()` writes `solo` for managers and now also writes
 > `profiles.account_type`; every manager profile holding an organization-scope
 > plan was backfilled to `solo`. `GET /api/v1/subscription-plans` filters are

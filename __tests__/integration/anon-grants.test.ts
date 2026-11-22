@@ -38,6 +38,15 @@ describe('anon role grants (#191)', () => {
     expect(error).toBeNull();
   });
 
+  // A grant without a policy is a half-state: the embed stops raising 42501 but
+  // returns nothing, so the anonymous plan payload reports `seatEligible: false`
+  // for every plan while a signed-in caller sees the catalog's own flags.
+  it('anon reads entitlement_catalog rows, not just the privilege', async () => {
+    const { data, error } = await anon.from('entitlement_catalog').select('key, seat_eligible');
+    expect(error).toBeNull();
+    expect((data ?? []).length, 'the anonymous catalog payload is not empty').toBeGreaterThan(0);
+  });
+
   it.each([
     'question_banks',
     'quizzes',

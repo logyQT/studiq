@@ -118,7 +118,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R35 | A matrix change is a data migration, not a template edit: a callable seed with `on conflict do nothing` only creates missing rows and can never reconcile existing ones, so the template, the function and a backfill must land together behind a guard that pins the resulting rows. Read the newest definition of a callable across the migrations, not the file a note names — a later slice can re-create it. | 3d: moving the Teacher content reads to `group` changed the TS template and the function, but every live system Teacher kept its `own` rows; `20261119211000` (not the `20261119180000` body the phase note named) owns the live function, and the guard requires reads `group` / writes `own` across `org_roles × permissions`                                                                                         |
 | R36 | A column-pair CHECK constrains the backfill too: every legacy value — NULL included — must map to a CHECK-valid pair before the constraint is added, or the ALTER fails on a fresh chain where the seed has not run yet and the pre-catalog rows still sit there with NULL.                                                                                                                                       | 4a: `for_account_type` was NULL on the legacy migration-inserted plans the seed deletes later, so the scope/audience pair CHECK rejected a NULL→personal mapping; NULL maps to the organization family, the only pair shape with a NULL audience                                                                                                                                                                        |
 | R37 | A validation rule that is catalog data must be read from the table in the same query that guards the write (FK embed), never from a TS constant: the constant becomes a second copy of the catalog that silently allows what the table forbids.                                                                                                                                                                   | 4a: `PLAN_TIER_MAP` was a hardcoded second copy of `for_account_type` and let any plan key mint a seat pool; `addPool`/`assignSeat` now read `seat_eligible`/`audience` from `entitlement_catalog`/`subscription_plans` embeds in the one query they already make                                                                                                                                                       |
-| R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT; the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it                                                                       |
+| R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT (and an anon SELECT policy — the grant alone returns zero rows); the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it       |
 
 ## 4. Decisions
 
@@ -3730,7 +3730,9 @@ here.
   `BAD_REQUEST`). `PLAN_TIER_MAP`, `ROLE_TIER_MAP` and `embeddedRoleName`
   deleted; the pool-capacity and unique-seat guards are unchanged.
 - **`PlanInfo`**: `scope`, `audience`, derived `seatEligible` (≥1 entitlement,
-  all `seatEligible`); `forAccountType` removed. `listActive({ scope,
+  all of them `seatEligible` — the key half of the licence rule; a pool's plan
+  must also be `scope='personal'`, checked by `addPool` and the seats picker);
+  `forAccountType` removed. `listActive({ scope,
 audience })` and the route's `?scope=`/`?audience=` params (no params ⇒ every
   active plan).
 - **`getMyPlan`**: seated → seat plan; else verified org + `org.billing.manage`
@@ -3841,6 +3843,10 @@ behaviour and the phase-4 QA corpus; the plan/data rules are 4a's.
   `GET /api/v1/subscription-plans` answered **403** once `PlanInfo.seatEligible`
   embedded `entitlement_catalog` — the public query gained a table `anon` may
   not select, and every session-authenticated test stayed green (R38). The
+  grant alone would have left `anon` reading zero catalog rows, so the
+  anonymous payload would report `seatEligible: false` for every plan; the
+  migration adds the anon SELECT policy too and `anon-grants` asserts the rows
+  are visible. The
   `MGR-SEAT-02` roster's default `QA <key>` names made `QA student` a prefix of
   `QA student2` and the picker's regex matched both (the 3d collision, again);
   the „Dostępne” cell renders `1Mało` for a low pool; `BIL-02`'s catalogue read
@@ -3864,10 +3870,16 @@ Why: `PlanInfo.seatEligible` is catalog truth, so every plan read embeds
 answering 403 while every signed-in read, unit test and integration test stayed
 green — the tests that would have caught it are the anon census probes, and
 they were asserting the old three-table list.
-Fix: `GRANT SELECT ON public.entitlement_catalog TO anon` in the 4a migration
-(pricing metadata, no answer keys) and the census updated in all three places
-(`grant-parity`, `anon-grants`, `rls-tenant-isolation`). The served QA run is
-what surfaced it, which is why the programme keeps Playwright in the gate.
+Fix: the 4a migration grants `anon` SELECT on `entitlement_catalog` **and**
+adds an anon SELECT policy — the grant alone lifts the 42501 but RLS still
+returns zero rows, so the anonymous payload reported `seatEligible: false` for
+every plan while a signed-in caller saw the truth. The catalog is pricing
+metadata (keys, category, scope, seat/portability flags, quota key), no
+per-user or answer-key data; the census is updated in all three places
+(`grant-parity`, `anon-grants`, `rls-tenant-isolation`) and `anon-grants` now
+asserts the rows are actually visible, not just that the read does not error. The
+served QA run is what surfaced it, which is why the programme keeps Playwright
+in the gate.
 Rule: R38.
 
 ### Phase 5 — enforcement

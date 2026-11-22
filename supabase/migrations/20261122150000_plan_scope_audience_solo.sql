@@ -222,10 +222,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ==========================================================
 -- 7. `PlanInfo.seatEligible` reads `entitlement_catalog` on every plan read,
 --    including the anonymous pricing catalogue (which embeds the catalog from
---    `plan_entitlements`). Without this grant that embed raises 42501 for
---    `anon` and the public catalogue answers 403.
+--    `plan_entitlements`). Without the grant that embed raises 42501 for `anon`
+--    and the public catalogue answers 403; without the policy the same
+--    anonymous read returns zero rows, so the public payload would report
+--    `seatEligible: false` for every plan while a signed-in caller sees the
+--    truth. The catalog is pricing metadata (keys, category, scope, seat and
+--    portability flags, quota key) — no per-user or answer-key data.
 -- ==========================================================
 GRANT SELECT ON public.entitlement_catalog TO anon;
+
+DROP POLICY IF EXISTS "Public catalog read" ON public.entitlement_catalog;
+CREATE POLICY "Public catalog read" ON public.entitlement_catalog
+  FOR SELECT TO anon
+  USING (true);
 
 -- ==========================================================
 -- 8. Closing guard: pin the state this file creates.

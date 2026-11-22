@@ -33,7 +33,9 @@ export interface PlanInfo {
   /**
    * Derived from the live `entitlement_catalog` (D33): true iff the plan
    * carries at least one entitlement and every one of its keys is
-   * `seatEligible` — only such a plan may be licensed as a seat pool.
+   * `seatEligible`. That is the *key* half of the licence rule — a pool's plan
+   * must also be `scope === 'personal'`, which `addPool` and the seats picker
+   * check separately (an organization plan's keys are all seat-eligible too).
    */
   seatEligible: boolean;
 }
