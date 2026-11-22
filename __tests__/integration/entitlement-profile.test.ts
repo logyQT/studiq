@@ -277,7 +277,13 @@ describe('org_roles.entitlement_profile', () => {
 
     const teacher = await roleScopes('teacher');
     expect(teacher['stats.read']).toBe('group');
-    expect(teacher['flashcard.read']).toBe('own');
+    // D29: content reads are group-scoped (group ⊇ own in the API layer),
+    // writes stay own. `assignment.read` moves with the other reads.
+    expect(teacher['flashcard.read']).toBe('group');
+    expect(teacher['flashcard.create']).toBe('own');
+    expect(teacher['assignment.read']).toBe('group');
+    expect(teacher['assignment.update']).toBe('own');
+    expect(teacher['group.manage']).toBe('group');
   });
 
   it('RLS: a zero-row none role has no hub entitlement, FP-01 closed', async () => {
