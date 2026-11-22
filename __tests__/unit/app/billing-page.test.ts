@@ -85,7 +85,11 @@ describe('BillingPage current-plan card', () => {
       limits: { max_flashcards: 100, max_students: 0, max_groups: 0 },
     });
     data.plans = [
-      plan({ key: 'lite', limits: { max_flashcards: 100, max_students: 5, max_groups: 50 } }),
+      plan({
+        key: 'lite',
+        priceMonthly: 2900,
+        limits: { max_flashcards: 100, max_students: 5, max_groups: 50 },
+      }),
     ];
   });
 
@@ -93,6 +97,7 @@ describe('BillingPage current-plan card', () => {
     const markup = render();
 
     expect(markup).toContain('Lite effective');
+    // The catalogue row prices at 29,00, so this reads the header's source.
     expect(markup).toContain('19,00');
   });
 
@@ -101,10 +106,19 @@ describe('BillingPage current-plan card', () => {
 
     // Org-scope limits are 0 in the effective row outside a verified org; the
     // catalogue advertises 5/50 and must win.
-    expect(markup).toContain('tabular-nums">5<');
-    expect(markup).toContain('tabular-nums">50<');
+    expect(markup).toContain('>5</span>');
+    expect(markup).toContain('>50</span>');
     expect(markup).not.toContain('tabular-nums">0<');
     // `branding` is in the effective union (the org layer) but not on `lite`.
+    expect(markup).not.toContain(pt('feature_branding'));
+  });
+
+  it('leaves the lists empty while the catalogue is unavailable, never the effective union', () => {
+    data.plans = undefined;
+    const markup = render();
+
+    expect(markup).toContain('Lite effective');
+    expect(markup).not.toContain('tabular-nums');
     expect(markup).not.toContain(pt('feature_branding'));
   });
 });

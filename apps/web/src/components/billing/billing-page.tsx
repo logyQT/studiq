@@ -67,14 +67,16 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
   // `/me/plan` carries the *effective* composition for programmatic use, whose
   // org-scope limits are 0 outside a verified org and whose feature list is the
   // union of every layer — neither belongs under a single plan's name and price.
-  const shown = plans?.find((candidate) => candidate.key === plan.key) ?? plan;
+  // While the catalogue is unavailable the lists stay empty: falling back to
+  // `plan` would put exactly that union back under the one plan's name.
+  const shown = plans?.find((candidate) => candidate.key === plan.key);
 
   const hasPrice = plan.priceMonthly > 0;
   const formatter = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: plan.currency,
   });
-  const visibleLimits = getVisibleLimitKeys([shown], accountType);
+  const visibleLimits = shown ? getVisibleLimitKeys([shown], accountType) : [];
   const historyPath = invoiceHistoryPath(accountType);
 
   return (
@@ -96,7 +98,7 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
             </span>
           </div>
 
-          {shown.features.length > 0 && (
+          {shown && shown.features.length > 0 && (
             <>
               <Separator />
               <ul className="space-y-2">
@@ -109,7 +111,7 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
             </>
           )}
 
-          {visibleLimits.length > 0 && (
+          {shown && visibleLimits.length > 0 && (
             <>
               <Separator />
               <div className="space-y-1.5">
