@@ -37,6 +37,7 @@ import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { poolsForPersona, purchasableSeatPlans } from '@/lib/seats';
 
 interface Pool {
   id: string;
@@ -75,11 +76,8 @@ export default function ManageSeatsPage() {
     url: '/api/v1/subscription-plans',
   });
   const planName = (key: string) => plans?.find((p) => p.key === key)?.name ?? key;
-  const planByKey = new Map((plans ?? []).map((p) => [p.key, p]));
   /** Seat-licence plans, in catalogue order (D33: `scope='personal'` + `seatEligible`). */
-  const purchasablePlans = (plans ?? []).filter(
-    (p) => p.isActive && p.scope === 'personal' && p.seatEligible,
-  );
+  const purchasablePlans = purchasableSeatPlans(plans ?? []);
   const [pools, setPools] = useState<Pool[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -345,15 +343,11 @@ export default function ManageSeatsPage() {
                     <SelectContent>
                       {(() => {
                         const selectedMember = members.find((m) => m.id === selectedUserId);
-                        // Persona-based pool filter (D14/D33): the plan's `audience`
-                        // must equal the member's `accountType`. A pool whose plan is
-                        // missing from the catalogue resolves to no audience, so it is
-                        // not offered — fail closed.
+                        // Persona-based pool filter (D14/D33): only the pools whose
+                        // plan `audience` equals the member's `accountType` are
+                        // offered; a pool missing from the catalogue fails closed.
                         const compatible = selectedMember
-                          ? pools.filter(
-                              (p) =>
-                                planByKey.get(p.planKey)?.audience === selectedMember.accountType,
-                            )
+                          ? poolsForPersona(pools, plans ?? [], selectedMember.accountType)
                           : pools;
                         return compatible.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
