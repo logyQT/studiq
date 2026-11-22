@@ -16,7 +16,7 @@ import {
   type TransferQuestion,
   TransferQuestionSchema,
 } from '@studiq/server/models/question-transfer.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import { questionService } from '@studiq/server/services/question.service';
 import { questionBankService } from '@studiq/server/services/question-bank.service';
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';

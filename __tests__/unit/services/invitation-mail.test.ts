@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asSupabaseClient } from '#test/helpers/supabase-double';
 import { firstCall } from '#test/mocks/recorded';
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: {
     checkLimit: vi.fn().mockResolvedValue(undefined),
     checkOrgLimit: vi.fn().mockResolvedValue(undefined),

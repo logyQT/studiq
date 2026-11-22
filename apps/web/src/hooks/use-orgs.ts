@@ -67,7 +67,7 @@ export function useOrgs() {
       void queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
       // The effective AI token budget is resolved from the seat/personal/org
-      // plan (`limitsResolver.getEffectiveLimit`), so the cached daily counter
+      // plan (`getEffectiveLimit` over the single resolver), so the cached daily counter
       // belongs to the previous org (#379).
       void queryClient.invalidateQueries({ queryKey: aiKeys.all });
 

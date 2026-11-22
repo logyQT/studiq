@@ -52,7 +52,7 @@ export async function withAuth(
     const cookieOrgId = req.cookies.get(ACTIVE_ORG_COOKIE)?.value ?? null;
     // The cookie is only a *hint*. It becomes the tenant scope exclusively when
     // the caller has an `org_members` row for that exact org — membership-row
-    // presence is the proof (same rule as limits.resolver), so a forged or
+    // presence is the proof (same rule as the entitlement resolver), so a forged or
     // stale id from a previous session can never widen the tenant scope.
     let activeOrgId: string | null = null;
     let orgRoleId: string | null = null;

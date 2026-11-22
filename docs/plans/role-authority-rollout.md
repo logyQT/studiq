@@ -407,8 +407,13 @@ gate on an org resource; `AUT`, `MGR`, `EDU`, `SEC` green.
 entitlement half (`resolveEntitlements(ctx)`, ctx-memoized), the dropped
 rollout layer (kill-switch-only flags, missing row fails closed), D26's
 override-beats-flag rule, the `personalPortable` whitelist, the seat ∩ ceiling
-intersection and the quota-0 exclusion. 3b (limits composition), 3c
-(`change_org_plan`) and 3d (teacher reads) follow.
+intersection and the quota-0 exclusion. **3b delivered on `feat/authority-3b`
+(2026-11-21):** the limits composition moved into the same resolver —
+`max(org, seat, personal)` for user scope, org plan for org scope, missing row
+= 0, `-1` short-circuits, membership verified before the seat — batched to at
+most seven queries per resolution; `LimitsResolver` deleted, its helpers are
+wrappers in `services/limits.ts`; `/me/plan` shows the effective union with a
+stable `key`. 3c (`change_org_plan`) and 3d (teacher reads) follow.
 
 - `org_roles.entitlement_profile` (`all | learner | none`) ships in 2a-1
   (phase 2); phase 3 consumes it in the single resolver.

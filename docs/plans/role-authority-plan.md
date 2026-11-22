@@ -112,6 +112,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R30 | A `WITH CHECK` evaluates the NEW row, so it cannot express "this column may not change" — column/identity immutability belongs in a `BEFORE` trigger; a policy decides which rows may be written.                                                                                                                                    | 2b-8: the `org_roles` UPDATE `is_system` conjunct refused every legitimate system-role edit, while the `custom → is_system` flip it targeted passed `guard_system_org_role_identity`, which checks only `OLD.is_system`                                                                                                         |
 | R31 | A phase closes when every remaining branch is named with an owner and a phase, and the exit criterion is pinned by a source-scan guard, not a promise.                                                                                                                                                                               | 2b-9: the phase-2 closure shipped a deferral register plus `persona-gates.test.ts` instead of "the only gates left are the declared ones" prose — a fifth gate or a stale entry now fails a test, not a review                                                                                                                  |
 | R32 | A blacklist→whitelist switch is behaviour-preserving only if the metadata already partitions the key space; pin the key that differs in a ported case.                                                                                                                                                                               | 3a: the `personalPortable` whitelist dropped `flashcards`/`quiz` from the personal layer inside orgs — the design had called the switch "equivalent for today's catalog" because `scope` and `personalPortable` are different axes                                                                                              |
+| R33 | A per-request query-count target is a structural claim, not a loop-count claim: count the tables the resolution actually reads and pin the number in a test, because "one per table" can exceed the target if the table list is longer than the target.                                                                              | 3b: `resolveEntitlements` reads 11 tables, so flat reads cost 11 queries in the full case; FK embeds plus batched catalog reads brought it to 7, pinned by `entitlement.resolver.limits.test.ts`                                                                                                                                |
 
 ## 4. Decisions
 
@@ -2774,7 +2775,7 @@ org-wide assignment SELECT by its exact
   `notification.service.ts` (recipient membership), plus the readers the first
   pass missed: `with-auth.ts` (the membership row _is_ the active-org proof, so
   a narrowed policy would break every request), `assignment-access.ts` (the
-  student's targeted-run read), `limits.resolver.ts` (seat/limit resolution),
+  student's targeted-run read), `entitlement.resolver.ts` (seat/limit resolution),
   `org.service.ts` (the org list a member switches between),
   `invitation.service.ts` (invitee membership), `classroom.service.ts` (the
   creator's membership insert), `question-seal.ts` (a targeted student's org)
@@ -3487,6 +3488,33 @@ resolves to 0 is not effective (`requireFeature` fails on it too). The
 resolver's `limits` field is still composed through `LimitsResolver`
 (TEMPORARY, replaced by the in-resolver composition in 3b).
 
+**3b delivered on `feat/authority-3b` (2026-11-21).** The limits composition
+moved into `EntitlementResolver` (§6.2 truth table): `scope:'user'` keys take
+`max(org, seat, personal)` with `-1` short-circuiting, `scope:'org'` keys come
+from the verified org's plan only (0 outside one), a missing `plan_limits` row
+is `0` + warn in every path. The composition is batched — one
+`plan_entitlements` and one `plan_limits` read (`.in('plan_key', …)`) for all
+layer plans, and the org layer plus the seat pool ride FK embeds on the
+`org_members` / `org_seat_assignments` rows — so one resolution is at most
+seven queries, one per table, never a per-limit fan-out (pinned by
+`entitlement.resolver.limits.test.ts`; 7 in the full org+seat case, 5 outside
+an org). Membership is verified **before** the seat plan is consulted, so a
+forged `active_org_id` plus a stale seat row resolves the personal plan for
+user keys and 0 for org keys — the 3a review's deferred note is closed for
+limits (entitlements already verified). `limits.resolver.ts` is deleted;
+`services/limits.ts` keeps the public helpers (`checkLimit`, `checkOrgLimit`,
+`getUsage`, `getEffectiveLimit`, `trackTokenUsage`) — all but `checkOrgLimit`
+are wrappers over `resolveEntitlements`, while `checkOrgLimit` still reads
+`organizations` + `plan_limits` directly because it runs before membership
+exists — with `limitsResolver` preserving the call-site shape, so the 8
+`checkLimit` services, `ai/chat/route.ts` and `ai-usage.controller.ts` only
+changed their import path. `/me/plan` keeps `PlanInfo.key`'s historical
+value (seat → seat plan, manager member → org plan, else personal — now
+membership-verified through the resolver) and its `features`/`limits` became
+the effective resolved set/limits, with the union `sources` added (D28).
+`/api/v1/ai/usage`'s `plan` now reports the effective primary (org first);
+no web or QA reader asserts the old personal-key value (recorded as D30).
+
 **Difficulty log**
 
 #### 2026-11-21 — the design's "equivalent for today's catalog" was not
@@ -3503,6 +3531,24 @@ already partitions the key space; `scope` and `personalPortable` are two
 different axes, and the catalog crosses them.
 Fix: the whitelist ships (D3); the differing keys are pinned in tests.
 Rule: R32.
+
+#### 2026-11-21 — the ≤7-query target was unreachable with flat per-table reads
+
+What: the design's "one query per table, target ≤7" for one `resolveEntitlements`
+call assumed ~7 tables are read; the resolver actually reads 11 (`org_members`,
+`organizations`, `org_roles`, `org_role_features`, `org_seat_assignments`,
+`org_seat_pools`, `profiles`, `plan_entitlements`, `plan_limits`,
+`user_feature_overrides`, `entitlement_flags`). Flat per-table reads cost 11 in
+the full org+seat case — and the pre-3b code was worse still, because every
+`getEffectiveLimit` call re-ran the membership/seat/org lookups per limit key.
+Why: the target is only reachable by riding FK embeds — the org plan, role
+profile and revoke rows embed on the `org_members` row, the seat pool on the
+`org_seat_assignments` row, and `plan_entitlements`/`plan_limits` batch over
+`.in('plan_key', …)` — which lands at exactly 7 (5 outside an org), pinned by a
+unit test that counts `from()` calls.
+Fix: embeds + batched catalog reads ship in 3b; the count is pinned, not
+remembered.
+Rule: R33.
 
 Carried from 2b-3 (recorded there, not fixed there): the Teacher template grants
 every content key at `own` while Member reads at `group`, so a Teacher cannot read

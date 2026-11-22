@@ -32,7 +32,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 
 /** `.in()` values travel in the request URL; ids are checked in chunks (matching the rest). */
 const ID_CHUNK = 200;

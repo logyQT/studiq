@@ -1,13 +1,13 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { groupService } from '@studiq/server/services/group.service';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import { QuestionBankService } from '@studiq/server/services/question-bank.service';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

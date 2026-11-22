@@ -17,7 +17,7 @@ import type {
   SetGroupMembersInput,
   UpdateGroupInput,
 } from '@studiq/server/models/group.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 

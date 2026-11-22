@@ -3,12 +3,17 @@
  * scope each one applies to (#233). `limit_catalog` is pinned to this object by
  * `__tests__/integration/catalog-invariants.test.ts`.
  *
- * Resolution rule (enforced by `limits.resolver.ts`):
+ * Resolution rule (ADR-0015 §6.2, enforced by `entitlement.resolver.ts` +
+ * `services/limits.ts`):
  *
- * > In a verified org context the organization's plan governs every limit; a
- * > seat may raise only per-member (`scope: 'user'`) keys, never org-scope
- * > capacity; the personal plan applies only outside a verified org context; a
- * > missing `plan_limits` row is `0` (blocked) in every path.
+ * > Per-member (`scope: 'user'`) keys take the most permissive value of the
+ * > verified org's plan, the member's seat plan and their personal plan —
+ * > `max(org, seat, personal)`, `-1` short-circuits — so a plan a member pays
+ * > for personally is never undercut by an org on the free tier; outside a
+ * > verified org only the personal plan applies. Org-scope (`scope: 'org'`)
+ * > capacity always belongs to the verified organization's plan — no seat and
+ * > no personal plan can widen it — and is `0` outside one. A missing
+ * > `plan_limits` row is `0` (blocked) in every path.
  *
  * `user` keys are enforced against the caller's own content/usage; `org` keys
  * measure the whole organization and are only ever resolved from

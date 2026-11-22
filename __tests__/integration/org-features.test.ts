@@ -1,5 +1,5 @@
 import { AccountType, type RequestContext, SYSTEM_ROLE_TEMPLATES } from '@studiq/authz';
-import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   useRealSupabase,
@@ -148,7 +148,7 @@ describe(`Org Features (trigger)`, () => {
 
   it('derives org limits from plan_limits (no snapshot)', async () => {
     const supabase = createTypedServiceClient();
-    const resolver = new LimitsResolver(() => Promise.resolve(supabase));
+    const resolver = new EntitlementResolver(() => Promise.resolve(supabase));
 
     // The org defaults to the 'launch' plan. Limits are no longer copied into
     // an org_limits snapshot (#229) — they resolve live from the plan template.
@@ -181,14 +181,15 @@ describe(`Org Features (trigger)`, () => {
 
     // base (personal) = 100/50/10 and launch (org) = 100/50/10, so the values
     // are unchanged — the point is that they resolve from the live plan.
-    await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
-    await expect(resolver.getEffectiveLimit(ctx, 'max_questions')).resolves.toBe(50);
-    await expect(resolver.getEffectiveLimit(ctx, 'max_decks')).resolves.toBe(10);
+    const { limits } = await resolver.resolveEntitlements(ctx);
+    expect(limits.max_flashcards).toBe(100);
+    expect(limits.max_questions).toBe(50);
+    expect(limits.max_decks).toBe(10);
   });
 
   it('resolves the org plan for a member even when ctx.orgRoleId is null', async () => {
     const supabase = createTypedServiceClient();
-    const resolver = new LimitsResolver(() => Promise.resolve(supabase));
+    const resolver = new EntitlementResolver(() => Promise.resolve(supabase));
 
     // The org_members row — not the ctx role id — decides the org branch, so a
     // member whose ctx lost its role id must still resolve the org plan.
@@ -218,8 +219,9 @@ describe(`Org Features (trigger)`, () => {
       permissionScopes: {},
     };
 
-    await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
-    await expect(resolver.getEffectiveLimit(ctx, 'max_questions')).resolves.toBe(50);
-    await expect(resolver.getEffectiveLimit(ctx, 'max_decks')).resolves.toBe(10);
+    const { limits } = await resolver.resolveEntitlements(ctx);
+    expect(limits.max_flashcards).toBe(100);
+    expect(limits.max_questions).toBe(50);
+    expect(limits.max_decks).toBe(10);
   });
 });

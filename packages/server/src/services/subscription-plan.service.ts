@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { AccountType, type PlanSource, type RequestContext } from '@studiq/authz';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -8,7 +8,7 @@ import type {
   CreateSubscriptionPlanInput,
   UpdateSubscriptionPlanInput,
 } from '@studiq/server/models/subscription-plan.model';
-import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
+import { entitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
@@ -22,6 +22,8 @@ export interface PlanInfo {
   currency: string;
   features: string[];
   limits: Record<string, number>;
+  /** The union the effective `features`/`limits` were composed from (D28, phase 3b). */
+  sources: PlanSource[];
   sortOrder: number;
   isActive: boolean;
   forAccountType: string | null;
@@ -55,6 +57,7 @@ export class SubscriptionPlanService {
     plan: SubscriptionPlanRow,
     features: string[],
     limits: Record<string, number>,
+    sources: PlanSource[] = [],
   ): PlanInfo {
     return {
       id: plan.id,
@@ -69,6 +72,7 @@ export class SubscriptionPlanService {
       forAccountType: plan.for_account_type ?? null,
       features,
       limits,
+      sources,
     };
   }
 
@@ -146,57 +150,38 @@ export class SubscriptionPlanService {
   }
 
   /**
-   * The caller's current plan.
+   * The caller's current plan (ADR-0015 §6.1/§6.2, phase 3b).
    *
-   * A student's/educator's seat assignment in the active org is the entitlement
-   * they actually hold: `LimitsResolver` resolves limits from the seat plan only
-   * and the entitlement resolver adds the seat plan's features, so the plan page shows
-   * that same seat plan (#270). Without a seat, a student's/educator's
-   * `active_org_id` membership must not replace their own plan with the
-   * organization's (#181).
-   *
-   * Organization plans (`subscription_plans.for_account_type = 'manager'`) belong
-   * to managers; they resolve the active org's plan and fall back to their
-   * personal plan when no org plan is available. An organization purchase
-   * changes only `organizations.plan`: it never writes the buyer's personal plan
-   * (#228), so the fallback is the manager's own free `launch` tier.
+   * `PlanInfo.key` keeps its historical value for every existing caller
+   * (#270/#181/#228): a seated student/educator shows the seat plan, a manager
+   * shows the active org's plan, everyone else their personal plan — all three
+   * now membership-verified through the resolver, so a forged `active_org_id`
+   * plus a stale seat row can no longer surface a foreign plan. `features` and
+   * `limits` are the **effective** resolved set/limits (`max(org, seat,
+   * personal)` for user-scope keys, the org plan for org-scope keys), and
+   * `sources` additively carries the union (D28). No field is renamed or
+   * removed before phase 6.
    */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
+    const resolved = await entitlementResolver.resolveEntitlements(ctx);
 
+    const { sources } = resolved;
     let planKey: string | null = null;
-
-    // Seated member (student/educator): the seat plan is the effective plan.
-    // Managers keep resolving the org plan because they are the org's billing
-    // contact (#181).
-    if (ctx.activeOrgId && ctx.accountType !== AccountType.MANAGER) {
-      planKey = await getSeatPlanKey(ctx, supabase);
+    if (sources.seat && ctx.accountType !== AccountType.MANAGER) {
+      // Seated member (student/educator): the seat plan is the effective plan
+      // (#270). Managers keep resolving the org plan because they are the
+      // org's billing contact (#181).
+      planKey = sources.seat.planKey;
+    } else if (sources.org && ctx.accountType === AccountType.MANAGER) {
+      planKey = sources.org.planKey;
     }
-
-    if (!planKey && ctx.activeOrgId && ctx.accountType === AccountType.MANAGER) {
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .select('plan')
-        .eq('id', ctx.activeOrgId)
-        .maybeSingle();
-
-      if (orgError) return toDbFailure(orgError);
-      if (org) planKey = org.plan;
-    }
-
     if (!planKey) {
-      // Unseated non-managers (and managers without an org plan) use their
-      // personal plan.
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('personal_plan_key')
-        .eq('id', ctx.userId)
-        .maybeSingle();
-
-      if (profileError) return toDbFailure(profileError);
-      if (profile?.personal_plan_key) {
-        planKey = profile.personal_plan_key;
-      }
+      // Unseated non-managers, and a manager whose `active_org_id` is not a
+      // verified membership. Inside a verified org a manager always has
+      // `sources.org` (`organizations.plan` is NOT NULL) and personal never
+      // applies, so no in-org manager reaches this line.
+      planKey = sources.personal?.planKey ?? null;
     }
 
     if (!planKey) return failure('NOT_FOUND');
@@ -210,7 +195,9 @@ export class SubscriptionPlanService {
     if (planError) return toDbFailure(planError);
     if (!plan) return failure('NOT_FOUND');
 
-    return this.planView(supabase, plan);
+    return success(
+      this.toPlanInfo(plan, resolved.entitlements, resolved.limits, resolved.plan.sources),
+    );
   }
 
   /**

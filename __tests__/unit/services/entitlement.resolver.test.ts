@@ -1,75 +1,14 @@
-import {
-  AccountType,
-  ENTITLEMENT_KEYS,
-  type LimitKey,
-  type RequestContext,
-  type ResolvedEntitlements,
-} from '@studiq/authz';
+import { AccountType, type RequestContext, type ResolvedEntitlements } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { requireFeature } from '@studiq/server/lib/features';
 import {
   EntitlementResolver,
   entitlementResolver,
-  type EntitlementLimitsSource,
   isUserOverrideActive,
 } from '@studiq/server/services/entitlement.resolver';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { allFlagsOn, mockResolverTables } from '#test/helpers/entitlement-resolver-mock';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-
-function chain(result: unknown) {
-  const resolved = { data: result, error: null };
-  const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: Record<string, unknown> = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: (value: unknown) => unknown) =>
-    Promise.resolve(resolved).then(onfulfilled);
-  return c;
-}
-
-type FlagRow = { key: string; is_enabled: boolean };
-
-function allFlagsOn(keys: readonly string[] = ENTITLEMENT_KEYS): FlagRow[] {
-  return keys.map((key) => ({ key, is_enabled: true }));
-}
-
-/** Plan → entitlement keys, served by an `eq`-aware `plan_entitlements` mock. */
-const PLANS: Record<string, readonly string[]> = {
-  base: ['flashcards', 'quiz'],
-  ace: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
-  pro: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
-  hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.builder', 'advanced.stats', 'branding'],
-  launch: ['flashcards', 'quiz'],
-  campus: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
-  seat: ['ai.chat', 'advanced.stats', 'quiz.builder'],
-};
-
-/** Unlimited by default so the quota-0 filter passes; override per test. */
-function limitsWith(values: Partial<Record<LimitKey, number>> = {}): EntitlementLimitsSource {
-  return {
-    getEffectiveLimit: (_ctx: RequestContext, key: LimitKey) => Promise.resolve(values[key] ?? -1),
-  };
-}
-
-/** A `plan_entitlements` chain whose `eq('plan_key', …)` picks the plan's rows. */
-function planChain() {
-  const c = chain([]);
-  c.eq = vi.fn((_column: string, planKey: string) =>
-    chain((PLANS[planKey] ?? []).map((key) => ({ entitlement_key: key }))),
-  );
-  return c;
-}
 
 describe('EntitlementResolver', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
@@ -90,7 +29,7 @@ describe('EntitlementResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new EntitlementResolver(() => Promise.resolve(mock), limitsWith());
+    resolver = new EntitlementResolver(() => Promise.resolve(mock));
   });
 
   afterEach(() => {
@@ -98,33 +37,8 @@ describe('EntitlementResolver', () => {
   });
 
   /** Standard table mock: a verified member of `org-1` unless `member: false`. */
-  function mockTables(opts: {
-    member?: boolean;
-    roleProfile?: string | null;
-    roleRows?: Array<{ feature_key: string; is_enabled?: boolean }>;
-    orgPlan?: string | null;
-    seatPlanKey?: string | null;
-    personalPlanKey?: string | null;
-    overrides?: Array<{ feature_key: string; is_enabled: boolean; expires_at?: string | null }>;
-    flags?: FlagRow[];
-  }) {
-    mock.from.mockImplementation((table: string) => {
-      if (table === 'org_members') {
-        return chain(opts.member === false ? null : { organization_id: 'org-1' });
-      }
-      if (table === 'org_roles') return chain({ entitlement_profile: opts.roleProfile ?? 'none' });
-      if (table === 'org_role_features') return chain(opts.roleRows ?? []);
-      if (table === 'organizations') return chain({ plan: opts.orgPlan ?? null });
-      if (table === 'plan_entitlements') return planChain();
-      if (table === 'org_seat_assignments') {
-        return chain(opts.seatPlanKey ? { pool_id: 'pool-1' } : null);
-      }
-      if (table === 'org_seat_pools') return chain({ plan_key: opts.seatPlanKey ?? null });
-      if (table === 'profiles') return chain({ personal_plan_key: opts.personalPlanKey ?? null });
-      if (table === 'user_feature_overrides') return chain(opts.overrides ?? []);
-      if (table === 'entitlement_flags') return chain(opts.flags ?? allFlagsOn());
-      return chain(null);
-    });
+  function mockTables(opts: Parameters<typeof mockResolverTables>[1] = {}) {
+    mockResolverTables(mock, opts);
   }
 
   describe('precedence chain', () => {
@@ -179,23 +93,12 @@ describe('EntitlementResolver', () => {
 
     it('ignores non-catalog keys in plan rows', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'org_members') return chain({ organization_id: 'org-1' });
-        if (table === 'org_roles') return chain({ entitlement_profile: 'all' });
-        if (table === 'org_role_features') return chain([]);
-        if (table === 'organizations') return chain({ plan: 'launch' });
-        if (table === 'plan_entitlements') {
-          return chain(
-            ['flashcards', 'quiz', 'org.manage', 'member.manage', 'role.builder'].map((f) => ({
-              entitlement_key: f,
-            })),
-          );
-        }
-        if (table === 'org_seat_assignments') return chain(null);
-        if (table === 'profiles') return chain(null);
-        if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'entitlement_flags') return chain(allFlagsOn());
-        return chain(null);
+      mockTables({
+        roleProfile: 'all',
+        orgPlan: 'launch',
+        planEntitlements: {
+          launch: ['flashcards', 'quiz', 'org.manage', 'member.manage', 'role.builder'],
+        },
       });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
@@ -290,8 +193,10 @@ describe('EntitlementResolver', () => {
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual([]);
+      // The org layer rides the membership embed, so no separate table reads.
       expect(mock.from).not.toHaveBeenCalledWith('org_roles');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
+      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
     it('returns personal plan features when not in org context', async () => {
@@ -301,7 +206,6 @@ describe('EntitlementResolver', () => {
       expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
       // No active org → the org layer (and the membership read) is skipped.
       expect(mock.from).not.toHaveBeenCalledWith('org_members');
-      expect(mock.from).not.toHaveBeenCalledWith('org_roles');
     });
 
     it('applies the whole personal plan outside an org, including org-scoped keys', async () => {
@@ -324,8 +228,7 @@ describe('EntitlementResolver', () => {
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual([]);
-      expect(mock.from).not.toHaveBeenCalledWith('org_roles');
-      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
     it('lets an explicit revoke row beat the profile ceiling', async () => {
@@ -418,22 +321,20 @@ describe('EntitlementResolver', () => {
     });
 
     it('selects expires_at so expiry can be evaluated', async () => {
+      mockTables({ personalPlanKey: 'base' });
+      const baseImpl: (table: string) => Record<string, unknown> = vi
+        .mocked(mock.from)
+        .getMockImplementation()!;
       let selected: string | null = null;
       mock.from.mockImplementation((table: string) => {
-        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_entitlements') return planChain();
+        const c = baseImpl(table);
         if (table === 'user_feature_overrides') {
-          const overrides = chain([]);
-          // Record the projection the resolver asks for, then answer with the empty list.
-          return Object.assign(overrides, {
-            select: vi.fn((columns: string) => {
-              selected = columns;
-              return overrides;
-            }),
+          c.select = vi.fn((columns: string) => {
+            selected = columns;
+            return c;
           });
         }
-        if (table === 'entitlement_flags') return chain(allFlagsOn());
-        return chain(null);
+        return c;
       });
 
       await resolver.resolveEntitlements(baseCtx);
@@ -441,13 +342,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('returns empty when no entitlement source yields features', async () => {
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'plan_entitlements') return chain([]);
-        if (table === 'user_feature_overrides') return chain([]);
-        if (table === 'entitlement_flags') return chain(allFlagsOn());
-        return chain(null);
-      });
+      mockTables({ personalPlanKey: 'base', planEntitlements: { base: [] } });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toEqual([]);
@@ -526,22 +421,24 @@ describe('EntitlementResolver', () => {
 
   describe('quota-0 exclusion (§6.1)', () => {
     it('excludes an entitlement whose quota limit resolves to 0', async () => {
-      resolver = new EntitlementResolver(
-        () => Promise.resolve(mock),
-        limitsWith({ max_ai_tokens_per_day: 0 }),
-      );
-      mockTables({ personalPlanKey: 'ace' });
+      mockTables({
+        personalPlanKey: 'ace',
+        planLimits: {
+          ace: {
+            max_flashcards: -1,
+            max_quiz_attempts_per_day: -1,
+            max_ai_tokens_per_day: 0,
+          },
+        },
+      });
 
-      const { entitlements } = await resolver.resolveEntitlements(baseCtx);
+      const { entitlements, limits } = await resolver.resolveEntitlements(baseCtx);
       // `ai.chat` is granted by the plan but its quota is 0 → not effective.
       expect(entitlements).toEqual(['flashcards', 'quiz', 'advanced.stats']);
+      expect(limits.max_ai_tokens_per_day).toBe(0);
     });
 
     it('keeps the entitlement when its quota is unlimited (-1)', async () => {
-      resolver = new EntitlementResolver(
-        () => Promise.resolve(mock),
-        limitsWith({ max_ai_tokens_per_day: -1 }),
-      );
       mockTables({ personalPlanKey: 'ace' });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
@@ -583,65 +480,6 @@ describe('EntitlementResolver', () => {
     });
   });
 
-  describe('limits narrowing (step 8 resolves only the quotas the enabled entitlements need)', () => {
-    it('resolves only the quota keys of the enabled entitlements', async () => {
-      const getEffectiveLimit = vi.fn((_ctx: RequestContext, _key: LimitKey) =>
-        Promise.resolve(-1),
-      );
-      resolver = new EntitlementResolver(() => Promise.resolve(mock), { getEffectiveLimit });
-      // `base` grants flashcards + quiz, the override adds ai.chat: no other
-      // entitlement is enabled, so only their three quotas may be resolved.
-      mockTables({
-        personalPlanKey: 'base',
-        overrides: [{ feature_key: 'ai.chat', is_enabled: true }],
-      });
-
-      const { entitlements, limits } = await resolver.resolveEntitlements(baseCtx);
-
-      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz']);
-      const resolvedKeys = getEffectiveLimit.mock.calls.map((call) => call[1]);
-      expect(resolvedKeys).toHaveLength(3);
-      expect(new Set(resolvedKeys)).toEqual(
-        new Set(['max_ai_tokens_per_day', 'max_flashcards', 'max_quiz_attempts_per_day']),
-      );
-      expect(Object.keys(limits).toSorted()).toEqual(
-        ['max_ai_tokens_per_day', 'max_flashcards', 'max_quiz_attempts_per_day'].toSorted(),
-      );
-    });
-
-    it('calls getEffectiveLimit zero times when no entitlement is enabled', async () => {
-      const getEffectiveLimit = vi.fn((_ctx: RequestContext, _key: LimitKey) =>
-        Promise.resolve(-1),
-      );
-      resolver = new EntitlementResolver(() => Promise.resolve(mock), { getEffectiveLimit });
-      mockTables({ personalPlanKey: null });
-
-      const { entitlements, limits } = await resolver.resolveEntitlements(baseCtx);
-
-      expect(entitlements).toEqual([]);
-      expect(getEffectiveLimit).not.toHaveBeenCalled();
-      expect(limits).toEqual({});
-    });
-
-    it('still excludes a quota-0 entitlement under the narrowed computation', async () => {
-      const getEffectiveLimit = vi.fn((_ctx: RequestContext, key: LimitKey) =>
-        Promise.resolve(key === 'max_ai_tokens_per_day' ? 0 : -1),
-      );
-      resolver = new EntitlementResolver(() => Promise.resolve(mock), { getEffectiveLimit });
-      mockTables({ personalPlanKey: 'ace' });
-
-      const { entitlements } = await resolver.resolveEntitlements(baseCtx);
-
-      // `ace` enables ai.chat, flashcards, quiz, advanced.stats; ai.chat's
-      // quota resolves to 0, so it is not effective even though its quota was
-      // one of the resolved keys.
-      expect(entitlements).toEqual(['flashcards', 'quiz', 'advanced.stats']);
-      expect(new Set(getEffectiveLimit.mock.calls.map((call) => call[1]))).toEqual(
-        new Set(['max_ai_tokens_per_day', 'max_flashcards', 'max_quiz_attempts_per_day']),
-      );
-    });
-  });
-
   describe('per-request memo', () => {
     it('resolves once per request context (memoized on the ctx object)', async () => {
       mockTables({ personalPlanKey: 'ace' });
@@ -671,7 +509,7 @@ describe('EntitlementResolver', () => {
         clientCalls += 1;
         return clientCalls === 1 ? Promise.reject(new Error('db down')) : Promise.resolve(mock);
       };
-      const retryResolver = new EntitlementResolver(flakyFactory, limitsWith());
+      const retryResolver = new EntitlementResolver(flakyFactory);
       mockTables({ personalPlanKey: 'ace' });
       const ctx: RequestContext = { ...baseCtx };
 

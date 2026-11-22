@@ -63,12 +63,20 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
     );
   }
 
+  // The header names one plan, so its lists must be that plan's catalogue row:
+  // `/me/plan` carries the *effective* composition for programmatic use, whose
+  // org-scope limits are 0 outside a verified org and whose feature list is the
+  // union of every layer — neither belongs under a single plan's name and price.
+  // While the catalogue is unavailable the lists stay empty: falling back to
+  // `plan` would put exactly that union back under the one plan's name.
+  const shown = plans?.find((candidate) => candidate.key === plan.key);
+
   const hasPrice = plan.priceMonthly > 0;
   const formatter = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: plan.currency,
   });
-  const visibleLimits = getVisibleLimitKeys([plan], accountType);
+  const visibleLimits = shown ? getVisibleLimitKeys([shown], accountType) : [];
   const historyPath = invoiceHistoryPath(accountType);
 
   return (
@@ -90,11 +98,11 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
             </span>
           </div>
 
-          {plan.features.length > 0 && (
+          {shown && shown.features.length > 0 && (
             <>
               <Separator />
               <ul className="space-y-2">
-                {plan.features.map((feature) => (
+                {shown.features.map((feature) => (
                   <li key={feature} className="flex items-center gap-2 text-sm">
                     <span>{getFeatureLabel(feature, pt)}</span>
                   </li>
@@ -103,12 +111,12 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
             </>
           )}
 
-          {visibleLimits.length > 0 && (
+          {shown && visibleLimits.length > 0 && (
             <>
               <Separator />
               <div className="space-y-1.5">
                 {visibleLimits.map((key) => {
-                  const value = plan.limits[key];
+                  const value = shown.limits[key];
                   if (value === undefined) return null;
                   return (
                     <div key={key} className="flex items-center justify-between text-sm">

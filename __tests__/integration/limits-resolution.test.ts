@@ -1,30 +1,42 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
-import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import { AccountType, type LimitKey, type RequestContext } from '@studiq/authz';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
+import { checkOrgLimit } from '@studiq/server/services/limits';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type BeforeResult, before } from '#test/helpers/test-user';
-import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
+import {
+  type BeforeResult,
+  before,
+  createTestUser,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import {
+  useRealSupabase,
+  cleanupOrganizationDeep,
+  seedOrgMembership,
+} from '#test/integration/helpers';
 import { createTypedServiceClient } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
-// Issue #230: org capacity is resolved live from `organizations.plan ->
-// plan_limits`, never from the per-org `org_limits` snapshot that #229 dropped.
-//
-// These tests change `organizations.plan` directly — deliberately NOT through
-// `apply_org_plan()` — and assert the resolver follows the new plan on the next
-// request. That is the property the snapshot could not offer: a plan mutated by
-// any other path (billing update, service-role fix) used to leave every limit
-// check stale until `apply_org_plan()` re-synced the copy. The last case also
-// pins the membership gate, because `active_org_id` is a client-controlled
-// cookie.
-describe(`Limits resolve live from organizations.plan`, () => {
+// Issue #230 + ADR-0015 §6.2 (phase 3b): limits resolve live from the plan
+// tables through the single resolver's composition — `max(org, seat, personal)`
+// for user-scope keys, the org plan for org-scope keys, missing row = 0, `-1`
+// short-circuits — and never from a per-org snapshot. These tests change
+// `organizations.plan` directly — deliberately NOT through `apply_org_plan()`
+// (3c replaces it) — and assert the resolver follows the new plan on the next
+// resolution. They also pin the membership gate: `active_org_id` is a
+// client-controlled cookie, so a forged id plus a stale seat row must resolve
+// the personal plan (user keys) / 0 (org keys), never the foreign org's or the
+// seat's values.
+describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () => {
   let fixture!: BeforeResult;
   let service!: SupabaseClient<Database>;
-  let resolver!: LimitsResolver;
+  let resolver!: EntitlementResolver;
   let adminRoleId!: string;
+  let memberRoleId!: string;
   let foreignOrgId!: string;
+  let student!: TestUserFixture;
 
   function memberCtx(overrides: Partial<RequestContext> = {}): RequestContext {
     return {
@@ -43,32 +55,54 @@ describe(`Limits resolve live from organizations.plan`, () => {
     };
   }
 
-  async function orgPlan(): Promise<string | undefined> {
-    const { data } = await service
-      .from('organizations')
-      .select('plan')
-      .eq('id', fixture.orgId!)
-      .single();
+  /** Effective limit straight from one resolution (the wrappers read this). */
+  async function effectiveLimit(ctx: RequestContext, key: LimitKey): Promise<number> {
+    const { limits } = await resolver.resolveEntitlements(ctx);
+    return limits[key] ?? 0;
+  }
+
+  async function orgPlan(orgId: string): Promise<string | undefined> {
+    const { data } = await service.from('organizations').select('plan').eq('id', orgId).single();
     return data?.plan;
+  }
+
+  async function seatUser(orgId: string, userId: string, planKey: string): Promise<void> {
+    const { data: pool, error: poolError } = await service
+      .from('org_seat_pools')
+      .insert({ organization_id: orgId, plan_key: planKey, total: 5 })
+      .select('id')
+      .single();
+    if (poolError) throw new Error(`seat pool create failed: ${poolError.message}`);
+    const { error: assignError } = await service
+      .from('org_seat_assignments')
+      .insert({ organization_id: orgId, pool_id: pool.id, user_id: userId });
+    if (assignError) throw new Error(`seat assignment failed: ${assignError.message}`);
   }
 
   beforeAll(async () => {
     fixture = await before({ role: 'manager', org: true });
     service = createTypedServiceClient();
-    resolver = new LimitsResolver(() => Promise.resolve(service));
+    resolver = new EntitlementResolver(() => Promise.resolve(service));
 
-    const { data: role, error } = await service
+    const { data: roles, error } = await service
       .from('org_roles')
-      .select('id')
-      .eq('organization_id', fixture.orgId!)
-      .eq('name', 'admin')
-      .single();
-    if (error) throw new Error(`admin role lookup failed: ${error.message}`);
-    adminRoleId = role.id;
+      .select('id, name')
+      .eq('organization_id', fixture.orgId!);
+    if (error) throw new Error(`role lookup failed: ${error.message}`);
+    adminRoleId = roles.find((r) => r.name === 'admin')!.id;
+    memberRoleId = roles.find((r) => r.name === 'member')!.id;
+
+    // A student member of the fixture org, for the personal-layer cases.
+    student = await createTestUser({ role: 'student' });
+    await seedOrgMembership({
+      organizationId: fixture.orgId!,
+      userId: student.id,
+      orgRoleId: memberRoleId,
+    });
 
     // Org the fixture user is NOT a member of: used to prove the membership
-    // gate below does not depend on RLS (the resolver runs on the service
-    // client here, which bypasses it).
+    // gate does not depend on RLS (the resolver runs on the service client
+    // here, which bypasses it).
     const { data: foreign, error: foreignError } = await service
       .from('organizations')
       .insert({ name: `limits-foreign-${suiteId}-${Date.now()}` })
@@ -85,6 +119,10 @@ describe(`Limits resolve live from organizations.plan`, () => {
     useRealSupabase();
     // Each case starts from the creation default; no case depends on test order.
     await service.from('organizations').update({ plan: 'launch' }).eq('id', fixture.orgId!);
+    await service.from('org_seat_assignments').delete().eq('organization_id', fixture.orgId!);
+    await service.from('org_seat_pools').delete().eq('organization_id', fixture.orgId!);
+    await service.from('org_seat_assignments').delete().eq('organization_id', foreignOrgId);
+    await service.from('org_seat_pools').delete().eq('organization_id', foreignOrgId);
   });
 
   afterAll(async () => {
@@ -94,13 +132,14 @@ describe(`Limits resolve live from organizations.plan`, () => {
     if (foreignOrgId) {
       await cleanupOrganizationDeep(foreignOrgId);
     }
+    await service.auth.admin.deleteUser(student.id).catch(() => {});
   });
 
-  it('follows a plan change made without apply_org_plan()', async () => {
+  it('follows a plan change made without apply_org_plan() — narrows and widens with no snapshot', async () => {
     // Creation default is `launch` (max_flashcards 100, max_groups 3,
     // max_ai_tokens_per_day 0).
-    expect(await orgPlan()).toBe('launch');
-    await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
+    expect(await orgPlan(fixture.orgId!)).toBe('launch');
+    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
 
     // Direct service-role update: no snapshot sync, no apply_org_plan().
     const { error } = await service
@@ -108,12 +147,15 @@ describe(`Limits resolve live from organizations.plan`, () => {
       .update({ plan: 'hub' })
       .eq('id', fixture.orgId!);
     expect(error).toBeNull();
-    expect(await orgPlan()).toBe('hub');
+    expect(await orgPlan(fixture.orgId!)).toBe('hub');
 
-    // hub max_flashcards = 2000. The org plan alone governs org-context
-    // capacity (#233): the manager's personal plan (launch, 100) never widens
-    // it, and the value can only come from the live org plan (#230).
-    await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
+    // hub max_flashcards = 2000. The manager's personal plan (launch, 100) is
+    // excluded inside a verified org (#228), so the value can only come from
+    // the live org plan (#230).
+    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
+    // Narrowing works the same way: back to launch, the next resolution is 100.
+    await service.from('organizations').update({ plan: 'launch' }).eq('id', fixture.orgId!);
+    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
   });
 
   it('enforces org-only limits from the new plan through checkOrgLimit', async () => {
@@ -123,41 +165,98 @@ describe(`Limits resolve live from organizations.plan`, () => {
       .eq('id', fixture.orgId!);
     expect(error).toBeNull();
 
-    // hub max_groups = 20 (the launch snapshot said 3).
-    await expect(resolver.checkOrgLimit(fixture.orgId!, 'max_groups', 19)).resolves.toBeUndefined();
-    await expect(resolver.checkOrgLimit(fixture.orgId!, 'max_groups', 20)).rejects.toThrow(
+    // hub max_groups = 20 (launch said 3).
+    await expect(
+      checkOrgLimit(fixture.orgId!, 'max_groups', 19, 1, service),
+    ).resolves.toBeUndefined();
+    await expect(checkOrgLimit(fixture.orgId!, 'max_groups', 20, 1, service)).rejects.toThrow(
       'USAGE_LIMIT_EXCEEDED',
     );
     // hub max_students = 50: the invite-accept path sees the new capacity.
     await expect(
-      resolver.checkOrgLimit(fixture.orgId!, 'max_students', 49),
+      checkOrgLimit(fixture.orgId!, 'max_students', 49, 1, service),
     ).resolves.toBeUndefined();
-    await expect(resolver.checkOrgLimit(fixture.orgId!, 'max_students', 50)).rejects.toThrow(
+    await expect(checkOrgLimit(fixture.orgId!, 'max_students', 50, 1, service)).rejects.toThrow(
       'USAGE_LIMIT_EXCEEDED',
     );
   });
 
-  it('reports the org-plan AI budget while keeping the personal plan key', async () => {
-    const { error } = await service
-      .from('organizations')
-      .update({ plan: 'hub' })
-      .eq('id', fixture.orgId!);
-    expect(error).toBeNull();
+  it('a base seat in a hub org keeps the hub allowance (phase-3 exit case: never 0 tokens)', async () => {
+    await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
+    await seatUser(fixture.orgId!, fixture.user.id, 'base');
 
-    // personal max_ai_tokens_per_day is 0 (manager personal plan `launch`);
-    // org hub = 200000.
-    const usage = await resolver.getUsage(memberCtx(), 'max_ai_tokens_per_day');
-    expect(usage.limit).toBe(200000);
+    // max(org hub 200000, seat base 0) = 200000 — the seat's 0 must not win.
+    await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(200000);
+    // max(hub 2000, base 100) = 2000.
+    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
+    // Org-scope capacity stays the org plan's: hub max_students = 50, never
+    // the seat plan's -1.
+    await expect(effectiveLimit(memberCtx(), 'max_students')).resolves.toBe(50);
 
-    // API shape is unchanged: `plan` stays the caller's personal plan key,
-    // never the org plan.
+    const { entitlements, sources } = await resolver.resolveEntitlements(memberCtx());
+    // ai.chat is in the hub ceiling and its quota is 200000 ≠ 0 → effective.
+    expect(entitlements).toContain('ai.chat');
+    expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+  });
+
+  it('a forged active_org_id with a stale seat row resolves the personal plan for user keys and 0 for org keys', async () => {
+    // The foreign org sits on hub (max_flashcards 2000) and the fixture user
+    // has a stale `base` seat row in it — but no org_members row.
+    await service.from('organizations').update({ plan: 'hub' }).eq('id', foreignOrgId);
+    await seatUser(foreignOrgId, fixture.user.id, 'base');
+
     const { data: profile } = await service
       .from('profiles')
       .select('personal_plan_key')
       .eq('id', fixture.user.id)
       .single();
-    expect(usage.plan).toBe(profile?.personal_plan_key);
-    expect(usage.plan).not.toBe('hub');
+    const personalPlanKey = profile!.personal_plan_key;
+    const { data: personalLimit } = await service
+      .from('plan_limits')
+      .select('limit_value')
+      .eq('plan_key', personalPlanKey)
+      .eq('limit_key', 'max_flashcards')
+      .single();
+
+    // A spoofed cookie: membership is verified first, so the foreign org's
+    // hub plan and the stale seat row must both be ignored.
+    const spoofed = memberCtx({
+      activeOrgId: foreignOrgId,
+      orgRoleId: null,
+      userId: fixture.user.id,
+    });
+    await expect(effectiveLimit(spoofed, 'max_flashcards')).resolves.toBe(
+      personalLimit!.limit_value,
+    );
+    expect(personalLimit!.limit_value).not.toBe(2000);
+    // Org-scope keys are 0 outside a verified org.
+    await expect(effectiveLimit(spoofed, 'max_students')).resolves.toBe(0);
+
+    const { sources } = await resolver.resolveEntitlements(spoofed);
+    expect(sources.org).toBeNull();
+    expect(sources.seat).toBeNull();
+  });
+
+  it('a student personal plan raises (never lowers) a user-scope limit inside the org', async () => {
+    // Org on launch (max_flashcards 100, max_ai_tokens_per_day 0); the student
+    // member's personal plan is `pro` (-1 everywhere).
+    await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', student.id);
+    const studentCtx: RequestContext = {
+      traceId: `limits-student-${suiteId}`,
+      userId: student.id,
+      accountType: AccountType.STUDENT,
+      activeOrgId: fixture.orgId,
+      orgRoleId: memberRoleId,
+      url: '/api/v1/flashcards',
+      method: 'POST',
+      groupIds: [],
+      permissionScopes: {},
+    };
+
+    await expect(effectiveLimit(studentCtx, 'max_flashcards')).resolves.toBe(-1);
+    await expect(effectiveLimit(studentCtx, 'max_ai_tokens_per_day')).resolves.toBe(-1);
+    // Org-scope capacity is untouched by the personal plan: launch max_students = 5.
+    await expect(effectiveLimit(studentCtx, 'max_students')).resolves.toBe(5);
   });
 
   it('resolves the org plan for a member whose ctx has no orgRoleId', async () => {
@@ -171,12 +270,10 @@ describe(`Limits resolve live from organizations.plan`, () => {
     // has a real org_members row, so losing the ctx role id must not drop the
     // org plan (hub max_flashcards = 2000).
     const memberWithoutRole = memberCtx({ orgRoleId: null });
-    await expect(resolver.getEffectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(
-      2000,
-    );
+    await expect(effectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(2000);
   });
 
-  it('lets the org plan govern a member with an unlimited personal plan (#233 Q1)', async () => {
+  it('lets the org plan govern a manager with an unlimited personal plan (#233 Q1, manager persona)', async () => {
     const { data: profile } = await service
       .from('profiles')
       .select('personal_plan_key')
@@ -187,16 +284,15 @@ describe(`Limits resolve live from organizations.plan`, () => {
     await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', fixture.user.id);
 
     try {
-      // launch: max_flashcards 100, max_ai_tokens_per_day 0. The personal
-      // `pro` plan used to short-circuit both to -1 (unlimited).
-      await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
-      await expect(resolver.getEffectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(
-        0,
-      );
+      // launch: max_flashcards 100, max_ai_tokens_per_day 0. A manager's
+      // personal plan is excluded inside a verified org, so `pro` (-1) must
+      // not widen either key.
+      await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
+      await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(0);
 
       // The personal plan still applies outside the org.
       await expect(
-        resolver.getEffectiveLimit(memberCtx({ activeOrgId: null }), 'max_flashcards'),
+        effectiveLimit(memberCtx({ activeOrgId: null }), 'max_flashcards'),
       ).resolves.toBe(-1);
     } finally {
       await service
@@ -232,14 +328,13 @@ describe(`Limits resolve live from organizations.plan`, () => {
 
       await service.from('organizations').update({ plan: planKey }).eq('id', fixture.orgId!);
 
-      // Missing user key in org context → 0, with no personal fallback.
-      await expect(resolver.getEffectiveLimit(memberCtx(), 'max_decks')).resolves.toBe(0);
+      // Missing user key in org context → 0 (the manager's personal plan is
+      // excluded inside the org, so there is no fallback).
+      await expect(effectiveLimit(memberCtx(), 'max_decks')).resolves.toBe(0);
       // Present key still resolves from the org plan.
-      await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
-      // Missing org key in checkOrgLimit → blocked (was unlimited before #233).
-      await expect(resolver.checkOrgLimit(fixture.orgId!, 'max_groups', 0)).rejects.toThrow(
-        'USAGE_LIMIT_EXCEEDED',
-      );
+      await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
+      // Missing org key → blocked (0), never unlimited.
+      await expect(effectiveLimit(memberCtx(), 'max_groups')).resolves.toBe(0);
     } finally {
       await service.from('organizations').update({ plan: 'launch' }).eq('id', fixture.orgId!);
       await service.from('plan_limits').delete().eq('plan_key', planKey);
@@ -247,38 +342,18 @@ describe(`Limits resolve live from organizations.plan`, () => {
     }
   });
 
-  it('does not trust active_org_id without a verified membership', async () => {
-    const { error } = await service
-      .from('organizations')
-      .update({ plan: 'hub' })
-      .eq('id', foreignOrgId);
-    expect(error).toBeNull();
+  it('the resolution reports the effective primary plan and the union sources', async () => {
+    await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
+    await seatUser(fixture.orgId!, fixture.user.id, 'base');
 
-    // A spoofed cookie: the fixture user belongs to a different org, so there
-    // is no org_members row for this pair. The service client bypasses RLS, so
-    // only the resolver's membership gate can keep this at the personal cap
-    // instead of the foreign org's hub 2000.
-    const spoofed = memberCtx({
-      activeOrgId: foreignOrgId,
-      orgRoleId: null,
-      userId: fixture.user.id,
-    });
+    const { plan, sources } = await resolver.resolveEntitlements(memberCtx());
 
-    const { data: profile } = await service
-      .from('profiles')
-      .select('personal_plan_key')
-      .eq('id', fixture.user.id)
-      .single();
-    const { data: personalLimit } = await service
-      .from('plan_limits')
-      .select('limit_value')
-      .eq('plan_key', profile!.personal_plan_key)
-      .eq('limit_key', 'max_flashcards')
-      .single();
-
-    await expect(resolver.getEffectiveLimit(spoofed, 'max_flashcards')).resolves.toBe(
-      personalLimit!.limit_value,
-    );
-    expect(personalLimit!.limit_value).not.toBe(2000);
+    expect(plan.primary).toBe('hub');
+    expect(sources.org).toEqual({ planKey: 'hub', origin: 'org' });
+    expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+    expect(plan.sources).toEqual([
+      { planKey: 'hub', origin: 'org' },
+      { planKey: 'base', origin: 'seat' },
+    ]);
   });
 });

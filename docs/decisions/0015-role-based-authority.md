@@ -583,7 +583,7 @@ Rules:
 | No org                 | personal plan                             | `0`            |
 | Org, unseated          | `max(org, personal)` (`-1` short-circuit) | org plan       |
 | Org, seated            | `max(org, seat, personal)`                | org plan       |
-| Org, manager           | org plan (personal excluded)              | org plan       |
+| Org, manager           | `max(org, seat)` (personal excluded)      | org plan       |
 | Non-member / forged id | personal plan (user), `0` (org)           | `0`            |
 | Missing row            | `0` + warning                             | `0` + warning  |
 
@@ -1293,6 +1293,21 @@ interpretation.
 > "own/group" reading, since `group` is a superset of `own` in the API layer.
 > Landed in 3d (a separate PR after the resolver slice); recorded here now.
 > (Phase 3a, `feat/authority-3a`.)
+>
+> **2026-11-21 (D30).** Phase 3b lands the limits composition in the single
+> resolver: `max(org, seat, personal)` for `scope:'user'` keys with `-1`
+> short-circuit, the verified org's plan for `scope:'org'` keys, missing
+> `plan_limits` row = `0`. Membership is verified before the seat plan is
+> consulted, closing the 3a review's deferred note (a forged `active_org_id`
+> plus a stale seat row now yields the personal values, never the seat's).
+> `/me/plan` keeps `PlanInfo.key`'s historical value and reports the effective
+> `features`/`limits` plus the additive union `sources` (D28). Decision:
+> `/api/v1/ai/usage`'s `plan` field now reports the effective primary
+> (`resolveEntitlements().plan.primary`, org first) instead of the personal
+> plan key — inventoried first: no web component reads `usage.plan` (the badge
+> renders only `current`/`limit`) and no QA case asserts it (SEC-07 matches
+> `current`/`limit` only; MGR-SEAT-02 reads `limit`), so the widened meaning
+> is safe. (Phase 3b, `feat/authority-3b`.)
 
 ---
 
@@ -1313,6 +1328,6 @@ interpretation.
 - [`docs/audits/features-perms-weak-spots.md`](../audits/features-perms-weak-spots.md) — evidence, register, reproduction cases.
 - [`docs/limits.md`](../limits.md) — current plan/feature/limit reference.
 - [`docs/decisions/0007-manager-plan-model.md`](0007-manager-plan-model.md) — manager personal plan decision (kept; its `for_account_type` inference is superseded).
-- `packages/authz/src/entitlements.ts`, `packages/authz/src/limits.ts`, `packages/server/src/services/feature.resolver.ts`, `limits.resolver.ts`, `seat.service.ts`, `org-role.service.ts`.
+- `packages/authz/src/entitlements.ts`, `packages/authz/src/limits.ts`, `packages/server/src/services/entitlement.resolver.ts`, `seat.service.ts`, `org-role.service.ts` (the phase-3 `feature.resolver.ts` and `limits.resolver.ts` were deleted).
 - `supabase/migrations/20261024124756_rls_all_public_tables.sql`, `20261024151122_drop_org_limits.sql`.
 - Issue #971 (personal plan inside an org), #233 (limit precedence), #799 (stale entitlement cache).

@@ -12,7 +12,7 @@ vi.mock('@studiq/server/lib/authz', async (importOriginal) => {
   return { ...actual, check: vi.fn().mockResolvedValue(undefined) };
 });
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

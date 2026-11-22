@@ -16,7 +16,7 @@ import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { withAuth } from '@studiq/server/lib/with-auth';
-import { limitsResolver, AI_TOKENS_LIMIT_KEY } from '@studiq/server/services/limits.resolver';
+import { limitsResolver, AI_TOKENS_LIMIT_KEY } from '@studiq/server/services/limits';
 import { safeValidateUIMessages, type UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import { type NextRequest, NextResponse } from 'next/server';

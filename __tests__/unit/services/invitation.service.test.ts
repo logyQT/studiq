@@ -1,13 +1,13 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { InvitationService } from '@studiq/server/services/invitation.service';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { Notifier } from '@studiq/server/services/notification.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { isRecord } from '@studiq/server/lib/record';
 import { mockSupabaseClient, type MockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: {
     checkLimit: vi.fn().mockResolvedValue(undefined),
     checkOrgLimit: vi.fn().mockResolvedValue(undefined),

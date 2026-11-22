@@ -232,7 +232,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     });
 
     // --- The manager's refusal metered no AI tokens -----------------------
-    // `limits.resolver` meters into `user_daily_activity` for the calling user;
+    // `limits.trackTokenUsage` meters into `user_daily_activity` for the calling user;
     // a request refused before the handler cannot have written there.
     const today = new Date().toISOString().slice(0, 10);
     const activity = await db

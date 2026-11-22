@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbNested } from '@studiq/server/lib/supabase/rows';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
@@ -7,8 +8,9 @@ import type { Database } from '../types/database';
  * active organization. Returns `null` when the user is not seated (no
  * `org_seat_assignments` row), meaning personal/org plan entitlements apply.
  *
- * Shared by the entitlement resolver (features) and `LimitsResolver` (limits) so
- * seat-based entitlements resolve identically in both systems.
+ * One query: the pool's plan key rides the assignment row's `pool_id` FK as an
+ * embed. Only ever call this for a membership-verified org — `active_org_id`
+ * alone is a client cookie, and a stale seat row must not supply a plan.
  */
 export async function getSeatPlanKey(
   ctx: RequestContext,
@@ -18,18 +20,10 @@ export async function getSeatPlanKey(
 
   const { data: assignment } = await supabase
     .from('org_seat_assignments')
-    .select('pool_id')
+    .select('pool_id, org_seat_pools(plan_key)')
     .eq('organization_id', ctx.activeOrgId)
     .eq('user_id', ctx.userId)
     .maybeSingle();
 
-  if (!assignment) return null;
-
-  const { data: pool } = await supabase
-    .from('org_seat_pools')
-    .select('plan_key')
-    .eq('id', assignment.pool_id)
-    .maybeSingle();
-
-  return pool?.plan_key ?? null;
+  return dbNested(assignment?.org_seat_pools)?.plan_key ?? null;
 }

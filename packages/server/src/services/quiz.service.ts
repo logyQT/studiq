@@ -9,7 +9,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { GenerateQuizInput } from '@studiq/server/models/quiz.model';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 

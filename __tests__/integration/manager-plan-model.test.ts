@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { AccountType, type RequestContext } from '@studiq/authz';
-import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import type { Database } from '@studiq/server/types/database';
 import type { NextRequest } from 'next/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -25,13 +25,13 @@ import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route
  */
 const BASE_URL = 'http://localhost';
 
-// Database-typed: `LimitsResolver` takes a factory that hands back the typed client.
+// Database-typed: `EntitlementResolver` takes a factory that hands back the typed client.
 const service = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false } },
 );
-const resolver = new LimitsResolver(() => Promise.resolve(service));
+const resolver = new EntitlementResolver(() => Promise.resolve(service));
 
 let manager: TestUserFixture;
 let boughtOrgId: string;
@@ -164,9 +164,8 @@ describe('manager plan model (#228)', () => {
     // `launch` plan.
     await service.from('profiles').update({ personal_plan_key: 'campus' }).eq('id', manager.id);
 
-    await expect(
-      resolver.getEffectiveLimit(managerCtx(otherOrgId), 'max_flashcards'),
-    ).resolves.toBe(100);
+    const { limits } = await resolver.resolveEntitlements(managerCtx(otherOrgId));
+    expect(limits.max_flashcards).toBe(100);
 
     // The dirty row is also inert on the personal-plan read path.
     const personal = await planKey(personalPlanGet, otherOrgId);

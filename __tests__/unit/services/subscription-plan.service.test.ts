@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { mockResolverTables } from '#test/helpers/entitlement-resolver-mock';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 type DbError = { message?: string; code?: string };
@@ -80,6 +81,28 @@ function planRow(key: string, forAccountType: string | null = null) {
   };
 }
 
+/** Resolver tables plus the `subscription_plans` catalog row for `key`. */
+function mockPlanTables(
+  mock: ReturnType<typeof mockSupabaseClient>,
+  opts: Parameters<typeof mockResolverTables>[1],
+  planKey: string | null,
+  forAccountType: string | null = null,
+) {
+  mockResolverTables(mock, opts);
+  const baseImpl: (table: string) => unknown = vi.mocked(mock.from).getMockImplementation()!;
+  mock.from.mockImplementation((table: string) => {
+    if (table !== 'subscription_plans') return baseImpl(table);
+    // Key-aware catalog read: a lookup for any other key finds no row, so a
+    // wrong plan key resolves NOT_FOUND instead of silently passing.
+    const row = planKey ? planRow(planKey, forAccountType) : null;
+    const plansQb = qb(row);
+    plansQb.eq = vi.fn((column: string, value: unknown) =>
+      column === 'key' && value !== planKey ? qb(null) : plansQb,
+    );
+    return plansQb;
+  });
+}
+
 describe('SubscriptionPlanService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: SubscriptionPlanService;
@@ -100,15 +123,6 @@ describe('SubscriptionPlanService', () => {
     mock = mockSupabaseClient();
     service = new SubscriptionPlanService(() => Promise.resolve(mock));
   });
-
-  function mockTables(
-    tables: Record<string, unknown>,
-    errors: Record<string, { message: string }> = {},
-  ) {
-    mock.from.mockImplementation((table: string) =>
-      qb(tables[table] ?? null, errors[table] ?? null),
-    );
-  }
 
   describe('listActive', () => {
     it('returns active plans with features and limits', async () => {
@@ -184,107 +198,143 @@ describe('SubscriptionPlanService', () => {
   });
 
   describe('getMyPlan', () => {
-    it('returns the seat plan to a seated student in an active org (#270)', async () => {
-      mockTables({
-        org_seat_assignments: { pool_id: 'pool-1' },
-        org_seat_pools: { plan_key: 'ace' },
-        subscription_plans: planRow('ace'),
-        plan_entitlements: [{ entitlement_key: 'ai.chat' }, { entitlement_key: 'advanced.stats' }],
-        plan_limits: [
-          { plan_key: 'ace', limit_key: 'max_ai_tokens_per_day', limit_value: 200000 },
-          { plan_key: 'ace', limit_key: 'max_decks', limit_value: 200 },
-        ],
-      });
-
-      const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
-
-      expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('ace');
-      expect(expectSuccess(result).limits.max_ai_tokens_per_day).toBe(200000);
-      expect(expectSuccess(result).limits.max_decks).toBe(200);
-      expect(expectSuccess(result).features).toEqual(
-        expect.arrayContaining(['ai.chat', 'advanced.stats']),
+    it('returns the seat plan to a seated student in an active org, with the effective union, #270', async () => {
+      mockPlanTables(
+        mock,
+        {
+          orgPlan: 'launch',
+          roleProfile: 'learner',
+          seatPlanKey: 'ace',
+          personalPlanKey: 'base',
+          planEntitlements: {
+            launch: ['flashcards', 'quiz'],
+            ace: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
+            base: ['flashcards', 'quiz'],
+          },
+          planLimits: {
+            launch: {
+              max_flashcards: 100,
+              max_quiz_attempts_per_day: 10,
+              max_ai_tokens_per_day: 0,
+              max_students: 5,
+              max_groups: 3,
+            },
+            ace: {
+              max_flashcards: 2000,
+              max_quiz_attempts_per_day: -1,
+              max_ai_tokens_per_day: 200000,
+              max_students: -1,
+              max_groups: -1,
+            },
+            base: {
+              max_flashcards: 100,
+              max_quiz_attempts_per_day: 10,
+              max_ai_tokens_per_day: 0,
+              max_students: -1,
+              max_groups: -1,
+            },
+          },
+        },
+        'ace',
       );
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
-      expect(mock.from).not.toHaveBeenCalledWith('organizations');
-    });
-
-    it('returns the seat plan to a seated educator in an active org (#270)', async () => {
-      mockTables({
-        org_seat_assignments: { pool_id: 'pool-1' },
-        org_seat_pools: { plan_key: 'ace' },
-        subscription_plans: planRow('ace'),
-        plan_entitlements: [{ entitlement_key: 'ai.chat' }],
-      });
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: AccountType.EDUCATOR,
         activeOrgId: 'org-1',
+        orgRoleId: 'role-member',
       });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('ace');
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      const plan = expectSuccess(result);
+      expect(plan.key).toBe('ace');
+      // features/limits are the effective resolved set: the seat's ai.chat is
+      // not in the launch ceiling, so it is not effective; the user-scope
+      // limits are max(org, seat, personal) and org-scope limits stay the org's.
+      expect(plan.features).toEqual(['flashcards', 'quiz']);
+      expect(plan.limits.max_flashcards).toBe(2000);
+      expect(plan.limits.max_ai_tokens_per_day).toBe(200000);
+      expect(plan.limits.max_students).toBe(5);
+      expect(plan.sources).toEqual([
+        { planKey: 'launch', origin: 'org' },
+        { planKey: 'ace', origin: 'seat' },
+        { planKey: 'base', origin: 'personal' },
+      ]);
     });
 
-    it('returns the org plan for a manager in an active org (#181)', async () => {
-      mockTables({
-        org_seat_assignments: { pool_id: 'pool-1' },
-        organizations: { plan: 'hub' },
-        subscription_plans: planRow('hub', 'manager'),
-        plan_entitlements: [{ entitlement_key: 'branding' }],
-        plan_limits: [{ plan_key: 'hub', limit_key: 'max_groups', limit_value: 3 }],
-      });
+    it('returns the org plan for a manager in an active org, never the seat, #181', async () => {
+      mockPlanTables(
+        mock,
+        {
+          orgPlan: 'hub',
+          roleProfile: 'all',
+          seatPlanKey: 'ace',
+          personalPlanKey: 'launch',
+        },
+        'hub',
+        'manager',
+      );
 
       const result = await service.getMyPlan({
         ...ctx,
         accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
+        orgRoleId: 'role-admin',
       });
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).key).toBe('hub');
-      expect(expectSuccess(result).limits.max_groups).toBe(3);
-      // Managers are the org's billing contact: the seat never overrides the org plan.
-      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
-    it('returns the personal plan for an unseated student in an active org (#181)', async () => {
-      mockTables({
-        profiles: { personal_plan_key: 'base' },
-        subscription_plans: planRow('base', 'student'),
-      });
-
-      const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
-
-      expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('base');
-      expect(mock.from).toHaveBeenCalledWith('org_seat_assignments');
-      expect(mock.from).not.toHaveBeenCalledWith('organizations');
-    });
-
-    it('returns the personal plan for an unseated educator in an active org (#181)', async () => {
-      mockTables({
-        profiles: { personal_plan_key: 'lite' },
-        subscription_plans: planRow('lite', 'educator'),
-      });
+    it('returns the personal plan for an unseated student member, #181', async () => {
+      mockPlanTables(
+        mock,
+        { orgPlan: 'launch', roleProfile: 'learner', personalPlanKey: 'base' },
+        'base',
+        'student',
+      );
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: AccountType.EDUCATOR,
         activeOrgId: 'org-1',
+        orgRoleId: 'role-member',
       });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('lite');
+      expect(expectSuccess(result).key).toBe('base');
     });
 
-    it('falls back to the personal plan when a manager has no org plan', async () => {
-      mockTables({
-        profiles: { personal_plan_key: 'launch' },
-        subscription_plans: planRow('launch', 'manager'),
+    it('a forged active_org_id with a stale seat row resolves the personal plan, never the seat, 3b', async () => {
+      mockPlanTables(
+        mock,
+        {
+          member: false, // no org_members row for the cookie's org
+          orgPlan: 'hub',
+          roleProfile: 'all',
+          seatPlanKey: 'ace', // stale seat row in the foreign org
+          personalPlanKey: 'base',
+        },
+        'base',
+        'student',
+      );
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        activeOrgId: 'org-foreign',
+        orgRoleId: 'role-x',
       });
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).key).toBe('base');
+      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
+    });
+
+    it('falls back to the personal plan for a manager with no verified org (forged active_org_id)', async () => {
+      mockPlanTables(
+        mock,
+        { member: false, orgPlan: null, personalPlanKey: 'launch' },
+        'launch',
+        'manager',
+      );
 
       const result = await service.getMyPlan({
         ...ctx,
@@ -296,34 +346,27 @@ describe('SubscriptionPlanService', () => {
       expect(expectSuccess(result).key).toBe('launch');
     });
 
-    it('returns the manager free personal plan with no active org (#228)', async () => {
-      mockTables({
-        profiles: { personal_plan_key: 'launch' },
-        subscription_plans: planRow('launch', 'manager'),
-      });
+    it('returns the manager free personal plan with no active org, #228', async () => {
+      mockPlanTables(mock, { personalPlanKey: 'launch' }, 'launch', 'manager');
 
       const result = await service.getMyPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).key).toBe('launch');
-      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+      expect(mock.from).not.toHaveBeenCalledWith('org_members');
     });
 
     it('returns personal plan when no org', async () => {
-      mockTables({
-        profiles: { personal_plan_key: 'free' },
-        subscription_plans: planRow('free'),
-      });
+      mockPlanTables(mock, { personalPlanKey: 'free' }, 'free');
 
       const result = await service.getMyPlan(ctx);
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).key).toBe('free');
-      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
-    it('returns NOT_FOUND when no plan key', async () => {
-      mockTables({});
+    it('returns NOT_FOUND when no plan key resolves', async () => {
+      mockPlanTables(mock, { personalPlanKey: null }, null);
 
       const result = await service.getMyPlan({ ...ctx, activeOrgId: null });
 
@@ -333,39 +376,13 @@ describe('SubscriptionPlanService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('subscription_plans');
     });
 
-    it('returns NOT_FOUND when plan not found', async () => {
-      mockTables({ profiles: { personal_plan_key: 'base' } });
+    it('returns NOT_FOUND when the resolved plan key has no catalog row', async () => {
+      mockPlanTables(mock, { personalPlanKey: 'base' }, null);
 
       const result = await service.getMyPlan({ ...ctx, activeOrgId: null });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
-    });
-
-    it('returns NOT_FOUND when the seat plan key has no plan row', async () => {
-      mockTables({
-        org_seat_assignments: { pool_id: 'pool-1' },
-        org_seat_pools: { plan_key: 'ace' },
-      });
-
-      const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('NOT_FOUND');
-    });
-
-    it('returns an error when the org query fails', async () => {
-      mockTables({}, { organizations: { message: 'DB error' } });
-
-      const result = await service.getMyPlan({
-        ...ctx,
-        accountType: AccountType.MANAGER,
-        activeOrgId: 'org-1',
-      });
-
-      expect(result.success).toBe(false);
-      // The org lookup error surfaces as a server error, not as the later profile fallback.
-      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 

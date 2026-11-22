@@ -1,7 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver } from '@studiq/server/services/limits';
 import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,7 @@ vi.mock('@studiq/server/lib/authz', () => ({
   },
 }));
 
-vi.mock('@studiq/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

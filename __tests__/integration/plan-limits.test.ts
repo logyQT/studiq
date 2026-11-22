@@ -14,7 +14,7 @@ import {
 //        max_students/max_groups = -1, but since #233 org-scope keys are never
 //        read from a personal plan, those rows no longer widen anything. The
 //        rows are kept (and asserted) only as historical seed data.
-//        (Primary D1 fix is LimitsResolver.checkOrgLimit + invite-accept.test.ts.)
+//        (Primary D1 fix is checkOrgLimit + invite-accept.test.ts.)
 describe(`Plan limit fixes`, () => {
   let fixture!: BeforeResult;
 
