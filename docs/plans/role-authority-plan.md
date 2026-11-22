@@ -2775,7 +2775,7 @@ org-wide assignment SELECT by its exact
   `notification.service.ts` (recipient membership), plus the readers the first
   pass missed: `with-auth.ts` (the membership row _is_ the active-org proof, so
   a narrowed policy would break every request), `assignment-access.ts` (the
-  student's targeted-run read), `limits.resolver.ts` (seat/limit resolution),
+  student's targeted-run read), `entitlement.resolver.ts` (seat/limit resolution),
   `org.service.ts` (the org list a member switches between),
   `invitation.service.ts` (invitee membership), `classroom.service.ts` (the
   creator's membership insert), `question-seal.ts` (a targeted student's org)

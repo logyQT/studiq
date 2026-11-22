@@ -148,14 +148,14 @@ the member bought. A manager's personal plan is excluded inside an org — it
 mirrors an org purchase (#228). A missing `plan_limits` row is `0` (blocked) in
 every path.
 
-| Context                                          | `scope: 'user'` keys                                | `scope: 'org'` keys            |
-| ------------------------------------------------ | --------------------------------------------------- | ------------------------------ |
-| No active org                                    | personal plan                                       | `0` (no org capacity to grant) |
-| Active org, seated verified member               | max(org, seat, personal)                            | org plan                       |
-| Active org, unseated verified member             | max(org, personal)                                  | org plan                       |
-| Active org, manager (personal plan is a mirror)  | org plan, plus a seat if seated (personal excluded) | org plan                       |
-| Active org id without membership (forged cookie) | personal plan                                       | `0`                            |
-| Plan lacks the key                               | `0` + `warn()`                                      | `0` + `warn()`                 |
+| Context                                          | `scope: 'user'` keys               | `scope: 'org'` keys            |
+| ------------------------------------------------ | ---------------------------------- | ------------------------------ |
+| No active org                                    | personal plan                      | `0` (no org capacity to grant) |
+| Active org, seated verified member               | max(org, seat, personal)           | org plan                       |
+| Active org, unseated verified member             | max(org, personal)                 | org plan                       |
+| Active org, manager (personal plan is a mirror)  | max(org, seat) (personal excluded) | org plan                       |
+| Active org id without membership (forged cookie) | personal plan                      | `0`                            |
+| Plan lacks the key                               | `0` + `warn()`                     | `0` + `warn()`                 |
 
 `ctx.activeOrgId` comes from a client cookie, so the resolver verifies the
 `org_members` row before treating it as a tenant scope — and before reading the
@@ -164,7 +164,7 @@ seat plan: a spoofed org id has no row and falls back to the personal plan
 
 **Managers (#228):** a manager has no paid personal plan — their
 `profiles.personal_plan_key` is the free tier. In a verified org a manager
-therefore resolves limits from the org plan, plus a seat if seated, and never
+therefore resolves limits from `max(org, seat)` — personal excluded — and never
 from their personal key — it is a mirror of an org plan, never a second
 entitlement (#228); the free personal tier applies only when there is no active
 org. A manager carrying a paid org plan in `personal_plan_key` from an old
@@ -211,6 +211,9 @@ layers now membership-verified through the single resolver (phase 3b):
 > (`max(org, seat, personal)` for user-scope keys), and the response carries the
 > additive `sources` array naming every layer that contributed. A forged
 > `active_org_id` with a stale seat row resolves the personal plan here too.
+> The current-plan card on `/app/billing` and `/edu/billing` names one plan, so
+> it renders that plan's **catalogue** row for `key` (features and limits), not
+> this effective union; it shows no lists while the catalogue is unavailable.
 
 Plan display is still a single `key`, not the union: an unseated member's
 limits can come from the org plan while this page shows their personal plan

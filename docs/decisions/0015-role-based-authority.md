@@ -578,14 +578,14 @@ Rules:
 
 ### 6.2 Limits
 
-| Context                | `scope: 'user'`                                     | `scope: 'org'` |
-| ---------------------- | --------------------------------------------------- | -------------- |
-| No org                 | personal plan                                       | `0`            |
-| Org, unseated          | `max(org, personal)` (`-1` short-circuit)           | org plan       |
-| Org, seated            | `max(org, seat, personal)`                          | org plan       |
-| Org, manager           | org plan, plus a seat if seated (personal excluded) | org plan       |
-| Non-member / forged id | personal plan (user), `0` (org)                     | `0`            |
-| Missing row            | `0` + warning                                       | `0` + warning  |
+| Context                | `scope: 'user'`                           | `scope: 'org'` |
+| ---------------------- | ----------------------------------------- | -------------- |
+| No org                 | personal plan                             | `0`            |
+| Org, unseated          | `max(org, personal)` (`-1` short-circuit) | org plan       |
+| Org, seated            | `max(org, seat, personal)`                | org plan       |
+| Org, manager           | `max(org, seat)` (personal excluded)      | org plan       |
+| Non-member / forged id | personal plan (user), `0` (org)           | `0`            |
+| Missing row            | `0` + warning                             | `0` + warning  |
 
 The seat is **not** exclusive. This is the deliberate reversal of #233 Q1 for
 user-scope keys; #233 Q1 still holds for `scope: 'org'`.
