@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { json } from '#test/helpers/json';
+import { asJson, json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
@@ -9,15 +9,15 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * Case: `POST /api/v1/ai/chat` with a correct body → **403 `FORBIDDEN`**; the AI
  * API requires the `ai.chat` entitlement (ADR-0015 §7), which this tenant's
  * `launch` org plan does not carry (`max_ai_tokens_per_day = 0` there, so the
- * resolver never makes the key effective either).
+ * resolver never makes the key effective for an org-layer caller either).
  *
  * Tenant: the legacy prerequisite `manager@dev.local` is not used.
  * `bun scripts/qa-tenant.ts SEC-07 --fresh` seeds the default `content` profile
  * (no profile file: `content` is the seeder's default), which gives this case
- * exactly the accounts it needs — `manager` (the subject), `student` and
- * `teacher` (the positive control), all inside one organization whose default
- * group keeps the graph realistic. Every id is read from `qa/.tenants/SEC-07.json`;
- * the conversation id carries the run suffix so two runs never share a row name.
+ * exactly the accounts it needs — `manager` (the subject), `teacher` and
+ * `student`, all inside one organization whose default group keeps the graph
+ * realistic. Every id is read from `qa/.tenants/SEC-07.json`; the conversation
+ * id carries the run suffix so two runs never share a row name.
  *
  * Walk (rewritten 2026-11-22 for phase 5a — the served-build run of this spec is
  * the coordinator's gate, not this file's claim):
@@ -35,16 +35,25 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    `ai.chat` entitlement) → `403` as well.
  * 5. Anonymous `POST` → `401 UNAUTHORIZED`, so the manager's `403` is an
  *    authorization boundary and not "no session".
- * 6. Positive control, same tenant: the educator and the student sending the same
- *    empty body reach the handler and get `400 BAD_REQUEST`, and the student
- *    reads `/api/v1/ai/usage` → `200`. The route is healthy; only the caller's
- *    entitlement differs.
- * 7. `user_daily_activity` for the manager has **0** AI tokens for today: the
+ * 6. The teacher (personal `lite` inside the same `launch` org) is refused for
+ *    the same reason: `features/me` without `ai.chat`, and the same empty body
+ *    → `403`. The refusal is a plan boundary, not a manager-specific rule.
+ * 7. Positive control by plan, not persona: the student's
+ *    `profiles.personal_plan_key` is set to the paid `ace` plan through the
+ *    service-role client (`ai.chat` is `personalPortable`, so the key carries
+ *    inside the org even though `launch` does not grant it; D3). The same
+ *    launch-org student then has `ai.chat` in `features/me`, reads
+ *    `/api/v1/ai/usage` → `200` with `limit === 200000` (`plan` stays `launch`:
+ *    the effective primary is the org plan), and the same empty body reaches
+ *    the handler → `400 BAD_REQUEST`. The plan key is restored in a `finally`
+ *    block so a CI retry on the same tenant starts clean.
+ * 8. `user_daily_activity` for the manager has **0** AI tokens for today: the
  *    refused calls metered nothing, so the case protects the AI budget too.
  *
  * No model is called anywhere in this spec: the entitlement gate refuses the
- * manager before the body is parsed, and the controls stop at the handler's
- * `400`, so the case needs neither a real provider nor the fake inference server.
+ * manager and the teacher before the body is parsed, and the student control
+ * stops at the handler's `400`, so the case needs neither a real provider nor
+ * the fake inference server.
  *
  * Mutation (proves this spec can fail): delete the
  * `await requireEntitlement(ctx, 'ai.chat')` line from the chat route (a
@@ -52,7 +61,10 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * the manager reaches the handler — `POST /api/v1/ai/chat` with a correct body
  * answers `429` `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}` (their quota
  * is 0 on `launch`), and with an invalid body `400` `BAD_REQUEST`; both expected
- * 403, so the spec goes red.
+ * 403, so the spec goes red. Conversely, a build whose resolver returns no
+ * entitlements at all fails the student control in step 7 (`features/me`
+ * without `ai.chat`, `ai/usage` 403), so the case cannot pass on an empty
+ * resolution either.
  */
 
 const CASE = 'SEC-07';
@@ -80,7 +92,8 @@ interface CallResult {
 
 /**
  * The seeded fixture must be the shape this case needs: one organization, a
- * manager for the subject, and both allowed account types for the control.
+ * manager for the subject, and the teacher and student for the plan-boundary
+ * controls.
  */
 function loadCaseTenant(): QaTenant {
   const tenant = loadTenant(CASE);
@@ -132,7 +145,7 @@ async function postChat(page: Page, body: string): Promise<CallResult> {
 
 /**
  * The rejection: 403 with the `FORBIDDEN` code and an envelope that carries no
- * stream and no payload — a refused manager must not get a chat.
+ * stream and no payload — a refused caller must not get a chat.
  */
 function expectForbidden(result: CallResult, label: string): void {
   expect(result.status, `${label}: HTTP status → ${result.body}`).toBe(403);
@@ -155,6 +168,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
 
     const tenant = loadCaseTenant();
     const manager = tenantUser(tenant, 'manager');
+    const student = tenantUser(tenant, 'student');
     const conversationId = `sec-07-${tenant.runSuffix ?? tenant.key.slice(-8)}-manager`;
     const body = chatBody(conversationId);
     const db = createQaSupabase();
@@ -177,9 +191,10 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
 
     // --- Precondition: the entitlement, not the persona, is the reason ------
     // The tenant org is on `launch`, which carries no `ai.chat` (and
-    // `max_ai_tokens_per_day = 0`), so the resolver never makes the key
-    // effective: `features/me` does not list it. This is what makes the 403
-    // below the entitlement gate and not an account-type rule.
+    // `max_ai_tokens_per_day = 0`), and the manager's personal `solo` plan
+    // carries none either, so the resolver never makes the key effective:
+    // `features/me` does not list it. This is what makes the 403 below the
+    // entitlement gate and not an account-type rule.
     const featuresResponse = await page.request.get('/api/v1/features/me');
     expect(featuresResponse.status(), 'GET /api/v1/features/me as the manager').toBe(200);
     const featuresBody = await json<{ data: { features: string[] } }>(featuresResponse);
@@ -221,30 +236,78 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     expect(anonymous.status(), 'POST /api/v1/ai/chat without a session').toBe(401);
     expect(anonymous.headers()['x-error-code'], 'anonymous x-error-code').toBe('UNAUTHORIZED');
 
-    // --- Positive control: callers with the entitlement reach the handler ---
-    // Same route, same empty body: only the caller differs. A 400 from the
-    // handler (not a 403 from the gate) is the control that the route is
-    // healthy and the manager's rejection is the entitlement boundary.
+    // --- The refusal is not manager-specific: the teacher is refused too ----
+    // Same org (`launch`), personal plan `lite` — no `ai.chat` there either, so
+    // the same empty body gets the gate's 403, not the handler's 400.
     await switchUser(page, tenant, 'teacher');
-    expectReachedHandler(
+    const teacherFeatures = await page.request.get('/api/v1/features/me');
+    expect(teacherFeatures.status(), 'GET /api/v1/features/me as the teacher').toBe(200);
+    const teacherFeaturesBody = await json<{ data: { features: string[] } }>(teacherFeatures);
+    expect(
+      teacherFeaturesBody.data.features,
+      'the lite personal plan does not resolve ai.chat',
+    ).not.toContain('ai.chat');
+    expectForbidden(
       await postChat(page, JSON.stringify({})),
-      'POST /api/v1/ai/chat as the educator',
+      'POST /api/v1/ai/chat as the educator on lite',
     );
 
-    await switchUser(page, tenant, 'student');
-    expectReachedHandler(
-      await postChat(page, JSON.stringify({})),
-      'POST /api/v1/ai/chat as the student',
-    );
+    // --- Positive control by plan, not persona: the student on Ace ---------
+    // `ace` carries `ai.chat` and `max_ai_tokens_per_day = 200000`, and
+    // `ai.chat` is `personalPortable`, so the paid personal plan carries inside
+    // the `launch` org (D3) even though the org plan does not grant it. The
+    // update goes through the service-role client the spec already builds and
+    // is restored in `finally`, so a CI retry on the same tenant starts clean.
+    const originalPlanRow = await db
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', student.id)
+      .maybeSingle();
+    expect(originalPlanRow.error, 'reading the tenant student’s personal plan').toBeNull();
+    const originalPlan = asJson<string | null>(originalPlanRow.data?.personal_plan_key) ?? 'base';
 
-    const studentUsage = await page.request.get(AI_USAGE);
-    expect(studentUsage.status(), 'GET /api/v1/ai/usage as the student').toBe(200);
-    const studentUsageBody = await json<Envelope<AiUsage>>(studentUsage);
-    expect(studentUsageBody.success).toBe(true);
-    expect(studentUsageBody.data, 'the allowed audience gets a usage payload').toMatchObject({
-      current: expect.any(Number),
-      limit: expect.any(Number),
-    });
+    try {
+      const setup = await db
+        .from('profiles')
+        .update({ personal_plan_key: 'ace' })
+        .eq('id', student.id);
+      expect(setup.error, 'move the tenant student to the paid Ace plan').toBeNull();
+
+      await switchUser(page, tenant, 'student');
+
+      const studentFeatures = await page.request.get('/api/v1/features/me');
+      expect(studentFeatures.status(), 'GET /api/v1/features/me as the student on Ace').toBe(200);
+      const studentFeaturesBody = await json<{ data: { features: string[] } }>(studentFeatures);
+      expect(
+        studentFeaturesBody.data.features,
+        'the Ace personal plan resolves ai.chat inside the launch org',
+      ).toContain('ai.chat');
+
+      const studentUsage = await page.request.get(AI_USAGE);
+      expect(studentUsage.status(), 'GET /api/v1/ai/usage as the student on Ace').toBe(200);
+      const studentUsageBody = await json<Envelope<AiUsage>>(studentUsage);
+      expect(studentUsageBody.success).toBe(true);
+      // The effective primary is the org plan (`launch`); the limit is the
+      // user-scope max(org `launch` 0, personal `ace` 200000) = 200000.
+      expect(studentUsageBody.data, 'the paid personal plan lifts the AI budget').toMatchObject({
+        current: expect.any(Number),
+        limit: 200_000,
+        plan: 'launch',
+      });
+
+      // The entitlement gate let the student through: the handler's own
+      // validation answers. A valid body is never sent — no model may run here.
+      expectReachedHandler(
+        await postChat(page, JSON.stringify({})),
+        'POST /api/v1/ai/chat as the student on Ace',
+      );
+    } finally {
+      const restore = await db
+        .from('profiles')
+        .update({ personal_plan_key: originalPlan })
+        .eq('id', student.id);
+      expect(restore.error, 'restore the tenant student’s seeded personal plan').toBeNull();
+    }
 
     // --- The manager's refusal metered no AI tokens -----------------------
     // `limits.trackTokenUsage` meters into `user_daily_activity` for the calling user;
