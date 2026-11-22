@@ -267,21 +267,29 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fakeGateway.changePlan.mockResolvedValue(success({ status: 'applied' }));
-    fakeGateway.cancelAtPeriodEnd.mockResolvedValue(success({ cancelAtPeriodEnd: true }));
+    fakeGateway.cancelAtPeriodEnd.mockResolvedValue(
+      success({ cancelAtPeriodEnd: true, releasedSchedule: false }),
+    );
     fakeGateway.releaseScheduledPlan.mockResolvedValue(
       success({ released: true, currentPlanKey: 'hub' }),
     );
-    fakeGateway.reconcileCheckout.mockResolvedValue(success({ status: 'applied', planKey: 'hub' }));
+    fakeGateway.reconcileCheckout.mockResolvedValue(success({ activated: true }));
   });
 
   async function subscriptionState() {
     const { data } = await service
       .from('billing_subscriptions')
-      .select('plan_key, pending_plan_key')
+      .select('plan_key, pending_plan_key, cancel_at_period_end, status')
       .eq('organization_id', orgId)
       .single();
     const org = (await service.from('organizations').select('plan').eq('id', orgId).single()).data;
-    return { planKey: data?.plan_key, pendingPlanKey: data?.pending_plan_key, orgPlan: org?.plan };
+    return {
+      planKey: data?.plan_key,
+      pendingPlanKey: data?.pending_plan_key,
+      cancelAtPeriodEnd: data?.cancel_at_period_end,
+      status: data?.status,
+      orgPlan: org?.plan,
+    };
   }
 
   it('lets the Billing preset read the org subscription and advertises the actions', async () => {
@@ -357,31 +365,83 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
     expect(before.orgPlan).toBe(orgPlanBefore);
   });
 
-  it('gates cancel on the same key', async () => {
-    const refused = await call(post(member, { cancel: true }, orgId), cancelSubscription);
-    expect(refused.status).toBe(403);
+  it('does not act on the org subscription on cancel without org.billing.manage (personal owner answers 404)', async () => {
+    // Operator decision 2026-11-22 (ADR-0015 phase 5b): `ownerFromContext`
+    // returns the org owner only when the caller holds `org.billing.manage` in
+    // the active org. A member without the key is a personal owner, so cancel
+    // resolves their personal subscription, finds none and answers 404 — the
+    // org subscription is never touched (a 403 would mean the org owner was
+    // resolved and then refused, the 2b-4 model).
+    const before = await subscriptionState();
+    expect(before.status).toBe('active');
+    expect(before.cancelAtPeriodEnd).toBe(false);
+
+    const personal = await call(post(member, { cancel: true }, orgId), cancelSubscription);
+
+    expect(personal.status).toBe(404);
+    expect(fakeGateway.cancelAtPeriodEnd).not.toHaveBeenCalled();
+    expect(await subscriptionState()).toEqual(before);
 
     const allowed = await call(post(billing, { cancel: true }, orgId), cancelSubscription);
     expect(allowed.status).toBe(200);
     expect(fakeGateway.cancelAtPeriodEnd).toHaveBeenCalledTimes(1);
+    expect(firstCall(fakeGateway.cancelAtPeriodEnd)[0].owner).toEqual({
+      type: 'org',
+      orgId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
   });
 
-  it('gates the body-less release-scheduled-plan on the same key', async () => {
-    const refused = await call(postWithoutBody(member, orgId), releaseScheduledPlan);
-    expect(refused.status).toBe(403);
+  it('does not act on the org subscription on release-scheduled-plan without org.billing.manage (personal owner answers 404)', async () => {
+    // Same operator decision 2026-11-22 as the cancel case: without the key the
+    // caller is a personal owner, there is no personal subscription, and the
+    // release is a 404 before the gateway — the org row keeps its state.
+    const before = await subscriptionState();
+
+    const personal = await call(postWithoutBody(member, orgId), releaseScheduledPlan);
+
+    expect(personal.status).toBe(404);
+    expect(fakeGateway.releaseScheduledPlan).not.toHaveBeenCalled();
+    expect(await subscriptionState()).toEqual(before);
 
     const allowed = await call(postWithoutBody(billing, orgId), releaseScheduledPlan);
     expect(allowed.status).toBe(200);
     expect(fakeGateway.releaseScheduledPlan).toHaveBeenCalledTimes(1);
+    expect(firstCall(fakeGateway.releaseScheduledPlan)[0].owner).toEqual({
+      type: 'org',
+      orgId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
   });
 
-  it('gates reconcile on the same key', async () => {
-    const refused = await call(post(member, { sessionId: `cs_${tag}` }, orgId), reconcileCheckout);
-    expect(refused.status).toBe(403);
+  it('reconciles as the personal owner without org.billing.manage; the key holder reconciles as the org', async () => {
+    // Operator decision 2026-11-22 (ADR-0015 phase 5b): reconcile loads no
+    // subscription, so a caller without the key is not refused — they are a
+    // personal owner and the gateway sees `{ type: 'user' }`, never the org.
+    // The key holder's call carries the org owner.
+    const personal = await call(post(member, { sessionId: `cs_${tag}` }, orgId), reconcileCheckout);
+
+    expect(personal.status).toBe(200);
+    expect(fakeGateway.reconcileCheckout).toHaveBeenCalledTimes(1);
+    expect(firstCall(fakeGateway.reconcileCheckout)[0].owner).toEqual({
+      type: 'user',
+      userId: memberUser.id,
+      accountType: 'manager',
+    });
 
     const allowed = await call(post(billing, { sessionId: `cs_${tag}` }, orgId), reconcileCheckout);
+
     expect(allowed.status).toBe(200);
-    expect(fakeGateway.reconcileCheckout).toHaveBeenCalledTimes(1);
+    expect(fakeGateway.reconcileCheckout).toHaveBeenCalledTimes(2);
+    const [orgReconcile] = fakeGateway.reconcileCheckout.mock.calls[1] ?? [];
+    expect(orgReconcile?.owner).toEqual({
+      type: 'org',
+      orgId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
   });
 
   it('resolves checkout for a non-active target org from a Billing holder there (org.billing.manage in the target org, no active-org equality)', async () => {

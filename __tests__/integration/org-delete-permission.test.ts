@@ -193,11 +193,22 @@ describe('organization delete — org.admin at organization scope (phase 5b row 
     expect(await orgExists(target.org.id)).toBe(true);
   });
 
-  it('answers NOT_FOUND for a missing org after the authority checks', async () => {
+  it('answers NOT_FOUND for a missing org after the authority checks (race guard)', async () => {
     const ctx = await contextFor(admin, activeOrgId);
     const missingId = '00000000-0000-4000-8000-000000000000';
+    // The service refuses `ctx.activeOrgId !== id` before the existence check,
+    // so a real ctx can never reach NOT_FOUND for a missing id. In production
+    // the branch is a race guard: the org existed when `withAuth` built the
+    // ctx and vanished before the delete. Rebuild the synthetic ctx the
+    // controller would receive in that race — active org is the missing id and
+    // `org.admin` is held at organization scope.
+    const racedCtx: RequestContext = {
+      ...ctx,
+      activeOrgId: missingId,
+      permissionScopes: { ...ctx.permissionScopes, 'org.admin': 'organization' },
+    };
 
-    const result = await organizationController.delete(ctx, missingId);
+    const result = await organizationController.delete(racedCtx, missingId);
 
     expect(result).toMatchObject({ success: false, statusCode: 404, error: 'NOT_FOUND' });
   });
