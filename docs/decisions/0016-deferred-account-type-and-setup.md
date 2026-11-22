@@ -1,12 +1,46 @@
 # ADR-0016: Deferred account type and a single first-run setup flow
 
-**Status:** Proposed (draft for review)
+**Status:** Deferred (blocked on ADR-0015: the solo-teacher class/organization
+unit, see §0). Not ready to accept or implement.
 **Date:** 2026-11-22
 **Related:** [#1262](https://github.com/logyQT/studiq/issues/1262) (tracking), #311, #1192,
 [ADR-0015](0015-role-based-authority.md) (persona is not authorization),
 [ADR-0007](0007-manager-plan-model.md) (manager and org plans)
-**Verified against:** `c9c14138` on `main`. Every "today" claim in §3 was read from
-the named file; two claims in the first draft were wrong and are corrected there.
+**Verified against:** `0fb14a7e` (rebased; only doc commits on top). Every "today"
+claim in §3 was read from the named file; two claims in the first draft were wrong
+and are corrected there.
+
+---
+
+## 0. Deferred upstream: class vs organization
+
+This record is not ready to accept. The first screen it decides is a teacher
+choosing "I teach", and the two records disagree about what that creates:
+
+- [ADR-0015](0015-role-based-authority.md) §3 says **"a class is a group"** and
+  §3.2 says the creator of a group gets `teacher`.
+- The shipped setup posts `/api/v1/organization`, which creates an **organization
+  with a default group**, and the creator becomes **org Admin** plus group teacher
+  (`organization.service.ts`).
+
+Both can be true only if the solo space is an organization whose class is a group,
+but no record says so. The ADR cannot freeze the educator card, the role wording
+or the plan family before ADR-0015 does.
+
+**Required upstream decision (one sentence in ADR-0015 §3.2/§3.3):**
+
+1. **Solo space = organization with one class group** (current behaviour): the
+   card calls it "your space", the creator is Admin of the space and `teacher` of
+   the class; the free organization plan applies.
+2. **A class is only a group inside an existing organization**: then a teacher
+   with zero orgs needs a different first-run path, because there is no org to put
+   the group in.
+
+**Unblocks when:** ADR-0015 records one of the two, with a test that the creator's
+org role and group role match it. Until then **no slice in §8 starts**, and the
+educator/institution copy in §4.6 is marked pending rather than frozen. The rest
+of this record remains the plan; #1262's manager-as-secondary and self-serve
+decisions are unaffected.
 
 ---
 
@@ -63,10 +97,12 @@ the named file; two claims in the first draft were wrong and are corrected there
     failure events, with register/activation legs read from existing spans.
 16. **#1262's `/onboarding` name becomes `/setup`**, and ADR-0015's "set at
     signup" becomes "set during first-run setup", so the records do not disagree.
-17. **Progress is counted in remaining steps and starts already filled.** Sign-up
-    is the first completed step, so the persona screen shows a partly filled bar
-    and "2 more to go"; the flow never shows `X/Y`, a percentage, a step number
-    or depth/level language, and the last state is "You're all set".
+17. **Progress is counted in remaining steps, starts already filled, and is
+    recorded once.** Sign-up is the first completed step, so the persona screen
+    shows a partly filled bar; the flow never shows `X/Y`, a percentage, a step
+    number or depth/level language. `setup_completed_at` records completion, the
+    bar never appears on a returning visit, and the dashboard checklist is a
+    separate "Next steps" list without a count.
 
 ## 2. Why a single route
 
@@ -93,24 +129,24 @@ where a new step cannot forget the guard or the invalidation.
 
 ## 3. Verified current state
 
-| Area                | Today                                                                                                                                                                    | Consequence                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Sign-up             | `/register` requires `accountType`.                                                                                                                                      | Remove the field; the trigger must accept an untyped account.                             |
-| Invite registration | `/join?token=…` does **not** ask for the type; it hard-codes `accountType: 'student'`.                                                                                   | Every invited co-teacher/manager is mistyped today. The invitation must carry the type.   |
-| Invitations         | Rows carry `target_org_role_id` / `target_group_role`, no account type.                                                                                                  | Add `target_account_type`; role does not map 1:1 to persona.                              |
-| Accept API          | `acceptInvitation` has no persona gate; a class invite refuses a user who is not already an org member.                                                                  | One join component for all; a class invite is not a signup path.                          |
-| Create API          | `POST /api/v1/organization` is `withAuth({ allowedAccountTypes: [EDUCATOR, MANAGER] })`.                                                                                 | A persona-free `/setup` UI cannot let a student create an org.                            |
-| Proxy               | `resolveAccountType()` coerces a missing claim to `student`; an untyped session is sent from `/login` to `/app` and passes `/app`'s rule.                                | The gate must be null-aware and run before the account-type redirect.                     |
-| `withAuth()`        | `401` without a valid claim.                                                                                                                                             | Keep unchanged; it is the real API gate.                                                  |
-| Token               | Every claim read is `supabase.auth.getUser()`; there is **no** browser Supabase client. RLS still reads `auth.jwt()`.                                                    | Refresh the session server-side and set cookies; `refresh()` alone is not enough for RLS. |
-| Type trigger        | `handle_new_user()` prefers `app_metadata`, falls back to client-supplied `user_metadata`, raises when missing; `profiles.account_type` is `NOT NULL DEFAULT 'student'`. | Remove the fallback, allow untyped, drop the default.                                     |
-| Plan trigger        | Derives `base` / `lite` / `solo`; `personal_plan_key` is `NOT NULL DEFAULT 'free'`; `supabase/seeds/00_plans.sql:9` re-sets the default to `'base'` on every reset.      | Null plan + drop the default in the migration **and** the seed.                           |
-| Types               | `packages/server/src/types/database.ts` types `account_type` non-null.                                                                                                   | Regenerate in the schema slice, or null handling reads as dead code.                      |
-| Setup routes        | `/setup` chooser, `/setup/join`, `/setup/classroom` (educator); `/setup/org` (manager); `/app/join` (student).                                                           | All become `/setup`.                                                                      |
-| Staff gating        | `/edu` redirects to `/setup`; `/manage/layout.tsx:14` redirects to `/setup/org`, which this ADR deletes.                                                                 | Migrate the manager redirect; the educator one survives.                                  |
-| Guidance            | Two checklist components; no manager checklist; no tour dependency.                                                                                                      | Merge; add the manager descriptors and the import step.                                   |
-| API inventory       | A handler without `withAuth()` counts as public, by substring match.                                                                                                     | Add a `SESSION_ONLY_API` classification; the 401 belongs in an integration test.          |
-| QA                  | ONB-01…08 and ONB-10 pin the old paths or the registration type field; AUT-01/02/15…18 assert `/setup*` routing, several as a wire-level **307**.                        | Rewrite them; the 307 assertion becomes a client redirect.                                |
+| Area                | Today                                                                                                                                                                    | Consequence                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Sign-up             | `/register` requires `accountType`.                                                                                                                                      | Remove the field; the trigger must accept an untyped account.                           |
+| Invite registration | `/join?token=…` does **not** ask for the type; it hard-codes `accountType: 'student'`.                                                                                   | Every invited co-teacher/manager is mistyped today. The invitation must carry the type. |
+| Invitations         | Rows carry `target_org_role_id` / `target_group_role`, no account type.                                                                                                  | Add `target_account_type`; role does not map 1:1 to persona.                            |
+| Accept API          | `acceptInvitation` has no persona gate; a class invite refuses a user who is not already an org member.                                                                  | One join component for all; a class invite is not a signup path.                        |
+| Create API          | `POST /api/v1/organization` is `withAuth({ allowedAccountTypes: [EDUCATOR, MANAGER] })`.                                                                                 | A persona-free `/setup` UI cannot let a student create an org.                          |
+| Proxy               | `resolveAccountType()` coerces a missing claim to `student`; an untyped session is sent from `/login` to `/app` and passes `/app`'s rule.                                | The gate must be null-aware and run before the account-type redirect.                   |
+| `withAuth()`        | `401` without a valid claim.                                                                                                                                             | Keep unchanged; it is the real API gate.                                                |
+| Token               | In app code, every claim read is `supabase.auth.getUser()` and there is **no** browser Supabase client; RLS reads `auth.jwt()` in 10 policy sites.                       | Refresh the session server-side and set cookies; gate on the token claim, not the row.  |
+| Type trigger        | `handle_new_user()` prefers `app_metadata`, falls back to client-supplied `user_metadata`, raises when missing; `profiles.account_type` is `NOT NULL DEFAULT 'student'`. | Remove the fallback, allow untyped, drop the default.                                   |
+| Plan trigger        | Derives `base` / `lite` / `solo`; `personal_plan_key` is `NOT NULL DEFAULT 'free'`; `supabase/seeds/00_plans.sql:9` re-sets the default to `'base'` on every reset.      | Null plan + drop the default in the migration **and** the seed.                         |
+| Types               | `packages/server/src/types/database.ts` types `account_type` non-null.                                                                                                   | Regenerate in the schema slice, or null handling reads as dead code.                    |
+| Setup routes        | `/setup` chooser, `/setup/join`, `/setup/classroom` (educator); `/setup/org` (manager); `/app/join` (student).                                                           | All become `/setup`.                                                                    |
+| Staff gating        | `/edu` redirects to `/setup`; `/manage/layout.tsx:14` redirects to `/setup/org`, which this ADR deletes.                                                                 | Migrate the manager redirect; the educator one survives.                                |
+| Guidance            | Two checklist components; no manager checklist; no tour dependency.                                                                                                      | Merge; add the manager descriptors and the import step.                                 |
+| API inventory       | A handler without `withAuth()` counts as public, by substring match.                                                                                                     | Add a `SESSION_ONLY_API` classification; the 401 belongs in an integration test.        |
+| QA                  | ONB-01…08 and ONB-10 pin the old paths; AUT-04/05/07/11 drive the register selector; AUT-01/02/15…18 assert `/setup*` routing, several as a wire-level **307**.          | Rewrite them in the slice that changes them; the 307 becomes a client redirect.         |
 
 Two first-draft claims are withdrawn: the "27 leaf combinations" were a
 hypothetical no user could produce, and "personal workspace provisioning" does not
@@ -125,7 +161,12 @@ type SetupState =
   | { step: 'loading' }
   | { step: 'error'; reason: 'orgs' }
   | { step: 'type' }
-  | { step: 'action'; persona: AccountType | null; actions: SetupAction[] }
+  | {
+      step: 'action';
+      persona: AccountType | null;
+      actions: SetupAction[];
+      pendingAction?: 'create' | 'join';
+    }
   | { step: 'done'; destination: '/app' | '/edu' | '/manage' };
 
 type SetupAction = 'join' | 'create' | 'skip';
@@ -138,6 +179,9 @@ resolveSetupState({
   isError,
   intent,
   token,
+  pendingAction,
+  setupCompletedAt,
+  origin, // 'first-run' | 'returning' | 'invite' | 'intent'
 });
 ```
 
@@ -145,9 +189,11 @@ resolveSetupState({
 destination. It keeps the settled rule from #305 (`!isPending && !isFetching`),
 adds `isError` (a failed `/me/orgs` is **not** "no organizations"), and accepts
 `intent: 'join'` plus a pre-filled `token` so a member can join another org.
-`resolveSetupProgress(state)` lives beside it and turns the same state into the
-remaining-step count (§4.6, "Progress and tone"), so the bar is not a second
-state machine.
+`setupCompletedAt` makes a completed first run `done` regardless of the org list,
+and `origin` distinguishes a gate-driven first run from an opt-in visit.
+`resolveSetupProgress(state)` lives beside it and returns the remaining-step count
+only when `origin === 'first-run'` and `setupCompletedAt` is null (§4.6, "Progress
+and tone"), so the bar is not a second state machine.
 
 | Persona  | Resolves to                                                                   | Forced into `/setup`?       |
 | -------- | ----------------------------------------------------------------------------- | --------------------------- |
@@ -198,6 +244,12 @@ Order matters; the gate runs before every account-type redirect.
 4. **Sign-out from the shell.** `/setup` is the only _product_ page an untyped
    user can reach (`/join` and public pages stay open), so the shell header
    renders a sign-out control (today only the dashboard user menu has one).
+5. **Accepting an invitation is session-only, not type-gated.**
+   `POST /api/v1/organization/invites/accept` changes from `withAuth` to a
+   `withSession` guard (a user, no claim). The service needs only `userId` and
+   performs no permission check, so the widening is permission-neutral. The API
+   inventory learns `withSession` as a gated factory (not `PUBLIC_API`), and an
+   untyped caller is typed from the invitation in the same write (§4.5).
 
 ### 4.3 Writing the persona and refreshing the session
 
@@ -211,12 +263,19 @@ no `account_type` requirement), body `{ accountType, mode }`:
   seat is assigned under the current persona (its `audience` would stop
   matching); otherwise it moves the account to the new family's free plan.
 
-One `SECURITY DEFINER` function does the write: `auth.uid()` only (no user-id
-parameter), `SET search_path = ''`, `REVOKE ALL FROM PUBLIC, anon`,
-`GRANT EXECUTE TO authenticated`, enum validation, plan key validated against
-`subscription_plans(scope = 'personal', audience = chosen)`. It updates
-`profiles.account_type`, `profiles.personal_plan_key` and
+Two `SECURITY DEFINER` wrappers share one private `_apply_account_type(user_id,
+type, mode)`:
+
+- `set_account_type_self(type, mode)` uses `auth.uid()` only (no user-id
+  parameter), is granted to `authenticated`, and serves the endpoint.
+- `set_account_type_for_user(user_id, type)` is granted only to `service_role`
+  and serves activation, where `auth.uid()` is null.
+
+Both set `search_path = ''`, revoke `PUBLIC`/`anon`, validate the enum and the
+plan key against `subscription_plans(scope = 'personal', audience = chosen)`, and
+update `profiles.account_type`, `profiles.personal_plan_key` and
 `auth.users.raw_app_meta_data` together, so the row and the claim cannot diverge.
+One integration test asserts both wrappers produce the same three values.
 
 The endpoint then **refreshes the session server-side** (GoTrue refresh on the
 request client, new cookies written through `setAll`) and returns. The page calls
@@ -225,16 +284,31 @@ RLS see the new claim; a `refreshSession()` call from the page is impossible
 because there is no browser client. If the refresh fails, the endpoint answers
 `503`; the shell shows retry + sign-out and does **not** advance.
 
+Two paths still mint a token before the write, and both must close it:
+
+- **Activation** types the account after `verifyOtp` minted the token. The callback
+  refreshes the session cookies before returning its redirect (it already owns a
+  redirect response), so the first post-activation request carries the claim RLS
+  reads.
+- **`/auth/me`** reports the row from `getUser()`, which is fresh even when the
+  cookie is stale. It returns the verified token claim beside the user
+  (`claimedAccountType`); the shell gates on the claim, and a row/claim mismatch
+  shows a session-refresh state instead of advancing. The row is never treated as
+  proof of the claim.
+
 Because the handler cannot call `withAuth()`,
 `__tests__/unit/proxy/api-auth-inventory.test.ts` needs a `SESSION_ONLY_API`
 category. The unit test can only prove the classification (it is a source scan);
 the "unauthenticated caller gets 401" assertion belongs in
 `__tests__/integration/`. Putting the route in `PUBLIC_API` would be a lie. The
-same test already treats a handler with a public `?token=` branch as fully gated,
-so classify per exported handler (or record the exception) while adding the
-category, or the new endpoints are covered by a substring accident.
+same test already treats a handler with a public `?token=` branch as fully gated
+because it classifies per exported handler. Add an explicit `PUBLIC_BRANCHES`
+declaration (or require the gate to be the returned expression) while adding the
+category, or the public branch stays a blind spot and an undeclared branch cannot
+be reported.
 
-The setup-events route from §4.11 uses the same guard and the same category.
+The setup-events route from §4.11 and `POST /api/v1/setup/complete` use the same
+guard and the same category.
 
 ### 4.4 The held plan
 
@@ -244,6 +318,10 @@ While `account_type IS NULL`:
 - `profiles.personal_plan_key` becomes nullable and loses its default — **in the
   migration and in `supabase/seeds/00_plans.sql`**, which currently re-sets
   `'base'` on every reset. The effective default today is `'base'`, not `'free'`.
+- `profiles.setup_completed_at` is added (nullable). It is written once when the
+  done screen is reached (a deliberate skip counts); it is a completion fact, not
+  a wizard index. It is what stops the bar reappearing on a returning visit, and
+  it never changes org membership or plan state.
 - No `pending` plan row: `subscription_plans.scope` is `NOT NULL` and a personal
   plan needs a non-null `audience`, so a held key forces a fake catalogue entry
   that every plan read, checkout rule and pricing query must exclude. The
@@ -257,8 +335,9 @@ While `account_type IS NULL`:
   `profiles` inserts in `supabase/seeds/01_seed.sql` omit `account_type` and only
   work today because the trigger creates the row first. Once the default is gone,
   audit those inserts so no fixture becomes untyped.
-- `getMyPlan` / `getPersonalPlan` already answer `NOT_FOUND`; keep that, and fix
-  `plan.primary`'s fallback to `'free'`, a key the seeded catalogue does not have.
+- `getMyPlan` / `getPersonalPlan` already answer `NOT_FOUND`; keep that. Make
+  `plan.primary` `string | null` (its only reader is `limits.ts`) and drop the
+  `'free'` fallback, a key the seeded catalogue does not have.
 - Regenerate `packages/server/src/types/database.ts` in the same slice, or the
   null branches are typed as unreachable.
 
@@ -286,8 +365,10 @@ While `account_type IS NULL`:
   screen keeps the token and the failure reason; a successful retry types it.
 - **A class/group invitation is not a signup path**: the RPC refuses a class
   invite unless the user is already an org member. A signed-out visitor with a
-  class token is sent to sign-in, not registration. Only org invitations create
-  an account.
+  class token is sent to sign-in, not registration — including an expired or
+  invalid class token, whose row still carries `group_id`, so a failed preview is
+  not treated as a generic registration link. Only org invitations create an
+  account.
 - **An existing account** accepting an invitation keeps its persona; only the
   membership and role are granted. A mismatch is ignored, not refused.
 - **Backfill**: pending rows have no intent. Derive only where unambiguous
@@ -317,28 +398,33 @@ While `account_type IS NULL`:
 | manager  | `/setup` → accept → `/manage` | organization copy → `/manage`              | not offered |
 
 **The manager is not a peer card.** The screen shows two cards (student,
-educator) plus a secondary "I run an institution" link to the create step. Org
-creation is self-serve; the ADR records that `/contact` is the `campus` plan's CTA
-on pricing/billing (`pricing/_components/plan-row.tsx`), not an onboarding gate.
-Billing already supports org-scoped subscriptions with a `purchaser_user_id`, so
-an institution buys one plan per org or a campus contract; a multi-org purchasing
-screen is a separate billing decision.
+educator) plus a secondary "I run an institution" link. The link is a transition,
+not a route: it writes `manager` through the same endpoint and renders the action
+step with `create` preselected (`pendingAction: 'create'` on the resolver), so it
+cannot 401 on an untyped caller or bounce back to the type screen. Org creation is
+self-serve; `/contact` is the `campus` plan's CTA on pricing/billing
+(`pricing/_components/plan-row.tsx`), not an onboarding gate. Billing already
+supports org-scoped subscriptions with a `purchaser_user_id`, so an institution
+buys one plan per org or a campus contract; a multi-org purchasing screen is a
+separate billing decision.
 
 Card content is part of the decision, not the implementation. Required content:
 
-| Choice           | Promise                | Consequence shown                                                                  | Destination |
-| ---------------- | ---------------------- | ---------------------------------------------------------------------------------- | ----------- |
-| Student card     | "I'm here to learn"    | personal space; joining a class is optional                                        | `/app`      |
-| Educator card    | "I teach"              | creates an organization, you become Admin on the free plan, with seat/group limits | `/edu`      |
-| Institution link | "I run an institution" | creates an organization, you become Admin; plans are bought per organization       | `/manage`   |
+| Choice           | Promise (Polish first)              | Consequence shown                                                                   | Destination |
+| ---------------- | ----------------------------------- | ----------------------------------------------------------------------------------- | ----------- |
+| Student card     | "Uczę się" / "I learn"              | personal space; joining a class is optional                                         | `/app`      |
+| Educator card    | "Uczę" / "I teach"                  | your own space with your first class inside (the space/role sentence is pending §0) | `/edu`      |
+| Institution link | "Prowadzę instytucję" / "I run one" | your own space; plans are bought per space                                          | `/manage`   |
 
 Every card also says the choice is changeable later (while no paid personal plan
-is active, per §4.12), and the screen has no preselection. The
-educator/institution wording is the one place a first-run user could otherwise be
-misled by friendly copy.
+is active, per §4.12), and the screen has no preselection. **Do not freeze
+"organization", "Admin", or the plan family in the educator/institution copy
+until §0 closes.** The card must not teach a unit the role model has not settled.
 
 `PRODUCT.md`'s `/contact` line is reconciled as the `campus` plan's CTA, not as a
-manager signup path; that sentence is updated with this change.
+manager signup path; that sentence is updated with this change. The organization
+band's pricing CTA moves from `/contact` to `/register` in the same change, so the
+shopping path matches self-serve instead of ending in a mailto.
 
 What a good first session must achieve, and what the checklist is measured
 against: a student sees their first deck and first quiz; an educator has a class
@@ -351,29 +437,39 @@ teacher. That is the outcome the copy and the checklist steps serve.
   arrival) → persona → set up your space. The total is 3, so the denominator
   never changes when the persona or the action changes, and the bar cannot jump
   backwards because the path did.
-- **The bar starts partly filled.** At the persona screen it is one third full
-  and the text is "Your account is ready — 2 more to go." At the action screen:
-  "Almost there — 1 more to go." At completion: "You're all set."
-- **Never show `X/Y`, a percentage, "step X of Y", "level", "depth" or "stage".**
-  The bar is visual; for assistive tech, `role="progressbar"` carries
-  `aria-valuemin`/`max`/`now` but `aria-valuetext` is the same remaining-step
-  sentence, so the fraction is never announced.
-- Counts come from `resolveSetupProgress(state)`, derived from the same resolver,
-  not from a second wizard index. An error or retry keeps the last completed
-  count; the bar never resets to empty.
-- **No bar for a member using `?intent=join`, an untyped caller carrying an
-  invitation, or an invited account that skipped setup** — those are not first
-  runs. A failed type write still shows step 2, not step 1.
-- No guilt state: an optional skip is a normal choice, not an incomplete step in
-  red. Polish copy is authored first in the messages; the English above is the
-  review version.
+- **Completion is recorded once** in `profiles.setup_completed_at` when the done
+  screen is reached; a deliberate skip counts. The bar is shown only while that
+  value is null, so a returning or opt-in visit never sees it regress. It is a
+  completion fact, not a wizard index; the current step is still derived.
+- **The bar starts partly filled.** At the persona screen it is one third full.
+  Copy, Polish first, no dashes and no hedging:
 
-| State     | Visible copy                           | Bar           | Never                 |
-| --------- | -------------------------------------- | ------------- | --------------------- |
-| persona   | "Your account is ready — 2 more to go" | one third     | "1/3", "Step 1 of 3"  |
-| action    | "Almost there — 1 more to go"          | two thirds    | "2/3", "66%"          |
-| done      | "You're all set"                       | full          | "3/3", "100%"         |
-| checklist | "N more to go"                         | its own total | "N/M", any percentage |
+  | State   | Polish                                      | English                          |
+  | ------- | ------------------------------------------- | -------------------------------- |
+  | persona | "Konto utworzone. Zostały 2 kroki."         | "Account created. 2 steps left." |
+  | action  | "Ostatni krok: przygotuj swoją przestrzeń." | "Last step: set up your space."  |
+  | done    | "Gotowe. Miłej pracy."                      | "Done. You're set."              |
+
+- **Never show `X/Y`, a percentage, "step X of Y", "level", "depth" or "stage".**
+  The bar is decorative (`aria-hidden`); the sentence above is a `role="status"`
+  live region, so no fraction exists in the accessibility tree and a step change
+  is announced. A bare Radix progress bar without a name would fail axe.
+- Step 3 completes when the **workspace exists** (membership) or the student
+  deliberately skips. The first-session outcomes (first deck and quiz, class plus
+  imported material, org plus invited teacher) are the **separate "Next steps"
+  checklist**, not this meter: they are checked off, have no count, and do not
+  restart a second progress bar.
+- Counts come from `resolveSetupProgress(state)`, derived from the same resolver.
+  `SetupState` carries `origin` (`first-run` | `returning` | `invite` | `intent`),
+  so the function returns null unless the origin is `first-run` and the marker is
+  null; it also returns null for `loading`/`error`, and the component keeps its
+  last rendered count rather than resetting.
+- **No bar for a member using `?intent=join`, an untyped caller carrying an
+  invitation, any invited account, or any account with `setup_completed_at` set.**
+  A failed type write keeps the persona step at one third; it does not advance to
+  a phantom step 2, and a retry does not reset.
+- No guilt state: an optional skip is a normal choice, not an incomplete step in
+  red.
 
 ### 4.7 Mutation and invalidation ownership
 
@@ -390,6 +486,9 @@ invalidates:
 3. `createOrg` → `POST /organization` (sets `active_org_id`) → same invalidations
    → same destination rule. The educator body then posts `/invites/bulk` if rows
    were added.
+4. `completeSetup` → `POST /api/v1/setup/complete` (session guard, idempotent)
+   writes `profiles.setup_completed_at` on the done transition (a deliberate skip
+   counts) and emits `setup.completed` → the bar disappears for every later visit.
 
 The destination is computed from data, never from `orgs.length` in the closure —
 that is the #305/#310 shape. Navigation is `router.replace`, so `/setup` never
@@ -410,22 +509,27 @@ follow-up, not invented here.
 | create                          | idle / submitting / failed / done                                               | keep the org name on failure; disable in flight                           |
 | type write                      | submitting / 409 (other tab) / 503 (refresh failed)                             | 409 re-reads state; 503 shows retry + sign-out                            |
 | acceptance failed at activation | token + reason                                                                  | `/setup?intent=join&token=…` with the reason and retry                    |
+| invite for another e-mail       | preview shows the invited address                                               | sign out / switch account from the shell, then reopen the link            |
+
+A failed claim still has the token: it remains in `user_metadata.invite_token` and
+`/auth/me` returns it, and the callback rewrites `next` to
+`/setup?intent=join` so the shell can show the failure and retry.
 
 ### 4.9 What is deleted, and what moves
 
-| Removed                                                                                       | Replaced by                                                                                              |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `/setup` chooser                                                                              | `/setup` action step                                                                                     |
-| `/setup/join`, `/setup/classroom`, `/setup/org`                                               | `/setup` join / create bodies                                                                            |
-| `/app/join`                                                                                   | `/setup?intent=join` (org switcher links there)                                                          |
-| `SetupHeader` and per-path back rules                                                         | shell header with sign-out and one back rule                                                             |
-| `SetupPage`, `Onboarding` and `AppJoinPage` i18n namespaces                                   | one `Setup` namespace                                                                                    |
-| breadcrumbs `/setup/join`, `/setup/classroom`, `/app/join`                                    | one `/setup` entry                                                                                       |
-| `manage/layout.tsx` redirect to `/setup/org`                                                  | `/setup` (otherwise every manager 404s)                                                                  |
-| `robots.ts` entry for `/setup/`                                                               | `/setup`                                                                                                 |
-| `/register` account-type `Select`                                                             | removed; the type is chosen in `/setup`                                                                  |
-| `ONB-01…08, ONB-10`, `AUT-01/02/15…18`, the route-rule audit test, the ONB/AUT case documents | same cases through `/setup`; ONB-08 loses the type selection; AUT asserts the client redirect, not a 307 |
-| `__tests__/e2e/register.spec.ts`, `join-invite.spec.ts`                                       | registration without the type field; invite handoff                                                      |
+| Removed                                                                                                                                                           | Replaced by                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/setup` chooser                                                                                                                                                  | `/setup` action step                                                                                                                                   |
+| `/setup/join`, `/setup/classroom`, `/setup/org`                                                                                                                   | `/setup` join / create bodies                                                                                                                          |
+| `/app/join`                                                                                                                                                       | `/setup?intent=join` (org switcher links there)                                                                                                        |
+| `SetupHeader` and per-path back rules                                                                                                                             | shell header with sign-out and one back rule                                                                                                           |
+| `SetupPage`, `Onboarding` and `AppJoinPage` i18n namespaces                                                                                                       | one `Setup` namespace                                                                                                                                  |
+| breadcrumbs `/setup/join`, `/setup/classroom`, `/app/join`                                                                                                        | one `/setup` entry                                                                                                                                     |
+| `manage/layout.tsx` redirect to `/setup/org`                                                                                                                      | `/setup` (otherwise every manager 404s)                                                                                                                |
+| `robots.ts` entry for `/setup/`                                                                                                                                   | `/setup`                                                                                                                                               |
+| `/register` account-type `Select`                                                                                                                                 | removed; the type is chosen in `/setup`                                                                                                                |
+| `ONB-01…07, ONB-10` path/copy, `ONB-08` activation typing, `AUT-01/02/04/05/07/11/15…18` (+ `AUT-02-temp`), the route-rule audit test, the ONB/AUT case documents | ONB-01…07/10 move through `/setup`; ONB-08 keeps `/join` and loses nothing; selector specs move to slice 5; AUT asserts the client redirect, not a 307 |
+| `__tests__/e2e/register.spec.ts`, `join-invite.spec.ts`                                                                                                           | registration without the type field; invite handoff                                                                                                    |
 
 `/join?token=…` stays for signed-out invitation links. Pre-market rules apply:
 routes are deleted, not redirected; every internal link moves in the same release
@@ -437,9 +541,14 @@ route, so the `manage/layout.tsx` class of dead link cannot recur.
 `getOnboardingSteps({ persona, membership })` returns descriptors (label key,
 href, completion predicate). One component renders them on `/app`, `/edu` and
 `/manage` (the manager currently has none), replacing both existing checklists.
+The manager descriptors are: invite a teacher, create a group, set branding;
+educator: create a class, import material, invite students; student: create a
+deck, take a quiz, join a class.
 Completion is derived from existing endpoints; no new table, no new API. The
-checklist uses the same remaining-step wording ("2 more to go"), with its own
-total and no fractions.
+checklist is a **separate "Next steps" list**, not a second meter: checkmarks, no
+count, no percentage, and it never says "more to go" after the setup bar has
+completed. The setup meter ends when the workspace exists or the student skips;
+the first-value outcome is this list's job.
 
 The student and educator lists gain a **"bring your material"** step (import,
 PDF, or AI generation), which is the product's wedge and the reason the visitor
@@ -456,13 +565,17 @@ navigation. If one is wanted, it gets its own ADR.
 One event per transition, through `log()` (Loki), with bounded labels and
 `user.id` only in log bodies:
 
-- `setup.started`, `setup.type_selected` (persona), `setup.type_completed`
-  (activation), `setup.action_selected` (join/create/skip),
-  `setup.join_completed`, `setup.create_completed`,
+- **Activation is e-mail confirmation**, once, at the callback. The persona
+  event is `setup.persona_completed`, not "activation".
+- `setup.started`, `setup.persona_selected` (persona), `setup.persona_completed`,
+  `setup.action_selected` (join/create/skip), `setup.join_completed`,
+  `setup.create_completed`, `setup.completed` (done screen; skip counts),
   `setup.join_failed` / `setup.create_failed` (bounded reason),
   `setup.checklist_completed` / `setup.checklist_dismissed`.
-- `setup.abandoned` is derived (started, no completion within 30 minutes), not
-  emitted from a browser beacon.
+- **Abandoned** = `setup.started` at the first `/setup` render with no
+  `setup.completed` within 30 minutes. It is derived, not a browser beacon.
+- First value is measured separately and read from the existing endpoints or
+  events: first deck created, first material imported, first teacher invited.
 - The register → activation legs are read from existing Tempo spans for
   `/api/v1/auth/register` and `/api/v1/auth/callback`; setup steps are Loki
   events. A durable funnel table or vendor is a separate decision.
@@ -480,9 +593,10 @@ numbers for the whole path, and an unmeasurable flow is not shippable.
 ### 4.12 Changing the persona later
 
 The surface is the account page (`/app/account`, `/edu/account` or
-`/manage/account`), not `/manage/settings` (org-scoped). The change is refused
-(`409`) when a paid personal plan exists or a seat is assigned under the current
-persona, whose `audience` would stop matching. The profile moves to the new
+`/manage/account`), not `/manage/settings` (org-scoped). Those routes already
+exist; slice 10 adds the persona-change entry point to each, not a new route rule.
+The change is refused (`409`) when a paid personal plan exists or a seat is
+assigned under the current persona, whose `audience` would stop matching. The profile moves to the new
 family's free plan (`base` / `lite` / `solo`); org memberships and roles do not
 change. This amends ADR-0015 §3.2's "set at signup" (line 137) to "set during
 first-run setup".
@@ -552,22 +666,23 @@ and §4.10 (shared descriptors).
 
 ## 8. Sequencing
 
-Build behind the old routes, then flip, then delete. Two PRs are unavoidable at
-steps 7–8 (links/i18n, then deletions plus test rewrites); take
-`size:exception` or split links from deletions.
+Build behind the old routes, then flip, then delete. Links/i18n (step 7) and
+deletions (step 8) are already separate PRs; step 8 takes `size:exception`,
+because the four deleted routes are roughly 800 lines before the i18n and test
+rewrites.
 
-| #   | Slice                                                                                                                                                                                                       | Decision          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| 1   | Schema + regenerated `database.ts` + seeds: nullable columns, both defaults dropped, trigger untyped/invalid split                                                                                          | §4.4              |
-| 2   | Session-only guard, `SECURITY DEFINER` function, endpoint with server-side refresh, integration 401                                                                                                         | §4.2, §4.3        |
-| 3   | `resolveSetupState` + `resolveSetupProgress` + unit matrix (pure, no UI)                                                                                                                                    | §4.1, §4.6        |
-| 4   | New shell at `/setup` (replaces the chooser; old subroutes stay live until step 8); `useSetupFlow`; widen `/setup` to `requireAuth`, keeping `/setup/org` ahead until step 8; events endpoint + step events | §4.6, §4.7, §4.11 |
-| 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed, e2e register/join specs updated                                                                    | §4.5              |
-| 6   | Flip: null-aware proxy gate, `/login` `/register` redirect, sign-out in the shell                                                                                                                           | §4.2              |
-| 7   | Migrate every link, breadcrumb, robots and i18n namespace; switch the org switcher to `?intent=join`                                                                                                        | §4.9              |
-| 8   | Delete the four routes and `SetupHeader`; rewrite ONB/AUT specs and case docs                                                                                                                               | §4.9              |
-| 9   | Merge checklists (with the import step and manager descriptors)                                                                                                                                             | §4.10             |
-| 10  | Funnel read, settings persona change, docs: #1262 wording, PRODUCT.md `/contact`, ADR-0015 amendment                                                                                                        | §4.11, §4.12      |
+| #   | Slice                                                                                                                                                                                                                                                                                | Decision          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| 1   | Schema + regenerated `database.ts` + seeds: nullable columns, `setup_completed_at`, both defaults dropped, trigger untyped/invalid split                                                                                                                                             | §4.4              |
+| 2   | `withSession` accept guard, two `SECURITY DEFINER` wrappers, endpoint with server-side refresh, integration 401                                                                                                                                                                      | §4.2, §4.3        |
+| 3   | `resolveSetupState` + `resolveSetupProgress` + unit matrix (pure, no UI)                                                                                                                                                                                                             | §4.1, §4.6        |
+| 4   | New shell at `/setup` (replaces the chooser; old subroutes stay live until step 8); `useSetupFlow`; widen `/setup` to `requireAuth`, keeping `/setup/org` ahead and explicit educator-only rules on `/setup/join` and `/setup/classroom` until step 8; events endpoint + step events | §4.6, §4.7, §4.11 |
+| 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed, e2e register/join specs updated                                                                                                                                             | §4.5              |
+| 6   | Flip: null-aware proxy gate, `/auth/me` `claimedAccountType`, callback refresh, `/login` `/register` redirect, sign-out in the shell                                                                                                                                                 | §4.2, §4.3        |
+| 7   | Migrate every link, breadcrumb, robots and i18n namespace; switch the org switcher to `?intent=join`                                                                                                                                                                                 | §4.9              |
+| 8   | Delete the four routes and `SetupHeader`; rewrite ONB/AUT specs and case docs                                                                                                                                                                                                        | §4.9              |
+| 9   | Merge checklists (with the import step and manager descriptors)                                                                                                                                                                                                                      | §4.10             |
+| 10  | Funnel read; persona-change entry on the three account pages; docs: #1262 wording, PRODUCT.md `/contact` + org CTA, ADR-0015 amendment                                                                                                                                               | §4.11, §4.12      |
 
 ## 9. Tests the ADR requires
 
@@ -592,9 +707,16 @@ steps 7–8 (links/i18n, then deletions plus test rewrites); take
 11. Events: the session-only route rejects no session, an unknown event is
     `422`, and no log record contains the invite token.
 12. Progress: at the persona step `completed = 1` (sign-up counted) and at the
-    action step `completed = 2`; the visible and `aria-valuetext` copy is
-    remaining-based and contains no `X/Y`, `%`, or "step X of Y"; a retry keeps
-    the last count; `?intent=join` returns no progress.
+    action step `completed = 2`; a failed type write stays at 1 and does not
+    become a phantom step 2; `origin !== 'first-run'` and a set
+    `setup_completed_at` return no progress; the visible and status copy contains
+    no `X/Y`, `%`, or "step X of Y"; the checklist has no count.
+13. Accept guard: no session is `401`; an untyped accept is allowed and writes
+    the persona from the row; a typed accept still works.
+14. Claim/row: after the type write and after activation typing, a typed request
+    using the same cookie jar passes an RLS-backed read; `/auth/me` reports
+    `claimedAccountType`; a stale cookie produces the refresh state, not a false
+    staff read.
 
 Each assertion names the production line it kills and is proven with
 `bun run mutate`; a filter that matches nothing is `ERROR`, not a pass.
