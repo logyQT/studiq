@@ -28,6 +28,10 @@ POST /api/v1/ai/chat
 
 Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispatches between them.
 
+> **Enforcement (ADR-0015 §7):** `POST /api/v1/ai/chat` and `GET /api/v1/ai/usage`
+> require the `ai.chat` entitlement — `requireEntitlement(ctx, 'ai.chat')` is the
+> first statement of each handler. The routes no longer admit by account type.
+
 ### Key files
 
 | File                                         | Role                                                                 |

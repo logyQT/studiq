@@ -1,8 +1,8 @@
 import { FeaturesController } from '@studiq/server/controllers/features.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@studiq/server/lib/features', () => ({
-  resolveFeatures: vi.fn(),
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  resolveEntitlements: vi.fn(),
 }));
 
 import {
@@ -12,7 +12,7 @@ import {
   type ResolvedEntitlements,
 } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
-import { resolveFeatures } from '@studiq/server/lib/features';
+import { resolveEntitlements } from '@studiq/server/lib/entitlements';
 
 const mockCtx: RequestContext = {
   traceId: 'test',
@@ -36,7 +36,7 @@ describe('FeaturesController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     controller = new FeaturesController();
-    vi.mocked(resolveFeatures).mockResolvedValue({
+    vi.mocked(resolveEntitlements).mockResolvedValue({
       entitlements: ['flashcards', 'quiz'],
       limits: Object.fromEntries(LIMIT_KEYS.map((key) => [key, -1])),
       sources: {
@@ -58,7 +58,7 @@ describe('FeaturesController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect(resolveFeatures).toHaveBeenCalledWith(mockCtx);
+      expect(resolveEntitlements).toHaveBeenCalledWith(mockCtx);
       expect(dataOf(response)).toEqual({
         features: ['flashcards', 'quiz'],
       });

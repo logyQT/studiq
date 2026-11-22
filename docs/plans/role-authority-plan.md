@@ -28,7 +28,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 2     | authority cutover + control-plane RLS          | merged                           | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
 | 3     | entitlements and limits                        | active (3d, `feat/authority-3d`) | —           | —   | LIM, BIL, STU             | 2026-11-22 |
 | 4     | seats and personal plans                       | active (4a, `feat/authority-4a`) | —           | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | pending                          | —           | —   | STU, EDU, MGR, PUB        |            |
+| 5     | enforcement closure                            | active (5a, `feat/authority-5a`) | —           | —   | STU, EDU, MGR, PUB        | 2026-11-22 |
 | 6     | UI and cache                                   | pending                          | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending                          | —           | —   | all 188 + E2E             |            |
 | 8     | extendability audit (release gate)             | pending                          | —           | —   | all 188 + E2E             | 2026-11-19 |
@@ -37,13 +37,19 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 `67cfeb16`) and **2 are merged — phase 2 closed 2026-11-21 with 2b-9**
 (`feat/authority-2b-9`, delivered block below): the 2a slices plus all nine 2b
 slices are on `main`, 2b-7 as `f62b896d` (#1403) and 2b-8 as `9747f372` (#1404).
-The only `allowedAccountTypes` left on the API surface are the four declared
-exceptions (R5 org/classroom creation ×2, phase-5 `ai/*` ×2), pinned by
+The only `allowedAccountTypes` left on the API surface are the two declared
+exceptions (R5 org/classroom creation), pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; the remaining persona branches
-are named with owners in the 2b-9 deferral register. **Phase 4a is active on
-`feat/authority-4a` (2026-11-22):** the four plan-resolution rows the register
-named to phase 4 are closed (D32–D34, block below); 3c and 3d are delivered
-below and the Teacher content-read gap is closed (D29).
+are named with owners in the 2b-9 deferral register. **Phase 4a is merged**
+(#1410, `c9c14138`): the four plan-resolution rows the register named to phase
+4 are closed (D32–D34, block below); 3c and 3d are delivered below and the
+Teacher content-read gap is closed (D29). **Phase 5a is active on
+`feat/authority-5a` (2026-11-22):** the register's `ai/*` route row and the
+branding row are closed — both `ai/*` routes gate on
+`requireEntitlement('ai.chat')`, branding is `org.settings.manage` **and**
+`requireEntitlement('branding')`, and `lib/features.ts` (`requireFeature`) is
+deleted in favour of `lib/entitlements.ts`; register rows 3–11 remain with
+phase 5.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -119,6 +125,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R36 | A column-pair CHECK constrains the backfill too: every legacy value — NULL included — must map to a CHECK-valid pair before the constraint is added, or the ALTER fails on a fresh chain where the seed has not run yet and the pre-catalog rows still sit there with NULL.                                                                                                                                       | 4a: `for_account_type` was NULL on the legacy migration-inserted plans the seed deletes later, so the scope/audience pair CHECK rejected a NULL→personal mapping; NULL maps to the organization family, the only pair shape with a NULL audience                                                                                                                                                                        |
 | R37 | A validation rule that is catalog data must be read from the table in the same query that guards the write (FK embed), never from a TS constant: the constant becomes a second copy of the catalog that silently allows what the table forbids.                                                                                                                                                                   | 4a: `PLAN_TIER_MAP` was a hardcoded second copy of `for_account_type` and let any plan key mint a seat pool; `addPool`/`assignSeat` now read `seat_eligible`/`audience` from `entitlement_catalog`/`subscription_plans` embeds in the one query they already make                                                                                                                                                       |
 | R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT (and an anon SELECT policy — the grant alone returns zero rows); the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it       |
+| R39 | When a persona gate is replaced by an entitlement, the old negative QA case keeps passing for the wrong reason — the negative tenant's plan lacks the entitlement too — so the slice must also pin the _positive_ path (a persona whose plan carries the key reaches the handler), or the removal of a persona gate can silently turn an authorization boundary into nobody's job.                                | 5a: SEC-07's manager sits on `launch`, which carries no `ai.chat`, so its 403 cannot tell a persona gate from an entitlement gate; the positive path is pinned by MGR-02, whose `hub` tenant carries `ai.chat` and whose manager reaches the handler (400 on an empty body)                                                                                                                                             |
 
 ## 4. Decisions
 
@@ -3452,6 +3459,24 @@ no phase-5 enforcement):**
   org plan with no org id), and the `seatEligible` row (`seat.service.ts#addPool`
   reads `seat_eligible` from the live `entitlement_catalog` in one query).
 
+  **2026-11-22 (phase 5a, `feat/authority-5a`): the `ai/*` route row and the
+  branding row are closed** — `ai/chat/route.ts` and `ai/usage/route.ts` no
+  longer carry `allowedAccountTypes`; both gate on
+  `requireEntitlement(ctx, 'ai.chat')` as the first statement of the handler
+  (the guard's declared exceptions are back to exactly the two R5 creation
+  routes), and the branding write is `org.settings.manage` **and**
+  `requireEntitlement(ctx, 'branding')` in `organization/[id]/logo/route.ts`
+  and `organization.controller.ts#update`. `packages/server/src/lib/features.ts`
+  (`requireFeature`) is deleted; the gate lives in
+  `packages/server/src/lib/entitlements.ts` (`requireEntitlement`,
+  resolver-backed, fail-closed). **Rows 3–11 remain** (the phase-5 handoff
+  numbering: `resolveScope` persona default, the seal/exposure/`quiz_attempts`
+  staff branches, the report inbox and bank-export persona conjuncts, topic
+  default visibility, the billing owner and checkout resolver, org delete via
+  `is_org_manager`, the §4.4 "grant only what you hold" conjunct, the
+  `org_members`/`teacher_assignments`/teacher-RPC reads, and the 403-vs-404
+  matrix) — each still owned by phase 5.
+
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
 - **Gates:** `test:unit`, `typecheck:all` + `typecheck:admin`, `lint:all`,
@@ -3884,7 +3909,50 @@ Rule: R38.
 
 ### Phase 5 — enforcement
 
-_Not started._
+**5a on `feat/authority-5a` (2026-11-22) — AI + branding entitlements:**
+
+- `packages/server/src/lib/entitlements.ts` (new) owns the §7 enforcement
+  contract: `requireEntitlement(ctx, key)` (resolver-backed, fail-closed —
+  quota-0 keys and missing flag rows never pass) plus the `resolveEntitlements`
+  delegate the still-unrenamed `/features/me` endpoint reads (phase 6 owns the
+  HTTP rename). `packages/server/src/lib/features.ts` and its `requireFeature` /
+  dead `getEnabledFeatures` are deleted — no shim.
+- `ai/chat/route.ts` POST and `ai/usage/route.ts` GET lose
+  `allowedAccountTypes` entirely; the entitlement check is the **first**
+  statement of each handler, so a caller without `ai.chat` gets 403 rather than
+  429/400 (pinned by `ai-chat-route.test.ts` / `ai-usage-route.test.ts`).
+- Branding write = `org.settings.manage` **and** `requireEntitlement('branding')`
+  in the logo route and `organization.controller.ts#update` (permission first,
+  unchanged order).
+- Guard: `persona-gates.test.ts` is back to exactly two declared exceptions
+  (the R5 creation routes); the `ai/*` entries are removed.
+- QA: `MGR-02` moves to a `hub` tenant (`profiles/MGR-02.json`) and pins the
+  **positive** path (manager reaches the handler: `features/me` contains
+  `ai.chat`, `ai/usage` 200 `plan hub / limit 200000`, empty-body chat 400);
+  `SEC-07` stays on `launch` and pins the negative path plus
+  `features/me` **not** containing `ai.chat`; `LIM-05` unchanged.
+
+**Difficulty log**
+
+#### 2026-11-22 — replacing a persona gate with an entitlement needs a positive QA pin, not just the old negative case
+
+What: the `ai/*` routes left `allowedAccountTypes` for
+`requireEntitlement(ctx, 'ai.chat')`, and `lib/features.ts` was deleted in the
+same slice. The old negative case (SEC-07, manager on `launch`) still 403s,
+but its tenant's plan lacks `ai.chat` as well, so the 403 no longer proves a
+persona gate was ever there — and nothing in that case would notice if the
+entitlement check itself were deleted and some other 403-shaped answer took
+its place.
+Why: the negative tenant is negative for two stacked reasons (persona AND
+plan), so it cannot attribute the refusal to either.
+Fix: the slice pins the positive path in a second case — MGR-02 on a `hub`
+tenant, where the manager's `features/me` contains `ai.chat`, `ai/usage` is
+200, and an empty-body chat reaches the handler's 400 — and SEC-07 adds the
+`features/me`-without-`ai.chat` assertion that makes its 403 the entitlement
+and not a persona rule.
+Rule: R39.
+
+_Not started beyond 5a._
 
 ### Phase 6 — UI and cache
 

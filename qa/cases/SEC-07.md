@@ -22,17 +22,20 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 
 - Profil domyślny `content` — ten przypadek nie potrzebuje pliku
   `__tests__/qa/profiles/SEC-07.json`, bo `content` jest domyślnym profilem seedera (tak jak
-  np. `MGR-01`). Daje on organizację `qa-sec-07-<suffix>` z domyślną grupą `G1` oraz trzy
-  konta, których wymaga przypadek:
+  np. `MGR-01`). Daje on organizację `qa-sec-07-<suffix>` (plan `launch`) z domyślną grupą
+  `G1` oraz trzy konta, których wymaga przypadek:
   - `manager` (typ konta `manager`) — podmiot przypadku, odpowiednik `manager@dev.local`;
-  - `teacher` (typ `educator`) i `student` (typ `student`) — dozwolona publiczność API AI,
-    używana jako kontrola pozytywna (ta sama trasa, to samo ciało, inna rola).
+  - `teacher` (typ `educator`) i `student` (typ `student`) — kontrola pozytywna (ta sama
+    trasa, to samo ciało, inny użytkownik).
+- Plan `launch` nie niesie entitlementu `ai.chat` (a jego `max_ai_tokens_per_day = 0`), więc
+  resolver nie czyni tego klucza efektywnym dla niktogo w tym tenancie — w tym managera.
 - Hasło kont: `Seed4Test!`. Wszystkie identyfikatory (organizacja, użytkownicy, id rozmowy)
   pochodzą z `qa/.tenants/SEC-07.json`; id rozmowy zawiera sufiks przebiegu, więc dwa
   przebiegi nie dzielą nazwy wiersza.
-- Przypadek **nie potrzebuje modelu**: reguła konta w `withAuth` odrzuca managera przed
-  odczytem ciała żądania, a kontrole pozytywne zatrzymują się na walidacji wejścia (`400`),
-  więc ani prawdziwy provider, ani serwer fake-LLM nie są tu wywoływane.
+- Przypadek **nie potrzebuje modelu**: bramka entitlementu (`requireEntitlement(ctx,
+'ai.chat')`, pierwsza instrukcja handlera) odrzuca managera przed odczytem ciała
+  żądania, a kontrole pozytywne zatrzymują się na walidacji wejścia (`400`), więc ani
+  prawdziwy provider, ani serwer fake-LLM nie są tu wywoływane.
 - Spec: `__tests__/qa/SEC/SEC-07.spec.ts`, uruchamiany przez `bun run test:qa` (w CI shard
   `mgr-sec-bil`), `NEXT_LOCALE=pl`.
 
@@ -42,4 +45,7 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 
 ## Expected result
 
-- 403 FORBIDDEN (API AI dozwolone tylko dla studenta i nauczyciela).
+- 403 FORBIDDEN — API AI wymaga entitlementu `ai.chat` (ADR-0015 §7); plan `launch` tego
+  tenanta go nie niesie, a bramka wykonuje się przed odczytem ciała żądania (puste i
+  uszkodzone ciało też dostają 403, nigdy 400). `GET /api/v1/features/me` managera nie
+  zawiera `ai.chat` — to dowód, że 403 pochodzi z entitlementu, a nie z typu konta.

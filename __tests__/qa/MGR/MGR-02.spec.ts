@@ -6,7 +6,9 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * MGR-02 — Menu boczne managera (`/manage`).
  *
  * Prerequisite: a signed-in organization manager. That is the case's own
- * `content` tenant, seeded with a fresh run suffix before every independent run:
+ * `content` tenant on the **Hub** plan (`__tests__/qa/profiles/MGR-02.json`
+ * declares `{ profile: "content", plan: "hub" }`), seeded with a fresh run
+ * suffix before every independent run:
  *
  *   bun scripts/qa-tenant.ts MGR-02 --fresh
  *
@@ -20,11 +22,15 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * The case expected „Asystent Q” as the second entry of „Główne” and flagged the
  * known problem that it points at `/manage/ai`, a route the app never had. That
  * defect is fixed: #134/#433 added `/edu/ai` for educators and **dropped the dead
- * manager link** — `POST /api/v1/ai/chat` only admits students and educators, so
- * a manager has no assistant to link to. The intended manager menu is therefore
- * „Główne: Przegląd” and the seven „Administracja” entries below; the spec pins
- * that absence (and the 404 the case asked about) instead of reproducing the old
- * broken link.
+ * manager link** — no manager AI page exists (the manager AI surface is
+ * ADR-0015 phase 6), so a manager has no assistant to link to. The API itself is
+ * not persona-gated any more: since phase 5a `POST /api/v1/ai/chat` and
+ * `GET /api/v1/ai/usage` require the `ai.chat` entitlement, and this tenant's
+ * Hub org carries it, so the manager *may* call the API. The intended manager
+ * menu is therefore „Główne: Przegląd” and the seven „Administracja” entries
+ * below; the spec pins that absence (and the 404 the case asked about) instead of
+ * reproducing the old broken link, plus the positive entitlement path on the
+ * API.
  */
 
 const CASE = 'MGR-02';
@@ -110,6 +116,7 @@ test('the manager sidebar has two sections whose entries all open their pages', 
 }) => {
   const tenant: QaTenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} runs on the content tenant profile`).toBe('content');
+  expect(tenant.plan, `${CASE} needs its tenant org on Hub (ai.chat)`).toBe('hub');
   const org = tenant.org;
   if (!org) {
     throw new Error(
@@ -153,7 +160,8 @@ test('the manager sidebar has two sections whose entries all open their pages', 
 
   // The fixed „Asystent Q” problem must stay fixed: no entry (and no label)
   // points at the `/manage/ai` route that does not exist. #134/#433 removed it
-  // because the AI chat API is not available to managers.
+  // because no manager AI page exists; the API gate is the `ai.chat`
+  // entitlement, not the account type.
   const hrefs = await sidebar
     .locator('a')
     .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
@@ -200,16 +208,32 @@ test('the manager sidebar has two sections whose entries all open their pages', 
     ).toHaveAttribute('href', shortcut.href);
   }
 
-  // The reason the menu has no assistant: a manager is not allowed to use the
-  // AI chat API (the route only admits students and educators).
-  const ai = await page.request.post('/api/v1/ai/chat', {
-    data: {
-      messages: [{ id: 'MGR-02', role: 'user', parts: [{ type: 'text', text: 'Cześć' }] }],
-    },
+  // The menu has no assistant entry because no manager AI page exists (that
+  // surface is ADR-0015 phase 6) — but the API is entitlement-gated, and this
+  // tenant's Hub org carries `ai.chat`, so the manager *may* call it.
+  const features = await page.request.get('/api/v1/features/me');
+  expect(features.status(), 'GET /api/v1/features/me as the manager').toBe(200);
+  const featuresBody = await json<{ data: { features: string[] } }>(features);
+  expect(featuresBody.data.features, 'the Hub org resolves ai.chat').toContain('ai.chat');
+
+  const usage = await page.request.get('/api/v1/ai/usage');
+  expect(usage.status(), 'GET /api/v1/ai/usage as the manager on Hub').toBe(200);
+  const usageBody = await json<{
+    success: boolean;
+    data: { plan: string; limit: number };
+  }>(usage);
+  expect(usageBody.data, 'the usage counter reports the Hub org plan').toMatchObject({
+    plan: 'hub',
+    limit: 200000,
   });
-  expect(ai.status(), 'POST /api/v1/ai/chat as a manager').toBe(403);
+
+  // The entitlement gate let the manager through, so the handler's own
+  // validation answers — an empty body is a 400 BAD_REQUEST, never a model
+  // call.
+  const ai = await page.request.post('/api/v1/ai/chat', { data: {} });
+  expect(ai.status(), 'POST /api/v1/ai/chat with an empty body as the manager').toBe(400);
   const aiBody = await json<{ success: boolean; error?: string }>(ai);
-  expect(aiBody).toMatchObject({ success: false, error: 'FORBIDDEN' });
+  expect(aiBody).toMatchObject({ success: false, error: 'BAD_REQUEST' });
 
   expect(pageErrors, 'uncaught page errors').toEqual([]);
 });

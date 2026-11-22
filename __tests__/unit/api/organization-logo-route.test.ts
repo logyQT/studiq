@@ -20,9 +20,9 @@ vi.mock('@studiq/server/controllers/organization.controller', () => ({
   },
 }));
 
-const requireFeatureMock = vi.fn<(...args: unknown[]) => unknown>();
-vi.mock('@studiq/server/lib/features', () => ({
-  requireFeature: (...args: unknown[]) => requireFeatureMock(...args),
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => unknown>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
 }));
 
 let mockCtx: Record<string, unknown>;
@@ -71,7 +71,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
       orgRoleId: 'role-manager',
       permissionScopes: { 'org.settings.manage': 'organization' },
     };
-    requireFeatureMock.mockResolvedValue(undefined);
+    requireEntitlementMock.mockResolvedValue(undefined);
     // #281 reads the current row before uploading; these #271 cases start from
     // an org without a logo so the cleanup is a no-op.
     getByIdMock.mockResolvedValue({

@@ -7,50 +7,52 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * SEC-07 — Manager nie korzysta z API AI.
  *
  * Case: `POST /api/v1/ai/chat` with a correct body → **403 `FORBIDDEN`**; the AI
- * API is open to students and educators only.
+ * API requires the `ai.chat` entitlement (ADR-0015 §7), which this tenant's
+ * `launch` org plan does not carry (`max_ai_tokens_per_day = 0` there, so the
+ * resolver never makes the key effective either).
  *
  * Tenant: the legacy prerequisite `manager@dev.local` is not used.
  * `bun scripts/qa-tenant.ts SEC-07 --fresh` seeds the default `content` profile
  * (no profile file: `content` is the seeder's default), which gives this case
  * exactly the accounts it needs — `manager` (the subject), `student` and
- * `teacher` (the allowed audience, used as the positive control), all inside one
- * organization whose default group keeps the graph realistic. Every id is read
- * from `qa/.tenants/SEC-07.json`; the conversation id carries the run suffix so
- * two runs never share a row name.
+ * `teacher` (the positive control), all inside one organization whose default
+ * group keeps the graph realistic. Every id is read from `qa/.tenants/SEC-07.json`;
+ * the conversation id carries the run suffix so two runs never share a row name.
  *
- * Walk (2026-11-16, PR #1261 head `d2d636d9`, production build on :3211):
- * 1. `POST /api/v1/ai/chat` with a valid UI-message body as the tenant manager →
+ * Walk (rewritten 2026-11-22 for phase 5a — the served-build run of this spec is
+ * the coordinator's gate, not this file's claim):
+ * 1. `GET /api/v1/features/me` as the tenant manager → `200`, and `ai.chat` is
+ *    **not** in `data.features` — the 403 below is the entitlement gate, not a
+ *    persona rule.
+ * 2. `POST /api/v1/ai/chat` with a valid UI-message body as the tenant manager →
  *    `403`, `x-error-code: FORBIDDEN`, body exactly
  *    `{"success":false,"error":"FORBIDDEN"}` — no stream, no `data`.
- * 2. The same route with `{}` and with malformed JSON → still `403`, never `400`:
- *    the route's account-type rule runs in `withAuth` before the body is read or
- *    validated (the handler's `400 BAD_REQUEST` is unreachable for a manager).
- * 3. `GET /api/v1/ai/usage` (the counter the chat route reports into, same
- *    `allowedAccountTypes` and documented as "students and educators; managers
- *    have no AI nav entry") → `403` as well.
- * 4. Anonymous `POST` → `401 UNAUTHORIZED`, so the manager's `403` is a role
- *    boundary and not "no session".
- * 5. Positive control, same tenant: the educator and the student sending the same
+ * 3. The same route with `{}` and with malformed JSON → still `403`, never `400`:
+ *    `requireEntitlement(ctx, 'ai.chat')` is the first statement of the handler,
+ *    before the body is read or validated (the handler's `400 BAD_REQUEST` is
+ *    unreachable without the entitlement).
+ * 4. `GET /api/v1/ai/usage` (the counter the chat route reports into; same
+ *    `ai.chat` entitlement) → `403` as well.
+ * 5. Anonymous `POST` → `401 UNAUTHORIZED`, so the manager's `403` is an
+ *    authorization boundary and not "no session".
+ * 6. Positive control, same tenant: the educator and the student sending the same
  *    empty body reach the handler and get `400 BAD_REQUEST`, and the student
- *    reads `/api/v1/ai/usage` → `200`. The route is healthy; only the account
- *    type differs.
- * 6. `user_daily_activity` for the manager has **0** AI tokens for today: the
+ *    reads `/api/v1/ai/usage` → `200`. The route is healthy; only the caller's
+ *    entitlement differs.
+ * 7. `user_daily_activity` for the manager has **0** AI tokens for today: the
  *    refused calls metered nothing, so the case protects the AI budget too.
  *
- * No model is called anywhere in this spec: the gate refuses the manager before
- * the body is parsed, and the controls stop at the handler's `400`, so the case
- * needs neither a real provider nor the fake inference server.
+ * No model is called anywhere in this spec: the entitlement gate refuses the
+ * manager before the body is parsed, and the controls stop at the handler's
+ * `400`, so the case needs neither a real provider nor the fake inference server.
  *
- * Mutation (proves this spec can fail): add `AccountType.MANAGER` to the chat
- * route's `allowedAccountTypes` (a plausible "managers should get the assistant
- * too" widening). Result, both quoted from the mutant build:
- * - `POST /api/v1/ai/chat with a correct body as the manager: HTTP status →
- *   {"success":false,"error":"USAGE_LIMIT_EXCEEDED"}` — expected 403, received
- *   429: the manager reached the handler and was stopped by their AI quota, not
- *   by their role;
- * - `POST /api/v1/ai/chat with an invalid body as the manager: HTTP status →
- *   {"success":false,"error":"BAD_REQUEST"}` — expected 403, received 400: the
- *   account-type gate is gone and the body was validated.
+ * Mutation (proves this spec can fail): delete the
+ * `await requireEntitlement(ctx, 'ai.chat')` line from the chat route (a
+ * plausible "the plan check is enough" cleanup). Result on the mutant build:
+ * the manager reaches the handler — `POST /api/v1/ai/chat` with a correct body
+ * answers `429` `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}` (their quota
+ * is 0 on `launch`), and with an invalid body `400` `BAD_REQUEST`; both expected
+ * 403, so the spec goes red.
  */
 
 const CASE = 'SEC-07';
@@ -173,14 +175,27 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
       'manager',
     );
 
+    // --- Precondition: the entitlement, not the persona, is the reason ------
+    // The tenant org is on `launch`, which carries no `ai.chat` (and
+    // `max_ai_tokens_per_day = 0`), so the resolver never makes the key
+    // effective: `features/me` does not list it. This is what makes the 403
+    // below the entitlement gate and not an account-type rule.
+    const featuresResponse = await page.request.get('/api/v1/features/me');
+    expect(featuresResponse.status(), 'GET /api/v1/features/me as the manager').toBe(200);
+    const featuresBody = await json<{ data: { features: string[] } }>(featuresResponse);
+    expect(featuresBody.data.features, 'the launch org does not resolve ai.chat').not.toContain(
+      'ai.chat',
+    );
+
     // --- Step 1: the case's one step --------------------------------------
     expectForbidden(
       await postChat(page, body),
       'POST /api/v1/ai/chat with a correct body as the manager',
     );
 
-    // The rule runs before the body is read: an empty and a malformed body are
-    // both 403, never the handler's 400 — the account type is the reason.
+    // The entitlement gate is the first statement of the handler, before the
+    // body is read: an empty and a malformed body are both 403, never the
+    // handler's 400.
     expectForbidden(
       await postChat(page, JSON.stringify({})),
       'POST /api/v1/ai/chat with an invalid body as the manager',
@@ -190,7 +205,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
       'POST /api/v1/ai/chat with a malformed body as the manager',
     );
 
-    // --- Adjacent: the same audience rule on the AI surface ---------------
+    // --- Adjacent: the same entitlement on the AI surface -------------------
     const usageResponse = await page.request.get(AI_USAGE);
     const usageBody = await usageResponse.text();
     expect(usageResponse.status(), `GET /api/v1/ai/usage as the manager → ${usageBody}`).toBe(403);
@@ -206,10 +221,10 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     expect(anonymous.status(), 'POST /api/v1/ai/chat without a session').toBe(401);
     expect(anonymous.headers()['x-error-code'], 'anonymous x-error-code').toBe('UNAUTHORIZED');
 
-    // --- Positive control: the allowed account types reach the handler ----
-    // Same route, same empty body: only the account type differs. A 400 from
-    // the handler (not a 403 from the gate) is the control that the route is
-    // healthy and the manager's rejection is the role boundary.
+    // --- Positive control: callers with the entitlement reach the handler ---
+    // Same route, same empty body: only the caller differs. A 400 from the
+    // handler (not a 403 from the gate) is the control that the route is
+    // healthy and the manager's rejection is the entitlement boundary.
     await switchUser(page, tenant, 'teacher');
     expectReachedHandler(
       await postChat(page, JSON.stringify({})),

@@ -4,7 +4,7 @@ import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
-import { requireFeature } from '@studiq/server/lib/features';
+import { requireEntitlement } from '@studiq/server/lib/entitlements';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
 import { isFailure } from '@studiq/server/lib/service-result';
@@ -94,18 +94,19 @@ export class OrganizationController {
 
   async update(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
     // ADR-0015 §7: settings are an `org.*` capability, decided from the context
-    // alone. Before the feature and the body: a caller without the key is not
-    // told which payload would have been refused, and branding is
+    // alone. Before the entitlement and the body: a caller without the key is
+    // not told which payload would have been refused, and branding is
     // permission AND entitlement (§4.1).
     await requirePermission(ctx, Permission.ORG_SETTINGS_MANAGE);
 
     // Branding is plan-gated, but a plain org rename is not — only gate the
     // request when it actually carries branding fields. Checked on the raw
-    // body (before validation) so a disabled feature fails closed rather than
-    // leaking a 422 for a payload the org was never allowed to send.
+    // body (before validation) so a caller without the entitlement fails
+    // closed rather than leaking a 422 for a payload the org was never
+    // allowed to send.
     const rawBody = isRecord(body) ? body : {};
     if ('logoUrl' in rawBody || 'brandColor' in rawBody) {
-      await requireFeature(ctx, 'branding');
+      await requireEntitlement(ctx, 'branding');
     }
 
     const parsedId = OrganizationIdParamsSchema.safeParse({ id });
