@@ -148,14 +148,14 @@ the member bought. A manager's personal plan is excluded inside an org — it
 mirrors an org purchase (#228). A missing `plan_limits` row is `0` (blocked) in
 every path.
 
-| Context                                          | `scope: 'user'` keys     | `scope: 'org'` keys            |
-| ------------------------------------------------ | ------------------------ | ------------------------------ |
-| No active org                                    | personal plan            | `0` (no org capacity to grant) |
-| Active org, seated verified member               | max(org, seat, personal) | org plan                       |
-| Active org, unseated verified member             | max(org, personal)       | org plan                       |
-| Active org, manager (personal plan is a mirror)  | org plan                 | org plan                       |
-| Active org id without membership (forged cookie) | personal plan            | `0`                            |
-| Plan lacks the key                               | `0` + `warn()`           | `0` + `warn()`                 |
+| Context                                          | `scope: 'user'` keys                                | `scope: 'org'` keys            |
+| ------------------------------------------------ | --------------------------------------------------- | ------------------------------ |
+| No active org                                    | personal plan                                       | `0` (no org capacity to grant) |
+| Active org, seated verified member               | max(org, seat, personal)                            | org plan                       |
+| Active org, unseated verified member             | max(org, personal)                                  | org plan                       |
+| Active org, manager (personal plan is a mirror)  | org plan, plus a seat if seated (personal excluded) | org plan                       |
+| Active org id without membership (forged cookie) | personal plan                                       | `0`                            |
+| Plan lacks the key                               | `0` + `warn()`                                      | `0` + `warn()`                 |
 
 `ctx.activeOrgId` comes from a client cookie, so the resolver verifies the
 `org_members` row before treating it as a tenant scope — and before reading the
@@ -163,11 +163,12 @@ seat plan: a spoofed org id has no row and falls back to the personal plan
 (user keys) or `0` (org keys), ignoring any stale seat row.
 
 **Managers (#228):** a manager has no paid personal plan — their
-`profiles.personal_plan_key` is the free `launch` tier. In a verified org a
-manager therefore resolves limits from the org plan only — their personal key is
-a mirror of an org plan, never a second entitlement (#228); the free personal
-tier applies only when there is no active org. A manager carrying a paid org
-plan in `personal_plan_key` from an old purchase cannot widen any org's limits.
+`profiles.personal_plan_key` is the free tier. In a verified org a manager
+therefore resolves limits from the org plan, plus a seat if seated, and never
+from their personal key — it is a mirror of an org plan, never a second
+entitlement (#228); the free personal tier applies only when there is no active
+org. A manager carrying a paid org plan in `personal_plan_key` from an old
+purchase cannot widen any org's limits.
 
 `checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`
@@ -194,12 +195,13 @@ layers now membership-verified through the single resolver (phase 3b):
 1. **Seated student/educator in a verified org** → the seat plan
    (`org_seat_assignments` → `org_seat_pools.plan_key`). The seat feature
    upgrade (#270) is unchanged.
-2. **Manager in a verified org** → `organizations.plan`, falling back to the
-   manager's personal plan when the org has no plan row. Managers are the org's
+2. **Manager in a verified org** → `organizations.plan`. Managers are the org's
    billing contact, so they keep seeing the org subscription (#181). An
    organization purchase changes only `organizations.plan`: it never writes the
-   buyer's `personal_plan_key` (#228), so the fallback is the manager's own free
-   `launch` tier, not the org plan they just bought.
+   buyer's `personal_plan_key` (#228), so the manager's personal plan stays the
+   free tier outside an organization. Inside a verified org personal never
+   applies and `organizations.plan` is NOT NULL, so there is no personal
+   fallback on this path.
 3. **Everyone else (or no active org)** → `profiles.personal_plan_key`. An
    unseated member's `active_org_id` membership never replaces their personal
    plan on this page (#181).

@@ -328,7 +328,7 @@ describe('SubscriptionPlanService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
-    it('falls back to the personal plan when a manager has no org plan', async () => {
+    it('falls back to the personal plan for a manager with no verified org (forged active_org_id)', async () => {
       mockPlanTables(
         mock,
         { member: false, orgPlan: null, personalPlanKey: 'launch' },

@@ -24,8 +24,7 @@ export const AI_TOKENS_LIMIT_KEY: LimitKey = 'max_ai_tokens_per_day';
 /**
  * The limits surface (ADR-0015 phase 3b): thin wrappers over the single
  * resolver's `limits`, which compose `max(org, seat, personal)` for user-scope
- * keys and the org plan for org-scope keys (§6.2). `LimitsResolver` is deleted;
- * these keep their signatures so call sites only change the import path.
+ * keys and the org plan for org-scope keys (§6.2).
  */
 
 /** Effective limit for the caller's current context (§6.2 truth table). */
@@ -169,10 +168,7 @@ export async function trackTokenUsage(
   }
 }
 
-/**
- * Same call shape as the deleted `LimitsResolver` singleton, so service call
- * sites keep `limitsResolver.checkLimit(...)` and only the import path moves.
- */
+/** The service-shaped facade over these helpers (`limitsResolver.checkLimit(...)`). */
 export const limitsResolver = wrapService(
   {
     checkLimit,

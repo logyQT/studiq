@@ -578,14 +578,14 @@ Rules:
 
 ### 6.2 Limits
 
-| Context                | `scope: 'user'`                           | `scope: 'org'` |
-| ---------------------- | ----------------------------------------- | -------------- |
-| No org                 | personal plan                             | `0`            |
-| Org, unseated          | `max(org, personal)` (`-1` short-circuit) | org plan       |
-| Org, seated            | `max(org, seat, personal)`                | org plan       |
-| Org, manager           | org plan (personal excluded)              | org plan       |
-| Non-member / forged id | personal plan (user), `0` (org)           | `0`            |
-| Missing row            | `0` + warning                             | `0` + warning  |
+| Context                | `scope: 'user'`                                     | `scope: 'org'` |
+| ---------------------- | --------------------------------------------------- | -------------- |
+| No org                 | personal plan                                       | `0`            |
+| Org, unseated          | `max(org, personal)` (`-1` short-circuit)           | org plan       |
+| Org, seated            | `max(org, seat, personal)`                          | org plan       |
+| Org, manager           | org plan, plus a seat if seated (personal excluded) | org plan       |
+| Non-member / forged id | personal plan (user), `0` (org)                     | `0`            |
+| Missing row            | `0` + warning                                       | `0` + warning  |
 
 The seat is **not** exclusive. This is the deliberate reversal of #233 Q1 for
 user-scope keys; #233 Q1 still holds for `scope: 'org'`.
@@ -1328,6 +1328,6 @@ interpretation.
 - [`docs/audits/features-perms-weak-spots.md`](../audits/features-perms-weak-spots.md) — evidence, register, reproduction cases.
 - [`docs/limits.md`](../limits.md) — current plan/feature/limit reference.
 - [`docs/decisions/0007-manager-plan-model.md`](0007-manager-plan-model.md) — manager personal plan decision (kept; its `for_account_type` inference is superseded).
-- `packages/authz/src/entitlements.ts`, `packages/authz/src/limits.ts`, `packages/server/src/services/feature.resolver.ts`, `limits.resolver.ts`, `seat.service.ts`, `org-role.service.ts`.
+- `packages/authz/src/entitlements.ts`, `packages/authz/src/limits.ts`, `packages/server/src/services/entitlement.resolver.ts`, `seat.service.ts`, `org-role.service.ts` (the phase-3 `feature.resolver.ts` and `limits.resolver.ts` were deleted).
 - `supabase/migrations/20261024124756_rls_all_public_tables.sql`, `20261024151122_drop_org_limits.sql`.
 - Issue #971 (personal plan inside an org), #233 (limit precedence), #799 (stale entitlement cache).

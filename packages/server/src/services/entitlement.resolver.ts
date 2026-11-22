@@ -53,11 +53,13 @@ type PlanLimitRow = { plan_key: string; limit_key: string; limit_value: number }
 type RoleFeatureRow = { feature_key: string; is_enabled?: boolean | null };
 
 /**
- * The single entitlement resolver (ADR-0015 §6.1/§6.2, phase 3a + 3b). It is the
- * only reader of `plan_entitlements`, `plan_limits`, `org_role_features`
- * (revoke-only, D19), `org_roles.entitlement_profile`, `entitlement_flags`,
+ * The single entitlement resolver (ADR-0015 §6.1/§6.2, phase 3a + 3b). It is
+ * the only reader that composes `plan_entitlements` and `plan_limits` into a
+ * resolved set (`limits.ts` and `subscription-plan.service.ts` read them for
+ * their own narrow purposes), and it owns `org_role_features` (revoke-only,
+ * D19), `org_roles.entitlement_profile`, `entitlement_flags`,
  * `user_feature_overrides`, `org_seat_*`, `organizations.plan` and
- * `profiles.personal_plan_key`.
+ * `profiles.personal_plan_key` as resolution inputs.
  *
  * Resolution order (§6.1):
  *
@@ -66,8 +68,9 @@ type RoleFeatureRow = { feature_key: string; is_enabled?: boolean | null };
  *      org plan, the role profile and the revoke rows (the membership row's
  *      FKs), so the whole org layer is one query.
  *   2. Role profile — `all` = the org plan ceiling, `learner` =
- *      `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` = ∅; no role = ∅ and no plan
- *      read.
+ *      `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` = ∅. A missing ctx role id
+ *      grants no entitlement; the org plan is still read, because limits use
+ *      it for every member.
  *   3. Revoke rows — `org_role_features` `is_enabled = false` only (D19).
  *   4. Seat plan — `planEntitlements(seat.plan) ∩ ceiling`; consulted only
  *      inside a verified org (a stale seat row plus a forged cookie supplies
@@ -344,14 +347,14 @@ export class EntitlementResolver {
   /**
    * The §6.2 truth table, composed from the batched `plan_limits` rows:
    *
-   * | Context                    | `scope:'user'`                    | `scope:'org'` |
-   * | -------------------------- | --------------------------------- | ------------- |
-   * | No org (or unverified)     | personal plan                     | `0`           |
-   * | Org member, unseated       | `max(org, personal)`, -1 wins     | org plan      |
-   * | Org member, seated         | `max(org, seat, personal)`        | org plan      |
-   * | Org member, manager        | org plan (personal excluded)      | org plan      |
-   * | Non-member / forged cookie | personal plan                     | `0`           |
-   * | Missing `plan_limits` row  | `0` + warn                        | `0` + warn    |
+   * | Context                    | `scope:'user'`                      | `scope:'org'` |
+   * | -------------------------- | ----------------------------------- | ------------- |
+   * | No org (or unverified)     | personal plan                       | `0`           |
+   * | Org member, unseated       | `max(org, personal)`, -1 wins       | org plan      |
+   * | Org member, seated         | `max(org, seat, personal)`          | org plan      |
+   * | Org member, manager        | `max(org, seat)`, personal excluded | org plan      |
+   * | Non-member / forged cookie | personal plan                       | `0`           |
+   * | Missing `plan_limits` row  | `0` + warn                          | `0` + warn    |
    *
    * `inOrg` is always membership-verified, so a forged `active_org_id` lands in
    * the "no org" row even when a stale seat row exists.

@@ -177,8 +177,10 @@ export class SubscriptionPlanService {
       planKey = sources.org.planKey;
     }
     if (!planKey) {
-      // Unseated non-managers (and managers without an org plan) use their
-      // personal plan.
+      // Unseated non-managers, and a manager whose `active_org_id` is not a
+      // verified membership. Inside a verified org a manager always has
+      // `sources.org` (`organizations.plan` is NOT NULL) and personal never
+      // applies, so no in-org manager reaches this line.
       planKey = sources.personal?.planKey ?? null;
     }
 

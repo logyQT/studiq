@@ -3503,10 +3503,12 @@ forged `active_org_id` plus a stale seat row resolves the personal plan for
 user keys and 0 for org keys — the 3a review's deferred note is closed for
 limits (entitlements already verified). `limits.resolver.ts` is deleted;
 `services/limits.ts` keeps the public helpers (`checkLimit`, `checkOrgLimit`,
-`getUsage`, `getEffectiveLimit`, `trackTokenUsage`) as wrappers over
-`resolveEntitlements`, with `limitsResolver` preserving the call-site shape, so
-the 8 `checkLimit` services, `ai/chat/route.ts` and `ai-usage.controller.ts`
-only changed their import path. `/me/plan` keeps `PlanInfo.key`'s historical
+`getUsage`, `getEffectiveLimit`, `trackTokenUsage`) — all but `checkOrgLimit`
+are wrappers over `resolveEntitlements`, while `checkOrgLimit` still reads
+`organizations` + `plan_limits` directly because it runs before membership
+exists — with `limitsResolver` preserving the call-site shape, so the 8
+`checkLimit` services, `ai/chat/route.ts` and `ai-usage.controller.ts` only
+changed their import path. `/me/plan` keeps `PlanInfo.key`'s historical
 value (seat → seat plan, manager member → org plan, else personal — now
 membership-verified through the resolver) and its `features`/`limits` became
 the effective resolved set/limits, with the union `sources` added (D28).
