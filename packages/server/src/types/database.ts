@@ -2624,7 +2624,6 @@ export type Database = {
         };
         Returns: boolean;
       };
-      apply_org_plan: { Args: { p_org_id: string; p_plan: string }; Returns: undefined };
       bulk_create_flashcards: {
         Args: {
           p_cards: Json;
@@ -2654,6 +2653,7 @@ export type Database = {
         };
       };
       can_assign_org_role: { Args: { p_actor: string; p_role_id: string }; Returns: boolean };
+      change_org_plan: { Args: { p_org_id: string; p_plan: string }; Returns: undefined };
       count_new_cards: {
         Args: { p_filter_type?: string; p_organization_id?: string; p_user_id: string };
         Returns: number;

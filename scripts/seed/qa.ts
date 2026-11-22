@@ -48,8 +48,8 @@
  * between cases.
  *
  * `--plan <key>` puts the tenant's own organization on that plan through the same
- * `apply_org_plan` RPC the billing webhook calls, so a case whose prerequisite is
- * a paid entitlement (e.g. `branding` on Hub) gets it inside its own tenant
+ * `change_org_plan` RPC the billing webhook calls, so a case whose prerequisite
+ * is a paid entitlement (e.g. `branding` on Hub) gets it inside its own tenant
  * instead of depending on the global plan catalogue or another org's purchase.
  *
  * Profiles:
@@ -555,10 +555,11 @@ interface CaseOptions {
 }
 
 /**
- * Puts the tenant's own organization on a plan through the same `apply_org_plan`
- * RPC the billing webhook calls. A paid entitlement is part of the case's
- * prerequisite, not a global plan change: the RPC only touches this tenant's
- * organization (plan, role-feature snapshot, limits).
+ * Puts the tenant's own organization on a plan through the same
+ * `change_org_plan` RPC the billing webhook calls. A paid entitlement is part
+ * of the case's prerequisite, not a global plan change: the RPC only touches
+ * this tenant's organization plan, and the org layer (features and limits)
+ * resolves live from it.
  */
 async function applyPlan(
   db: ReturnType<typeof createSeedDb>,
@@ -567,8 +568,8 @@ async function applyPlan(
   plan: string | null | undefined,
 ): Promise<void> {
   if (!plan) return;
-  const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
-  if (error) throw new Error(`seed ${caseId}: apply_org_plan(${plan}) ${error.message}`);
+  const { error } = await db.rpc('change_org_plan', { p_org_id: orgId, p_plan: plan });
+  if (error) throw new Error(`seed ${caseId}: change_org_plan(${plan}) ${error.message}`);
 }
 
 async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opts: CaseOptions) {
