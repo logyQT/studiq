@@ -118,6 +118,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R35 | A matrix change is a data migration, not a template edit: a callable seed with `on conflict do nothing` only creates missing rows and can never reconcile existing ones, so the template, the function and a backfill must land together behind a guard that pins the resulting rows. Read the newest definition of a callable across the migrations, not the file a note names — a later slice can re-create it. | 3d: moving the Teacher content reads to `group` changed the TS template and the function, but every live system Teacher kept its `own` rows; `20261119211000` (not the `20261119180000` body the phase note named) owns the live function, and the guard requires reads `group` / writes `own` across `org_roles × permissions`                                                                                         |
 | R36 | A column-pair CHECK constrains the backfill too: every legacy value — NULL included — must map to a CHECK-valid pair before the constraint is added, or the ALTER fails on a fresh chain where the seed has not run yet and the pre-catalog rows still sit there with NULL.                                                                                                                                       | 4a: `for_account_type` was NULL on the legacy migration-inserted plans the seed deletes later, so the scope/audience pair CHECK rejected a NULL→personal mapping; NULL maps to the organization family, the only pair shape with a NULL audience                                                                                                                                                                        |
 | R37 | A validation rule that is catalog data must be read from the table in the same query that guards the write (FK embed), never from a TS constant: the constant becomes a second copy of the catalog that silently allows what the table forbids.                                                                                                                                                                   | 4a: `PLAN_TIER_MAP` was a hardcoded second copy of `for_account_type` and let any plan key mint a seat pool; `addPool`/`assignSeat` now read `seat_eligible`/`audience` from `entitlement_catalog`/`subscription_plans` embeds in the one query they already make                                                                                                                                                       |
+| R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT; the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it                                                                       |
 
 ## 4. Decisions
 
@@ -3809,6 +3810,65 @@ The seat validation reads catalog truth in the same query instead of a TS map,
 because `PLAN_TIER_MAP` was a second copy of the catalog that let any plan key
 mint a pool (R37).
 Rule: R36, R37.
+
+**4b delivered on `feat/authority-4a` (2026-11-22).** 4b is the seats page's
+behaviour and the phase-4 QA corpus; the plan/data rules are 4a's.
+
+- **Roster:** `organization-member.service.listMembers` selects
+  `profiles.account_type` and maps it as `accountType` (D33's persona input);
+  the D25 gate and the endpoint are unchanged.
+- **Seats page:** `PLAN_TIER_MAP`, `ROLE_TIER_MAP` and `PURCHASABLE_PLANS` are
+  deleted (R37). The purchase picker lists the catalogue's **active,
+  `scope='personal'`, `seatEligible`** plans (`purchasableSeatPlans`), so it now
+  offers every personal plan that is a valid licence — including the free tiers
+  and `solo` — and no organization plan. The assign picker offers the pools whose
+  plan `audience` equals the member's `accountType` (`poolsForPersona`), fail
+  closed when the plan is missing from the catalogue. Both helpers live in
+  `@/lib/seats`, are unit-tested and mutation-proven.
+- **QA corpus:** `MGR-SEAT-02` is rewritten from the launch-org negative to the
+  hub-org **positive** story (the operator point from 3a, closed without a
+  plan-data change): the `pro` seat adds exactly `advanced.stats` to a learner's
+  feature set, `/me/plan` is the seat plan with `max_ai_tokens_per_day = -1`, the
+  AI limit rises from hub's 200000, `/ai/usage` reports `limit -1 / plan hub`,
+  and the unseated control member stays at 200000. The seat ∩ ceiling rule is
+  now pinned by `entitlement.resolver.test.ts` ("intersects the seat plan with
+  the org ceiling") and the `manager-plan-model` / `limits-resolution`
+  integration cases rather than by that QA case. `MGR-SEAT-01` asserts the new
+  licence list (Solo in, Campus out), `MGR-SEAT-03` ties its guidance to
+  persona/audience, and `BIL-04`/`BIL-05`/`PUB-03`/`MGR-ACC-01` plus the 662 plan
+  record move to scope/audience wording.
+- **What the served app found (all fixed in-PR):** an anonymous
+  `GET /api/v1/subscription-plans` answered **403** once `PlanInfo.seatEligible`
+  embedded `entitlement_catalog` — the public query gained a table `anon` may
+  not select, and every session-authenticated test stayed green (R38). The
+  `MGR-SEAT-02` roster's default `QA <key>` names made `QA student` a prefix of
+  `QA student2` and the picker's regex matched both (the 3d collision, again);
+  the „Dostępne” cell renders `1Mało` for a low pool; `BIL-02`'s catalogue read
+  still interpolated the renamed `accountType` and threw at runtime (Playwright
+  specs sit outside `typecheck:all`'s scope).
+- **Gates (2026-11-22, served app at `:3000`):** unit **4854 passed / 1
+  skipped** (315 files); serial integration **1061 tests, 1050 passed / 11
+  skipped** (111 files); `typecheck:all` + `typecheck:admin`, `lint`,
+  `review:static`, `knip`, `format:check`, `dup:base` (0 new) clean. QA on the
+  final build: MGR-SEAT-02 **5/5**, MGR-SEAT-01 **5/5**, MGR-SEAT-03 **2/2**,
+  MGR-ACC-01 3 tests, PUB-02 2, PUB-03, PUB-04, BIL-01, BIL-02 3, BIL-04 2,
+  BIL-05 2, LIM-02, LIM-03, LIM-05, STU-03, EDU-02 2, SEC-06, MGR-ROL-01,
+  MGR-SET-01 — all green, zero retries.
+
+#### 2026-11-22 — phase 4b: the public-embed trap
+
+What: 4b's QA run over the served app, not just the unit suite.
+Why: `PlanInfo.seatEligible` is catalog truth, so every plan read embeds
+`entitlement_catalog`. The embed is executed with the caller's role, and
+`anon` had no grant on that table: the anonymous pricing catalogue started
+answering 403 while every signed-in read, unit test and integration test stayed
+green — the tests that would have caught it are the anon census probes, and
+they were asserting the old three-table list.
+Fix: `GRANT SELECT ON public.entitlement_catalog TO anon` in the 4a migration
+(pricing metadata, no answer keys) and the census updated in all three places
+(`grant-parity`, `anon-grants`, `rls-tenant-isolation`). The served QA run is
+what surfaced it, which is why the programme keeps Playwright in the gate.
+Rule: R38.
 
 ### Phase 5 — enforcement
 
