@@ -130,7 +130,7 @@ async function fetchPlans(page: Page, audience: 'student' | 'educator'): Promise
     `GET /api/v1/subscription-plans?scope=personal&audience=${audience}`,
   ).toBe(200);
   const body = await json<ApiEnvelope<PlanInfo[]>>(response);
-  expect(body.success, `plans response for ${accountType}`).toBe(true);
+  expect(body.success, `plans response for ${audience}`).toBe(true);
   return body.data;
 }
 

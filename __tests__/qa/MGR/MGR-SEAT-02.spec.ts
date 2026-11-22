@@ -66,14 +66,15 @@ const CASE = 'MGR-SEAT-02';
 
 /**
  * Full names the declared roster gives its accounts (`scripts/seed/qa.ts` →
- * `buildAccount` defaults to `QA <key>`). The member picker renders
- * `full_name` + the org role.
+ * `buildAccount` defaults to `QA <key>`, which collides as a substring the
+ * moment one key is a prefix of another — the picker's option match is a
+ * regex, so `QA student` also matched `QA student2` in 3d).
  */
 const NAMES = {
-  manager: 'QA manager',
-  teacher: 'QA teacher',
-  student: 'QA student',
-  student2: 'QA student2',
+  manager: 'QA seat manager',
+  teacher: 'QA seat teacher',
+  student: 'QA seat student',
+  student2: 'QA seat control',
 } as const;
 
 /**
@@ -244,7 +245,11 @@ async function poolRow(page: Page, planName: string): Promise<string[]> {
     .locator('table')
     .first()
     .getByRole('row', { name: new RegExp(escapeRegExp(planName)) });
-  return (await row.getByRole('cell').allInnerTexts()).map((cell) => cell.trim());
+  const cells = (await row.getByRole('cell').allInnerTexts()).map((cell) => cell.trim());
+  // The available cell also renders the „Mało” badge, so a low pool reads
+  // `1Mało`; the counter is the part before the badge.
+  if (cells.length === 4) cells[3] = cells[3].replace(/Mało$/, '');
+  return cells;
 }
 
 /**
