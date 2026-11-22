@@ -188,7 +188,7 @@ sequenceDiagram
     S-->>A: hosted Checkout
     S->>W: checkout.session.completed
     W->>F: p_org_id, p_plan="hub"
-    F->>DB: update organizations.plan + re-sync org_role_features
+    F->>DB: update organizations.plan (phase 3c: plan only)
     S->>W: invoice.paid
     W->>DB: payments(org_id, purchaser_user_id)
 ```
@@ -968,7 +968,7 @@ Metadata is trustworthy here because it is set by our own signed API call, and i
 applyPlan(owner: PaymentOwner, planKey: string): Promise<ServiceResult<void>>
 ```
 
-- `owner.type === 'org'` → service-role `rpc('apply_org_plan', { p_org_id, p_plan: planKey })`. Keep the existing function semantics untouched (it re-syncs `org_role_features` and limits; `org.manage` is never revoked).
+- `owner.type === 'org'` → service-role `rpc('change_org_plan', { p_org_id, p_plan: planKey })`. Phase 3c reduced it to the plan move: the org layer (features and limits) resolves live from `organizations.plan`, so there is no snapshot to re-sync.
 - `owner.type === 'user'` → `update profiles set personal_plan_key = planKey where id = userId`, with a **guard**: a `for_account_type='manager'` paid plan must never be written to a profile (ADR-0007). Reject + alert instead.
 - `downgradeToFree(owner, previousPlan)` → resolve the free plan for the family: `for_account_type = previousPlan.for_account_type`, `price_monthly = 0`, `is_active`, lowest `sort_order` (`base` / `lite` / `launch`). Apply it with the same method.
 - Every call is idempotent; re-applying the same plan is a no-op at the DB level.
@@ -1429,7 +1429,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 6. Open the portal → cancel at period end → `cancel_at_period_end=true`; plan unchanged; resume → `false`.
 7. Upgrade Spark → Ace: confirm the Stripe invoice shows an unused-time credit + a full Ace period, and the new period starts today.
 8. Downgrade Ace → Spark: confirm a schedule is created; plan stays Ace until period end, then becomes Spark.
-9. Buy **Hub** as an org admin: `organizations.plan='hub'`, buyer's personal plan unchanged, `apply_org_plan` re-synced features.
+9. Buy **Hub** as an org admin: `organizations.plan='hub'`, buyer's personal plan unchanged, features resolve live from the new plan (`change_org_plan`, phase 3c).
 10. Log in as a teacher of that org: `POST /billing/change-plan` and the portal → 403.
 11. Declined card `4000…0002` → Checkout shows the error, no local rows.
 12. `stripe trigger invoice.payment_failed` → mirror `past_due`, plan unchanged.

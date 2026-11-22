@@ -1308,6 +1308,18 @@ interpretation.
 > renders only `current`/`limit`) and no QA case asserts it (SEC-07 matches
 > `current`/`limit` only; MGR-SEAT-02 reads `limit`), so the widened meaning
 > is safe. (Phase 3b, `feat/authority-3b`.)
+>
+> **2026-11-22 (D31).** The org plan is the only org entitlement state.
+> `org_role_features` is revokes-only and its grant rows are deleted;
+> `apply_org_plan` becomes `change_org_plan`, which moves
+> `organizations.plan` and nothing else; `handle_new_organization` seeds
+> profiles, permissions and roles, never entitlement rows. The org layer
+> resolves live (`plan_entitlements`/`plan_limits` plus
+> `org_roles.entitlement_profile`), so a plan-change snapshot could only drift.
+> The RLS twin `has_org_feature` loses its explicit-grant branch and rewrites
+> its fallback to "no enabled row" plus a revoke subtraction — the resolver's
+> D19 semantics — because a row-existence predicate flips meaning when a table
+> flips polarity (R34). (Phase 3c, `feat/authority-3c`.)
 
 ---
 

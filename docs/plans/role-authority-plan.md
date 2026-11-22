@@ -26,7 +26,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 1b    | catalog rename (tables, limits, permissions)   | merged                           | #1389       | —   | checks, unit, integration | 2026-11-19 |
 | 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged                           | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
 | 2     | authority cutover + control-plane RLS          | merged                           | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | active (3a, `feat/authority-3a`) | —           | —   | LIM, BIL, STU             | 2026-11-21 |
+| 3     | entitlements and limits                        | active (3c, `feat/authority-3c`) | —           | —   | LIM, BIL, STU             | 2026-11-22 |
 | 4     | seats and personal plans                       | pending                          | —           | —   | MGR, BIL, LIM             |            |
 | 5     | enforcement closure                            | pending                          | —           | —   | STU, EDU, MGR, PUB        |            |
 | 6     | UI and cache                                   | pending                          | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
@@ -40,9 +40,9 @@ slices are on `main`, 2b-7 as `f62b896d` (#1403) and 2b-8 as `9747f372` (#1404).
 The only `allowedAccountTypes` left on the API surface are the four declared
 exceptions (R5 org/classroom creation ×2, phase-5 `ai/*` ×2), pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; the remaining persona branches
-are named with owners in the 2b-9 deferral register. **Next action: phase 3**
-(entitlements and limits) — its Teacher content-read gap is recorded in the
-phase-3 block below.
+are named with owners in the 2b-9 deferral register. **Next action: 3d (the
+Teacher content reads) then phase 4** — 3c is delivered below; the Teacher
+content-read gap is recorded in the phase-3 block.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -113,6 +113,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R31 | A phase closes when every remaining branch is named with an owner and a phase, and the exit criterion is pinned by a source-scan guard, not a promise.                                                                                                                                                                               | 2b-9: the phase-2 closure shipped a deferral register plus `persona-gates.test.ts` instead of "the only gates left are the declared ones" prose — a fifth gate or a stale entry now fails a test, not a review                                                                                                                  |
 | R32 | A blacklist→whitelist switch is behaviour-preserving only if the metadata already partitions the key space; pin the key that differs in a ported case.                                                                                                                                                                               | 3a: the `personalPortable` whitelist dropped `flashcards`/`quiz` from the personal layer inside orgs — the design had called the switch "equivalent for today's catalog" because `scope` and `personalPortable` are different axes                                                                                              |
 | R33 | A per-request query-count target is a structural claim, not a loop-count claim: count the tables the resolution actually reads and pin the number in a test, because "one per table" can exceed the target if the table list is longer than the target.                                                                              | 3b: `resolveEntitlements` reads 11 tables, so flat reads cost 11 queries in the full case; FK embeds plus batched catalog reads brought it to 7, pinned by `entitlement.resolver.limits.test.ts`                                                                                                                                |
+| R34 | A reader that tests `NOT EXISTS (any row)` changes meaning when a table flips from grants to revokes-only: "any row" becomes "any revoke", so every row-existence predicate must be rewritten to test **enabled** rows and subtract revokes.                                                                                         | 3c: `has_org_feature`'s profile fallback is guarded by `NOT EXISTS (any row)`; once `org_role_features` holds only revokes, that predicate would skip the profile for any role with one revoke — it became `NOT EXISTS (enabled row)` plus `NOT EXISTS (revoked key)`                                                           |
 
 ## 4. Decisions
 
@@ -3515,6 +3516,29 @@ the effective resolved set/limits, with the union `sources` added (D28).
 `/api/v1/ai/usage`'s `plan` now reports the effective primary (org first);
 no web or QA reader asserts the old personal-key value (recorded as D30).
 
+**3c delivered on `feat/authority-3c` (2026-11-22).** The legacy snapshot
+writer leaves: migration `20261122120000_org_plan_writer_removed.sql` replaces
+`apply_org_plan` with `change_org_plan(p_org_id, p_plan)`, which validates the
+org and plan (`P0002`) and moves `organizations.plan` — nothing else. The org
+layer is derived live (`plan_entitlements`/`plan_limits` plus
+`org_roles.entitlement_profile`), so a snapshot write could only drift (D31).
+`apply_entitlement_fenced` keeps its owner/fence logic and calls the new
+function; `handle_new_organization` creates the three roles with their profiles,
+calls `seed_system_role_permissions`, and writes no per-role feature rows;
+`has_org_feature` loses its explicit-grant branch and rewrites the fallback from
+`NOT EXISTS (any row)` to `NOT EXISTS (any enabled row)` plus a revoke
+subtraction (`NOT fr.is_enabled`) — profile minus revokes, the resolver's D19
+semantics (R34). The migration deletes every inert grant row
+(`DELETE … WHERE is_enabled`) and keeps revoke rows readable until phase 7
+(D27); its closing guard pins the dropped/added functions, the two callsites,
+the absent grant branch, the revoke subtraction, the zero enabled rows and the
+revokes-only table comment, and is replay-safe. `database.ts` is regenerated
+with the pinned CLI (two RPC signatures changed, then a byte-identical second
+run). The service and the QA seeder call `change_org_plan`; the admin feature-flag
+DELETE path is removed (a missing flag row fails closed, so deleting a flag is
+an invisible global kill switch — a flag is toggled, not deleted) and
+`/user-overrides` records D26's active-override precedence.
+
 **Difficulty log**
 
 #### 2026-11-21 — the design's "equivalent for today's catalog" was not
@@ -3549,6 +3573,23 @@ unit test that counts `from()` calls.
 Fix: embeds + batched catalog reads ship in 3b; the count is pinned, not
 remembered.
 Rule: R33.
+
+#### 2026-11-22 — "any row" became "any revoke" when the table flipped
+
+What: `has_org_feature`'s profile fallback was guarded by
+`NOT EXISTS (SELECT 1 FROM org_role_features WHERE org_role_id = r.id)`. That
+worked while the table held plan grants: a role with rows was row-sourced, a
+zero-row role fell back to its profile. Phase 3c deletes the grant rows and
+redefines the table as revokes-only, so the same predicate now means "this role
+has no revokes" — a role with one revoke would have skipped its profile
+entirely, and the role layer would resolve to nothing.
+Why: row existence stopped being evidence of grant provenance. A predicate that
+reads "any row" encodes the table's old polarity, not the authority it means.
+Fix: the fallback tests enabled rows (`NOT EXISTS (… fe.is_enabled)`) and
+subtracts revokes (`AND NOT EXISTS (… NOT fr.is_enabled)`), which is the
+resolver's D19 semantics. Pinned by the revoke-parity case in
+`entitlement-profile.test.ts`.
+Rule: R34.
 
 Carried from 2b-3 (recorded there, not fixed there): the Teacher template grants
 every content key at `own` while Member reads at `group`, so a Teacher cannot read

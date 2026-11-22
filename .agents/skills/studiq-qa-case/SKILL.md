@@ -130,7 +130,7 @@ One case, one tenant, no shared state. CI seeds it from
 Declarative extras, no per-case code: `members` (explicit roster with a per-account
 org role), `groups` (first is the default), `solo` (an account in no org), `orgs`
 (several orgs, each with its own owner). `plan` applies through the same
-`apply_org_plan` RPC the billing webhook uses, so a paid entitlement stays inside
+`change_org_plan` RPC the billing webhook uses, so a paid entitlement stays inside
 the case's own tenant instead of leaning on the global catalogue.
 
 Seed it through `env:run` (see [Commands](#commands); `env:ensure --profile qa`
