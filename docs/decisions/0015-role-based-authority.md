@@ -1316,10 +1316,17 @@ interpretation.
 > profiles, permissions and roles, never entitlement rows. The org layer
 > resolves live (`plan_entitlements`/`plan_limits` plus
 > `org_roles.entitlement_profile`), so a plan-change snapshot could only drift.
-> The RLS twin `has_org_feature` loses its explicit-grant branch and rewrites
-> its fallback to "no enabled row" plus a revoke subtraction — the resolver's
-> D19 semantics — because a row-existence predicate flips meaning when a table
-> flips polarity (R34). (Phase 3c, `feat/authority-3c`.)
+> The RLS twin `has_org_feature` loses every row-existence gate (an enabled row
+> is inert in both readers) and composes profile − revokes + seat ∩ ceiling,
+> with the revoke subtraction inside the profile arm, so a seat key — which runs
+> after the revokes — re-adds a revoked one. Its
+> `(is_system AND name = 'admin')` wildcard is the one deliberate divergence
+> from the resolver (which has no admin branch; admin is profile `all` ∩
+> ceiling) and stays until phase 5 owns the alignment. A row-existence predicate
+> flips meaning when a table flips polarity (R34). `is_enabled` keeps its
+> `true` default: an enabled row is inert, so an accidental insert changes
+> nothing while a `false` default would silently revoke its key.
+> (Phase 3c, `feat/authority-3c`.)
 
 ---
 

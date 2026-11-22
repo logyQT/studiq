@@ -241,18 +241,18 @@ handlers and frontend pages below are in place.
 
 Route handlers:
 
-| Route                             | Controller                        | Methods                         |
-| --------------------------------- | --------------------------------- | ------------------------------- |
-| `/api/v1/feature-flags`           | `featureFlagController`           | GET (list), POST (create)       |
-| `/api/v1/feature-flags/[key]`     | `featureFlagController`           | GET (one), PUT (update), DELETE |
-| `/api/v1/plan-features`           | `planFeatureController`           | GET, POST                       |
-| `/api/v1/plan-features/[id]`      | `planFeatureController`           | GET, DELETE                     |
-| `/api/v1/plan-limits`             | `planLimitController`             | GET, POST                       |
-| `/api/v1/plan-limits/[id]`        | `planLimitController`             | GET, PUT, DELETE                |
-| `/api/v1/user-overrides`          | `userOverrideController`          | GET, POST                       |
-| `/api/v1/user-overrides/[id]`     | `userOverrideController`          | GET, PUT, DELETE                |
-| `/api/v1/subscription-plans`      | `subscriptionPlanAdminController` | GET, POST                       |
-| `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE                |
+| Route                             | Controller                        | Methods                   |
+| --------------------------------- | --------------------------------- | ------------------------- |
+| `/api/v1/feature-flags`           | `featureFlagController`           | GET (list), POST (create) |
+| `/api/v1/feature-flags/[key]`     | `featureFlagController`           | GET (one), PUT (update)   |
+| `/api/v1/plan-features`           | `planFeatureController`           | GET, POST                 |
+| `/api/v1/plan-features/[id]`      | `planFeatureController`           | GET, DELETE               |
+| `/api/v1/plan-limits`             | `planLimitController`             | GET, POST                 |
+| `/api/v1/plan-limits/[id]`        | `planLimitController`             | GET, PUT, DELETE          |
+| `/api/v1/user-overrides`          | `userOverrideController`          | GET, POST                 |
+| `/api/v1/user-overrides/[id]`     | `userOverrideController`          | GET, PUT, DELETE          |
+| `/api/v1/subscription-plans`      | `subscriptionPlanAdminController` | GET, POST                 |
+| `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE          |
 
 **Auth for admin API routes**: No `withAuth` wrapper — `apps/admin` is
 internal, has no app-level auth and is not deployed (ADR-0009).
