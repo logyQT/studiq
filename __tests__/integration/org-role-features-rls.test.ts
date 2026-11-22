@@ -211,6 +211,40 @@ describe(`org_role_features RLS`, () => {
     expect(limits.max_flashcards).toBe(2000);
   });
 
+  it('the resolver reads a seated member plan through the embed under RLS', async () => {
+    // A `creator` seat on the `launch` org: 2000 is the only max_flashcards
+    // above launch's 100, so the value proves the member's own session could
+    // read the assignment -> pool(plan_key) embed (and not just the org plan).
+    const { data: pool, error: poolError } = await service
+      .from('org_seat_pools')
+      .insert({ organization_id: org1, plan_key: 'creator', total: 1 })
+      .select('id')
+      .single();
+    if (poolError) throw new Error(`seat pool create failed: ${poolError.message}`);
+    const { error: seatError } = await service
+      .from('org_seat_assignments')
+      .insert({ organization_id: org1, pool_id: pool.id, user_id: memberId });
+    if (seatError) throw new Error(`seat assignment failed: ${seatError.message}`);
+
+    const resolver = new EntitlementResolver(() => Promise.resolve(memberSession));
+    const ctx: RequestContext = {
+      traceId: `rls-seat-${suiteId}`,
+      userId: memberId,
+      accountType: AccountType.STUDENT,
+      orgRoleId: org1MemberRole,
+      activeOrgId: org1,
+      url: '/api/v1/decks',
+      method: 'POST',
+      groupIds: [],
+      permissionScopes: {},
+    };
+
+    const { limits, sources } = await resolver.resolveEntitlements(ctx);
+
+    expect(sources.seat).toEqual({ planKey: 'creator', origin: 'seat' });
+    expect(limits.max_flashcards).toBe(2000);
+  });
+
   it('the resolver cannot read a foreign org plan through RLS', async () => {
     const resolver = new EntitlementResolver(() => Promise.resolve(outsiderSession));
     const ctx: RequestContext = {

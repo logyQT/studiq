@@ -10,12 +10,29 @@ import { vi } from 'vitest';
  */
 
 export function chain(result: unknown) {
-  const resolved = { data: result, error: null };
-  const terminal = vi.fn().mockResolvedValue(resolved);
+  // `in(column, values)` filters the seeded rows, so a read that drops a layer
+  // key from its `plan_key` list loses that layer's rows instead of silently
+  // resolving from the full catalog.
+  let data = result;
+  const resolved = () => ({ data, error: null });
+  const terminal = vi.fn(() => Promise.resolve(resolved()));
   const c: Record<string, unknown> = {};
   c.select = vi.fn(() => c);
   c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
+  c.in = vi.fn((column: string, values: readonly unknown[]) => {
+    if (Array.isArray(data)) {
+      // `Array.isArray` narrows an `unknown` seed to `any[]`; re-typing it as
+      // `unknown[]` keeps each row a checked value rather than an `any`.
+      const rows: readonly unknown[] = data;
+      data = rows.filter(
+        (row) =>
+          typeof row === 'object' &&
+          row !== null &&
+          values.includes(Object.getOwnPropertyDescriptor(row, column)?.value),
+      );
+    }
+    return c;
+  });
   c.or = vi.fn(() => c);
   c.order = vi.fn(() => c);
   c.filter = vi.fn(() => c);
@@ -27,7 +44,7 @@ export function chain(result: unknown) {
   c.delete = vi.fn(() => c);
   c.upsert = vi.fn(() => c);
   c.then = (onfulfilled: (value: unknown) => unknown) =>
-    Promise.resolve(resolved).then(onfulfilled);
+    Promise.resolve(resolved()).then(onfulfilled);
   return c;
 }
 
