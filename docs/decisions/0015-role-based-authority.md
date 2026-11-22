@@ -243,11 +243,11 @@ never a single `isAdmin` flag.
 **Seeded system roles** (the org-creation trigger creates them; admins can add
 permissions but cannot rename or delete them):
 
-| Role        | Permissions                                                                                                                                        |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Admin**   | every content permission at `organization`; every group permission at `organization`; every `org.*` including `org.admin`                          |
-| **Teacher** | content CRUD at `own`/`group`; `group.read/manage/member.manage/invite` at `group`; assignment permissions at `own`/`group`; `stats.read` at group |
-| **Member**  | content CRUD at `own`, read at `group`; `group.read` at `group`; `stats.read` at own                                                               |
+| Role        | Permissions                                                                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Admin**   | every content permission at `organization`; every group permission at `organization`; every `org.*` including `org.admin`                                                                                  |
+| **Teacher** | content **reads at `group`, writes at `own`** (`group` ⊇ `own` in the API layer; `assignment.read` moves with the reads — D29); `group.read/manage/member.manage/invite` at `group`; `stats.read` at group |
+| **Member**  | content CRUD at `own`, read at `group`; `group.read` at `group`; `stats.read` at own                                                                                                                       |
 
 **Editor presets** (D17; `POST /organization/roles` materialises one as an
 ordinary custom role — no preset is seeded by the trigger and none is a system
@@ -1291,8 +1291,11 @@ interpretation.
 > **2026-11-21 (D29).** Teacher content reads move to `group` scope, writes stay
 > `own`, and `assignment.read` moves with the other content reads — the §4.2
 > "own/group" reading, since `group` is a superset of `own` in the API layer.
-> Landed in 3d (a separate PR after the resolver slice); recorded here now.
-> (Phase 3a, `feat/authority-3a`.)
+> **Landed in 3d** on `feat/authority-3d`: the `SYSTEM_ROLE_TEMPLATES.teacher`
+> arm, the `seed_system_role_permissions` teacher `CASE`, a backfill for existing
+> system Teacher rows (the seed's `on conflict do nothing` never rewrites them)
+> and a closing guard pinning reads `group` / writes `own`. (Phase 3a,
+> `feat/authority-3a`; landed in 3d.)
 >
 > **2026-11-21 (D30).** Phase 3b lands the limits composition in the single
 > resolver: `max(org, seat, personal)` for `scope:'user'` keys with `-1`
