@@ -50,6 +50,8 @@ interface Member {
   email: string;
   full_name: string | null;
   orgRoleName: string;
+  /** The persona the plan picker filters pools by (D33); from the roster API. */
+  accountType: string;
 }
 
 interface Assignment {
@@ -62,37 +64,8 @@ interface Assignment {
   assignedAt: string;
 }
 
-/** Maps plan_key → compatible account tier (mirrors the plan's `audience`). */
-const PLAN_TIER_MAP: Record<string, string> = {
-  base: 'student',
-  spark: 'student',
-  ace: 'student',
-  pro: 'student',
-  lite: 'educator',
-  guide: 'educator',
-  creator: 'educator',
-  master: 'educator',
-  solo: 'manager',
-};
-
-/** Maps org role name → compatible account tier. */
-const ROLE_TIER_MAP: Record<string, string> = {
-  admin: 'manager',
-  teacher: 'educator',
-  member: 'student',
-};
-
 /** Storage bound of `org_seat_pools.total` (Postgres int4) — mirrors seat.model.ts. */
 const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
-
-/** Plans available for purchase as seat add-ons (personal-scope plans only). */
-const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
-  { key: 'ace', label: 'StudiQ Ace', tier: 'student' },
-  { key: 'pro', label: 'StudiQ Pro', tier: 'student' },
-  { key: 'creator', label: 'StudiQ Creator', tier: 'educator' },
-  { key: 'master', label: 'StudiQ Master', tier: 'educator' },
-  { key: 'solo', label: 'StudiQ Solo', tier: 'manager' },
-];
 
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
@@ -102,6 +75,11 @@ export default function ManageSeatsPage() {
     url: '/api/v1/subscription-plans',
   });
   const planName = (key: string) => plans?.find((p) => p.key === key)?.name ?? key;
+  const planByKey = new Map((plans ?? []).map((p) => [p.key, p]));
+  /** Seat-licence plans, in catalogue order (D33: `scope='personal'` + `seatEligible`). */
+  const purchasablePlans = (plans ?? []).filter(
+    (p) => p.isActive && p.scope === 'personal' && p.seatEligible,
+  );
   const [pools, setPools] = useState<Pool[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -255,9 +233,9 @@ export default function ManageSeatsPage() {
                       <SelectValue placeholder={t('plan_placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      {PURCHASABLE_PLANS.map((p) => (
+                      {purchasablePlans.map((p) => (
                         <SelectItem key={p.key} value={p.key}>
-                          {p.label}
+                          {p.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -367,11 +345,15 @@ export default function ManageSeatsPage() {
                     <SelectContent>
                       {(() => {
                         const selectedMember = members.find((m) => m.id === selectedUserId);
-                        const memberTier = selectedMember
-                          ? ROLE_TIER_MAP[selectedMember.orgRoleName]
-                          : undefined;
-                        const compatible = memberTier
-                          ? pools.filter((p) => PLAN_TIER_MAP[p.planKey] === memberTier)
+                        // Persona-based pool filter (D14/D33): the plan's `audience`
+                        // must equal the member's `accountType`. A pool whose plan is
+                        // missing from the catalogue resolves to no audience, so it is
+                        // not offered — fail closed.
+                        const compatible = selectedMember
+                          ? pools.filter(
+                              (p) =>
+                                planByKey.get(p.planKey)?.audience === selectedMember.accountType,
+                            )
                           : pools;
                         return compatible.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
