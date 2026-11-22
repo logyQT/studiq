@@ -325,6 +325,56 @@ describe('org_roles.entitlement_profile', () => {
     await service.from('org_role_features').delete().eq('org_role_id', customRoleId);
   });
 
+  it('RLS: a seat re-adds a revoked key, and the seat is capped by the org ceiling', async () => {
+    // Resolver order: profile → revokes → seat ∩ ceiling. The revoke subtracts
+    // from the profile arm only, so a seat key re-adds it; a seat key the org
+    // plan does not carry stays out.
+    const { error: profileError } = await service
+      .from('org_roles')
+      .update({ entitlement_profile: 'all' })
+      .eq('id', customRoleId);
+    expect(profileError).toBeNull();
+
+    const { error: revokeError } = await service.from('org_role_features').insert({
+      org_role_id: customRoleId,
+      feature_key: 'ai.chat',
+      is_enabled: false,
+    });
+    expect(revokeError).toBeNull();
+    // `hub` carries `ai.chat`, so without a seat the revoke wins.
+    expect(await hasOrgFeature('ai.chat')).toBe(false);
+
+    const { data: pool, error: poolError } = await service
+      .from('org_seat_pools')
+      .insert({ organization_id: orgId, plan_key: 'master', total: 1 })
+      .select('id')
+      .single();
+    if (poolError) throw new Error(`seat pool create failed: ${poolError.message}`);
+    const { error: seatError } = await service.from('org_seat_assignments').insert({
+      organization_id: orgId,
+      pool_id: pool.id,
+      user_id: userId,
+    });
+    expect(seatError).toBeNull();
+
+    // `master` carries `ai.chat`: the seat runs after the revoke and re-adds it.
+    expect(await hasOrgFeature('ai.chat')).toBe(true);
+
+    // `master` also carries `quiz.builder`, which `launch` does not. Once the
+    // org drops to `launch`, the seat cannot add it: seat ∩ ceiling.
+    const { error: planError } = await service
+      .from('organizations')
+      .update({ plan: 'launch' })
+      .eq('id', orgId);
+    expect(planError).toBeNull();
+    expect(await hasOrgFeature('quiz.builder')).toBe(false);
+
+    await service.from('org_seat_assignments').delete().eq('organization_id', orgId);
+    await service.from('org_seat_pools').delete().eq('organization_id', orgId);
+    await service.from('org_role_features').delete().eq('org_role_id', customRoleId);
+    await service.from('organizations').update({ plan: 'hub' }).eq('id', orgId);
+  });
+
   it('RLS: a zero-row learner role gets only the learner set', async () => {
     const { error } = await service
       .from('org_roles')

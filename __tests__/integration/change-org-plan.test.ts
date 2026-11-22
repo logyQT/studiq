@@ -99,6 +99,31 @@ describe('change_org_plan()', () => {
     await service.from('organizations').update({ plan: 'launch' }).eq('id', orgId);
   });
 
+  it('keeps a revoke row for a key the target plan does not carry', async () => {
+    // The removed writer deleted every feature row whose key was outside the
+    // new plan (`DELETE … WHERE feature_key NOT IN (new plan)`); `ai.chat` is
+    // in `hub`, so the case above would have survived it. `advanced.stats` is
+    // not in `launch`: the move back down is exactly what the old ceiling diff
+    // would have wiped.
+    const { error: insertError } = await service.from('org_role_features').insert({
+      org_role_id: adminRoleId,
+      feature_key: 'advanced.stats',
+      is_enabled: false,
+    });
+    expect(insertError).toBeNull();
+
+    const up = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'hub' });
+    expect(up.error).toBeNull();
+
+    const down = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'launch' });
+    expect(down.error).toBeNull();
+
+    expect(await plan()).toBe('launch');
+    expect(await roleFeatures()).toEqual([{ feature_key: 'advanced.stats', is_enabled: false }]);
+
+    await service.from('org_role_features').delete().eq('org_role_id', adminRoleId);
+  });
+
   it('rejects an unknown organization or plan', async () => {
     const badPlan = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'nope' });
     expect(badPlan.error?.code).toBe('P0002');
