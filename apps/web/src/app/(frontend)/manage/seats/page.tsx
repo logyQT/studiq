@@ -37,6 +37,7 @@ import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { poolsForPersona, purchasableSeatPlans } from '@/lib/seats';
 
 interface Pool {
   id: string;
@@ -50,6 +51,8 @@ interface Member {
   email: string;
   full_name: string | null;
   orgRoleName: string;
+  /** The persona the plan picker filters pools by (D33); from the roster API. */
+  accountType: string;
 }
 
 interface Assignment {
@@ -62,40 +65,8 @@ interface Assignment {
   assignedAt: string;
 }
 
-/** Maps plan_key → compatible account tier (matches seat.service.ts PLAN_TIER_MAP). */
-const PLAN_TIER_MAP: Record<string, string> = {
-  base: 'student',
-  spark: 'student',
-  ace: 'student',
-  pro: 'student',
-  lite: 'educator',
-  guide: 'educator',
-  creator: 'educator',
-  master: 'educator',
-  launch: 'manager',
-  team: 'manager',
-  hub: 'manager',
-  campus: 'manager',
-};
-
-/** Maps org role name → compatible account tier. */
-const ROLE_TIER_MAP: Record<string, string> = {
-  admin: 'manager',
-  teacher: 'educator',
-  member: 'student',
-};
-
 /** Storage bound of `org_seat_pools.total` (Postgres int4) — mirrors seat.model.ts. */
 const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
-
-/** Plans available for purchase as seat add-ons. */
-const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
-  { key: 'ace', label: 'StudiQ Ace', tier: 'student' },
-  { key: 'pro', label: 'StudiQ Pro', tier: 'student' },
-  { key: 'creator', label: 'StudiQ Creator', tier: 'educator' },
-  { key: 'master', label: 'StudiQ Master', tier: 'educator' },
-  { key: 'campus', label: 'StudiQ Campus', tier: 'manager' },
-];
 
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
@@ -105,6 +76,8 @@ export default function ManageSeatsPage() {
     url: '/api/v1/subscription-plans',
   });
   const planName = (key: string) => plans?.find((p) => p.key === key)?.name ?? key;
+  /** Seat-licence plans, in catalogue order (D33: `scope='personal'` + `seatEligible`). */
+  const purchasablePlans = purchasableSeatPlans(plans ?? []);
   const [pools, setPools] = useState<Pool[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -258,9 +231,9 @@ export default function ManageSeatsPage() {
                       <SelectValue placeholder={t('plan_placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      {PURCHASABLE_PLANS.map((p) => (
+                      {purchasablePlans.map((p) => (
                         <SelectItem key={p.key} value={p.key}>
-                          {p.label}
+                          {p.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -370,11 +343,11 @@ export default function ManageSeatsPage() {
                     <SelectContent>
                       {(() => {
                         const selectedMember = members.find((m) => m.id === selectedUserId);
-                        const memberTier = selectedMember
-                          ? ROLE_TIER_MAP[selectedMember.orgRoleName]
-                          : undefined;
-                        const compatible = memberTier
-                          ? pools.filter((p) => PLAN_TIER_MAP[p.planKey] === memberTier)
+                        // Persona-based pool filter (D14/D33): only the pools whose
+                        // plan `audience` equals the member's `accountType` are
+                        // offered; a pool missing from the catalogue fails closed.
+                        const compatible = selectedMember
+                          ? poolsForPersona(pools, plans ?? [], selectedMember.accountType)
                           : pools;
                         return compatible.map((p) => (
                           <SelectItem key={p.id} value={p.id}>

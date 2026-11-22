@@ -10,9 +10,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /**
  * The identity half of `PaymentOwner` (#662 §6.6).
  *
- * Entitlements are keyed by `(kind, id)` only: the account type is a property
- * of the **catalog plan** (`for_account_type`), not of the write, so the
- * webhook never has to look an auth user up just to apply a plan.
+ * Entitlements are keyed by `(kind, id)` only: the plan's scope/audience is a
+ * property of the **catalog plan**, not of the write, so the webhook never has
+ * to look an auth user up just to apply a plan.
  */
 export type EntitlementOwner = { type: 'user'; userId: string } | { type: 'org'; orgId: string };
 
@@ -33,13 +33,11 @@ export type EntitlementApplyOutcome = 'applied' | 'stale';
 
 export interface EntitlementPlan {
   key: string;
-  forAccountType: string | null;
+  scope: string;
+  audience: string | null;
   priceMonthly: number;
   isActive: boolean;
 }
-
-/** `for_account_type` of the plan catalog; `manager` is the organization family. */
-const ORGANIZATION_PLAN_FAMILY = 'manager';
 
 /**
  * The only writer of plan entitlements (#662 §6.6).
@@ -125,12 +123,14 @@ export class EntitlementService {
   }
 
   /**
-   * Downgrade to the free plan of the previous plan's family (`base` for
-   * students, `lite` for educators, `launch` for organizations/managers).
+   * Downgrade to the free plan of the previous plan's scope/audience (`base`
+   * for students, `lite` for educators, `solo` for managers, `launch` for
+   * organizations — D32/D34).
    *
-   * The family comes from the catalog row of the plan being left, never from
-   * the caller's claims: a `customer.subscription.deleted` payload does not
-   * carry an account type, and the catalog is the single source of truth.
+   * The scope/audience comes from the catalog row of the plan being left,
+   * never from the caller's claims: a `customer.subscription.deleted` payload
+   * does not carry an account type, and the catalog is the single source of
+   * truth.
    */
   async downgradeToFree(
     owner: EntitlementOwner,
@@ -155,8 +155,9 @@ export class EntitlementService {
   }
 
   /**
-   * Validate a catalog plan before it is written: it must exist, and a paid
-   * organization plan must never be written to a profile (ADR-0007).
+   * Validate a catalog plan before it is written: it must exist, and an
+   * organization-scope plan must never be written to a profile (ADR-0007,
+   * D32: `scope='organization'`, no price condition — `launch` included).
    */
   private async resolveWritablePlan(
     owner: EntitlementOwner,
@@ -171,11 +172,11 @@ export class EntitlementService {
       return failure('BAD_REQUEST');
     }
 
-    // ADR-0007: a manager plan is an organization plan. Writing it to a profile
-    // would widen that manager's limits in every organization they belong to,
-    // so reject + alert instead of silently corrupting the entitlement.
+    // ADR-0007: an organization plan written to a profile would widen that
+    // user's limits in every organization they belong to, so reject + alert
+    // instead of silently corrupting the entitlement.
     if (owner.type === 'user' && this.isOrganizationPlan(plan)) {
-      logError('billing.manager_plan_to_profile', {
+      logError('billing.org_plan_to_profile', {
         planKey,
         userId: owner.userId,
       });
@@ -186,47 +187,54 @@ export class EntitlementService {
   }
 
   private isOrganizationPlan(plan: EntitlementPlan): boolean {
-    return plan.forAccountType === ORGANIZATION_PLAN_FAMILY && plan.priceMonthly > 0;
+    return plan.scope === 'organization';
   }
 
   private async resolveFreePlan(
     owner: EntitlementOwner,
     previousPlanKey: string | null,
   ): Promise<ServiceResult<EntitlementPlan>> {
-    let family: string | null = null;
+    let scope: string | null = null;
+    let audience: string | null = null;
 
     if (previousPlanKey) {
       const previous = await this.getPlan(previousPlanKey);
       if (isFailure(previous)) return previous;
-      family = previous.data?.forAccountType ?? null;
+      scope = previous.data?.scope ?? null;
+      audience = previous.data?.audience ?? null;
     }
 
     // Fallback only when the previous plan row disappeared: an organization
-    // always uses the manager family; a user defaults to the student tier.
-    if (!family) family = owner.type === 'org' ? ORGANIZATION_PLAN_FAMILY : 'student';
+    // downgrades to the free organization plan; a user defaults to the free
+    // student plan.
+    if (!scope) {
+      scope = owner.type === 'org' ? 'organization' : 'personal';
+      audience = owner.type === 'org' ? null : 'student';
+    }
 
     const admin = this.createAdminClient();
-    // The catalog has at most one active free plan per family, but filter in
-    // JS instead of `.eq('for_account_type', null)` — Supabase would serialize
-    // a null filter as `= null` (the #148 footgun).
+    // The catalog has at most one active free plan per scope/audience pair,
+    // but filter in JS instead of `.eq('audience', null)` — Supabase would
+    // serialize a null filter as `= null` (the #148 footgun).
     const { data, error } = await admin
       .from('subscription_plans')
-      .select('key, for_account_type, price_monthly, is_active, sort_order')
+      .select('key, scope, audience, price_monthly, is_active, sort_order')
       .eq('price_monthly', 0)
       .eq('is_active', true)
       .order('sort_order', { ascending: true });
 
     if (error) return toDbFailure(error);
 
-    const freePlan = dbRows(data).find((row) => row.for_account_type === family);
+    const freePlan = dbRows(data).find((row) => row.scope === scope && row.audience === audience);
     if (!freePlan) {
-      logError('billing.free_plan_missing', { family, ownerType: owner.type });
+      logError('billing.free_plan_missing', { scope, audience, ownerType: owner.type });
       return failure('NOT_FOUND');
     }
 
     return success({
       key: freePlan.key,
-      forAccountType: freePlan.for_account_type,
+      scope: freePlan.scope,
+      audience: freePlan.audience,
       priceMonthly: freePlan.price_monthly ?? 0,
       isActive: freePlan.is_active ?? true,
     });
@@ -236,7 +244,7 @@ export class EntitlementService {
     const admin = this.createAdminClient();
     const { data, error } = await admin
       .from('subscription_plans')
-      .select('key, for_account_type, price_monthly, is_active')
+      .select('key, scope, audience, price_monthly, is_active')
       .eq('key', planKey)
       .maybeSingle();
 
@@ -245,7 +253,8 @@ export class EntitlementService {
 
     return success({
       key: data.key,
-      forAccountType: data.for_account_type,
+      scope: data.scope,
+      audience: data.audience,
       priceMonthly: data.price_monthly ?? 0,
       isActive: data.is_active ?? true,
     });

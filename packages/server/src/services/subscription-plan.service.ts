@@ -1,7 +1,8 @@
-import { AccountType, type PlanSource, type RequestContext } from '@studiq/authz';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
+import type { PlanSource, RequestContext } from '@studiq/authz';
+import { hasPermission, Permission } from '@studiq/server/lib/authz';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { wrapService } from '@studiq/server/lib/observability';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -26,10 +27,36 @@ export interface PlanInfo {
   sources: PlanSource[];
   sortOrder: number;
   isActive: boolean;
-  forAccountType: string | null;
+  /** Plan family (D32): organization plans carry no `audience`. */
+  scope: string;
+  audience: string | null;
+  /**
+   * Derived from the live `entitlement_catalog` (D33): true iff the plan
+   * carries at least one entitlement and every one of its keys is
+   * `seatEligible`. That is the *key* half of the licence rule — a pool's plan
+   * must also be `scope === 'personal'`, which `addPool` and the seats picker
+   * check separately (an organization plan's keys are all seat-eligible too).
+   */
+  seatEligible: boolean;
 }
 
 type SubscriptionPlanRow = Database['public']['Tables']['subscription_plans']['Row'];
+
+/**
+ * One `plan_entitlements` row with its catalog embed, as the reads select it.
+ * Structural, so the typed query result passes without an assertion.
+ */
+type PlanEntitlementRead = {
+  plan_key: string;
+  entitlement_key: string;
+  entitlement_catalog: { seat_eligible: boolean } | null;
+};
+
+/** Raw query-param values; an unknown value simply matches no plan. */
+export interface PlanCatalogFilters {
+  scope?: string;
+  audience?: string;
+}
 
 export class SubscriptionPlanService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -53,11 +80,23 @@ export class SubscriptionPlanService {
     return limitsByPlan;
   }
 
+  /**
+   * `seatEligible` is derived from the plan's entitlement rows and the live
+   * catalog embed (D33): a plan with no entitlements is not seat-eligible.
+   */
+  private static seatEligibilityOf(entitlementRows: readonly PlanEntitlementRead[]): boolean {
+    return (
+      entitlementRows.length > 0 &&
+      entitlementRows.every((row) => !!dbNested(row.entitlement_catalog)?.seat_eligible)
+    );
+  }
+
   private toPlanInfo(
     plan: SubscriptionPlanRow,
-    features: string[],
+    entitlementRows: readonly PlanEntitlementRead[],
     limits: Record<string, number>,
     sources: PlanSource[] = [],
+    features?: string[],
   ): PlanInfo {
     return {
       id: plan.id,
@@ -69,8 +108,10 @@ export class SubscriptionPlanService {
       currency: plan.currency,
       sortOrder: plan.sort_order ?? 0,
       isActive: plan.is_active ?? true,
-      forAccountType: plan.for_account_type ?? null,
-      features,
+      scope: plan.scope,
+      audience: plan.audience ?? null,
+      features: features ?? entitlementRows.map((row) => row.entitlement_key),
+      seatEligible: SubscriptionPlanService.seatEligibilityOf(entitlementRows),
       limits,
       sources,
     };
@@ -78,7 +119,9 @@ export class SubscriptionPlanService {
 
   /**
    * Features and limits are keyed by plan, so every single-plan read performs the
-   * same two lookups before it can render `PlanInfo`.
+   * same two lookups before it can render `PlanInfo`. The entitlement read embeds
+   * the catalog's `seat_eligible` flag, so `seatEligible` is database truth, not a
+   * TS constant.
    */
   private async planView(
     supabase: SupabaseClient<Database>,
@@ -86,7 +129,7 @@ export class SubscriptionPlanService {
   ): Promise<ServiceResult<PlanInfo>> {
     const { data: planEntitlements, error: pfError } = await supabase
       .from('plan_entitlements')
-      .select('entitlement_key')
+      .select('entitlement_key, entitlement_catalog(seat_eligible)')
       .eq('plan_key', plan.key);
 
     if (pfError) return toDbFailure(pfError);
@@ -96,13 +139,13 @@ export class SubscriptionPlanService {
     return success(
       this.toPlanInfo(
         plan,
-        dbRows(planEntitlements).map((pe) => pe.entitlement_key),
+        dbRows(planEntitlements).map((row) => ({ ...row, plan_key: plan.key })),
         limitsByPlan.get(plan.key) ?? {},
       ),
     );
   }
 
-  /** Catalog variant: one features read covers every plan in the listing. */
+  /** Catalog variant: one entitlement read covers every plan in the listing. */
   private async planViews(
     supabase: SupabaseClient<Database>,
     plans: SubscriptionPlanRow[],
@@ -111,35 +154,38 @@ export class SubscriptionPlanService {
 
     const { data: planEntitlements, error: pfError } = await supabase
       .from('plan_entitlements')
-      .select('plan_key, entitlement_key')
+      .select('plan_key, entitlement_key, entitlement_catalog(seat_eligible)')
       .in('plan_key', planKeys);
 
     if (pfError) return toDbFailure(pfError);
 
-    const featuresByPlan = new Map<string, string[]>();
+    const rowsByPlan = new Map<string, PlanEntitlementRead[]>();
     for (const pe of dbRows(planEntitlements)) {
-      if (!featuresByPlan.has(pe.plan_key)) {
-        featuresByPlan.set(pe.plan_key, []);
-      }
-      featuresByPlan.get(pe.plan_key)!.push(pe.entitlement_key);
+      const rows = rowsByPlan.get(pe.plan_key) ?? [];
+      rows.push(pe);
+      rowsByPlan.set(pe.plan_key, rows);
     }
 
     const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
 
     return success(
       plans.map((p) =>
-        this.toPlanInfo(p, featuresByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
+        this.toPlanInfo(p, rowsByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
       ),
     );
   }
 
-  async listActive(forAccountType?: string): Promise<ServiceResult<PlanInfo[]>> {
+  /** No filters returns every active plan — the public pricing behaviour (D34). */
+  async listActive(filters: PlanCatalogFilters = {}): Promise<ServiceResult<PlanInfo[]>> {
     const supabase = await this.clientFactory();
 
     let query = supabase.from('subscription_plans').select('*').eq('is_active', true);
 
-    if (forAccountType) {
-      query = query.eq('for_account_type', forAccountType);
+    if (filters.scope) {
+      query = query.eq('scope', filters.scope);
+    }
+    if (filters.audience) {
+      query = query.eq('audience', filters.audience);
     }
 
     const { data: plans, error } = await query.order('sort_order', { ascending: true });
@@ -150,17 +196,19 @@ export class SubscriptionPlanService {
   }
 
   /**
-   * The caller's current plan (ADR-0015 §6.1/§6.2, phase 3b).
+   * The caller's current plan (ADR-0015 §6.1/§6.2, phase 3b + 4a/D34).
    *
    * `PlanInfo.key` keeps its historical value for every existing caller
-   * (#270/#181/#228): a seated student/educator shows the seat plan, a manager
-   * shows the active org's plan, everyone else their personal plan — all three
-   * now membership-verified through the resolver, so a forged `active_org_id`
-   * plus a stale seat row can no longer surface a foreign plan. `features` and
-   * `limits` are the **effective** resolved set/limits (`max(org, seat,
-   * personal)` for user-scope keys, the org plan for org-scope keys), and
-   * `sources` additively carries the union (D28). No field is renamed or
-   * removed before phase 6.
+   * (#270/#181/#228): a seated member shows the seat plan, else a member who
+   * may bill the active org (`org.billing.manage`; the Admin role holds it)
+   * shows the org plan, everyone else their personal plan — all three now
+   * membership-verified through the resolver, so a forged `active_org_id`
+   * plus a stale seat row can no longer surface a foreign plan. The choice
+   * keys on seat/org scope and the billing permission, never on the caller's
+   * persona. `features` and `limits` are the **effective** resolved
+   * set/limits (`max(org, seat, personal)` for user-scope keys, the org plan
+   * for org-scope keys), and `sources` additively carries the union (D28).
+   * No field is renamed or removed before phase 6.
    */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
@@ -168,19 +216,15 @@ export class SubscriptionPlanService {
 
     const { sources } = resolved;
     let planKey: string | null = null;
-    if (sources.seat && ctx.accountType !== AccountType.MANAGER) {
-      // Seated member (student/educator): the seat plan is the effective plan
-      // (#270). Managers keep resolving the org plan because they are the
-      // org's billing contact (#181).
+    if (sources.seat) {
+      // Seated member: the seat plan is the effective plan (#270).
       planKey = sources.seat.planKey;
-    } else if (sources.org && ctx.accountType === AccountType.MANAGER) {
+    } else if (sources.org && hasPermission(ctx, Permission.ORG_BILLING_MANAGE)) {
+      // Inside a verified org, the member who may bill it sees the org plan
+      // (#181); everyone else falls through to the personal plan.
       planKey = sources.org.planKey;
     }
     if (!planKey) {
-      // Unseated non-managers, and a manager whose `active_org_id` is not a
-      // verified membership. Inside a verified org a manager always has
-      // `sources.org` (`organizations.plan` is NOT NULL) and personal never
-      // applies, so no in-org manager reaches this line.
       planKey = sources.personal?.planKey ?? null;
     }
 
@@ -195,20 +239,23 @@ export class SubscriptionPlanService {
     if (planError) return toDbFailure(planError);
     if (!plan) return failure('NOT_FOUND');
 
-    return success(
-      this.toPlanInfo(plan, resolved.entitlements, resolved.limits, resolved.plan.sources),
-    );
+    // `features`/`limits` are the effective resolved set, not the plan row's
+    // own rows; `scope`/`audience`/`seatEligible` still describe the plan.
+    const view = await this.planView(supabase, plan);
+    if (isFailure(view)) return view;
+    return success({
+      ...view.data,
+      features: resolved.entitlements,
+      limits: resolved.limits,
+      sources: resolved.plan.sources,
+    });
   }
 
   /**
-   * The caller's personal plan (`profiles.personal_plan_key`).
-   *
-   * Managers have no paid personal plan (#228): an organization purchase never
-   * writes the buyer's personal plan, and a manager's personal plan is the free
-   * `launch` tier used only outside an organization. Rows written by checkout
-   * before that invariant existed may still hold a paid organization plan; they
-   * are reported as the free manager plan instead of the org plan they were
-   * copied from.
+   * The caller's personal plan (`profiles.personal_plan_key`), returned as
+   * stored. The legacy "paid org plan demoted to the free manager plan"
+   * fallback is deleted in phase 4a: the migration backfills every manager
+   * off organization-scope plans onto `solo`, so the stored plan is the answer.
    */
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
@@ -233,30 +280,7 @@ export class SubscriptionPlanService {
     if (planError) return toDbFailure(planError);
     if (!storedPlan) return failure('NOT_FOUND');
 
-    // A manager's personal plan is never an organization plan (#228). Legacy
-    // rows that still point at a paid manager plan resolve to the free manager
-    // tier (`launch` in the seed catalog) instead of the org plan they were
-    // copied from. Everyone else gets the stored plan verbatim.
-    let plan = storedPlan;
-    const isPaidOrgPlan =
-      storedPlan.for_account_type === 'manager' && (storedPlan.price_monthly ?? 0) > 0;
-    if (ctx.accountType === AccountType.MANAGER && isPaidOrgPlan) {
-      const { data: freeManagerPlan, error: freePlanError } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .eq('for_account_type', 'manager')
-        .eq('price_monthly', 0)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (freePlanError) return toDbFailure(freePlanError);
-      if (!freeManagerPlan) return failure('NOT_FOUND');
-      plan = freeManagerPlan;
-    }
-
-    return this.planView(supabase, plan);
+    return this.planView(supabase, storedPlan);
   }
 
   async getAllAdmin(): Promise<ServiceResult<PlanInfo[]>> {
@@ -316,7 +340,8 @@ export class SubscriptionPlanService {
         sort_order: input.sortOrder,
         is_active: input.isActive,
         currency: input.currency,
-        for_account_type: input.forAccountType ?? null,
+        scope: input.scope,
+        audience: input.audience ?? null,
       })
       .select()
       .single();
@@ -338,7 +363,8 @@ export class SubscriptionPlanService {
     if (input.sortOrder !== undefined) updateData.sort_order = input.sortOrder;
     if (input.isActive !== undefined) updateData.is_active = input.isActive;
     if (input.currency !== undefined) updateData.currency = input.currency;
-    if (input.forAccountType !== undefined) updateData.for_account_type = input.forAccountType;
+    if (input.scope !== undefined) updateData.scope = input.scope;
+    if (input.audience !== undefined) updateData.audience = input.audience;
 
     const { data, error } = await supabase
       .from('subscription_plans')

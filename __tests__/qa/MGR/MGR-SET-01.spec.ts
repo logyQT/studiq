@@ -44,7 +44,7 @@ const CASE = 'MGR-SET-01';
 const SETTINGS_PATH = '/manage/settings';
 const ORG_API = (orgId: string) => `/api/v1/organization/${orgId}`;
 const LOGO_API = (orgId: string) => `/api/v1/organization/${orgId}/logo`;
-const PLANS_API = '/api/v1/subscription-plans?for=manager';
+const PLANS_API = '/api/v1/subscription-plans?scope=organization';
 
 const COPY = {
   pageTitle: 'Ustawienia',

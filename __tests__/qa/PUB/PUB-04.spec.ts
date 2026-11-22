@@ -42,7 +42,8 @@ interface PlanInfo {
   limits: Record<string, number>;
   sortOrder: number;
   isActive: boolean;
-  forAccountType: string | null;
+  scope: string;
+  audience: string | null;
 }
 
 /** The student ladder the public pricing page documents (`base` … `pro`). */
@@ -167,7 +168,7 @@ async function fetchStudentPlans(page: Page): Promise<PlanInfo[]> {
   expect(response.status(), 'the public plan catalogue').toBe(200);
   const { data } = await json<{ data: PlanInfo[] }>(response);
   return data
-    .filter((plan) => plan.isActive && plan.forAccountType === 'student')
+    .filter((plan) => plan.isActive && plan.scope === 'personal' && plan.audience === 'student')
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 

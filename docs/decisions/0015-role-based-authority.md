@@ -415,6 +415,19 @@ Add to `subscription_plans`:
 plan. A manager without an org gets `solo` (baseline entitlements only). This
 removes the ADR-0007 dual-purpose problem without adding a paid manager family.
 
+> **2026-11-22 (phase 4a, D32).** Shipped as specified:
+> `subscription_plans.scope`/`audience` replace `for_account_type` (dropped in
+> the same migration, `20261122150000`), with the pair CHECK (organization ⇒
+> audience NULL, personal ⇒ audience NOT NULL) and a fail-closed backfill that
+> raises on any unknown legacy value. `solo` (key `solo`, price 0, PLN, active,
+> sort 13, `flashcards`+`quiz`, the eight free-tier limit rows mirroring
+> `base` but spelled out in the migration so a seed-less `db push` gets them)
+> is inserted idempotently; `launch` became organization-only through the backfill.
+> `handle_new_user()` writes `solo` for managers and now also writes
+> `profiles.account_type`; every manager profile holding an organization-scope
+> plan was backfilled to `solo`. `GET /api/v1/subscription-plans` filters are
+> `scope`/`audience` query params now (no params ⇒ every active plan).
+
 ### 5.3 What the org plan grants
 
 `plan_entitlements (plan_key, entitlement_key)` is the **ceiling** for the org.
@@ -500,6 +513,22 @@ A seat is a per-member personal-plan grant within the org's license.
 - A seat may **raise** a user-scope limit, never lower it (`max(org, seat,
 personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
 
+> **2026-11-22 (phase 4a, D33).** Shipped: `org_seat_pools.plan_key` now
+> `REFERENCES subscription_plans(key)` (the migration aborts with a readable
+> message if an existing pool points at a non-personal plan).
+> `SeatService.addPool` validates the licence before writing anything — the
+> plan must exist, be active, be `scope='personal'`, and every entitlement key
+> of the plan must be `seatEligible` in the live `entitlement_catalog` (one
+> query, DB truth); refusal is `UNPROCESSABLE_ENTITY` with a field error on
+> `planKey`. `PLAN_TIER_MAP` is deleted. `SeatService.assignSeat` reads the
+> target's `profiles.account_type` (new column, backfilled from the JWT and
+> kept in step by `handle_new_user` and the admin's `updateAccountType`) and
+> requires it to equal the pool plan's `audience`; unresolved ⇒ `BAD_REQUEST`.
+> `ROLE_TIER_MAP` and `embeddedRoleName` are deleted. `PlanInfo` gained
+> `scope`, `audience` and a derived `seatEligible` (true iff the plan has at
+> least one entitlement and all of them are `seatEligible`); `forAccountType`
+> is removed.
+
 ### 5.5 Personal plans
 
 - Outside an org: personal entitlements + personal limits.
@@ -509,6 +538,19 @@ personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
   an org they use `solo`.
 - Legacy paid manager rows in `personal_plan_key` are backfilled to `solo`
   (pre-market: no compatibility constraint).
+
+> **2026-11-22 (phase 4a, D34).** The persona branch is gone: inside a
+> **verified** org a personal plan whose own `scope='organization'` does not
+> apply (it is the legacy org-buyer mirror, D-ADR-0007) — the resolver reads the
+> plan's scope from the `subscription_plans(scope)` embed on the batched
+> `plan_entitlements` read, so the rule costs no extra query and the budget
+> stays at seven. Outside an org the personal plan always applies. The
+> migration backfilled every manager off organization-scope plans onto
+> `solo`, and `getPersonalPlan` returns the stored plan verbatim (the old
+> paid-org-plan demotion fallback is deleted). `getMyPlan` keys on seat/org
+> scope and `org.billing.manage`, never on the caller's persona: seated → seat
+> plan; else in a verified org with `org.billing.manage` → the org plan; else
+> the personal plan.
 
 ### 5.6 Overrides and flags
 
@@ -567,8 +609,11 @@ resolveEntitlements(ctx):
 
 Rules:
 
-- `personalPlanApplies(ctx)`: outside an org always; inside an org for
-  non-manager personas only (ADR-0007).
+- Personal-plan applicability: outside an org always; inside a verified org
+  unless the personal plan's own `scope='organization'` (the legacy org-buyer
+  mirror, ADR-0007) — see §5.5's 2026-11-22 note (D34). The persona-keyed
+  `personalPlanApplies(ctx)` (phase 3) was deleted in phase 4a; the pseudocode
+  above now reads applicability off the plan's scope.
 - Missing `plan_limits` row = `0` (blocked) in every path.
 - `effective` excludes an entitlement whose quota is `0`; the API and UI must
   agree on that (the "feature on, limit 0" state is never presented as usable).

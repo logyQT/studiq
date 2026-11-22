@@ -80,7 +80,7 @@ export function CheckoutMockForm() {
     enabled: !!planId,
   });
   const plan = planQuery.data;
-  const isOrgPlan = plan?.forAccountType === 'manager';
+  const isOrgPlan = plan?.scope === 'organization';
 
   // The target org comes from the self-scoped membership list (RLS: members
   // only) — never from the URL, which is user-editable and goes stale on a

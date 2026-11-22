@@ -50,7 +50,12 @@ bun scripts/qa-tenant.ts PUB-03           # seed od zera (deterministyczny)
   podstron /pricing/student, /pricing/edu ani /pricing/org.
 - „Dla siebie” pokazuje dwie sekcje: „Dla uczniów i studentów” (Base, Spark, Ace, Pro)
   i „Dla edukatorów” (Lite, Guide, Creator, Master). Każda sekcja ma własne porównanie planów.
-- „Dla organizacji” pokazuje sekcję „Dla organizacji” z planami Launch, Team, Hub, Campus.
+- „Dla organizacji” pokazuje sekcję „Dla organizacji” z planami Launch, Team, Hub, Campus
+  (katalog pobierany przez `?scope=organization` — adres przełącznika to
+  `?audience=organization`).
+- Plan `solo` (darmowy plan osobisty managera) jest w katalogu
+  (`GET /api/v1/subscription-plans` go zwraca), ale **nie występuje w żadnej drabince
+  cenowej** — ani studenckiej, ani edukatorskiej, ani organizacji.
 - Przełączenie zmienia plany bez przeładowania dokumentu, zachowuje pozycję przewinięcia
   i dopisuje do adresu `?audience=organization`; „wstecz” wraca do poprzedniego widoku.
 - Zimny start /pricing?audience=organization od razu pokazuje plany organizacji — treść jest

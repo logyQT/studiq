@@ -136,25 +136,44 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
   });
 
-  it('row 4: org manager — the personal plan is excluded, user keys come from the org plan only', async () => {
+  it('row 4: an organization-scope personal plan never applies inside an org (D34)', async () => {
     mockResolverTables(mock, {
       orgPlan: 'launch',
       roleProfile: 'all',
-      personalPlanKey: 'campus', // unlimited mirrored org plan (#228)
+      personalPlanKey: 'campus', // unlimited, scope='organization' (the legacy org-buyer mirror)
+      planScopes: { campus: 'organization' },
       planLimits: {
         launch: { ...ORG_LIMITS, max_flashcards: 100, max_ai_tokens_per_day: 0 },
         campus: { max_flashcards: -1, max_ai_tokens_per_day: -1, max_students: -1 },
       },
     });
 
-    const { limits } = await resolver.resolveEntitlements(
+    const { limits, sources } = await resolver.resolveEntitlements(
       memberCtx({ accountType: AccountType.MANAGER }),
     );
 
-    // The manager's stale personal `campus` (-1) must not widen anything.
+    // The mirrored org plan must not widen anything: it is not a candidate.
     expect(limits.max_flashcards).toBe(100);
     expect(limits.max_ai_tokens_per_day).toBe(0);
     expect(limits.max_students).toBe(50);
+    expect(sources.personal).toBeNull();
+  });
+
+  it('a personal-scope personal plan still applies inside an org (personalPortable keys carry, D3)', async () => {
+    mockResolverTables(mock, {
+      orgPlan: 'launch',
+      roleProfile: 'learner',
+      personalPlanKey: 'pro', // scope='personal'
+      planLimits: {
+        launch: { ...ORG_LIMITS, max_flashcards: 100, max_ai_tokens_per_day: 0 },
+        pro: { max_flashcards: -1, max_ai_tokens_per_day: -1 },
+      },
+    });
+
+    const { limits, sources } = await resolver.resolveEntitlements(memberCtx());
+
+    expect(limits.max_flashcards).toBe(-1); // max(org 100, personal -1) — -1 wins
+    expect(sources.personal).toEqual({ planKey: 'pro', origin: 'personal' });
   });
 
   it('row 5: forged active_org_id with a stale seat row — personal for user keys, 0 for org keys, the seat is never read', async () => {

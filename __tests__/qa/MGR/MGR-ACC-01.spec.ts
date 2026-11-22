@@ -115,11 +115,14 @@ test.describe('MGR-ACC-01 — manager user menu', () => {
     await expect(page.getByText('Wybierz plan odpowiedni dla Twoich potrzeb')).toBeVisible();
     await expectNoNotFoundPage(page);
 
-    const managerPlans = await getData<PlanInfo[]>(page, '/api/v1/subscription-plans?for=manager');
-    expect(managerPlans.length, 'the manager plan catalogue is empty').toBeGreaterThan(0);
+    const organizationPlans = await getData<PlanInfo[]>(
+      page,
+      '/api/v1/subscription-plans?scope=organization',
+    );
+    expect(organizationPlans.length, 'the organization plan catalogue is empty').toBeGreaterThan(0);
     // One card per catalogued plan, in catalogue order — the page renders the API.
     await expect(page.locator('[data-slot="card"] [data-slot="card-title"]')).toHaveText(
-      managerPlans.map((plan) => plan.name),
+      organizationPlans.map((plan) => plan.name),
     );
 
     // 3. „Konto” → /manage/account: the manager's own account screen (name, e-mail,

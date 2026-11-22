@@ -222,7 +222,9 @@ describe('active_org_id membership gate (#186)', () => {
     const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
-    expect(body.data.key).toBe('launch');
+    // No membership ⇒ no org layer: the personal plan, which is `solo` for a
+    // manager since phase 4a (D2), never the forged org's `launch`.
+    expect(body.data.key).toBe('solo');
   });
 
   it('does not report the forged org as active in /me/orgs', async () => {

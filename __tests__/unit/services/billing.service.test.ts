@@ -47,7 +47,8 @@ function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
     sortOrder: 1,
     ...overrides,
   };
@@ -172,33 +173,33 @@ describe('BillingService.startCheckout', () => {
     });
   });
 
-  it('rejects a plan from another account family', async () => {
+  it('rejects a personal plan from another audience', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(plan({ key: 'hub', forAccountType: 'manager' })),
+      success(plan({ key: 'guide', audience: 'educator' })),
     );
 
-    await expect(service.startCheckout(studentCtx, 'hub')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'guide')).resolves.toEqual({
       success: false,
       error: 'FORBIDDEN',
     });
     expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
   });
 
-  it('requires an org id for an organization plan', async () => {
+  it('answers FORBIDDEN when an organization plan arrives without an org id (D34)', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(plan({ key: 'hub', forAccountType: 'manager' })),
+      success(plan({ key: 'hub', scope: 'organization', audience: null })),
     );
 
     await expect(service.startCheckout(managerCtx, 'hub')).resolves.toEqual({
       success: false,
-      error: 'BAD_REQUEST',
+      error: 'FORBIDDEN',
     });
     expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it('rejects a non-admin org buyer without calling Stripe', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(plan({ key: 'hub', name: 'StudiQ Hub', forAccountType: 'manager' })),
+      success(plan({ key: 'hub', name: 'StudiQ Hub', scope: 'organization', audience: null })),
     );
     vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
 
@@ -280,7 +281,13 @@ describe('BillingService.startCheckout', () => {
   it('starts an organization checkout for an admin', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
       success(
-        plan({ key: 'hub', name: 'StudiQ Hub', priceMonthly: 1999, forAccountType: 'manager' }),
+        plan({
+          key: 'hub',
+          name: 'StudiQ Hub',
+          priceMonthly: 1999,
+          scope: 'organization',
+          audience: null,
+        }),
       ),
     );
     vi.mocked(repository.findListedPrice).mockResolvedValueOnce(

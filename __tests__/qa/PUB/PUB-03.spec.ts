@@ -21,8 +21,8 @@ import { createTranslator } from 'next-intl';
  * for a session — the acceptance criteria belong to the anonymous visitor.
  *
  * The plan catalogue is global product config. The spec reads it through the
- * public `GET /api/v1/subscription-plans` endpoint (no `for` filter: one flat list,
- * which is what the page itself requests) and compares the rendered ladders with
+ * public `GET /api/v1/subscription-plans` endpoint (no scope/audience filter: one
+ * flat list, which is what the page itself requests) and compares the rendered ladders with
  * it; no plan, setting or other singleton row is written. Page copy comes from the
  * `PricingPage` message catalogue the page renders from, so a rewording does not
  * turn the spec red — which plans and which ladder each audience shows does.
@@ -35,14 +35,15 @@ interface PlanInfo {
   name: string;
   sortOrder: number;
   isActive: boolean;
-  forAccountType: string | null;
+  scope: string;
+  audience: string | null;
 }
 
-/** The ladders the pricing page documents, per account type. */
+/** The ladders the pricing page documents, per scope/audience (D34). */
 const LADDERS = [
-  { accountType: 'student', plans: ['base', 'spark', 'ace', 'pro'] },
-  { accountType: 'educator', plans: ['lite', 'guide', 'creator', 'master'] },
-  { accountType: 'manager', plans: ['launch', 'team', 'hub', 'campus'] },
+  { scope: 'personal', audience: 'student', plans: ['base', 'spark', 'ace', 'pro'] },
+  { scope: 'personal', audience: 'educator', plans: ['lite', 'guide', 'creator', 'master'] },
+  { scope: 'organization', audience: null, plans: ['launch', 'team', 'hub', 'campus'] },
 ] as const;
 
 /** Collect browser-side failures so "no errors" is asserted, not assumed. */
@@ -73,10 +74,12 @@ function shortPlanName(name: string): string {
   return name.replace(/^StudiQ\s+/i, '').trim();
 }
 
-/** The catalogue's own order for one account type. */
-function ladder(plans: PlanInfo[], accountType: string): PlanInfo[] {
+/** The catalogue's own order for one scope/audience ladder. */
+function ladder(plans: PlanInfo[], filter: { scope: string; audience: string | null }): PlanInfo[] {
   return plans
-    .filter((plan) => plan.isActive && plan.forAccountType === accountType)
+    .filter(
+      (plan) => plan.isActive && plan.scope === filter.scope && plan.audience === filter.audience,
+    )
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 
@@ -155,11 +158,18 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(page.getByText(copy('subtitle'), { exact: true })).toBeVisible();
 
     const catalogue = await fetchCatalogue(page);
-    for (const { accountType, plans } of LADDERS) {
+    for (const filter of LADDERS) {
+      const label = filter.audience ?? filter.scope;
       expect(
-        ladder(catalogue, accountType).map((plan) => plan.key),
-        `the ${accountType} ladder in the catalogue`,
-      ).toEqual([...plans]);
+        ladder(catalogue, filter).map((plan) => plan.key),
+        `the ${label} ladder in the catalogue`,
+      ).toEqual([...filter.plans]);
+    }
+    // `solo` is in the catalogue (the free manager personal plan) but in no
+    // pricing ladder (D2/D34).
+    expect(catalogue.map((plan) => plan.key)).toContain('solo');
+    for (const filter of LADDERS) {
+      expect(ladder(catalogue, filter).map((plan) => plan.key)).not.toContain('solo');
     }
 
     // The two-option switch: a named radio group, not a card grid.
@@ -178,9 +188,9 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(organizationRadio).not.toBeChecked();
 
     // Both individual ladders, exactly the catalogue's plans, in its order.
-    const studentPlans = ladder(catalogue, 'student');
-    const educatorPlans = ladder(catalogue, 'educator');
-    const managerPlans = ladder(catalogue, 'manager');
+    const studentPlans = ladder(catalogue, { scope: 'personal', audience: 'student' });
+    const educatorPlans = ladder(catalogue, { scope: 'personal', audience: 'educator' });
+    const organizationPlans = ladder(catalogue, { scope: 'organization', audience: null });
     await expectLadder(page, copy('ladder_student_title'), studentPlans);
     await expectLadder(page, copy('ladder_educator_title'), educatorPlans);
 
@@ -208,7 +218,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
       .filter({ hasText: copy('audience_organization') })
       .click();
     await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
-    await expectLadder(page, copy('ladder_org_title'), managerPlans);
+    await expectLadder(page, copy('ladder_org_title'), organizationPlans);
 
     expect(
       await page.evaluate(() => document.documentElement.dataset.pub03),
@@ -237,7 +247,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
 
     await page.goForward();
     await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
-    await expectLadder(page, copy('ladder_org_title'), managerPlans);
+    await expectLadder(page, copy('ladder_org_title'), organizationPlans);
 
     // Back to individual: the address drops the parameter again.
     await group

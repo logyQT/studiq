@@ -56,7 +56,9 @@ function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key' | 'limits'>): 
     sources: [],
     sortOrder: 1,
     isActive: true,
-    forAccountType: null,
+    scope: 'personal',
+    audience: null,
+    seatEligible: false,
     ...overrides,
   };
 }

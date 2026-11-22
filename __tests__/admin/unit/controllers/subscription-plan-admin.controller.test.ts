@@ -59,12 +59,32 @@ describe('SubscriptionPlanAdminController', () => {
   describe('create', () => {
     it('creates a plan', async () => {
       mockService.create.mockResolvedValueOnce({ success: true, data: { id: 'p-1' } });
-      const response = await controller.create({ key: 'new', name: 'New' });
+      const response = await controller.create({
+        key: 'new',
+        name: 'New',
+        scope: 'personal',
+        audience: 'student',
+      });
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
     });
     it('returns 422 on invalid body', async () => {
       const response = await controller.create({ key: '', name: '' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+    });
+    it('returns 422 on an organization plan that still names an audience (D32)', async () => {
+      const response = await controller.create({
+        key: 'org',
+        name: 'Org',
+        scope: 'organization',
+        audience: 'manager',
+      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+    });
+    it('returns 422 on a personal plan without an audience (D32)', async () => {
+      const response = await controller.create({ key: 'p', name: 'P', scope: 'personal' });
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });

@@ -66,7 +66,7 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
-function planRow(key: string, forAccountType: string | null = null) {
+function planRow(key: string, scope: string = 'personal', audience: string | null = 'student') {
   return {
     id: `p-${key}`,
     key,
@@ -77,7 +77,8 @@ function planRow(key: string, forAccountType: string | null = null) {
     currency: 'PLN',
     sort_order: 0,
     is_active: true,
-    for_account_type: forAccountType,
+    scope,
+    audience,
   };
 }
 
@@ -86,7 +87,8 @@ function mockPlanTables(
   mock: ReturnType<typeof mockSupabaseClient>,
   opts: Parameters<typeof mockResolverTables>[1],
   planKey: string | null,
-  forAccountType: string | null = null,
+  scope: string = 'personal',
+  audience: string | null = 'student',
 ) {
   mockResolverTables(mock, opts);
   const baseImpl: (table: string) => unknown = vi.mocked(mock.from).getMockImplementation()!;
@@ -94,7 +96,7 @@ function mockPlanTables(
     if (table !== 'subscription_plans') return baseImpl(table);
     // Key-aware catalog read: a lookup for any other key finds no row, so a
     // wrong plan key resolves NOT_FOUND instead of silently passing.
-    const row = planKey ? planRow(planKey, forAccountType) : null;
+    const row = planKey ? planRow(planKey, scope, audience) : null;
     const plansQb = qb(row);
     plansQb.eq = vi.fn((column: string, value: unknown) =>
       column === 'key' && value !== planKey ? qb(null) : plansQb,
@@ -151,10 +153,11 @@ describe('SubscriptionPlanService', () => {
       expect(expectSuccess(result)[0]?.limits.max_groups).toBe(3);
     });
 
-    it('maps for_account_type to forAccountType, defaulting to null', async () => {
+    it('maps scope/audience to the PlanInfo fields', async () => {
       const plans = [
-        { id: 'p-1', key: 'hub', name: 'Hub', for_account_type: 'manager' },
-        { id: 'p-2', key: 'base', name: 'Base', for_account_type: null },
+        { id: 'p-1', key: 'hub', name: 'Hub', scope: 'organization', audience: null },
+        { id: 'p-2', key: 'solo', name: 'Solo', scope: 'personal', audience: 'manager' },
+        { id: 'p-3', key: 'base', name: 'Base', scope: 'personal', audience: 'student' },
       ];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb([]));
@@ -162,21 +165,67 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.listActive();
 
-      expect(expectSuccess(result)[0]?.forAccountType).toBe('manager');
-      expect(expectSuccess(result)[1]?.forAccountType).toBeNull();
+      expect(expectSuccess(result)[0]?.scope).toBe('organization');
+      expect(expectSuccess(result)[0]?.audience).toBeNull();
+      expect(expectSuccess(result)[1]?.scope).toBe('personal');
+      expect(expectSuccess(result)[1]?.audience).toBe('manager');
     });
 
-    it('filters by account type', async () => {
+    it('derives seatEligible from the catalog embed: all keys seat-eligible', async () => {
+      const plans = [planRow('ace')];
+      const features = [
+        {
+          plan_key: 'ace',
+          entitlement_key: 'flashcards',
+          entitlement_catalog: { seat_eligible: true },
+        },
+        {
+          plan_key: 'ace',
+          entitlement_key: 'ai.chat',
+          entitlement_catalog: { seat_eligible: true },
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(plans));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.seatEligible).toBe(true);
+      expect(expectSuccess(result)[0]?.features).toEqual(['flashcards', 'ai.chat']);
+    });
+
+    it('marks a plan with a non-seat-eligible key, or no keys, as not seat-eligible', async () => {
+      const plans = [planRow('hub'), planRow('empty')];
+      const features = [
+        {
+          plan_key: 'hub',
+          entitlement_key: 'branding',
+          entitlement_catalog: { seat_eligible: false },
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(plans));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.seatEligible).toBe(false);
+      expect(expectSuccess(result)[1]?.seatEligible).toBe(false);
+    });
+
+    it('filters by scope and audience', async () => {
       const plansQb = qb([]);
       mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.listActive('student');
+      const result = await service.listActive({ scope: 'personal', audience: 'student' });
 
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
-      expect(plansQb.eq).toHaveBeenCalledWith('for_account_type', 'student');
+      expect(plansQb.eq).toHaveBeenCalledWith('scope', 'personal');
+      expect(plansQb.eq).toHaveBeenCalledWith('audience', 'student');
     });
 
     it('returns error on plans query failure', async () => {
@@ -261,17 +310,18 @@ describe('SubscriptionPlanService', () => {
       ]);
     });
 
-    it('returns the org plan for a manager in an active org, never the seat, #181', async () => {
+    it('returns the org plan for a member holding org.billing.manage in an active org, never the seat, #181/D34', async () => {
       mockPlanTables(
         mock,
         {
           orgPlan: 'hub',
           roleProfile: 'all',
-          seatPlanKey: 'ace',
-          personalPlanKey: 'launch',
+          seatPlanKey: null,
+          personalPlanKey: 'solo',
         },
         'hub',
-        'manager',
+        'organization',
+        null,
       );
 
       const result = await service.getMyPlan({
@@ -279,10 +329,36 @@ describe('SubscriptionPlanService', () => {
         accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
         orgRoleId: 'role-admin',
+        permissionScopes: { 'org.billing.manage': 'organization' },
       });
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).key).toBe('hub');
+    });
+
+    it('returns the personal plan for an org member without org.billing.manage, #181/D34', async () => {
+      mockPlanTables(
+        mock,
+        {
+          orgPlan: 'hub',
+          roleProfile: 'learner',
+          seatPlanKey: null,
+          personalPlanKey: 'pro',
+        },
+        'pro',
+        'personal',
+        'student',
+      );
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        activeOrgId: 'org-1',
+        orgRoleId: 'role-member',
+        permissionScopes: { 'deck.read': 'own' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).key).toBe('pro');
     });
 
     it('returns the personal plan for an unseated student member, #181', async () => {
@@ -331,8 +407,9 @@ describe('SubscriptionPlanService', () => {
     it('falls back to the personal plan for a manager with no verified org (forged active_org_id)', async () => {
       mockPlanTables(
         mock,
-        { member: false, orgPlan: null, personalPlanKey: 'launch' },
-        'launch',
+        { member: false, orgPlan: null, personalPlanKey: 'solo' },
+        'solo',
+        'personal',
         'manager',
       );
 
@@ -343,16 +420,16 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('solo');
     });
 
-    it('returns the manager free personal plan with no active org, #228', async () => {
-      mockPlanTables(mock, { personalPlanKey: 'launch' }, 'launch', 'manager');
+    it('returns the manager free personal plan (solo) with no active org, #228/D2', async () => {
+      mockPlanTables(mock, { personalPlanKey: 'solo' }, 'solo', 'personal', 'manager');
 
       const result = await service.getMyPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('solo');
       expect(mock.from).not.toHaveBeenCalledWith('org_members');
     });
 
@@ -410,70 +487,60 @@ describe('SubscriptionPlanService', () => {
       expect(expectSuccess(result).key).toBe('free');
     });
 
-    it('reports the free manager plan for a manager carrying a purchased org plan (#228)', async () => {
-      // Legacy checkout rows copied the bought org plan into the personal plan.
-      // Managers have no paid personal plan, so the row is inert: report the
-      // free manager tier instead of the org plan.
-      const paidOrgPlan = {
+    it('returns the stored plan verbatim — the legacy org-plan fallback is deleted in phase 4a (D34)', async () => {
+      // A legacy row can still name an organization-scope plan; the migration
+      // backfill moves managers off those, so the stored plan is the answer.
+      const storedPlan = {
         id: 'p-hub',
         key: 'hub',
         name: 'StudiQ Hub',
         description: null,
-        price_monthly: 1999,
+        price_monthly: 29900,
         price_yearly: 0,
         currency: 'PLN',
         sort_order: 9,
         is_active: true,
-        for_account_type: 'manager',
-      };
-      const freeManagerPlan = {
-        id: 'p-launch',
-        key: 'launch',
-        name: 'StudiQ Launch',
-        description: null,
-        price_monthly: 0,
-        price_yearly: 0,
-        currency: 'PLN',
-        sort_order: 3,
-        is_active: true,
-        for_account_type: 'manager',
+        scope: 'organization',
+        audience: null,
       };
       mock.from
         .mockReturnValueOnce(qb({ personal_plan_key: 'hub' }))
-        .mockReturnValueOnce(qb(paidOrgPlan))
-        .mockReturnValueOnce(qb(freeManagerPlan))
+        .mockReturnValueOnce(qb(storedPlan))
         .mockReturnValueOnce(qb([]))
         .mockReturnValueOnce(qb([]));
 
       const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('hub');
+      expect(expectSuccess(result).scope).toBe('organization');
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
-    it('keeps a manager on the free personal plan without an extra catalog lookup (#228)', async () => {
-      const freeManagerPlan = {
-        id: 'p-launch',
-        key: 'launch',
-        name: 'StudiQ Launch',
+    it('returns solo for a manager, with no extra catalog lookup (#228/D2)', async () => {
+      const soloPlan = {
+        id: 'p-solo',
+        key: 'solo',
+        name: 'StudiQ Solo',
         description: null,
         price_monthly: 0,
         price_yearly: 0,
         currency: 'PLN',
-        sort_order: 3,
+        sort_order: 13,
         is_active: true,
-        for_account_type: 'manager',
+        scope: 'personal',
+        audience: 'manager',
       };
       mock.from
-        .mockReturnValueOnce(qb({ personal_plan_key: 'launch' }))
-        .mockReturnValueOnce(qb(freeManagerPlan))
+        .mockReturnValueOnce(qb({ personal_plan_key: 'solo' }))
+        .mockReturnValueOnce(qb(soloPlan))
         .mockReturnValueOnce(qb([]))
         .mockReturnValueOnce(qb([]));
 
       const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('solo');
       expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
@@ -574,22 +641,24 @@ describe('SubscriptionPlanService', () => {
       );
     });
 
-    it('writes for_account_type from forAccountType, defaulting to null', async () => {
+    it('writes scope/audience from the input', async () => {
       const b = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b);
 
-      await service.create({ key: 'hub', name: 'Hub', forAccountType: 'manager' });
+      await service.create({ key: 'hub', name: 'Hub', scope: 'organization', audience: null });
 
       expect(b.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ for_account_type: 'manager' }),
+        expect.objectContaining({ scope: 'organization', audience: null }),
       );
 
       const b2 = qb({ id: 'p-2' });
       mock.from.mockReturnValueOnce(b2);
 
-      await service.create({ key: 'base', name: 'Base' });
+      await service.create({ key: 'solo', name: 'Solo', scope: 'personal', audience: 'manager' });
 
-      expect(b2.insert).toHaveBeenCalledWith(expect.objectContaining({ for_account_type: null }));
+      expect(b2.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'personal', audience: 'manager' }),
+      );
     });
   });
 
@@ -606,24 +675,25 @@ describe('SubscriptionPlanService', () => {
       expect(updateQb.eq).toHaveBeenCalledWith('id', 'p-1');
     });
 
-    it('only writes for_account_type when explicitly provided', async () => {
+    it('only writes scope/audience when explicitly provided', async () => {
       const b = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b);
 
       await service.update('p-1', { name: 'Updated' });
 
       expect(b.update).toHaveBeenCalledWith(
-        expect.not.objectContaining({ for_account_type: expect.anything() as unknown }) as unknown,
+        expect.not.objectContaining({ scope: expect.anything() as unknown }) as unknown,
+      );
+      expect(b.update).toHaveBeenCalledWith(
+        expect.not.objectContaining({ audience: expect.anything() as unknown }) as unknown,
       );
 
       const b2 = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b2);
 
-      await service.update('p-1', { forAccountType: null });
+      await service.update('p-1', { audience: null });
 
-      expect(b2.update).toHaveBeenCalledWith(
-        expect.objectContaining({ for_account_type: null }) as unknown,
-      );
+      expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ audience: null }));
     });
   });
 

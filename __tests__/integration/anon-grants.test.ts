@@ -6,7 +6,14 @@ import { asJson } from '#test/helpers/json';
 // browser) could read AND write most public tables through PostgREST without a
 // login. Only the public pricing data may be visible to an unauthenticated caller.
 
-const PUBLIC_TABLES = ['plan_entitlements', 'plan_limits', 'subscription_plans'];
+// `entitlement_catalog` joined the public set in phase 4a: `PlanInfo.seatEligible`
+// embeds it from `plan_entitlements` on every plan read.
+const PUBLIC_TABLES = [
+  'entitlement_catalog',
+  'plan_entitlements',
+  'plan_limits',
+  'subscription_plans',
+];
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -29,6 +36,15 @@ describe('anon role grants (#191)', () => {
   it.each(PUBLIC_TABLES)('anon can still read %s (public pricing page)', async (table) => {
     const { error } = await anon.from(table).select('*').limit(1);
     expect(error).toBeNull();
+  });
+
+  // A grant without a policy is a half-state: the embed stops raising 42501 but
+  // returns nothing, so the anonymous plan payload reports `seatEligible: false`
+  // for every plan while a signed-in caller sees the catalog's own flags.
+  it('anon reads entitlement_catalog rows, not just the privilege', async () => {
+    const { data, error } = await anon.from('entitlement_catalog').select('key, seat_eligible');
+    expect(error).toBeNull();
+    expect((data ?? []).length, 'the anonymous catalog payload is not empty').toBeGreaterThan(0);
   });
 
   it.each([

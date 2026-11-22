@@ -433,7 +433,8 @@ const managerActions: Action[] = [
   {
     name: 'subscription-plans',
     weight: 4,
-    run: ({ client }) => client.get('/api/v1/subscription-plans?for=manager', 'subscription-plans'),
+    run: ({ client }) =>
+      client.get('/api/v1/subscription-plans?scope=organization', 'subscription-plans'),
   },
 ];
 

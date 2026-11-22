@@ -557,7 +557,9 @@ describe('org-control permission RLS', () => {
     // and then refuses the write with 42501, so this case pins the write itself
     // and the untouched row for everybody else.
     it('lets the holder UPDATE a pool and refuses everyone else without touching it', async () => {
-      const poolId = await insertPool(orgId, `ace-update-${tag}`, 1);
+      // The pool's plan_key now FKs subscription_plans, so the fixture uses a
+      // real personal plan (`pro`) instead of a synthetic key.
+      const poolId = await insertPool(orgId, 'pro', 1);
 
       const holderUpdate = await holder
         .from('org_seat_pools')
@@ -649,8 +651,8 @@ describe('org-control permission RLS', () => {
     });
 
     it('lets the holder UPDATE an assignment and refuses everyone else without touching it', async () => {
-      const poolId = await ensurePool(orgId, `assign-update-${tag}`, 2);
-      const otherPoolId = await ensurePool(orgId, `assign-update-target-${tag}`, 2);
+      const poolId = await ensurePool(orgId, 'spark', 2);
+      const otherPoolId = await ensurePool(orgId, 'guide', 2);
       const assignmentId = await insertAssignment(orgId, poolId, legacyId);
 
       const holderUpdate = await holder
@@ -688,7 +690,7 @@ describe('org-control permission RLS', () => {
 
   describe('org_seat_assignments read — the manager branch moved with the list route', () => {
     it('lets the holder read an assignment it does not own', async () => {
-      const poolId = await ensurePool(orgId, 'spark', 2);
+      const poolId = await ensurePool(orgId, 'lite', 2);
       const assignmentId = await insertAssignment(orgId, poolId, teacherId);
 
       const { data, error } = await holder
@@ -702,7 +704,7 @@ describe('org-control permission RLS', () => {
     });
 
     it('refuses the legacy manager marker and a plain member (only their own row)', async () => {
-      const poolId = await ensurePool(orgId, 'spark', 2);
+      const poolId = await ensurePool(orgId, 'master', 2);
       const assignmentId = await insertAssignment(orgId, poolId, invitationManagerId);
 
       const legacyRead = await legacy

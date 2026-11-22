@@ -1,15 +1,14 @@
 import { AccountType } from '@studiq/authz';
-import { isAccountType } from '@studiq/server/lib/authz';
 import type { PaymentOwner } from '@studiq/server/lib/payment/payment-gateway';
 import type { CatalogPlan } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 
 /**
  * The domain rules that decide whether a plan may be bought, and for whom
- * (#662 §5.2, workstream A3). They used to exist twice — once in
- * `BillingService.startCheckout` and once inside `MockStripeService` — which let
- * the mock and Stripe paths drift apart. Both now go through this module, so
- * the gateway itself only performs provider I/O.
+ * (#662 §5.2, workstream A3; plan scope since ADR-0015 phase 4a, D34). They
+ * used to exist twice — once in `BillingService.startCheckout` and once inside
+ * `MockStripeService` — which let the mock and Stripe paths drift apart. Both
+ * now go through this module, so the gateway itself only performs provider I/O.
  *
  * Reads only: no entitlement or payment write happens here.
  */
@@ -20,7 +19,7 @@ export interface CheckoutRulePort {
 
 export interface ResolvedPlan {
   plan: CatalogPlan;
-  /** The catalog family is the organization family (`manager`). */
+  /** The plan's `scope` is `organization`. */
   isOrgPlan: boolean;
 }
 
@@ -29,19 +28,21 @@ export interface CheckoutCaller {
   accountType: AccountType;
 }
 
-/** `for_account_type` of the organization family. */
-export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'forAccountType'>): boolean {
-  return plan.forAccountType === AccountType.MANAGER;
+/** An organization plan has `scope='organization'` and no audience (D32). */
+export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'scope'>): boolean {
+  return plan.scope === 'organization';
 }
 
 /**
- * A plan may be *applied* when it exists, is active and belongs to the buyer's
- * account family (a `null` family is available to every type). Free plans are
- * included: they are reached by a lifecycle change (the mock's completion
- * command, Stripe's `customer.subscription.deleted`), not by a purchase.
+ * A plan may be *applied* when it exists, is active and matches the buyer's
+ * audience. Organization plans carry no audience and have no audience check;
+ * a personal plan whose `audience` names another persona is refused. Free
+ * plans are included: they are reached by a lifecycle change (the mock's
+ * completion command, Stripe's `customer.subscription.deleted`), not by a
+ * purchase.
  *
- * The family is checked before the price on purpose: asking for another
- * family's plan is a `FORBIDDEN` even when that plan is free.
+ * The audience is checked before the price on purpose: asking for another
+ * audience's plan is a `FORBIDDEN` even when that plan is free.
  */
 export async function resolveApplicablePlan(
   port: Pick<CheckoutRulePort, 'getPlan'>,
@@ -54,10 +55,7 @@ export async function resolveApplicablePlan(
   const plan = result.data;
   if (!plan?.isActive) return failure('BAD_REQUEST');
 
-  if (
-    plan.forAccountType &&
-    (!isAccountType(plan.forAccountType) || plan.forAccountType !== accountType)
-  ) {
+  if (plan.scope === 'personal' && plan.audience !== accountType) {
     return failure('FORBIDDEN');
   }
 
@@ -94,7 +92,9 @@ export async function resolveCheckoutOwner(
     return success({ type: 'user', userId: caller.userId, accountType: caller.accountType });
   }
 
-  if (!orgId) return failure('BAD_REQUEST');
+  // An organization plan without an org the caller may bill is an
+  // authorization answer, not a syntax one (BIL-05 stays a 403).
+  if (!orgId) return failure('FORBIDDEN');
 
   const admin = await port.isOrgAdmin(orgId, caller.userId);
   if (isFailure(admin)) return admin;

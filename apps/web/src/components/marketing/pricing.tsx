@@ -44,15 +44,15 @@ export function Pricing() {
     isError: studentFailed,
   } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active', 'student'],
-    url: '/api/v1/subscription-plans?for=student',
+    url: '/api/v1/subscription-plans?scope=personal&audience=student',
   });
   const {
     data: manager,
     isLoading: managerLoading,
     isError: managerFailed,
   } = useApiQuery<PlanInfo[]>({
-    queryKey: ['subscription-plans', 'active', 'manager'],
-    url: '/api/v1/subscription-plans?for=manager',
+    queryKey: ['subscription-plans', 'active', 'organization'],
+    url: '/api/v1/subscription-plans?scope=organization',
   });
   const { free, premium, organizationFrom } = pickLandingPlans(student ?? [], manager ?? []);
 

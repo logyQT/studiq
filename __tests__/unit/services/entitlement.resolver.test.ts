@@ -152,7 +152,12 @@ describe('EntitlementResolver', () => {
       // must not hand it to a member inside an org (the EDU-02 regression
       // shape). The portable keys of the same plan (ai.chat, quiz.builder,
       // advanced.stats) do carry over.
-      mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'hub' });
+      mockTables({
+        roleProfile: 'learner',
+        orgPlan: 'launch',
+        personalPlanKey: 'hub',
+        planScopes: { hub: 'personal' },
+      });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual([
@@ -173,18 +178,34 @@ describe('EntitlementResolver', () => {
       expect(entitlements).toContain('branding');
     });
 
-    it('ignores a manager mirrored personal plan inside an org (#228)', async () => {
+    it('ignores an organization-scope personal plan inside an org (#228, D34)', async () => {
       const ctx = {
         ...baseCtx,
         accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
         orgRoleId: 'role-member',
       };
-      mockTables({ roleProfile: 'learner', orgPlan: 'hub', personalPlanKey: 'campus' });
+      mockTables({
+        roleProfile: 'learner',
+        orgPlan: 'hub',
+        personalPlanKey: 'campus',
+        planScopes: { campus: 'organization' },
+      });
+
+      const { entitlements, sources } = await resolver.resolveEntitlements(ctx);
+      // learner ∩ hub, and the mirrored org-scope plan adds nothing.
+      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'branding']);
+      expect(sources.personal).toBeNull();
+    });
+
+    it('still applies a personal-scope plan inside an org (personalPortable keys, D3)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'pro' });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
-      // learner ∩ hub, and the mirrored manager plan adds nothing.
-      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'branding']);
+      // learner ∩ launch gives flashcards/quiz; the personal pro adds its
+      // portable keys (ai.chat, advanced.stats).
+      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
     });
 
     it('treats a non-member active_org_id as no org context (verified membership)', async () => {

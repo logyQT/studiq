@@ -43,7 +43,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
     sortOrder: 1,
   },
   ace: {
@@ -52,7 +53,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 2999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
     sortOrder: 2,
   },
   hub: {
@@ -61,7 +63,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 4999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'manager',
+    scope: 'organization',
+    audience: null,
     sortOrder: 3,
   },
   team: {
@@ -70,7 +73,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 5999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'manager',
+    scope: 'organization',
+    audience: null,
     sortOrder: 4,
   },
 };
@@ -214,13 +218,15 @@ describe('BillingService.changePlan', () => {
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 
-  it('rejects a plan from another account family', async () => {
-    await expect(service.changePlan(studentCtx, 'hub')).resolves.toEqual({
+  it('rejects a plan the caller may not buy: another audience’s personal plan, or an org plan with no org to bill (D34)', async () => {
+    // `ace` is a student-audience personal plan; a manager is refused.
+    await expect(service.changePlan(managerCtx, 'ace')).resolves.toEqual({
       success: false,
       error: 'FORBIDDEN',
     });
 
-    await expect(service.changePlan(managerCtx, 'ace')).resolves.toEqual({
+    // `hub` is an organization plan; without an org id the answer is FORBIDDEN.
+    await expect(service.changePlan(studentCtx, 'hub')).resolves.toEqual({
       success: false,
       error: 'FORBIDDEN',
     });
@@ -299,10 +305,10 @@ describe('BillingService.changePlan', () => {
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 
-  it('rejects a plan from another account type within the personal family', async () => {
+  it('rejects a personal plan from another audience', async () => {
     const educatorCtx = { ...studentCtx, accountType: AccountType.EDUCATOR };
 
-    // `ace` is a student plan; an educator cannot buy it.
+    // `ace` is a student-audience plan; an educator cannot buy it.
     await expect(service.changePlan(educatorCtx, 'ace')).resolves.toEqual({
       success: false,
       error: 'FORBIDDEN',

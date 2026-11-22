@@ -101,7 +101,7 @@ export function PlanRow({ plan, isCurrent, signedIn, accountType, orgId }: PlanR
           isFree || !buyable ? null : (
             <CheckoutButton
               planKey={plan.key}
-              orgId={plan.forAccountType === 'manager' ? orgId : undefined}
+              orgId={plan.scope === 'organization' ? orgId : undefined}
               variant={recommended ? 'default' : 'outline'}
               className={cn(
                 'h-11 w-full rounded-control px-6 text-sm font-semibold',

@@ -57,7 +57,7 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
   a negative assertion instead of a positive one.
 - „Wybierz plan” → `/manage/upgrade`: heading „Rozwiń swój plan” + subtitle „Wybierz
   plan odpowiedni dla Twoich potrzeb”, one card per plan from
-  `/api/v1/subscription-plans?for=manager` (StudiQ Launch / Team / Hub / Campus), each
+  `/api/v1/subscription-plans?scope=organization` (StudiQ Launch / Team / Hub / Campus), each
   with its price, feature list and a CTA. Nothing is clicked there: the CTAs start a
   simulated checkout.
 - „Konto” → `/manage/account`: heading „Konto”, cards „Zdjęcie profilowe”, „Nazwa”

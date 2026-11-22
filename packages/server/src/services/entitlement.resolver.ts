@@ -18,7 +18,6 @@ import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -43,8 +42,16 @@ export function isUserOverrideActive(
 
 type OverrideRow = { feature_key: string; is_enabled?: boolean | null; expires_at?: string | null };
 
-/** A `plan_entitlements` row; `org_role_features` owns the `feature_key` name. */
-type PlanEntitlementRow = { plan_key: string; entitlement_key: string };
+/**
+ * A `plan_entitlements` row with its plan embed: `subscription_plans(scope)`
+ * rides the `plan_key` FK, so the batched catalog read also tells each layer
+ * plan's scope without an extra query (phase 4a, D34).
+ */
+type PlanEntitlementRow = {
+  plan_key: string;
+  entitlement_key: string;
+  subscription_plans: { scope: string } | null;
+};
 
 /** A `plan_limits` row. */
 type PlanLimitRow = { plan_key: string; limit_key: string; limit_value: number };
@@ -187,24 +194,28 @@ export class EntitlementResolver {
       .eq('id', ctx.userId)
       .maybeSingle();
     const personalPlanKey = personalProfile?.personal_plan_key ?? null;
-    const personalApplies = personalPlanApplies(ctx, inOrg);
 
     // ── 4. Batched catalog reads: every layer plan in one query each ──────
+    // The personal plan is always in the batch: its `scope` decides whether it
+    // applies inside the org (phase 4a, D34).
     const layerPlanKeys = [
       inOrg ? orgPlanKey : null,
       inOrg && ctx.orgRoleId ? seatPlanKey : null,
-      personalApplies ? personalPlanKey : null,
+      personalPlanKey,
     ].filter((key): key is string => key != null);
     const planKeys = [...new Set(layerPlanKeys)];
 
     const entitlementsByPlan = new Map<string, Set<EntitlementKey>>();
     const limitsByPlan = new Map<string, Map<LimitKey, number>>();
+    const scopeByPlan = new Map<string, string>();
     if (planKeys.length > 0) {
       const { data: entitlementRows } = await supabase
         .from('plan_entitlements')
-        .select('plan_key, entitlement_key')
+        .select('plan_key, entitlement_key, subscription_plans(scope)')
         .in('plan_key', planKeys);
       for (const row of dbRows(entitlementRows) as PlanEntitlementRow[]) {
+        if (row.subscription_plans?.scope)
+          scopeByPlan.set(row.plan_key, row.subscription_plans.scope);
         if (!isEntitlementKey(row.entitlement_key)) continue;
         const set = entitlementsByPlan.get(row.plan_key) ?? new Set<EntitlementKey>();
         set.add(row.entitlement_key);
@@ -222,6 +233,12 @@ export class EntitlementResolver {
         limitsByPlan.set(row.plan_key, map);
       }
     }
+
+    // A personal plan applies outside an org always; inside a verified org it
+    // applies unless its own `scope` is `organization` — that is the legacy
+    // org-buyer mirror (D-ADR-0007), which must never add entitlements or
+    // limits inside the org (D34). Only `personalPortable` keys carry anyway.
+    const personalApplies = !inOrg || scopeByPlan.get(personalPlanKey ?? '') !== 'organization';
 
     // ── 5. Limits composition (§6.2 truth table) ───────────────────────────
     if (inOrg && !orgPlanKey) {
@@ -352,7 +369,7 @@ export class EntitlementResolver {
    * | No org (or unverified)     | personal plan                       | `0`           |
    * | Org member, unseated       | `max(org, personal)`, -1 wins       | org plan      |
    * | Org member, seated         | `max(org, seat, personal)`          | org plan      |
-   * | Org member, manager        | `max(org, seat)`, personal excluded | org plan      |
+   * | Org-scope personal plan    | personal excluded (D34)             | org plan      |
    * | Non-member / forged cookie | personal plan                       | `0`           |
    * | Missing `plan_limits` row  | `0` + warn                          | `0` + warn    |
    *

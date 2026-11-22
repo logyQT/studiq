@@ -10,7 +10,7 @@ import { createServiceClient } from '#test/integration/helpers';
 // the DB may not contain keys the resolver ignores.
 interface PlanRow {
   key: string;
-  for_account_type: string;
+  scope: string;
 }
 
 interface PlanLimitRow {
@@ -28,7 +28,7 @@ describe('plan limit catalog (#233)', () => {
 
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, for_account_type')
+      .select('key, scope')
       .eq('is_active', true);
     if (plansError) throw new Error(`[catalog] plan lookup failed: ${plansError.message}`);
     activePlans = dbRows(plans);
@@ -55,11 +55,11 @@ describe('plan limit catalog (#233)', () => {
     expect(missing).toEqual([]);
   });
 
-  it('every active manager plan defines every org-scope limit key', () => {
-    const managerPlans = activePlans.filter((plan) => plan.for_account_type === 'manager');
-    expect(managerPlans.length).toBeGreaterThan(0);
+  it('every active organization plan defines every org-scope limit key', () => {
+    const organizationPlans = activePlans.filter((plan) => plan.scope === 'organization');
+    expect(organizationPlans.length).toBeGreaterThan(0);
 
-    const missing = managerPlans.flatMap((plan) => {
+    const missing = organizationPlans.flatMap((plan) => {
       const keys = keysFor(plan.key);
       return ORG_LIMIT_KEYS.filter((key) => !keys.has(key)).map((key) => `${plan.key}.${key}`);
     });

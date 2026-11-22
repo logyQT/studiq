@@ -54,7 +54,9 @@ tenant is read or written.
 
 The concern the case asks to verify does **not** reproduce on the current build.
 The mock webhook (`mock-stripe.service.ts`) treats a plan whose
-`subscription_plans.for_account_type` is `manager` as an organization plan: it
+`subscription_plans.scope` is `organization` as an organization plan (since phase 4a
+the catalog row's `scope`/`audience` decide `isOrgPlan`/purchasability — D34;
+`for_account_type` was dropped with the column): it
 requires the caller to be an admin of the target organization
 (`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`)
 and calls `change_org_plan`, which moves `organizations.plan` only. The org

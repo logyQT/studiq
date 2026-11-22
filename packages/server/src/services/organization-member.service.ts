@@ -12,13 +12,18 @@ interface MemberRow {
   user_id: string;
   org_role_id: string;
   org_roles: { name: string; display_name: string | null };
-  profiles: { email: string; full_name: string | null; created_at: string | null };
+  profiles: {
+    email: string;
+    full_name: string | null;
+    created_at: string | null;
+    account_type: string;
+  };
 }
 
 type GroupMembership = { id: string; name: string; role: string };
 
 /** One response shape for the member list, so its fields cannot drift. */
-function toMemberRows(
+export function toMemberRows(
   rows: MemberRow[],
   organizationId: string,
   groupsByUserId: Record<string, GroupMembership[]>,
@@ -31,6 +36,8 @@ function toMemberRows(
       id: row.user_id,
       email: profile.email,
       full_name: profile.full_name,
+      /** The persona seat assignment validates against (D33); NOT NULL. */
+      accountType: profile.account_type,
       orgRoleName: roleName,
       orgRoleDisplayName: orgRole.display_name ?? roleName,
       orgRoleId: row.org_role_id,
@@ -70,7 +77,7 @@ export class OrganizationMemberService {
     let query = supabase
       .from('org_members')
       .select(
-        'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
+        'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at, account_type)',
       )
       .eq('organization_id', ctx.activeOrgId);
 

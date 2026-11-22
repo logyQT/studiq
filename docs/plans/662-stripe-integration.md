@@ -106,6 +106,13 @@ Facts that matter for the design:
 - The **browser is the webhook caller** and generates the idempotency key (`crypto.randomUUID()`).
 - `planId` is a plan **key** (`spark`, `campus`), not a UUID.
 - `/checkout` reads `plan_id` and `org_id` from the URL and decides `isOrgPlan` from `for_account_type === 'manager'`.
+
+  > **2026-11-22 (ADR-0015 phase 4a, D34).** `subscription_plans.for_account_type` was
+  > dropped; the catalog row's `scope`/`audience` decide both `isOrgPlan` (here and in
+  > the §5.2 validation steps below) and purchasability (a personal plan is purchasable
+  > only for its `audience`; an organization plan needs an org the caller may bill).
+  > The historical `for_account_type` wording above and in §5.2 is kept as written.
+
 - `createPortalSession` ignores the user and returns `/app/billing`; **no UI calls it**.
 - `/manage/billing` is a `mailto:`; `/edu/billing` is fully hardcoded (`$29.99`, 50 seats).
 - `payments.session_id` is `NOT NULL UNIQUE`; the row is written by the same webhook that changes the plan.

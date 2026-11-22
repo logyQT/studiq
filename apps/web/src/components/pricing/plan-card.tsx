@@ -88,7 +88,7 @@ export function PlanCard({
         ) : user && paid ? (
           <CheckoutButton
             planKey={plan.key}
-            orgId={plan.forAccountType === 'manager' ? orgId : undefined}
+            orgId={plan.scope === 'organization' ? orgId : undefined}
             className="w-full"
           >
             {ctaLabel}

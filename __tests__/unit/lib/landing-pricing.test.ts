@@ -20,7 +20,9 @@ function plan(key: string, priceMonthly: number, currency = 'PLN'): PlanInfo {
     limits: {},
     sortOrder: 0,
     isActive: true,
-    forAccountType: null,
+    scope: 'personal',
+    audience: null,
+    seatEligible: false,
   };
 }
 

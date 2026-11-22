@@ -45,6 +45,7 @@ describe(`Org-context limit count scope`, () => {
   let orgPlanKey!: string;
   let personalDeckId!: string;
   let orgDeckId!: string;
+  let originalPersonalPlan!: string;
 
   beforeAll(async () => {
     service = createServiceClient();
@@ -57,7 +58,8 @@ describe(`Org-context limit count scope`, () => {
       price_monthly: 0,
       currency: 'PLN',
       sort_order: 998,
-      for_account_type: 'manager',
+      scope: 'organization',
+      audience: null,
       is_active: false,
     });
     if (planError) throw new Error(`[count-scope] plan create failed: ${planError.message}`);
@@ -77,6 +79,24 @@ describe(`Org-context limit count scope`, () => {
     const { error: limitsError } = await service.from('plan_limits').insert(rows);
     if (limitsError) {
       throw new Error(`[count-scope] plan limits create failed: ${limitsError.message}`);
+    }
+
+    // The fixture manager's personal plan points at the same organization-scope
+    // test plan: inside the org an organization-scope personal plan never
+    // applies (D34), so the org plan governs the org capacity alone.
+    const { data: profileRow, error: profileError } = await service
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', fixture.user.id)
+      .single();
+    if (profileError) throw new Error(`[count-scope] profile read failed: ${profileError.message}`);
+    originalPersonalPlan = String(profileRow.personal_plan_key);
+    const { error: personalError } = await service
+      .from('profiles')
+      .update({ personal_plan_key: orgPlanKey })
+      .eq('id', fixture.user.id);
+    if (personalError) {
+      throw new Error(`[count-scope] personal plan update failed: ${personalError.message}`);
     }
 
     // `flashcards.deck_id` is NOT NULL, so both the personal-space and the
@@ -123,6 +143,10 @@ describe(`Org-context limit count scope`, () => {
   });
 
   afterAll(async () => {
+    await service
+      .from('profiles')
+      .update({ personal_plan_key: originalPersonalPlan })
+      .eq('id', fixture.user.id);
     await service.from('flashcards').delete().eq('created_by', fixture.user.id);
     await service.from('flashcard_decks').delete().eq('created_by', fixture.user.id);
     if (fixture.orgId) await cleanupOrganizationDeep(fixture.orgId);

@@ -314,6 +314,22 @@ export class UserAdminService {
       logError('user-admin: auth.admin.updateUserById failed', { userId: id, error });
       return failure('INTERNAL_SERVER');
     }
+
+    // The profile row is the second half of the persona (ADR-0015 phase 4a,
+    // D33): this is the only writer that changes an account type, so it must
+    // keep `profiles.account_type` in step with the JWT or the two drift.
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ account_type: accountType as Database['public']['Enums']['account_type'] })
+      .eq('id', id);
+
+    if (profileError) {
+      logError('user-admin: profiles.account_type update failed', {
+        userId: id,
+        error: profileError,
+      });
+      return failure('INTERNAL_SERVER');
+    }
     return success(data.user);
   }
 

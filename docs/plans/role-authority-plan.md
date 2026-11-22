@@ -27,7 +27,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged                           | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
 | 2     | authority cutover + control-plane RLS          | merged                           | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
 | 3     | entitlements and limits                        | active (3d, `feat/authority-3d`) | —           | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | pending                          | —           | —   | MGR, BIL, LIM             |            |
+| 4     | seats and personal plans                       | active (4a, `feat/authority-4a`) | —           | —   | MGR, BIL, LIM             | 2026-11-22 |
 | 5     | enforcement closure                            | pending                          | —           | —   | STU, EDU, MGR, PUB        |            |
 | 6     | UI and cache                                   | pending                          | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending                          | —           | —   | all 188 + E2E             |            |
@@ -40,8 +40,10 @@ slices are on `main`, 2b-7 as `f62b896d` (#1403) and 2b-8 as `9747f372` (#1404).
 The only `allowedAccountTypes` left on the API surface are the four declared
 exceptions (R5 org/classroom creation ×2, phase-5 `ai/*` ×2), pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; the remaining persona branches
-are named with owners in the 2b-9 deferral register. **Next action: phase 4** —
-3c and 3d are delivered below; the Teacher content-read gap is closed (D29).
+are named with owners in the 2b-9 deferral register. **Phase 4a is active on
+`feat/authority-4a` (2026-11-22):** the four plan-resolution rows the register
+named to phase 4 are closed (D32–D34, block below); 3c and 3d are delivered
+below and the Teacher content-read gap is closed (D29).
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -114,6 +116,9 @@ slices plus 2b-9's guard make phase 2 done.
 | R33 | A per-request query-count target is a structural claim, not a loop-count claim: count the tables the resolution actually reads and pin the number in a test, because "one per table" can exceed the target if the table list is longer than the target.                                                                                                                                                           | 3b: `resolveEntitlements` reads 11 tables, so flat reads cost 11 queries in the full case; FK embeds plus batched catalog reads brought it to 7, pinned by `entitlement.resolver.limits.test.ts`                                                                                                                                                                                                                        |
 | R34 | A reader that tests `NOT EXISTS (any row)` changes meaning when a table flips from grants to revokes-only: "any row" becomes "any revoke", and existence stops being evidence of anything. The replacement is not `NOT EXISTS (enabled row)` — an enabled row must stay inert in every reader — but no existence gate at all plus a subtraction of what the new polarity carries.                                 | 3c: `has_org_feature`'s profile fallback was guarded by `NOT EXISTS (any row)`; once `org_role_features` holds only revokes, that predicate skips the profile for any role with one revoke. The re-creation first became `NOT EXISTS (enabled row)`, which let a stray enabled row deny a whole role; it is now profile − revokes + seat ∩ ceiling with the revoke subtraction inside the profile arm (R34 review pass) |
 | R35 | A matrix change is a data migration, not a template edit: a callable seed with `on conflict do nothing` only creates missing rows and can never reconcile existing ones, so the template, the function and a backfill must land together behind a guard that pins the resulting rows. Read the newest definition of a callable across the migrations, not the file a note names — a later slice can re-create it. | 3d: moving the Teacher content reads to `group` changed the TS template and the function, but every live system Teacher kept its `own` rows; `20261119211000` (not the `20261119180000` body the phase note named) owns the live function, and the guard requires reads `group` / writes `own` across `org_roles × permissions`                                                                                         |
+| R36 | A column-pair CHECK constrains the backfill too: every legacy value — NULL included — must map to a CHECK-valid pair before the constraint is added, or the ALTER fails on a fresh chain where the seed has not run yet and the pre-catalog rows still sit there with NULL.                                                                                                                                       | 4a: `for_account_type` was NULL on the legacy migration-inserted plans the seed deletes later, so the scope/audience pair CHECK rejected a NULL→personal mapping; NULL maps to the organization family, the only pair shape with a NULL audience                                                                                                                                                                        |
+| R37 | A validation rule that is catalog data must be read from the table in the same query that guards the write (FK embed), never from a TS constant: the constant becomes a second copy of the catalog that silently allows what the table forbids.                                                                                                                                                                   | 4a: `PLAN_TIER_MAP` was a hardcoded second copy of `for_account_type` and let any plan key mint a seat pool; `addPool`/`assignSeat` now read `seat_eligible`/`audience` from `entitlement_catalog`/`subscription_plans` embeds in the one query they already make                                                                                                                                                       |
+| R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT (and an anon SELECT policy — the grant alone returns zero rows); the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it       |
 
 ## 4. Decisions
 
@@ -150,6 +155,9 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D27 | Per-role `org_role_features` revokes have no product surface in v1; the legacy writer is deleted in 3c (`change_org_plan`), and revoke rows stay readable until phase 7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | D28 | `/me/plan` may show the effective union (org + personal/seat) from phase 3; the `PlanInfo` envelope stays stable until phase 6 renames the endpoint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | D29 | Teacher content `*.read` keys move to `group`, writes stay `own`, `assignment.read` included — landed in 3d (`feat/authority-3d`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D32 | `subscription_plans.scope`/`audience` replace `for_account_type` (dropped in the same migration); `solo` is the free manager personal plan; manager profiles holding an organization-scope plan are backfilled to `solo`; `org_seat_pools.plan_key` FKs the plan table — landed in 4a (`feat/authority-4a`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D33 | A seat is a licence of a personal plan validated from live catalog data: `addPool` requires an active `scope='personal'` plan whose keys are all `seatEligible` in `entitlement_catalog` (422 on `planKey`); `assignSeat` requires the target's `profiles.account_type` to equal the plan `audience` (BAD_REQUEST); `PLAN_TIER_MAP`/`ROLE_TIER_MAP` deleted — landed in 4a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D34 | Plan composition keys on plan scope, not the caller's persona: inside a verified org an organization-scope personal plan never applies; `getMyPlan` = seat plan, else org plan with `org.billing.manage`, else personal; `resolveApplicablePlan` audience-checks personal plans only and answers FORBIDDEN for an org plan with no org id; `/subscription-plans` filters are `scope`/`audience` — landed in 4a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -3436,6 +3444,14 @@ no phase-5 enforcement):**
   | `teacher-assignment.service.create` with no active org fails only at the RLS tenant floor — no API-level org check  | `packages/server/src/services/teacher-assignment.service.ts:324`                                                                            | 5     | the controller gates `assignment.create` but not the org binding of the inserted row                                                                                                                               |
   | `seatEligible` metadata not yet consumed by pool validation                                                         | `packages/authz/src/entitlements.ts:18,36-71`, `entitlement_catalog.seat_eligible` (20261119140000:57)                                      | 4     | MGR-SEAT-01 / D15: the pool's `plan_key` must be `scope='personal'` + `seatEligible` — phase 4 owns `addPool`                                                                                                      |
 
+  **2026-11-22 (phase 4a): the four rows owned by phase 4 are closed** —
+  `getMyPlan` (seated → seat plan, else org plan with `org.billing.manage`,
+  else personal; `subscription-plan.service.ts`), `personal-plan.ts` (deleted;
+  the scope rule lives in `entitlement.resolver.ts`), `resolveApplicablePlan`
+  (`checkout-rules.ts`: audience check on personal plans only, FORBIDDEN for an
+  org plan with no org id), and the `seatEligible` row (`seat.service.ts#addPool`
+  reads `seat_eligible` from the live `entitlement_catalog` in one query).
+
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
 - **Gates:** `test:unit`, `typecheck:all` + `typecheck:admin`, `lint:all`,
@@ -3675,7 +3691,196 @@ matrix guard above.
 
 ### Phase 4 — seats and personal
 
-_Not started._
+**4a delivered on `feat/authority-4a` (2026-11-22; D32–D34).** Phase 4a is the
+plan scope/audience cutover, the `solo` manager plan and the licence
+(`org_seat_pools`) validation. Phase 4b — the seats page behaviour/UX and the
+QA case-text rewrite — is owned by the next agent; only mechanical edits landed
+here.
+
+- **Migration** `20261122150000_plan_scope_audience_solo.sql` — replay-safe
+  (drop-if-exists / idempotent inserts), proven on a fresh `db reset` (whole
+  chain + seeds) and by hand-replaying the file on the live DB (exit 0, NOTICE
+  only), and it works on a DB with the seeded catalog and on an empty one:
+  `subscription_plans.scope`/`audience` + the pair CHECK, fail-closed backfill
+  from `for_account_type` (an unknown value raises 22023 — proven by a hand
+  mutation), `DROP COLUMN for_account_type` in the same migration; `solo`
+  inserted (personal/manager, price 0, `flashcards`+`quiz`, and the free
+  tier's eight limit rows spelled out — not copied from `base`, which does not
+  exist yet on a catalog-less `db push`, and a missing limit row resolves to 0); manager profiles holding an organization-scope plan backfilled to
+  `solo`; `profiles.account_type public.account_type NOT NULL DEFAULT
+'student'` backfilled from `auth.users.raw_app_meta_data` (fallback
+  `'student'`); `org_seat_pools.plan_key` FK added after an abort-with-message
+  check for pools pointing at non-personal plans; `handle_new_user()`
+  re-created (managers → `solo`, and it writes `profiles.account_type`); a
+  closing `do` block pins every one of those states (CHECK conformance, `solo`
+  shape, `solo`'s eight limit rows, all personal-plan keys `seatEligible`, no
+  manager on an org-scope plan, the FK exists, `handle_new_user` mentions
+  `solo`).
+- **Seeds** `00_plans.sql` moved to `scope`/`audience` (organization plans carry
+  NULL), `solo` added with its entitlements and limits (comment: mirrors
+  `base`).
+- **`database.ts`** regenerated with the pinned CLI 3.1, twice, byte-identical
+  (R2).
+- **`SeatService`**: `addPool` validates the licence before writing — the plan
+  must exist, be active, be `scope='personal'`, and every entitlement key of the
+  plan must be `seatEligible` per the live `entitlement_catalog`, all in one
+  embed query; refusal is 422 with a field error on `planKey` (the same shape as
+  the old tier refusal). `assignSeat` reads the target's `profiles.account_type`
+  and requires it to equal the pool plan's `audience` (unresolved →
+  `BAD_REQUEST`). `PLAN_TIER_MAP`, `ROLE_TIER_MAP` and `embeddedRoleName`
+  deleted; the pool-capacity and unique-seat guards are unchanged.
+- **`PlanInfo`**: `scope`, `audience`, derived `seatEligible` (≥1 entitlement,
+  all of them `seatEligible` — the key half of the licence rule; a pool's plan
+  must also be `scope='personal'`, checked by `addPool` and the seats picker);
+  `forAccountType` removed. `listActive({ scope,
+audience })` and the route's `?scope=`/`?audience=` params (no params ⇒ every
+  active plan).
+- **`getMyPlan`**: seated → seat plan; else verified org + `org.billing.manage`
+  → org plan; else personal (D34 — no `AccountType.MANAGER` branch).
+  `getPersonalPlan` returns the stored plan (the demotion fallback is deleted).
+- **`EntitlementService`**: `isOrganizationPlan` = `scope==='organization'` (no
+  price condition); `resolveFreePlan` = the free plan of the same
+  scope+audience (org → `launch`, manager user → `solo`, …).
+- **`checkout-rules`**: `isOrganizationPlanFamily` = `scope==='organization'`;
+  `resolveApplicablePlan` refuses FORBIDDEN only for a personal plan whose
+  `audience` ≠ the caller; `resolveCheckoutOwner` answers FORBIDDEN (not
+  BAD_REQUEST) for an org plan without an org id — BIL-05 stays a 403.
+- **Resolver**: `personal-plan.ts` deleted; inside a verified org an
+  organization-scope personal plan never applies — its scope is read from the
+  `subscription_plans(scope)` embed on the existing batched `plan_entitlements`
+  read, so the resolution stays at ≤7 queries (pinned by
+  `entitlement.resolver.limits.test.ts`).
+- **Callers**: `?for=` → `?scope=&audience=` in `pricing.tsx`,
+  `upgrade-plans.tsx` (manager pages `?scope=organization`, personal pages
+  `?scope=personal&audience=<type>`), the load-test journey and the QA specs
+  (`BIL-02`, `MGR-ACC-01`, `MGR-SET-01`, `PUB-03`, `PUB-04`); org-plan checks are
+  `plan.scope === 'organization'` in `plan-card.tsx`, `plan-row.tsx`,
+  `checkout-mock-form.tsx`; `pricing-ladders.ts` keeps three ladders
+  (student/educator personal + organization — no manager-personal ladder, and
+  `solo` appears in none); `billing-subscription.ts` alternatives key on
+  scope/audience; the admin plans page has scope/audience fields + i18n keys;
+  the seats page got only the two map edits (`solo` into `PLAN_TIER_MAP` and
+  `PURCHASABLE_PLANS`, `campus` out of `PURCHASABLE_PLANS`);
+  `user-admin.service#updateAccountType` also writes `profiles.account_type`.
+- **QA specs (mechanical only — case texts and the behaviour/UX rewrite are the
+  next agent's)**: `MGR-SEAT-02` buys the manager-audience pool as `solo`
+  instead of `campus`; `PUB-03`/`PUB-04`/`BIL-02` filter on `scope`/`audience`.
+- **Tests**: unit — seat licence refusals (organization plan, non-seat-eligible
+  key, empty plan, inactive/unknown) and acceptances, persona mismatch/accept,
+  checkout-rules scope rules, entitlement.service free-plan resolution, the
+  resolver scope rule + query count ≤7; integration — `addPool` refuses
+  `campus` and a temporary non-seat-eligible plan fixture (cleaned up in a
+  `finally`) and accepts `ace`, `assignSeat` refuses a `pro` pool for an
+  educator account and accepts a `solo` pool for a manager, a manager signup
+  resolves `solo` (and `profiles.account_type`), `/me/plan` returns the org plan
+  for an `org.billing.manage` holder and the personal plan for a plain member,
+  an organization-scope personal plan stored on a profile adds nothing inside an
+  org; migration guards in the closing `do` block.
+- **Gates (2026-11-22):** `test:unit` 4847 passed / 1 skipped (313 files);
+  serial integration over `__tests__/integration` (`--no-file-parallelism`,
+  mandatory on this host) 1050 passed / 11 skipped (111 files);
+  `typecheck:all` + `typecheck:admin` clean; `lint`, `review:static`, `knip`,
+  `format:check` clean; the migration applied from scratch (`db reset`) and
+  replayed by hand.
+
+#### 2026-11-22 — phase 4a: what was proven red, and the two earned rules
+
+What: D32–D34 landed on `feat/authority-4a`. The new invariants were each
+proven capable of failing before they were trusted: the seat licence refusals
+and the persona mismatch were mutated with `bun run mutate` (table below, all
+KILLED); the SQL-only migration invariants were proven by hand mutations
+recorded as such (unknown `for_account_type` → 22023 raise; replay of the
+migration file on the live DB exits 0).
+
+| Test                                                                                            | Mutation                                                                    | Verdict       |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------- |
+| `seat.service.test.ts` » addPool refuses an organization-scope plan (campus)                    | accept any scope (`plan.scope === 'personal'` dropped)                      | KILLED        |
+| `seat.service.test.ts` » addPool refuses a non-seat-eligible entitlement key                    | `seat_eligible === true` requirement dropped                                | KILLED        |
+| `seat.service.test.ts` » assignSeat refuses a persona mismatch                                  | `profile.account_type !== poolAudience` check dropped                       | KILLED        |
+| `checkout-rules.test.ts` » resolveApplicablePlan rejects another audience                       | audience check removed                                                      | KILLED        |
+| `checkout-rules.test.ts` » org plan without org id answers FORBIDDEN                            | FORBIDDEN → BAD_REQUEST                                                     | KILLED        |
+| `entitlement.service.test.ts` » rejects the free organization plan written to a profile         | `isOrganizationPlan` price condition restored                               | KILLED        |
+| `entitlement.resolver.limits.test.ts` » organization-scope personal plan excluded inside an org | scope rule removed (personal always applies)                                | KILLED        |
+| `entitlement.resolver.limits.test.ts` » exactly seven queries in the full case                  | an extra table read inserted                                                | KILLED        |
+| migration guard (SQL-only)                                                                      | hand mutation: unknown `for_account_type` raises 22023; file replay exits 0 | KILLED (hand) |
+
+Why it matters / what was tried and failed: the migration's pair CHECK
+initially failed on a fresh chain because the legacy pre-catalog plans carry a
+NULL `for_account_type` (the seed deletes those rows only later) — NULL must
+map to the organization family, the only CHECK-valid NULL-audience shape (R36).
+The seat validation reads catalog truth in the same query instead of a TS map,
+because `PLAN_TIER_MAP` was a second copy of the catalog that let any plan key
+mint a pool (R37).
+Rule: R36, R37.
+
+**4b delivered on `feat/authority-4a` (2026-11-22).** 4b is the seats page's
+behaviour and the phase-4 QA corpus; the plan/data rules are 4a's.
+
+- **Roster:** `organization-member.service.listMembers` selects
+  `profiles.account_type` and maps it as `accountType` (D33's persona input);
+  the D25 gate and the endpoint are unchanged.
+- **Seats page:** `PLAN_TIER_MAP`, `ROLE_TIER_MAP` and `PURCHASABLE_PLANS` are
+  deleted (R37). The purchase picker lists the catalogue's **active,
+  `scope='personal'`, `seatEligible`** plans (`purchasableSeatPlans`), so it now
+  offers every personal plan that is a valid licence — including the free tiers
+  and `solo` — and no organization plan. The assign picker offers the pools whose
+  plan `audience` equals the member's `accountType` (`poolsForPersona`), fail
+  closed when the plan is missing from the catalogue. Both helpers live in
+  `@/lib/seats`, are unit-tested and mutation-proven.
+- **QA corpus:** `MGR-SEAT-02` is rewritten from the launch-org negative to the
+  hub-org **positive** story (the operator point from 3a, closed without a
+  plan-data change): the `pro` seat adds exactly `advanced.stats` to a learner's
+  feature set, `/me/plan` is the seat plan with `max_ai_tokens_per_day = -1`, the
+  AI limit rises from hub's 200000, `/ai/usage` reports `limit -1 / plan hub`,
+  and the unseated control member stays at 200000. The seat ∩ ceiling rule is
+  now pinned by `entitlement.resolver.test.ts` ("intersects the seat plan with
+  the org ceiling") and the `manager-plan-model` / `limits-resolution`
+  integration cases rather than by that QA case. `MGR-SEAT-01` asserts the new
+  licence list (Solo in, Campus out), `MGR-SEAT-03` ties its guidance to
+  persona/audience, and `BIL-04`/`BIL-05`/`PUB-03`/`MGR-ACC-01` plus the 662 plan
+  record move to scope/audience wording.
+- **What the served app found (all fixed in-PR):** an anonymous
+  `GET /api/v1/subscription-plans` answered **403** once `PlanInfo.seatEligible`
+  embedded `entitlement_catalog` — the public query gained a table `anon` may
+  not select, and every session-authenticated test stayed green (R38). The
+  grant alone would have left `anon` reading zero catalog rows, so the
+  anonymous payload would report `seatEligible: false` for every plan; the
+  migration adds the anon SELECT policy too and `anon-grants` asserts the rows
+  are visible. The
+  `MGR-SEAT-02` roster's default `QA <key>` names made `QA student` a prefix of
+  `QA student2` and the picker's regex matched both (the 3d collision, again);
+  the „Dostępne” cell renders `1Mało` for a low pool; `BIL-02`'s catalogue read
+  still interpolated the renamed `accountType` and threw at runtime (Playwright
+  specs sit outside `typecheck:all`'s scope).
+- **Gates (2026-11-22, served app at `:3000`):** unit **4854 passed / 1
+  skipped** (315 files); serial integration **1061 tests, 1050 passed / 11
+  skipped** (111 files); `typecheck:all` + `typecheck:admin`, `lint`,
+  `review:static`, `knip`, `format:check`, `dup:base` (0 new) clean. QA on the
+  final build: MGR-SEAT-02 **5/5**, MGR-SEAT-01 **5/5**, MGR-SEAT-03 **2/2**,
+  MGR-ACC-01 3 tests, PUB-02 2, PUB-03, PUB-04, BIL-01, BIL-02 3, BIL-04 2,
+  BIL-05 2, LIM-02, LIM-03, LIM-05, STU-03, EDU-02 2, SEC-06, MGR-ROL-01,
+  MGR-SET-01 — all green, zero retries.
+
+#### 2026-11-22 — phase 4b: the public-embed trap
+
+What: 4b's QA run over the served app, not just the unit suite.
+Why: `PlanInfo.seatEligible` is catalog truth, so every plan read embeds
+`entitlement_catalog`. The embed is executed with the caller's role, and
+`anon` had no grant on that table: the anonymous pricing catalogue started
+answering 403 while every signed-in read, unit test and integration test stayed
+green — the tests that would have caught it are the anon census probes, and
+they were asserting the old three-table list.
+Fix: the 4a migration grants `anon` SELECT on `entitlement_catalog` **and**
+adds an anon SELECT policy — the grant alone lifts the 42501 but RLS still
+returns zero rows, so the anonymous payload reported `seatEligible: false` for
+every plan while a signed-in caller saw the truth. The catalog is pricing
+metadata (keys, category, scope, seat/portability flags, quota key), no
+per-user or answer-key data; the census is updated in all three places
+(`grant-parity`, `anon-grants`, `rls-tenant-isolation`) and `anon-grants` now
+asserts the rows are actually visible, not just that the read does not error. The
+served QA run is what surfaced it, which is why the programme keeps Playwright
+in the gate.
+Rule: R38.
 
 ### Phase 5 — enforcement
 

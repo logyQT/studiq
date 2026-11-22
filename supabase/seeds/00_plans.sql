@@ -32,6 +32,8 @@ DELETE FROM public.subscription_plans;
 --   student  Spark 9.99 · Ace 19.99 · Pro 39.99
 --   educator Guide 19.99 · Creator 39.99 · Master 79.99
 --   org      Team 99 · Hub 299 · Campus 699
+--   manager  Solo 0 (the free personal plan; ADR-0015 D2 — `launch` is
+--            organization-only since phase 4a)
 -- The bootstrap creates each Stripe Price with `tax_behavior = 'inclusive'`,
 -- so these amounts are final consumer prices (Managed Payments is the merchant
 -- of record). After changing any price_monthly, re-run the test-mode bootstrap
@@ -40,19 +42,22 @@ DELETE FROM public.subscription_plans;
 -- The production catalog is updated by the operator runbook in
 -- docs/deployment.md before the live bootstrap.
 -- ==========================================================
-INSERT INTO public.subscription_plans (key, name, price_monthly, currency, sort_order, for_account_type) VALUES
-  ('base',     'StudiQ Base',    0,     'PLN', 1,    'student'),
-  ('lite',     'StudiQ Lite',    0,     'PLN', 2,    'educator'),
-  ('launch',   'StudiQ Launch',  0,     'PLN', 3,    'manager'),
-  ('spark',    'StudiQ Spark',   999,   'PLN', 4,    'student'),
-  ('guide',    'StudiQ Guide',   1999,  'PLN', 5,    'educator'),
-  ('team',     'StudiQ Team',    9900,  'PLN', 6,    'manager'),
-  ('ace',      'StudiQ Ace',     1999,  'PLN', 7,    'student'),
-  ('creator',  'StudiQ Creator', 3999,  'PLN', 8,    'educator'),
-  ('hub',      'StudiQ Hub',     29900, 'PLN', 9,    'manager'),
-  ('pro',      'StudiQ Pro',     3999,  'PLN', 10,   'student'),
-  ('master',   'StudiQ Master',  7999,  'PLN', 11,   'educator'),
-  ('campus',   'StudiQ Campus',  69900, 'PLN', 12,   'manager')
+-- `scope`/`audience` replace `for_account_type` (ADR-0015 phase 4a, D32):
+-- organization plans carry no audience, personal plans always do.
+INSERT INTO public.subscription_plans (key, name, price_monthly, currency, sort_order, scope, audience) VALUES
+  ('base',     'StudiQ Base',    0,     'PLN', 1,    'personal',     'student'),
+  ('lite',     'StudiQ Lite',    0,     'PLN', 2,    'personal',     'educator'),
+  ('launch',   'StudiQ Launch',  0,     'PLN', 3,    'organization', NULL),
+  ('spark',    'StudiQ Spark',   999,   'PLN', 4,    'personal',     'student'),
+  ('guide',    'StudiQ Guide',   1999,  'PLN', 5,    'personal',     'educator'),
+  ('team',     'StudiQ Team',    9900,  'PLN', 6,    'organization', NULL),
+  ('ace',      'StudiQ Ace',     1999,  'PLN', 7,    'personal',     'student'),
+  ('creator',  'StudiQ Creator', 3999,  'PLN', 8,    'personal',     'educator'),
+  ('hub',      'StudiQ Hub',     29900, 'PLN', 9,    'organization', NULL),
+  ('pro',      'StudiQ Pro',     3999,  'PLN', 10,   'personal',     'student'),
+  ('master',   'StudiQ Master',  7999,  'PLN', 11,   'personal',     'educator'),
+  ('campus',   'StudiQ Campus',  69900, 'PLN', 12,   'organization', NULL),
+  ('solo',     'StudiQ Solo',    0,     'PLN', 13,   'personal',     'manager')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -66,7 +71,9 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('lite', 'flashcards'),
   ('lite', 'quiz'),
   ('launch', 'flashcards'),
-  ('launch', 'quiz')
+  ('launch', 'quiz'),
+  ('solo', 'flashcards'),
+  ('solo', 'quiz')
 ON CONFLICT DO NOTHING;
 
 -- Basic tier
@@ -157,6 +164,20 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('launch', 'max_students', 5),
   ('launch', 'max_quiz_attempts_per_day', 10),
   ('launch', 'max_ai_tokens_per_day', 0)
+ON CONFLICT DO NOTHING;
+
+-- Free tier — Solo (manager personal). Mirrors the `base` rows exactly:
+-- a seat pool may carry `solo` (all its keys are seatEligible), and the
+-- free manager plan is baseline-only (ADR-0015 D2, phase 4a).
+INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
+  ('solo', 'max_flashcards', 100),
+  ('solo', 'max_questions', 50),
+  ('solo', 'max_decks', 10),
+  ('solo', 'max_question_banks', 5),
+  ('solo', 'max_quiz_attempts_per_day', 10),
+  ('solo', 'max_ai_tokens_per_day', 0),
+  ('solo', 'max_students', -1),
+  ('solo', 'max_groups', -1)
 ON CONFLICT DO NOTHING;
 
 -- Basic tier — Spark (student)

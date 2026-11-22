@@ -33,20 +33,23 @@ seeded tenant instead:
 - **Tenant key**: `tenantKey('qa/cases/MGR-SEAT-02.md', 'MGR-SEAT-02 assigning a seat to a member', 'qa-shared')`
   plus a per-run suffix (`QA_RUN_SUFFIX`, otherwise fresh). Every org/user/role id is
   `tenantId(key, entity)`; the e-mails are `qa+<shorthash>+<role>@test.local`.
-- **Organization**: one org (`qa-mgr-seat02-<run>`) on the default `launch` plan, with the
-  system roles `admin` / `teacher` / `member` from the organization trigger.
-- **Users** (password `Seed4Test!`):
-  - `manager` — manager account, `admin` org role — the „M1” counterpart;
-  - `teacher` — educator account, `teacher` org role (educator tier);
-  - `student` — student account, `member` org role (student tier) — the member the seat is
-    assigned to.
+- **Profile**: `__tests__/qa/profiles/MGR-SEAT-02.json` declares
+  `{"profile": "content", "plan": "hub"}` — the tenant's organization sits on the
+  **hub** plan, whose ceiling carries the learner keys (`ai.chat`, `branding`,
+  `flashcards`, `quiz`) **and** the non-learner `advanced.stats` — plus an explicit
+  `members` roster:
+  - `manager` — manager account, `admin` org role;
+  - `teacher` — educator account, `teacher` org role;
+  - `student` — student account, `member` org role — the member the seat is assigned to;
+  - `student2` — student account, `member` org role — the unseated control.
 - **Seat pools** (the „pula z MGR-SEAT-01”): bought at run time through the product's own
-  API (`POST /api/v1/organization/seats/pools`), one per tier so the role/tier filter is
-  observable: Ace ×3 (student), Creator ×3 (educator), Campus ×1 (manager). The seat rows
-  of **this tenant only** are cleared in the fixture, so a re-run of a pinned
-  `QA_RUN_SUFFIX` starts again from „pools nobody holds”.
-- **Profile**: no content (`content` graph minus decks/banks/quizzes); the case only
-  touches the seats surface and the seated member's entitlements.
+  API (`POST /api/v1/organization/seats/pools`), one per plan `audience` so the
+  persona filter is observable: **Ace ×3 (student), Pro ×2 (student), Creator ×3
+  (educator), Solo ×1 (manager)**. The seat rows of **this tenant only** are cleared in
+  the fixture, so a re-run of a pinned `QA_RUN_SUFFIX` starts again from „pools nobody
+  holds”.
+- **Profile**: `content` graph (decks/banks/quizzes included); the case only touches the
+  seats surface and the seated member's entitlements.
 - The spec seeds the graph at run time with the shared helpers
   (`__tests__/helpers/tenant-seed.ts`) because every independent run needs its own
   organization, users and pools.
@@ -59,37 +62,68 @@ seeded tenant instead:
 ## Expected result
 
 - Toast „Miejsce przydzielone pomyślnie”; w „Przydziałach” nowy wpis; w puli przydzielone +1, dostępne −1.
-- Seat entitlements are intersected with the org ceiling (ADR-0015 §5.4): a seat cannot grant an entitlement the org did not buy. The org here is on `launch` (only `flashcards`, `quiz`), so after the Ace seat the member's `/api/v1/features/me` is **unchanged** — no `ai.chat`, no org-scoped key such as `branding`; the sidebar keeps no „Asystent Q” entry and `/app/ai` keeps the plan gate. The seat is still the member's effective plan (`/api/v1/me/plan` → `ace`) and, in phase 3a, the user-scope AI-token limit is the seat plan's own (`ace.limits.max_ai_tokens_per_day`) even though `ai.chat` is not entitled.
-- Dostępne są tylko pule pasujące do poziomu (tier) członka.
+- **The positive seat-upgrade story (phase 4b, on a hub org).** The case assigns the
+  **`pro`** seat to `student` through the UI. Before the seat the member's
+  `/api/v1/features/me` is the learner profile ∩ the hub ceiling =
+  `ai.chat, branding, flashcards, quiz`. After the seat the **exact diff is
+  `advanced.stats`** — a non-learner key the hub ceiling carries, so the seat ∩ ceiling
+  rule (ADR-0015 §5.4: a seat cannot grant an entitlement the org did not buy) visibly
+  grants it — and the seat adds no other key. `/api/v1/me/plan` → `key: 'pro'` with
+  `limits.max_ai_tokens_per_day === -1` and `features` including `advanced.stats` (the
+  seat is the member's effective plan, D28/D30). `/api/v1/ai/usage` → `limit: -1`,
+  `plan: 'hub'` (the effective primary stays the org plan, D30) — the seat **raises**
+  the AI limit from hub's 200000, which is the visible positive seat story.
+  `student2` (no seat) keeps `max_ai_tokens_per_day === 200000` and no `advanced.stats`:
+  the seat is per-member, not org-wide.
+- Dostępne są tylko pule, których plan ma `audience` równy personie (`accountType`)
+  wybranego członka — filtr jest po personie, nie po roli org.
 
-> 2026-11-21 (phase 3a) — ADR §5.4: a seat cannot grant an entitlement the org did not buy; a launch-org seat therefore grants no feature. The positive seat-upgrade demonstration moves to phase 4, which owns audience validation, `seat ∩ ceiling` and `max(org, seat, personal)` (candidate: a non-learner key such as `advanced.stats` on an org plan that carries it; the plan data currently has no lower-tier org plan with `ai.chat`, so an "AI limit rises" story needs a phase-4 plan-data decision).
+> 2026-11-22 (phase 4b) — the seat ∩ ceiling rule did not move with the story: it is
+> pinned by `__tests__/unit/services/entitlement.resolver.test.ts` („intersects the
+> seat plan with the org ceiling”) and by the `manager-plan-model` /
+> `limits-resolution` integration cases. The case moved from a launch-org negative
+> (a seat there grants nothing, because launch's ceiling is `flashcards`+`quiz` only)
+> to a hub-org positive (the `pro` seat adds exactly `advanced.stats` and raises the
+> AI-token limit to unlimited) without losing the rule. The earlier 2026-11-21 note
+> below is kept as history.
+>
+> 2026-11-21 (phase 3a) — ADR §5.4: a seat cannot grant an entitlement the org did not
+> buy; a launch-org seat therefore grants no feature. The positive seat-upgrade
+> demonstration moves to phase 4, which owns audience validation, `seat ∩ ceiling` and
+> `max(org, seat, personal)`.
 
-## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f`)
+## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f` — pre-4b walk; the picker copy below is superseded by the 4b rewrite)
 
 - `/manage/seats` („Licencje miejsc”) lists the purchased pools with the columns
-  „Wykupione / Przydzielone / Dostępne” and an empty „Przydziały” table. The MGR-SEAT-01
-  purchase dialog shows „Miejsca dodane do puli” and the pool appears as 3 / 0 / 3 — the
-  prerequisite state.
+  „Wykupione / Przydzielone / Dostępne” and the „Przydziały” table. The MGR-SEAT-01
+  purchase dialog shows „Miejsca dodane do puli” — the prerequisite state.
 - „Przydziel miejsce” opens a dialog with „Członek” and „Plan miejsca”. The member picker
   lists every member with the org role (`(admin)`, `(teacher)`, `(member)`); the plan
   picker is **disabled** and shows „Najpierw wybierz członka” until a member is chosen.
-- After a member is picked, the plan picker offers **only the pools of that member's
-  tier**: `member` → „StudiQ Ace (0/3)”, `teacher` → „StudiQ Creator (0/3)”,
-  `admin` → „StudiQ Campus (0/1)”. Pools of the other tiers are not listed (step 3 of the
-  expected result). „Przydziel” stays disabled until a plan is chosen too.
+- Since 4b the plan picker offers, for the picked member, exactly the pools whose plan
+  `audience` equals the member's `accountType` (from the roster's new `accountType`
+  field): `student` → „StudiQ Ace (0/3)” and „StudiQ Pro (0/2)”, `teacher` →
+  „StudiQ Creator (0/3)”, `admin` → „StudiQ Solo (0/1)”. Pools of the other audiences are
+  not listed. „Przydziel” stays disabled until a plan is chosen too.
 - „Przydziel” → toast **„Miejsce przydzielone pomyślnie”**, the dialog closes, a new row
-  appears in „Przydziały” (member name, plan „StudiQ Ace”, date), and the pool row moves
-  from 3 / 0 / 3 to **3 / 1 / 2** (assigned +1, available −1). The Creator and Campus pools
-  keep their counters. The seated member disappears from the member picker.
-- The member's next login under phase 3a shows the ceiling rule, not the seat plan: the sidebar keeps no „Asystent Q” entry (`ai.chat`) and `/app/ai` keeps the plan gate „Asystent Q nie jest dostępny w Twoim planie”, because `GET /api/v1/features/me` stays at `flashcards, quiz` — the seat's entitlements are intersected with the org ceiling and the launch org did not buy `ai.chat` (superseded: the pre-3a walk below observed the additive behaviour, `ai.chat, flashcards, quiz, advanced.stats` growing from `flashcards, quiz`; `documents` is absent until its surface ships — open catalog, ADR §5.1), with no org-scoped key such as `branding` — a seat is a personal plan and never grants one (the legacy management markers left the catalog in 2b-7);
-  `GET /api/v1/me/plan` returns `ace`, and `GET /api/v1/ai/usage` reports Ace's `max_ai_tokens_per_day` (200000 at seed time) because the phase-3a limit composition is seat-exclusive.
-- The guards behind the pickers hold server-side too: a second seat for the already-seated
-  member → **429** `USAGE_LIMIT_EXCEEDED`; a Creator (educator) pool for the student
-  `member` → **400** `BAD_REQUEST`; no assignment is created and the counters do not move.
+  appears in „Przydziały” (member name, seat plan, date), and the pool row moves from
+  2 / 0 / 2 to **2 / 1 / 1** (assigned +1, available −1). The other pools keep their
+  counters. The seated member disappears from the member picker.
+- On the member's next login under hub: `GET /api/v1/features/me` grows by exactly
+  `advanced.stats` (seat ∩ hub ceiling; the pre-4b launch-org walk observed no growth —
+  superseded), `GET /api/v1/me/plan` returns `pro` with `max_ai_tokens_per_day = -1`, and
+  `GET /api/v1/ai/usage` reports `limit: -1, plan: 'hub'`. The unseated `student2` keeps
+  `limit: 200000` and no `advanced.stats`. Org-scoped entitlements are never _added_
+  through a seat beyond what the learner profile already grants from the ceiling
+  (`branding` is in both).
+- The guards behind the pickers hold server-side too: a second seat for the
+  already-seated member → **429** `USAGE_LIMIT_EXCEEDED`; a manager-audience (`solo`)
+  pool for the student → **400** `BAD_REQUEST`; no assignment is created and the
+  counters do not move.
 - Not asserted (out of scope, settled in 2b-7): a **teacher** seated on „StudiQ Creator”
   receives no management key. The legacy management markers (`org.manage`,
   `member.manage`, `role.builder`, `group.manage`) left the entitlement catalog in
   2b-7 — they are permissions now — so a seat plan, which must be all-`seatEligible`,
   can no longer carry them and no admin-only strip is needed. The case's step 1
   assigns a seat to a member, so the spec asserts the member path and pins that no
-  org-scoped entitlement (`branding`) arrives through the seat.
+  org-scoped entitlement arrives through the seat beyond the ceiling.

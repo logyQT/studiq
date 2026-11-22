@@ -15,7 +15,8 @@ const studentPlan: CatalogPlan = {
   priceMonthly: 999,
   currency: 'PLN',
   isActive: true,
-  forAccountType: 'student',
+  scope: 'personal',
+  audience: 'student',
   sortOrder: 1,
 };
 const orgPlan: CatalogPlan = {
@@ -24,76 +25,81 @@ const orgPlan: CatalogPlan = {
   priceMonthly: 29900,
   currency: 'PLN',
   isActive: true,
-  forAccountType: 'manager',
+  scope: 'organization',
+  audience: null,
   sortOrder: 7,
 };
-const anyPlan: CatalogPlan = { ...orgPlan, key: 'everyone', forAccountType: null };
-const freeStudentPlan: CatalogPlan = { ...studentPlan, key: 'base', priceMonthly: 0 };
-const unknownFamilyPlan: CatalogPlan = { ...orgPlan, key: 'weird', forAccountType: 'wizard' };
+const freeStudentPlan: CatalogPlan = {
+  ...studentPlan,
+  key: 'base',
+  priceMonthly: 0,
+};
+const soloPlan: CatalogPlan = {
+  ...studentPlan,
+  key: 'solo',
+  priceMonthly: 0,
+  audience: 'manager',
+};
+const educatorPlan: CatalogPlan = { ...studentPlan, key: 'guide', audience: 'educator' };
 
 function planPort(plan: CatalogPlan | null) {
   return { getPlan: vi.fn().mockResolvedValue(success(plan)) };
 }
 
 describe('resolveApplicablePlan', () => {
-  it('accepts a free plan of the caller family (lifecycle, not purchase)', async () => {
+  it('accepts a free plan of the caller audience (lifecycle, not purchase)', async () => {
     await expect(
       resolveApplicablePlan(planPort(freeStudentPlan), 'base', AccountType.STUDENT),
     ).resolves.toEqual(success({ plan: freeStudentPlan, isOrgPlan: false }));
   });
 
-  it('checks the family before the price', async () => {
+  it('checks the audience before the price', async () => {
     await expect(
       resolveApplicablePlan(planPort(freeStudentPlan), 'base', AccountType.EDUCATOR),
     ).resolves.toEqual(failure('FORBIDDEN'));
   });
 
-  it('accepts a plan with no family for any account type and never marks it as an org plan', async () => {
+  it('accepts an organization plan for any account type — it has no audience check (D34)', async () => {
     await expect(
-      resolveApplicablePlan(planPort(anyPlan), 'everyone', AccountType.EDUCATOR),
-    ).resolves.toEqual(success({ plan: anyPlan, isOrgPlan: false }));
+      resolveApplicablePlan(planPort(orgPlan), 'hub', AccountType.STUDENT),
+    ).resolves.toEqual(success({ plan: orgPlan, isOrgPlan: true }));
   });
 
   it.each([
     ['missing', null, 'BAD_REQUEST'],
     ['inactive', { ...studentPlan, isActive: false }, 'BAD_REQUEST'],
-    ['another family', orgPlan, 'FORBIDDEN'],
-    ['unknown family', unknownFamilyPlan, 'FORBIDDEN'],
-  ])('rejects a %s plan', async (_label, plan, error) => {
-    await expect(
-      resolveApplicablePlan(planPort(plan), 'spark', AccountType.STUDENT),
-    ).resolves.toEqual(failure(error));
+    ['organization plan for a student is not an audience refusal', orgPlan, undefined],
+    ['another audience', educatorPlan, 'FORBIDDEN'],
+    ['manager personal plan for a student', soloPlan, 'FORBIDDEN'],
+  ])('resolveApplicablePlan: %s', async (_label, plan, error) => {
+    const result = await resolveApplicablePlan(planPort(plan), 'spark', AccountType.STUDENT);
+    if (error === undefined) {
+      expect(result).toEqual(success({ plan, isOrgPlan: plan === orgPlan }));
+    } else {
+      expect(result).toEqual(failure(error));
+    }
   });
 });
 
 describe('resolvePurchasablePlan', () => {
-  it('accepts an active paid plan of the caller family', async () => {
+  it('accepts an active paid plan of the caller audience', async () => {
     await expect(
       resolvePurchasablePlan(planPort(studentPlan), 'spark', AccountType.STUDENT),
     ).resolves.toEqual(success({ plan: studentPlan, isOrgPlan: false }));
   });
 
-  it('flags the manager family as an organization plan', async () => {
-    const result = await resolvePurchasablePlan(planPort(orgPlan), 'hub', AccountType.MANAGER);
+  it('flags an organization-scope plan as an organization plan for any caller', async () => {
+    const result = await resolvePurchasablePlan(planPort(orgPlan), 'hub', AccountType.STUDENT);
     expect(result.success && result.data.isOrgPlan).toBe(true);
-  });
-
-  it('accepts a paid plan with no family for any account type', async () => {
-    const result = await resolvePurchasablePlan(
-      planPort(anyPlan),
-      'everyone',
-      AccountType.EDUCATOR,
-    );
-    expect(result).toEqual(success({ plan: anyPlan, isOrgPlan: false }));
   });
 
   it.each([
     ['missing', null, 'BAD_REQUEST'],
     ['inactive', { ...studentPlan, isActive: false }, 'BAD_REQUEST'],
     ['free', freeStudentPlan, 'BAD_REQUEST'],
-    ['another family', orgPlan, 'FORBIDDEN'],
-    ['free from another family', { ...freeStudentPlan, forAccountType: 'educator' }, 'FORBIDDEN'],
-    ['unknown family', unknownFamilyPlan, 'FORBIDDEN'],
+    ['another audience', educatorPlan, 'FORBIDDEN'],
+    ['free from another audience', { ...freeStudentPlan, audience: 'educator' }, 'FORBIDDEN'],
+    ['manager personal plan for a student', soloPlan, 'FORBIDDEN'],
   ])('rejects a %s plan', async (_label, plan, error) => {
     await expect(
       resolvePurchasablePlan(planPort(plan), 'spark', AccountType.STUDENT),
@@ -109,10 +115,9 @@ describe('resolvePurchasablePlan', () => {
 });
 
 describe('isOrganizationPlanFamily', () => {
-  it('recognizes only the manager family', () => {
-    expect(isOrganizationPlanFamily({ forAccountType: 'manager' })).toBe(true);
-    expect(isOrganizationPlanFamily({ forAccountType: 'student' })).toBe(false);
-    expect(isOrganizationPlanFamily({ forAccountType: null })).toBe(false);
+  it('recognizes only the organization scope', () => {
+    expect(isOrganizationPlanFamily({ scope: 'organization' })).toBe(true);
+    expect(isOrganizationPlanFamily({ scope: 'personal' })).toBe(false);
   });
 });
 
@@ -147,11 +152,11 @@ describe('resolveCheckoutOwner', () => {
     expect(port.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-1');
   });
 
-  it('requires an org id for an organization plan', async () => {
+  it('answers FORBIDDEN (not BAD_REQUEST) when an organization plan arrives without an org id', async () => {
     const port = { isOrgAdmin: vi.fn() };
     await expect(
       resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller),
-    ).resolves.toEqual(failure('BAD_REQUEST'));
+    ).resolves.toEqual(failure('FORBIDDEN'));
     expect(port.isOrgAdmin).not.toHaveBeenCalled();
   });
 

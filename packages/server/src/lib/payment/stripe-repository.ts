@@ -21,7 +21,9 @@ export interface CatalogPlan {
   priceMonthly: number;
   currency: string;
   isActive: boolean;
-  forAccountType: string | null;
+  /** Plan family (D32): `organization` plans carry a `null` audience. */
+  scope: string;
+  audience: string | null;
   sortOrder: number;
 }
 
@@ -140,7 +142,7 @@ function mapPrice(row: {
 
 type CatalogPlanRow = Pick<
   Database['public']['Tables']['subscription_plans']['Row'],
-  'key' | 'name' | 'price_monthly' | 'currency' | 'is_active' | 'for_account_type' | 'sort_order'
+  'key' | 'name' | 'price_monthly' | 'currency' | 'is_active' | 'scope' | 'audience' | 'sort_order'
 >;
 
 function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
@@ -150,7 +152,8 @@ function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
     priceMonthly: row.price_monthly ?? 0,
     currency: row.currency,
     isActive: row.is_active ?? true,
-    forAccountType: row.for_account_type,
+    scope: row.scope,
+    audience: row.audience,
     sortOrder: row.sort_order ?? 0,
   };
 }
@@ -166,7 +169,7 @@ export async function readCatalogPlan(
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('subscription_plans')
-    .select('key, name, price_monthly, currency, is_active, for_account_type, sort_order')
+    .select('key, name, price_monthly, currency, is_active, scope, audience, sort_order')
     .eq('key', planKey)
     .maybeSingle();
 

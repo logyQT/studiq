@@ -40,49 +40,57 @@ export type PlanLadders = {
   organization: PlanInfo[];
 };
 
-/** Active plans of one account type, in the catalogue's own order. */
-function ladder(plans: readonly PlanInfo[], accountType: string): PlanInfo[] {
+/** Active personal plans of one audience, in the catalogue's own order. */
+function personalLadder(plans: readonly PlanInfo[], audience: string): PlanInfo[] {
   return plans
-    .filter((plan) => plan.isActive && plan.forAccountType === accountType)
+    .filter((plan) => plan.isActive && plan.scope === 'personal' && plan.audience === audience)
+    .toSorted((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/** Active organization plans, in the catalogue's own order. */
+function organizationLadder(plans: readonly PlanInfo[]): PlanInfo[] {
+  return plans
+    .filter((plan) => plan.isActive && plan.scope === 'organization')
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 
 /**
- * The catalogue is one flat list because `sort_order` is global across the three
+ * The catalogue is one flat list because `sort_order` is global across the
  * ladders, so the page splits it here instead of asking the API three times.
+ * `solo` is a manager-personal plan and appears in no pricing ladder.
  */
 export function getPlanLadders(plans: readonly PlanInfo[]): PlanLadders {
   return {
     individual: {
-      student: ladder(plans, 'student'),
-      educator: ladder(plans, 'educator'),
+      student: personalLadder(plans, 'student'),
+      educator: personalLadder(plans, 'educator'),
     },
-    organization: ladder(plans, 'manager'),
+    organization: organizationLadder(plans),
   };
 }
 
-/**
- * Account families `subscription_plans.for_account_type` can name. A plan with a
- * `null` family belongs to no ladder and is available to every account type —
- * `resolveApplicablePlan` checks the family only when the catalogue sets one.
- */
+/** The audiences a personal plan can name. */
 const ACCOUNT_FAMILIES: readonly string[] = ['student', 'educator', 'manager'];
 
 /**
  * Whether a signed-in reader may buy this plan. The server enforces the same
- * family rule (`checkout-rules.ts` → `FORBIDDEN` for another family's plan), so
- * the page must not print a checkout that can only fail: one URL carries both
- * families, and a reader sees three of the four ladders as someone else's (#1274).
+ * rule (`checkout-rules.ts` → `FORBIDDEN` for another audience's personal
+ * plan; organization plans have no audience check), so the page must not print
+ * a checkout that can only fail: one URL carries both scopes, and a reader
+ * sees the other ladders as someone else's (#1274).
  *
  * `accountType` comes from the untyped `app_metadata` map, so a missing or
  * unrecognised value fails closed — no purchase action rather than a refused one.
  */
 export function canBuyPlan(
-  plan: Pick<PlanInfo, 'forAccountType'>,
+  plan: Pick<PlanInfo, 'scope' | 'audience'>,
   accountType: string | null | undefined,
 ): boolean {
   if (!accountType || !ACCOUNT_FAMILIES.includes(accountType)) return false;
-  return plan.forAccountType === null || plan.forAccountType === accountType;
+  // Organization plans have no audience check; a personal plan must name the
+  // reader's own audience.
+  if (plan.scope === 'organization') return true;
+  return plan.audience === accountType;
 }
 
 /** `StudiQ Ace` → `Ace`: the page says StudiQ already, the tier is the column. */
@@ -155,8 +163,10 @@ function capacityToken(value: number | undefined): string {
  * value, so two plans whose caps both read `—` do not make a row either.
  */
 export function splitLimitRows(plans: readonly PlanInfo[]): string[] {
-  // `for_account_type` is one value per ladder, so the first plan names it.
-  const accountType = plans[0]?.forAccountType ?? '';
+  // One audience per ladder, so the first plan names it; the organization
+  // ladder has no audience and shows the seat/group limits.
+  const first = plans[0];
+  const accountType = first?.audience ?? (first?.scope === 'organization' ? 'manager' : '');
   return getVisibleLimitKeys(plans, accountType).filter((key) => {
     const tokens = new Set(plans.map((plan) => capacityToken(plan.limits[key])));
     return tokens.size > 1;

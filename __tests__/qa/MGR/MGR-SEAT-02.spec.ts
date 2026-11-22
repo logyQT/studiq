@@ -1,3 +1,4 @@
+import { isEntitlementKey, LEARNER_ENTITLEMENTS } from '@studiq/authz';
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import {
@@ -9,60 +10,50 @@ import {
 } from '#test/qa/fixtures/tenant';
 
 /**
- * MGR-SEAT-02 — assigning a seat to a member.
+ * MGR-SEAT-02 — assigning a seat to a member (the positive seat-upgrade story).
  *
- * Prerequisite (reconciled with the tenant seeder): the seat pools from MGR-SEAT-01
- * („pula z MGR-SEAT-01”) — purchased seats that nobody holds yet. The legacy manual
- * seed (`manager@dev.local`, password `pass`) is never used.
+ * Prerequisite (reconciled with the tenant seeder): the seat pools bought at run
+ * time — purchased seats that nobody holds yet. The legacy manual seed
+ * (`manager@dev.local`, password `pass`) is never used.
  *
- * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile, so the
- * suite seeds one organization with its admin (`manager`), teacher and member
- * (`student`) plus the default group **before Playwright starts**:
+ * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile
+ * **on the `hub` plan** with an explicit roster — manager (`admin`), teacher
+ * (`teacher`), `student` and `student2` (both `member`):
  *
- *   bun scripts/qa-tenant.ts --all --run <suffix>
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *
- * The profile stays on the free Launch plan on purpose: the case checks the org
- * ceiling rule (ADR-0015 §5.4) — the member has **no** AI entitlement before the
- * seat, and the seat cannot grant one afterwards either, because the launch org
- * did not buy `ai.chat`.
+ * Hub is the org ceiling that already carries `ai.chat` and `branding` (the
+ * learner set) plus the non-learner `advanced.stats`, so a seat can visibly
+ * **raise** the member's entitlements (ADR-0015 §5.4: seat ∩ ceiling) and the
+ * user-scope AI-token limit (`max(org, seat, personal)`, D4/D30).
  *
- * The spec then provisions the rest through the product API: it promotes the teacher
- * account to the org's `teacher` role (so the picker's tier matrix has all three
- * roles), clears any assignment a previous run left behind, and buys the pools the
- * MGR-SEAT-01 precondition needs — one per tier so the role/tier filtering is
- * observable: Ace (student tier, 3), Creator (educator tier, 3), Campus (manager
- * tier, 1). Nothing global is written — no settings, feature flags, plans or platform
+ * The spec provisions the pools through the product API — one per audience so
+ * the persona filter is observable: Ace ×3 (student), Pro ×2 (student),
+ * Creator ×3 (educator), Solo ×1 (manager) — clears any assignment a previous
+ * run left behind, and assigns the **`pro`** seat to `student` through the UI.
+ * Nothing global is written — no settings, feature flags, plans or platform
  * rows — and no other case's tenant is touched.
  *
  * Acceptance points:
  * 1. „Przydziel miejsce” opens a dialog whose seat-plan picker stays disabled until
  *    a member is chosen. After a member is picked it offers **exactly** the pools
- *    of that member's tier (student → Ace, teacher → Creator, admin → Campus), so
- *    an incompatible pool cannot be selected.
+ *    whose plan `audience` equals that member's `accountType` (student → Ace, Pro;
+ *    teacher → Creator; admin → Solo), so an incompatible pool cannot be selected.
  * 2. „Przydziel” shows the toast „Miejsce przydzielone pomyślnie”, a new row in
  *    „Przydziały” for that member with the seat plan, and the pool moves from
- *    3/0/3 to 3/1/2 (assigned +1, available −1); the other pools are untouched.
- * 3. On their next login the member's entitlements are **unchanged** (§5.4: seat
- *    entitlements are intersected with the org ceiling, so a seat cannot grant an
- *    entitlement the org did not buy — on the launch org the Ace seat adds no
- *    feature): the sidebar keeps no „Asystent Q” entry (`ai.chat`), `/app/ai`
- *    keeps the plan gate, and `/api/v1/features/me` is identical to before the
- *    seat. The seat is still the member's effective plan (`/api/v1/me/plan`
- *    resolves `ace`) and governs the user-scope AI-token limit. Org-scoped
- *    entitlements (`branding`) are never granted through a seat — the legacy
- *    management markers left the catalog in 2b-7, and a seat plan is
- *    personal-scope only.
+ *    2/0/2 to 2/1/1 (assigned +1, available −1); the other pools are untouched.
+ * 3. After the seat the member's `/api/v1/features/me` differs from before by
+ *    **exactly `advanced.stats`** (seat ∩ hub ceiling); `/api/v1/me/plan` is the
+ *    seat plan `pro` with `max_ai_tokens_per_day === -1`, and
+ *    `/api/v1/ai/usage` reports `limit: -1` with `plan: 'hub'` (the effective
+ *    primary stays the org plan, D30) — the seat raises the AI limit from hub's
+ *    200000. `student2` (no seat) keeps 200000 and no `advanced.stats`: the seat
+ *    is per-member, not org-wide.
  * 4. Adjacent regression: the guards behind the pickers hold server-side — a
- *    second seat for the same member is rejected (`USAGE_LIMIT_EXCEEDED`) and a
- *    tier-mismatched pool is rejected (`BAD_REQUEST`), with the pool counters left
- *    unchanged. The member drops out of the picker once seated.
- *
- * Not asserted (out of scope, settled in 2b-7, see the case's walk observations):
- * a **teacher** seated on an educator plan (Creator) receives no management key —
- * the markers are permissions now, so a seat plan cannot carry them. The case
- * assigns a seat to a member; the spec pins that no org-scoped entitlement
- * (`branding`) arrives through the seat.
+ *    second seat for the same member is rejected (429 `USAGE_LIMIT_EXCEEDED`) and a
+ *    manager-audience (`solo`) pool for the student is rejected (400
+ *    `BAD_REQUEST`), with the pool counters left unchanged. The member drops out
+ *    of the picker once seated.
  */
 
 declare global {
@@ -74,28 +65,32 @@ declare global {
 const CASE = 'MGR-SEAT-02';
 
 /**
- * Full names the `content` profile gives its three accounts (`scripts/qa-tenant.ts`
- * → `buildAccount`). The member picker renders `full_name` + the org role.
+ * Full names the declared roster gives its accounts (`scripts/seed/qa.ts` →
+ * `buildAccount` defaults to `QA <key>`, which collides as a substring the
+ * moment one key is a prefix of another — the picker's option match is a
+ * regex, so `QA student` also matched `QA student2` in 3d).
  */
 const NAMES = {
-  manager: 'QA manager',
-  teacher: 'QA teacher',
-  student: 'QA student',
+  manager: 'QA seat manager',
+  teacher: 'QA seat teacher',
+  student: 'QA seat student',
+  student2: 'QA seat control',
 } as const;
 
 /**
- * One pool per tier, so the picker's filter is provable rather than a sample of
- * one: the `member` role is student tier, `teacher` is educator, `admin` is
- * manager (`ROLE_TIER_MAP` / `PLAN_TIER_MAP` in `seat.service.ts`).
+ * One pool per plan audience, so the picker's filter is provable rather than a
+ * sample of one: student accounts get `ace`/`pro`, educator `creator`, manager
+ * `solo` (the plan `audience` the server checks in `seat.service.ts`).
  */
 const POOLS = [
   { planKey: 'ace', quantity: 3 },
+  { planKey: 'pro', quantity: 2 },
   { planKey: 'creator', quantity: 3 },
-  { planKey: 'campus', quantity: 1 },
+  { planKey: 'solo', quantity: 1 },
 ] as const;
 
-/** Org-scoped entitlements a seat must never grant (a seat plan is personal-scope). */
-const SEAT_NEVER_GRANTS = ['branding'] as const;
+/** The seat assigned to `student` in step 1: a non-learner key it adds is `advanced.stats`. */
+const SEAT_PLAN_KEY = 'pro';
 
 /** Polish copy the case quotes; the fixture pins `NEXT_LOCALE=pl`. */
 const COPY = {
@@ -107,9 +102,6 @@ const COPY = {
   assignSuccess: 'Miejsce przydzielone pomyślnie',
   selectMemberFirst: 'Najpierw wybierz członka',
   cancel: 'Anuluj',
-  aiNav: 'Asystent Q',
-  aiPlaceholder: 'Zapytaj Q',
-  aiLocked: 'Asystent Q nie jest dostępny w Twoim planie',
 } as const;
 
 interface Pool {
@@ -134,6 +126,10 @@ interface PlanInfo {
   name: string;
   features: string[];
   limits: Record<string, number>;
+  scope: string;
+  audience: string | null;
+  seatEligible: boolean;
+  isActive: boolean;
 }
 
 interface ApiBody<T> {
@@ -175,25 +171,6 @@ function userId(tenant: QaTenant, role: QaRole): string {
 }
 
 /**
- * The `content` profile enrols the teacher with the org's default `member` role; the
- * case's tier matrix needs a real `teacher` role as well (educator tier). Promote the
- * account through the product's own member endpoint.
- */
-async function ensureTeacherRole(page: Page, tenant: QaTenant): Promise<void> {
-  const roles = (
-    await readEnvelope<Array<{ id: string; name: string }>>(
-      await page.request.get('/api/v1/organization/roles'),
-    )
-  ).data;
-  const teacherRole = roles.find((role) => role.name === 'teacher');
-  if (!teacherRole) throw new Error('tenant org has no teacher role');
-  const response = await page.request.put('/api/v1/organization/members', {
-    data: { targetUserId: userId(tenant, 'teacher'), newOrgRoleId: teacherRole.id },
-  });
-  expect(response.status(), 'PUT /api/v1/organization/members (teacher role)').toBe(200);
-}
-
-/**
  * The MGR-SEAT-01 state: nobody holds a seat. A repeated run on the same seeded
  * tenant would otherwise inherit the previous run's assignment (and then refuse the
  * new one as a duplicate), so the spec releases every seat through the API first.
@@ -213,7 +190,7 @@ async function resetSeats(page: Page): Promise<void> {
 }
 
 /**
- * Buy one pool per tier, or resize the pool an earlier run on this tenant left
+ * Buy one pool per audience, or resize the pool an earlier run on this tenant left
  * behind: the case's precondition is exactly `quantity` seats, none assigned.
  */
 async function ensurePool(page: Page, entry: (typeof POOLS)[number]): Promise<Pool> {
@@ -268,7 +245,11 @@ async function poolRow(page: Page, planName: string): Promise<string[]> {
     .locator('table')
     .first()
     .getByRole('row', { name: new RegExp(escapeRegExp(planName)) });
-  return (await row.getByRole('cell').allInnerTexts()).map((cell) => cell.trim());
+  const cells = (await row.getByRole('cell').allInnerTexts()).map((cell) => cell.trim());
+  // The available cell also renders the „Mało” badge, so a low pool reads
+  // `1Mało`; the counter is the part before the badge.
+  if (cells.length === 4) cells[3] = cells[3].replace(/Mało$/, '');
+  return cells;
 }
 
 /**
@@ -311,11 +292,18 @@ async function planOptions(page: Page, dialog: Locator): Promise<string[]> {
   return labels;
 }
 
-test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member', () => {
-  let catalog: PlanInfo[];
-  let pools: Map<string, Pool>;
+/** Read the member options of the assign dialog without choosing one. */
+async function memberOptions(page: Page, dialog: Locator): Promise<string[]> {
+  await dialog.getByRole('combobox').nth(0).click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  const labels = (await page.getByRole('option').allInnerTexts()).map(normalize);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  return labels;
+}
 
-  test('a manager assigns a tier-matched seat and the seat cannot exceed the org ceiling', async ({
+test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member', () => {
+  test('a manager assigns an audience-matched seat and the seat raises exactly the non-learner key within the org ceiling', async ({
     page,
     request,
   }) => {
@@ -324,47 +312,65 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
 
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
+    expect(tenant.plan, `${CASE} needs its tenant org on the hub plan`).toBe('hub');
     expect(tenant.org, `${CASE} needs the seeded organization`).toBeTruthy();
-    expect(tenant.users.teacher, `${CASE} needs the seeded teacher`).toBeTruthy();
-    expect(tenant.users.student, `${CASE} needs the seeded member`).toBeTruthy();
+    for (const role of ['manager', 'teacher', 'student', 'student2'] as const) {
+      expect(tenant.users[role], `${CASE} needs the seeded ${role}`).toBeTruthy();
+    }
 
     // The seat plans are shared catalog data: read them, never write them. The
     // spec derives the member's expected features/limits from the catalog instead
     // of hard-coding plan contents.
-    catalog = (await readEnvelope<PlanInfo[]>(await request.get('/api/v1/subscription-plans')))
-      .data;
+    const catalog = (
+      await readEnvelope<PlanInfo[]>(await request.get('/api/v1/subscription-plans'))
+    ).data;
     const plan = (key: string): PlanInfo => {
       const found = catalog.find((entry) => entry.key === key);
       if (!found) throw new Error(`subscription-plans: no ${key} plan in the catalog`);
       return found;
     };
+    const hub = plan('hub');
     const ace = plan('ace');
+    const pro = plan(SEAT_PLAN_KEY);
     const creator = plan('creator');
-    const campus = plan('campus');
-    // Catalog fact the ceiling rule turns away on the launch org: the premium
-    // seat plan declares AI, which the org plan did not buy.
-    expect(ace.features, 'catalog: Ace must include ai.chat').toContain('ai.chat');
-    expect(
-      typeof ace.limits.max_ai_tokens_per_day,
-      'catalog: Ace must declare an AI token limit',
-    ).toBe('number');
+    const solo = plan('solo');
+    // Catalog facts the story leans on: hub carries the learner keys plus the
+    // non-learner `advanced.stats`; the seat plan carries `advanced.stats` too and
+    // declares an unlimited AI token budget (-1).
+    expect(hub.features, 'catalog: Hub must carry advanced.stats').toContain('advanced.stats');
+    expect(pro.features, 'catalog: Pro must carry advanced.stats').toContain('advanced.stats');
+    expect(pro.limits.max_ai_tokens_per_day, 'catalog: Pro has an unlimited AI budget').toBe(-1);
+    expect(hub.limits.max_ai_tokens_per_day, 'catalog: Hub caps AI tokens at 200000').toBe(200_000);
+    // The unseated member's feature set is the learner profile ∩ the hub ceiling.
+    const learnerOnHub = hub.features.filter(
+      (key) => isEntitlementKey(key) && LEARNER_ENTITLEMENTS.includes(key),
+    );
+    expect(learnerOnHub.toSorted(), 'fixture: learner ∩ hub').toEqual(
+      ['ai.chat', 'branding', 'flashcards', 'quiz'].toSorted(),
+    );
 
-    // ── Precondition (MGR-SEAT-01): three pools, one per tier, nobody seated ──
+    // ── Precondition (MGR-SEAT-01): four pools, one per audience, nobody seated ──
     await signIn(page, tenant, 'manager', /\/manage$/);
-    await ensureTeacherRole(page, tenant);
-    // The case's tier matrix counts on one admin, one teacher and one member.
+    // The roster now carries the persona: the seats page filters pools by it.
     const members = (
-      await readEnvelope<Array<{ id: string; orgRoleName: string }>>(
+      await readEnvelope<Array<{ id: string; orgRoleName: string; accountType: string }>>(
         await page.request.get('/api/v1/organization/members'),
       )
     ).data;
     expect(
-      new Set(members.map((member) => member.orgRoleName)),
-      'the tenant has an admin, a teacher and a member',
-    ).toEqual(new Set(['admin', 'teacher', 'member']));
+      members.map((member) => [member.orgRoleName, member.accountType]).toSorted(),
+      'the tenant roster pairs each org role with its account type',
+    ).toEqual(
+      [
+        ['admin', 'manager'],
+        ['member', 'student'],
+        ['member', 'student'],
+        ['teacher', 'educator'],
+      ].toSorted(),
+    );
 
     await resetSeats(page);
-    pools = new Map();
+    const pools = new Map<string, Pool>();
     for (const entry of POOLS) {
       pools.set(entry.planKey, await ensurePool(page, entry));
     }
@@ -373,20 +379,26 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
-    const beforeResponse = await page.request.get('/api/v1/features/me');
-    const beforeFeatures = (await readEnvelope<{ features: string[] }>(beforeResponse)).data
-      .features;
-    expect(
-      beforeFeatures,
-      'fixture: the unseated member has no AI entitlement before the seat',
-    ).not.toContain('ai.chat');
-    // User-visible pre-state: no AI entry in the sidebar and the plan gate on /app/ai.
-    await expect(page.getByRole('link', { name: COPY.aiNav })).toHaveCount(0);
-    await page.goto('/app/ai');
-    await expect(page.getByText(COPY.aiLocked)).toBeVisible();
-    await expect(page.getByPlaceholder(COPY.aiPlaceholder)).toHaveCount(0);
+    const beforeFeatures = (
+      await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
+    ).data.features;
+    expect(beforeFeatures.toSorted(), 'the unseated member resolves learner ∩ hub').toEqual(
+      learnerOnHub.toSorted(),
+    );
+    expect(beforeFeatures, 'no seat yet: no advanced.stats').not.toContain('advanced.stats');
+    const beforeUsage = (
+      await readEnvelope<{ limit: number; plan: string }>(
+        await page.request.get('/api/v1/ai/usage'),
+      )
+    ).data;
+    expect(beforeUsage, 'the hub org caps the member AI budget before the seat').toEqual({
+      current: expect.any(Number),
+      limit: hub.limits.max_ai_tokens_per_day,
+      plan: 'hub',
+      resetsAt: expect.any(String),
+    });
 
-    // ── Step 1: the manager assigns the seat ─────────────────────────────────
+    // ── Step 1: the manager assigns the pro seat ─────────────────────────────
     await signOut(page);
     await signIn(page, tenant, 'manager', /\/manage$/);
 
@@ -396,7 +408,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(page.getByRole('heading', { name: COPY.seatsTitle, exact: true })).toBeVisible();
     await watchToasts(page);
 
-    // The purchased pools are listed with their counters: 3/0/3, 3/0/3 and 1/0/1.
+    // The purchased pools are listed with their counters.
     await expect(page.getByText(COPY.poolsTitle)).toBeVisible();
     for (const entry of POOLS) {
       const entryPlan = plan(entry.planKey);
@@ -412,17 +424,13 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
-    // Member picker: every org member is offered with its role; all three are actives.
-    await dialog.getByRole('combobox').nth(0).click();
-    await expect(page.getByRole('listbox')).toBeVisible();
-    const memberOptions = (await page.getByRole('option').allInnerTexts()).map(normalize);
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('listbox')).toHaveCount(0);
-    expect(memberOptions.toSorted()).toEqual(
+    // Member picker: every org member is offered with its org role; all four are active.
+    expect((await memberOptions(page, dialog)).toSorted()).toEqual(
       [
         `${NAMES.manager} (admin)`,
         `${NAMES.teacher} (teacher)`,
         `${NAMES.student} (member)`,
+        `${NAMES.student2} (member)`,
       ].toSorted(),
     );
 
@@ -432,12 +440,19 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(dialog.getByText(COPY.selectMemberFirst)).toBeVisible();
     await expect(dialog.getByRole('button', { name: COPY.assign, exact: true })).toBeDisabled();
 
-    // Only the pools matching the picked member's tier are offered.
+    // Only the pools whose plan audience equals the picked member's persona are
+    // offered: the student sees exactly the student-audience pools (ace, pro).
     await pickMember(page, dialog, NAMES.student);
     await expect(planPicker).toBeEnabled();
-    expect(await planOptions(page, dialog), 'student member sees only the student pool').toEqual([
-      `${ace.name} (0/${pools.get('ace')!.total})`,
-    ]);
+    expect(
+      (await planOptions(page, dialog)).toSorted(),
+      'student account sees exactly the student-audience pools',
+    ).toEqual(
+      [
+        `${ace.name} (0/${pools.get('ace')!.total})`,
+        `${pro.name} (0/${pools.get('pro')!.total})`,
+      ].toSorted(),
+    );
 
     await pickMember(page, dialog, NAMES.teacher);
     expect(await planOptions(page, dialog), 'teacher sees only the educator pool').toEqual([
@@ -445,15 +460,15 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     ]);
 
     await pickMember(page, dialog, NAMES.manager);
-    expect(await planOptions(page, dialog), 'admin sees only the manager pool').toEqual([
-      `${campus.name} (0/${pools.get('campus')!.total})`,
+    expect(await planOptions(page, dialog), 'admin sees only the manager-audience pool').toEqual([
+      `${solo.name} (0/${pools.get('solo')!.total})`,
     ]);
 
     // Pick the member the case assigns a seat to, then the matching plan.
     await pickMember(page, dialog, NAMES.student);
     await expect(dialog.getByRole('button', { name: COPY.assign, exact: true })).toBeDisabled();
     await planPicker.click();
-    await page.getByRole('option', { name: new RegExp(escapeRegExp(ace.name)) }).click();
+    await page.getByRole('option', { name: new RegExp(escapeRegExp(pro.name)) }).click();
     const assignButton = dialog.getByRole('button', { name: COPY.assign, exact: true });
     await expect(assignButton).toBeEnabled();
     await assignButton.click();
@@ -465,9 +480,15 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     // 2b. The pool counters move: assigned +1, available −1; other pools untouched.
     await expectPoolRow(
       page,
-      ace.name,
-      [ace.name, String(pools.get('ace')!.total), '1', String(pools.get('ace')!.total - 1)],
+      pro.name,
+      [pro.name, String(pools.get('pro')!.total), '1', String(pools.get('pro')!.total - 1)],
       'the assigned pool moves to 1 assigned',
+    );
+    await expectPoolRow(
+      page,
+      ace.name,
+      [ace.name, String(pools.get('ace')!.total), '0', String(pools.get('ace')!.total)],
+      'the other student pool is untouched',
     );
     await expectPoolRow(
       page,
@@ -477,9 +498,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     );
     await expectPoolRow(
       page,
-      campus.name,
-      [campus.name, String(pools.get('campus')!.total), '0', String(pools.get('campus')!.total)],
-      'the manager pool is untouched',
+      solo.name,
+      [solo.name, String(pools.get('solo')!.total), '0', String(pools.get('solo')!.total)],
+      'the manager-audience pool is untouched',
     );
 
     // 2c. A new row in „Przydziały” for that member with the seat plan.
@@ -487,7 +508,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const assignmentRows = page.locator('table').nth(1).locator('tbody tr');
     await expect(assignmentRows).toHaveCount(1);
     await expect(assignmentRows.first()).toContainText(NAMES.student);
-    await expect(assignmentRows.first()).toContainText(ace.name);
+    await expect(assignmentRows.first()).toContainText(pro.name);
 
     // The same state through the API the page calls.
     const assignments = (
@@ -498,35 +519,34 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(assignments).toHaveLength(1);
     expect(assignments[0]).toMatchObject({
       userId: userId(tenant, 'student'),
-      poolId: pools.get('ace')!.id,
-      planKey: 'ace',
+      poolId: pools.get('pro')!.id,
+      planKey: SEAT_PLAN_KEY,
       userEmail: tenantUser(tenant, 'student').email,
     });
     const poolsAfterAssign = (
       await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
     ).data;
-    expect(poolsAfterAssign.find((pool) => pool.planKey === 'ace')).toMatchObject({
-      total: pools.get('ace')!.total,
+    expect(poolsAfterAssign.find((pool) => pool.planKey === SEAT_PLAN_KEY)).toMatchObject({
+      total: pools.get('pro')!.total,
       assigned: 1,
     });
 
     // The seated member no longer appears in the assign picker.
     await page.getByRole('button', { name: COPY.assignSeat }).click();
     const reopen = page.getByRole('dialog');
-    await reopen.getByRole('combobox').nth(0).click();
-    await expect(page.getByRole('listbox')).toBeVisible();
-    const remainingMembers = (await page.getByRole('option').allInnerTexts()).map(normalize);
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('listbox')).toHaveCount(0);
-    expect(remainingMembers.toSorted()).toEqual(
-      [`${NAMES.manager} (admin)`, `${NAMES.teacher} (teacher)`].toSorted(),
+    expect((await memberOptions(page, reopen)).toSorted()).toEqual(
+      [
+        `${NAMES.manager} (admin)`,
+        `${NAMES.teacher} (teacher)`,
+        `${NAMES.student2} (member)`,
+      ].toSorted(),
     );
     await reopen.getByRole('button', { name: COPY.cancel }).click();
     await expect(reopen).toBeHidden();
 
-    // 4. Server-side guards behind the pickers: one seat per member, tier must match.
+    // 4. Server-side guards behind the pickers: one seat per member, audience must match.
     const duplicate = await page.request.post('/api/v1/organization/seats/assignments', {
-      data: { userId: userId(tenant, 'student'), poolId: pools.get('ace')!.id },
+      data: { userId: userId(tenant, 'student'), poolId: pools.get('pro')!.id },
     });
     expect(duplicate.status(), 'second seat for the same member').toBe(429);
     expect(await duplicate.json()).toMatchObject({
@@ -534,20 +554,23 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       error: 'USAGE_LIMIT_EXCEEDED',
     });
 
-    const wrongTier = await page.request.post('/api/v1/organization/seats/assignments', {
-      data: { userId: userId(tenant, 'student'), poolId: pools.get('creator')!.id },
+    const wrongAudience = await page.request.post('/api/v1/organization/seats/assignments', {
+      data: { userId: userId(tenant, 'student'), poolId: pools.get('solo')!.id },
     });
-    expect(wrongTier.status(), 'educator seat for a student member').toBe(400);
-    expect(await wrongTier.json()).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+    expect(wrongAudience.status(), 'manager-audience seat for a student account').toBe(400);
+    expect(await wrongAudience.json()).toMatchObject({ success: false, error: 'BAD_REQUEST' });
 
     const poolsAfterGuards = (
       await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
     ).data;
-    expect(poolsAfterGuards.map((pool) => [pool.planKey, pool.assigned])).toEqual([
-      ['ace', 1],
-      ['campus', 0],
-      ['creator', 0],
-    ]);
+    expect(poolsAfterGuards.map((pool) => [pool.planKey, pool.assigned]).toSorted()).toEqual(
+      [
+        ['ace', 0],
+        ['creator', 0],
+        ['pro', 1],
+        ['solo', 0],
+      ].toSorted(),
+    );
     expect(
       (
         await readEnvelope<Assignment[]>(
@@ -557,49 +580,69 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       'the rejected requests created no assignment',
     ).toHaveLength(1);
 
-    // ── Step 2: the member logs in and holds the seat plan ───────────────────
+    // ── Step 2: the seated member's entitlements and limits ──────────────────
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
-    // ADR-0015 §5.4: seat entitlements are intersected with the org ceiling, so on
-    // the launch org (which carries only flashcards and quiz) the Ace seat grants
-    // no new feature — the member's feature set is unchanged by the seat.
+    // ADR-0015 §5.4: seat entitlements are intersected with the org ceiling, so
+    // on the hub org the pro seat adds exactly `advanced.stats` — a non-learner
+    // key the hub ceiling carries — and no other key.
     const afterFeatures = (
       await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
     ).data.features;
-    expect(afterFeatures.toSorted(), 'the seat cannot exceed the org ceiling').toEqual(
-      beforeFeatures.toSorted(),
-    );
     expect(
-      afterFeatures,
-      'the launch org did not buy ai.chat, so the seat grants none',
-    ).not.toContain('ai.chat');
-    for (const key of SEAT_NEVER_GRANTS) {
-      expect(afterFeatures, `org-scoped ${key} must not be granted through a seat`).not.toContain(
-        key,
-      );
-    }
+      afterFeatures.toSorted(),
+      'the seat ∩ hub ceiling adds exactly advanced.stats, nothing else',
+    ).toEqual([...learnerOnHub, 'advanced.stats'].toSorted());
+    expect(afterFeatures).toContain('advanced.stats');
+    expect(afterFeatures).toContain('ai.chat');
 
-    // The seat plan is still the member's effective plan, and in phase 3a the
-    // user-scope limit composition is seat-exclusive, so the limit is the seat
-    // plan's own even though ai.chat is not entitled.
-    // 3b moves to max(org, seat, personal) and phase 4 reworks this case.
+    // The seat is the member's effective plan (D28/D34): /me/plan resolves `pro`
+    // with the seat plan's own unlimited AI budget and the raised feature set.
     const memberPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
       .data;
-    expect(memberPlan.key).toBe('ace');
-    const afterUsage = (
-      await readEnvelope<{ limit: number }>(await page.request.get('/api/v1/ai/usage'))
-    ).data;
-    expect(afterUsage.limit, 'the seat plan’s AI token limit applies').toBe(
-      ace.limits.max_ai_tokens_per_day,
+    expect(memberPlan.key).toBe(SEAT_PLAN_KEY);
+    expect(memberPlan.limits.max_ai_tokens_per_day, 'max(org, seat, personal): -1 wins').toBe(-1);
+    expect(memberPlan.features, 'the effective plan carries the seat-added key').toContain(
+      'advanced.stats',
     );
 
-    // User-visible effect of the ceiling rule: the AI entry stays absent and
-    // /app/ai keeps the plan gate — the org did not buy ai.chat.
-    await expect(page.getByRole('link', { name: COPY.aiNav })).toHaveCount(0);
-    await page.goto('/app/ai');
-    await expect(page.getByText(COPY.aiLocked)).toBeVisible();
-    await expect(page.getByPlaceholder(COPY.aiPlaceholder)).toHaveCount(0);
+    // The AI usage view reports the raised limit with the org plan as the
+    // effective primary (D30): the seat raised the budget from hub's 200000 to -1.
+    const afterUsage = (
+      await readEnvelope<{ limit: number; plan: string }>(
+        await page.request.get('/api/v1/ai/usage'),
+      )
+    ).data;
+    expect(afterUsage.limit, 'the seat raises the AI limit above hub’s 200000').toBe(-1);
+    expect(afterUsage.plan, 'the effective primary stays the org plan').toBe('hub');
+
+    // ── The control member: the seat is per-member, not org-wide ─────────────
+    await signOut(page);
+    await signIn(page, tenant, 'student2', /\/app$/);
+
+    const controlFeatures = (
+      await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
+    ).data.features;
+    expect(controlFeatures.toSorted(), 'the unseated control keeps learner ∩ hub').toEqual(
+      learnerOnHub.toSorted(),
+    );
+    expect(controlFeatures, 'no seat: no advanced.stats').not.toContain('advanced.stats');
+
+    const controlPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
+      .data;
+    expect(controlPlan.key, 'the unseated member resolves their personal plan').toBe('base');
+    expect(
+      controlPlan.limits.max_ai_tokens_per_day,
+      'max(org, personal) without a seat stays at hub’s 200000',
+    ).toBe(hub.limits.max_ai_tokens_per_day);
+    const controlUsage = (
+      await readEnvelope<{ limit: number; plan: string }>(
+        await page.request.get('/api/v1/ai/usage'),
+      )
+    ).data;
+    expect(controlUsage.limit).toBe(200_000);
+    expect(controlUsage.plan).toBe('hub');
 
     expect(pageErrors, 'uncaught page errors while assigning and using the seat').toEqual([]);
   });

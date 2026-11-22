@@ -16,46 +16,6 @@ import type { ZodIssue } from 'zod';
 import type { Database } from '../types/database';
 
 /**
- * Maps plan_key → compatible account tier. Used for role-aware seat
- * assignment: a teacher (educator tier) should only get educator-tier seats,
- * a student (student tier) should only get student-tier seats, etc.
- */
-const PLAN_TIER_MAP: Record<string, string> = {
-  base: 'student',
-  spark: 'student',
-  ace: 'student',
-  pro: 'student',
-  lite: 'educator',
-  guide: 'educator',
-  creator: 'educator',
-  master: 'educator',
-  launch: 'manager',
-  team: 'manager',
-  hub: 'manager',
-  campus: 'manager',
-};
-
-/**
- * Maps org role name → compatible account tier.
- */
-const ROLE_TIER_MAP: Record<string, string> = {
-  admin: 'manager',
-  teacher: 'educator',
-  member: 'student',
-};
-
-/**
- * A to-one embed (`org_roles!inner(name)`) is typed as an object, but the wire
- * can deliver a one-element array for it (the guard `stripe-repository.ts` uses
- * for the same relation on `org_members`). Read both shapes, because
- * `undefined` here would skip the tier check (#1068).
- */
-function embeddedRoleName(value: { name: string } | { name: string }[]): string | null {
-  const related = Array.isArray(value) ? value[0] : value;
-  return related?.name ?? null;
-}
-
-/**
  * The table's `total >= assigned` check. PostgREST reports a check violation as
  * `23514` without naming the constraint in a field of its own; the name is in
  * the message, which is the only way to tell this one from the next CHECK added
@@ -70,6 +30,14 @@ function isTotalFloorViolation(error: { code: string; message: string }): boolea
 /** `total` below `assigned` would leave assignments that no longer fit the pool. */
 function totalTooSmallDetails(): ZodIssue[] {
   return [{ code: 'custom', message: ValidationErrorCode.TOO_SMALL, path: ['total'] }];
+}
+
+/** One pool's API shape, as every pool read/write returns it. */
+type PoolResult = ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>;
+
+/** The API shape of one pool row, shared by every read/write path below. */
+function poolResult(data: { id: string; plan_key: string; total: number; assigned: number }) {
+  return { id: data.id, planKey: data.plan_key, total: data.total, assigned: data.assigned };
 }
 
 export class SeatService {
@@ -99,23 +67,38 @@ export class SeatService {
     );
   }
 
-  async addPool(
-    ctx: RequestContext,
-    input: CreatePoolInput,
-  ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
+  async addPool(ctx: RequestContext, input: CreatePoolInput): Promise<PoolResult> {
+    // The licence check is catalog truth in one query (D15/D33): the plan must
+    // exist, be active, be `scope='personal'`, and every entitlement key it
+    // carries must be `seatEligible` in the live `entitlement_catalog` — a plan
+    // with no entitlements is not a licence. Refuse before writing anything,
+    // with the same field-error shape as the old tier-map refusal.
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    // `assignSeat` refuses a pool whose plan has no tier, so an unmapped key
-    // here would only create a pool that can never hold a seat. Refuse it at
-    // the door with the same map: a plan sold as a seat add-on has to be mapped
-    // there before its pool can be assigned from.
-    if (!PLAN_TIER_MAP[input.planKey]) {
+    const supabase = await this.clientFactory();
+
+    const { data: plan, error: planError } = await supabase
+      .from('subscription_plans')
+      .select(
+        'key, is_active, scope, plan_entitlements(entitlement_key, entitlement_catalog(seat_eligible))',
+      )
+      .eq('key', input.planKey)
+      .maybeSingle();
+
+    if (planError) return toDbFailure(planError);
+
+    const entitlements = dbRows(plan?.plan_entitlements);
+    const isLicence =
+      !!plan &&
+      !!plan.is_active &&
+      plan.scope === 'personal' &&
+      entitlements.length > 0 &&
+      entitlements.every((row) => !!dbNested(row.entitlement_catalog)?.seat_eligible);
+    if (!isLicence) {
       return failure('UNPROCESSABLE_ENTITY', [
         { code: 'custom', message: ValidationErrorCode.INVALID_INPUT, path: ['planKey'] },
       ]);
     }
-
-    const supabase = await this.clientFactory();
 
     // Upsert: if a pool for this plan already exists, increment its total.
     const { data: existing } = await supabase
@@ -146,12 +129,7 @@ export class SeatService {
       if (error) return toDbFailure(error);
       if (!data) return failure('INTERNAL_SERVER');
 
-      return success({
-        id: data.id,
-        planKey: data.plan_key,
-        total: data.total,
-        assigned: data.assigned,
-      });
+      return success(poolResult(data));
     }
 
     const { data, error } = await supabase
@@ -167,19 +145,14 @@ export class SeatService {
     if (error) return toDbFailure(error);
     if (!data) return failure('INTERNAL_SERVER');
 
-    return success({
-      id: data.id,
-      planKey: data.plan_key,
-      total: data.total,
-      assigned: data.assigned,
-    });
+    return success(poolResult(data));
   }
 
   async updatePool(
     ctx: RequestContext,
     poolId: string,
     input: UpdatePoolInput,
-  ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
+  ): Promise<PoolResult> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
     const supabase = await this.clientFactory();
@@ -205,12 +178,7 @@ export class SeatService {
     }
     if (!data) return failure('NOT_FOUND');
 
-    return success({
-      id: data.id,
-      planKey: data.plan_key,
-      total: data.total,
-      assigned: data.assigned,
-    });
+    return success(poolResult(data));
   }
 
   async listAssignments(ctx: RequestContext): Promise<
@@ -282,10 +250,10 @@ export class SeatService {
 
     const supabase = await this.clientFactory();
 
-    // Verify pool belongs to active org
+    // Verify pool belongs to active org; the plan rides the pool's FK embed.
     const { data: pool, error: poolErr } = await supabase
       .from('org_seat_pools')
-      .select('id, plan_key')
+      .select('id, plan_key, subscription_plans(scope, audience)')
       .eq('id', input.poolId)
       .eq('organization_id', ctx.activeOrgId)
       .maybeSingle();
@@ -293,42 +261,25 @@ export class SeatService {
     if (poolErr) return toDbFailure(poolErr);
     if (!pool) return failure('NOT_FOUND');
 
-    // Role-aware validation: the pool's plan tier must match the member's org
-    // role tier. Every unresolvable input refuses instead of skipping the check:
-    // skipping is what let a student-tier seat reach a teacher (#1068). A plan
-    // or role without a tier has to be added to the maps above to be assignable.
-    const poolTier = PLAN_TIER_MAP[pool.plan_key];
-    if (!poolTier) return failure('BAD_REQUEST');
+    // Persona validation (D33): the pool's plan `audience` must equal the
+    // target's `profiles.account_type` — the one server-side use of the persona,
+    // not a role-name tier map. An unresolvable audience refuses rather than
+    // skipping the check.
+    const poolPlan = dbNested(pool.subscription_plans);
+    const poolAudience = poolPlan?.audience ?? null;
+    if (!poolAudience) return failure('BAD_REQUEST');
 
     // Verify user exists
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('email')
+      .select('email, account_type')
       .eq('id', input.userId)
       .maybeSingle();
 
     if (profileErr) return toDbFailure(profileErr);
     if (!profile) return failure('NOT_FOUND');
 
-    const { data: member, error: memberErr } = await supabase
-      .from('org_members')
-      .select('org_roles!inner(name)')
-      .eq('organization_id', ctx.activeOrgId)
-      .eq('user_id', input.userId)
-      .maybeSingle();
-
-    if (memberErr) return toDbFailure(memberErr);
-
-    // A target without an org membership holds no org role, so there is no tier
-    // to contradict; the seat grants nothing until they join (org features
-    // resolve through membership). Anything else resolves to a tier or refuses:
-    // an unmapped role, like an unmapped plan, is a refusal because skipping it
-    // is what let a student-tier seat reach a teacher (#1068).
-    if (member) {
-      const roleName = embeddedRoleName(member.org_roles);
-      const userTier = roleName ? ROLE_TIER_MAP[roleName] : undefined;
-      if (userTier !== poolTier) return failure('BAD_REQUEST');
-    }
+    if (profile.account_type !== poolAudience) return failure('BAD_REQUEST');
 
     // Check if user already has a seat in this org (will be caught by unique constraint, but let's be explicit)
     const { data: existing } = await supabase
