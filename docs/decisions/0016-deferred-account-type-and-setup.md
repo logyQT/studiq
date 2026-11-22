@@ -50,9 +50,9 @@ the named file; two claims in the first draft were wrong and are corrected there
     keeps `/app`, and `/setup` offers join or continue.
 11. **One hook owns every write and invalidation.** The destination comes from the
     mutation response or the refreshed query data, not from a stale closure.
-12. **The old surface is deleted, not wrapped**, and every link site is migrated
-    in the same change — including `manage/layout.tsx`, which would otherwise 404
-    every manager's first login.
+12. **The old surface is deleted, not wrapped**, and every link site moves in the
+    same release (steps 7–8) — including `manage/layout.tsx`, which would
+    otherwise 404 every manager's first login.
 13. **Steps are state, not history.** Transitions use `replace`; refresh resumes
     the step from `account_type` + membership; the type step has no back, and the
     untyped shell has a sign-out.
@@ -103,10 +103,10 @@ where a new step cannot forget the guard or the invalidation.
 | Plan trigger        | Derives `base` / `lite` / `solo`; `personal_plan_key` is `NOT NULL DEFAULT 'free'`; `supabase/seeds/00_plans.sql:9` re-sets the default to `'base'` on every reset.      | Null plan + drop the default in the migration **and** the seed.                           |
 | Types               | `packages/server/src/types/database.ts` types `account_type` non-null.                                                                                                   | Regenerate in the schema slice, or null handling reads as dead code.                      |
 | Setup routes        | `/setup` chooser, `/setup/join`, `/setup/classroom` (educator); `/setup/org` (manager); `/app/join` (student).                                                           | All become `/setup`.                                                                      |
-| Staff gating        | `/edu` redirects to `/setup`; `/manage/layout.tsx:14` redirects to the deleted `/setup/org`.                                                                             | Migrate the manager redirect; the educator one survives.                                  |
+| Staff gating        | `/edu` redirects to `/setup`; `/manage/layout.tsx:14` redirects to `/setup/org`, which this ADR deletes.                                                                 | Migrate the manager redirect; the educator one survives.                                  |
 | Guidance            | Two checklist components; no manager checklist; no tour dependency.                                                                                                      | Merge; add the manager descriptors and the import step.                                   |
 | API inventory       | A handler without `withAuth()` counts as public, by substring match.                                                                                                     | Add a `SESSION_ONLY_API` classification; the 401 belongs in an integration test.          |
-| QA                  | ONB-01…07, ONB-10 pin the old paths and Polish copy; AUT-15…18 assert a wire-level **307** on `/setup/org`.                                                              | Rewrite them; the 307 assertion becomes a client redirect.                                |
+| QA                  | ONB-01…08 and ONB-10 pin the old paths or the registration type field; AUT-01/02/15…18 assert `/setup*` routing, several as a wire-level **307**.                        | Rewrite them; the 307 assertion becomes a client redirect.                                |
 
 Two first-draft claims are withdrawn: the "27 leaf combinations" were a
 hypothetical no user could produce, and "personal workspace provisioning" does not
@@ -121,7 +121,7 @@ type SetupState =
   | { step: 'loading' }
   | { step: 'error'; reason: 'orgs' }
   | { step: 'type' }
-  | { step: 'action'; persona: AccountType; actions: SetupAction[] }
+  | { step: 'action'; persona: AccountType | null; actions: SetupAction[] }
   | { step: 'done'; destination: '/app' | '/edu' | '/manage' };
 
 type SetupAction = 'join' | 'create' | 'skip';
@@ -154,6 +154,13 @@ org switcher and the "join another class" link use it. A student who skips is no
 redirected back: no completion is persisted, and re-opening `/setup` offers the
 action again, which is the point of an opt-in surface.
 
+An **untyped** caller with `intent=join` and a token goes to the join action, not
+the type step (`persona: null`, only the join action): the accept endpoint writes
+the persona from the invitation when the caller is still untyped, so an invited
+user never sees the type card on this path either. If the invitation predates
+`target_account_type` (null), the shell keeps the token and falls back to the type
+step before accepting.
+
 The route has no step segments. A step URL is a second place that must remember
 the guard, which is the defect this ADR removes. Deep links, if ever needed, must
 be aliases that run this resolver first.
@@ -181,9 +188,9 @@ Order matters; the gate runs before every account-type redirect.
    session cookies are dropped.
 3. **`withAuth()` stays as it is.** It is the real API gate: an untyped session
    calling any data route gets `401`, even if it bypasses the proxy.
-4. **Sign-out from the shell.** `/setup` is the only page an untyped user can
-   reach, so the shell header renders a sign-out control (today only the
-   dashboard user menu has one).
+4. **Sign-out from the shell.** `/setup` is the only _product_ page an untyped
+   user can reach (`/join` and public pages stay open), so the shell header
+   renders a sign-out control (today only the dashboard user menu has one).
 
 ### 4.3 Writing the persona and refreshing the session
 
@@ -193,8 +200,9 @@ no `account_type` requirement), body `{ accountType, mode }`:
 - `mode: 'complete'` is the onboarding path: only while the profile is untyped;
   the same value is `200`, a different value (another tab) is `409` and the
   client re-reads state.
-- `mode: 'change'` is settings: allowed only when no paid personal plan exists
-  and no seat's `audience` matches the current persona; otherwise `409`.
+- `mode: 'change'` is settings: refused when a paid personal plan exists or a
+  seat is assigned under the current persona (its `audience` would stop
+  matching); otherwise it moves the account to the new family's free plan.
 
 One `SECURITY DEFINER` function does the write: `auth.uid()` only (no user-id
 parameter), `SET search_path = ''`, `REVOKE ALL FROM PUBLIC, anon`,
@@ -214,7 +222,12 @@ Because the handler cannot call `withAuth()`,
 `__tests__/unit/proxy/api-auth-inventory.test.ts` needs a `SESSION_ONLY_API`
 category. The unit test can only prove the classification (it is a source scan);
 the "unauthenticated caller gets 401" assertion belongs in
-`__tests__/integration/`. Putting the route in `PUBLIC_API` would be a lie.
+`__tests__/integration/`. Putting the route in `PUBLIC_API` would be a lie. The
+same test already treats a handler with a public `?token=` branch as fully gated,
+so classify per exported handler (or record the exception) while adding the
+category, or the new endpoints are covered by a substring accident.
+
+The setup-events route from §4.11 uses the same guard and the same category.
 
 ### 4.4 The held plan
 
@@ -230,7 +243,13 @@ While `account_type IS NULL`:
   resolver already composes a missing personal plan as a zero layer.
 - `handle_new_user()` inserts `NULL` for both when the type is absent, but still
   raises when a type is present and invalid. "No answer" and "typo" must not
-  collapse.
+  collapse. Untyped means the `app_metadata` key is absent **or** JSON `null`;
+  the gate treats both as untyped, and the trigger omits the key rather than
+  writing `{"account_type": null}`.
+- The seeded fixtures keep their type through `raw_app_meta_data`; the direct
+  `profiles` inserts in `supabase/seeds/01_seed.sql` omit `account_type` and only
+  work today because the trigger creates the row first. Once the default is gone,
+  audit those inserts so no fixture becomes untyped.
 - `getMyPlan` / `getPersonalPlan` already answer `NOT_FOUND`; keep that, and fix
   `plan.primary`'s fallback to `'free'`, a key the seeded catalogue does not have.
 - Regenerate `packages/server/src/types/database.ts` in the same slice, or the
@@ -242,13 +261,22 @@ While `account_type IS NULL`:
   public anon key, any client can POST GoTrue signup with
   `data.account_type = 'manager'`; the fallback is why that currently works.
 - **New org invitations carry `target_account_type`** (nullable in the first
-  migration; new rows require it). The inviter picks it with the role, with a
-  derived default it can change. Bulk and class invite forms send it per row.
+  migration; the create/update service requires it on new **org** invitations,
+  and class invitations leave it null because they never create an account; a
+  follow-up tightens the column). The inviter picks it with the role. Default by target
+  role: `teacher`/`admin` → `educator`, `member` → `student`; the inviter can
+  change it (an org admin may be a manager). The single, bulk (`/setup`
+  classroom) and `/manage/invites` forms send it per row; `UpdateInviteSchema`
+  gains the field or refuses a role edit that would leave it inconsistent.
+- **An untyped caller accepting an org invitation is typed in the same write**,
+  from the invitation row, before the membership is applied. That closes the
+  "self-signed-up, then opened an invite link" path without asking a question the
+  invitation already answers.
 - **An invited account is typed at activation**, in `claimInvitation`, from the
   invitation row, with the service role. It cannot be typed at creation: a client
   cannot write `app_metadata` before its own creation, and the metadata path is
-  the hole above. If acceptance fails, the account stays untyped and `/setup`
-  offers the type step; the token is shown with its failure reason.
+  the hole above. If acceptance fails, the account stays untyped and the join
+  screen keeps the token and the failure reason; a successful retry types it.
 - **A class/group invitation is not a signup path**: the RPC refuses a class
   invite unless the user is already an org member. A signed-out visitor with a
   class token is sent to sign-in, not registration. Only org invitations create
@@ -257,13 +285,13 @@ While `account_type IS NULL`:
   membership and role are granted. A mismatch is ignored, not refused.
 - **Backfill**: pending rows have no intent. Derive only where unambiguous
   (`teacher` → `educator`, `member` → `student`), leave `admin` org invites null
-  (they fall back to the type step), and require the column on new rows. A
-  follow-up can tighten to `NOT NULL` once no nulls remain.
+  (they fall back to the type step), and require the column on new org rows. A
+  follow-up can tighten to `NOT NULL` once no nulls remain outside class invites.
 - `/join?token=…` loses its type field; when already authenticated it forwards to
   `/setup?intent=join&token=…` so a signed-in wrong account does not drop the
   token, and `SetupJoinForm` consumes it.
 
-### 4.6 One shell, three bodies, six outcomes
+### 4.6 One shell, five components, six outcomes
 
 ```
 /setup
@@ -271,7 +299,7 @@ While `account_type IS NULL`:
   <SetupActionStep />    join | create | skip, from the persona/state table
   <SetupJoinForm />      code or link → preview → accept; every persona
   <SetupCreateForm />    name → optional invites (educator) → create
-  <SetupDone />          one paint, then the persona's destination
+  <SetupDone />          confirmation (today's "Gotowe!") → persona's destination
 ```
 
 | Persona  | Join                          | Create                                     | Skip        |
@@ -288,11 +316,26 @@ Billing already supports org-scoped subscriptions with a `purchaser_user_id`, so
 an institution buys one plan per org or a campus contract; a multi-org purchasing
 screen is a separate billing decision.
 
-Card content is part of the decision, not the implementation: each card states
-what you get immediately, where you land, and that it is changeable later. The
-educator and manager cards must say that creating a classroom **creates an
-organization, makes you Admin on the free plan, and has seat/group limits** — the
-one place a first-run user can otherwise be misled by friendly copy.
+Card content is part of the decision, not the implementation. Required content:
+
+| Choice           | Promise                | Consequence shown                                                                  | Destination |
+| ---------------- | ---------------------- | ---------------------------------------------------------------------------------- | ----------- |
+| Student card     | "I'm here to learn"    | personal space; joining a class is optional                                        | `/app`      |
+| Educator card    | "I teach"              | creates an organization, you become Admin on the free plan, with seat/group limits | `/edu`      |
+| Institution link | "I run an institution" | creates an organization, you become Admin; plans are bought per organization       | `/manage`   |
+
+Every card also says the choice is changeable later (while no paid personal plan
+is active, per §4.12), and the screen has no preselection. The
+educator/institution wording is the one place a first-run user could otherwise be
+misled by friendly copy.
+
+`PRODUCT.md`'s `/contact` line is reconciled as the `campus` plan's CTA, not as a
+manager signup path; that sentence is updated with this change.
+
+What a good first session must achieve, and what the checklist is measured
+against: a student sees their first deck and first quiz; an educator has a class
+plus one piece of imported material; a manager has an organization and one invited
+teacher. That is the outcome the copy and the checklist steps serve.
 
 ### 4.7 Mutation and invalidation ownership
 
@@ -301,9 +344,11 @@ invalidates:
 
 1. `setType` → account-type endpoint (server refresh) → `AuthProvider.refresh()`
    → recompute state.
-2. `acceptInvite` → `POST /invites/accept` (sets `active_org_id`) → invalidate
-   `['orgs']` with `refetchType: 'all'`, permissions, features, question reports →
-   resolve from the **response** (org id/role) or `getQueryData(['orgs'])`.
+2. `acceptInvite` → `POST /invites/accept` (sets `active_org_id`; if the caller
+   was untyped it also writes the persona and refreshes the session cookies) →
+   invalidate `['orgs']` with `refetchType: 'all'`, permissions, features,
+   question reports → resolve from the **response** (org id/role) or
+   `getQueryData(['orgs'])`.
 3. `createOrg` → `POST /organization` (sets `active_org_id`) → same invalidations
    → same destination rule. The educator body then posts `/invites/bulk` if rows
    were added.
@@ -330,22 +375,24 @@ follow-up, not invented here.
 
 ### 4.9 What is deleted, and what moves
 
-| Removed                                                                            | Replaced by                                                             |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `/setup` chooser                                                                   | `/setup` action step                                                    |
-| `/setup/join`, `/setup/classroom`, `/setup/org`                                    | `/setup` join / create bodies                                           |
-| `/app/join`                                                                        | `/setup?intent=join` (org switcher links there)                         |
-| `SetupHeader` and per-path back rules                                              | shell header with sign-out and one back rule                            |
-| `SetupPage`, `Onboarding` and `AppJoinPage` i18n namespaces                        | one `Setup` namespace                                                   |
-| breadcrumbs `/setup/join`, `/setup/classroom`, `/app/join`                         | one `/setup` entry                                                      |
-| `manage/layout.tsx` redirect to `/setup/org`                                       | `/setup` (otherwise every manager 404s)                                 |
-| `robots.ts` entry for `/setup/`                                                    | `/setup`                                                                |
-| `ONB-01…07/10`, `AUT-15…18`, the route-rule audit test, the ONB/AUT case documents | same cases through `/setup`; AUT asserts the client redirect, not a 307 |
+| Removed                                                                                       | Replaced by                                                                                              |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `/setup` chooser                                                                              | `/setup` action step                                                                                     |
+| `/setup/join`, `/setup/classroom`, `/setup/org`                                               | `/setup` join / create bodies                                                                            |
+| `/app/join`                                                                                   | `/setup?intent=join` (org switcher links there)                                                          |
+| `SetupHeader` and per-path back rules                                                         | shell header with sign-out and one back rule                                                             |
+| `SetupPage`, `Onboarding` and `AppJoinPage` i18n namespaces                                   | one `Setup` namespace                                                                                    |
+| breadcrumbs `/setup/join`, `/setup/classroom`, `/app/join`                                    | one `/setup` entry                                                                                       |
+| `manage/layout.tsx` redirect to `/setup/org`                                                  | `/setup` (otherwise every manager 404s)                                                                  |
+| `robots.ts` entry for `/setup/`                                                               | `/setup`                                                                                                 |
+| `/register` account-type `Select`                                                             | removed; the type is chosen in `/setup`                                                                  |
+| `ONB-01…08, ONB-10`, `AUT-01/02/15…18`, the route-rule audit test, the ONB/AUT case documents | same cases through `/setup`; ONB-08 loses the type selection; AUT asserts the client redirect, not a 307 |
+| `__tests__/e2e/register.spec.ts`, `join-invite.spec.ts`                                       | registration without the type field; invite handoff                                                      |
 
 `/join?token=…` stays for signed-out invitation links. Pre-market rules apply:
-routes are deleted, not redirected; every internal link moves in the same change.
-A static test should fail on a source string referencing a removed route, so the
-`manage/layout.tsx` class of dead link cannot recur.
+routes are deleted, not redirected; every internal link moves in the same release
+(steps 7–8). A static test should fail on a source string referencing a removed
+route, so the `manage/layout.tsx` class of dead link cannot recur.
 
 ### 4.10 The guided portion is one checklist
 
@@ -380,17 +427,25 @@ One event per transition, through `log()` (Loki), with bounded labels and
   `/api/v1/auth/register` and `/api/v1/auth/callback`; setup steps are Loki
   events. A durable funnel table or vendor is a separate decision.
 
+These steps run in the browser and `log()` is server-only, so the events are
+posted to a thin `POST /api/v1/setup/events`, validated against a closed enum and
+logged server-side. That route uses the same session-only guard (the first
+`started`/`type_selected` events happen while the account is untyped) and joins
+`SESSION_ONLY_API` in the inventory. `setup.started` fires once per setup session;
+the invite token is never logged.
+
 These events land with the type-step slice, not slice 10: #1262 requires the
 numbers for the whole path, and an unmeasurable flow is not shippable.
 
 ### 4.12 Changing the persona later
 
 The surface is the account page (`/app/account`, `/edu/account` or
-`/manage/account`), not `/manage/settings` (org-scoped). The change is allowed
-when there is no paid personal plan and no seat whose `audience` matches the
-current persona; otherwise `409`. The profile moves to the new family's free plan
-(`base` / `lite` / `solo`); org memberships and roles do not change. This amends
-ADR-0015 §3.2's "set at signup" to "set during first-run setup".
+`/manage/account`), not `/manage/settings` (org-scoped). The change is refused
+(`409`) when a paid personal plan exists or a seat is assigned under the current
+persona, whose `audience` would stop matching. The profile moves to the new
+family's free plan (`base` / `lite` / `solo`); org memberships and roles do not
+change. This amends ADR-0015 §3.2's "set at signup" (line 137) to "set during
+first-run setup".
 
 ### 4.13 Why staff are blocked
 
@@ -430,8 +485,9 @@ dashboards, which is a different feature, not a copy change.
 
 **Negative / trade-offs**
 
-- The surface moves in one coordinated change; splitting before the flip requires
-  the new shell to run beside the old pages, which the slice order in §8 does.
+- The end state moves as one surface, but the migration cannot: steps 4–8 keep the
+  old subroutes live beside the new shell until the deletion, which is why the
+  links PR and the deletion PR are separate.
 - `/setup` loses per-step deep links; analytics carry the step.
 - The route rule is wider. The safety argument is the API gates and needs tests:
   `/setup` is `requireAuth` only; a student's `POST /organization` is `403`; an
@@ -460,32 +516,41 @@ Build behind the old routes, then flip, then delete. Two PRs are unavoidable at
 steps 7–8 (links/i18n, then deletions plus test rewrites); take
 `size:exception` or split links from deletions.
 
-| #   | Slice                                                                                                              | Decision     |
-| --- | ------------------------------------------------------------------------------------------------------------------ | ------------ |
-| 1   | Schema + regenerated `database.ts` + seeds: nullable columns, both defaults dropped, trigger untyped/invalid split | §4.4         |
-| 2   | Session-only guard, `SECURITY DEFINER` function, endpoint with server-side refresh, integration 401                | §4.2, §4.3   |
-| 3   | `resolveSetupState` + unit matrix (pure, no UI)                                                                    | §4.1         |
-| 4   | New shell beside the old pages; `useSetupFlow`; rule `requireAuth` only                                            | §4.6, §4.7   |
-| 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed            | §4.5         |
-| 6   | Flip: null-aware proxy gate, `/login` `/register` redirect, sign-out in the shell                                  | §4.2         |
-| 7   | Migrate every link, breadcrumb, robots and i18n namespace; switch the org switcher to `?intent=join`               | §4.9         |
-| 8   | Delete the four routes and `SetupHeader`; rewrite ONB/AUT specs and case docs                                      | §4.9         |
-| 9   | Merge checklists (with the import step and manager descriptors)                                                    | §4.10        |
-| 10  | Events, funnel read, settings persona change                                                                       | §4.11, §4.12 |
+| #   | Slice                                                                                                                                                                                                       | Decision          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 1   | Schema + regenerated `database.ts` + seeds: nullable columns, both defaults dropped, trigger untyped/invalid split                                                                                          | §4.4              |
+| 2   | Session-only guard, `SECURITY DEFINER` function, endpoint with server-side refresh, integration 401                                                                                                         | §4.2, §4.3        |
+| 3   | `resolveSetupState` + unit matrix (pure, no UI)                                                                                                                                                             | §4.1              |
+| 4   | New shell at `/setup` (replaces the chooser; old subroutes stay live until step 8); `useSetupFlow`; widen `/setup` to `requireAuth`, keeping `/setup/org` ahead until step 8; events endpoint + step events | §4.6, §4.7, §4.11 |
+| 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed, e2e register/join specs updated                                                                    | §4.5              |
+| 6   | Flip: null-aware proxy gate, `/login` `/register` redirect, sign-out in the shell                                                                                                                           | §4.2              |
+| 7   | Migrate every link, breadcrumb, robots and i18n namespace; switch the org switcher to `?intent=join`                                                                                                        | §4.9              |
+| 8   | Delete the four routes and `SetupHeader`; rewrite ONB/AUT specs and case docs                                                                                                                               | §4.9              |
+| 9   | Merge checklists (with the import step and manager descriptors)                                                                                                                                             | §4.10             |
+| 10  | Funnel read, settings persona change, docs: #1262 wording, PRODUCT.md `/contact`, ADR-0015 amendment                                                                                                        | §4.11, §4.12      |
 
 ## 9. Tests the ADR requires
 
 1. Resolver matrix: every cell of §4.1, plus `isFetching: true, orgsCount: 0` →
    `loading`, and an untyped account with two orgs → `type`.
 2. Fail-closed: `app_metadata: {}` → `401` (there is no such test today).
-3. Proxy negative: untyped on `/app` → `/setup`, written red before the fix.
+3. Proxy negative: untyped on `/app` → `/setup`, and `/join?token=…` stays
+   reachable (not swallowed), written red before the fix.
 4. Route rule: `/setup` has `requireAuth` and no `allowedAccountTypes`; a
    student's `POST /organization` is `403`.
 5. Null plan: untyped profile → zero entitlements, zero limits, `getMyPlan` 404.
 6. Invitation typing: the persona comes from the row; a forged
-   `user_metadata.account_type` is ignored.
-7. Invite failure paths: expired, seat limit, class token for a non-member.
-8. Deleting guard: no source string references a removed route.
+   `user_metadata.account_type` is ignored; an untyped accept is typed in the
+   same write.
+7. Invite failure paths: expired, seat limit, class token for a non-member; an
+   untyped caller with `intent=join` lands on the join step, not the type step.
+8. Seeds: after `db reset`, `profiles.account_type` / `personal_plan_key` have no
+   column default and the fixture users are still typed.
+9. Deleting guard: no source string references a removed route.
+10. QA fixture: a tenant helper can boot an untyped account (`dashboardFor`
+    returns `undefined` today, so no existing helper can).
+11. Events: the session-only route rejects no session, an unknown event is
+    `422`, and no log record contains the invite token.
 
 Each assertion names the production line it kills and is proven with
 `bun run mutate`; a filter that matches nothing is `ERROR`, not a pass.
@@ -497,8 +562,11 @@ Each assertion names the production line it kills and is proven with
 - `packages/server/src/lib/with-auth.ts` — `401` without a claim.
 - `supabase/migrations/20261122150000_plan_scope_audience_solo.sql` — trigger
   fallback, derived plans, `DEFAULT 'student'`.
-- `supabase/seeds/00_plans.sql` — the `'base'` default re-applied on reset.
+- `supabase/seeds/00_plans.sql` — the `'base'` default re-applied on reset;
+  `supabase/seeds/01_seed.sql` — fixture users typed through `raw_app_meta_data`.
 - `packages/server/src/types/database.ts` — non-null `account_type`.
+- `apps/web/src/components/providers/AuthProvider.tsx` — `refresh()` calls
+  `/auth/me`; the server-side cookie refresh is the missing half.
 - `packages/server/src/services/{entitlement.resolver,subscription-plan,seat}.ts`
   — null plan composition, `NOT_FOUND`, seat audience.
 - `apps/web/src/app/(frontend)/(setup)/setup/*`, `.../app/join/page.tsx` — the
@@ -510,4 +578,5 @@ Each assertion names the production line it kills and is proven with
 - `apps/web/src/app/(frontend)/pricing/_components/plan-row.tsx` — `campus` is
   contact-only; org billing is org-scoped.
 - `__tests__/unit/proxy/api-auth-inventory.test.ts`, `__tests__/qa/ONB`,
-  `__tests__/qa/AUT` — classification and the 307 assertions.
+  `__tests__/qa/AUT`, `__tests__/e2e/register.spec.ts` — classification, the 307
+  assertions and the registration type selector.
