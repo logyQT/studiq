@@ -64,16 +64,6 @@ export class FeatureFlagController {
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
-
-  async delete(id: string): Promise<ControllerResponse> {
-    const parsed = FeatureFlagIdParamsSchema.safeParse({ id });
-    if (!parsed.success) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-    }
-    const result = await this.service.delete(parsed.data.id);
-    if (isFailure(result)) return controllerResponse.error(result.error);
-    return { success: true, statusCode: 200, data: { success: true } };
-  }
 }
 export const featureFlagController = wrapService(
   new FeatureFlagController(featureFlagService),

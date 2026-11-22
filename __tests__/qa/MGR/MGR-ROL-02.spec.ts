@@ -15,7 +15,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * `__tests__/qa/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`: the
  * `content` tenant gives the org its admin, teacher and student, and `--plan hub`
- * puts *this tenant's own* organization on Hub through `apply_org_plan` — the plan
+ * puts *this tenant's own* organization on Hub through `change_org_plan` — the plan
  * the case document names („Włącz role.builder dla organizacji … plan Hub”). The
  * write gate itself is the `org.role.manage` permission on the tenant's Admin role
  * (ADR-0015 §4.4, 2a-2), not the plan. Nothing global is written: no admin

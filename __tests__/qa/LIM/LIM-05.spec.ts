@@ -13,7 +13,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *   bun scripts/qa-tenant.ts LIM-05 --fresh
  *
  * `__tests__/qa/profiles/LIM-05.json` declares `{ profile: "content", plan: "hub" }`,
- * so the fresh tenant's organization starts on Hub (`apply_org_plan` in the
+ * so the fresh tenant's organization starts on Hub (`change_org_plan` in the
  * seeder) and its `admin` role has `branding`. Nothing global is written: no
  * feature flag, plan catalogue row, admin setting or singleton.
  *
@@ -21,7 +21,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * inside this one tenant: use branding on Hub (upload a logo, set the brand
  * colour), then drop the plan to `launch` through the app's mock checkout webhook
  * (`POST /api/v1/stripe/webhook` → `MockStripeService.handleWebhook` →
- * `apply_org_plan`) — the entitlement path a real plan change takes, and the
+ * `change_org_plan`) — the entitlement path a real plan change takes, and the
  * equivalent of MGR-SET-05's downgrade, scoped to this tenant.
  *
  * Step 2 is the case's own check: as that now-featureless manager, `PUT
@@ -108,7 +108,7 @@ async function organization(page: Page, orgId: string): Promise<OrganizationDeta
 
 /**
  * Move this tenant's organization onto `plan` through the app's mock checkout
- * webhook — the same `apply_org_plan` RPC the billing path uses. The endpoint
+ * webhook — the same `change_org_plan` RPC the billing path uses. The endpoint
  * authenticates the caller and only acts on the caller's own account, so this
  * never touches another tenant or a global row.
  */

@@ -23,12 +23,12 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 // tables through the single resolver's composition — `max(org, seat, personal)`
 // for user-scope keys, the org plan for org-scope keys, missing row = 0, `-1`
 // short-circuits — and never from a per-org snapshot. These tests change
-// `organizations.plan` directly — deliberately NOT through `apply_org_plan()`
-// (3c replaces it) — and assert the resolver follows the new plan on the next
-// resolution. They also pin the membership gate: `active_org_id` is a
-// client-controlled cookie, so a forged id plus a stale seat row must resolve
-// the personal plan (user keys) / 0 (org keys), never the foreign org's or the
-// seat's values.
+// `organizations.plan` directly — deliberately NOT through `change_org_plan()`,
+// which moves the plan and nothing else — and assert the resolver follows the
+// new plan on the next resolution. They also pin the membership gate:
+// `active_org_id` is a client-controlled cookie, so a forged id plus a stale
+// seat row must resolve the personal plan (user keys) / 0 (org keys), never the
+// foreign org's or the seat's values.
 describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () => {
   let fixture!: BeforeResult;
   let service!: SupabaseClient<Database>;
@@ -135,13 +135,13 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     await service.auth.admin.deleteUser(student.id).catch(() => {});
   });
 
-  it('follows a plan change made without apply_org_plan() — narrows and widens with no snapshot', async () => {
+  it('follows a plan change made without change_org_plan() — narrows and widens with no snapshot', async () => {
     // Creation default is `launch` (max_flashcards 100, max_groups 3,
     // max_ai_tokens_per_day 0).
     expect(await orgPlan(fixture.orgId!)).toBe('launch');
     await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
 
-    // Direct service-role update: no snapshot sync, no apply_org_plan().
+    // Direct service-role update: no RPC, no snapshot writer.
     const { error } = await service
       .from('organizations')
       .update({ plan: 'hub' })

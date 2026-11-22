@@ -46,8 +46,10 @@ const ORGANIZATION_PLAN_FAMILY = 'manager';
  *
  * Both entitlement columns are source-of-truth state, not derived history:
  *
- * - organization → `rpc('apply_org_plan')`, which moves `organizations.plan`
- *   and re-syncs the `org_role_features` snapshot (service-role only);
+ * - organization → `rpc('change_org_plan')`, which moves `organizations.plan`
+ *   and nothing else (service-role only). The org layer is derived live:
+ *   `plan_entitlements`/`plan_limits` plus `org_roles.entitlement_profile`,
+ *   with `org_role_features` read as revokes-only (ADR-0015 D19/D31);
  * - user → `profiles.personal_plan_key`, write-locked for `authenticated`
  *   (migration 20261022000001), so it is written with the service-role client.
  *
@@ -70,10 +72,10 @@ export class EntitlementService {
     if (isFailure(planResult)) return planResult;
 
     if (owner.type === 'org') {
-      // organizations.plan alone changes nothing: features and limits are
-      // snapshots, so the DB function moves the plan and re-syncs them.
+      // The plan move is the whole write: features and limits resolve live
+      // from `organizations.plan`, so there is no snapshot to re-sync.
       const admin = this.createAdminClient();
-      const { error } = await admin.rpc('apply_org_plan', {
+      const { error } = await admin.rpc('change_org_plan', {
         p_org_id: owner.orgId,
         p_plan: planKey,
       });

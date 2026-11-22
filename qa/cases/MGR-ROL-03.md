@@ -38,7 +38,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
   nie pustą listę.
 - Edycja uprawnień roli wymaga uprawnienia `org.role.manage`, które rola systemowa
   `admin` ma na każdym planie; plan nie jest już bramką. Spec przenosi **własną**
-  organizację na plan `hub` przez produktowe `apply_org_plan()`, bo tak opisuje go
+  organizację na plan `hub` przez produktowe `change_org_plan()`, bo tak opisuje go
   przypadek — katalog planów, flagi funkcji i inne organizacje pozostają nietknięte.
 - Treści per zakres (każda rodzina: talia/fiszki, temat, bank pytań/pytania):
   - `own` — utworzone przez użytkownika roli,

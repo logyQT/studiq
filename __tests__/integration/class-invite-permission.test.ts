@@ -196,11 +196,11 @@ describe('class invites (2b-5) — API + PostgREST', () => {
     orgId = fixture.orgId!;
     // launch caps max_students at 5 and this fixture org already has 5 members;
     // the accept cases need headroom.
-    const { error: planError } = await service.rpc('apply_org_plan', {
+    const { error: planError } = await service.rpc('change_org_plan', {
       p_org_id: orgId,
       p_plan: 'hub',
     });
-    if (planError) throw new Error(`apply_org_plan failed: ${planError.message}`);
+    if (planError) throw new Error(`change_org_plan failed: ${planError.message}`);
     adminRoleId = await roleIdOf(orgId, 'admin');
     teacherRoleId = await roleIdOf(orgId, 'teacher');
     memberRoleId = await roleIdOf(orgId, 'member');

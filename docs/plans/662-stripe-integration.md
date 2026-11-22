@@ -11,7 +11,7 @@
 
 ### Goals
 
-1. Replace the simulated checkout with **real Stripe subscriptions in test mode**, without changing the entitlement model (`profiles.personal_plan_key`, `organizations.plan`, `apply_org_plan`).
+1. Replace the simulated checkout with **real Stripe subscriptions in test mode**, without changing the entitlement model (`profiles.personal_plan_key`, `organizations.plan`, `change_org_plan`).
 2. Extract a **`PaymentGateway` interface** so `mock` and `stripe` are two adapters behind the same domain flow.
 3. Verify every webhook with the **raw body + `stripe-signature`**, deduplicate on `event.id`, and survive out-of-order delivery.
 4. Keep a **customer ↔ owner mapping** (user or organization) and a local subscription mirror so the app can render billing state without trusting the client.
@@ -95,7 +95,7 @@ sequenceDiagram
     C->>W: {type:"checkout.session.completed", session_id:<client uuid>, plan_id, user_id}
     W->>W: withAuth → ctx.userId must equal body.user_id
     W->>M: handleWebhook()
-    M->>DB: apply_org_plan() or update profiles.personal_plan_key
+    M->>DB: change_org_plan() or update profiles.personal_plan_key
     M->>DB: upsert payments (session_id unique)
     W-->>C: 200 {received:true}
     C-->>U: "Płatność udana" → /billing/success → /app
@@ -162,7 +162,7 @@ Differences from 2.2 only:
 1. `BillingService` resolves `orgId` from the request, re-checks `isOrgAdminRole` on `org_members.org_roles.name`.
 2. `ensureCustomer` uses `owner_type='org'`, `org_id`, `billing_customers.organization_id`.
 3. Checkout metadata carries `owner_type:'org'`, `org_id`, `purchaser_user_id`.
-4. `EntitlementService.activate` calls `apply_org_plan(org_id, plan_key)` with the **service-role** client.
+4. `EntitlementService.activate` calls `change_org_plan(org_id, plan_key)` with the **service-role** client.
 5. The buyer's `profiles.personal_plan_key` is **never** touched (ADR-0007 / #228).
 6. `payments` row: `organization_id = org_id`, `user_id = purchaser_user_id` (the buyer).
 
@@ -175,7 +175,7 @@ sequenceDiagram
     participant DB as Supabase
     participant S as Stripe
     participant W as webhook
-    participant F as apply_org_plan()
+    participant F as change_org_plan()
 
     A->>API: {planKey:"hub", orgId:"<uuid>"}
     API->>B: startCheckout()
@@ -188,7 +188,7 @@ sequenceDiagram
     S-->>A: hosted Checkout
     S->>W: checkout.session.completed
     W->>F: p_org_id, p_plan="hub"
-    F->>DB: update organizations.plan + re-sync org_role_features
+    F->>DB: update organizations.plan (phase 3c: plan only)
     S->>W: invoice.paid
     W->>DB: payments(org_id, purchaser_user_id)
 ```
@@ -280,7 +280,7 @@ flowchart TD
     E -->|invoice.payment_failed| K[mark past_due, keep access]
     E -->|invoice.payment_action_required| L[mark requires_action, keep access]
     E -->|other| M[mark ignored, 200]
-    F --> N[apply_org_plan OR profiles.personal_plan_key]
+    F --> N[change_org_plan OR profiles.personal_plan_key]
     G --> N
     H --> N
     I --> N
@@ -299,7 +299,7 @@ flowchart TD
 
 1. **Provider I/O** — build a fake URL, return a fake portal URL.
 2. **Domain authorization** — plan purchasable, org admin.
-3. **Entitlement writes** — `apply_org_plan`, `profiles.personal_plan_key`, `payments`.
+3. **Entitlement writes** — `change_org_plan`, `profiles.personal_plan_key`, `payments`.
 
 A second provider cannot be inserted without splitting these. The webhook is also misleading: the real Stripe webhook is unauthenticated and signature-verified, while the mock webhook is authenticated and acts on `ctx.userId`.
 
@@ -555,7 +555,7 @@ The factory imports the Stripe SDK **only through `stripe-payment.gateway.ts`** 
 | ------------------------- | ------------------------------------------------ | ------------------------------------------------------------------- |
 | Plan catalog + prices     | `subscription_plans` (amount/currency/is_active) | `stripe_prices` mapping (price id ↔ plan/cycle/livemode)            |
 | Personal entitlement      | `profiles.personal_plan_key`                     | —                                                                   |
-| Org entitlement           | `organizations.plan` + `apply_org_plan`          | —                                                                   |
+| Org entitlement           | `organizations.plan` + `change_org_plan`         | —                                                                   |
 | Purchase log              | `payments`                                       | `provider`, Stripe ids, `hosted_invoice_url`, nullable `session_id` |
 | Customer mapping          | —                                                | `billing_customers`                                                 |
 | Subscription state mirror | —                                                | `billing_subscriptions`                                             |
@@ -968,7 +968,7 @@ Metadata is trustworthy here because it is set by our own signed API call, and i
 applyPlan(owner: PaymentOwner, planKey: string): Promise<ServiceResult<void>>
 ```
 
-- `owner.type === 'org'` → service-role `rpc('apply_org_plan', { p_org_id, p_plan: planKey })`. Keep the existing function semantics untouched (it re-syncs `org_role_features` and limits; `org.manage` is never revoked).
+- `owner.type === 'org'` → service-role `rpc('change_org_plan', { p_org_id, p_plan: planKey })`. Phase 3c reduced it to the plan move: the org layer (features and limits) resolves live from `organizations.plan`, so there is no snapshot to re-sync.
 - `owner.type === 'user'` → `update profiles set personal_plan_key = planKey where id = userId`, with a **guard**: a `for_account_type='manager'` paid plan must never be written to a profile (ADR-0007). Reject + alert instead.
 - `downgradeToFree(owner, previousPlan)` → resolve the free plan for the family: `for_account_type = previousPlan.for_account_type`, `price_monthly = 0`, `is_active`, lowest `sort_order` (`base` / `lite` / `launch`). Apply it with the same method.
 - Every call is idempotent; re-applying the same plan is a no-op at the DB level.
@@ -1018,7 +1018,7 @@ Authorization is deliberately **not** re-checked on the webhook. If an admin is 
 | Concurrent checkouts for two plans                   | Second payment may succeed; the webhook refuses to replace an active subscription, logs `billing.duplicate_subscription` | Partial unique index + webhook guard; manual refund                            |
 | Refund                                               | No automatic revocation                                                                                                  | Manual policy (Q3)                                                             |
 | Dispute / chargeback                                 | No automatic revocation; access stays until a human decides                                                              | Manual policy                                                                  |
-| Subscription deleted (cancel at period end)          | Downgrade to the free tier for the family                                                                                | `apply_org_plan(org,'launch')` / `personal_plan_key`                           |
+| Subscription deleted (cancel at period end)          | Downgrade to the free tier for the family                                                                                | `change_org_plan(org,'launch')` / `personal_plan_key`                          |
 | Buyer leaves the org                                 | Org customer remains; any current admin can manage; payments stay attributed to the purchaser                            | D3                                                                             |
 | Admin removed between checkout creation and payment  | Payment succeeds; entitlement applies (money was taken)                                                                  | Authorization is enforced at checkout, not re-run on webhook                   |
 | Org deleted                                          | `billing_customers`/`billing_subscriptions` cascade; Stripe subscription keeps billing unless canceled first             | Ops runbook: cancel before deleting an org                                     |
@@ -1351,7 +1351,7 @@ Use an injected fake `StripeClient`. Suggested files and cases:
 - invalid signature → 400, no DB writes;
 - duplicate `event.id` → 200 `duplicate:true`, handler not re-run;
 - `checkout.session.completed` personal → `personal_plan_key` updated, no `payments` row;
-- `checkout.session.completed` org → `apply_org_plan` called, buyer profile untouched;
+- `checkout.session.completed` org → `change_org_plan` called, buyer profile untouched;
 - `customer.subscription.updated` upgrade → new plan applied;
 - `customer.subscription.updated` `unpaid` → free plan applied;
 - `customer.subscription.deleted` → free plan applied;
@@ -1429,7 +1429,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 6. Open the portal → cancel at period end → `cancel_at_period_end=true`; plan unchanged; resume → `false`.
 7. Upgrade Spark → Ace: confirm the Stripe invoice shows an unused-time credit + a full Ace period, and the new period starts today.
 8. Downgrade Ace → Spark: confirm a schedule is created; plan stays Ace until period end, then becomes Spark.
-9. Buy **Hub** as an org admin: `organizations.plan='hub'`, buyer's personal plan unchanged, `apply_org_plan` re-synced features.
+9. Buy **Hub** as an org admin: `organizations.plan='hub'`, buyer's personal plan unchanged, features resolve live from the new plan (`change_org_plan`, phase 3c).
 10. Log in as a teacher of that org: `POST /billing/change-plan` and the portal → 403.
 11. Declined card `4000…0002` → Checkout shows the error, no local rows.
 12. `stripe trigger invoice.payment_failed` → mirror `past_due`, plan unchanged.
@@ -1561,7 +1561,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 11. **The portal endpoint is dead code and account-type-blind** — no UI calls it, and it returns `/app/billing` for everyone.
 12. **`/edu/billing` is hardcoded** (`$29.99`, 50 seats) and disagrees with the PLN catalog.
 13. **`payments.organization_id` is written but never read** — there is no org-wide history; MVP keeps per-user attribution.
-14. **`profiles` is write-locked for `authenticated`** — entitlement writes must stay on the service-role client; `apply_org_plan` is already service-role only.
+14. **`profiles` is write-locked for `authenticated`** — entitlement writes must stay on the service-role client; `change_org_plan` is already service-role only.
 15. **The mock webhook is a browser-callable grant endpoint** — fine for the mock, but it must be impossible to reach in Stripe mode (`withAuth` branch).
 16. **`quiz-content.tsx` links to `/checkout?plan_id=student_premium`**, a plan that no longer exists (`plan_not_found`). Unrelated to Stripe, but it will surface during checkout QA.
 17. **`supabase/schemas/65_payments.sql` diverges from the migration** (no RLS/grants); any new schema mirror must not repeat that.

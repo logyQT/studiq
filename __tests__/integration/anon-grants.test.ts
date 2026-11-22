@@ -106,7 +106,7 @@ describe('anon role grants (#191)', () => {
       },
     ],
     [
-      'apply_org_plan',
+      'change_org_plan',
       {
         p_org_id: '00000000-0000-4000-8000-00000000000e',
         p_plan: 'launch',

@@ -23,7 +23,7 @@ Plan z brandingiem.
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Warunek
 wstępny przypadku — plan z brandingiem — jest ustawiany **wewnątrz tenanta przypadku**
-przez ten sam RPC, którego używa webhook płatności (`apply_org_plan`), a nie przez zmianę
+przez ten sam RPC, którego używa webhook płatności (`change_org_plan`), a nie przez zmianę
 globalnego katalogu planów czy planu innej organizacji:
 
 ```bash
@@ -32,8 +32,9 @@ bun scripts/qa-tenant.ts MGR-SET-03 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
-  czemu rola `admin` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
+  tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
+  organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
+  z profilem `all` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
   `/manage/settings` pokazuje kontrolki logo i koloru marki zamiast karty blokady.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.

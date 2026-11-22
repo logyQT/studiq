@@ -185,7 +185,10 @@ describe('control-plane permission RLS (2b-4)', () => {
     return role.id;
   }
 
-  async function grantLegacyMarker(roleId: string, featureKey: string) {
+  // Inert since phase 3c: `org_role_features` is revokes-only and no longer
+  // grants an entitlement. The row is kept so the cases below prove that even
+  // a hand-inserted grant confers no billing/assignment authority.
+  async function insertInertGrantRow(roleId: string, featureKey: string) {
     const { error } = await service.from('org_role_features').insert({
       org_role_id: roleId,
       feature_key: featureKey,
@@ -282,7 +285,7 @@ describe('control-plane permission RLS (2b-4)', () => {
       ['assignment.read', 'organization'],
     ]);
 
-    await grantLegacyMarker(legacyBillingRoleId, 'branding');
+    await insertInertGrantRow(legacyBillingRoleId, 'branding');
 
     billingId = await createUser(`control-plane-billing-${tag}@dev.local`, 'billing', 'manager');
     legacyBillingId = await createUser(

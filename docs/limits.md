@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-21 (phase 2b-7: legacy management markers removed).
+> Last updated: 2026-11-22 (phase 3c: the org plan is the only org entitlement state).
 
 ## Summary
 
@@ -10,8 +10,11 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 `plan_key`. Users and orgs _point at_ a plan (`profiles.personal_plan_key`,
 `organizations.plan`); they never get a private copy of its limits.
 
-- **Features** are snapshotted per org role into `org_role_features` at org
-  creation and re-synced by `apply_org_plan()` on a plan change.
+- **Features** resolve live: `organizations.plan` → `plan_entitlements` for the
+  org layer, and `org_roles.entitlement_profile` for the role layer.
+  `org_role_features` is revokes-only (D19): an `is_enabled = false` row
+  subtracts its key, and an enabled row is inert — ignored by both the resolver
+  and the RLS twin (phase 3c).
 - **Limits** are **never copied**. Every check reads the relevant plan's
   `plan_limits` row live.
 - There is **no** `org_limits` table (dropped in #229), no per-org limit
@@ -23,17 +26,17 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 ## Data model
 
-| Table / column                                                          | Meaning                                                                                                                           |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `for_account_type`).                                                                            |
-| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                      |
-| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                      |
-| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228). |
-| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                        |
-| `org_role_features (org_role_id, feature_key, is_enabled)`              | Per-org-role feature snapshot.                                                                                                    |
-| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` is the seat plan.                                                                     |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                |
-| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                         |
+| Table / column                                                          | Meaning                                                                                                                                        |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `for_account_type`).                                                                                         |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                   |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                   |
+| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228).              |
+| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                                     |
+| `org_role_features (org_role_id, feature_key, is_enabled)`              | Revokes-only since phase 3c (D19/D27): an explicit `is_enabled = false` subtracts one key from the role profile; an enabled row has no effect. |
+| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` is the seat plan.                                                                                  |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                             |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                      |
 
 The `base` / `launch` defaults come from the seed
 (`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
@@ -61,31 +64,27 @@ for both the resolver and the DB rows:
 ## Plan-template propagation
 
 `handle_new_organization()` — org creation
-(`supabase/migrations/20261119140000_catalog_rename.sql`):
+(`supabase/migrations/20261122120000_org_plan_writer_removed.sql`):
 
-1. creates the `admin` / `teacher` / `member` system roles;
+1. creates the `admin` / `teacher` / `member` system roles with their
+   `entitlement_profile` (`all`, `all`, `learner`);
 2. seeds their RBAC permissions;
-3. copies `plan_entitlements` for the org's plan into `org_role_features`:
-   admin = teacher = all; member = `flashcards`, `quiz`, `ai.chat`, `branding`
-   (the marker exclusion left with the markers in 2b-7).
+3. writes no entitlements and no limits: both org layers resolve live from
+   `organizations.plan`.
 
-It copies **no limits** and creates **no seat pools** (pools are created
-on demand since Phase B.5).
+It creates **no seat pools** (pools are created on demand since Phase B.5).
 
-`apply_org_plan(org_id, plan)` — plan change:
+`change_org_plan(org_id, plan)` — plan change:
 
-1. updates `organizations.plan`;
-2. deletes from every role any feature the new plan does not include (a plain
-   ceiling diff since 2b-7 — no key is exempt from the revoke);
-3. adds the new plan's features to the system roles (existing rows and
-   `is_enabled` toggles are preserved via `ON CONFLICT DO NOTHING`).
+1. validates the org and the plan, then updates `organizations.plan`;
+2. nothing else — the org layer is derived live from
+   `plan_entitlements`/`plan_limits`, so there is no feature snapshot to
+   re-sync.
 
-Limits need no step: the next check already reads the new plan's rows.
-
-Because features are snapshotted, editing `plan_entitlements` does **not** change
-existing orgs until `apply_org_plan()` runs; editing `plan_limits` does.
-Personal plans are never snapshotted — features and limits both resolve from
-the template on every request.
+Editing `plan_entitlements` therefore changes existing orgs on the next
+resolution, exactly as editing `plan_limits` does. A hand-inserted
+`org_role_features` row with `is_enabled = false` survives a plan change and
+keeps subtracting its key (D19).
 
 ## Feature resolution
 
@@ -263,16 +262,17 @@ refetches. Resolution itself is immediate.
   `plan-features` the routes are `GET/POST /api/v1/plan-features` and
   `DELETE /api/v1/plan-features/[id]` (no update — remove and re-add). The
   admin UI at `/subscription-plans` currently shows limits read-only.
-- **Org plan** — `apply_org_plan(org_id, plan)` (service-role only); changing
-  `organizations.plan` on its own also changes limits immediately, but skips
-  the feature re-sync.
+- **Org plan** — `change_org_plan(org_id, plan)` (service-role only) moves
+  `organizations.plan`; changing the column directly has the same effect.
 
 ## Tests
 
 - `__tests__/integration/limits-resolution.test.ts` — limits follow
-  `organizations.plan` changes made **without** `apply_org_plan()`, a spoofed
+  `organizations.plan` changes made **without** `change_org_plan()`, a spoofed
   `active_org_id` cookie does not grant org capacity, and the #233 precedence
   matrix (personal plan never raises org capacity).
+- `__tests__/integration/change-org-plan.test.ts` — the plan RPC moves only
+  `organizations.plan`, writes no feature rows, and preserves a revoke row.
 - `__tests__/integration/plan-limit-catalog.test.ts` — every active plan
   defines every required limit key (#233 fail-closed catalog guard).
 - `__tests__/integration/limit-count-scope.test.ts` — org-context content

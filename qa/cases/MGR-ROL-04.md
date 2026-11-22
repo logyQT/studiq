@@ -28,7 +28,7 @@ Rola niestandardowa z członkiem i rola bez członków.
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Warunek
 wstępny przypadku — możliwość zapisu i usuwania ról — spełnia rola systemowa `admin`
 tenanta, która ma `org.role.manage`; plan Hub jest ustawiany **wewnątrz tenanta
-przypadku** przez ten sam RPC, którego używa webhook płatności (`apply_org_plan`), bo tak
+przypadku** przez ten sam RPC, którego używa webhook płatności (`change_org_plan`), bo tak
 opisuje przypadek, a nie przez globalną flagę czy zmianę planu innej organizacji:
 
 ```bash

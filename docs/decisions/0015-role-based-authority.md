@@ -1308,6 +1308,25 @@ interpretation.
 > renders only `current`/`limit`) and no QA case asserts it (SEC-07 matches
 > `current`/`limit` only; MGR-SEAT-02 reads `limit`), so the widened meaning
 > is safe. (Phase 3b, `feat/authority-3b`.)
+>
+> **2026-11-22 (D31).** The org plan is the only org entitlement state.
+> `org_role_features` is revokes-only and its grant rows are deleted;
+> `apply_org_plan` becomes `change_org_plan`, which moves
+> `organizations.plan` and nothing else; `handle_new_organization` seeds
+> profiles, permissions and roles, never entitlement rows. The org layer
+> resolves live (`plan_entitlements`/`plan_limits` plus
+> `org_roles.entitlement_profile`), so a plan-change snapshot could only drift.
+> The RLS twin `has_org_feature` loses every row-existence gate (an enabled row
+> is inert in both readers) and composes profile − revokes + seat ∩ ceiling,
+> with the revoke subtraction inside the profile arm, so a seat key — which runs
+> after the revokes — re-adds a revoked one. Its
+> `(is_system AND name = 'admin')` wildcard is the one deliberate divergence
+> from the resolver (which has no admin branch; admin is profile `all` ∩
+> ceiling) and stays until phase 5 owns the alignment. A row-existence predicate
+> flips meaning when a table flips polarity (R34). `is_enabled` keeps its
+> `true` default: an enabled row is inert, so an accidental insert changes
+> nothing while a `false` default would silently revoke its key.
+> (Phase 3c, `feat/authority-3c`.)
 
 ---
 

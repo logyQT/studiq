@@ -116,7 +116,7 @@ describe('EntitlementService', () => {
     vi.restoreAllMocks();
   });
 
-  it('writes an organization plan only through apply_org_plan', async () => {
+  it('writes an organization plan only through change_org_plan', async () => {
     const { admin, updates, rpc } = createFakeAdmin({ plans: PLANS });
     const service = new EntitlementService(() => admin);
 
@@ -125,7 +125,7 @@ describe('EntitlementService', () => {
       data: undefined,
     });
 
-    expect(rpc).toHaveBeenCalledWith('apply_org_plan', { p_org_id: 'org-1', p_plan: 'hub' });
+    expect(rpc).toHaveBeenCalledWith('change_org_plan', { p_org_id: 'org-1', p_plan: 'hub' });
     expect(updates).toHaveLength(0);
   });
 
@@ -186,14 +186,14 @@ describe('EntitlementService', () => {
       expect(updates[0]?.values).toEqual({ personal_plan_key: expected });
     });
 
-    it('downgrades an organization to launch via apply_org_plan', async () => {
+    it('downgrades an organization to launch via change_org_plan', async () => {
       const { admin, rpc } = createFakeAdmin({ plans: PLANS });
       const service = new EntitlementService(() => admin);
 
       await expect(service.downgradeToFree(ORG, 'hub')).resolves.toMatchObject({
         success: true,
       });
-      expect(rpc).toHaveBeenCalledWith('apply_org_plan', {
+      expect(rpc).toHaveBeenCalledWith('change_org_plan', {
         p_org_id: 'org-1',
         p_plan: 'launch',
       });

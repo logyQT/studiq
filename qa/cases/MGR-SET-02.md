@@ -26,7 +26,7 @@ The legacy `manager@dev.local` + WSB Merito seed is replaced by this case's own
   `tenantKey('qa/cases/MGR-SET-02.md', 'MGR-SET-02#<run-suffix>', 'qa-shared')`.
 - „Plan z brandingiem”: spec czyta plan organizacji tenanta i — gdy jej pułap
   (`plan_entitlements`) nie zawiera `branding` — przenosi **tę jedną** organizację na
-  `hub` przez `apply_org_plan`, ten sam RPC, który wywołuje webhook płatności.
+  `hub` przez `change_org_plan`, ten sam RPC, który wywołuje webhook płatności.
   `branding` jest kluczem nie-markerowym, więc rozstrzyga go profil roli
   (`entitlement_profile = 'all'` roli `admin` managera) przecięty z pułapem planu;
   wiersz `org_role_features` nie przyznaje już takiego klucza i nie jest tu używany.

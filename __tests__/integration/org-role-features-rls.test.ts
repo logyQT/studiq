@@ -139,13 +139,24 @@ describe(`org_role_features RLS`, () => {
   });
 
   it('member session reads their org role feature rows (the bug: always [])', async () => {
+    // Fresh orgs have no feature rows since phase 3c (profiles are the role
+    // layer), so the RLS probe uses the one row shape that still exists: a
+    // revoke. `advanced.stats` is outside the launch ceiling, so it does not
+    // change the resolver assertion in the next test.
+    const { error: revokeError } = await service.from('org_role_features').insert({
+      org_role_id: org1MemberRole,
+      feature_key: 'advanced.stats',
+      is_enabled: false,
+    });
+    expect(revokeError).toBeNull();
+
     const { data, error } = await memberSession
       .from('org_role_features')
       .select('feature_key, is_enabled')
       .eq('org_role_id', org1MemberRole);
 
     expect(error).toBeNull();
-    expect(data?.length).toBeGreaterThan(0);
+    expect(data).toEqual([{ feature_key: 'advanced.stats', is_enabled: false }]);
 
     // Exactly what the service-role client sees — RLS no longer hides rows.
     const { data: expected } = await service

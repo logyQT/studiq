@@ -1148,6 +1148,15 @@ describe('RLS tenant isolation (#191)', () => {
     const unseatedCustomId = await createUser(unseatedEmail, 'student', 'unseated-custom');
 
     try {
+      // The seat arm intersects the org ceiling (a seat can add a key the org
+      // plan carries, never one it does not), so the fixture must carry the
+      // probed key: `advanced.stats` is in `hub`, not in `launch`.
+      const { error: planError } = await service
+        .from('organizations')
+        .update({ plan: 'hub' })
+        .eq('id', orgA.orgId);
+      expect(planError).toBeNull();
+
       for (const userId of [seatedCustomId, unseatedCustomId]) {
         await seedOrgMembership({
           organizationId: orgA.orgId,
@@ -1246,6 +1255,7 @@ describe('RLS tenant isolation (#191)', () => {
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
       await service.from('org_members').delete().in('user_id', [seatedCustomId, unseatedCustomId]);
       await service.from('org_roles').delete().eq('id', customRole!.id);
+      await service.from('organizations').update({ plan: 'launch' }).eq('id', orgA.orgId);
       for (const userId of [seatedCustomId, unseatedCustomId]) {
         await service.auth.admin.deleteUser(userId).catch(() => {});
       }
@@ -1631,7 +1641,7 @@ describe('RLS tenant isolation (#191)', () => {
     expect(anonError?.code).toBe('42501');
 
     // authenticated cannot execute the service-role-only plan function.
-    const { error: planError } = await studentSession.rpc('apply_org_plan', {
+    const { error: planError } = await studentSession.rpc('change_org_plan', {
       p_org_id: orgA.orgId,
       p_plan: 'hub',
     });

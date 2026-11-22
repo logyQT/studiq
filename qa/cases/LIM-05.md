@@ -32,7 +32,7 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
 
 - `__tests__/qa/profiles/LIM-05.json` deklaruje `{ "profile": "content", "plan": "hub" }`. Profil
   `content` tworzy organizację `qa-lim-05-<suffix>` z managerem (`admin`), nauczycielem i
-  studentem; `plan: "hub"` przenosi **tę jedną** organizację na Hub przez `apply_org_plan`
+  studentem; `plan: "hub"` przenosi **tę jedną** organizację na Hub przez `change_org_plan`
   — ten sam RPC, który wywołuje webhook płatności — dzięki czemu rola `admin` ma funkcję
   `branding`. To odpowiednik warunku „organizacja z brandingiem”, od którego zaczynają się
   MGR-SET-02 i MGR-SET-05 (MGR-SET-01 to stan Launch, osiągany w kroku 1 poniżej).
@@ -44,7 +44,7 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
 - Krok 1 przypadku („Wykonaj MGR-SET-01, MGR-SET-02, MGR-SET-05”) jest odtworzony w jednym
   tenancie: Hub → wgranie logo i ustawienie koloru marki (MGR-SET-02) → obniżenie planu do
   `launch` webhookiem symulowanej płatności (`POST /api/v1/stripe/webhook` →
-  `MockStripeService.handleWebhook` → `apply_org_plan`), czyli dokładnie ścieżką zmiany planu,
+  `MockStripeService.handleWebhook` → `change_org_plan`), czyli dokładnie ścieżką zmiany planu,
   której używa MGR-SET-05 — bez zmiany globalnego katalogu planów czy wierszy innego tenanta.
   Po asercjach spec wraca do `hub` w obrębie tego samego tenanta, żeby kolejny
   przebieg (retry CI na tym samym tenancie) zaczynał od warunku wstępnego.

@@ -13,7 +13,7 @@ Organizacja z wgranym logo na planie Hub.
 
 ## Steps
 
-1. Obniż plan organizacji do Launch przez symulowany webhook płatności (`POST /api/v1/stripe/webhook` → `apply_org_plan`), aby wyłączyć funkcję branding.
+1. Obniż plan organizacji do Launch przez symulowany webhook płatności (`POST /api/v1/stripe/webhook` → `change_org_plan`), aby wyłączyć funkcję branding.
 2. Odśwież /manage.
 
 ## Expected result
@@ -25,7 +25,7 @@ Organizacja z wgranym logo na planie Hub.
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Warunek
 wstępny przypadku — organizacja z wgranym logo na planie Hub — jest ustawiany **wewnątrz
-tenanta przypadku** przez ten sam RPC, którego używa webhook płatności (`apply_org_plan`),
+tenanta przypadku** przez ten sam RPC, którego używa webhook płatności (`change_org_plan`),
 a nie przez zmianę globalnego katalogu planów czy planu innej organizacji:
 
 ```bash
@@ -34,8 +34,9 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
-  czemu rola `admin` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
+  tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
+  organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
+  z profilem `all` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
   `/manage/settings` pokazuje kontrolki logo i koloru marki.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.
@@ -46,7 +47,7 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
   obrębie przebiegu (bez losowanych UUID).
 - Krok 1 przypadku (zmiana planu organizacji): zmiana uprawnienia **tej samej**
   organizacji przez webhook symulowanej płatności (`POST /api/v1/stripe/webhook` →
-  `MockStripeService.handleWebhook` → `apply_org_plan`) — dokładnie ta sama ścieżka, przez
+  `MockStripeService.handleWebhook` → `change_org_plan`) — dokładnie ta sama ścieżka, przez
   którą przechodzi realna zmiana planu. Obniżenie do `launch` (darmowy plan managera bez
   funkcji `branding`) odbiera branding roli `admin`; na końcu spec wraca do `hub` w obrębie
   tego samego tenanta, żeby udowodnić, że plik logo nie zniknął, a jedynie wyświetlanie
