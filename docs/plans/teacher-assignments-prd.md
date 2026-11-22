@@ -171,10 +171,10 @@ ASSIGNMENT_PUBLISH: 'assignment.publish',
 ASSIGNMENT_GRADE: 'assignment.grade',
 ```
 
-| Role    | Scope          |
-| ------- | -------------- |
-| teacher | `own`          |
-| admin   | `organization` |
+| Role    | Scope                                                          |
+| ------- | -------------------------------------------------------------- |
+| teacher | `own` (D29 moved `assignment.read` to `group` with the others) |
+| admin   | `organization`                                                 |
 
 Student access is determined by `assignment_targets` matching their user or group,
 not by permissions.

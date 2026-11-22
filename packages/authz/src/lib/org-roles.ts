@@ -52,13 +52,19 @@ function scoped(keys: PermissionKeyList, scope: CatalogScope): Record<string, Ca
 
 /**
  * The seeded system-role matrix (ADR-0015 §4.2). `seed_system_role_permissions`
- * in `20261119180000_authority_entitlement_profile.sql` mirrors these rules and
- * `__tests__/integration/entitlement-profile.test.ts` pins the two together, so
- * a catalog key added here without a matching SQL predicate fails the suite.
+ * mirrors these rules; its newest definition is
+ * `20261122140000_teacher_group_reads.sql` (3d re-created it, from the body
+ * `20261119211000` owns), and `__tests__/integration/entitlement-profile.test.ts`
+ * pins the two together, so a catalog key added here without a matching SQL
+ * predicate fails the suite.
+ *
+ * Teacher reads at `group` and writes at `own` (D29): `group` is a superset of
+ * `own` in the API layer, so every read that worked at `own` still works, and a
+ * group-shared resource becomes readable too. `assignment.read` and `stats.read`
+ * move with the other content reads.
  *
  * The member row grants `stats.read` at `own` rather than `group`, following
- * §4.2's matrix; the Teacher row grants it at `group`. Nothing reads the key
- * until phase 5, so neither scope is load-bearing yet.
+ * §4.2's matrix.
  */
 export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, RoleTemplate> = {
   admin: {
@@ -75,14 +81,12 @@ export const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleName, RoleTemplate> = {
     displayName: 'Teacher',
     description: 'Educator — CRUD over own content',
     entitlementProfile: 'all',
-    // Every content key, `assignment.*` included, stays at own scope — except
-    // `stats.read`, which ADR §4.2 gives at group scope.
+    // Reads at `group`, writes at `own` (D29). `group` is a superset of `own`
+    // in the API layer, so the read shift never narrows an own-scope caller.
     permissions: {
-      ...scoped(
-        CONTENT_KEYS.filter((key) => key !== 'stats.read'),
-        'own',
+      ...Object.fromEntries(
+        CONTENT_KEYS.map((key) => [key, key.endsWith('.read') ? 'group' : 'own']),
       ),
-      'stats.read': 'group',
       ...scoped(GROUP_KEYS, 'group'),
     },
   },

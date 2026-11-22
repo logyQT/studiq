@@ -30,8 +30,8 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 ```
 
 - Mapowanie: manager → `users.manager` (rola org `admin`), zwalniany członek →
-  `users.student` (rola org `member`), przydział-kontrola → `users.teacher` (profil
-  `content` nadaje mu rolę org `member`).
+  `users.student` (rola org `member`), przydział-kontrola → `users.student2` (rola org
+  `member`).
 - Klucz tenanta: `MGR-SEAT-03.md::MGR-SEAT-03#<run>::qa-shared` —
   `tenantKey('qa/cases/MGR-SEAT-03.md', 'MGR-SEAT-03#<run>', 'qa-shared')` + `tenantId`, ten
   sam schemat co fixture'y e2e. `--fresh` nadaje nowy sufiks przebiegu, więc każdy
@@ -88,3 +88,15 @@ roster: `__tests__/qa/profiles/MGR-SEAT-03.json` — the case had none — decla
 `member`, student `member`), the same keys, account types, names, ids and e-mails the
 default produced. No `plan` field: the case buys its own seat pool. Assertions and steps
 untouched.
+
+## Observed 2026-11-22 (3d) — the second seat holder is a student
+
+D29 moves the Teacher role's content reads to `group`, retiring the 2b-3 workaround (the
+`content` profile's educator is an org Teacher again). A `pro` seat is role-aware and still
+refuses an org teacher for a student-tier pool, so the seat case keeps its two seated
+people on the org **Member** role and no longer borrows the educator as the control: the
+case's profile declares `users.student2` (account type `student`, org `member`) beside
+`users.student`, and the spec assigns/releases both `pro` seats with that pair. The roster
+read (D25) and the role tiers are what the `student2` account is for — the case's own
+subject (release the seat, the counter moves, the member falls back to their personal plan)
+is unchanged.

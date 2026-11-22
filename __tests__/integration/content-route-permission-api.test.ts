@@ -7,6 +7,7 @@ import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import {
   cleanupOrganizationDeep,
   seedOrganization,
+  seedGroupMembership,
   seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
@@ -22,6 +23,16 @@ import {
   PUT as updateQuiz,
 } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/route';
 import { PUT as bulkQuiz } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/bulk/route';
+import {
+  GET as listDecks,
+  POST as createDeck,
+} from '@/app/(backend)/api/v1/flashcards/decks/route';
+import {
+  DELETE as deleteDeck,
+  GET as getDeck,
+  PUT as updateDeck,
+} from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
+import { GET as myPermissions } from '@/app/(backend)/api/v1/permissions/me/route';
 import {
   GET as listAssignments,
   POST as createAssignment,
@@ -138,6 +149,8 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
   let foreignOrgId: string;
   let adminRoleId: string;
   let memberRoleId: string;
+  let teacherRoleId: string;
+  let groupId: string;
   let quizRoleId: string;
   let assignmentRoleId: string;
   let statsRoleId: string;
@@ -152,6 +165,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
   let bankHolder: TestUserFixture;
   let studentAdmin: TestUserFixture;
   let member: TestUserFixture;
+  let teacher: TestUserFixture;
 
   let quizSession: Session;
   let quiz2Session: Session;
@@ -161,6 +175,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
   let bankSession: Session;
   let studentAdminSession: Session;
   let memberSession: Session;
+  let teacherSession: Session;
 
   async function roleWith(
     organizationId: string,
@@ -200,6 +215,8 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     orgId = org.org.id;
     adminRoleId = org.adminRoleId;
     memberRoleId = org.memberRoleId;
+    teacherRoleId = org.teacherRoleId;
+    groupId = org.defaultGroupId;
 
     const foreignOrg = await seedOrganization(`content-route-api-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;
@@ -228,6 +245,13 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     bankHolder = await memberUser('educator', bankRoleId);
     studentAdmin = await memberUser('student', adminRoleId);
     member = await memberUser('student', memberRoleId);
+    teacher = await memberUser('educator', teacherRoleId);
+
+    // The class the content is shared to: the Teacher under test is a plain
+    // group member; the Admin (the deck author) teaches it; the Member reads it.
+    await seedGroupMembership({ groupId, userId: teacher.id, role: 'member' });
+    await seedGroupMembership({ groupId, userId: studentAdmin.id, role: 'teacher' });
+    await seedGroupMembership({ groupId, userId: member.id, role: 'member' });
 
     quizSession = await signIn(quizHolder.email);
     quiz2Session = await signIn(quizHolder2.email);
@@ -237,6 +261,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     bankSession = await signIn(bankHolder.email);
     studentAdminSession = await signIn(studentAdmin.email);
     memberSession = await signIn(member.email);
+    teacherSession = await signIn(teacher.email);
   }, 120_000);
 
   afterAll(async () => {
@@ -557,6 +582,114 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
         { id: '00000000-0000-4000-8000-000000000001' },
       );
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('the seeded Teacher role — reads at group, writes at own (D29)', () => {
+    let sharedDeckId: string;
+
+    beforeAll(async () => {
+      // The Admin author is a group teacher; the seeded Teacher under test is a
+      // plain group member, which is the reader `group` scope is for.
+      const created = await call<{ data: { id: string } }>(
+        studentAdminSession,
+        createDeck,
+        '/api/v1/flashcards/decks',
+        jsonInit('POST', {
+          name: `d29 shared ${tag}`,
+          visibility: 'group',
+          groupIds: [groupId],
+        }),
+        orgId,
+      );
+      expect(created.status).toBe(201);
+      sharedDeckId = created.body.data.id;
+    });
+
+    it('the live context carries every content read at group and its writes at own', async () => {
+      const res = await call<{ data: { permissions: Record<string, string> } }>(
+        teacherSession,
+        myPermissions,
+        '/api/v1/permissions/me',
+        undefined,
+        orgId,
+      );
+      expect(res.status).toBe(200);
+
+      const scopes = res.body.data.permissions;
+      for (const key of ['deck.read', 'assignment.read', 'stats.read']) {
+        expect(scopes[key], key).toBe('group');
+      }
+      for (const key of ['deck.create', 'deck.update', 'assignment.update']) {
+        expect(scopes[key], key).toBe('own');
+      }
+    });
+
+    it('reads another member’s group-shared deck (group scope)', async () => {
+      const list = await call<{ data: { items: Array<{ id: string }> } }>(
+        teacherSession,
+        listDecks,
+        '/api/v1/flashcards/decks?limit=100',
+        undefined,
+        orgId,
+      );
+      expect(list.status).toBe(200);
+      expect(list.body.data.items.map((deck) => deck.id)).toContain(sharedDeckId);
+
+      const got = await callWithParams(
+        teacherSession,
+        getDeck,
+        `/api/v1/flashcards/decks/${sharedDeckId}`,
+        undefined,
+        orgId,
+        { id: sharedDeckId },
+      );
+      expect(got.status).toBe(200);
+    });
+
+    it('cannot update or delete the deck it just read (writes stay own)', async () => {
+      const put = await callWithParams(
+        teacherSession,
+        updateDeck,
+        `/api/v1/flashcards/decks/${sharedDeckId}`,
+        jsonInit('PUT', { name: 'd29 renamed' }),
+        orgId,
+        { id: sharedDeckId },
+      );
+      expect(put.status).toBe(403);
+      expect(put.body).toEqual({ success: false, error: 'FORBIDDEN' });
+
+      const del = await callWithParams(
+        teacherSession,
+        deleteDeck,
+        `/api/v1/flashcards/decks/${sharedDeckId}`,
+        { method: 'DELETE' },
+        orgId,
+        { id: sharedDeckId },
+      );
+      expect(del.status).toBe(403);
+
+      const stillThere = await callWithParams(
+        teacherSession,
+        getDeck,
+        `/api/v1/flashcards/decks/${sharedDeckId}`,
+        undefined,
+        orgId,
+        { id: sharedDeckId },
+      );
+      expect(stillThere.status).toBe(200);
+    });
+
+    it('a Member still reads at group', async () => {
+      const list = await call<{ data: { items: Array<{ id: string }> } }>(
+        memberSession,
+        listDecks,
+        '/api/v1/flashcards/decks?limit=100',
+        undefined,
+        orgId,
+      );
+      expect(list.status).toBe(200);
+      expect(list.body.data.items.map((deck) => deck.id)).toContain(sharedDeckId);
     });
   });
 });

@@ -16,7 +16,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * The legacy prerequisite „Istniejący przydział” names a manual account; in the
  * tenant model it is this case's own `content` tenant: the manager (org `admin`)
  * plus two org members, `users.student` (the member under test) and
- * `users.teacher` (the untouched control). A fresh organization has **no** seat
+ * `users.student2` (the untouched control). A fresh organization has **no** seat
  * pools — `plan_seat_allocations` was dropped — so the spec buys one student-tier
  * pool (`pro`, 2 seats) and assigns both members through the product's own API,
  * the same requests the „Przydziel miejsce” dialog makes, and then exercises the
@@ -30,7 +30,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
 
 const CASE = 'MGR-SEAT-03';
 
-/** Purchasable student-tier seat plan; both seeded members hold the org `member` role. */
+/** Purchasable student-tier seat plan; both seated members hold the org `member` role. */
 const SEAT_PLAN_KEY = 'pro';
 const POOL_SEATS = 2;
 
@@ -157,7 +157,7 @@ test('releasing a seat shows the toast, frees the pool counter and returns the m
 
   const org = tenant.org;
   const student = tenant.users.student;
-  const control = tenant.users.teacher;
+  const control = tenant.users.student2;
   if (!org || !student || !control) {
     throw new Error(
       `MGR-SEAT-03 fixture incomplete: run \`bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh\` first`,

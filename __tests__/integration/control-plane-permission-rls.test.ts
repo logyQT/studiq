@@ -905,8 +905,9 @@ describe('control-plane permission RLS (2b-4)', () => {
         .from('assignment_questions')
         .select('id')
         .eq('assignment_id', ownAssignmentId);
-      // A Teacher reads `assignment.read` at `own`; the old predicate was
-      // 'any educator/manager in the org', which is org-wide either way.
+      // A Teacher reads `assignment.read` at `group` (D29); the predicate is
+      // any-scope, so the colleague read the old 'any educator/manager in the
+      // org' branch granted still resolves.
       const colleagueRead = await otherTeacher
         .from('assignment_questions')
         .select('id')

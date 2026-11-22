@@ -33,6 +33,8 @@ import { createTypedServiceClient, latestShippedFunction } from '#test/integrati
 
 const PASSWORD = 'Prof4Test!';
 const MIGRATION = 'supabase/migrations/20261119180000_authority_entitlement_profile.sql';
+/** Phase 3d: the teacher read-scope backfill lives in its own file. */
+const TEACHER_READ_MIGRATION = 'supabase/migrations/20261122140000_teacher_group_reads.sql';
 
 /**
  * A shipped function, read from the migrations verbatim and installed over the
@@ -49,6 +51,19 @@ const BACKFILL = (() => {
   const source = readFileSync(MIGRATION, 'utf8');
   const start = source.indexOf('update public.org_roles\nset entitlement_profile');
   if (start < 0) throw new Error(`${MIGRATION} has no profile backfill`);
+  const end = source.indexOf(';', start);
+  return source.slice(start, end + 1);
+})();
+
+/**
+ * The 3d data migration, read from its file: a re-seed never rewrites an
+ * existing Teacher row (`on conflict do nothing` is load-bearing), so this
+ * statement is what moves a live system role to the new scope.
+ */
+const TEACHER_READ_BACKFILL = (() => {
+  const source = readFileSync(TEACHER_READ_MIGRATION, 'utf8');
+  const start = source.indexOf('update public.org_role_permissions as orp');
+  if (start < 0) throw new Error(`${TEACHER_READ_MIGRATION} has no teacher read backfill`);
   const end = source.indexOf(';', start);
   return source.slice(start, end + 1);
 })();
@@ -277,8 +292,83 @@ describe('org_roles.entitlement_profile', () => {
 
     const teacher = await roleScopes('teacher');
     expect(teacher['stats.read']).toBe('group');
-    expect(teacher['flashcard.read']).toBe('own');
+    // D29: content reads are group-scoped (group ⊇ own in the API layer),
+    // writes stay own. `assignment.read` moves with the other reads.
+    expect(teacher['flashcard.read']).toBe('group');
+    expect(teacher['flashcard.create']).toBe('own');
+    expect(teacher['assignment.read']).toBe('group');
+    expect(teacher['assignment.update']).toBe('own');
+    expect(teacher['group.manage']).toBe('group');
   });
+
+  it.skipIf(!localDatabaseUrl)(
+    'the 3d backfill moves an existing Teacher read to group and leaves a custom role alone',
+    async () => {
+      const teacherRole = await roleId('teacher');
+      const { error: teacherError } = await service
+        .from('org_role_permissions')
+        .update({ scope: 'own' })
+        .eq('org_role_id', teacherRole)
+        .eq('permission_key', 'flashcard.read');
+      expect(teacherError).toBeNull();
+
+      const { error: customError } = await service.from('org_role_permissions').insert({
+        org_role_id: customRoleId,
+        permission_key: 'flashcard.read',
+        scope: 'own',
+      });
+      expect(customError).toBeNull();
+
+      // The excluded roles must keep whatever they carry: put Admin's content
+      // read and Member's `stats.read` at scopes the backfill would never choose,
+      // so a predicate that drops `r.name = 'teacher'` normalises them and fails.
+      const adminRole = await roleId('admin');
+      const memberRole = await roleId('member');
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'own' })
+        .eq('org_role_id', adminRole)
+        .eq('permission_key', 'flashcard.read');
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'organization' })
+        .eq('org_role_id', memberRole)
+        .eq('permission_key', 'stats.read');
+
+      await runDirect(TEACHER_READ_BACKFILL);
+
+      expect((await roleScopes('teacher'))['flashcard.read']).toBe('group');
+      expect((await roleScopes('admin'))['flashcard.read']).toBe('own');
+      expect((await roleScopes('member'))['stats.read']).toBe('organization');
+
+      const { data: customRow, error: readError } = await service
+        .from('org_role_permissions')
+        .select('scope')
+        .eq('org_role_id', customRoleId)
+        .eq('permission_key', 'flashcard.read')
+        .single();
+      expect(readError).toBeNull();
+      expect(customRow.scope).toBe('own');
+
+      await service
+        .from('org_role_permissions')
+        .delete()
+        .eq('org_role_id', customRoleId)
+        .eq('permission_key', 'flashcard.read');
+
+      // Restore the excluded roles to their matrix scopes for the rest of the file.
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'organization' })
+        .eq('org_role_id', adminRole)
+        .eq('permission_key', 'flashcard.read');
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'own' })
+        .eq('org_role_id', memberRole)
+        .eq('permission_key', 'stats.read');
+    },
+  );
 
   it('RLS: a zero-row none role has no hub entitlement, FP-01 closed', async () => {
     for (const key of HUB_ENTITLEMENTS) {
