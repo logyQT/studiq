@@ -673,9 +673,9 @@ The table is in **landing order**, not the original plan's order: 2a-3 goes befo
   admin wildcard (`is_system AND name = 'admin'`), owned by phase 5 with the
   org-delete path.
 - **Phase 5** must not assume Teacher `stats.read` is `own`: `SYSTEM_ROLE_TEMPLATES`
-  and `seed_system_role_permissions` grant `group` (ADR §4.2), but existing
-  organizations keep the `own` row the old matrix wrote, because the function's
-  `ON CONFLICT DO NOTHING` cannot rewrite it.
+  and `seed_system_role_permissions` grant `group`. **Closed in 3d** for existing
+  organizations — the backfill canonicalises every system Teacher content read to
+  `group`, so this caution no longer applies.
 
 **Difficulty log**
 
@@ -2711,8 +2711,8 @@ org-wide assignment SELECT by its exact
 `organization_id IN (SELECT … rls_caller_org_ids())` shape. It applies twice —
 `env:reset-db` ran twice and the file was re-applied by hand.
 
-- **The any-scope caveat had to be paid again.** A Teacher holds every
-  `assignment.*` key at `own` scope, so
+- **The any-scope caveat had to be paid again.** A Teacher held every
+  `assignment.*` key at `own` scope before 3d (reads are `group` since D29), so
   `rls_caller_has_permission(org, 'assignment.update')` alone would let a
   Teacher rewrite any run in the org through PostgREST while `verifyOwnership()`
   refuses it. The write policies therefore ask for the key at

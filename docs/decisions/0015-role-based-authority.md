@@ -1041,8 +1041,8 @@ features/permissions in the meantime.
 > **2026-11-20 (phase 2b-4).** The control plane's one deliberate any-scope key
 > is the assignment cohort read. `rls_caller_can_read_assignment_items` asks
 > `rls_caller_has_permission(org, 'assignment.read')` without pinning
-> `organization` scope, so a Teacher holding that key at `own` reads a
-> colleague's item set through PostgREST while
+> `organization` scope, so a Teacher holding that key at `own` (before 3d; `group`
+> since D29) reads a colleague's item set through PostgREST while
 > `TeacherAssignmentService.getById` requires organization scope (or
 > authorship) for the same rows. The branch it replaced — any educator/manager
 > persona in the org — was org-wide too, and pinning the read to the write's

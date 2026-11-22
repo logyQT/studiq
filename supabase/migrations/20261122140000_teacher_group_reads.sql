@@ -15,8 +15,14 @@
 --     without it the template and the callable seed would agree with each other
 --     and disagree with the database.
 --
--- The closing guard pins the resulting matrix, so a later change to either the
--- template or the function that forgets this file's rows fails loudly.
+-- The closing guard pins the resulting **rows**. The function body and the
+-- template are pinned together by the integration matrix tests
+-- (`entitlement-profile`, `assignment-permissions-seed`), so a change to either
+-- that forgets this file's rows still fails loudly.
+--
+-- The backfill normalises *any* non-`group` system Teacher content read, a
+-- role-editor widening to `organization` included: the guard demands the exact
+-- matrix, so the canonical row is the only accepted state.
 
 -- ==========================================
 -- The callable seed: teacher reads at `group`, writes at `own`.
@@ -108,9 +114,9 @@ where orp.org_role_id = r.id
   and orp.scope <> 'group';
 
 -- Existing organizations created before the teacher `CASE` moved: the seed is
--- idempotent and never overwrites a role-editor edit, so this only fills rows a
--- pre-3d seed did not create. Kept in the same file as the backfill so a fresh
--- and an upgrade path converge on the same rows.
+-- insert-only, so it fills rows a pre-3d seed did not create and never
+-- overwrites an existing row — a role-editor edit survives. Kept in the same
+-- file as the backfill so a fresh and an upgrade path converge on the same rows.
 select public.seed_system_role_permissions(id) from public.organizations;
 
 -- ==========================================

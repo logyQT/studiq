@@ -319,9 +319,27 @@ describe('org_roles.entitlement_profile', () => {
       });
       expect(customError).toBeNull();
 
+      // The excluded roles must keep whatever they carry: put Admin's content
+      // read and Member's `stats.read` at scopes the backfill would never choose,
+      // so a predicate that drops `r.name = 'teacher'` normalises them and fails.
+      const adminRole = await roleId('admin');
+      const memberRole = await roleId('member');
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'own' })
+        .eq('org_role_id', adminRole)
+        .eq('permission_key', 'flashcard.read');
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'organization' })
+        .eq('org_role_id', memberRole)
+        .eq('permission_key', 'stats.read');
+
       await runDirect(TEACHER_READ_BACKFILL);
 
       expect((await roleScopes('teacher'))['flashcard.read']).toBe('group');
+      expect((await roleScopes('admin'))['flashcard.read']).toBe('own');
+      expect((await roleScopes('member'))['stats.read']).toBe('organization');
 
       const { data: customRow, error: readError } = await service
         .from('org_role_permissions')
@@ -337,6 +355,18 @@ describe('org_roles.entitlement_profile', () => {
         .delete()
         .eq('org_role_id', customRoleId)
         .eq('permission_key', 'flashcard.read');
+
+      // Restore the excluded roles to their matrix scopes for the rest of the file.
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'organization' })
+        .eq('org_role_id', adminRole)
+        .eq('permission_key', 'flashcard.read');
+      await service
+        .from('org_role_permissions')
+        .update({ scope: 'own' })
+        .eq('org_role_id', memberRole)
+        .eq('permission_key', 'stats.read');
     },
   );
 
