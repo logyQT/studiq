@@ -4,6 +4,7 @@ import {
   ROLE_TEMPLATE_NAMES,
   ROLE_TEMPLATES,
   SYSTEM_ROLE_NAMES,
+  SYSTEM_ROLE_TEMPLATES,
   type PermissionCatalogKey,
 } from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
@@ -28,6 +29,50 @@ function keysOf(scopeName: 'content' | 'group' | 'org'): PermissionCatalogKey[] 
     .map(([key]) => key)
     .filter(isPermissionCatalogKey);
 }
+
+describe('SYSTEM_ROLE_TEMPLATES', () => {
+  it('admin grants every catalog key at organization scope', () => {
+    expect(SYSTEM_ROLE_TEMPLATES.admin.permissions).toEqual(
+      Object.fromEntries(
+        Object.keys(PERMISSIONS)
+          .filter(isPermissionCatalogKey)
+          .map((key) => [key, 'organization']),
+      ),
+    );
+  });
+
+  it('teacher reads content at group and writes it at own (D29)', () => {
+    const expected = {
+      ...Object.fromEntries(
+        keysOf('content').map((key) => [key, key.endsWith('.read') ? 'group' : 'own']),
+      ),
+      ...Object.fromEntries(keysOf('group').map((key) => [key, 'group'])),
+    };
+
+    expect(SYSTEM_ROLE_TEMPLATES.teacher.permissions).toEqual(expected);
+    // The keys D29 names explicitly: read moves, every write verb stays own.
+    expect(SYSTEM_ROLE_TEMPLATES.teacher.permissions['assignment.read']).toBe('group');
+    expect(SYSTEM_ROLE_TEMPLATES.teacher.permissions['stats.read']).toBe('group');
+    expect(SYSTEM_ROLE_TEMPLATES.teacher.permissions['assignment.publish']).toBe('own');
+    expect(SYSTEM_ROLE_TEMPLATES.teacher.permissions['assignment.grade']).toBe('own');
+  });
+
+  it('member reads the learner family at group, keeps stats.read at own', () => {
+    const expected = {
+      ...Object.fromEntries(
+        keysOf('content')
+          .filter((key) => !key.startsWith('assignment.'))
+          .map((key) => [
+            key,
+            key === 'stats.read' ? 'own' : key.endsWith('.read') ? 'group' : 'own',
+          ]),
+      ),
+      'group.read': 'group',
+    };
+
+    expect(SYSTEM_ROLE_TEMPLATES.member.permissions).toEqual(expected);
+  });
+});
 
 describe('ROLE_TEMPLATES', () => {
   it('declares exactly the names the request schema accepts', () => {
