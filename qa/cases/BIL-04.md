@@ -33,7 +33,8 @@ Every id derives from `tenantKey('qa/cases/BIL-04.md', 'BIL-04#<run>', 'qa-share
   `Seed4Test!` password and sign in through the real login API.
 
 The purchase writes only this tenant's own data: `organizations.plan` (through
-`apply_org_plan`, which re-syncs the org feature snapshots) plus a `payments` row
+`change_org_plan`, which moves the plan only — the org layer is derived live)
+plus a `payments` row
 for the buying manager. The plan catalogue (`subscription_plans`, `plan_limits`)
 is shared and read-only — the spec reads it through the public API and never
 changes it. No admin setting, feature flag, platform row, singleton or foreign
@@ -56,8 +57,9 @@ The mock webhook (`mock-stripe.service.ts`) treats a plan whose
 `subscription_plans.for_account_type` is `manager` as an organization plan: it
 requires the caller to be an admin of the target organization
 (`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`)
-and calls `apply_org_plan`, which moves `organizations.plan` and re-syncs the
-organization's feature snapshots. The buyer's `profiles.personal_plan_key` is
+and calls `change_org_plan`, which moves `organizations.plan` only. The org
+layer (features and limits) is derived live, so there is no snapshot to re-sync.
+The buyer's `profiles.personal_plan_key` is
 deliberately left on the free `launch` tier (#228) — the organization purchase
 never becomes a personal plan.
 

@@ -22,7 +22,7 @@ każdym niezależnym uruchomieniu:
 bun scripts/qa-tenant.ts SEC-06 --fresh
 ```
 
-- Profil `org-limit` + plan `hub` (`__tests__/qa/profiles/SEC-06.json`). `apply_org_plan`
+- Profil `org-limit` + plan `hub` (`__tests__/qa/profiles/SEC-06.json`). `change_org_plan`
   dotyczy wyłącznie organizacji tego tenanta — nie zmienia katalogu planów, flag funkcji
   ani żadnego wiersza singletonowego.
 - Organizacja `qa-sec-06-<suffix>` z domyślną grupą `G1` i czterema członkami: `manager`

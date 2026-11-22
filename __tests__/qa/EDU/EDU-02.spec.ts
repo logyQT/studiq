@@ -25,7 +25,7 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * permission map — exactly what `/api/v1/permissions/me` returns.
  *
  * The `hub` plan is applied to this tenant's own organization by the seeder with
- * `apply_org_plan` (the same RPC the billing webhook calls), so no global plan,
+ * `change_org_plan` (the same RPC the billing webhook calls), so no global plan,
  * flag, setting or platform row is written and no other worker's tenant is
  * touched.
  *

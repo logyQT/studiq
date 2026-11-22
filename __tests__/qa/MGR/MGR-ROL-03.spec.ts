@@ -20,7 +20,7 @@ import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
  *   bun scripts/qa-tenant.ts MGR-ROL-03 --fresh
  *
  * `--plan hub` puts *this tenant's own* organization on Hub through
- * `apply_org_plan()`. The plan is no longer the permission gate (2a-2: role writes
+ * `change_org_plan()`. The plan is no longer the permission gate (2a-2: role writes
  * need `org.role.manage`, which the Admin role holds on every plan); the tenant stays
  * on Hub because the case's own seed does. This is tenant-local — the plan catalog,
  * feature flags and every other org are untouched.

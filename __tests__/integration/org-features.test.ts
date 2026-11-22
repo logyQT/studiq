@@ -81,69 +81,19 @@ describe(`Org Features (trigger)`, () => {
     }
   });
 
-  it('seeds features for admin role from plan template', async () => {
+  it('writes no org_role_features rows for any role (profiles are the role layer)', async () => {
     const supabase = createTypedServiceClient();
 
-    const { data: adminRole } = await supabase
-      .from('org_roles')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('name', 'admin')
-      .single();
-
-    const { data: features } = await supabase
+    // ADR-0015 phase 3c (D19/D27): the trigger seeds roles, profiles and
+    // permissions only. `org_role_features` is revokes-only, so a fresh org has
+    // zero rows and the resolver reads `org_roles.entitlement_profile`.
+    const { data: features, error } = await supabase
       .from('org_role_features')
-      .select('feature_key, is_enabled')
-      .eq('org_role_id', adminRole!.id);
+      .select('feature_key, is_enabled, org_roles!inner(organization_id)')
+      .eq('org_roles.organization_id', orgId);
 
-    // Admin gets every key of the default 'launch' plan — the baseline pair
-    // since 2b-7 removed the legacy management markers from the catalog.
-    expect(features?.map((f) => f.feature_key).toSorted()).toEqual(['flashcards', 'quiz']);
-    expect(features?.every((f) => f.is_enabled)).toBe(true);
-  });
-
-  it('seeds features for teacher role from the plan template too', async () => {
-    const supabase = createTypedServiceClient();
-
-    const { data: teacherRole } = await supabase
-      .from('org_roles')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('name', 'teacher')
-      .single();
-
-    const { data: features } = await supabase
-      .from('org_role_features')
-      .select('feature_key, is_enabled')
-      .eq('org_role_id', teacherRole!.id);
-
-    // The teacher marker exclusion (`member.manage`/`role.builder`) left with
-    // the markers in 2b-7: teacher and admin rows are identical now.
-    const featureKeys = features?.map((f) => f.feature_key).toSorted() ?? [];
-    expect(featureKeys).toEqual(['flashcards', 'quiz']);
-    expect(features?.every((f) => f.is_enabled)).toBe(true);
-  });
-
-  it('seeds features for member role limited to basic features', async () => {
-    const supabase = createTypedServiceClient();
-
-    const { data: memberRole } = await supabase
-      .from('org_roles')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('name', 'member')
-      .single();
-
-    const { data: features } = await supabase
-      .from('org_role_features')
-      .select('feature_key, is_enabled')
-      .eq('org_role_id', memberRole!.id);
-
-    const featureKeys = features?.map((f) => f.feature_key) ?? [];
-    // `launch` includes flashcards and quiz; `documents` left the catalog in
-    // phase 1c (ADR-0015 §5.1).
-    expect(featureKeys).toEqual(['flashcards', 'quiz']);
-    expect(features?.every((f) => f.is_enabled)).toBe(true);
+    expect(error).toBeNull();
+    expect(features).toEqual([]);
   });
 
   it('derives org limits from plan_limits (no snapshot)', async () => {

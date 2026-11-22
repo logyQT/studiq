@@ -21,8 +21,8 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * simulated webhook changes only the buyer's personal plan
  * (`profiles.personal_plan_key`), never the organization plan” — does **not**
  * reproduce. For an organization plan the mock webhook requires the caller to be
- * an admin of the target org and calls `apply_org_plan`, which moves
- * `organizations.plan` and re-syncs the feature snapshots; the buyer's personal
+ * an admin of the target org and calls `change_org_plan`, which moves
+ * `organizations.plan` only (the org layer is derived live); the buyer's personal
  * plan is deliberately left on the free `launch` tier (#228). After buying Hub
  * the organization reads `hub`, `/manage/settings` shows „Wgraj logo” and
  * „Kolor marki” instead of the „Własny branding” lock card, and `/manage/roles`

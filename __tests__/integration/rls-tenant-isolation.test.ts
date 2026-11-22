@@ -1631,7 +1631,7 @@ describe('RLS tenant isolation (#191)', () => {
     expect(anonError?.code).toBe('42501');
 
     // authenticated cannot execute the service-role-only plan function.
-    const { error: planError } = await studentSession.rpc('apply_org_plan', {
+    const { error: planError } = await studentSession.rpc('change_org_plan', {
       p_org_id: orgA.orgId,
       p_plan: 'hub',
     });

@@ -18,7 +18,7 @@ The case's own tenant, seeded by `__tests__/qa/EDU/EDU-02.spec.ts` (never the le
 
 - key: `tenantKey('qa/cases/EDU-02.md', 'EDU-02 teacher sidebar', 'qa-shared')::<run suffix>`
 - an organization with the default group `G1`, put on the `hub` plan through
-  `apply_org_plan` so its resolved features grant `ai.chat` (the case's
+  `change_org_plan` so its resolved features grant `ai.chat` (the case's
   „Asystent Q”) and the other Hub surfaces;
 - members: an admin, a student, an educator with the org role `teacher`
   (`teacher` — the manual seed's T1, which carries the `group.manage`

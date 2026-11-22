@@ -21,7 +21,7 @@ import { requiredAt } from '#test/integration/test-utils';
  *   `constructEvent` runs for real;
  * - `subscriptions.retrieve` returns a fixture (the only faked provider call);
  * - `stripe_webhook_events`, `billing_*`, `payments`, `profiles` and
- *   `apply_org_plan` are all real.
+ *   `change_org_plan` are all real.
  *
  * The fixtures deliberately use prices that are **not** in `stripe_prices`
  * (CI never runs the bootstrap script), which also exercises the metadata
@@ -587,7 +587,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     ).resolves.toEqual({ success: false, error: 'CONFLICT' });
   });
 
-  it('applies an organization purchase through apply_org_plan only', async () => {
+  it('applies an organization purchase through change_org_plan only', async () => {
     const stripeCustomerId = tagId('cus_org');
     const stripeSubscriptionId = tagId('sub_org');
     subscriptionIds.push(stripeSubscriptionId);

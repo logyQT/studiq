@@ -21,13 +21,13 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *   bun scripts/qa-tenant.ts MGR-SET-05 --fresh
  *
  * `__tests__/qa/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`, so the
- * fresh tenant's *own* organization starts on Hub (`apply_org_plan` in the
+ * fresh tenant's *own* organization starts on Hub (`change_org_plan` in the
  * seeder), which is the case's prerequisite. Nothing global is written: no
  * admin setting, feature flag, plan catalogue row or singleton.
  *
  * The plan change itself goes through the app's mock checkout webhook
  * (`POST /api/v1/stripe/webhook` → `MockStripeService.handleWebhook` →
- * `apply_org_plan`), which is the entitlement path a real plan change takes and
+ * `change_org_plan`), which is the entitlement path a real plan change takes and
  * is scoped to this tenant. `launch` is the free manager plan and does not
  * include `branding`, so it reproduces the downgrade; re-buying `hub` at the
  * end proves the gate — not data loss — is what hid the logo.
@@ -85,7 +85,7 @@ async function organization(page: Page, orgId: string): Promise<OrganizationDeta
 
 /**
  * Move this tenant's organization onto `plan` through the app's mock checkout
- * webhook — the same `apply_org_plan` RPC the billing path uses. The endpoint
+ * webhook — the same `change_org_plan` RPC the billing path uses. The endpoint
  * authenticates the caller and only acts on the caller's own account, so this
  * never touches another tenant or a global row.
  */

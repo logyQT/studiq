@@ -303,6 +303,28 @@ describe('org_roles.entitlement_profile', () => {
     expect(await hasOrgFeature('documents')).toBe(false);
   });
 
+  it('RLS: profile minus a revoke row — the table is revokes-only (D19)', async () => {
+    const { error: profileError } = await service
+      .from('org_roles')
+      .update({ entitlement_profile: 'all' })
+      .eq('id', customRoleId);
+    expect(profileError).toBeNull();
+
+    const { error: revokeError } = await service.from('org_role_features').insert({
+      org_role_id: customRoleId,
+      feature_key: 'branding',
+      is_enabled: false,
+    });
+    expect(revokeError).toBeNull();
+
+    // The revoked key is subtracted from the profile; a sibling profile key
+    // still resolves. This is the resolver's D19 semantics in the RLS twin.
+    expect(await hasOrgFeature('branding')).toBe(false);
+    expect(await hasOrgFeature('ai.chat')).toBe(true);
+
+    await service.from('org_role_features').delete().eq('org_role_id', customRoleId);
+  });
+
   it('RLS: a zero-row learner role gets only the learner set', async () => {
     const { error } = await service
       .from('org_roles')

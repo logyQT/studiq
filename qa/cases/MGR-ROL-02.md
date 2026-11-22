@@ -48,7 +48,7 @@ Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`) an
 przechodzi ścieżki zakupu z BIL-04. Warunek wstępny przypadku — możliwość zapisu roli —
 spełnia rola systemowa `admin` tenanta, która ma `org.role.manage`; plan Hub jest
 ustawiany **wewnątrz tenanta przypadku** przez ten sam RPC, którego używa webhook
-płatności (`apply_org_plan`), bo tak opisuje przypadek, a nie przez globalną flagę czy
+płatności (`change_org_plan`), bo tak opisuje przypadek, a nie przez globalną flagę czy
 zmianę planu innej organizacji:
 
 ```bash

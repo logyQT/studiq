@@ -31,7 +31,7 @@ Po kilku próbach quizów/fiszek studenta SC.
   - `teacher2` is a second educator of the same organization who never creates
     content — that is the „no problematic questions” branch, stable on every run.
 - `plan: campus` is applied to the tenant's **own** organization through the same
-  `apply_org_plan` RPC the billing webhook uses. The page itself is not
+  `change_org_plan` RPC the billing webhook uses. The page itself is not
   plan-gated; the unlimited org plan only keeps repeated executions
   (`--repeat-each`, CI retries on one seeded tenant) from exhausting the
   `max_decks` / `max_question_banks` quotas. No global plan, feature flag, admin

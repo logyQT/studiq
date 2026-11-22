@@ -219,8 +219,9 @@ describe('org-control permission RLS', () => {
       'org.seat.manage',
       'org.invitation.manage',
     ]);
-    // The control: an entitlement row the moved policies no longer read,
-    // with no permission key. It must lose every predicate this slice moved.
+    // The control: a hand-inserted code-row grant (inert since phase 3c — the
+    // table is revokes-only), with no permission key. It must lose every
+    // predicate this slice moved.
     legacyRoleId = await customRole(orgId, `org-control-legacy-${tag}`, []);
 
     // 2b-5 moved the invitation read+write onto the permissions: the

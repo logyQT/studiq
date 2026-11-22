@@ -14,7 +14,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  * `__tests__/qa/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`. The
  * `content` profile supplies the org's manager, and `--plan hub` puts *this
- * tenant's own* organization on Hub through `apply_org_plan` (the same RPC the
+ * tenant's own* organization on Hub through `change_org_plan` (the same RPC the
  * billing webhook calls), which is the case's "Plan z brandingiem" prerequisite.
  * Nothing global is written — no admin setting, feature flag, plan catalogue row
  * or singleton.

@@ -18,7 +18,7 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *   case's `student1` as a plain `member`, so the teacher's 403 cannot be an artifact
  *   of a member-role caller;
  * - `--plan hub` puts *this tenant's own* organization on Hub through
- *   `apply_org_plan` (the same RPC the billing webhook calls), the plan the case
+ *   `change_org_plan` (the same RPC the billing webhook calls), the plan the case
  *   names. It is not the write gate any more (2a-2: role writes need
  *   `org.role.manage`, member writes `org.member.manage`, both on the Admin role);
  *   the plan only keeps the fixture on the shape the case document describes.

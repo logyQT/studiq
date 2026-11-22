@@ -21,7 +21,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * `entitlement_profile` (the manager's Admin role is `all`) intersected with
  * `plan_entitlements(organizations.plan)`; an `org_role_features` row no longer
  * grants one. So this spec reads the tenant's plan and, when its ceiling lacks
- * `branding`, calls the service-role `apply_org_plan` RPC — the same RPC the
+ * `branding`, calls the service-role `change_org_plan` RPC — the same RPC the
  * billing webhook calls — to put this tenant's own organization on `hub`. Only
  * that organization is written: the plan catalog, `plan_entitlements` and
  * `entitlement_flags` are shared rows and stay untouched. The spec also clears
@@ -116,7 +116,7 @@ async function prepareBrandingTenant(tenant: QaTenant): Promise<void> {
   expect(ceilingError, 'read the branding ceiling').toBeNull();
 
   if (!ceiling) {
-    const { error: planError } = await db.rpc('apply_org_plan', {
+    const { error: planError } = await db.rpc('change_org_plan', {
       p_org_id: orgId,
       p_plan: 'hub',
     });
