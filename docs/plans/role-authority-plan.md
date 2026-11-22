@@ -3582,7 +3582,9 @@ a seeded Teacher's `/permissions/me` carries `deck.read`/`assignment.read`/`stat
 at `group` and `deck.create`/`deck.update`/`assignment.update` at `own`, it reads a
 deck the Admin shared to its class (list + detail) and gets **403** on the same deck's
 PUT/DELETE, while a Member still reads it. `entitlement-profile.test.ts` pins the seeded
-matrix and the template↔SQL equality; `__tests__/unit/lib/org-roles.test.ts` pins the
+matrix, the template↔SQL equality and the backfill itself (a Teacher read forced to
+`own` is restored to `group`; a custom role's identical row is left alone);
+`__tests__/unit/lib/org-roles.test.ts` pins the
 three `SYSTEM_ROLE_TEMPLATES` arms against `PERMISSIONS`. The QA workaround from 2b-3 is
 retired: the `EDU-DECK-01`/`EDU-TOP-01` profiles name `orgRole: "teacher"` again and
 their rationale cites the Teacher role, and `MGR-SEAT-03` keeps two **Member** seat
