@@ -41,10 +41,14 @@ Opening `/checkout?plan_id=campus` as this tenant's student shows the
 „Podsumowanie zamówienia” with „StudiQ Campus” and the price, but instead of the card
 form a blocking alert („Nie wiemy, dla której organizacji kupujesz plan”) with only
 „Wróć do planów”. Posting the completed checkout for `campus` (organization plan) or
-`lite` (educator plan) answers `403 FORBIDDEN` and leaves both the personal plan and
-the payment history untouched; the same student's own `spark` purchase still goes
-through. The concern from the case text does not reproduce — the intended rejection
-is in place.
+`lite` (educator-audience personal plan) answers `403 FORBIDDEN` and leaves both the
+personal plan and the payment history untouched; the same student's own `spark`
+purchase still goes through. The concern from the case text does not reproduce — the
+intended rejection is in place. The two refusals have different reasons since phase
+4a (D34): `campus` is refused because an **organization** plan needs an organization
+the caller may bill (`resolveCheckoutOwner` answers FORBIDDEN without one), not
+because of a persona family; `lite` is refused by the **audience** rule — a personal
+plan whose `audience` (`educator`) is not the caller's account type.
 
 ## Steps
 

@@ -27,6 +27,9 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * Asserted behaviour (the case's expected result):
  * - „Kup” is inert without a plan and for a quantity below 1 (0 and negative);
  *   the dialog explains the minimum and no write is sent.
+ * - The plan picker lists the catalogue's seat-licence plans — active,
+ *   personal-scope, `seatEligible` (D33) — labelled by plan name: Solo is
+ *   offered, the organization plan Campus is not.
  * - Buying 3 of a plan shows the „Miejsca dodane do puli” toast and the pool row
  *   reads 3 purchased / 0 assigned / 3 available, also after a reload.
  * - The API enforces the same floor: quantity 0 or -1 is a 422, not a pool.
@@ -57,6 +60,15 @@ interface Pool {
   planKey: string;
   total: number;
   assigned: number;
+}
+
+interface PlanInfo {
+  key: string;
+  name: string;
+  isActive: boolean;
+  scope: string;
+  audience: string | null;
+  seatEligible: boolean;
 }
 
 async function listPools(page: Page): Promise<Pool[]> {
@@ -147,6 +159,29 @@ test('a manager buys three seats and the purchase dialog refuses quantities belo
 
   // --- Step 1: „Kup miejsca”, pick a plan and 3, click „Kup” ----------------
   let dialog = await openPurchaseDialog(page);
+
+  // The plan picker offers exactly the catalogue's seat-licence plans (active,
+  // personal-scope, seatEligible — D33), labelled by plan name: Solo is in,
+  // the organization plan Campus is out.
+  const catalogue = (
+    await json<{ success: boolean; data: PlanInfo[] }>(
+      await page.request.get('/api/v1/subscription-plans'),
+    )
+  ).data;
+  const seatLicencePlans = catalogue
+    .filter((plan) => plan.isActive && plan.scope === 'personal' && plan.seatEligible)
+    .map((plan) => plan.name);
+  expect(seatLicencePlans.length, 'the catalogue lists seat-licence plans').toBeGreaterThan(0);
+  expect(seatLicencePlans).toContain('StudiQ Solo');
+  expect(seatLicencePlans).not.toContain('StudiQ Campus');
+  await dialog.getByRole('combobox').click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  const planOptions = (await page.getByRole('option').allInnerTexts()).map((text) => text.trim());
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  expect(planOptions.toSorted(), 'the picker lists the seat-licence plans by name').toEqual(
+    seatLicencePlans.toSorted(),
+  );
 
   // Expected result: „Kup” is inert without a plan (the dialog opens with 1).
   await expect(buyButton(dialog)).toBeDisabled();

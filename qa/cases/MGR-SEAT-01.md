@@ -59,10 +59,13 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   organizacja pokazuje „Brak skonfigurowanych pul miejsc” i „Nie przydzielono jeszcze
   żadnych miejsc”.
 - „Kup miejsca” otwiera okno „Kup licencje na miejsca” z listą planów („Wybierz plan”:
-  StudiQ Ace / Pro / Creator / Master / Campus), polem „Ilość” (domyślnie `1`) oraz
-  przyciskami „Anuluj” / „Kup”. Bez wybranego planu „Kup” jest nieaktywny; przy ilości
-  0 lub ujemnej również jest nieaktywny i pod polem pojawia się komunikat „Podaj liczbę
-  całkowitą miejsc (co najmniej 1).”. Ilość `1` ponownie aktywuje przycisk.
+  pule można kupić dla planów osobistych z katalogu, aktywnych i `seatEligible` —
+  StudiQ Base / Lite / Spark / Guide / Ace / Creator / Pro / Master / Solo; plan
+  organizacji „StudiQ Campus” nie jest już oferowany, a „StudiQ Solo” tak), polem
+  „Ilość” (domyślnie `1`) oraz przyciskami „Anuluj” / „Kup”. Bez wybranego planu „Kup”
+  jest nieaktywny; przy ilości 0 lub ujemnej również jest nieaktywny i pod polem
+  pojawia się komunikat „Podaj liczbę całkowitą miejsc (co najmniej 1).”. Ilość `1`
+  ponownie aktywuje przycisk.
 - Krok 1 — wybór „StudiQ Ace” i ilości `3`, następnie „Kup” wysyła
   `POST /api/v1/organization/seats/pools` `{"planKey":"ace","quantity":3}` → **201**
   `{"success":true,...}`, zamyka okno i pokazuje toast **„Miejsca dodane do puli”**.

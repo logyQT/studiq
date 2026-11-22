@@ -17,7 +17,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * tenant model it is this case's own `content` tenant: the manager (org `admin`)
  * plus two org members, `users.student` (the member under test) and
  * `users.student2` (the untouched control). A fresh organization has **no** seat
- * pools — `plan_seat_allocations` was dropped — so the spec buys one student-tier
+ * pools — `plan_seat_allocations` was dropped — so the spec buys one student-audience
  * pool (`pro`, 2 seats) and assigns both members through the product's own API,
  * the same requests the „Przydziel miejsce” dialog makes, and then exercises the
  * release button in the UI. That setup is idempotent, so a repeated run in the
@@ -30,7 +30,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
 
 const CASE = 'MGR-SEAT-03';
 
-/** Purchasable student-tier seat plan; both seated members hold the org `member` role. */
+/** Purchasable student-audience seat plan; both seated members hold the org `member` role. */
 const SEAT_PLAN_KEY = 'pro';
 const POOL_SEATS = 2;
 
@@ -80,6 +80,7 @@ interface OrgMember {
   id: string;
   email: string;
   orgRoleName: string;
+  accountType: string;
 }
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -179,13 +180,15 @@ test('releasing a seat shows the toast, frees the pool counter and returns the m
     throw new Error(`the plan catalog does not list "${SEAT_PLAN_KEY}"`);
   }
 
-  // Both people must be org members (student tier) for a `pro` seat: assignment
-  // is role-aware, so an org teacher or admin would be refused for this pool.
+  // Both people must be student-persona org members for a `pro` seat: assignment
+  // validates the plan `audience` against `profiles.account_type` (D33), so an
+  // educator or manager account would be refused for this pool.
   const orgMembers = await call<OrgMember[]>(page, '/api/v1/organization/members');
   for (const account of [student, control]) {
     const member = orgMembers.find((candidate) => candidate.id === account.id);
     expect(member, `${account.email} is an org member`).toBeTruthy();
-    expect(member?.orgRoleName, `${account.email} holds the student-tier org role`).toBe('member');
+    expect(member?.orgRoleName, `${account.email} holds the org member role`).toBe('member');
+    expect(member?.accountType, `${account.email} has the student persona`).toBe('student');
   }
 
   // --- Prerequisite: „istniejący przydział” --------------------------------
