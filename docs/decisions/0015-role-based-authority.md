@@ -343,8 +343,8 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 > table as well as the API — `org_role_permissions` writes go through
 > `rls_caller_may_set_role_permission`; see the §9 note (R4/FP-01 closed).
 >
-> **2026-11-22 (phase 5b).** The last §4.4 gap is closed: the invite helper
-> `can_assign_org_role` now requires `org.invitation.manage` **and**
+> **2026-11-22 (phase 5b).** The invite path's §4.4 gap is closed: the invite
+> helper `can_assign_org_role` now requires `org.invitation.manage` **and**
 > (`org.admin`@organization **or** every target-role row with a non-null scope
 > is an assignable key the caller covers at that scope) — the conjunct the
 > 2b-5 review note left open. The covers logic lives in exactly one place,
@@ -353,6 +353,15 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 > (`20261122180000`). Consequence: a capability holder who is not `org.admin`
 > can no longer mint an org invite targeting the system Admin role; an
 > `org.admin` holder can invite into any role.
+>
+> **2026-11-22 (phase 5b review) — still open, row 13.** Assigning a role to an
+> existing member is a second §4.4 surface and does **not** go through that
+> helper: `PUT /api/v1/organization/members`
+> (`organization-member.service.ts#changeRole`) and the `org_members` UPDATE
+> policy gate on `org.member.manage` alone, so an `org.member.manage` holder
+> without `org.admin` can still assign the system Admin role. Pre-existing and
+> outside row 9's scope; recorded as the 2b-9 register's **row 13**, owner
+> phase 5, to be closed with the same `covers_permission` shape.
 
 ---
 
