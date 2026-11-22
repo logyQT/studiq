@@ -63,6 +63,10 @@ the named file; two claims in the first draft were wrong and are corrected there
     failure events, with register/activation legs read from existing spans.
 16. **#1262's `/onboarding` name becomes `/setup`**, and ADR-0015's "set at
     signup" becomes "set during first-run setup", so the records do not disagree.
+17. **Progress is counted in remaining steps and starts already filled.** Sign-up
+    is the first completed step, so the persona screen shows a partly filled bar
+    and "2 more to go"; the flow never shows `X/Y`, a percentage, a step number
+    or depth/level language, and the last state is "You're all set".
 
 ## 2. Why a single route
 
@@ -141,6 +145,9 @@ resolveSetupState({
 destination. It keeps the settled rule from #305 (`!isPending && !isFetching`),
 adds `isError` (a failed `/me/orgs` is **not** "no organizations"), and accepts
 `intent: 'join'` plus a pre-filled `token` so a member can join another org.
+`resolveSetupProgress(state)` lives beside it and turns the same state into the
+remaining-step count (§4.6, "Progress and tone"), so the bar is not a second
+state machine.
 
 | Persona  | Resolves to                                                                   | Forced into `/setup`?       |
 | -------- | ----------------------------------------------------------------------------- | --------------------------- |
@@ -291,10 +298,11 @@ While `account_type IS NULL`:
   `/setup?intent=join&token=…` so a signed-in wrong account does not drop the
   token, and `SetupJoinForm` consumes it.
 
-### 4.6 One shell, five components, six outcomes
+### 4.6 One shell, six components, six outcomes
 
 ```
 /setup
+  <SetupProgress />      partly filled at the persona step; remaining-step copy
   <SetupTypeStep />      two cards + institution link; writes the persona; no back
   <SetupActionStep />    join | create | skip, from the persona/state table
   <SetupJoinForm />      code or link → preview → accept; every persona
@@ -336,6 +344,36 @@ What a good first session must achieve, and what the checklist is measured
 against: a student sees their first deck and first quiz; an educator has a class
 plus one piece of imported material; a manager has an organization and one invited
 teacher. That is the outcome the copy and the checklist steps serve.
+
+#### Progress and tone
+
+- **Fixed three-step model for every first-run path:** account created (done on
+  arrival) → persona → set up your space. The total is 3, so the denominator
+  never changes when the persona or the action changes, and the bar cannot jump
+  backwards because the path did.
+- **The bar starts partly filled.** At the persona screen it is one third full
+  and the text is "Your account is ready — 2 more to go." At the action screen:
+  "Almost there — 1 more to go." At completion: "You're all set."
+- **Never show `X/Y`, a percentage, "step X of Y", "level", "depth" or "stage".**
+  The bar is visual; for assistive tech, `role="progressbar"` carries
+  `aria-valuemin`/`max`/`now` but `aria-valuetext` is the same remaining-step
+  sentence, so the fraction is never announced.
+- Counts come from `resolveSetupProgress(state)`, derived from the same resolver,
+  not from a second wizard index. An error or retry keeps the last completed
+  count; the bar never resets to empty.
+- **No bar for a member using `?intent=join`, an untyped caller carrying an
+  invitation, or an invited account that skipped setup** — those are not first
+  runs. A failed type write still shows step 2, not step 1.
+- No guilt state: an optional skip is a normal choice, not an incomplete step in
+  red. Polish copy is authored first in the messages; the English above is the
+  review version.
+
+| State     | Visible copy                           | Bar           | Never                 |
+| --------- | -------------------------------------- | ------------- | --------------------- |
+| persona   | "Your account is ready — 2 more to go" | one third     | "1/3", "Step 1 of 3"  |
+| action    | "Almost there — 1 more to go"          | two thirds    | "2/3", "66%"          |
+| done      | "You're all set"                       | full          | "3/3", "100%"         |
+| checklist | "N more to go"                         | its own total | "N/M", any percentage |
 
 ### 4.7 Mutation and invalidation ownership
 
@@ -399,7 +437,9 @@ route, so the `manage/layout.tsx` class of dead link cannot recur.
 `getOnboardingSteps({ persona, membership })` returns descriptors (label key,
 href, completion predicate). One component renders them on `/app`, `/edu` and
 `/manage` (the manager currently has none), replacing both existing checklists.
-Completion is derived from existing endpoints; no new table, no new API.
+Completion is derived from existing endpoints; no new table, no new API. The
+checklist uses the same remaining-step wording ("2 more to go"), with its own
+total and no fractions.
 
 The student and educator lists gain a **"bring your material"** step (import,
 PDF, or AI generation), which is the product's wedge and the reason the visitor
@@ -520,7 +560,7 @@ steps 7–8 (links/i18n, then deletions plus test rewrites); take
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | 1   | Schema + regenerated `database.ts` + seeds: nullable columns, both defaults dropped, trigger untyped/invalid split                                                                                          | §4.4              |
 | 2   | Session-only guard, `SECURITY DEFINER` function, endpoint with server-side refresh, integration 401                                                                                                         | §4.2, §4.3        |
-| 3   | `resolveSetupState` + unit matrix (pure, no UI)                                                                                                                                                             | §4.1              |
+| 3   | `resolveSetupState` + `resolveSetupProgress` + unit matrix (pure, no UI)                                                                                                                                    | §4.1, §4.6        |
 | 4   | New shell at `/setup` (replaces the chooser; old subroutes stay live until step 8); `useSetupFlow`; widen `/setup` to `requireAuth`, keeping `/setup/org` ahead until step 8; events endpoint + step events | §4.6, §4.7, §4.11 |
 | 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed, e2e register/join specs updated                                                                    | §4.5              |
 | 6   | Flip: null-aware proxy gate, `/login` `/register` redirect, sign-out in the shell                                                                                                                           | §4.2              |
@@ -551,6 +591,10 @@ steps 7–8 (links/i18n, then deletions plus test rewrites); take
     returns `undefined` today, so no existing helper can).
 11. Events: the session-only route rejects no session, an unknown event is
     `422`, and no log record contains the invite token.
+12. Progress: at the persona step `completed = 1` (sign-up counted) and at the
+    action step `completed = 2`; the visible and `aria-valuetext` copy is
+    remaining-based and contains no `X/Y`, `%`, or "step X of Y"; a retry keeps
+    the last count; `?intent=join` returns no progress.
 
 Each assertion names the production line it kills and is proven with
 `bun run mutate`; a filter that matches nothing is `ERROR`, not a pass.
