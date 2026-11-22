@@ -1,7 +1,6 @@
 # ADR-0016: Deferred account type and a single first-run setup flow
 
-**Status:** Deferred (blocked on ADR-0015: the solo-teacher class/organization
-unit, see §0). Not ready to accept or implement.
+**Status:** Proposed (unblocked 2026-11-22 by the operator decision in §0).
 **Date:** 2026-11-22
 **Related:** [#1262](https://github.com/logyQT/studiq/issues/1262) (tracking), #311, #1192,
 [ADR-0015](0015-role-based-authority.md) (persona is not authorization),
@@ -12,35 +11,37 @@ and are corrected there.
 
 ---
 
-## 0. Deferred upstream: class vs organization
+## 0. Solo educator unit (decided 2026-11-22)
 
-This record is not ready to accept. The first screen it decides is a teacher
-choosing "I teach", and the two records disagree about what that creates:
+**Operator decision: Option A.** A solo educator's space is an organization with
+one default class group. The creator is **Admin of that organization** and
+**`teacher` of its default group**; the free `launch` organization plan applies,
+and the educator's portable personal keys still carry.
 
-- [ADR-0015](0015-role-based-authority.md) §3 says **"a class is a group"** and
-  §3.2 says the creator of a group gets `teacher`.
-- The shipped setup posts `/api/v1/organization`, which creates an **organization
-  with a default group**, and the creator becomes **org Admin** plus group teacher
-  (`organization.service.ts`).
+This is not a new direction:
 
-Both can be true only if the solo space is an organization whose class is a group,
-but no record says so. The ADR cannot freeze the educator card, the role wording
-or the plan family before ADR-0015 does.
+- `groups.organization_id` is `NOT NULL` (`20260703000012_create_groups.sql`), so
+  an org-less group would be a schema change.
+- Both `/setup/classroom` and `/setup/org` already post `POST /api/v1/organization`,
+  and `OrganizationService.create` already inserts the default group and the
+  creator as its `teacher` (`organization.service.ts`).
+- [ADR-0015](0015-role-based-authority.md) §10 ("a class is a group") and §3.2
+  (explicit role assignments, not personas) already permit it.
 
-**Required upstream decision (one sentence in ADR-0015 §3.2/§3.3):**
+Two follow-throughs are part of this decision:
 
-1. **Solo space = organization with one class group** (current behaviour): the
-   card calls it "your space", the creator is Admin of the space and `teacher` of
-   the class; the free organization plan applies.
-2. **A class is only a group inside an existing organization**: then a teacher
-   with zero orgs needs a different first-run path, because there is no org to put
-   the group in.
+1. **Setup copy calls it "your space" and "class", never "organization".** The
+   organization, its `launch` plan and the Admin role are the internal container;
+   the teacher sees a space with a class.
+2. **`ClassroomService.create` must match `OrganizationService.create`** (default
+   group plus creator as group `teacher`) **or be deleted in favour of one
+   creation path.** Today it creates the organization and the org Admin only, with
+   no default group, so `/api/v1/teacher/classrooms` and `/api/v1/organization`
+   produce different spaces.
 
-**Unblocks when:** ADR-0015 records one of the two, with a test that the creator's
-org role and group role match it. Until then **no slice in §8 starts**, and the
-educator/institution copy in §4.6 is marked pending rather than frozen. The rest
-of this record remains the plan; #1262's manager-as-secondary and self-serve
-decisions are unaffected.
+Option B (a class as a group inside an existing organization, with no org for a
+zero-org teacher) is rejected: it needs org-less groups, a schema and product
+change not taken. The §8 slices are unblocked.
 
 ---
 
@@ -103,6 +104,12 @@ decisions are unaffected.
     number or depth/level language. `setup_completed_at` records completion, the
     bar never appears on a returning visit, and the dashboard checklist is a
     separate "Next steps" list without a count.
+18. **A solo educator's space is an organization with one default class group**
+    (operator decision 2026-11-22). The creator is org Admin and group `teacher`;
+    the free `launch` org plan applies and personal portable keys still carry.
+    Setup copy says "your space"/"class", never "organization";
+    `ClassroomService.create` is reconciled with `OrganizationService.create` or
+    deleted.
 
 ## 2. Why a single route
 
@@ -410,16 +417,18 @@ separate billing decision.
 
 Card content is part of the decision, not the implementation. Required content:
 
-| Choice           | Promise (Polish first)              | Consequence shown                                                                   | Destination |
-| ---------------- | ----------------------------------- | ----------------------------------------------------------------------------------- | ----------- |
-| Student card     | "Uczę się" / "I learn"              | personal space; joining a class is optional                                         | `/app`      |
-| Educator card    | "Uczę" / "I teach"                  | your own space with your first class inside (the space/role sentence is pending §0) | `/edu`      |
-| Institution link | "Prowadzę instytucję" / "I run one" | your own space; plans are bought per space                                          | `/manage`   |
+| Choice           | Promise (Polish first)              | Consequence shown                                                           | Destination |
+| ---------------- | ----------------------------------- | --------------------------------------------------------------------------- | ----------- |
+| Student card     | "Uczę się" / "I learn"              | personal space; joining a class is optional                                 | `/app`      |
+| Educator card    | "Uczę" / "I teach"                  | your own space with your first class inside; you run it and teach the class | `/edu`      |
+| Institution link | "Prowadzę instytucję" / "I run one" | your own space; plans are bought per space                                  | `/manage`   |
 
 Every card also says the choice is changeable later (while no paid personal plan
-is active, per §4.12), and the screen has no preselection. **Do not freeze
-"organization", "Admin", or the plan family in the educator/institution copy
-until §0 closes.** The card must not teach a unit the role model has not settled.
+is active, per §4.12), and the screen has no preselection. **The copy never says
+"organization", "Admin" or the plan name.** Internally the space is an
+organization on the free `launch` plan, the creator is its Admin and the class's
+`teacher`, and personal portable keys still carry (§0); the teacher sees a space
+with a class.
 
 `PRODUCT.md`'s `/contact` line is reconciled as the `campus` plan's CTA, not as a
 manager signup path; that sentence is updated with this change. The organization
@@ -671,18 +680,18 @@ deletions (step 8) are already separate PRs; step 8 takes `size:exception`,
 because the four deleted routes are roughly 800 lines before the i18n and test
 rewrites.
 
-| #   | Slice                                                                                                                                                                                                                                                                                | Decision          |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| 1   | Schema + regenerated `database.ts` + seeds: nullable columns, `setup_completed_at`, both defaults dropped, trigger untyped/invalid split                                                                                                                                             | §4.4              |
-| 2   | `withSession` accept guard, two `SECURITY DEFINER` wrappers, endpoint with server-side refresh, integration 401                                                                                                                                                                      | §4.2, §4.3        |
-| 3   | `resolveSetupState` + `resolveSetupProgress` + unit matrix (pure, no UI)                                                                                                                                                                                                             | §4.1, §4.6        |
-| 4   | New shell at `/setup` (replaces the chooser; old subroutes stay live until step 8); `useSetupFlow`; widen `/setup` to `requireAuth`, keeping `/setup/org` ahead and explicit educator-only rules on `/setup/join` and `/setup/classroom` until step 8; events endpoint + step events | §4.6, §4.7, §4.11 |
-| 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed, e2e register/join specs updated                                                                                                                                             | §4.5              |
-| 6   | Flip: null-aware proxy gate, `/auth/me` `claimedAccountType`, callback refresh, `/login` `/register` redirect, sign-out in the shell                                                                                                                                                 | §4.2, §4.3        |
-| 7   | Migrate every link, breadcrumb, robots and i18n namespace; switch the org switcher to `?intent=join`                                                                                                                                                                                 | §4.9              |
-| 8   | Delete the four routes and `SetupHeader`; rewrite ONB/AUT specs and case docs                                                                                                                                                                                                        | §4.9              |
-| 9   | Merge checklists (with the import step and manager descriptors)                                                                                                                                                                                                                      | §4.10             |
-| 10  | Funnel read; persona-change entry on the three account pages; docs: #1262 wording, PRODUCT.md `/contact` + org CTA, ADR-0015 amendment                                                                                                                                               | §4.11, §4.12      |
+| #   | Slice                                                                                                                                                                                                                                                                                                                               | Decision          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 1   | Schema + regenerated `database.ts` + seeds: nullable columns, `setup_completed_at`, both defaults dropped, trigger untyped/invalid split                                                                                                                                                                                            | §4.4              |
+| 2   | `withSession` accept guard, two `SECURITY DEFINER` wrappers, endpoint with server-side refresh, integration 401                                                                                                                                                                                                                     | §4.2, §4.3        |
+| 3   | `resolveSetupState` + `resolveSetupProgress` + unit matrix (pure, no UI)                                                                                                                                                                                                                                                            | §4.1, §4.6        |
+| 4   | New shell at `/setup` (replaces the chooser; old subroutes stay live until step 8); `useSetupFlow`; widen `/setup` to `requireAuth`, keeping `/setup/org` ahead and explicit educator-only rules on `/setup/join` and `/setup/classroom` until step 8; events endpoint + step events; reconcile or delete `ClassroomService.create` | §4.6, §4.7, §4.11 |
+| 5   | Invitation `target_account_type`, typing at activation, `/join` handoff, `RegisterSchema` field removed, e2e register/join specs updated                                                                                                                                                                                            | §4.5              |
+| 6   | Flip: null-aware proxy gate, `/auth/me` `claimedAccountType`, callback refresh, `/login` `/register` redirect, sign-out in the shell                                                                                                                                                                                                | §4.2, §4.3        |
+| 7   | Migrate every link, breadcrumb, robots and i18n namespace; switch the org switcher to `?intent=join`                                                                                                                                                                                                                                | §4.9              |
+| 8   | Delete the four routes and `SetupHeader`; rewrite ONB/AUT specs and case docs                                                                                                                                                                                                                                                       | §4.9              |
+| 9   | Merge checklists (with the import step and manager descriptors)                                                                                                                                                                                                                                                                     | §4.10             |
+| 10  | Funnel read; persona-change entry on the three account pages; docs: #1262 wording, PRODUCT.md `/contact` + org CTA, ADR-0015 amendment                                                                                                                                                                                              | §4.11, §4.12      |
 
 ## 9. Tests the ADR requires
 
@@ -717,6 +726,10 @@ rewrites.
     using the same cookie jar passes an RLS-backed read; `/auth/me` reports
     `claimedAccountType`; a stale cookie produces the refresh state, not a false
     staff read.
+15. Solo space: the surviving create path inserts the default group, the creator
+    is org Admin and group `teacher`, `organizations.plan` is `launch`, and a
+    portable personal key still resolves; `ClassroomService.create` either passes
+    the same assertions or is gone.
 
 Each assertion names the production line it kills and is proven with
 `bun run mutate`; a filter that matches nothing is `ERROR`, not a pass.
@@ -735,6 +748,10 @@ Each assertion names the production line it kills and is proven with
   `/auth/me`; the server-side cookie refresh is the missing half.
 - `packages/server/src/services/{entitlement.resolver,subscription-plan,seat}.ts`
   — null plan composition, `NOT_FOUND`, seat audience.
+- `packages/server/src/services/{organization,classroom}.service.ts` — the
+  default-group + creator-teacher path, and the classroom path that omits it;
+  `20260703000012_create_groups.sql` — `groups.organization_id NOT NULL`;
+  `docs/decisions/0015-role-based-authority.md` §10 — "a class is a group".
 - `apps/web/src/app/(frontend)/(setup)/setup/*`, `.../app/join/page.tsx` — the
   four bodies, `SetupHeader`, duplicated invalidations.
 - `apps/web/src/app/(frontend)/manage/layout.tsx` — the `/setup/org` redirect.
