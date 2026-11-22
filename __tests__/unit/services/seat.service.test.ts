@@ -234,6 +234,10 @@ describe('SeatService', () => {
           { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
         ],
       };
+      // A benign default for any query that runs *after* a removed guard: the
+      // refusal must fail on its assertion below, not on a mock that returns
+      // nothing for a read the guard should have prevented.
+      mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain(orgPlan));
 
       const result = await service.addPool(ctx, { planKey: 'campus', quantity: 2 });
@@ -256,6 +260,7 @@ describe('SeatService', () => {
           { entitlement_key: 'branding', entitlement_catalog: { seat_eligible: false } },
         ],
       };
+      mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain(brandedPlan));
 
       const result = await service.addPool(ctx, { planKey: 'hub', quantity: 2 });
@@ -269,6 +274,7 @@ describe('SeatService', () => {
 
     it('refuses a plan with no entitlements — not a licence (D33)', async () => {
       const emptyPlan = { key: 'empty', is_active: true, scope: 'personal', plan_entitlements: [] };
+      mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain(emptyPlan));
 
       const result = await service.addPool(ctx, { planKey: 'empty', quantity: 2 });

@@ -3703,16 +3703,18 @@ here.
   `subscription_plans.scope`/`audience` + the pair CHECK, fail-closed backfill
   from `for_account_type` (an unknown value raises 22023 — proven by a hand
   mutation), `DROP COLUMN for_account_type` in the same migration; `solo`
-  inserted (personal/manager, price 0, `flashcards`+`quiz`, limits copied from
-  `base`); manager profiles holding an organization-scope plan backfilled to
+  inserted (personal/manager, price 0, `flashcards`+`quiz`, and the free
+  tier's eight limit rows spelled out — not copied from `base`, which does not
+  exist yet on a catalog-less `db push`, and a missing limit row resolves to 0); manager profiles holding an organization-scope plan backfilled to
   `solo`; `profiles.account_type public.account_type NOT NULL DEFAULT
 'student'` backfilled from `auth.users.raw_app_meta_data` (fallback
   `'student'`); `org_seat_pools.plan_key` FK added after an abort-with-message
   check for pools pointing at non-personal plans; `handle_new_user()`
   re-created (managers → `solo`, and it writes `profiles.account_type`); a
   closing `do` block pins every one of those states (CHECK conformance, `solo`
-  shape, all personal-plan keys `seatEligible`, no manager on an org-scope
-  plan, the FK exists, `handle_new_user` mentions `solo`).
+  shape, `solo`'s eight limit rows, all personal-plan keys `seatEligible`, no
+  manager on an org-scope plan, the FK exists, `handle_new_user` mentions
+  `solo`).
 - **Seeds** `00_plans.sql` moved to `scope`/`audience` (organization plans carry
   NULL), `solo` added with its entitlements and limits (comment: mirrors
   `base`).

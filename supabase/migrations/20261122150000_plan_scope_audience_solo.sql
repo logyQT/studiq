@@ -119,11 +119,19 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('solo', 'quiz')
 ON CONFLICT DO NOTHING;
 
--- `base` is the free student tier; `solo` copies its limit rows verbatim.
-INSERT INTO public.plan_limits (plan_key, limit_key, limit_value)
-SELECT 'solo', limit_key, limit_value
-FROM public.plan_limits
-WHERE plan_key = 'base'
+-- The free-tier values, spelled out: `db push` runs on a project whose plan
+-- catalog may be empty (the seeds are a fresh-project bootstrap), so copying
+-- `base`'s rows here would leave `solo` without limits — and a missing
+-- `plan_limits` row resolves to 0 (blocked), not to "free".
+INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
+  ('solo', 'max_flashcards', 100),
+  ('solo', 'max_questions', 50),
+  ('solo', 'max_decks', 10),
+  ('solo', 'max_question_banks', 5),
+  ('solo', 'max_quiz_attempts_per_day', 10),
+  ('solo', 'max_ai_tokens_per_day', 0),
+  ('solo', 'max_students', -1),
+  ('solo', 'max_groups', -1)
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -218,6 +226,7 @@ DO $$
 DECLARE
   bad_plans        int;
   solo             public.subscription_plans%ROWTYPE;
+  solo_limits      int;
   bad_seat_keys    int;
   mgr_org_plans    int;
   fk_count         int;
@@ -244,6 +253,14 @@ BEGIN
      OR solo.price_monthly <> 0
      OR solo.is_active IS NOT TRUE THEN
     RAISE EXCEPTION 'guard: the solo plan is missing or has the wrong scope/audience/price'
+      USING ERRCODE = '23514';
+  END IF;
+
+  -- `solo` carries the free tier's limit rows, so a manager outside an org
+  -- resolves the free allowance instead of the "missing row = 0" block.
+  SELECT count(*) INTO solo_limits FROM public.plan_limits WHERE plan_key = 'solo';
+  IF solo_limits < 8 THEN
+    RAISE EXCEPTION 'guard: the solo plan has % limit rows (expected the free tier''s eight)', solo_limits
       USING ERRCODE = '23514';
   END IF;
 
