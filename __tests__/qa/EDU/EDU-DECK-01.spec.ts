@@ -20,12 +20,12 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  * The case was written against the legacy seed (`teacher1@dev.local`, `O1G1T1`).
  * In the tenant model the educator owns two decks — one personal and one shared to
- * `G1` — and the manager shares a third deck to the same group. Because the seeded
- * educator holds the org `member` role, its `deck.read` scope is `group`, so the
- * manager's shared deck is readable under „Wszystkie” and filtered out by „Moje”.
- * The seeder enrolls group members as group `member`, and only a group `teacher`
- * may share content, so the spec promotes the educator through the manager's own
- * group-roster endpoint first (tenant-local, idempotent).
+ * `G1` — and the manager shares a third deck to the same group. The seeded
+ * educator holds the org Teacher role, whose `deck.read` scope is `group` (D29),
+ * so the manager's shared deck is readable under „Wszystkie” and filtered out by
+ * „Moje”. The seeder enrolls group members as group `member`, and only a group
+ * `teacher` may share content, so the spec promotes the educator through the
+ * manager's own group-roster endpoint first (tenant-local, idempotent).
  *
  * Acceptance points (confirmed on the shared app during the walk):
  * 1. The breadcrumb title is „Talie fiszek”.

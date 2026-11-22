@@ -2,7 +2,8 @@
   "profile": "content",
   "members": [
     { "key": "manager", "accountType": "manager", "orgRole": "admin" },
-    { "key": "teacher", "accountType": "educator", "orgRole": "member" },
-    { "key": "student", "accountType": "student", "orgRole": "member" }
+    { "key": "teacher", "accountType": "educator", "orgRole": "teacher" },
+    { "key": "student", "accountType": "student", "orgRole": "member" },
+    { "key": "student2", "accountType": "student", "orgRole": "member" }
   ]
 }

@@ -22,9 +22,9 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  * The case was written against the legacy manual seed (`teacher1@dev.local`, groups
  * `O1G1`/`O2G1`, the „Algebra” topic). In the tenant model the educator is an org
- * `member`: `topic.read` is `group`, so it sees its own topics plus the ones shared
- * to `G1`. That is the minimum shape the filter step needs, and it is why the spec
- * prepares three rows through the product API before the walk:
+ * Teacher: `topic.read` is `group` (D29), so it sees its own topics plus the ones
+ * shared to `G1`. That is the minimum shape the filter step needs, and it is why the
+ * spec prepares three rows through the product API before the walk:
  * - `SHARED_TOPIC` — created by the tenant manager (org `admin`) and shared to `G1`,
  *   i.e. visible under „Wszystkie” and filtered out by „Moje”;
  * - `OWN_TOPIC` — created by the educator, so „Moje” still has a row after the case's

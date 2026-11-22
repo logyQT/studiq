@@ -59,11 +59,10 @@ version uses the case's own tenant and never the legacy accounts.
 
 - Profile: `content` (`__tests__/qa/profiles/EDU-TOP-01.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account
-  type `educator`, org `member`), `student`.
-- Why that profile: an org-`member` educator has `topic.read` = `group`, so it sees its own
-  topics **and** the topics shared to `G1`. That is the minimum shape the filter step needs:
-  a row that „Wszystkie” shows and „Moje” hides. A teacher-role educator would get
-  `topic.read` = `own`, which would make „Moje” and „Wszystkie” identical.
+  type `educator`, org `teacher`), `student`.
+- Why that profile: the org Teacher role has `topic.read` = `group` (D29), so the educator
+  sees its own topics **and** the topics shared to `G1`. That is the minimum shape the filter
+  step needs: a row that „Wszystkie” shows and „Moje” hides.
 - Seed: `bun scripts/qa-tenant.ts EDU-TOP-01 --fresh` — a fresh run suffix per independent
   run, so every run gets its own org/group/users from
   `tenantKey('qa/cases/EDU-TOP-01.md', 'EDU-TOP-01#<suffix>', 'qa-shared')` +
@@ -94,3 +93,11 @@ manager `admin`, educator `member`, student `member`, the same keys, account typ
 ids and e-mails as before, with the default group `G1` and its membership unchanged. The
 spec's own preparation (the shared topic created by the manager, the educator's own topic
 and the two-flashcard deck) is unchanged, as are the assertions.
+
+## Observed 2026-11-22 (3d) — the Member workaround is retired
+
+D29 moves the Teacher role's content `.read` keys to `group`, so `topic.read` = `group` for
+the real system role and the premise the 2b-3 workaround protected holds again.
+`__tests__/qa/profiles/EDU-TOP-01.json` names `orgRole: "teacher"` (the default the 2b-3
+note said failed), and the spec and the bullets above cite the Teacher role instead of the
+Member role. Assertions and steps are unchanged.

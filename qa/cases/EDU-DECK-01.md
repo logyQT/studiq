@@ -30,7 +30,7 @@ case's own tenant and never the legacy accounts.
 
 - Profile: `content` (`__tests__/qa/profiles/EDU-DECK-01.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`, group `teacher`),
-  `teacher` (account type `educator`, org `member`), `student`.
+  `teacher` (account type `educator`, org `teacher`), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-DECK-01 --fresh` — a fresh run suffix per independent
   run, so every run gets its own org/group/users from
   `tenantKey('qa/cases/EDU-DECK-01.md', 'EDU-DECK-01#<suffix>', 'qa-shared')` +
@@ -48,10 +48,10 @@ case's own tenant and never the legacy accounts.
 - Not used: the second organization / active-org switch leg of the case (`O2G1T1`). A
   single-org tenant pins one active organization, so the deck set is asserted inside this
   tenant; org switching belongs to its own case.
-- T2 bullet: the seeded educator is an organization `member`, whose `deck.read` scope is
-  `group`, so the manager's deck shared to `G1` is visible under „Wszystkie” and excluded by
-  „Moje”. That is the permission-rule behavior asserted; no guess is encoded for a second
-  teacher account.
+- T2 bullet: the seeded educator holds the org Teacher role, whose `deck.read` scope is
+  `group` (D29), so the manager's deck shared to `G1` is visible under „Wszystkie” and
+  excluded by „Moje”. That is the permission-rule behavior asserted; no guess is encoded for
+  a second teacher account.
 
 ## Observed 2026-11-20 (2b-3) — the roster is now declared
 
@@ -66,3 +66,11 @@ ids and e-mails as before, with the default group `G1` and its membership unchan
 `groupTeachers`: the spec still promotes the educator to group `teacher` itself, through
 the manager's roster endpoint, exactly as the step above describes. The assertions are
 untouched.
+
+## Observed 2026-11-22 (3d) — the Member workaround is retired
+
+D29 moves the Teacher role's content `.read` keys to `group`, so the premise the 2b-3
+workaround protected now holds for the real system role: `deck.read` is `group` for a
+Teacher. `__tests__/qa/profiles/EDU-DECK-01.json` names `orgRole: "teacher"` again (the
+default the 2b-3 note said failed), and the spec's explanatory comment cites the Teacher
+role instead of the Member role. Assertions and steps are unchanged.
