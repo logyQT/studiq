@@ -60,7 +60,7 @@ const event = {
   plan_id: 'spark',
 };
 
-type Rules = Pick<StripeBillingRepository, 'getPlan' | 'isOrgAdmin'>;
+type Rules = Pick<StripeBillingRepository, 'getPlan' | 'canManageBilling'>;
 type Entitlements = Pick<EntitlementService, 'applyPlan'>;
 
 describe('MockStripeService', () => {
@@ -77,7 +77,7 @@ describe('MockStripeService', () => {
     vi.clearAllMocks();
     rules = {
       getPlan: vi.fn().mockResolvedValue(success(studentPlan)),
-      isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+      canManageBilling: vi.fn().mockResolvedValue(success(true)),
     };
     entitlements = { applyPlan: vi.fn().mockResolvedValue(success(undefined)) };
     payments = {
@@ -137,7 +137,7 @@ describe('MockStripeService', () => {
       const result = await service.handleWebhook(orgEvent, AccountType.MANAGER, 'u-1');
 
       expect(result).toEqual(success(undefined));
-      expect(rules.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-1');
+      expect(rules.canManageBilling).toHaveBeenCalledWith('org-1', 'u-1');
       expect(entitlements.applyPlan).toHaveBeenCalledWith(
         { type: 'org', orgId: 'org-1' },
         'campus',
@@ -189,9 +189,9 @@ describe('MockStripeService', () => {
       expect(entitlements.applyPlan).not.toHaveBeenCalled();
     });
 
-    it('refuses an org the caller does not administer', async () => {
+    it('refuses an org the caller cannot bill (no org.billing.manage there)', async () => {
       mockPlan(orgPlan);
-      vi.mocked(rules.isOrgAdmin).mockResolvedValue(success(false));
+      vi.mocked(rules.canManageBilling).mockResolvedValue(success(false));
 
       const result = await service.handleWebhook(orgEvent, AccountType.MANAGER, 'u-1');
 

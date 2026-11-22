@@ -125,7 +125,7 @@ describe('resolveCheckoutOwner', () => {
   const caller = { userId: 'u-1', accountType: AccountType.MANAGER };
 
   it('resolves the caller for a personal plan and ignores an org id', async () => {
-    const port = { isOrgAdmin: vi.fn() };
+    const port = { canManageBilling: vi.fn() };
     await expect(
       resolveCheckoutOwner(
         port,
@@ -134,11 +134,11 @@ describe('resolveCheckoutOwner', () => {
         'org-1',
       ),
     ).resolves.toEqual(success({ type: 'user', userId: 'u-1', accountType: AccountType.STUDENT }));
-    expect(port.isOrgAdmin).not.toHaveBeenCalled();
+    expect(port.canManageBilling).not.toHaveBeenCalled();
   });
 
-  it('resolves the verified org for an organization plan', async () => {
-    const port = { isOrgAdmin: vi.fn().mockResolvedValue(success(true)) };
+  it('resolves the org for an organization plan when the caller holds org.billing.manage there', async () => {
+    const port = { canManageBilling: vi.fn().mockResolvedValue(success(true)) };
     await expect(
       resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller, 'org-1'),
     ).resolves.toEqual(
@@ -149,26 +149,34 @@ describe('resolveCheckoutOwner', () => {
         accountType: AccountType.MANAGER,
       }),
     );
-    expect(port.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-1');
+    expect(port.canManageBilling).toHaveBeenCalledWith('org-1', 'u-1');
+  });
+
+  it('checks the explicit target org, not an active-org one (billing in B while A is active)', async () => {
+    const port = { canManageBilling: vi.fn().mockResolvedValue(success(true)) };
+    await expect(
+      resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller, 'org-2'),
+    ).resolves.toMatchObject(success({ type: 'org', orgId: 'org-2', userId: 'u-1' }));
+    expect(port.canManageBilling).toHaveBeenCalledWith('org-2', 'u-1');
   });
 
   it('answers FORBIDDEN (not BAD_REQUEST) when an organization plan arrives without an org id', async () => {
-    const port = { isOrgAdmin: vi.fn() };
+    const port = { canManageBilling: vi.fn() };
     await expect(
       resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller),
     ).resolves.toEqual(failure('FORBIDDEN'));
-    expect(port.isOrgAdmin).not.toHaveBeenCalled();
+    expect(port.canManageBilling).not.toHaveBeenCalled();
   });
 
-  it('refuses an org plan for a caller who is not an admin', async () => {
-    const port = { isOrgAdmin: vi.fn().mockResolvedValue(success(false)) };
+  it('refuses an org plan for a caller without org.billing.manage in the target org', async () => {
+    const port = { canManageBilling: vi.fn().mockResolvedValue(success(false)) };
     await expect(
       resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller, 'org-1'),
     ).resolves.toEqual(failure('FORBIDDEN'));
   });
 
-  it('propagates a membership read failure', async () => {
-    const port = { isOrgAdmin: vi.fn().mockResolvedValue(failure('INTERNAL_SERVER')) };
+  it('propagates a permission read failure', async () => {
+    const port = { canManageBilling: vi.fn().mockResolvedValue(failure('INTERNAL_SERVER')) };
     await expect(
       resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller, 'org-1'),
     ).resolves.toEqual(failure('INTERNAL_SERVER'));

@@ -57,8 +57,10 @@ The mock webhook (`mock-stripe.service.ts`) treats a plan whose
 `subscription_plans.scope` is `organization` as an organization plan (since phase 4a
 the catalog row's `scope`/`audience` decide `isOrgPlan`/purchasability — D34;
 `for_account_type` was dropped with the column): it
-requires the caller to be an admin of the target organization
-(`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`)
+requires the caller to hold `org.billing.manage` **in the target organization**
+(`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`, checked through the
+`has_permission` RPC since phase 5b — never by role name or persona; the target
+org is the explicit `orgId` and need not be the active one)
 and calls `change_org_plan`, which moves `organizations.plan` only. The org
 layer (features and limits) is derived live, so there is no snapshot to re-sync.
 The buyer's `profiles.personal_plan_key` is
@@ -81,7 +83,10 @@ Confirmed end to end on this case's tenant:
 - `/manage/roles` shows „Nowa rola” — the „Kreator ról nie jest dostępny w Twoim
   planie” lock card is gone.
 - The manager's personal plan stays Launch before and after the purchase.
-- A teacher of the same organization cannot buy the plan: `/checkout` answers
-  with „Tylko administrator organizacji może kupić plan” and no payment form,
-  and `POST /api/v1/stripe/webhook` returns `403 FORBIDDEN`, leaving the
-  organization plan untouched.
+- A teacher of the same organization cannot buy the plan: the `/checkout` page
+  gate still keys on the org role name (cosmetic, phase 6 aligns it), so it
+  answers with „Tylko administrator organizacji może kupić plan” and no payment
+  form, and the API refuses on the permission itself — `POST
+/api/v1/stripe/webhook` and `create-checkout-session` return `403 FORBIDDEN`
+  because the teacher holds no `org.billing.manage` in the target org — leaving
+  the organization plan untouched.

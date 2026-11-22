@@ -493,22 +493,25 @@ where the `stripe-signature` header is verified over the raw body; in `mock` mod
 it authenticates the caller and acts on that caller's own account only.
 
 The billing **owner is the authenticated user** (`ctx.userId`) for personal plans
-and the **active organization** (`ctx.activeOrgId`) for organization plans — with
-one exception: `create-checkout-session` accepts an `orgId`, because a manager can
-buy for a non-active organization. That id is only a hint; the server re-checks
-`org_members` and the `admin` role before using it. The client never supplies a
-customer id, subscription id, price id or amount.
+and the **active organization** (`ctx.activeOrgId`) when the caller holds
+`org.billing.manage` there (phase 5b: the permission decides, never the account
+type or a role name) — with one exception: `create-checkout-session` accepts an
+`orgId`, because a caller who may bill that organization can buy for a
+non-active organization. That id is only a hint; the server re-checks
+`org.billing.manage` **in the target org** (the `has_permission` RPC) before
+using it. The client never supplies a customer id, subscription id, price id
+or amount.
 
-| Method | Endpoint                                 | Body                           | Notes                                                                                                                                                          |
-| ------ | ---------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/v1/billing/subscription`           | —                              | Shared read model: effective plan, billed plan, status, period, cancel/pending flags, portal/change/cancel capability, invoice URL                             |
-| `POST` | `/api/v1/stripe/create-checkout-session` | `{ planKey, orgId?, locale? }` | Returns `{ url }`: hosted Stripe Checkout, or the local mock form. `orgId` is required for manager plans and must be a uuid                                    |
-| `GET`  | `/api/v1/stripe/portal?locale=pl\|en`    | —                              | Returns `{ url }` for the hosted Billing Portal; `404` when the owner has no Stripe customer mapping                                                           |
-| `POST` | `/api/v1/billing/change-plan`            | `{ planKey }`                  | Upgrade applies now (anchor reset + unused-time credit); downgrade schedules at the period boundary. No entitlement write                                      |
-| `POST` | `/api/v1/billing/cancel`                 | `{ cancel: boolean }`          | `true` = cancel at period end, `false` = reactivate. No entitlement write                                                                                      |
-| `POST` | `/api/v1/billing/release-scheduled-plan` | —                              | “Keep current plan”: releases a scheduled downgrade and clears the display marker. No entitlement write; returns `{ released: false }` when no schedule exists |
-| `POST` | `/api/v1/billing/reconcile`              | `{ sessionId }`                | Success-page reconcile: verifies session ownership, reuses the idempotent activation path, activate-only                                                       |
-| `POST` | `/api/v1/stripe/webhook`                 | raw Stripe event               | `stripe` mode: public + signature-verified. `mock` mode: `withAuth`, caller's own account only                                                                 |
+| Method | Endpoint                                 | Body                           | Notes                                                                                                                                                                              |
+| ------ | ---------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/billing/subscription`           | —                              | Shared read model: effective plan, billed plan, status, period, cancel/pending flags, portal/change/cancel capability, invoice URL                                                 |
+| `POST` | `/api/v1/stripe/create-checkout-session` | `{ planKey, orgId?, locale? }` | Returns `{ url }`: hosted Stripe Checkout, or the local mock form. `orgId` is required for organization plans, must be a uuid, and the caller must hold `org.billing.manage` in it |
+| `GET`  | `/api/v1/stripe/portal?locale=pl\|en`    | —                              | Returns `{ url }` for the hosted Billing Portal; `404` when the owner has no Stripe customer mapping                                                                               |
+| `POST` | `/api/v1/billing/change-plan`            | `{ planKey }`                  | Upgrade applies now (anchor reset + unused-time credit); downgrade schedules at the period boundary. No entitlement write                                                          |
+| `POST` | `/api/v1/billing/cancel`                 | `{ cancel: boolean }`          | `true` = cancel at period end, `false` = reactivate. No entitlement write                                                                                                          |
+| `POST` | `/api/v1/billing/release-scheduled-plan` | —                              | “Keep current plan”: releases a scheduled downgrade and clears the display marker. No entitlement write; returns `{ released: false }` when no schedule exists                     |
+| `POST` | `/api/v1/billing/reconcile`              | `{ sessionId }`                | Success-page reconcile: verifies session ownership, reuses the idempotent activation path, activate-only                                                                           |
+| `POST` | `/api/v1/stripe/webhook`                 | raw Stripe event               | `stripe` mode: public + signature-verified. `mock` mode: `withAuth`, caller's own account only                                                                                     |
 
 ### Billing read model
 

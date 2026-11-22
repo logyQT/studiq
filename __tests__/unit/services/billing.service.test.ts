@@ -87,7 +87,7 @@ function createRepository(
 ): StripeBillingRepository {
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(success(plan())),
-    isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+    canManageBilling: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn(),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -197,19 +197,51 @@ describe('BillingService.startCheckout', () => {
     expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-admin org buyer without calling Stripe', async () => {
+  it('rejects an org buyer without org.billing.manage in the target org, without calling Stripe', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
       success(plan({ key: 'hub', name: 'StudiQ Hub', scope: 'organization', audience: null })),
     );
-    vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
+    vi.mocked(repository.canManageBilling).mockResolvedValueOnce(success(false));
 
     await expect(service.startCheckout(managerCtx, 'hub', 'org-1')).resolves.toEqual({
       success: false,
       error: 'FORBIDDEN',
     });
-    expect(repository.isOrgAdmin).toHaveBeenCalledWith('org-1', 'u-9');
+    expect(repository.canManageBilling).toHaveBeenCalledWith('org-1', 'u-9');
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
     expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('lets a Billing-preset holder buy for an explicit target org (any persona)', async () => {
+    vi.mocked(repository.getPlan).mockResolvedValueOnce(
+      success(
+        plan({
+          key: 'hub',
+          name: 'StudiQ Hub',
+          priceMonthly: 1999,
+          scope: 'organization',
+          audience: null,
+        }),
+      ),
+    );
+    vi.mocked(repository.canManageBilling).mockResolvedValueOnce(success(true));
+    vi.mocked(repository.findListedPrice).mockResolvedValueOnce(
+      success(listedPrice({ planKey: 'hub', stripePriceId: 'price_hub', unitAmount: 1999 })),
+    );
+
+    // A student persona holding org.billing.manage in the target org is the
+    // org buyer; the persona plays no part in `resolveCheckoutOwner`.
+    const billingStudentCtx: RequestContext = { ...studentCtx, activeOrgId: 'org-2' };
+
+    await expect(service.startCheckout(billingStudentCtx, 'hub', 'org-2')).resolves.toMatchObject({
+      success: true,
+    });
+    expect(repository.canManageBilling).toHaveBeenCalledWith('org-2', 'u-1');
+    expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'org', orgId: 'org-2', userId: 'u-1', accountType: AccountType.STUDENT },
+      }),
+    );
   });
 
   it('returns CONFLICT when the owner already has a live subscription', async () => {

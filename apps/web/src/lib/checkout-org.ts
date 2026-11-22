@@ -6,8 +6,11 @@
  * resolves to the same `not-member` state as an id that does not exist — the
  * page never learns a name it is not allowed to see.
  *
- * This is a *cosmetic* gate: the server re-checks admin membership in
- * `createCheckoutSession` and `handleWebhook` through the shared checkout rules.
+ * This is a *cosmetic* gate: the server re-checks `org.billing.manage` in the
+ * target organization in `createCheckoutSession` and `handleWebhook` through
+ * the shared checkout rules. Since phase 5b the API no longer looks at the
+ * role name; phase 6 aligns the UI, so a Billing-preset holder is API-allowed
+ * but not yet shown the org checkout control.
  */
 import { isOrgAdminRole } from '@studiq/authz';
 

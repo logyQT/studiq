@@ -47,7 +47,7 @@ function createRepository(
 ): StripeBillingRepository {
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn(),
-    isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+    canManageBilling: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn(),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -80,7 +80,7 @@ describe('BillingService.reconcileCheckout', () => {
       owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       sessionId: 'cs_1',
     });
-    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+    expect(repository.canManageBilling).not.toHaveBeenCalled();
   });
 
   it('requires org.billing.manage before reconciling an organization session', async () => {
@@ -95,20 +95,22 @@ describe('BillingService.reconcileCheckout', () => {
   it('falls back to the personal owner when a manager has no active org', async () => {
     await service.reconcileCheckout({ ...managerCtx, activeOrgId: null }, 'cs_1');
 
-    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+    expect(repository.canManageBilling).not.toHaveBeenCalled();
     expect(gateway.reconcileCheckout).toHaveBeenCalledWith({
       owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
       sessionId: 'cs_1',
     });
   });
 
-  it('refuses an organization caller without org.billing.manage', async () => {
+  it('resolves a caller without org.billing.manage to the personal owner, never the org one', async () => {
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.reconcileCheckout(memberCtx, 'cs_org')).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+    await service.reconcileCheckout(memberCtx, 'cs_1');
+
+    expect(gateway.reconcileCheckout).toHaveBeenCalledWith({
+      owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      sessionId: 'cs_1',
     });
-    expect(gateway.reconcileCheckout).not.toHaveBeenCalled();
   });
 
   it('propagates a gateway failure', async () => {
@@ -128,18 +130,17 @@ describe('BillingService.reconcileCheckout', () => {
       success: false,
       error: 'NOT_FOUND',
     });
-    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+    expect(repository.canManageBilling).not.toHaveBeenCalled();
   });
 
-  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
-    // Ordering proof: the authority check runs before the driver decision, so a
-    // non-holder is 403'd rather than told the mock has no provider action.
+  it('answers NOT_FOUND on the mock driver for a caller without org.billing.manage (personal owner, no provider action)', async () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.reconcileCheckout(memberCtx, 'cs_org')).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+    await expect(service.reconcileCheckout(memberCtx, 'cs_1')).resolves.toEqual({
+      success: false,
+      error: 'NOT_FOUND',
     });
     expect(gateway.reconcileCheckout).not.toHaveBeenCalled();
   });

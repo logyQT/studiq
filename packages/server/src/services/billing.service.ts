@@ -1,5 +1,5 @@
-import { AccountType, Permission, type RequestContext } from '@studiq/authz';
-import { hasPermission, requirePermission } from '@studiq/server/lib/authz';
+import { Permission, type RequestContext } from '@studiq/authz';
+import { hasPermission } from '@studiq/server/lib/authz';
 import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
@@ -100,13 +100,16 @@ const SUBSCRIBABLE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 /**
  * The owner is the authenticated context's, never the request body (#662 §9.2).
  *
- * The persona still decides between an org and a personal owner, so a
- * `student`/`educator` holding Admin or the Billing preset resolves a personal
- * owner and never reaches `org.billing.manage` — ADR-0015 §7.1's 2b-4 note
- * records the gap and phase 5 owns the derivation.
+ * The org owner is chosen only when the caller holds `org.billing.manage` in
+ * the active org (operator decision 2026-11-22, ADR-0015 phase 5b): persona
+ * never decides, so a `student`/`educator` holding Admin or the Billing preset
+ * resolves the org owner, while a manager whose role lacks the key keeps
+ * reading only their personal row — an unprivileged member's personal
+ * subscription inside an org is not displaced. The `org.billing.manage` RLS
+ * branch on `billing_subscriptions` stays the data-plane boundary.
  */
 function ownerFromContext(ctx: RequestContext): PaymentOwner {
-  if (ctx.accountType === AccountType.MANAGER && ctx.activeOrgId) {
+  if (ctx.activeOrgId != null && hasPermission(ctx, Permission.ORG_BILLING_MANAGE)) {
     return {
       type: 'org',
       orgId: ctx.activeOrgId,
@@ -115,18 +118,6 @@ function ownerFromContext(ctx: RequestContext): PaymentOwner {
     };
   }
   return { type: 'user', userId: ctx.userId, accountType: ctx.accountType };
-}
-
-/**
- * An organization's billing actions are `org.billing.manage` (ADR-0015 §4.1, §7;
- * D17's Billing preset is exactly this key plus `org.seat.manage`). The owner is
- * always the active org here (`ownerFromContext`), so the request context's
- * scopes are the authority; `withAuth` maps the throw to 403. A personal owner
- * has no org gate — its own row is the boundary, and RLS enforces that read.
- */
-async function assertOrgBillingAuthority(ctx: RequestContext, owner: PaymentOwner): Promise<void> {
-  if (owner.type !== 'org') return;
-  await requirePermission(ctx, Permission.ORG_BILLING_MANAGE);
 }
 
 function isBillingReadStatus(value: string): value is BillingReadStatus {
@@ -302,7 +293,8 @@ export class BillingService {
       return success(base);
     }
 
-    const subscriptionResult = await this.reads.findSubscription(ctx, this.gateway.livemode);
+    const owner = ownerFromContext(ctx);
+    const subscriptionResult = await this.reads.findSubscription(owner, this.gateway.livemode);
     if (isFailure(subscriptionResult)) return subscriptionResult;
 
     const subscription = subscriptionResult.data;
@@ -334,7 +326,6 @@ export class BillingService {
       billedPlanName = catalog.data?.name ?? null;
     }
 
-    const owner = ownerFromContext(ctx);
     const invoiceResult = await this.reads.findLatestHostedInvoiceUrl({
       userId: ctx.userId,
       organizationId: owner.type === 'org' ? owner.orgId : null,
@@ -345,12 +336,10 @@ export class BillingService {
     const status = isBillingReadStatus(subscription.status) ? subscription.status : 'none';
     const subscribable = SUBSCRIBABLE_STATUSES.has(subscription.status);
 
-    // One capability decides both the read and the actions: `org.billing.manage`
-    // (the RLS org branch reads the same key). A viewer without it still reads
-    // the plan, but is not advertised an action the write endpoints would refuse.
-    const canManage =
-      owner.type === 'org' ? hasPermission(ctx, Permission.ORG_BILLING_MANAGE) : true;
-
+    // A visible row is always one the caller may act on: the org row is visible
+    // only through the `org.billing.manage` RLS branch, and the owner is org
+    // exactly when the caller holds that key (`ownerFromContext`); a personal
+    // row is the caller's own.
     return success({
       ...base,
       planKey,
@@ -370,9 +359,9 @@ export class BillingService {
           : null,
       priceMonthly,
       currency,
-      canManagePortal: canManage,
-      canChangePlan: canManage && subscribable,
-      canCancel: canManage && subscribable,
+      canManagePortal: true,
+      canChangePlan: subscribable,
+      canCancel: subscribable,
       hostedInvoiceUrl: invoiceResult.data,
     });
   }
@@ -380,17 +369,17 @@ export class BillingService {
   /**
    * Open the Billing Portal for the authenticated owner (#662 §7.1).
    *
-   * The owner comes from `ctx` only. An organization call requires
-   * `org.billing.manage` on every request because `active_org_id` is a cookie
-   * hint, not an authorization. A missing customer mapping is a clean
-   * `NOT_FOUND` ("buy a plan"), never a broken portal.
+   * The owner comes from `ctx` only: an organization owner already required
+   * `org.billing.manage` in the active org inside `ownerFromContext`, so the
+   * `active_org_id` cookie hint alone never authorizes an org call. A missing
+   * customer mapping is a clean `NOT_FOUND` ("buy a plan"), never a broken
+   * portal.
    */
   async createPortalSession(
     ctx: RequestContext,
     locale: BillingLocale = 'pl',
   ): Promise<ServiceResult<{ url: string }>> {
     const owner = ownerFromContext(ctx);
-    await assertOrgBillingAuthority(ctx, owner);
 
     const returnUrl = `${getSiteUrl()}${billingPath(ctx.accountType)}`;
 
@@ -625,16 +614,15 @@ export class BillingService {
   }
 
   /**
-   * Owner, authority and driver for a provider action, in that order: an
-   * unauthorized caller is refused before the driver decides, and mock mode has
-   * no provider action to take (`NOT_FOUND`, the shape the dashboards already
+   * Owner and driver for a provider action: the owner derivation is the
+   * authority (an org owner holds `org.billing.manage`), and mock mode has no
+   * provider action to take (`NOT_FOUND`, the shape the dashboards already
    * expect).
    */
-  private async prepareProviderAction(ctx: RequestContext): Promise<ServiceResult<PaymentOwner>> {
+  private prepareProviderAction(ctx: RequestContext): Promise<ServiceResult<PaymentOwner>> {
     const owner = ownerFromContext(ctx);
-    await assertOrgBillingAuthority(ctx, owner);
-    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
-    return success(owner);
+    if (this.gateway.driver === 'mock') return Promise.resolve(failure('NOT_FOUND'));
+    return Promise.resolve(success(owner));
   }
 
   /**

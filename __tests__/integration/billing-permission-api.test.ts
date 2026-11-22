@@ -12,11 +12,13 @@ import {
   seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
+import { firstCall } from '#test/mocks/recorded';
 import { POST as changePlan } from '@/app/(backend)/api/v1/billing/change-plan/route';
 import { POST as cancelSubscription } from '@/app/(backend)/api/v1/billing/cancel/route';
 import { POST as reconcileCheckout } from '@/app/(backend)/api/v1/billing/reconcile/route';
 import { POST as releaseScheduledPlan } from '@/app/(backend)/api/v1/billing/release-scheduled-plan/route';
 import { GET as getSubscription } from '@/app/(backend)/api/v1/billing/subscription/route';
+import { POST as createCheckoutSession } from '@/app/(backend)/api/v1/stripe/create-checkout-session/route';
 
 /**
  * ADR-0015 §4.1/§7 and R4: the billing actions authorize on
@@ -128,14 +130,23 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
   let billingUser: TestUserFixture;
   let memberUser: TestUserFixture;
   let adminUser: TestUserFixture;
+  let billingEducator: TestUserFixture;
   let billing: Session;
   let member: Session;
   let admin: Session;
+  let educator: Session;
+  /** A second org where the Billing-preset holder may bill, while org A is active. */
+  let orgBId: string;
+  let billingRoleBId: string;
 
-  async function customRole(name: string, keys: string[]): Promise<string> {
+  async function customRole(
+    name: string,
+    keys: string[],
+    organizationId: string = orgId,
+  ): Promise<string> {
     const { data: role, error } = await service
       .from('org_roles')
-      .insert({ organization_id: orgId, name, display_name: name, is_system: false })
+      .insert({ organization_id: organizationId, name, display_name: name, is_system: false })
       .select('id')
       .single();
     if (error) throw new Error(`role ${name}: ${error.message}`);
@@ -161,7 +172,10 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
     billingUser = await createTestUser({ role: 'manager', password: PASSWORD });
     memberUser = await createTestUser({ role: 'manager', password: PASSWORD });
     adminUser = await createTestUser({ role: 'manager', password: PASSWORD });
-    createdUserIds.push(billingUser.id, memberUser.id, adminUser.id);
+    // An EDUCATOR persona on the Billing preset: the persona must not decide
+    // the billing owner (operator decision 2026-11-22, phase 5b row 7).
+    billingEducator = await createTestUser({ role: 'educator', password: PASSWORD });
+    createdUserIds.push(billingUser.id, memberUser.id, adminUser.id, billingEducator.id);
 
     await seedOrgMembership({
       organizationId: orgId,
@@ -177,6 +191,26 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
       organizationId: orgId,
       userId: adminUser.id,
       orgRoleId: org.adminRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: billingEducator.id,
+      orgRoleId: billingRoleId,
+    });
+
+    // A second org the Billing-preset holder may bill (org B), so the checkout
+    // can be resolved for a target org that is not the active one.
+    const orgB = await seedOrganization(`billing-perm-b-${tag}`);
+    orgBId = orgB.org.id;
+    billingRoleBId = await customRole(
+      `billing-b-${tag}`,
+      ['org.billing.manage', 'org.seat.manage'],
+      orgBId,
+    );
+    await seedOrgMembership({
+      organizationId: orgBId,
+      userId: billingUser.id,
+      orgRoleId: billingRoleBId,
     });
 
     const { data: customer, error: customerError } = await service
@@ -216,6 +250,7 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
     billing = await signIn(billingUser);
     member = await signIn(memberUser);
     admin = await signIn(adminUser);
+    educator = await signIn(billingEducator);
   });
 
   afterAll(async () => {
@@ -223,6 +258,7 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
     await service.from('billing_subscriptions').delete().eq('organization_id', orgId);
     await service.from('billing_customers').delete().eq('organization_id', orgId);
     await cleanupOrganizationDeep(orgId).catch(() => {});
+    await cleanupOrganizationDeep(orgBId).catch(() => {});
     for (const id of createdUserIds) {
       await service.auth.admin.deleteUser(id).catch(() => {});
     }
@@ -231,25 +267,51 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fakeGateway.changePlan.mockResolvedValue(success({ status: 'applied' }));
-    fakeGateway.cancelAtPeriodEnd.mockResolvedValue(success({ cancelAtPeriodEnd: true }));
+    fakeGateway.cancelAtPeriodEnd.mockResolvedValue(
+      success({ cancelAtPeriodEnd: true, releasedSchedule: false }),
+    );
     fakeGateway.releaseScheduledPlan.mockResolvedValue(
       success({ released: true, currentPlanKey: 'hub' }),
     );
-    fakeGateway.reconcileCheckout.mockResolvedValue(success({ status: 'applied', planKey: 'hub' }));
+    fakeGateway.reconcileCheckout.mockResolvedValue(success({ activated: true }));
   });
 
   async function subscriptionState() {
     const { data } = await service
       .from('billing_subscriptions')
-      .select('plan_key, pending_plan_key')
+      .select('plan_key, pending_plan_key, cancel_at_period_end, status')
       .eq('organization_id', orgId)
       .single();
     const org = (await service.from('organizations').select('plan').eq('id', orgId).single()).data;
-    return { planKey: data?.plan_key, pendingPlanKey: data?.pending_plan_key, orgPlan: org?.plan };
+    return {
+      planKey: data?.plan_key,
+      pendingPlanKey: data?.pending_plan_key,
+      cancelAtPeriodEnd: data?.cancel_at_period_end,
+      status: data?.status,
+      orgPlan: org?.plan,
+    };
   }
 
   it('lets the Billing preset read the org subscription and advertises the actions', async () => {
     const { status, body } = await call(get(billing, orgId), getSubscription);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        billedPlanKey: 'hub',
+        status: 'active',
+        canChangePlan: true,
+        canCancel: true,
+      },
+    });
+  });
+
+  it('lets an EDUCATOR persona holding the Billing preset resolve the org subscription (owner is the permission, not the persona)', async () => {
+    // Phase 5b row 7: `ownerFromContext` is org iff the caller holds
+    // `org.billing.manage` in the active org — a student/educator on the
+    // Billing preset reaches the org row through the same RLS branch.
+    const { status, body } = await call(get(educator, orgId), getSubscription);
 
     expect(status).toBe(200);
     expect(body).toMatchObject({
@@ -303,30 +365,118 @@ describe('billing actions require org.billing.manage (2b-4)', () => {
     expect(before.orgPlan).toBe(orgPlanBefore);
   });
 
-  it('gates cancel on the same key', async () => {
-    const refused = await call(post(member, { cancel: true }, orgId), cancelSubscription);
-    expect(refused.status).toBe(403);
+  it('does not act on the org subscription on cancel without org.billing.manage (personal owner answers 404)', async () => {
+    // Operator decision 2026-11-22 (ADR-0015 phase 5b): `ownerFromContext`
+    // returns the org owner only when the caller holds `org.billing.manage` in
+    // the active org. A member without the key is a personal owner, so cancel
+    // resolves their personal subscription, finds none and answers 404 — the
+    // org subscription is never touched (a 403 would mean the org owner was
+    // resolved and then refused, the 2b-4 model).
+    const before = await subscriptionState();
+    expect(before.status).toBe('active');
+    expect(before.cancelAtPeriodEnd).toBe(false);
+
+    const personal = await call(post(member, { cancel: true }, orgId), cancelSubscription);
+
+    expect(personal.status).toBe(404);
+    expect(fakeGateway.cancelAtPeriodEnd).not.toHaveBeenCalled();
+    expect(await subscriptionState()).toEqual(before);
 
     const allowed = await call(post(billing, { cancel: true }, orgId), cancelSubscription);
     expect(allowed.status).toBe(200);
     expect(fakeGateway.cancelAtPeriodEnd).toHaveBeenCalledTimes(1);
+    expect(firstCall(fakeGateway.cancelAtPeriodEnd)[0].owner).toEqual({
+      type: 'org',
+      orgId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
   });
 
-  it('gates the body-less release-scheduled-plan on the same key', async () => {
-    const refused = await call(postWithoutBody(member, orgId), releaseScheduledPlan);
-    expect(refused.status).toBe(403);
+  it('does not act on the org subscription on release-scheduled-plan without org.billing.manage (personal owner answers 404)', async () => {
+    // Same operator decision 2026-11-22 as the cancel case: without the key the
+    // caller is a personal owner, there is no personal subscription, and the
+    // release is a 404 before the gateway — the org row keeps its state.
+    const before = await subscriptionState();
+
+    const personal = await call(postWithoutBody(member, orgId), releaseScheduledPlan);
+
+    expect(personal.status).toBe(404);
+    expect(fakeGateway.releaseScheduledPlan).not.toHaveBeenCalled();
+    expect(await subscriptionState()).toEqual(before);
 
     const allowed = await call(postWithoutBody(billing, orgId), releaseScheduledPlan);
     expect(allowed.status).toBe(200);
     expect(fakeGateway.releaseScheduledPlan).toHaveBeenCalledTimes(1);
+    expect(firstCall(fakeGateway.releaseScheduledPlan)[0].owner).toEqual({
+      type: 'org',
+      orgId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
   });
 
-  it('gates reconcile on the same key', async () => {
-    const refused = await call(post(member, { sessionId: `cs_${tag}` }, orgId), reconcileCheckout);
-    expect(refused.status).toBe(403);
+  it('reconciles as the personal owner without org.billing.manage; the key holder reconciles as the org', async () => {
+    // Operator decision 2026-11-22 (ADR-0015 phase 5b): reconcile loads no
+    // subscription, so a caller without the key is not refused — they are a
+    // personal owner and the gateway sees `{ type: 'user' }`, never the org.
+    // The key holder's call carries the org owner.
+    const personal = await call(post(member, { sessionId: `cs_${tag}` }, orgId), reconcileCheckout);
+
+    expect(personal.status).toBe(200);
+    expect(fakeGateway.reconcileCheckout).toHaveBeenCalledTimes(1);
+    expect(firstCall(fakeGateway.reconcileCheckout)[0].owner).toEqual({
+      type: 'user',
+      userId: memberUser.id,
+      accountType: 'manager',
+    });
 
     const allowed = await call(post(billing, { sessionId: `cs_${tag}` }, orgId), reconcileCheckout);
+
     expect(allowed.status).toBe(200);
-    expect(fakeGateway.reconcileCheckout).toHaveBeenCalledTimes(1);
+    expect(fakeGateway.reconcileCheckout).toHaveBeenCalledTimes(2);
+    const [orgReconcile] = fakeGateway.reconcileCheckout.mock.calls[1] ?? [];
+    expect(orgReconcile?.owner).toEqual({
+      type: 'org',
+      orgId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
+  });
+
+  it('resolves checkout for a non-active target org from a Billing holder there (org.billing.manage in the target org, no active-org equality)', async () => {
+    // Phase 5b row 7: the active org is A (cookie), the body names B, and the
+    // authority is proven in B itself via `has_permission` — a caller who
+    // manages billing in B but not in A may buy for B.
+    fakeGateway.createCheckoutSession.mockResolvedValueOnce(
+      success({ url: 'https://checkout.test/cs_b', sessionId: 'cs_b' }),
+    );
+
+    const { status, body } = await call(
+      post(billing, { planKey: 'campus', orgId: orgBId, locale: 'pl' }, orgId),
+      createCheckoutSession,
+    );
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ success: true });
+    expect(fakeGateway.createCheckoutSession).toHaveBeenCalledTimes(1);
+    const [checkoutInput] = firstCall(fakeGateway.createCheckoutSession);
+    expect(checkoutInput.owner).toEqual({
+      type: 'org',
+      orgId: orgBId,
+      userId: billingUser.id,
+      accountType: 'manager',
+    });
+    expect(checkoutInput.planKey).toBe('campus');
+  });
+
+  it('refuses checkout for an org the caller cannot bill (403, no session created)', async () => {
+    const { status } = await call(
+      post(member, { planKey: 'campus', orgId: orgBId, locale: 'pl' }, orgId),
+      createCheckoutSession,
+    );
+
+    expect(status).toBe(403);
+    expect(fakeGateway.createCheckoutSession).not.toHaveBeenCalled();
   });
 });

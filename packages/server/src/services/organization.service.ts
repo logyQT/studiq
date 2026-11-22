@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { Permission, scopeCovers, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -18,8 +18,8 @@ export class OrganizationService {
     // RLS makes `organizations` / `groups` / `group_members` / `org_members`
     // invisible until the caller is a member of the org, so the provisioning
     // sequence (and org deletion, which has no DELETE policy at all) has to run
-    // on the service-role client. `delete` therefore re-checks manager authority
-    // explicitly before touching the admin client.
+    // on the service-role client. `delete` therefore re-checks `org.admin` in
+    // the request context explicitly before touching the admin client.
     private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
@@ -293,19 +293,16 @@ export class OrganizationService {
   }
 
   async delete(ctx: RequestContext, id: string) {
-    // organizations has no DELETE policy (provisioning/deletion is service-role
-    // only), so a user-session delete would silently affect zero rows. Because
-    // the delete itself bypasses RLS, authorization has to happen here: the
-    // caller must be a manager of the organization they are deleting, and it
-    // must be their active org (the cookie is client-controlled).
+    // organizations deliberately has no DELETE policy (provisioning/deletion
+    // is service-role only), so a user-session delete would silently affect
+    // zero rows and there is no RLS twin by construction. Because the delete
+    // itself bypasses RLS, authorization happens here: the caller must hold
+    // `org.admin` at organization scope in their active org (the cookie is
+    // client-controlled), and the active org must be the one being deleted.
     if (ctx.activeOrgId !== id) return failure('FORBIDDEN');
-
-    const userClient = await this.clientFactory();
-    const { data: isManager, error: managerError } = await userClient.rpc(
-      'rls_caller_is_org_manager',
-      { p_organization_id: id },
-    );
-    if (managerError || !isManager) return failure('FORBIDDEN');
+    if (!scopeCovers(ctx.permissionScopes[Permission.ORG_ADMIN], 'organization')) {
+      return failure('FORBIDDEN');
+    }
 
     const supabase = this.createAdminClient();
 

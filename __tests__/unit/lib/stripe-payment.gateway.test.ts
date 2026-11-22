@@ -74,7 +74,7 @@ function createRepository(
         sortOrder: 1,
       }),
     ),
-    isOrgAdmin: vi.fn(),
+    canManageBilling: vi.fn(),
     findCustomer: vi.fn().mockResolvedValue(success(null)),
     insertCustomer: vi
       .fn()
