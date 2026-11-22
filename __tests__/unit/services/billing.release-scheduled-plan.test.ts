@@ -60,7 +60,7 @@ function createRepository(
 ): StripeBillingRepository {
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn(),
-    isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+    canManageBilling: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -109,14 +109,20 @@ describe('BillingService.releaseScheduledChange ("keep current plan")', () => {
     });
   });
 
-  it('refuses an org caller without org.billing.manage before touching Stripe', async () => {
+  it('uses the personal owner for a caller without org.billing.manage, never the org row', async () => {
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.releaseScheduledChange(memberCtx)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    });
-    expect(repository.findActiveSubscription).not.toHaveBeenCalled();
-    expect(gateway.releaseScheduledPlan).not.toHaveBeenCalled();
+    await service.releaseScheduledChange(memberCtx);
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.releaseScheduledPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
   });
 
   it('returns NOT_FOUND when there is no active subscription', async () => {
@@ -185,15 +191,14 @@ describe('BillingService.releaseScheduledChange ("keep current plan")', () => {
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
   });
 
-  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
-    // Ordering proof: the authority check runs before the driver decision, so a
-    // non-holder is 403'd rather than told the mock has no provider action.
+  it('answers NOT_FOUND on the mock driver for a caller without org.billing.manage (personal owner, no provider action)', async () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.releaseScheduledChange(memberCtx)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+    await expect(service.releaseScheduledChange(memberCtx)).resolves.toEqual({
+      success: false,
+      error: 'NOT_FOUND',
     });
     expect(gateway.releaseScheduledPlan).not.toHaveBeenCalled();
   });

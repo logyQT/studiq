@@ -46,7 +46,10 @@ personal plan and the payment history untouched; the same student's own `spark`
 purchase still goes through. The concern from the case text does not reproduce — the
 intended rejection is in place. The two refusals have different reasons since phase
 4a (D34): `campus` is refused because an **organization** plan needs an organization
-the caller may bill (`resolveCheckoutOwner` answers FORBIDDEN without one), not
+the caller may bill — `resolveCheckoutOwner` answers FORBIDDEN when there is no
+`orgId` or when the caller holds no `org.billing.manage` in that target org
+(since phase 5b the check is the `has_permission` RPC on the target org, never a
+role name or the account type), not
 because of a persona family; `lite` is refused by the **audience** rule — a personal
 plan whose `audience` (`educator`) is not the caller's account type.
 

@@ -28,7 +28,7 @@ export type MockWebhookEvent = {
   org_id?: string;
 };
 
-type MockCheckoutRules = Pick<StripeBillingRepository, 'getPlan' | 'isOrgAdmin'>;
+type MockCheckoutRules = Pick<StripeBillingRepository, 'getPlan' | 'canManageBilling'>;
 type MockEntitlements = Pick<EntitlementService, 'applyPlan'>;
 
 /**

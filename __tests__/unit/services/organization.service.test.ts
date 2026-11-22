@@ -136,6 +136,12 @@ describe('OrganizationService', () => {
   });
 
   describe('delete', () => {
+    const orgAdminCtx: RequestContext = {
+      ...ctx,
+      activeOrgId: 'org-1',
+      permissionScopes: { 'org.admin': 'organization' },
+    };
+
     it('returns FORBIDDEN without touching the admin client when the active org differs', async () => {
       const userClient = { rpc: vi.fn(), from: vi.fn() };
       const adminClient = { from: vi.fn() };
@@ -144,7 +150,7 @@ describe('OrganizationService', () => {
         () => adminClient,
       );
 
-      const result = await service.delete({ ...ctx, activeOrgId: 'other-org' }, 'org-1');
+      const result = await service.delete({ ...orgAdminCtx, activeOrgId: 'other-org' }, 'org-1');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
@@ -152,32 +158,61 @@ describe('OrganizationService', () => {
       expect(adminClient.from).not.toHaveBeenCalled();
     });
 
-    it('returns FORBIDDEN when the caller is not an org manager', async () => {
-      const userClient = {
-        rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
-        from: vi.fn(),
-      };
+    it('returns FORBIDDEN for a caller holding only org.member.manage, not org.admin', async () => {
+      const userClient = { rpc: vi.fn(), from: vi.fn() };
       const adminClient = { from: vi.fn() };
       service = new OrganizationService(
         () => Promise.resolve(userClient),
         () => adminClient,
       );
 
-      const result = await service.delete({ ...ctx, activeOrgId: 'org-1' }, 'org-1');
+      const result = await service.delete(
+        {
+          ...orgAdminCtx,
+          permissionScopes: { 'org.member.manage': 'organization' },
+        },
+        'org-1',
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
-      expect(userClient.rpc).toHaveBeenCalledWith('rls_caller_is_org_manager', {
-        p_organization_id: 'org-1',
-      });
+      expect(userClient.rpc).not.toHaveBeenCalled();
       expect(adminClient.from).not.toHaveBeenCalled();
     });
 
-    it('deletes the organization when the caller is its manager', async () => {
-      const userClient = {
-        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
-        from: vi.fn(),
-      };
+    it('returns FORBIDDEN when org.admin is held below organization scope', async () => {
+      const adminClient = { from: vi.fn() };
+      service = new OrganizationService(
+        () => Promise.resolve({ from: vi.fn() }),
+        () => adminClient,
+      );
+
+      const result = await service.delete(
+        { ...orgAdminCtx, permissionScopes: { 'org.admin': 'group' } },
+        'org-1',
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(adminClient.from).not.toHaveBeenCalled();
+    });
+
+    it('returns NOT_FOUND for a missing organization, after the authority checks', async () => {
+      const adminClient = { from: vi.fn() };
+      adminClient.from.mockReturnValueOnce(chain(null, { code: 'PGRST116', message: 'no rows' }));
+      service = new OrganizationService(
+        () => Promise.resolve({ from: vi.fn() }),
+        () => adminClient,
+      );
+
+      const result = await service.delete(orgAdminCtx, 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('deletes the organization for an org.admin holder at organization scope', async () => {
+      const userClient = { rpc: vi.fn(), from: vi.fn() };
       const adminClient = { from: vi.fn() };
       adminClient.from.mockReturnValueOnce(chain({ id: 'org-1' })).mockReturnValueOnce(chain(null));
       service = new OrganizationService(
@@ -185,9 +220,11 @@ describe('OrganizationService', () => {
         () => adminClient,
       );
 
-      const result = await service.delete({ ...ctx, activeOrgId: 'org-1' }, 'org-1');
+      const result = await service.delete(orgAdminCtx, 'org-1');
 
       expect(result.success).toBe(true);
+      // No marker RPC is called anymore: the context permission is the whole gate.
+      expect(userClient.rpc).not.toHaveBeenCalled();
       expect(adminClient.from).toHaveBeenNthCalledWith(1, 'organizations');
       expect(adminClient.from).toHaveBeenNthCalledWith(2, 'organizations');
     });

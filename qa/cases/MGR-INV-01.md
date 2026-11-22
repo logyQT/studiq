@@ -46,6 +46,12 @@ bun scripts/qa-tenant.ts MGR-INV-01 --fresh   # new org + users per independent 
   exactly as in the case.
 - **Roles**: the org's trigger-created defaults; „member” is the `member` role, whose
   display name is „Student”.
+- **Invite authority (ADR-0015 §4.4, enforced since phase 5b)**: an org invite needs
+  `org.invitation.manage` **and** the target role must be grantable by the caller —
+  an `org.admin` holder may invite into any role, a mere capability holder only into
+  roles whose keys they hold at covering scopes (`can_assign_org_role`). The seeded
+  `admin` role holds `org.admin`, so every system role stays grantable here; no fixture
+  grants by role name.
 - **Profile**: `content` (the default, so no entry is needed in `__tests__/qa/profiles/<CASE>.json`).
 
 ## Walk observations (shared app, pl)

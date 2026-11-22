@@ -60,7 +60,7 @@ function createRepository(
 ): StripeBillingRepository {
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn(),
-    isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+    canManageBilling: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -117,14 +117,23 @@ describe('BillingService.cancelSubscription', () => {
     });
   });
 
-  it('refuses an org caller without org.billing.manage before touching Stripe', async () => {
+  it('uses the personal owner for a caller without org.billing.manage, never the org row', async () => {
+    // The active org alone never makes an org owner: without the key the
+    // subscription actions act on the caller's own row (operator decision
+    // 2026-11-22), so the org subscription is never read or written.
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.cancelSubscription(memberCtx, true)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    });
-    expect(repository.findActiveSubscription).not.toHaveBeenCalled();
-    expect(gateway.cancelAtPeriodEnd).not.toHaveBeenCalled();
+    await service.cancelSubscription(memberCtx, true);
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.cancelAtPeriodEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
   });
 
   it('returns NOT_FOUND when there is no active subscription', async () => {
@@ -210,15 +219,14 @@ describe('BillingService.cancelSubscription', () => {
     });
   });
 
-  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
-    // Ordering proof: the authority check runs before the driver decision, so a
-    // non-holder is 403'd rather than told the mock has no provider action.
+  it('answers NOT_FOUND on the mock driver for a caller without org.billing.manage (personal owner, no provider action)', async () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.cancelSubscription(memberCtx, true)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+    await expect(service.cancelSubscription(memberCtx, true)).resolves.toEqual({
+      success: false,
+      error: 'NOT_FOUND',
     });
     expect(gateway.cancelAtPeriodEnd).not.toHaveBeenCalled();
   });

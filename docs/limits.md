@@ -194,10 +194,11 @@ layers now membership-verified through the single resolver (phase 3b):
 1. **Seated student/educator in a verified org** → the seat plan
    (`org_seat_assignments` → `org_seat_pools.plan_key`). The seat feature
    upgrade (#270) is unchanged.
-2. **Manager in a verified org** → `organizations.plan`. Managers are the org's
-   billing contact, so they keep seeing the org subscription (#181). An
+2. **A caller holding `org.billing.manage` in a verified org** →
+   `organizations.plan` (phase 4a/5b: the key, not the persona, is the org's
+   billing contact, so they keep seeing the org subscription — #181). An
    organization purchase changes only `organizations.plan`: it never writes the
-   buyer's `personal_plan_key` (#228), so the manager's personal plan stays the
+   buyer's `personal_plan_key` (#228), so the buyer's personal plan stays the
    free tier outside an organization. Inside a verified org personal never
    applies and `organizations.plan` is NOT NULL, so there is no personal
    fallback on this path.

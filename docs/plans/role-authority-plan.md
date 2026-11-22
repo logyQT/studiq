@@ -28,7 +28,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 2     | authority cutover + control-plane RLS          | merged                           | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
 | 3     | entitlements and limits                        | active (3d, `feat/authority-3d`) | —           | —   | LIM, BIL, STU             | 2026-11-22 |
 | 4     | seats and personal plans                       | active (4a, `feat/authority-4a`) | —           | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | active (5a, `feat/authority-5a`) | —           | —   | STU, EDU, MGR, PUB        | 2026-11-22 |
+| 5     | enforcement closure                            | active (5b, `feat/authority-5b`) | —           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-22 |
 | 6     | UI and cache                                   | pending                          | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending                          | —           | —   | all 188 + E2E             |            |
 | 8     | extendability audit (release gate)             | pending                          | —           | —   | all 188 + E2E             | 2026-11-19 |
@@ -43,14 +43,15 @@ exceptions (R5 org/classroom creation), pinned by
 are named with owners in the 2b-9 deferral register. **Phase 4a is merged**
 (#1410, `c9c14138`): the four plan-resolution rows the register named to phase
 4 are closed (D32–D34, block below); 3c and 3d are delivered below and the
-Teacher content-read gap is closed (D29). **Phase 5a is active on
-`feat/authority-5a` (2026-11-22):** the register's `ai/*` route row and the
-branding row are closed — both `ai/*` routes gate on
-`requireEntitlement('ai.chat')`, branding is `org.settings.manage` **and**
-`requireEntitlement('branding')`, and `lib/features.ts` (`requireFeature`) is
-deleted in favour of `lib/entitlements.ts`; register rows 3–12 remain with
-phase 5 (5a added row 12 — the unenforced `quiz.builder`/`advanced.stats`
-entitlements the register had missed).
+Teacher content-read gap is closed (D29). **Phase 5a is merged** (#1411,
+`0fb14a7e`): the register's `ai/*` route row and the branding row are closed —
+both `ai/*` routes gate on `requireEntitlement('ai.chat')`, branding is
+`org.settings.manage` **and** `requireEntitlement('branding')`, and
+`lib/features.ts` (`requireFeature`) is deleted in favour of
+`lib/entitlements.ts`. **Phase 5b is active on `feat/authority-5b`
+(2026-11-22):** register rows 7–9 are closed (the billing owner + checkout
+resolver, org delete, the §4.4 invite conjunct — dated note in the 2b-9 block
+below); rows 3–6 and 10–12 remain with phase 5.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -127,6 +128,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R37 | A validation rule that is catalog data must be read from the table in the same query that guards the write (FK embed), never from a TS constant: the constant becomes a second copy of the catalog that silently allows what the table forbids.                                                                                                                                                                   | 4a: `PLAN_TIER_MAP` was a hardcoded second copy of `for_account_type` and let any plan key mint a seat pool; `addPool`/`assignSeat` now read `seat_eligible`/`audience` from `entitlement_catalog`/`subscription_plans` embeds in the one query they already make                                                                                                                                                                                                                                                             |
 | R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT (and an anon SELECT policy — the grant alone returns zero rows); the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it                                                                                                             |
 | R39 | When a persona gate is replaced by an entitlement, the old negative QA case keeps passing for the wrong reason — the negative tenant's plan lacks the entitlement too — so the slice must also pin the _positive_ path (a persona whose plan carries the key reaches the handler), or the removal of a persona gate can silently turn an authorization boundary into nobody's job.                                | 5a: SEC-07's manager sits on `launch`, which carries no `ai.chat`, so its 403 cannot tell a persona gate from an entitlement gate; the positive path is pinned by MGR-02, whose `hub` tenant carries `ai.chat` and whose manager reaches the handler (400 on an empty body), and inside SEC-07's own tenant by its student moved to the paid `ace` personal plan (`ai.chat` is `personalPortable`, so the key carries inside the `launch` org: `features/me` contains it, `ai/usage` 200 `limit 200000`, empty-body chat 400) |
+| R40 | One source per rule holds in SQL too: an actor-parameterized helper owns the predicate and the `rls_caller_*` wrapper is a one-line delegate — two copies of a scope-rank rule drift. And a TS check that re-derives a value the code already derives from the same permission is dead code: delete it with the derivation, never keep it as a second rule.                                                       | 5b: `can_assign_org_role` got the §4.4 conjunct only after `covers_permission` was factored out of `rls_caller_covers_permission` (a second `case`-rank copy would have drifted from `scopeCovers`); `assertOrgBillingAuthority` was deleted because `ownerFromContext` derives the org owner from the very `org.billing.manage` the check re-asked                                                                                                                                                                           |
 
 ## 4. Decisions
 
@@ -3488,6 +3490,58 @@ no phase-5 enforcement):**
   matrix, and the row 5a added — `quiz.builder`/`advanced.stats` have no
   enforcement at all) — each still owned by phase 5.
 
+  **2026-11-22 (phase 5b, `feat/authority-5b`): register rows 7–9 are closed.**
+  - **Row 7 (billing owner + checkout resolver) — operator decision
+    2026-11-22: billing is `org.billing.manage`, never the account type.**
+    `ownerFromContext` (`billing.service.ts`) is org iff
+    `ctx.activeOrgId != null && hasPermission(ctx, ORG_BILLING_MANAGE)`;
+    `assertOrgBillingAuthority` is deleted with both call sites (with the
+    owner derived from the permission it was dead code), and
+    `BillingReadRepository.findSubscription` now takes the resolved
+    `PaymentOwner`, so there is exactly one owner derivation.
+    `resolveCheckoutOwner`'s org half checks `canManageBilling(orgId, userId)`
+    — the `has_permission` definer RPC on the admin client — instead of the
+    role name `admin` (`isOrgAdmin` is deleted from `CheckoutRulePort`, the
+    repository and every mock). The target org stays explicit with **no
+    active-org equality**: a caller who manages billing in org B but not in A
+    may buy for B and is refused for A. An unprivileged member keeps reading
+    their own personal row (the consequence the register flagged is not
+    accepted). **Residual for phase 6:** the `/checkout` page gate
+    (`apps/web/src/lib/checkout-org.ts`) is still the cosmetic role-name
+    check — a Billing-preset holder is API-allowed but not yet shown the org
+    checkout control.
+  - **Row 8 (org delete): `organization.service.ts#delete` now authorizes on
+    `scopeCovers(ctx.permissionScopes['org.admin'], 'organization')`** and the
+    `rls_caller_is_org_manager` RPC call is deleted. **No RLS twin by
+    construction:** `organizations` deliberately has no DELETE policy
+    (deletion is service-role only) — verified over the live stack
+    (`pg_policies` for `organizations`: SELECT/UPDATE only, no DELETE row).
+    The live-SQL audit also found **0 policies, 0 live functions and 0
+    triggers referencing `rls_caller_is_org_manager`/`is_org_manager`** — the
+    two helpers still exist as definitions (older migrations create them) but
+    are unreferenced; their deletion is left to phase 7 as planned.
+  - **Row 9 (§4.4 "grant only what you hold"): migration
+    `20261122180000_can_assign_grant_only_what_you_hold.sql`** factors the
+    covers logic into one `public.covers_permission(p_actor, p_org, p_key,
+p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
+    re-expresses `rls_caller_covers_permission` as a one-line delegate, and
+    rewrites `can_assign_org_role` as `org.invitation.manage` AND
+    (`org.admin`@organization OR every non-null-scope target-role row is an
+    assignable key the caller covers). A closing DO block fails the migration
+    if the live definition drops `covers_permission`/`assignable`/`is not null`
+    or the helper loses its grants. `database.ts` regenerated with the pinned
+    CLI (`bun run env:supa gen types typescript --schema public` + `bun fmt`):
+    byte-identical to the committed file except the new `covers_permission`
+    entry. Pinned consequences: a capability holder who is not `org.admin`
+    can never invite into the system Admin role; an `org.admin` holder can
+    invite into any role; NULL-scope rows are revocations and ignored (the
+    column is NOT NULL today, so that branch is pinned by the migration's
+    guard, not by a live row). **QA gap recorded:** no QA case covers org
+    deletion (`DELETE /api/v1/organization/[id]` — the route does not exist
+    yet, phase 7 owns it); no case was invented here.
+
+  **Rows 3–6 and 10–12 remain** with phase 5.
+
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
 - **Gates:** `test:unit`, `typecheck:all` + `typecheck:admin`, `lint:all`,
@@ -3952,6 +4006,52 @@ Rule: R38.
   which builder/statistics surfaces are paid comes first). No `documents`
   surface exists (D22), so nothing is silently ungated there.
 
+**5b on `feat/authority-5b` (2026-11-22) — billing owner, org delete, §4.4
+invite conjunct (register rows 7–9):**
+
+- `billing.service.ts`: `ownerFromContext` is org iff
+  `activeOrgId != null && hasPermission(ctx, ORG_BILLING_MANAGE)` (operator
+  decision 2026-11-22); `assertOrgBillingAuthority` deleted with both call
+  sites; `billing-read.repository.ts#findSubscription` takes the resolved
+  `PaymentOwner` (one owner derivation; the `org.billing.manage` RLS branch on
+  `billing_subscriptions` stays the data-plane boundary).
+- `checkout-rules.ts` + `stripe-repository.ts` + `mock-stripe.service.ts`:
+  `isOrgAdmin` → `canManageBilling`, implemented with the `has_permission`
+  definer RPC on the admin client; `resolveCheckoutOwner` proves
+  `org.billing.manage` **in the explicit target org** (no active-org
+  equality — buy for B while A is active is allowed iff the caller may bill
+  B). `apps/web/src/lib/checkout-org.ts` keeps its cosmetic role-name gate;
+  comment updated, phase 6 aligns the UI (residual).
+- `organization.service.ts#delete`: `rls_caller_is_org_manager` RPC deleted,
+  replaced by `scopeCovers(ctx.permissionScopes['org.admin'], 'organization')`;
+  active-org and NOT_FOUND ordering unchanged. No RLS twin by construction
+  (`organizations` has no DELETE policy — live-verified); the marker helpers
+  are unreferenced by any live policy/function/trigger (live-verified) and
+  stay for phase 7 to drop.
+- Migration `20261122180000_can_assign_grant_only_what_you_hold.sql`:
+  `covers_permission(p_actor, p_org, p_key, p_scope)` is the one definition,
+  `rls_caller_covers_permission` is a one-line delegate,
+  `can_assign_org_role` = `org.invitation.manage` AND (`org.admin`@organization
+  OR every non-null-scope target row is assignable AND covered), closing DO
+  guard pins the live definition + grants. `database.ts` regenerated with the
+  pinned CLI (diff = the new `covers_permission` entry only).
+- Tests: unit — owner-derivation table (manager w/o key → personal; student
+  with key → org; manager with key → org; no active org → personal),
+  `resolveCheckoutOwner` (billing-manager yes; no key in target org refused;
+  no org id → FORBIDDEN; explicit non-active target org checked),
+  `findSubscription` owner scoping, org delete (org.admin@organization yes;
+  `org.member.manage`-only refused; `org.admin`@group refused; foreign org 403;
+  missing org 404). Integration (coordinator's stack) — new
+  `can-assign-org-role.test.ts` (four §4.4 cases via API + PostgREST +
+  `rls_caller_can_assign_org_role`, member/foreign stay green),
+  `org-delete-permission.test.ts` (controller driven with a real
+  `withAuth` ctx — no DELETE route exists yet), `billing-permission-api.test.ts`
+  extended (educator on the Billing preset reads the org subscription; checkout
+  for non-active org B from a Billing holder in B; member refused).
+- QA text: BIL-04/BIL-05 prose moved to the permission model; MGR-INV-01
+  documents the §4.4 invite authority. Org-delete QA gap recorded in the
+  register note (no case exists; none invented).
+
 **Difficulty log**
 
 #### 2026-11-22 — replacing a persona gate with an entitlement needs a positive QA pin, not just the old negative case
@@ -3975,7 +4075,26 @@ handler (400 on an empty body), which is what makes the boundary plan-driven
 instead of persona-driven.
 Rule: R39.
 
-_Not started beyond 5a._
+#### 2026-11-22 — an owner derived from a permission makes the re-check dead code, and SQL predicates need one definition too
+
+What: row 7 deleted `assertOrgBillingAuthority` — once `ownerFromContext`
+derives the org owner from `org.billing.manage` itself, a check that asks the
+same permission again is a second rule that can only disagree later. Row 9
+hit the same shape in SQL: `rls_caller_covers_permission` carried the whole
+scope-rank `case`, and `can_assign_org_role` needed the same logic for an
+explicit actor, so the predicate was factored into `covers_permission` and the
+wrapper became `select public.covers_permission(auth.uid(), …)` — a second
+copy of the rank table would have drifted from `scopeCovers` in @studiq/authz
+the first time either changed.
+Why: "one source per rule" was a TS-side rule; the slice proved it applies to
+SQL helpers and to checks layered on a derivation.
+Fix: delete the redundant check with the derivation it duplicates; in SQL,
+the actor-parameterized helper owns the predicate and the `rls_caller_*`
+wrapper is a one-line delegate, with the migration's closing guard failing if
+the wrapper stops delegating (still reading the tables itself).
+Rule: R40.
+
+_Not started beyond 5b._
 
 ### Phase 6 — UI and cache
 

@@ -2671,6 +2671,10 @@ export type Database = {
         Args: { p_filter_type?: string; p_organization_id?: string; p_user_id: string };
         Returns: number;
       };
+      covers_permission: {
+        Args: { p_actor: string; p_key: string; p_org: string; p_scope: string };
+        Returns: boolean;
+      };
       get_accessible_flashcard_decks: {
         Args: { p_deck_id?: string; p_org_id?: string; p_user_id: string };
         Returns: {

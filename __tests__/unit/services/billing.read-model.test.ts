@@ -114,7 +114,7 @@ function createRepository(
 ): StripeBillingRepository {
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(success(catalogPlan())),
-    isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+    canManageBilling: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -240,7 +240,10 @@ describe('BillingService.getSubscription', () => {
         hostedInvoiceUrl: null,
       },
     });
-    expect(reads.findSubscription).toHaveBeenCalledWith(studentCtx, false);
+    expect(reads.findSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+      false,
+    );
     expect(reads.findLatestHostedInvoiceUrl).not.toHaveBeenCalled();
   });
 
@@ -445,7 +448,10 @@ describe('BillingService.getSubscription', () => {
 
     await service.getSubscription(managerCtx);
 
-    expect(reads.findSubscription).toHaveBeenCalledWith(managerCtx, false);
+    expect(reads.findSubscription).toHaveBeenCalledWith(
+      { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
     expect(reads.findLatestHostedInvoiceUrl).toHaveBeenCalledWith({
       userId: 'u-9',
       organizationId: 'org-1',
@@ -453,17 +459,45 @@ describe('BillingService.getSubscription', () => {
     });
   });
 
-  it('does not advertise org actions without org.billing.manage', async () => {
+  it('resolves a caller without org.billing.manage to their personal row, never the org one', async () => {
     reads = createReads({
       findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
     });
     service = new BillingService(gateway, repository, reads, plans);
+    // A manager whose role lacks the key: no org owner, so the read is scoped
+    // to their own row (RLS would hide the org row anyway).
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.getSubscription(memberCtx)).resolves.toMatchObject({
-      success: true,
-      data: { canManagePortal: false, canChangePlan: false, canCancel: false },
+    await service.getSubscription(memberCtx);
+
+    expect(reads.findSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(reads.findLatestHostedInvoiceUrl).toHaveBeenCalledWith({
+      userId: 'u-9',
+      organizationId: null,
+      stripeSubscriptionId: 'sub_1',
     });
+  });
+
+  it('resolves a student holding org.billing.manage to the org row', async () => {
+    reads = createReads({
+      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
+    });
+    service = new BillingService(gateway, repository, reads, plans);
+    const billingStudentCtx: RequestContext = {
+      ...studentCtx,
+      activeOrgId: 'org-1',
+      permissionScopes: { 'org.billing.manage': 'organization' },
+    };
+
+    await service.getSubscription(billingStudentCtx);
+
+    expect(reads.findSubscription).toHaveBeenCalledWith(
+      { type: 'org', orgId: 'org-1', userId: 'u-1', accountType: AccountType.STUDENT },
+      false,
+    );
   });
 
   it('propagates an RLS/read failure', async () => {
@@ -517,7 +551,7 @@ describe('BillingService.createPortalSession', () => {
       locale: 'pl',
     });
     expect(repository.findCustomer).not.toHaveBeenCalled();
-    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+    expect(repository.canManageBilling).not.toHaveBeenCalled();
   });
 
   it('returns the educator billing page for an educator', async () => {
@@ -532,7 +566,7 @@ describe('BillingService.createPortalSession', () => {
     );
   });
 
-  it('never treats a seated educator as an organization owner', async () => {
+  it('resolves an educator in an org without org.billing.manage to a personal owner', async () => {
     const educatorCtx = {
       ...studentCtx,
       accountType: AccountType.EDUCATOR,
@@ -541,7 +575,7 @@ describe('BillingService.createPortalSession', () => {
 
     await service.createPortalSession(educatorCtx);
 
-    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+    expect(repository.canManageBilling).not.toHaveBeenCalled();
     expect(gateway.createPortalSession).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.EDUCATOR },
@@ -550,7 +584,29 @@ describe('BillingService.createPortalSession', () => {
     );
   });
 
-  it('resolves a manager without an organization as a personal owner', async () => {
+  it('resolves an educator holding org.billing.manage (Billing preset) to the org owner', async () => {
+    const billingEducatorCtx: RequestContext = {
+      ...studentCtx,
+      accountType: AccountType.EDUCATOR,
+      activeOrgId: 'org-1',
+      permissionScopes: { 'org.billing.manage': 'organization' },
+    };
+
+    await service.createPortalSession(billingEducatorCtx, 'en');
+
+    expect(repository.findCustomer).toHaveBeenCalledWith(
+      { type: 'org', orgId: 'org-1', userId: 'u-1', accountType: AccountType.EDUCATOR },
+      false,
+    );
+    expect(gateway.createPortalSession).toHaveBeenCalledWith({
+      owner: { type: 'org', orgId: 'org-1', userId: 'u-1', accountType: AccountType.EDUCATOR },
+      customerId: 'cus_1',
+      returnUrl: 'https://studiq.test/edu/billing',
+      locale: 'en',
+    });
+  });
+
+  it('resolves a manager without an organization as a personal owner, key or not', async () => {
     const managerWithoutOrg = { ...managerCtx, activeOrgId: null };
 
     await service.createPortalSession(managerWithoutOrg);
@@ -563,7 +619,25 @@ describe('BillingService.createPortalSession', () => {
     );
   });
 
-  it('requires org.billing.manage and resolves the organization customer', async () => {
+  it('resolves a manager whose role lacks org.billing.manage to a personal owner', async () => {
+    // The active org alone never makes an org owner: without the key the
+    // caller keeps their personal row (the operator decision of 2026-11-22).
+    const shallowManagerCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+
+    await service.createPortalSession(shallowManagerCtx);
+
+    expect(repository.findCustomer).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.createPortalSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
+  });
+
+  it('resolves the organization customer for an org.billing.manage holder', async () => {
     await service.createPortalSession(managerCtx, 'en');
 
     expect(repository.findCustomer).toHaveBeenCalledWith(
@@ -576,16 +650,6 @@ describe('BillingService.createPortalSession', () => {
       returnUrl: 'https://studiq.test/manage/billing',
       locale: 'en',
     });
-  });
-
-  it('refuses an organization caller without org.billing.manage', async () => {
-    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
-
-    await expect(service.createPortalSession(memberCtx)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    });
-    expect(repository.findCustomer).not.toHaveBeenCalled();
-    expect(gateway.createPortalSession).not.toHaveBeenCalled();
   });
 
   it('returns NOT_FOUND when the owner has no Stripe customer mapping', async () => {

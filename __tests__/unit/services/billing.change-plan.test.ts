@@ -77,6 +77,16 @@ const CATALOG: Record<string, CatalogPlan> = {
     audience: null,
     sortOrder: 4,
   },
+  solo: {
+    key: 'solo',
+    name: 'StudiQ Solo',
+    priceMonthly: 1999,
+    currency: 'PLN',
+    isActive: true,
+    scope: 'personal',
+    audience: 'manager',
+    sortOrder: 5,
+  },
 };
 
 function listedPrice(plan: CatalogPlan): ListedPrice {
@@ -125,7 +135,7 @@ function createRepository(
     getPlan: vi
       .fn()
       .mockImplementation((key: string) => Promise.resolve(success(CATALOG[key] ?? null))),
-    isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
+    canManageBilling: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -233,14 +243,30 @@ describe('BillingService.changePlan', () => {
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 
-  it('requires org.billing.manage before reading the subscription', async () => {
+  it('resolves a caller without org.billing.manage to the personal owner (org plans refused, personal targets bought for the user)', async () => {
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.changePlan(memberCtx, 'team')).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+    // An organization plan can never attach to the personal owner, so the
+    // subscription is never read for this target.
+    await expect(service.changePlan(memberCtx, 'team')).resolves.toEqual({
+      success: false,
+      error: 'FORBIDDEN',
     });
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
     expect(gateway.changePlan).not.toHaveBeenCalled();
+
+    // A personal plan of the caller's audience goes through on the user owner.
+    await service.changePlan(memberCtx, 'solo');
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.changePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
   });
 
   it('returns NOT_FOUND when the owner has no active subscription', async () => {
@@ -430,15 +456,14 @@ describe('BillingService.changePlan', () => {
     });
   });
 
-  it('refuses an org caller without org.billing.manage before the mock driver answers', async () => {
-    // Ordering proof: the authority check runs before the driver decision, so a
-    // non-holder is 403'd rather than told the mock has no provider action.
+  it('answers NOT_FOUND on the mock driver for a caller without org.billing.manage (personal owner, no provider action)', async () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.changePlan(memberCtx, 'team')).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+    await expect(service.changePlan(memberCtx, 'solo')).resolves.toEqual({
+      success: false,
+      error: 'NOT_FOUND',
     });
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });

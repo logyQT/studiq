@@ -14,7 +14,13 @@ import { failure, isFailure, success, type ServiceResult } from '@studiq/server/
  */
 export interface CheckoutRulePort {
   getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>>;
-  isOrgAdmin(orgId: string, userId: string): Promise<ServiceResult<boolean>>;
+  /**
+   * Whether `userId` holds `org.billing.manage` in `orgId`, evaluated at the
+   * database (the `has_permission` definer RPC), never by role name and never
+   * from a request context — the resolver is shared with the mock-completion
+   * path, which has no ctx.
+   */
+  canManageBilling(orgId: string, userId: string): Promise<ServiceResult<boolean>>;
 }
 
 export interface ResolvedPlan {
@@ -79,11 +85,18 @@ export async function resolvePurchasablePlan(
 
 /**
  * Resolve the billing owner from the authenticated caller, never from the
- * request body. An organization plan requires an explicit org id and a current
- * `admin` membership; the caller is recorded as the purchaser.
+ * request body. An organization plan requires an explicit org id and
+ * `org.billing.manage` **in that target org**; the caller is recorded as the
+ * purchaser.
+ *
+ * The target org is explicit and need not be the active one: authority is
+ * proven in the target org itself, so a caller who manages billing in org B
+ * but not in A may buy for B and is refused for A. There is deliberately no
+ * active-org equality requirement here (ADR-0015 phase 5b, 2b-9 register
+ * row 7).
  */
 export async function resolveCheckoutOwner(
-  port: Pick<CheckoutRulePort, 'isOrgAdmin'>,
+  port: Pick<CheckoutRulePort, 'canManageBilling'>,
   plan: ResolvedPlan,
   caller: CheckoutCaller,
   orgId?: string,
@@ -96,9 +109,9 @@ export async function resolveCheckoutOwner(
   // authorization answer, not a syntax one (BIL-05 stays a 403).
   if (!orgId) return failure('FORBIDDEN');
 
-  const admin = await port.isOrgAdmin(orgId, caller.userId);
-  if (isFailure(admin)) return admin;
-  if (!admin.data) return failure('FORBIDDEN');
+  const canManage = await port.canManageBilling(orgId, caller.userId);
+  if (isFailure(canManage)) return canManage;
+  if (!canManage.data) return failure('FORBIDDEN');
 
   return success({
     type: 'org',

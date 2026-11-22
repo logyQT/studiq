@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { PaymentOwner } from '@studiq/server/lib/payment/payment-gateway';
 import { success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
@@ -13,8 +13,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * caller's session client. `billing_subscriptions` has an own-row and an
  * `org.billing.manage` SELECT policy, so RLS is the authorization boundary: a
  * member without the key gets no organization row instead of a service-role
- * read that would have to re-check the role by hand. Provider actions (portal,
- * change plan, cancel) check the same key in the service.
+ * read that would have to re-check the role by hand. The owner is resolved
+ * once by the service (`org.billing.manage` in the active org ⇒ org owner) and
+ * passed in, so this repository never re-derives it.
  */
 export interface SubscriptionReadRow {
   stripeSubscriptionId: string;
@@ -38,7 +39,7 @@ export interface HostedInvoiceQuery {
 
 export interface BillingReadRepository {
   findSubscription(
-    ctx: RequestContext,
+    owner: PaymentOwner,
     livemode: boolean,
   ): Promise<ServiceResult<SubscriptionReadRow | null>>;
   /**
@@ -57,7 +58,7 @@ export class SupabaseBillingReadRepository implements BillingReadRepository {
   ) {}
 
   async findSubscription(
-    ctx: RequestContext,
+    owner: PaymentOwner,
     livemode: boolean,
   ): Promise<ServiceResult<SubscriptionReadRow | null>> {
     const supabase = await this.clientFactory();
@@ -69,14 +70,14 @@ export class SupabaseBillingReadRepository implements BillingReadRepository {
       )
       .eq('livemode', livemode);
 
-    // A manager's active organization owns the subscription; everyone else
-    // reads their own row. The organization id is a hint from the session
-    // cookie, and the `org.billing.manage` RLS branch decides whether the row
-    // is visible.
+    // The owner is the one the service resolved (org iff the caller holds
+    // `org.billing.manage` in the active org); the persona plays no part. The
+    // `org.billing.manage` RLS branch still decides whether the organization
+    // row is visible to this caller at all.
     const scoped =
-      ctx.accountType === AccountType.MANAGER && ctx.activeOrgId
-        ? base.eq('organization_id', ctx.activeOrgId)
-        : base.eq('user_id', ctx.userId);
+      owner.type === 'org'
+        ? base.eq('organization_id', owner.orgId)
+        : base.eq('user_id', owner.userId);
 
     const { data, error } = await scoped.order('updated_at', { ascending: false }).limit(10);
 

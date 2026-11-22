@@ -1,4 +1,3 @@
-import { isOrgAdminRole } from '@studiq/authz';
 import type { BillingCycle, PaymentOwner } from '@studiq/server/lib/payment/payment-gateway';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -84,7 +83,12 @@ export function validateListedPrice(
 
 export interface StripeBillingRepository {
   getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>>;
-  isOrgAdmin(orgId: string, userId: string): Promise<ServiceResult<boolean>>;
+  /**
+   * `org.billing.manage` in `orgId` for `userId`, read through the
+   * `has_permission` definer RPC on the admin client — a permission check,
+   * never a role-name one.
+   */
+  canManageBilling(orgId: string, userId: string): Promise<ServiceResult<boolean>>;
   findCustomer(
     owner: PaymentOwner,
     livemode: boolean,
@@ -188,20 +192,16 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     return readCatalogPlan(this.createAdminClient, planKey);
   }
 
-  async isOrgAdmin(orgId: string, userId: string): Promise<ServiceResult<boolean>> {
+  async canManageBilling(orgId: string, userId: string): Promise<ServiceResult<boolean>> {
     const supabase = this.createAdminClient();
-    const { data, error } = await supabase
-      .from('org_members')
-      .select('org_roles!inner(name)')
-      .eq('organization_id', orgId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('has_permission', {
+      p_actor: userId,
+      p_organization_id: orgId,
+      p_permission: 'org.billing.manage',
+    });
 
     if (error) return toDbFailure(error);
-
-    const role = data?.org_roles as { name?: string } | { name?: string }[] | undefined;
-    const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
-    return success(isOrgAdminRole(roleName));
+    return success(data);
   }
 
   async findCustomer(

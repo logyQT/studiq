@@ -342,6 +342,17 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 > `org.admin`@organization, system roles not deletable) now hold at the
 > table as well as the API — `org_role_permissions` writes go through
 > `rls_caller_may_set_role_permission`; see the §9 note (R4/FP-01 closed).
+>
+> **2026-11-22 (phase 5b).** The last §4.4 gap is closed: the invite helper
+> `can_assign_org_role` now requires `org.invitation.manage` **and**
+> (`org.admin`@organization **or** every target-role row with a non-null scope
+> is an assignable key the caller covers at that scope) — the conjunct the
+> 2b-5 review note left open. The covers logic lives in exactly one place,
+> `public.covers_permission(p_actor, p_org, p_key, p_scope)`;
+> `rls_caller_covers_permission` is a one-line delegate to it
+> (`20261122180000`). Consequence: a capability holder who is not `org.admin`
+> can no longer mint an org invite targeting the system Admin role; an
+> `org.admin` holder can invite into any role.
 
 ---
 
@@ -811,6 +822,19 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > list: both routes now gate on `requireEntitlement(ctx, 'ai.chat')` as the
 > first handler statement, so exactly two declared exceptions remain (the R5
 > creation routes), pinned by `persona-gates.test.ts`.
+>
+> **2026-11-22 (phase 5b).** The billing owner and the checkout resolver left
+> the register: `ownerFromContext` resolves the **org** owner iff the caller
+> holds `org.billing.manage` in the active org (operator decision — persona
+> never decides; a student/educator on the Billing preset or Admin reaches org
+> billing, a shallow manager keeps only their personal row), and
+> `resolveCheckoutOwner` proves `org.billing.manage` **in the explicit target
+> org** through the `has_permission` RPC — the target org need not be the
+> active one and there is deliberately no active-org equality, so a caller
+> who may bill org B but not A can buy for B and is refused for A. The old
+> role-name checks (`isOrgAdmin`, `rls_caller_is_org_manager` in org delete,
+> now `org.admin` at organization scope via `scopeCovers`) are deleted from
+> every server path; the `/checkout` page gate stays cosmetic until phase 6.
 
 ---
 

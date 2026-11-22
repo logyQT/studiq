@@ -1,4 +1,5 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { AccountType } from '@studiq/authz';
+import type { PaymentOwner } from '@studiq/server/lib/payment/payment-gateway';
 import { SupabaseBillingReadRepository } from '@studiq/server/lib/payment/billing-read.repository';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -37,23 +38,12 @@ function createClient(query: QueryDouble) {
   });
 }
 
-const studentCtx: RequestContext = {
-  traceId: 'test',
-  userId: 'u-1',
-  accountType: AccountType.STUDENT,
-  orgRoleId: null,
-  activeOrgId: null,
-  url: '',
-  method: 'GET',
-  groupIds: [],
-  permissionScopes: {},
-};
-
-const managerCtx: RequestContext = {
-  ...studentCtx,
+const userOwner: PaymentOwner = { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT };
+const orgOwner: PaymentOwner = {
+  type: 'org',
+  orgId: 'org-1',
   userId: 'u-9',
   accountType: AccountType.MANAGER,
-  activeOrgId: 'org-1',
 };
 
 describe('SupabaseBillingReadRepository.findSubscription', () => {
@@ -65,10 +55,10 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
     repository = new SupabaseBillingReadRepository(() => Promise.resolve(createClient(query)));
   });
 
-  it('scopes a manager with an active org to that organization', async () => {
+  it('scopes an org owner to that organization', async () => {
     query.limit.mockResolvedValueOnce({ data: [], error: null });
 
-    await repository.findSubscription(managerCtx, false);
+    await repository.findSubscription(orgOwner, false);
 
     expect(query.eq).toHaveBeenCalledWith('livemode', false);
     expect(query.eq).toHaveBeenCalledWith('organization_id', 'org-1');
@@ -76,28 +66,33 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
     expect(query.order).toHaveBeenCalledWith('updated_at', { ascending: false });
   });
 
-  it('scopes a seated student to their own row, never the organization', async () => {
+  it('scopes a personal owner to their own row, never the organization', async () => {
     query.limit.mockResolvedValueOnce({ data: [], error: null });
 
-    await repository.findSubscription({ ...studentCtx, activeOrgId: 'org-1' }, false);
+    await repository.findSubscription(userOwner, false);
 
     expect(query.eq).toHaveBeenCalledWith('user_id', 'u-1');
     expect(query.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
   });
 
-  it('scopes a manager without an org to their own row', async () => {
+  it('never re-derives the owner from the caller: the passed owner is the only input', async () => {
     query.limit.mockResolvedValueOnce({ data: [], error: null });
 
-    await repository.findSubscription({ ...managerCtx, activeOrgId: null }, false);
+    // An org owner whose user is a "student" persona is still scoped to the org:
+    // the persona plays no part once the service resolved the owner.
+    await repository.findSubscription(
+      { type: 'org', orgId: 'org-2', userId: 'u-1', accountType: AccountType.STUDENT },
+      false,
+    );
 
-    expect(query.eq).toHaveBeenCalledWith('user_id', 'u-9');
-    expect(query.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
+    expect(query.eq).toHaveBeenCalledWith('organization_id', 'org-2');
+    expect(query.eq).not.toHaveBeenCalledWith('user_id', expect.anything());
   });
 
   it('filters by the gateway livemode', async () => {
     query.limit.mockResolvedValueOnce({ data: [], error: null });
 
-    await repository.findSubscription(studentCtx, true);
+    await repository.findSubscription(userOwner, true);
 
     expect(query.eq).toHaveBeenCalledWith('livemode', true);
   });
@@ -127,7 +122,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
       error: null,
     });
 
-    const result = await repository.findSubscription(studentCtx, false);
+    const result = await repository.findSubscription(userOwner, false);
 
     expect(result).toEqual({
       success: true,
@@ -168,7 +163,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
       error: null,
     });
 
-    const result = await repository.findSubscription(studentCtx, false);
+    const result = await repository.findSubscription(userOwner, false);
 
     expect(result).toMatchObject({
       success: true,
@@ -179,13 +174,13 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
   it('returns null when the caller has no visible row', async () => {
     query.limit.mockResolvedValueOnce({ data: [], error: null });
 
-    await expect(repository.findSubscription(studentCtx, false)).resolves.toEqual(successNull());
+    await expect(repository.findSubscription(userOwner, false)).resolves.toEqual(successNull());
   });
 
   it('maps a database error instead of throwing', async () => {
     query.limit.mockResolvedValueOnce({ data: null, error: { code: '42501' } });
 
-    const result = await repository.findSubscription(studentCtx, false);
+    const result = await repository.findSubscription(userOwner, false);
 
     expect(result.success).toBe(false);
   });
