@@ -18,8 +18,9 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * The verdict of the walk (shared app, pl): the concern in the case text — „student
  * może przypisać sobie plan organizacyjny/edukatora” — does not reproduce. The
  * server refuses the purchase (`resolveApplicablePlan` in
- * `lib/payment/checkout-rules.ts` compares `subscription_plans.for_account_type`
- * with the caller's `ctx.accountType`):
+ * `lib/payment/checkout-rules.ts` checks the plan's `scope`/`audience`: a personal
+ * plan whose `audience` is not the caller's `ctx.accountType`, or an
+ * organization plan with no org to bill, is refused):
  *
  * - `/checkout?plan_id=campus` (the case's step) renders the Campus summary but no
  *   payment form: a student has no organization, so the page shows the blocking
@@ -28,7 +29,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *   (educator plan) answers `403 FORBIDDEN`; neither the personal plan nor the
  *   payment history changes;
  * - the same student's own plan (`spark`) still goes through, so the guard keys on
- *   the plan's account type rather than blocking every purchase.
+ *   the plan's audience rather than blocking every purchase.
  *
  * That is the intended behavior the case asks for („odrzucenie zakupu planu
  * niezgodnego z typem konta”), so the spec asserts the rejection and the positive

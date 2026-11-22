@@ -94,8 +94,8 @@ describe('org checkout resolves the target organization (#225)', () => {
     if (roleError) throw new Error('[setup] teacher org role missing');
 
     // Same account type as the buyer (manager) but a non-admin org role: this is
-    // the only way to prove the org-admin gate, because a teacher-account-type
-    // user is already rejected by the plan's `for_account_type`.
+    // the only way to prove the org-admin gate, because organization plans carry
+    // no audience and the personal plans are audience-checked (D34).
     const teacherUser = await createTestUser({ role: 'manager', password: PASSWORD });
     await seedOrgMembership({
       organizationId: orgId,
@@ -157,10 +157,10 @@ describe('org checkout resolves the target organization (#225)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('rejects an org plan purchase without an org id', async () => {
+  it('answers 403 (not 400) for an org plan purchase without an org id (D34)', async () => {
     actAs(admin);
     const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub' }));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
   });
 });

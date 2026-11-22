@@ -112,7 +112,8 @@ describe(`Plan limit enforcement`, () => {
       price_monthly: 0,
       currency: 'PLN',
       sort_order: 999,
-      for_account_type: 'student',
+      scope: 'personal',
+      audience: 'student',
       is_active: false,
     });
     if (planError) throw new Error(`[limits] plan create failed: ${planError.message}`);

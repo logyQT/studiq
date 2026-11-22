@@ -18,10 +18,13 @@ import { GET as myPlanGet } from '@/app/(backend)/api/v1/me/plan/route';
 import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route';
 
 /**
- * #228 — managers have no paid personal plan. An organization purchase changes
- * only the organization: the buyer's `profiles.personal_plan_key` stays the free
- * manager tier (`launch`), `/me/plan` follows the active organization, and the
- * manager's stale personal plan can never widen another organization's limits.
+ * #228 + ADR-0015 phase 4a (D2/D32/D34) — managers have no paid personal plan
+ * and their free personal plan is `solo` (not the organization `launch`). An
+ * organization purchase changes only the organization: the buyer's
+ * `profiles.personal_plan_key` stays `solo`, `/me/plan` follows the active
+ * organization for a member who may bill it (`org.billing.manage`), and an
+ * organization-scope plan stored on a profile never widens another
+ * organization's limits.
  */
 const BASE_URL = 'http://localhost';
 
@@ -131,10 +134,13 @@ describe('manager plan model (#228)', () => {
 
     const { data: profile } = await service
       .from('profiles')
-      .select('personal_plan_key')
+      .select('personal_plan_key, account_type')
       .eq('id', manager.id)
       .single();
-    expect(profile?.personal_plan_key).toBe('launch');
+    // A manager signup resolves `solo` (D2): the free personal manager plan,
+    // written by handle_new_user together with profiles.account_type.
+    expect(profile?.personal_plan_key).toBe('solo');
+    expect(profile?.account_type).toBe('manager');
 
     const { data: payments } = await service
       .from('payments')
@@ -143,7 +149,8 @@ describe('manager plan model (#228)', () => {
     expect(payments).toContainEqual({ organization_id: boughtOrgId, plan_key: 'hub' });
   });
 
-  it('resolves /me/plan from the active organization and /me/personal-plan from the free tier', async () => {
+  it('resolves /me/plan from the active organization (org.billing.manage holder) and /me/personal-plan from solo', async () => {
+    // The org creator holds the Admin role, which carries org.billing.manage.
     const bought = await planKey(myPlanGet, boughtOrgId);
     expect(bought.status).toBe(200);
     expect(bought.key).toBe('hub');
@@ -151,24 +158,58 @@ describe('manager plan model (#228)', () => {
     const other = await planKey(myPlanGet, otherOrgId);
     expect(other.key).toBe('launch');
 
-    // An organization purchase never becomes the buyer's personal plan.
+    // An organization purchase never becomes the buyer's personal plan: the
+    // stored plan is `solo`, returned verbatim (D34).
     const personalBought = await planKey(personalPlanGet, boughtOrgId);
-    expect(personalBought.key).toBe('launch');
+    expect(personalBought.key).toBe('solo');
     const personalOther = await planKey(personalPlanGet, otherOrgId);
-    expect(personalOther.key).toBe('launch');
+    expect(personalOther.key).toBe('solo');
   });
 
-  it('never lets a stale personal org plan widen another organization limit (#228)', async () => {
-    // Simulate the legacy data the old webhook wrote: Campus (unlimited) left in
-    // the manager's personal plan. The resolver must still use the active org's
-    // `launch` plan.
+  it('resolves /me/plan to the personal plan for an org member without org.billing.manage (D34)', async () => {
+    const student = await createTestUser({ role: 'student' });
+    try {
+      const { data: memberRole } = await service
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', otherOrgId)
+        .eq('name', 'member')
+        .single();
+      await seedOrgMembership({
+        organizationId: otherOrgId,
+        userId: student.id,
+        orgRoleId: memberRole!.id,
+      });
+
+      mockUser(student);
+      const res = await myPlanGet(
+        createNextRequest(`${BASE_URL}/api/v1/me/plan`, undefined, { active_org_id: otherOrgId }),
+      );
+      const body = await json<{ data?: { key?: string } }>(res);
+      expect(res.status).toBe(200);
+      // No seat, no org.billing.manage → the personal plan (base for a student).
+      expect(body.data?.key).toBe('base');
+    } finally {
+      await service.auth.admin.deleteUser(student.id).catch(() => {});
+    }
+  });
+
+  it('never lets an organization-scope personal plan widen another organization limit (#228, D34)', async () => {
+    // Simulate the legacy data the old webhook wrote: Campus (unlimited,
+    // scope='organization') left in the manager's personal plan. Inside a
+    // verified org the resolver must not apply it — the active org's `launch`
+    // plan is the whole org layer.
     await service.from('profiles').update({ personal_plan_key: 'campus' }).eq('id', manager.id);
 
-    const { limits } = await resolver.resolveEntitlements(managerCtx(otherOrgId));
+    const { limits, sources } = await resolver.resolveEntitlements(managerCtx(otherOrgId));
     expect(limits.max_flashcards).toBe(100);
+    expect(sources.personal).toBeNull();
 
-    // The dirty row is also inert on the personal-plan read path.
+    // The personal-plan read path returns the stored row verbatim (the
+    // migration backfill is what keeps such rows off profiles, D34).
     const personal = await planKey(personalPlanGet, otherOrgId);
-    expect(personal.key).toBe('launch');
+    expect(personal.key).toBe('campus');
+
+    await service.from('profiles').update({ personal_plan_key: 'solo' }).eq('id', manager.id);
   });
 });

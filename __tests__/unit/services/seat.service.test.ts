@@ -129,32 +129,45 @@ describe('SeatService', () => {
   });
 
   describe('addPool', () => {
-    const input = { planKey: 'campus', quantity: 5 };
+    const input = { planKey: 'ace', quantity: 5 };
 
-    it('creates a pool when none exists for the plan', async () => {
+    /** A personal, active plan whose keys are all seat-eligible (catalog embed). */
+    const licencePlan = {
+      key: 'ace',
+      is_active: true,
+      scope: 'personal',
+      plan_entitlements: [
+        { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
+        { entitlement_key: 'ai.chat', entitlement_catalog: { seat_eligible: true } },
+      ],
+    };
+
+    it('creates a pool when the plan is a valid licence and none exists for it', async () => {
+      const plan = chain(licencePlan);
       const read = chain(null);
-      const write = chain({ id: 'pool-1', plan_key: 'campus', total: 5, assigned: 0 });
-      mock.from.mockReturnValueOnce(read).mockReturnValueOnce(write);
+      const write = chain({ id: 'pool-1', plan_key: 'ace', total: 5, assigned: 0 });
+      mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read).mockReturnValueOnce(write);
 
       const result = await service.addPool(ctx, input);
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data).toEqual({ id: 'pool-1', planKey: 'campus', total: 5, assigned: 0 });
+      expect(result.data).toEqual({ id: 'pool-1', planKey: 'ace', total: 5, assigned: 0 });
       expect(write.insert).toHaveBeenCalledWith({
         organization_id: orgId,
-        plan_key: 'campus',
+        plan_key: 'ace',
         total: 5,
       });
       expect(write.update).not.toHaveBeenCalled();
     });
 
     it('increments an existing pool', async () => {
+      const plan = chain(licencePlan);
       const read = chain({ id: 'pool-1', total: 5 });
-      const write = chain({ id: 'pool-1', plan_key: 'campus', total: 8, assigned: 0 });
-      mock.from.mockReturnValueOnce(read).mockReturnValueOnce(write);
+      const write = chain({ id: 'pool-1', plan_key: 'ace', total: 8, assigned: 0 });
+      mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read).mockReturnValueOnce(write);
 
-      const result = await service.addPool(ctx, { planKey: 'campus', quantity: 3 });
+      const result = await service.addPool(ctx, { planKey: 'ace', quantity: 3 });
 
       expect(result.success).toBe(true);
       if (!result.success) return;
@@ -163,17 +176,18 @@ describe('SeatService', () => {
     });
 
     it('accepts an increment that lands exactly on the int4 bound', async () => {
+      const plan = chain(licencePlan);
       const read = chain({ id: 'pool-1', total: 5 });
       const write = chain({
         id: 'pool-1',
-        plan_key: 'campus',
+        plan_key: 'ace',
         total: MAX_SEAT_POOL_TOTAL,
         assigned: 0,
       });
-      mock.from.mockReturnValueOnce(read).mockReturnValueOnce(write);
+      mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read).mockReturnValueOnce(write);
 
       const result = await service.addPool(ctx, {
-        planKey: 'campus',
+        planKey: 'ace',
         quantity: MAX_SEAT_POOL_TOTAL - 5,
       });
 
@@ -182,11 +196,12 @@ describe('SeatService', () => {
     });
 
     it('rejects an increment that would overflow int4 without writing (#266)', async () => {
+      const plan = chain(licencePlan);
       const read = chain({ id: 'pool-1', total: 5 });
-      mock.from.mockReturnValueOnce(read);
+      mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read);
 
       const result = await service.addPool(ctx, {
-        planKey: 'campus',
+        planKey: 'ace',
         quantity: MAX_SEAT_POOL_TOTAL,
       });
 
@@ -195,9 +210,9 @@ describe('SeatService', () => {
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
       expect(result.details?.[0]?.message).toBe(ValidationErrorCode.TOO_BIG);
       expect(result.details?.[0]?.path).toEqual(['quantity']);
-      // No write attempt: a second table call would have no mock and throw.
+      // No write attempt: a third table call would have no mock and throw.
       expect(read.update).not.toHaveBeenCalled();
-      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns FORBIDDEN when no activeOrgId', async () => {
@@ -210,9 +225,75 @@ describe('SeatService', () => {
       expect(result.error).toBe('FORBIDDEN');
     });
 
-    it('refuses an unmapped plan_key before writing (#1145)', async () => {
-      // `assignSeat` refuses such a pool, so creating it only stores a row that
-      // can never hold a seat.
+    it('refuses an organization-scope plan (campus) before writing — a pool is a licence of a personal plan (D15/D32)', async () => {
+      const orgPlan = {
+        key: 'campus',
+        is_active: true,
+        scope: 'organization',
+        plan_entitlements: [
+          { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
+        ],
+      };
+      mock.from.mockReturnValueOnce(chain(orgPlan));
+
+      const result = await service.addPool(ctx, { planKey: 'campus', quantity: 2 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.details?.[0]?.path).toEqual(['planKey']);
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a plan with a non-seat-eligible entitlement key, reading seatEligible from the live catalog (D33)', async () => {
+      const brandedPlan = {
+        key: 'hub',
+        is_active: true,
+        scope: 'personal',
+        plan_entitlements: [
+          { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
+          { entitlement_key: 'branding', entitlement_catalog: { seat_eligible: false } },
+        ],
+      };
+      mock.from.mockReturnValueOnce(chain(brandedPlan));
+
+      const result = await service.addPool(ctx, { planKey: 'hub', quantity: 2 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.path).toEqual(['planKey']);
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a plan with no entitlements — not a licence (D33)', async () => {
+      const emptyPlan = { key: 'empty', is_active: true, scope: 'personal', plan_entitlements: [] };
+      mock.from.mockReturnValueOnce(chain(emptyPlan));
+
+      const result = await service.addPool(ctx, { planKey: 'empty', quantity: 2 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.path).toEqual(['planKey']);
+    });
+
+    it('refuses an inactive or unknown plan before writing (#1145)', async () => {
+      const inactive = chain({
+        key: 'ace',
+        is_active: false,
+        scope: 'personal',
+        plan_entitlements: licencePlan.plan_entitlements,
+      });
+      mock.from.mockReturnValueOnce(inactive);
+
+      const inactiveResult = await service.addPool(ctx, input);
+      expect(inactiveResult.success).toBe(false);
+      if (!inactiveResult.success) expect(inactiveResult.error).toBe('UNPROCESSABLE_ENTITY');
+
+      mock.from.mockReturnValueOnce(chain(null));
+
       const result = await service.addPool(ctx, { planKey: 'not-a-plan', quantity: 2 });
 
       expect(result.success).toBe(false);
@@ -220,7 +301,7 @@ describe('SeatService', () => {
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
       expect(result.details?.[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
       expect(result.details?.[0]?.path).toEqual(['planKey']);
-      expect(mock.from).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -437,10 +518,19 @@ describe('SeatService', () => {
       poolId: 'pool-1',
     };
 
-    it('assigns seat and returns assignment', async () => {
-      const poolRow = { id: 'pool-1', plan_key: 'guide' };
-      const profileRow = { email: 'user@test.com' };
-      const memberRow = { org_roles: { name: 'teacher' } };
+    /** A student-audience pool (personal plan embed rides the pool's FK). */
+    const studentPool = {
+      id: 'pool-1',
+      plan_key: 'ace',
+      subscription_plans: { scope: 'personal', audience: 'student' },
+    };
+    const educatorPool = {
+      id: 'pool-1',
+      plan_key: 'creator',
+      subscription_plans: { scope: 'personal', audience: 'educator' },
+    };
+
+    it('assigns a seat when the target persona matches the pool plan audience (D33)', async () => {
       const insertedRow = {
         id: 'assign-new',
         user_id: input.userId,
@@ -449,11 +539,11 @@ describe('SeatService', () => {
       };
 
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain(poolRow));
-      mock.from.mockReturnValueOnce(chain(profileRow));
-      mock.from.mockReturnValueOnce(chain(memberRow));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(chain(insertedRow));
+      mock.from
+        .mockReturnValueOnce(chain(studentPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain(insertedRow));
 
       const result = await service.assignSeat(ctx, input);
 
@@ -463,7 +553,7 @@ describe('SeatService', () => {
         id: 'assign-new',
         userId: input.userId,
         poolId: input.poolId,
-        planKey: 'guide',
+        planKey: 'ace',
         userEmail: 'user@test.com',
         assignedAt: '2024-01-01T00:00:00Z',
       });
@@ -480,10 +570,13 @@ describe('SeatService', () => {
       expect(result.error).toBe('NOT_FOUND');
     });
 
-    it('refuses a pool whose plan has no seat tier (#1068)', async () => {
-      // An unmapped plan key means the tier cannot be checked. Skipping the
-      // check is the fail-open path: refuse instead, before any profile read.
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'not-a-plan' }));
+    it('refuses a pool whose plan has no audience (unresolvable persona) with BAD_REQUEST', async () => {
+      const noAudiencePool = {
+        id: 'pool-1',
+        plan_key: 'launch',
+        subscription_plans: { scope: 'organization', audience: null },
+      };
+      mock.from.mockReturnValueOnce(chain(noAudiencePool));
 
       const result = await service.assignSeat(ctx, input);
 
@@ -493,98 +586,63 @@ describe('SeatService', () => {
       expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
-    it('refuses a mismatched tier when the member lookup errors (#1068)', async () => {
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'teacher@test.com' }));
-      mock.from.mockReturnValueOnce(
-        chain(null, undefined, { message: 'member lookup failed', code: 'XXX' }),
-      );
-
-      const result = await service.assignSeat(ctx, input);
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.error).toBe('INTERNAL_SERVER');
-      expect(mock.from).toHaveBeenCalledTimes(3);
-    });
-
-    it('reads a one-element org_roles embed and refuses the mismatched tier (#1068)', async () => {
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'teacher@test.com' }));
-      mock.from.mockReturnValueOnce(chain({ org_roles: [{ name: 'teacher' }] }));
+    it('refuses a persona mismatch: an educator-audience pool for a student account (#1068, D33)', async () => {
+      mock.from.mockReturnValue(chain(null));
+      mock.from
+        .mockReturnValueOnce(chain(educatorPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }));
 
       const result = await service.assignSeat(ctx, input);
 
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.error).toBe('BAD_REQUEST');
-      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('assigns a matching member whose org_roles embed arrives as a one-element array (#1068)', async () => {
-      // The array shape must resolve to the member's tier, not to `undefined`:
-      // reading `.name` off the array refuses a legitimate seat.
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'member@test.com' }));
-      mock.from.mockReturnValueOnce(chain({ org_roles: [{ name: 'member' }] }));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(
-        chain({
-          id: 'assign-new',
-          user_id: input.userId,
-          pool_id: input.poolId,
-          assigned_at: '2024-01-01T00:00:00Z',
-        }),
-      );
-
-      const result = await service.assignSeat(ctx, input);
-
-      expect(result.success).toBe(true);
-      if (!result.success) return;
-      expect(result.data.planKey).toBe('pro');
-      expect(result.data.userId).toBe(input.userId);
-    });
-
-    it('refuses a member whose org role has no seat tier', async () => {
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'assistant@test.com' }));
-      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'assistant' } }));
+    it('refuses a persona mismatch: a student-audience pool for a manager account', async () => {
+      mock.from.mockReturnValue(chain(null));
+      mock.from
+        .mockReturnValueOnce(chain(studentPool))
+        .mockReturnValueOnce(chain({ email: 'boss@test.com', account_type: 'manager' }));
 
       const result = await service.assignSeat(ctx, input);
 
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.error).toBe('BAD_REQUEST');
-      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('assigns to a target with no org membership (no role tier to contradict)', async () => {
-      // Seat features resolve through org membership, so this seat is inert
-      // until the target joins — the code base allows staging one.
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'pro' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'outsider@test.com' }));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(
-        chain({
-          id: 'assign-new',
-          user_id: input.userId,
-          pool_id: input.poolId,
-          assigned_at: '2024-01-01T00:00:00Z',
-        }),
-      );
+    it('accepts a manager account on a manager-audience pool (solo)', async () => {
+      const soloPool = {
+        id: 'pool-1',
+        plan_key: 'solo',
+        subscription_plans: { scope: 'personal', audience: 'manager' },
+      };
+      const insertedRow = {
+        id: 'assign-new',
+        user_id: input.userId,
+        pool_id: input.poolId,
+        assigned_at: '2024-01-01T00:00:00Z',
+      };
+      mock.from.mockReturnValue(chain(null));
+      mock.from
+        .mockReturnValueOnce(chain(soloPool))
+        .mockReturnValueOnce(chain({ email: 'boss@test.com', account_type: 'manager' }))
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain(insertedRow));
 
       const result = await service.assignSeat(ctx, input);
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data.planKey).toBe('pro');
+      expect(result.data.planKey).toBe('solo');
     });
 
     it('returns NOT_FOUND when user does not exist', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'launch' }));
-      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(studentPool)).mockReturnValueOnce(chain(null));
 
       const result = await service.assignSeat(ctx, input);
 
@@ -595,10 +653,10 @@ describe('SeatService', () => {
 
     it('returns USAGE_LIMIT_EXCEEDED when user already has a seat', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
-      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'teacher' } }));
-      mock.from.mockReturnValueOnce(chain({ id: 'existing-assign' }));
+      mock.from
+        .mockReturnValueOnce(chain(studentPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain({ id: 'existing-assign' }));
 
       const result = await service.assignSeat(ctx, input);
 
@@ -609,20 +667,20 @@ describe('SeatService', () => {
 
     it('returns USAGE_LIMIT_EXCEEDED when pool is full (SEAT_POOL_FULL)', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
-      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'teacher' } }));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            maybeSingle: vi.fn().mockResolvedValue({
-              data: null,
-              error: { message: 'SEAT_POOL_FULL', code: '23514' },
+      mock.from
+        .mockReturnValueOnce(chain(studentPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce({
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: null,
+                error: { message: 'SEAT_POOL_FULL', code: '23514' },
+              }),
             }),
           }),
-        }),
-      });
+        });
 
       const result = await service.assignSeat(ctx, input);
 
@@ -633,20 +691,20 @@ describe('SeatService', () => {
 
     it('returns USAGE_LIMIT_EXCEEDED when pool full (code 23514 with an unrelated message)', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
-      mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
-      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'teacher' } }));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            maybeSingle: vi.fn().mockResolvedValue({
-              data: null,
-              error: { code: '23514', message: 'new row violates check constraint' },
+      mock.from
+        .mockReturnValueOnce(chain(studentPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce({
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: null,
+                error: { code: '23514', message: 'new row violates check constraint' },
+              }),
             }),
           }),
-        }),
-      });
+        });
 
       const result = await service.assignSeat(ctx, input);
 

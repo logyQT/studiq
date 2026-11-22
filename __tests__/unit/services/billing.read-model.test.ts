@@ -60,7 +60,9 @@ function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
     limits: {},
     sortOrder: 1,
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
+    seatEligible: false,
     ...overrides,
   };
 }
@@ -72,7 +74,8 @@ function catalogPlan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
     sortOrder: 1,
     ...overrides,
   };
@@ -353,7 +356,13 @@ describe('BillingService.getSubscription', () => {
   it('shows the effective (seat) plan while lifecycle state comes from the mirror', async () => {
     plans = createPlans(
       success(
-        planInfo({ key: 'ace', name: 'StudiQ Ace', priceMonthly: 4999, forAccountType: 'manager' }),
+        planInfo({
+          key: 'ace',
+          name: 'StudiQ Ace',
+          priceMonthly: 4999,
+          scope: 'organization',
+          audience: null,
+        }),
       ),
     );
     reads = createReads({

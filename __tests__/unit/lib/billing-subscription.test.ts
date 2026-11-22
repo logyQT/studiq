@@ -50,13 +50,15 @@ function plan(key: string, overrides: Partial<PlanInfo> = {}): PlanInfo {
     limits: {},
     sortOrder: 0,
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
+    seatEligible: false,
     ...overrides,
   };
 }
 
 describe('billingPlanFamily', () => {
-  it('maps the three account types and defaults to student', () => {
+  it('maps the three account types to the manager (organization) family and the personal audiences', () => {
     expect(billingPlanFamily(AccountType.MANAGER)).toBe('manager');
     expect(billingPlanFamily(AccountType.EDUCATOR)).toBe('educator');
     expect(billingPlanFamily(AccountType.STUDENT)).toBe('student');
@@ -70,7 +72,7 @@ describe('alternativePlans', () => {
         plan('base', { priceMonthly: 0 }),
         plan('ace', { priceMonthly: 2999 }),
         plan('pro', { priceMonthly: 4999 }),
-        plan('lite', { priceMonthly: 1999, forAccountType: 'educator' }),
+        plan('lite', { priceMonthly: 1999, audience: 'educator' }),
         plan('spark', { priceMonthly: 999 }),
       ],
       subscription(),
@@ -92,6 +94,21 @@ describe('alternativePlans', () => {
 
   it('returns an empty list without a catalogue', () => {
     expect(alternativePlans(undefined, subscription(), AccountType.STUDENT)).toEqual([]);
+  });
+
+  it('keeps paid organization plans for a manager, excluding the current plan (D34)', () => {
+    const options = alternativePlans(
+      [
+        plan('launch', { priceMonthly: 0, scope: 'organization', audience: null }),
+        plan('team', { priceMonthly: 9900, scope: 'organization', audience: null }),
+        plan('hub', { priceMonthly: 29900, scope: 'organization', audience: null }),
+        plan('spark', { priceMonthly: 999 }),
+      ],
+      subscription({ planKey: 'launch', billedPlanKey: 'launch' }),
+      AccountType.MANAGER,
+    );
+
+    expect(options.map((option) => option.key)).toEqual(['team', 'hub']);
   });
 });
 

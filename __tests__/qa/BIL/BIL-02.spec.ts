@@ -100,7 +100,8 @@ interface PlanInfo {
   key: string;
   name: string;
   priceMonthly: number;
-  forAccountType: string | null;
+  scope: string;
+  audience: string | null;
 }
 
 interface ApiEnvelope<T> {
@@ -119,10 +120,15 @@ function account(role: QaRole) {
   return { tenant, user };
 }
 
-/** The plan catalogue for one account type, as the page's own API returns it. */
-async function fetchPlans(page: Page, accountType: 'student' | 'educator'): Promise<PlanInfo[]> {
-  const response = await page.request.get(`/api/v1/subscription-plans?for=${accountType}`);
-  expect(response.status(), `GET /api/v1/subscription-plans?for=${accountType}`).toBe(200);
+/** The personal plan catalogue for one audience, as the page's own API returns it. */
+async function fetchPlans(page: Page, audience: 'student' | 'educator'): Promise<PlanInfo[]> {
+  const response = await page.request.get(
+    `/api/v1/subscription-plans?scope=personal&audience=${audience}`,
+  );
+  expect(
+    response.status(),
+    `GET /api/v1/subscription-plans?scope=personal&audience=${audience}`,
+  ).toBe(200);
   const body = await json<ApiEnvelope<PlanInfo[]>>(response);
   expect(body.success, `plans response for ${accountType}`).toBe(true);
   return body.data;
@@ -221,7 +227,8 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
 
     const plans = await fetchPlans(page, 'student');
     for (const plan of plans) {
-      expect(plan.forAccountType, `plan ${plan.key} belongs to students`).toBe('student');
+      expect(plan.scope, `plan ${plan.key} is personal-scope`).toBe('personal');
+      expect(plan.audience, `plan ${plan.key} belongs to students`).toBe('student');
     }
     const currentPlan = await fetchCurrentPlan(page, '/api/v1/me/personal-plan');
     expect(currentPlan.key, 'the seeded student starts on the free Base plan').toBe('base');
@@ -268,7 +275,8 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
 
     const plans = await fetchPlans(page, 'educator');
     for (const plan of plans) {
-      expect(plan.forAccountType, `plan ${plan.key} belongs to educators`).toBe('educator');
+      expect(plan.scope, `plan ${plan.key} is personal-scope`).toBe('personal');
+      expect(plan.audience, `plan ${plan.key} belongs to educators`).toBe('educator');
     }
     // Unseated educator: `/me/plan` falls back to the personal plan the trigger wrote.
     const currentPlan = await fetchCurrentPlan(page, '/api/v1/me/plan');

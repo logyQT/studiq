@@ -32,7 +32,7 @@ export function billingPlanFamily(accountType: AccountType): PlanFamily {
   return 'student';
 }
 
-/** Paid plans of the same family, cheapest first, excluding the current plan. */
+/** Paid plans of the caller's plan family, cheapest first, excluding the current plan. */
 export function alternativePlans(
   plans: PlanInfo[] | undefined,
   subscription: BillingSubscriptionView,
@@ -43,10 +43,14 @@ export function alternativePlans(
   const currentPlanKey = subscription.billedPlanKey ?? subscription.planKey;
 
   return (plans ?? [])
-    .filter(
-      (plan) =>
-        plan.priceMonthly > 0 && plan.forAccountType === family && plan.key !== currentPlanKey,
-    )
+    .filter((plan) => {
+      if (plan.priceMonthly <= 0 || plan.key === currentPlanKey) return false;
+      // Managers see the organization catalogue (D34); everyone else their own
+      // audience's personal plans.
+      return family === 'manager'
+        ? plan.scope === 'organization'
+        : plan.scope === 'personal' && plan.audience === family;
+    })
     .toSorted((a, b) => a.priceMonthly - b.priceMonthly);
 }
 

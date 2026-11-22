@@ -1097,8 +1097,8 @@ export class StripeWebhookService {
   }
 
   private planMatchesOwner(plan: CatalogPlan, owner: ResolvedOwner): boolean {
-    const isManagerPlan = plan.forAccountType === 'manager';
-    return owner.owner.type === 'org' ? isManagerPlan : !isManagerPlan;
+    const isOrgPlan = plan.scope === 'organization';
+    return owner.owner.type === 'org' ? isOrgPlan : !isOrgPlan;
   }
 
   /**

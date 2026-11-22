@@ -1268,6 +1268,13 @@ export type Database = {
             referencedRelation: 'organizations';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'org_seat_pools_plan_key_fkey';
+            columns: ['plan_key'];
+            isOneToOne: false;
+            referencedRelation: 'subscription_plans';
+            referencedColumns: ['key'];
+          },
         ];
       };
       organizations: {
@@ -1493,6 +1500,7 @@ export type Database = {
       };
       profiles: {
         Row: {
+          account_type: Database['public']['Enums']['account_type'];
           created_at: string | null;
           deleted_at: string | null;
           email: string;
@@ -1503,6 +1511,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          account_type?: Database['public']['Enums']['account_type'];
           created_at?: string | null;
           deleted_at?: string | null;
           email: string;
@@ -1512,6 +1521,7 @@ export type Database = {
           purge_at?: string | null;
         };
         Update: {
+          account_type?: Database['public']['Enums']['account_type'];
           created_at?: string | null;
           deleted_at?: string | null;
           email?: string;
@@ -2195,45 +2205,48 @@ export type Database = {
       };
       subscription_plans: {
         Row: {
+          audience: string | null;
           created_at: string | null;
           currency: string;
           description: string | null;
-          for_account_type: string | null;
           id: string;
           is_active: boolean | null;
           key: string;
           name: string;
           price_monthly: number | null;
           price_yearly: number | null;
+          scope: string;
           sort_order: number | null;
           updated_at: string | null;
         };
         ComputedFields: never;
         Insert: {
+          audience?: string | null;
           created_at?: string | null;
           currency?: string;
           description?: string | null;
-          for_account_type?: string | null;
           id?: string;
           is_active?: boolean | null;
           key: string;
           name: string;
           price_monthly?: number | null;
           price_yearly?: number | null;
+          scope: string;
           sort_order?: number | null;
           updated_at?: string | null;
         };
         Update: {
+          audience?: string | null;
           created_at?: string | null;
           currency?: string;
           description?: string | null;
-          for_account_type?: string | null;
           id?: string;
           is_active?: boolean | null;
           key?: string;
           name?: string;
           price_monthly?: number | null;
           price_yearly?: number | null;
+          scope?: string;
           sort_order?: number | null;
           updated_at?: string | null;
         };

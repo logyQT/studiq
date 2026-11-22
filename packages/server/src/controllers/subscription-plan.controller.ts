@@ -3,6 +3,7 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
+import type { PlanCatalogFilters } from '@studiq/server/services/subscription-plan.service';
 import {
   type SubscriptionPlanService,
   subscriptionPlanService,
@@ -11,8 +12,9 @@ import {
 export class SubscriptionPlanController {
   constructor(private service: SubscriptionPlanService) {}
 
-  async listPublic(forAccountType?: string): Promise<ControllerResponse> {
-    const result = await this.service.listActive(forAccountType);
+  /** No filters returns every active plan — the public pricing behaviour (D34). */
+  async listPublic(filters: PlanCatalogFilters = {}): Promise<ControllerResponse> {
+    const result = await this.service.listActive(filters);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

@@ -435,7 +435,8 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         price_monthly: studentPlanAmount,
         currency: 'PLN',
         sort_order: 900,
-        for_account_type: 'student',
+        scope: 'personal',
+        audience: 'student',
       },
       {
         key: secondStudentPlanKey,
@@ -443,7 +444,8 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         price_monthly: secondStudentPlanAmount,
         currency: 'PLN',
         sort_order: 901,
-        for_account_type: 'student',
+        scope: 'personal',
+        audience: 'student',
       },
       {
         key: orgPlanKey,
@@ -451,7 +453,8 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         price_monthly: orgPlanAmount,
         currency: 'PLN',
         sort_order: 902,
-        for_account_type: 'manager',
+        scope: 'organization',
+        audience: null,
       },
     ]);
     if (planError) throw new Error(`parity plans: ${planError.message}`);

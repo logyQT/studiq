@@ -28,17 +28,17 @@ import {
  * did not buy `ai.chat`.
  *
  * The spec then provisions the rest through the product API: it promotes the teacher
- * account to the org's `teacher` role (so the picker's tier matrix has all three
+ * account to the org's `teacher` role (so the picker's audience matrix has all three
  * roles), clears any assignment a previous run left behind, and buys the pools the
- * MGR-SEAT-01 precondition needs — one per tier so the role/tier filtering is
- * observable: Ace (student tier, 3), Creator (educator tier, 3), Campus (manager
- * tier, 1). Nothing global is written — no settings, feature flags, plans or platform
- * rows — and no other case's tenant is touched.
+ * MGR-SEAT-01 precondition needs — one per audience so the filtering is
+ * observable: Ace (student audience, 3), Creator (educator audience, 3), Solo
+ * (manager audience, 1). Nothing global is written — no settings, feature flags,
+ * plans or platform rows — and no other case's tenant is touched.
  *
  * Acceptance points:
  * 1. „Przydziel miejsce” opens a dialog whose seat-plan picker stays disabled until
  *    a member is chosen. After a member is picked it offers **exactly** the pools
- *    of that member's tier (student → Ace, teacher → Creator, admin → Campus), so
+ *    of that member's audience (student → Ace, teacher → Creator, admin → Solo), so
  *    an incompatible pool cannot be selected.
  * 2. „Przydziel” shows the toast „Miejsce przydzielone pomyślnie”, a new row in
  *    „Przydziały” for that member with the seat plan, and the pool moves from
@@ -55,7 +55,7 @@ import {
  *    personal-scope only.
  * 4. Adjacent regression: the guards behind the pickers hold server-side — a
  *    second seat for the same member is rejected (`USAGE_LIMIT_EXCEEDED`) and a
- *    tier-mismatched pool is rejected (`BAD_REQUEST`), with the pool counters left
+ *    audience-mismatched pool is rejected (`BAD_REQUEST`), with the pool counters left
  *    unchanged. The member drops out of the picker once seated.
  *
  * Not asserted (out of scope, settled in 2b-7, see the case's walk observations):
@@ -84,14 +84,14 @@ const NAMES = {
 } as const;
 
 /**
- * One pool per tier, so the picker's filter is provable rather than a sample of
- * one: the `member` role is student tier, `teacher` is educator, `admin` is
- * manager (`ROLE_TIER_MAP` / `PLAN_TIER_MAP` in `seat.service.ts`).
+ * One pool per plan audience, so the picker's filter is provable rather than a
+ * sample of one: a student account is student audience, educator `creator`,
+ * manager `solo` (the plan `audience` the server checks in `seat.service.ts`).
  */
 const POOLS = [
   { planKey: 'ace', quantity: 3 },
   { planKey: 'creator', quantity: 3 },
-  { planKey: 'campus', quantity: 1 },
+  { planKey: 'solo', quantity: 1 },
 ] as const;
 
 /** Org-scoped entitlements a seat must never grant (a seat plan is personal-scope). */
@@ -176,7 +176,7 @@ function userId(tenant: QaTenant, role: QaRole): string {
 
 /**
  * The `content` profile enrols the teacher with the org's default `member` role; the
- * case's tier matrix needs a real `teacher` role as well (educator tier). Promote the
+ * case's audience matrix needs a real `teacher` role as well (educator audience). Promote the
  * account through the product's own member endpoint.
  */
 async function ensureTeacherRole(page: Page, tenant: QaTenant): Promise<void> {
@@ -213,7 +213,7 @@ async function resetSeats(page: Page): Promise<void> {
 }
 
 /**
- * Buy one pool per tier, or resize the pool an earlier run on this tenant left
+ * Buy one pool per audience, or resize the pool an earlier run on this tenant left
  * behind: the case's precondition is exactly `quantity` seats, none assigned.
  */
 async function ensurePool(page: Page, entry: (typeof POOLS)[number]): Promise<Pool> {
@@ -315,7 +315,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
   let catalog: PlanInfo[];
   let pools: Map<string, Pool>;
 
-  test('a manager assigns a tier-matched seat and the seat cannot exceed the org ceiling', async ({
+  test('a manager assigns an audience-matched seat and the seat cannot exceed the org ceiling', async ({
     page,
     request,
   }) => {
@@ -340,7 +340,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     };
     const ace = plan('ace');
     const creator = plan('creator');
-    const campus = plan('campus');
+    const solo = plan('solo');
     // Catalog fact the ceiling rule turns away on the launch org: the premium
     // seat plan declares AI, which the org plan did not buy.
     expect(ace.features, 'catalog: Ace must include ai.chat').toContain('ai.chat');
@@ -349,10 +349,10 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       'catalog: Ace must declare an AI token limit',
     ).toBe('number');
 
-    // ── Precondition (MGR-SEAT-01): three pools, one per tier, nobody seated ──
+    // ── Precondition (MGR-SEAT-01): three pools, one per audience, nobody seated ──
     await signIn(page, tenant, 'manager', /\/manage$/);
     await ensureTeacherRole(page, tenant);
-    // The case's tier matrix counts on one admin, one teacher and one member.
+    // The case's audience matrix counts on one admin, one teacher and one member.
     const members = (
       await readEnvelope<Array<{ id: string; orgRoleName: string }>>(
         await page.request.get('/api/v1/organization/members'),
@@ -397,6 +397,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await watchToasts(page);
 
     // The purchased pools are listed with their counters: 3/0/3, 3/0/3 and 1/0/1.
+    // The purchased pools are listed with their counters: 3/0/3, 3/0/3 and 1/0/1.
     await expect(page.getByText(COPY.poolsTitle)).toBeVisible();
     for (const entry of POOLS) {
       const entryPlan = plan(entry.planKey);
@@ -432,7 +433,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(dialog.getByText(COPY.selectMemberFirst)).toBeVisible();
     await expect(dialog.getByRole('button', { name: COPY.assign, exact: true })).toBeDisabled();
 
-    // Only the pools matching the picked member's tier are offered.
+    // Only the pools matching the picked member's audience are offered.
     await pickMember(page, dialog, NAMES.student);
     await expect(planPicker).toBeEnabled();
     expect(await planOptions(page, dialog), 'student member sees only the student pool').toEqual([
@@ -445,8 +446,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     ]);
 
     await pickMember(page, dialog, NAMES.manager);
-    expect(await planOptions(page, dialog), 'admin sees only the manager pool').toEqual([
-      `${campus.name} (0/${pools.get('campus')!.total})`,
+    expect(await planOptions(page, dialog), 'admin sees only the manager-audience pool').toEqual([
+      `${solo.name} (0/${pools.get('solo')!.total})`,
     ]);
 
     // Pick the member the case assigns a seat to, then the matching plan.
@@ -477,9 +478,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     );
     await expectPoolRow(
       page,
-      campus.name,
-      [campus.name, String(pools.get('campus')!.total), '0', String(pools.get('campus')!.total)],
-      'the manager pool is untouched',
+      solo.name,
+      [solo.name, String(pools.get('solo')!.total), '0', String(pools.get('solo')!.total)],
+      'the manager-audience pool is untouched',
     );
 
     // 2c. A new row in „Przydziały” for that member with the seat plan.
@@ -524,7 +525,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await reopen.getByRole('button', { name: COPY.cancel }).click();
     await expect(reopen).toBeHidden();
 
-    // 4. Server-side guards behind the pickers: one seat per member, tier must match.
+    // 4. Server-side guards behind the pickers: one seat per member, audience must match.
     const duplicate = await page.request.post('/api/v1/organization/seats/assignments', {
       data: { userId: userId(tenant, 'student'), poolId: pools.get('ace')!.id },
     });
@@ -534,19 +535,19 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       error: 'USAGE_LIMIT_EXCEEDED',
     });
 
-    const wrongTier = await page.request.post('/api/v1/organization/seats/assignments', {
+    const wrongAudience = await page.request.post('/api/v1/organization/seats/assignments', {
       data: { userId: userId(tenant, 'student'), poolId: pools.get('creator')!.id },
     });
-    expect(wrongTier.status(), 'educator seat for a student member').toBe(400);
-    expect(await wrongTier.json()).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+    expect(wrongAudience.status(), 'educator-audience seat for a student account').toBe(400);
+    expect(await wrongAudience.json()).toMatchObject({ success: false, error: 'BAD_REQUEST' });
 
     const poolsAfterGuards = (
       await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
     ).data;
     expect(poolsAfterGuards.map((pool) => [pool.planKey, pool.assigned])).toEqual([
       ['ace', 1],
-      ['campus', 0],
       ['creator', 0],
+      ['solo', 0],
     ]);
     expect(
       (

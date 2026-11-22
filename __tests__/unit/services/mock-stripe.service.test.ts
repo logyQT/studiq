@@ -18,7 +18,8 @@ const studentPlan: CatalogPlan = {
   priceMonthly: 999,
   currency: 'PLN',
   isActive: true,
-  forAccountType: 'student',
+  scope: 'personal',
+  audience: 'student',
   sortOrder: 1,
 };
 const orgPlan: CatalogPlan = {
@@ -27,7 +28,8 @@ const orgPlan: CatalogPlan = {
   priceMonthly: 69900,
   currency: 'PLN',
   isActive: true,
-  forAccountType: 'manager',
+  scope: 'organization',
+  audience: null,
   sortOrder: 8,
 };
 const freeStudentPlan: CatalogPlan = {
@@ -36,16 +38,18 @@ const freeStudentPlan: CatalogPlan = {
   priceMonthly: 0,
   currency: 'PLN',
   isActive: true,
-  forAccountType: 'student',
+  scope: 'personal',
+  audience: 'student',
   sortOrder: 0,
 };
-const freeManagerPlan: CatalogPlan = {
+const freeOrgPlan: CatalogPlan = {
   key: 'launch',
   name: 'StudiQ Launch',
   priceMonthly: 0,
   currency: 'PLN',
   isActive: true,
-  forAccountType: 'manager',
+  scope: 'organization',
+  audience: null,
   sortOrder: 3,
 };
 const inactivePlan: CatalogPlan = { ...studentPlan, key: 'old', isActive: false };
@@ -139,7 +143,7 @@ describe('MockStripeService', () => {
         'campus',
       );
       // Only the organization owner is passed to the entitlement writer: the
-      // manager's personal plan stays the free `launch` tier (#228).
+      // manager's personal plan stays `solo` (#228/D2).
       expect(entitlements.applyPlan).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'user' }),
         expect.anything(),
@@ -154,8 +158,8 @@ describe('MockStripeService', () => {
       );
     });
 
-    it('applies a free manager plan to the org (QA downgrade fixture)', async () => {
-      mockPlan(freeManagerPlan);
+    it('applies the free organization plan to the org (QA downgrade fixture)', async () => {
+      mockPlan(freeOrgPlan);
 
       const result = await service.handleWebhook(
         { ...orgEvent, plan_id: 'launch' },
@@ -171,7 +175,7 @@ describe('MockStripeService', () => {
       );
     });
 
-    it('requires an org id to complete an org plan purchase', async () => {
+    it('answers FORBIDDEN when an org plan purchase arrives without an org id (D34)', async () => {
       mockPlan(orgPlan);
 
       const result = await service.handleWebhook(
@@ -180,7 +184,7 @@ describe('MockStripeService', () => {
         'u-1',
       );
 
-      expect(result).toEqual(failure('BAD_REQUEST'));
+      expect(result).toEqual(failure('FORBIDDEN'));
       expect(payments.record).not.toHaveBeenCalled();
       expect(entitlements.applyPlan).not.toHaveBeenCalled();
     });
@@ -198,8 +202,11 @@ describe('MockStripeService', () => {
   });
 
   it.each([
-    ['a plan from another family', orgPlan],
-    ['a free plan from another family', { ...freeStudentPlan, forAccountType: 'educator' }],
+    [
+      'a personal plan from another audience',
+      { ...studentPlan, key: 'guide', audience: 'educator' },
+    ],
+    ['a free plan from another audience', { ...freeStudentPlan, audience: 'educator' }],
   ])('rejects %s with FORBIDDEN before the price check', async (_label, plan) => {
     mockPlan(plan);
 

@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface FakePlanRow {
   key: string;
-  for_account_type: string | null;
+  scope: string;
+  audience: string | null;
   price_monthly: number;
   is_active: boolean;
   sort_order: number;
@@ -88,18 +89,62 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
 }
 
 const PLANS: FakePlanRow[] = [
-  { key: 'base', for_account_type: 'student', price_monthly: 0, is_active: true, sort_order: 1 },
-  { key: 'lite', for_account_type: 'educator', price_monthly: 0, is_active: true, sort_order: 2 },
-  { key: 'launch', for_account_type: 'manager', price_monthly: 0, is_active: true, sort_order: 3 },
-  { key: 'spark', for_account_type: 'student', price_monthly: 999, is_active: true, sort_order: 4 },
+  {
+    key: 'base',
+    scope: 'personal',
+    audience: 'student',
+    price_monthly: 0,
+    is_active: true,
+    sort_order: 1,
+  },
+  {
+    key: 'lite',
+    scope: 'personal',
+    audience: 'educator',
+    price_monthly: 0,
+    is_active: true,
+    sort_order: 2,
+  },
+  {
+    key: 'launch',
+    scope: 'organization',
+    audience: null,
+    price_monthly: 0,
+    is_active: true,
+    sort_order: 3,
+  },
+  {
+    key: 'spark',
+    scope: 'personal',
+    audience: 'student',
+    price_monthly: 999,
+    is_active: true,
+    sort_order: 4,
+  },
   {
     key: 'guide',
-    for_account_type: 'educator',
+    scope: 'personal',
+    audience: 'educator',
     price_monthly: 1999,
     is_active: true,
     sort_order: 5,
   },
-  { key: 'hub', for_account_type: 'manager', price_monthly: 9999, is_active: true, sort_order: 6 },
+  {
+    key: 'hub',
+    scope: 'organization',
+    audience: null,
+    price_monthly: 9999,
+    is_active: true,
+    sort_order: 6,
+  },
+  {
+    key: 'solo',
+    scope: 'personal',
+    audience: 'manager',
+    price_monthly: 0,
+    is_active: true,
+    sort_order: 13,
+  },
 ];
 
 const USER: EntitlementOwner = { type: 'user', userId: 'u-1' };
@@ -156,8 +201,21 @@ describe('EntitlementService', () => {
     expect(updates).toHaveLength(0);
     expect(rpc).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining('billing.manager_plan_to_profile'),
+      expect.stringContaining('billing.org_plan_to_profile'),
     );
+  });
+
+  it('rejects the free organization plan (launch) written to a profile too — scope, not price, decides (D32)', async () => {
+    const { admin, updates, rpc } = createFakeAdmin({ plans: PLANS });
+    const service = new EntitlementService(() => admin);
+
+    await expect(service.applyPlan(USER, 'launch')).resolves.toEqual({
+      success: false,
+      error: 'FORBIDDEN',
+    });
+
+    expect(updates).toHaveLength(0);
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown plan instead of writing it', async () => {
@@ -175,6 +233,7 @@ describe('EntitlementService', () => {
     it.each([
       ['spark', 'base'],
       ['guide', 'lite'],
+      ['solo', 'solo'],
     ])('downgrades a %s personal plan to the %s free tier', async (previous, expected) => {
       const { admin, updates } = createFakeAdmin({ plans: PLANS });
       const service = new EntitlementService(() => admin);
@@ -199,7 +258,7 @@ describe('EntitlementService', () => {
       });
     });
 
-    it('falls back to the account family when the previous plan is gone', async () => {
+    it('falls back to the free personal plan of the same scope/audience when the previous plan is gone', async () => {
       const { admin, updates } = createFakeAdmin({ plans: PLANS });
       const service = new EntitlementService(() => admin);
 
@@ -277,7 +336,7 @@ describe('EntitlementService', () => {
       });
     });
 
-    it('rejects a manager plan before calling the fence (ADR-0007)', async () => {
+    it('rejects an organization-scope plan before calling the fence (ADR-0007/D32)', async () => {
       const { admin, rpc } = createFakeAdmin({ plans: PLANS, rpcData: true });
       const service = new EntitlementService(() => admin);
 

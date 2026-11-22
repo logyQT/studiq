@@ -62,7 +62,7 @@ interface Assignment {
   assignedAt: string;
 }
 
-/** Maps plan_key → compatible account tier (matches seat.service.ts PLAN_TIER_MAP). */
+/** Maps plan_key → compatible account tier (mirrors the plan's `audience`). */
 const PLAN_TIER_MAP: Record<string, string> = {
   base: 'student',
   spark: 'student',
@@ -72,10 +72,7 @@ const PLAN_TIER_MAP: Record<string, string> = {
   guide: 'educator',
   creator: 'educator',
   master: 'educator',
-  launch: 'manager',
-  team: 'manager',
-  hub: 'manager',
-  campus: 'manager',
+  solo: 'manager',
 };
 
 /** Maps org role name → compatible account tier. */
@@ -88,13 +85,13 @@ const ROLE_TIER_MAP: Record<string, string> = {
 /** Storage bound of `org_seat_pools.total` (Postgres int4) — mirrors seat.model.ts. */
 const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
 
-/** Plans available for purchase as seat add-ons. */
+/** Plans available for purchase as seat add-ons (personal-scope plans only). */
 const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
   { key: 'ace', label: 'StudiQ Ace', tier: 'student' },
   { key: 'pro', label: 'StudiQ Pro', tier: 'student' },
   { key: 'creator', label: 'StudiQ Creator', tier: 'educator' },
   { key: 'master', label: 'StudiQ Master', tier: 'educator' },
-  { key: 'campus', label: 'StudiQ Campus', tier: 'manager' },
+  { key: 'solo', label: 'StudiQ Solo', tier: 'manager' },
 ];
 
 export default function ManageSeatsPage() {

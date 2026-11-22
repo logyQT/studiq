@@ -223,6 +223,111 @@ describe(`Seats Integration`, () => {
 
       expect((await readPools()).find((p) => p.planKey === 'not-a-plan')).toBeUndefined();
     });
+
+    it('refuses an organization-scope plan (campus) — a pool is a licence of a personal plan (D15/D32)', async () => {
+      mockUser(fixture.user);
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/pools',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: 'campus', quantity: 2 }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createPool(req);
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(body.issues!.properties.planKey!.errors).toContain('VALIDATION_INVALID_INPUT');
+
+      expect((await readPools()).find((p) => p.planKey === 'campus')).toBeUndefined();
+    });
+
+    it('refuses a plan with a non-seat-eligible entitlement key, read from the live catalog (D33)', async () => {
+      mockUser(fixture.user);
+      const supabase = createSeedDb();
+      const planKey = `test-seat-ineligible-${Date.now()}`;
+
+      try {
+        // Temporary fixture: an active personal plan carrying `branding`
+        // (seat_eligible = false in entitlement_catalog).
+        const { error: planError } = await supabase.from('subscription_plans').insert({
+          key: planKey,
+          name: 'Test seat-ineligible',
+          price_monthly: 0,
+          currency: 'PLN',
+          sort_order: 990,
+          is_active: true,
+          scope: 'personal',
+          audience: 'student',
+        });
+        expect(planError).toBeNull();
+        const { error: entError } = await supabase
+          .from('plan_entitlements')
+          .insert({ plan_key: planKey, entitlement_key: 'branding' });
+        expect(entError).toBeNull();
+        const limitRows = [
+          'max_flashcards',
+          'max_questions',
+          'max_decks',
+          'max_question_banks',
+          'max_quiz_attempts_per_day',
+          'max_ai_tokens_per_day',
+          'max_students',
+          'max_groups',
+        ].map((limit_key) => ({ plan_key: planKey, limit_key, limit_value: 1 }));
+        const { error: limError } = await supabase.from('plan_limits').insert(limitRows);
+        expect(limError).toBeNull();
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planKey, quantity: 2 }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createPool(req);
+        const body = await json<SeatsErrorBody>(response);
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(body.issues!.properties.planKey!.errors).toContain('VALIDATION_INVALID_INPUT');
+        expect((await readPools()).find((p) => p.planKey === planKey)).toBeUndefined();
+      } finally {
+        await supabase.from('plan_limits').delete().eq('plan_key', planKey);
+        await supabase.from('plan_entitlements').delete().eq('plan_key', planKey);
+        await supabase.from('subscription_plans').delete().eq('key', planKey);
+      }
+    });
+
+    it('accepts a personal plan whose keys are all seat-eligible (ace)', async () => {
+      mockUser(fixture.user);
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/pools',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: 'ace', quantity: 1 }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createPool(req);
+      const body = await json<PoolBody>(response);
+
+      expect(response.status).toBe(201);
+      expect(body.data.planKey).toBe('ace');
+    });
   });
 
   describe('PUT /pools/[id]', () => {
@@ -330,7 +435,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'campus', quantity: 99_999_999_999 }),
+          body: JSON.stringify({ planKey: 'spark', quantity: 99_999_999_999 }),
         },
         orgCookies(),
       );
@@ -344,7 +449,7 @@ describe(`Seats Integration`, () => {
       expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
-      expect(pools.find((p) => p.planKey === 'campus')).toBeUndefined();
+      expect(pools.find((p) => p.planKey === 'spark')).toBeUndefined();
     });
 
     it('rejects an increment that would overflow int4 and leaves the pool unchanged', async () => {
@@ -516,8 +621,8 @@ describe(`Seats Integration`, () => {
       expect(body.success).toBe(false);
     });
 
-    it('returns 400 and writes nothing when the member role tier does not match (#1068)', async () => {
-      // `guide` is educator-tier: a member (student tier) must be refused even
+    it('returns 400 and writes nothing when the target persona does not match the pool plan audience (#1068, D33)', async () => {
+      // `guide` is educator-audience: a student account must be refused even
       // though the pool has room.
       const supabase = createSeedDb();
       const memberRole = await supabase
@@ -556,6 +661,84 @@ describe(`Seats Integration`, () => {
         .eq('organization_id', orgId)
         .eq('user_id', studentMember.id);
       expect(written.data).toEqual([]);
+    });
+
+    it('refuses a student-audience pool (pro) for an educator account (D33)', async () => {
+      const supabase = createSeedDb();
+      mockUser(fixture.user);
+
+      // A `pro` pool (student audience) — a valid licence, wrong persona.
+      const poolReq = createNextRequest(
+        'http://localhost/api/v1/organization/seats/pools',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: 'pro', quantity: 2 }),
+        },
+        orgCookies(),
+      );
+      const poolRes = await createPool(poolReq);
+      const poolBody = await json<PoolBody>(poolRes);
+      expect(poolRes.status).toBe(201);
+
+      const educator = await createTestUser({ role: 'educator' });
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: educator.id, poolId: poolBody.data.id }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createAssignment(req);
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('BAD_REQUEST');
+      const written = await supabase
+        .from('org_seat_assignments')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('user_id', educator.id);
+      expect(written.data).toEqual([]);
+    });
+
+    it('accepts a manager account on a manager-audience pool (solo)', async () => {
+      mockUser(fixture.user);
+
+      const poolReq = createNextRequest(
+        'http://localhost/api/v1/organization/seats/pools',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: 'solo', quantity: 1 }),
+        },
+        orgCookies(),
+      );
+      const poolRes = await createPool(poolReq);
+      const poolBody = await json<PoolBody>(poolRes);
+      expect(poolRes.status).toBe(201);
+      expect(poolBody.data.planKey).toBe('solo');
+
+      const manager = await createTestUser({ role: 'manager' });
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: manager.id, poolId: poolBody.data.id }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createAssignment(req);
+      const body = await json<AssignmentBody>(response);
+
+      expect(response.status).toBe(201);
+      expect(body.data.planKey).toBe('solo');
+      expect(body.data.userId).toBe(manager.id);
     });
   });
 

@@ -26,17 +26,17 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 ## Data model
 
-| Table / column                                                          | Meaning                                                                                                                                        |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `for_account_type`).                                                                                         |
-| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                   |
-| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                   |
-| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228).              |
-| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                                     |
-| `org_role_features (org_role_id, feature_key, is_enabled)`              | Revokes-only since phase 3c (D19/D27): an explicit `is_enabled = false` subtracts one key from the role profile; an enabled row has no effect. |
-| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` is the seat plan.                                                                                  |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                             |
-| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                      |
+| Table / column                                                          | Meaning                                                                                                                                          |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                    |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                     |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                     |
+| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `solo` tier — D2). An organization purchase never writes it (#228).             |
+| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                                       |
+| `org_role_features (org_role_id, feature_key, is_enabled)`              | Revokes-only since phase 3c (D19/D27): an explicit `is_enabled = false` subtracts one key from the role profile; an enabled row has no effect.   |
+| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                               |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                        |
 
 The `base` / `launch` defaults come from the seed
 (`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
@@ -109,10 +109,10 @@ request on the ctx). Resolution order:
    personally is never shadowed by an org on a lower tier — a student on StudiQ
    Pro inside a free `launch` org keeps `ai.chat`. Inside an org the personal
    layer only adds `personalPortable` keys (D3): a personal plan cannot hand a
-   `member` role an org-scoped entitlement such as `branding`. Manager plans are
-   organization plans mirrored onto the buyer (#228), so a manager's
-   `personal_plan_key` adds nothing in an org
-   (`personalPlanApplies()`, `packages/server/src/services/personal-plan.ts`).
+   `member` role an org-scoped entitlement such as `branding`. Inside a verified
+   org a personal plan whose own `scope='organization'` never applies — that is
+   the legacy org-buyer mirror (#228, D34); the plan's `scope` is read from the
+   batched `plan_entitlements` embed, so the rule costs no extra query.
 4. **User overrides** — an active `user_feature_overrides` row is the final word
    on its key in both directions (D26). Rows with `expires_at` in the past stay
    in the table for audit but are ignored.
@@ -143,16 +143,16 @@ a wrapper over the single resolver's composed `limits`
 comes from the verified organization's plan — no seat and no personal plan can
 widen it. Per-member keys (`scope: 'user'`) take the most permissive layer:
 `max(org, seat, personal)`, so an org on the free tier never undercuts a plan
-the member bought. A manager's personal plan is excluded inside an org — it
-mirrors an org purchase (#228). A missing `plan_limits` row is `0` (blocked) in
-every path.
+the member bought. A personal plan whose `scope='organization'` is excluded
+inside an org — it is the legacy org-buyer mirror (#228, D34). A missing
+`plan_limits` row is `0` (blocked) in every path.
 
 | Context                                          | `scope: 'user'` keys               | `scope: 'org'` keys            |
 | ------------------------------------------------ | ---------------------------------- | ------------------------------ |
 | No active org                                    | personal plan                      | `0` (no org capacity to grant) |
 | Active org, seated verified member               | max(org, seat, personal)           | org plan                       |
 | Active org, unseated verified member             | max(org, personal)                 | org plan                       |
-| Active org, manager (personal plan is a mirror)  | max(org, seat) (personal excluded) | org plan                       |
+| Active org, organization-scope personal plan     | max(org, seat) (personal excluded) | org plan                       |
 | Active org id without membership (forged cookie) | personal plan                      | `0`                            |
 | Plan lacks the key                               | `0` + `warn()`                     | `0` + `warn()`                 |
 
@@ -161,13 +161,13 @@ every path.
 seat plan: a spoofed org id has no row and falls back to the personal plan
 (user keys) or `0` (org keys), ignoring any stale seat row.
 
-**Managers (#228):** a manager has no paid personal plan — their
-`profiles.personal_plan_key` is the free tier. In a verified org a manager
-therefore resolves limits from `max(org, seat)` — personal excluded — and never
-from their personal key — it is a mirror of an org plan, never a second
-entitlement (#228); the free personal tier applies only when there is no active
-org. A manager carrying a paid org plan in `personal_plan_key` from an old
-purchase cannot widen any org's limits.
+**Managers (#228, D2):** a manager has no paid personal plan — their
+`profiles.personal_plan_key` is the free `solo` tier. In a verified org an
+organization-scope personal plan is excluded, so limits come from
+`max(org, seat, personal)` with the personal layer inert when its plan is
+organization-scope (#228, D34); the free personal tier applies fully when there
+is no active org. A legacy org-scope plan left in `personal_plan_key` cannot
+widen any org's limits — the 2026-11-22 backfill moves managers onto `solo`.
 
 `checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`
@@ -219,8 +219,9 @@ limits can come from the org plan while this page shows their personal plan
 (#181/#270).
 
 The organization ladder on `/pricing?audience=organization` badges its "current
-plan" from the same precedence (#228): a manager reads `/api/v1/me/plan` (the
-active org's plan), while students/educators keep reading `/api/v1/me/personal-plan`.
+plan" from the same precedence (#228, D34): a member who may bill the active org
+(`org.billing.manage`) reads `/api/v1/me/plan` (the active org's plan), while
+everyone else keeps reading `/api/v1/me/personal-plan`.
 
 Value semantics:
 

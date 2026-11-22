@@ -25,7 +25,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
     sortOrder: 1,
   },
   ace: {
@@ -34,7 +35,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 1999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'student',
+    scope: 'personal',
+    audience: 'student',
     sortOrder: 2,
   },
   hub: {
@@ -43,7 +45,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     priceMonthly: 9999,
     currency: 'PLN',
     isActive: true,
-    forAccountType: 'manager',
+    scope: 'organization',
+    audience: null,
     sortOrder: 3,
   },
 };

@@ -435,6 +435,15 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 
 ### 4 — seats and personal plans
 
+> **4a delivered 2026-11-22 on `feat/authority-4a` (D32–D34).** Plan
+> scope/audience shipped (`for_account_type` dropped), `solo` is the free
+> manager personal plan, `profiles.account_type` exists, pool creation
+> validates the licence against the live catalog, seat assignment checks the
+> target's persona against the plan `audience`, and plan composition keys on
+> scope/`org.billing.manage` instead of the caller's persona. The seats page
+> behaviour/UX and the QA case-text rewrite are phase 4b (next agent); see the
+> [plan's phase-4 block](role-authority-plan.md#phase-4--seats-and-personal).
+
 - `subscription_plans.scope` + `audience`; add `solo`; `launch` becomes
   organization-only; backfill legacy manager personal plans.
 - `org_seat_pools.plan_key` FK. The pool **is** the licence record (D15): an org

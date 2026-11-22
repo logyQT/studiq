@@ -62,7 +62,20 @@ const DEFAULT_PLAN_ENTITLEMENTS: Record<string, readonly string[]> = {
   hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.builder', 'advanced.stats', 'branding'],
   launch: ['flashcards', 'quiz'],
   campus: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
+  solo: ['flashcards', 'quiz'],
   seat: ['ai.chat', 'advanced.stats', 'quiz.builder'],
+};
+
+/** Plan → scope, as the `subscription_plans(scope)` embed reports it (phase 4a). */
+const DEFAULT_PLAN_SCOPES: Record<string, string> = {
+  base: 'personal',
+  ace: 'personal',
+  pro: 'personal',
+  solo: 'personal',
+  hub: 'organization',
+  launch: 'organization',
+  campus: 'organization',
+  seat: 'personal',
 };
 
 /** Unlimited by default so the quota-0 filter passes; override per test. */
@@ -82,6 +95,7 @@ export interface ResolverTablesOpts {
   seatPlanKey?: string | null;
   personalPlanKey?: string | null;
   planEntitlements?: Record<string, readonly string[]>;
+  planScopes?: Record<string, string>;
   planLimits?: Record<string, Partial<Record<LimitKey, number>>>;
   overrides?: Array<{ feature_key: string; is_enabled: boolean; expires_at?: string | null }>;
   flags?: FlagRow[];
@@ -90,6 +104,7 @@ export interface ResolverTablesOpts {
 /** Wires `mock.from` to the resolver's post-3b query shapes. */
 export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTablesOpts = {}): void {
   const planEntitlements = opts.planEntitlements ?? DEFAULT_PLAN_ENTITLEMENTS;
+  const planScopes = { ...DEFAULT_PLAN_SCOPES, ...opts.planScopes };
   const planLimits = opts.planLimits ?? DEFAULT_PLAN_LIMITS;
 
   mock.from.mockImplementation((table: string) => {
@@ -118,7 +133,11 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
     if (table === 'plan_entitlements') {
       return chain(
         Object.entries(planEntitlements).flatMap(([plan_key, keys]) =>
-          keys.map((entitlement_key) => ({ plan_key, entitlement_key })),
+          keys.map((entitlement_key) => ({
+            plan_key,
+            entitlement_key,
+            subscription_plans: { scope: planScopes[plan_key] ?? 'personal' },
+          })),
         ),
       );
     }

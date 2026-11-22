@@ -273,7 +273,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     await expect(effectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(2000);
   });
 
-  it('lets the org plan govern a manager with an unlimited personal plan (#233 Q1, manager persona)', async () => {
+  it('lets the org plan govern a member with an unlimited organization-scope personal plan (#233 Q1, D34)', async () => {
     const { data: profile } = await service
       .from('profiles')
       .select('personal_plan_key')
@@ -281,16 +281,20 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       .single();
     const originalPlan = profile!.personal_plan_key;
 
-    await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', fixture.user.id);
+    // `campus` is scope='organization': inside a verified org such a personal
+    // plan never applies (the legacy org-buyer mirror), so its -1 must not
+    // widen either key.
+    await service
+      .from('profiles')
+      .update({ personal_plan_key: 'campus' })
+      .eq('id', fixture.user.id);
 
     try {
-      // launch: max_flashcards 100, max_ai_tokens_per_day 0. A manager's
-      // personal plan is excluded inside a verified org, so `pro` (-1) must
-      // not widen either key.
+      // launch: max_flashcards 100, max_ai_tokens_per_day 0.
       await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
       await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(0);
 
-      // The personal plan still applies outside the org.
+      // Outside the org the stored personal plan applies in full.
       await expect(
         effectiveLimit(memberCtx({ activeOrgId: null }), 'max_flashcards'),
       ).resolves.toBe(-1);
@@ -312,7 +316,8 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
         price_monthly: 0,
         currency: 'PLN',
         sort_order: 999,
-        for_account_type: 'manager',
+        scope: 'organization',
+        audience: null,
         is_active: false,
       });
       if (planError) throw new Error(`[limits] plan create failed: ${planError.message}`);
@@ -327,10 +332,28 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       }
 
       await service.from('organizations').update({ plan: planKey }).eq('id', fixture.orgId!);
+      // The personal plan points at the same test plan, so its row is missing
+      // `max_decks` too — no fallback anywhere.
+      const { data: profileRow } = await service
+        .from('profiles')
+        .select('personal_plan_key')
+        .eq('id', fixture.user.id)
+        .single();
+      const originalPersonal = profileRow!.personal_plan_key;
+      await service
+        .from('profiles')
+        .update({ personal_plan_key: planKey })
+        .eq('id', fixture.user.id);
 
-      // Missing user key in org context → 0 (the manager's personal plan is
-      // excluded inside the org, so there is no fallback).
-      await expect(effectiveLimit(memberCtx(), 'max_decks')).resolves.toBe(0);
+      try {
+        // Missing user key in org context → 0 (org and personal rows both miss it).
+        await expect(effectiveLimit(memberCtx(), 'max_decks')).resolves.toBe(0);
+      } finally {
+        await service
+          .from('profiles')
+          .update({ personal_plan_key: originalPersonal })
+          .eq('id', fixture.user.id);
+      }
       // Present key still resolves from the org plan.
       await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
       // Missing org key → blocked (0), never unlimited.
@@ -351,9 +374,12 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     expect(plan.primary).toBe('hub');
     expect(sources.org).toEqual({ planKey: 'hub', origin: 'org' });
     expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+    // The manager's personal plan is `solo` (personal scope), which applies
+    // inside the org for limits/portable keys (D34).
     expect(plan.sources).toEqual([
       { planKey: 'hub', origin: 'org' },
       { planKey: 'base', origin: 'seat' },
+      { planKey: 'solo', origin: 'personal' },
     ]);
   });
 });
