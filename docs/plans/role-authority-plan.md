@@ -667,12 +667,11 @@ The table is in **landing order**, not the original plan's order: 2a-3 goes befo
 
 **Follow-ups this slice creates:**
 
-- **Phase 4** closes the seat-parity gap in `has_org_feature`: the seat `OR` sits
-  inside the `NOT EXISTS(org_role_features)` block, so a role that owns any row
-  never sees its seat plan while the resolver applies it unconditionally. Hoist
-  the `OR` out of the zero-row block, or guarantee every seat-eligible key is
-  reachable through the row branch — required once `org_seat_pools.plan_key` is
-  all-`seatEligible` (D15). No user-visible gap today.
+- **Phase 4** seat-parity gap in `has_org_feature` — **closed in 3c**: the
+  twin's seat arm is now outside every row-existence block and intersected with
+  the org ceiling, matching the resolver. The one remaining divergence is the
+  admin wildcard (`is_system AND name = 'admin'`), owned by phase 5 with the
+  org-delete path.
 - **Phase 5** must not assume Teacher `stats.read` is `own`: `SYSTEM_ROLE_TEMPLATES`
   and `seed_system_role_permissions` grant `group` (ADR §4.2), but existing
   organizations keep the `own` row the old matrix wrote, because the function's

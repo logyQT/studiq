@@ -327,10 +327,10 @@ begin
     raise exception 'apply_entitlement_fenced still calls apply_org_plan';
   end if;
 
-  -- `change_org_plan` is the plan move and nothing else: it names
-  -- `organizations` and no other entitlements-bearing table.
+  -- `change_org_plan` is the plan move and nothing else: it updates
+  -- `organizations.plan` and names no other entitlements-bearing table.
   v_body := lower(pg_get_functiondef('public.change_org_plan(uuid,text)'::regprocedure));
-  if position('organizations' in v_body) = 0 then
+  if position('update public.organizations set plan' in v_body) = 0 then
     raise exception 'change_org_plan does not move organizations.plan';
   end if;
   foreach v_forbidden in array array[
@@ -359,14 +359,14 @@ begin
       regexp_count(v_body, 'org_role_features');
   end if;
 
-  -- `is_enabled` appears exactly once, negated. Strip the shapes a revoke may
-  -- take and any remainder is a positive predicate — keyed on the shape, not an
-  -- alias, so renaming `fr` cannot evade it.
+  -- `is_enabled` appears exactly once, negated. Strip the revoke shape
+  -- (`not <alias>.is_enabled`) and any remainder is a positive predicate —
+  -- keyed on the shape, not an alias, so renaming `fr` cannot evade it and
+  -- `is_enabled = false` inside a NOT is not mistaken for a revoke.
   if regexp_count(v_body, 'is_enabled') <> 1 then
     raise exception 'has_org_feature references is_enabled % time(s), expected the one negated revoke', regexp_count(v_body, 'is_enabled');
   end if;
   v_stripped := regexp_replace(v_body, 'not[[:space:]]+[a-z_][a-z0-9_]*\.is_enabled', '', 'g');
-  v_stripped := regexp_replace(v_stripped, 'is_enabled[[:space:]]*=[[:space:]]*false', '', 'g');
   if position('is_enabled' in v_stripped) > 0 then
     raise exception 'has_org_feature has a positive is_enabled predicate';
   end if;
