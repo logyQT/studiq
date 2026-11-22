@@ -82,8 +82,6 @@
     "enabled": "Włączona",
     "disabled": "Wyłączona",
     "empty": "Brak flag funkcji.",
-    "delete_title": "Usuń flagę funkcji",
-    "delete_desc": "Czy na pewno chcesz usunąć flagę \"{key}\"? Tej operacji nie można cofnąć.",
     "save_failed": "Nie udało się zapisać ({code})",
     "all_flags_exist": "Wszystkie flagi z kodu już istnieją",
     "error_exists": "Flaga o tym kluczu już istnieje.",
@@ -160,6 +158,7 @@
   },
   "UserOverrides": {
     "title": "Nadpisania użytkowników",
+    "description": "Aktywne nadpisanie (bez daty wygaśnięcia lub z przyszłą datą) jest ostateczne w obu kierunkach: flaga nie wyłączy włączonego nadpisania, a wyłączone nadpisanie pozostaje wyłączone nawet przy włączonej fladze. Wygasłe wiersze są ignorowane.",
     "create": "Utwórz nadpisanie",
     "edit": "Edytuj nadpisanie",
     "list_title": "Wszystkie nadpisania",

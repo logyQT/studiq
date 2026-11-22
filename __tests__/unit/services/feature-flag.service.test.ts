@@ -134,15 +134,4 @@ describe('FeatureFlagService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
-
-  describe('delete', () => {
-    it('returns error on DB failure', async () => {
-      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
-
-      const result = await service.delete('ff-1');
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('INTERNAL_SERVER');
-    });
-  });
 });

@@ -13,8 +13,3 @@ export async function PUT(request: Request, { params }: RouteContext) {
   const body: unknown = await request.json();
   return toNextResponse(await featureFlagController.update(id, body));
 }
-
-export async function DELETE(_request: Request, { params }: RouteContext) {
-  const { id } = await params;
-  return toNextResponse(await featureFlagController.delete(id));
-}

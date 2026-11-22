@@ -67,13 +67,6 @@ export class FeatureFlagService {
     if (error) return toDbFailure(error);
     return success(data);
   }
-
-  async delete(id: string) {
-    const supabase = await this.clientFactory();
-    const { error } = await supabase.from('entitlement_flags').delete().eq('id', id);
-    if (error) return toDbFailure(error);
-    return success({ success: true });
-  }
 }
 export const featureFlagService = wrapService(
   new FeatureFlagService(createClient),

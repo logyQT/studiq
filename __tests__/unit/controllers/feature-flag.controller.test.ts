@@ -9,7 +9,6 @@ function createMockService() {
     getById: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    delete: vi.fn(),
   };
 }
 
@@ -133,32 +132,6 @@ describe('FeatureFlagController', () => {
       const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
         name: 'Updated',
       });
-
-      expect(response.success).toBe(false);
-    });
-  });
-
-  describe('delete', () => {
-    it('deletes a flag', async () => {
-      mockService.delete.mockResolvedValueOnce({ success: true, data: undefined });
-
-      const response = await controller.delete('550e8400-e29b-41d4-a716-446655440000');
-
-      expect(response.success).toBe(true);
-      expect(response.statusCode).toBe(200);
-    });
-
-    it('returns 400 on invalid params', async () => {
-      const response = await controller.delete('invalid');
-
-      expect(response.success).toBe(false);
-      expect(response.statusCode).toBe(400);
-    });
-
-    it('returns error on service failure', async () => {
-      mockService.delete.mockResolvedValueOnce({ success: false, error: 'INTERNAL_SERVER' });
-
-      const response = await controller.delete('550e8400-e29b-41d4-a716-446655440000');
 
       expect(response.success).toBe(false);
     });

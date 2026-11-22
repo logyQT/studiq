@@ -28,12 +28,11 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
 import { QueryError } from '@/app/(frontend)/components/query-error';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 type FeatureFlag = {
@@ -77,7 +76,6 @@ export default function FeatureFlagsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<FeatureFlag | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
-  const [deleteTarget, setDeleteTarget] = useState<FeatureFlag | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const existingKeys = new Set(flags.map((flag) => flag.key));
@@ -112,14 +110,6 @@ export default function FeatureFlagsPage() {
       setFormError(null);
     },
     onError: (err: Error) => setFormError(mapError(err)),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiDelete(`/feature-flags/${id}`),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
-      setDeleteTarget(null);
-    },
   });
 
   function openCreate() {
@@ -181,6 +171,9 @@ export default function FeatureFlagsPage() {
                   <TableHead>{t('col_key')}</TableHead>
                   <TableHead>{t('col_name')}</TableHead>
                   <TableHead>{t('col_enabled')}</TableHead>
+                  {/* A flag is toggled, not deleted: a missing
+                      `entitlement_flags` row fails closed (ADR-0015 3a), so
+                      deleting one is an invisible global kill switch. */}
                   <TableHead className="w-24" />
                 </TableRow>
               </TableHeader>
@@ -197,20 +190,15 @@ export default function FeatureFlagsPage() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(flag)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(flag)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(flag)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
                 {flags.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>
@@ -295,16 +283,6 @@ export default function FeatureFlagsPage() {
           </form>
         </DialogContent>
       </Dialog>
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={t('delete_title')}
-        description={t('delete_desc', { key: deleteTarget?.key ?? '' })}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-        confirmLabel={tc('delete')}
-        destructive
-      />
     </div>
   );
 }

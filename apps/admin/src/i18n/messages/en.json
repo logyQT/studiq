@@ -82,8 +82,6 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "empty": "No feature flags found.",
-    "delete_title": "Delete Feature Flag",
-    "delete_desc": "Are you sure you want to delete the flag \"{key}\"? This action cannot be undone.",
     "save_failed": "Save failed ({code})",
     "all_flags_exist": "All code-defined flags already exist",
     "error_exists": "A flag with this key already exists.",
@@ -160,6 +158,7 @@
   },
   "UserOverrides": {
     "title": "User Overrides",
+    "description": "An active override (no expiry, or a future expiry) is the final word in both directions: a flag never cuts an enabled override, and a disabled override stays revoked even when the flag is on. Expired rows are ignored.",
     "create": "Create Override",
     "edit": "Edit Override",
     "list_title": "All Overrides",
