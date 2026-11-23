@@ -208,6 +208,13 @@ describe('RLS tenant isolation (#191)', () => {
       points: 1,
     });
 
+    // The run targets the student: since 5e-2 (D-5e2-2) a Member reads a run
+    // only when it targets them (or they authored it / hold assignment.read),
+    // so the positive control below needs the target row.
+    await service
+      .from('assignment_targets')
+      .insert({ assignment_id: assignment.id, student_id: data.studentId });
+
     const { data: attempt, error: attemptError } = await service
       .from('quiz_attempts')
       .insert({ user_id: data.studentId, score: 1, total_questions: 1 })

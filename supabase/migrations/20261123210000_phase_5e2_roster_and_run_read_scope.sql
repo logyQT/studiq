@@ -34,7 +34,13 @@
 --   "may read this run" (R40): the parent row and its target list stay
 --   consistent. A plain learner sees only runs that target them; the
 --   null-org (personal) run stays invisible to PostgREST exactly as today —
---   the floor is not widened.
+--   the floor is not widened. The author arm is ALSO spelled directly on the
+--   row (created_by = auth.uid()) inside the unchanged tenant floor: PG
+--   gates INSERT ... RETURNING on the SELECT policy, and the helper's
+--   author arm cannot see the row inserted by the same command (a STABLE
+--   function's snapshot excludes it — measured: insert-without-returning
+--   passes, insert-with-returning raises 42501), so the direct conjunct is
+--   what keeps the author's own INSERT ... RETURNING working.
 --
 -- D-5e2-3 — the two teacher-dashboard RPCs get the capability, not a persona
 --   branch (R43): the JWT account_type wall in get_teacher_group_performance
@@ -89,7 +95,10 @@ ALTER POLICY "Own or same-org membership read" ON public.org_members
 ALTER POLICY "Visible teacher assignments" ON public.teacher_assignments
   USING (
     organization_id IN (SELECT c.organization_id FROM public.rls_caller_org_ids() c)
-    AND public.rls_caller_can_read_assignment_targets(id)
+    AND (
+      created_by = auth.uid()
+      OR public.rls_caller_can_read_assignment_targets(id)
+    )
   );
 
 -- ==========================================
@@ -530,8 +539,10 @@ begin
     raise exception 'the org_members SELECT policy no longer carries the self branch plus the nine-key D-5e2-1 union (or gained a WITH CHECK / a persona conjunct)';
   end if;
 
-  -- 2. teacher_assignments SELECT: exactly one row, naming both the tenant
-  --    floor and 5e-1's cohort helper (D-5e2-2).
+  -- 2. teacher_assignments SELECT: exactly one row, naming the tenant floor,
+  --    the direct author arm (INSERT ... RETURNING is gated on the SELECT
+  --    policy and the STABLE helper cannot see the row inserted by the same
+  --    command) and 5e-1's cohort helper (D-5e2-2).
   if (
     select count(*)
     from pg_policies p
@@ -541,11 +552,12 @@ begin
       and p.cmd = 'SELECT'
       and p.qual is not null
       and position('rls_caller_org_ids' in p.qual) > 0
+      and position('created_by = auth.uid()' in p.qual) > 0
       and position('rls_caller_can_read_assignment_targets' in p.qual) > 0
       and position('account_type' in p.qual) = 0
   ) <> 1
   then
-    raise exception 'the teacher_assignments SELECT policy no longer delegates to rls_caller_can_read_assignment_targets inside the rls_caller_org_ids tenant floor';
+    raise exception 'the teacher_assignments SELECT policy no longer carries the author arm plus rls_caller_can_read_assignment_targets inside the rls_caller_org_ids tenant floor';
   end if;
 
   -- 3. Both dashboard RPCs: the capability is in, the persona branch is out,
