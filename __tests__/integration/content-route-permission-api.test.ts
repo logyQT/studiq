@@ -9,6 +9,7 @@ import {
   seedOrganization,
   seedGroupMembership,
   seedOrgMembership,
+  setOrgPlan,
 } from '#test/integration/helpers';
 import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
 import { json } from '#test/helpers/json';
@@ -182,10 +183,17 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     name: string,
     keys: string[],
     scope: 'own' | 'group' | 'organization',
+    entitlementProfile: 'all' | 'learner' | 'none' = 'none',
   ): Promise<string> {
     const { data: role, error } = await service
       .from('org_roles')
-      .insert({ organization_id: organizationId, name, display_name: name, is_system: false })
+      .insert({
+        organization_id: organizationId,
+        name,
+        display_name: name,
+        is_system: false,
+        entitlement_profile: entitlementProfile,
+      })
       .select('id')
       .single();
     if (error) throw new Error(`[setup] role ${name}: ${error.message}`);
@@ -221,11 +229,21 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     const foreignOrg = await seedOrganization(`content-route-api-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;
 
+    // Phase 5d: the quiz writes are gated on the `quiz.templates` entitlement,
+    // which the `launch` default plan does not carry. These cases pin the
+    // permission keys, not the entitlement, so the fixture org sits on `hub`.
+    await setOrgPlan(orgId, 'hub');
+
+    // Phase 5d: the quiz writes are additionally gated on the
+    // `quiz.templates` entitlement. A custom role reaches the org plan
+    // ceiling (the `hub` org above) only through the `all` profile, so the
+    // quiz holder carries it; the cases still pin the permission keys.
     quizRoleId = await roleWith(
       orgId,
       `quiz-holder-${tag}`,
       ['quiz.read', 'quiz.create', 'quiz.update', 'quiz.delete'],
       'own',
+      'all',
     );
     assignmentRoleId = await roleWith(
       orgId,

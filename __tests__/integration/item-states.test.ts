@@ -7,6 +7,7 @@ import {
   createServiceClient,
   mockUser,
   seedOrgMembership,
+  setOrgPlan,
 } from '#test/integration/helpers';
 import {
   createNextRequest,
@@ -174,6 +175,11 @@ describe('Item states and versioning (#1171)', () => {
     student = await before({ role: 'student' });
     assignmentId = asJson<string>(teacher.created.assignmentId);
     if (!assignmentId || !teacher.orgId) throw new Error('assignment fixture missing');
+
+    // Phase 5d: the quiz writes (create/addQuestions/createAssignment/bulk)
+    // are gated on the `quiz.templates` entitlement, which the `launch`
+    // default plan does not carry — the authoring org sits on `hub`.
+    await setOrgPlan(teacher.orgId, 'hub');
 
     const { data: memberRole } = await service
       .from('org_roles')
