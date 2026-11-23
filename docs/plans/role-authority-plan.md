@@ -134,6 +134,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R40 | One source per rule holds in SQL too: an actor-parameterized helper owns the predicate and the `rls_caller_*` wrapper is a one-line delegate — two copies of a scope-rank rule drift. And a TS check that re-derives a value the code already derives from the same permission is dead code: delete it with the derivation, never keep it as a second rule.                                                                                          | 5b: `can_assign_org_role` got the §4.4 conjunct only after `covers_permission` was factored out of `rls_caller_covers_permission` (a second `case`-rank copy would have drifted from `scopeCovers`); `assertOrgBillingAuthority` was deleted because `ownerFromContext` derives the org owner from the very `org.billing.manage` the check re-asked                                                                                                                                                                           |
 | R41 | An `rls_caller_*` wrapper resolves its actor from the **JWT**, not from a mocked `getUser`: a service-role client in tests has `auth.uid() = null`, so every path that calls a wrapper RPC answers false under the usual `mockUser` seam — such paths must be tested with a real signed-in session, and the existing cases that silently passed (or failed for the wrong reason) move to one.                                                        | 5c: `changeRole`'s new `rls_caller_may_assign_org_role` call returned false for every `mockUser`-driven PUT (admin included), which surfaced as a wrong 403/404 in `members.test.ts`; the API half of the new member-assignment suite and the two affected cases now run on real cookie-jar sessions (`actAs`), where `auth.uid()` is the signed-in user                                                                                                                                                                      |
 | R42 | An entitlement deny test must use a context that **passes the permission gate**: a controller that gates on both `requireEntitlement` and `can(...)` answers 403 either way, so a deny case with empty `permissionScopes` cannot attribute the refusal to the entitlement — deleting the gate line leaves the test green (SURVIVED). The deny case holds the permission keys and the free-sibling case asserts `requireEntitlement` is never called. | 5d: the first draft of the `quiz.templates` deny case in `quiz-teacher.controller.test.ts` used a keyless ctx, so the permission 403 masked the entitlement gate and the `bun run mutate` proof (gate removed from `create`) would have SURVIVED; the deny case now runs with the full `mockCtx` and the proof is KILLED                                                                                                                                                                                                      |
+| R43 | A persona branch standing in for a capability fails in both directions at once — it over-reads for one persona and leaks for the other; replace it with the capability (or the target-set fact) and pin both directions in one fixture where persona and role disagree.                                                                                                                                                                              | 5e-1: the old `quiz_attempts` staff branch let an educator persona on the Member role read every same-org learner's attempts (leak) while a student persona on a Teacher-capable role could not; the seal's persona conjunct spared a targeted educator the sealed item's key                                                                                                                                                                                                                                                 |
 
 ## 4. Decisions
 
@@ -4452,7 +4453,149 @@ enforced:**
   to `stats/teacher/groups|feed` answers 4xx during the load; EDU-QZ-04 note.
   The DELETE-wording gap from the handoff is recorded in the register note
   above (gate list won).
-- Register row 12 closed; **rows 3, 4, 10 and 11 remain** with phase 5.
+- Register row 12 closed; **rows 3 and 10 remain** with phase 5 (row 10 moves to 5e-2); rows 4 and 11 are closed by 5e-1 below.
+
+**5e-1 on `feat/authority-5e` (2026-11-23) — register rows 4 + 11: the seal,
+the exposure ledger and `quiz_attempts` key on data and capabilities, not
+the JWT persona; one 403/404 derivation; a clean null-org refusal:**
+
+- **The learner definition (D-5e1) is one rule in three places.** A caller is
+  a learner for a published, in-window (or held-back) assignment when it
+  targets them (1) directly (`assignment_targets.student_id`), (2) through a
+  group where their `group_members.role = 'member'` — a group teacher is
+  staff of that class, or (3) org-wide (`seal_org_wide`) with a learner-profile
+  org role (`org_roles.entitlement_profile = 'learner'`, the system Member).
+  `rls_caller_is_sealed_item` (SQL) and `sealedItemsFor` (TS) both read
+  `group_members.role` and `org_members → org_roles.entitlement_profile`, so
+  the halves agree; the exposure write guard reuses the same arms through
+  `callerIsLearnerOnAssignment` over the already-loaded assignment (one
+  `group_members` read, one `org_members` read only when the run is org-wide —
+  never a query per item). Measured facts preserved (pinned by
+  `assignment-cohort-reads.test.ts`): a manager/educator with
+  `group_members.role = 'teacher'` in a targeted group is a **reader**, the
+  author composing an item keeps seeing it, an org-wide run holds the item
+  from every learner-profile member and from no org staff.
+- **Migration `20261123200000_phase_5e1_learner_predicates.sql`** owns the
+  three objects with a closing DO guard (R26/R27): the seal function (persona
+  conjunct out, three arms in, definer/`search_path=''`/grants restated), the
+  `exposure_events` SELECT (`student_id = auth.uid()` OR same-org AND
+  `rls_caller_covers_permission(organization_id, 'stats.read', 'group')` —
+  `stats.read` is the teacher-dashboard key, and the rank own < group means a
+  Member's own-scope row does not qualify; writes stay revoked), and
+  `quiz_attempts` "Own or staff quiz attempts" — **one predicate for USING and
+  WITH CHECK** (D-5e3, grading writes another user's row): own row, or
+  same-org (`organization_id` trigger-stamped since 20261028100000) AND
+  (`stats.read` OR `assignment.read` OR `assignment.update` at group-or-wider
+  via `rls_caller_covers_permission` — never `rls_caller_has_permission`,
+  which is any-scope and would admit a Member's own `stats.read`) OR the
+  attempt's assignment was authored by the caller. The third key exists
+  because `getResults`/`gradeAnswer` gate on `assignment.update` (Teacher
+  holds it at `own`, Admin at `organization`) and a custom role holding
+  `assignment.update`@organization with no read key must still read its
+  cohort.
+- **`quiz_attempts` reader census** (every read/write in
+  `packages/server/src`; `apps/web/src` has no direct read — grep finds only
+  i18n labels and a comment — the frontend goes through the API):
+
+  | reader                                                                            | method                                                         | client                                       | rows it needs           | kept by the new predicate                                                                                                    |
+  | --------------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+  | `quiz-attempt.service.ts:126,261,317`                                             | `loadAnswerableAttempt`, `list`, `getById`                     | user (`clientFactory`)                       | own attempt             | own clause                                                                                                                   |
+  | `quiz-attempt.service.ts:474`                                                     | `saveDraft` UPDATE                                             | user                                         | own                     | WITH CHECK own clause                                                                                                        |
+  | `quiz.service.ts:35,89`                                                           | `generateQuiz` count + INSERT                                  | user                                         | own                     | own / WITH CHECK own                                                                                                         |
+  | `assessment-review.service.ts:253,305`                                            | `reviewedAttempts`, `selectAttempt`                            | user                                         | own                     | own clause                                                                                                                   |
+  | `stats.service.ts:212`                                                            | `getStudentStats`                                              | user                                         | own                     | own clause                                                                                                                   |
+  | `stats.service.ts:383`                                                            | `getTeacherQuizStats`                                          | user                                         | org members' attempts   | staff branch (`stats.read`@group+ etc.); **NULL-stamped personal attempts of members are now invisible to staff** (see debt) |
+  | `student-overview.service.ts:98,115`                                              | `getOverview`                                                  | user                                         | own                     | own clause                                                                                                                   |
+  | `teacher-assignment.service.ts:744,1220,1275,1868`                                | `fairness`, `getResults`, `getStudentAnswers`, `exportAnswers` | user via `ownedClient` (`assignment.update`) | all attempts of the run | author arm, or `assignment.update`@organization covers `group`                                                               |
+  | `teacher-assignment.service.ts:1326,1396`                                         | `gradeAnswer` read + UPDATE of the student's row               | user via `ownedClient`                       | the student's attempt   | USING = WITH CHECK keeps the grading write                                                                                   |
+  | `teacher-assignment.service.ts:1586,1616,1650,1719,1736,1927`                     | student list/detail/start/upload                               | user                                         | own                     | own clause                                                                                                                   |
+  | `lib/assessment-close.ts:65`                                                      | `expireInProgressAttempts`                                     | service                                      | all rows of the run     | service_role bypasses RLS                                                                                                    |
+  | `lib/attempt-sample.ts:74`                                                        | `attemptHistory`                                               | service                                      | the student's rows      | service_role bypasses RLS                                                                                                    |
+  | RPC `get_teacher_problematic_questions` (SECURITY INVOKER, joins `quiz_attempts`) | called from `stats.service.ts:171`                             | user                                         | learners' answers       | Teacher passes via `stats.read`@group — must stay green (it empties silently if the branch vanishes)                         |
+  | RPCs `get_teacher_group_performance`, `get_teacher_activity_feed`                 | `stats.service.ts:651,676`                                     | user                                         | class rows              | 5e-2 (persona gate inside stays; the Teacher role still passes RLS via `stats.read`@group)                                   |
+
+  No reader needs the staff branch at a scope the predicate does not cover —
+  the census found no stop-and-report case. `rls-tenant-isolation.test.ts`'s
+  positive control (teacher reads a same-org student's `quiz_attempts`,
+  lines 508–524) stays green because the Teacher role holds `stats.read`@group.
+
+- **403/404 matrix (D-5e2, §7.1).** `ownedQuiz`'s `foreignOrgError` parameter
+  is deleted; one derivation: missing row → `NOT_FOUND`,
+  `quiz.organization_id !== ctx.activeOrgId` → `NOT_FOUND` (the request is
+  scoped to the active org; §7.1's "member" is read as _member of the
+  request's org_, so a member of B with A active gets 404, not 403 — the
+  no-leak reading and today's read behaviour), otherwise the scope evaluation
+  → `FORBIDDEN`. Pinned at API level by
+  `__tests__/integration/quiz-teacher-404-403-matrix.test.ts` — all four rows
+  through `PUT /api/v1/teacher/quizzes/[id]` (org plan `guide` so the
+  `quiz.templates` entitlement gate passes and the status is the permission
+  derivation): missing → 404, foreign org → 404, same-org quiz of another
+  author with `quiz.update`@own → 403, own quiz → 200 — and at unit level by
+  `quiz-teacher.service.test.ts` (`getById`/`bulkSave`/`createAssignment`/
+  `reorderQuestions` foreign → NOT_FOUND, same-org unreached → FORBIDDEN).
+- **Row 11b:** `teacher-assignment.service.ts#create` refuses
+  `failure('FORBIDDEN')` before any query when `ctx.activeOrgId` is null (the
+  same guard as `quiz-teacher.service.ts#create`), instead of failing at the
+  NOT NULL/RLS floor; the stale `stats.service.ts` comments claiming
+  `quiz_attempts` has no `organization_id` are fixed.
+- **Tests:** unit — `question-seal.test.ts` rewritten around a table-shaped
+  service-role mock: the D-5e1 arms with persona/target disagreement (R28) —
+  a directly targeted educator is sealed, an untargeted student is not, a
+  group teacher is not sealed but a group member is, org-wide seals a
+  learner-profile member and not org staff — plus `callerIsLearnerOnAssignment`
+  (author preview → false, direct target → true, org-wide profile arm);
+  `quiz-teacher.service.test.ts` (foreign-org 404 on the write paths, 403 on
+  same-org unreached); `teacher-assignment.service.test.ts` (null-org guard,
+  mock resolves so a removed guard fails the assertion); the
+  `question-list-pagination` seal stub. Integration (coordinator runs them):
+  `assignment-cohort-reads.test.ts` extended (directly targeted staff persona
+  sealed / untargeted student spared on a second item; org-wide now also pins
+  that org staff still read), `exposure-ledger.test.ts` extended (a directly
+  targeted educator persona mints events, the author preview still mints
+  none; a Member-role learner reads only their own events through the org
+  filter), new `quiz-attempts-staff-scope.test.ts` (Teacher and Admin read
+  the learner's attempt, a custom role with only `assignment.update`@
+  organization reads it, a Member and an educator-persona-on-Member do not,
+  own read works) and new `quiz-teacher-404-403-matrix.test.ts` (the API
+  matrix above).
+- **Mutation proofs (`bun run mutate`, clean tree, one edit + one named
+  test each) — all KILLED:** (1) drop `.eq('role', 'member')` from
+  `sealedItemsFor` → "seals through a group the caller is a member of, but
+  not through one they teach" red; (2) drop the `entitlement_profile ===
+'learner'` filter → "seals org-wide only in an org whose role for the
+  caller is a learner profile" red; (3) `callerIsLearnerOnAssignment` returns
+  always true → "answers false for the author previewing a run they do not
+  target" red; (4) its direct-target arm never matches → "answers true for a
+  directly targeted educator persona" red; (5) restore `failure('FORBIDDEN')`
+  on `ownedQuiz`'s foreign-org branch → the foreign-org 404 case red; (6)
+  remove the null-org guard in `create` → "returns FORBIDDEN without an
+  active org and never queries" red. **SQL predicate mutations cannot be
+  driven by `bun run mutate` in this worktree (no DB — the one-writer rule):
+  delegated to the coordinator as hand-proofs in rolled-back transactions**,
+  e.g. replace the `quiz_attempts` USING with `true` → the Member cases in
+  `quiz-attempts-staff-scope.test.ts` go red; drop `gm.role = 'member'` from
+  the seal function → the cohort-reads group-teacher case goes red; swap
+  `rls_caller_covers_permission` for `rls_caller_has_permission` in the
+  `exposure_events` policy → the exposure-ledger Member case goes red.
+- **Recorded debt (not fixed here):** (a) `quiz_attempts` is `FOR ALL`, so the
+  staff branch also lets a staff caller INSERT/UPDATE other users' attempt
+  rows, and RLS cannot restrict _which columns_ — a teacher can still write
+  fields beyond `score`/`total_points`/`graded_at` on a student's attempt;
+  pre-existing, unchanged by this slice. (b) `getTeacherQuizStats` now
+  aggregates only org-stamped attempts (`organization_id IS NOT NULL`);
+  personal (NULL-stamped) practice attempts of org members are no longer
+  visible to staff in the teacher dashboard — a deliberate consequence of the
+  tenant floor, flagged in the census. (c) The two teacher-dashboard RPCs
+  still gate on the persona inside (row 10 → 5e-2).
+- **QA cases:** no case text changed. The seeded QA personas keep their
+  behaviour: Teacher/Admin read the cohort attempts via `stats.read`@group,
+  the author preview still mints no exposure event, and the only API-visible
+  change for them is a foreign-org quiz write answering 404 instead of 403
+  (`bulkSave`/`createAssignment`) — no QA case asserts that 403.
+- **Gates (implementer):** `test:unit` 316 files / 4893 passed, 1 skipped;
+  `typecheck:all` + `typecheck:admin` green; `lint`, `review:static`, `knip`,
+  `format:check`, `dup:changed` green; `pr:size` measured (see the PR
+  report). Integration suites and the served QA run are the coordinator's.
 
 **Difficulty log**
 
@@ -4511,6 +4654,27 @@ entitlement can refuse), and the free-sibling cases pin the inverse — the read
 methods still answer 200 with the entitlement mock rejecting and
 `requireEntitlement` never called. All seven 5d proofs are KILLED.
 Rule: R42.
+
+#### 2026-11-23 — a persona branch read as a capability was hiding a leak in one direction and an over-read in the other
+
+What: 5e-1 replaced the JWT `account_type` branches on the seal, the
+`exposure_events` read and the `quiz_attempts` staff branch. The reader census
+showed each persona branch was wrong in both directions at once: the old
+`quiz_attempts` staff branch let an **educator persona sitting on the Member
+role** read every same-org learner's attempts through PostgREST (a leak the
+role model never granted), while the seal's persona conjunct spared a
+**directly targeted educator** the very item the run sealed from learners.
+Why: "persona" is a property of the token, "learner on an assignment" is a
+property of the target set — reading one as the other cannot be fixed by
+widening a scope, only by replacing the branch with the data (the three
+target arms) or the capability (`covers_permission` at a staff scope).
+Fix: D-5e1/D-5e3 — one learner definition shared by the SQL seal, the TS seal
+and the exposure guard, one capability-based `quiz_attempts` predicate, and
+both directions pinned in fixtures where persona and role disagree (R28):
+`quiz-attempts-staff-scope.test.ts` (educator-on-Member reads nothing,
+student-on-custom-role reads), `assignment-cohort-reads.test.ts`
+(directly targeted staff persona sealed, untargeted student spared).
+Rule: R43.
 
 _Not started beyond 5b._
 
