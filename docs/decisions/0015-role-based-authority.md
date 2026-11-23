@@ -1556,8 +1556,13 @@ interpretation.
 > 14 in the phase plan: `user_permission_scopes` + `PERSONAL_ROLE_TEMPLATES` +
 > a `withAuth` read when no org), a **manager with no org can create personal
 > decks, flashcards, topics, questions and banks** — the set is the same for
-> every persona. The product intent for a manager is "may edit, may not create
-> personal decks", which row 14 expresses per user rather than by persona.
+> every persona. The same persona-free answer also resolves the
+> `assignment.read/update/delete` trio at `own` for a no-org manager; that is
+> author-only and unreachable for new rows (both layers refuse a no-org
+> `assignment.create`), so it can only ever match a legacy personal row the
+> same manager already authored. The product intent for a manager is "may edit,
+> may not create personal decks", which row 14 expresses per user rather than by
+> persona.
 
 ---
 

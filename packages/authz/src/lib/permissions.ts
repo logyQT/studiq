@@ -397,10 +397,10 @@ export const PERSONAL_PERMISSION_KEYS: ReadonlySet<PermissionKey> = new Set<Perm
 ]);
 
 /**
- * Whether `value` names one of the personal-content keys. The cast is the Set
- * lookup's price for a `string` caller; `__tests__/unit/guards/personal-permission-keys.test.ts`
- * pins every member to a real `Permission` value, so no key outside the catalog
- * can be in the set.
+ * Whether `value` names one of the personal-content keys. The `is` predicate is
+ * how a `string` caller narrows to `PermissionKey`;
+ * `__tests__/unit/guards/personal-permission-keys.test.ts` pins every member to
+ * a real `Permission` value, so no key outside the catalog can be in the set.
  */
 export function isPersonalPermissionKey(value: string): value is PermissionKey {
   const keys: ReadonlySet<string> = PERSONAL_PERMISSION_KEYS;

@@ -5233,9 +5233,20 @@ _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
   "denies a student read inside an org whose role has no row for it"
   **KILLED**. Titles are plain substrings: `bun run mutate` passes `--name` to
   `vitest -t` as a regex, so a title like `… (manager)` matches nothing.
-- **Coordinator still owns:** this branch's serial integration run and the
-  served probe — a manager with no `active_org_id` cookie → deck create **201**,
-  quiz create still refused (entitlement/service), not a persona 403.
+- **Measured at merge:** the four suites the first cut broke are **34/34 green**
+  (`no-active-org-guards`, `assignment-attempts`, `item-snapshot`, `item-states`);
+  fresh-reset serial integration is **116 files passed, 1 skipped — 1116 passed /
+  11 skipped / 0 failed**; the served probe (no `active_org_id`) shows
+  manager = teacher = student with `orgId:null` and the same **24 keys**
+  (0 `quiz.*`, 3 `assignment.*`), manager deck/bank/flashcard create **201**
+  with `organization_id:null`, `/teacher/quizzes` + `/teacher/assignments`
+  **403 FORBIDDEN**, and the in-org control at 44 keys with `orgId` set.
+- **D35 was amended during review** from 21 to **24 keys**: the exclusion of
+  `assignment.*` had been proved for `create` only, while the service supports
+  personal rows for `read`/`update`/`delete` (and randomize/attempt paths pinned
+  at 200). Option A of the review restored those three; `quiz.*`,
+  `assignment.create`, `assignment.publish`/`grade` stay excluded for the
+  reasons in D35.
 
 **Still open in phase 6:** 6b route rules, `resolveDashboardArea`, `AreaGate` and
 the nav-item gates; 6d role-editor behaviour (caller-scope awareness, atomic
