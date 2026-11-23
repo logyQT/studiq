@@ -8,12 +8,15 @@ import { useLocale, useTranslations } from 'next-intl';
 import { formatRelativeTime } from '@/lib/relative-time';
 
 import { CardError } from '@/components/edu/dashboard/card-error';
+import { CardLocked } from '@/components/edu/dashboard/card-locked';
 
 interface ActivityFeedCardProps {
   items: TeacherFeedItem[] | undefined;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  /** Unentitled to `stats.insights` (phase 5d): the plan card replaces the body. */
+  locked: boolean;
 }
 
 const ICONS = {
@@ -31,7 +34,13 @@ function hrefFor(item: TeacherFeedItem): string | null {
   return null;
 }
 
-export function ActivityFeedCard({ items, isLoading, isError, onRetry }: ActivityFeedCardProps) {
+export function ActivityFeedCard({
+  items,
+  isLoading,
+  isError,
+  onRetry,
+  locked,
+}: ActivityFeedCardProps) {
   const t = useTranslations('EduOverviewPage');
   const locale = useLocale();
 
@@ -51,6 +60,8 @@ export function ActivityFeedCard({ items, isLoading, isError, onRetry }: Activit
           <div className="h-40 animate-pulse rounded-xl bg-muted" />
         ) : isError ? (
           <CardError onRetry={onRetry} />
+        ) : locked ? (
+          <CardLocked />
         ) : !items || items.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">{t('feed_empty')}</p>
         ) : (

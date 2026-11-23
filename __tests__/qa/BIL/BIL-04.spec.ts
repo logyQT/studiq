@@ -255,7 +255,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
 
     const featuresAfter = await readFeatures(page);
     expect(featuresAfter, 'Hub unlocks branding').toContain('branding');
-    expect(featuresAfter, 'Hub unlocks the quiz builder').toContain('quiz.builder');
+    expect(featuresAfter, 'Hub unlocks the quiz builder').toContain('quiz.templates');
 
     // The organization purchase must not touch the buyer's personal plan: a
     // manager's personal plan is the free tier and applies only outside an org.

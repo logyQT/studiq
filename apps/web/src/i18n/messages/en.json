@@ -541,7 +541,10 @@
     "feed_assignment_submitted": "Assignment \"{title}\" submitted: {name} ({score}%)",
     "feed_report_opened": "Question \"{title}\" reported by {name}",
     "feed_needs_grading": "Needs grading",
-    "unknown_person": "Student"
+    "unknown_person": "Student",
+    "locked_title": "Insights & weak points",
+    "locked_desc": "Group results and the activity feed are part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "NewClassroomPage": {
     "back": "Back to dashboard",
@@ -755,7 +758,10 @@
     "hours_ago": "{hours, plural, one {# hour ago} other {# hours ago}}",
     "days_ago": "{days, plural, one {# day ago} other {# days ago}}",
     "vs_previous": "vs previous period",
-    "no_previous_data": "no data for the previous period"
+    "no_previous_data": "no data for the previous period",
+    "locked_title": "Insights & weak points",
+    "locked_desc": "Class activity diagnostics are part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "TeacherQuizStats": {
     "title": "Quiz Statistics",
@@ -1908,7 +1914,10 @@
     "mastery_title": "Topic mastery",
     "mastery_desc": "Quiz answers and flashcard reviews by topic (last {days} days)",
     "mastery_empty": "No data yet. Take a quiz or review flashcards that have a topic.",
-    "mastery_split": "Quizzes: {quiz} ({quizCount}) · Flashcards: {cards} ({cardCount})"
+    "mastery_split": "Quizzes: {quiz} ({quizCount}) · Flashcards: {cards} ({cardCount})",
+    "locked_title": "Insights & weak points",
+    "locked_desc": "Weak points, retention and topic mastery are part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "AppStatsPage": {
     "title": "Stats",
@@ -1974,7 +1983,10 @@
     "self_check": "Self-check",
     "no_graded_attempts": "No scored quizzes yet",
     "score": "Score",
-    "date": "Date"
+    "date": "Date",
+    "locked_title": "Insights & weak points",
+    "locked_desc": "Weak points, retention and topic mastery are part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "MediaUpload": {
     "too_large": "The file is too large. Choose a smaller file.",
@@ -2080,8 +2092,8 @@
     "current_plan_badge": "Your plan",
     "feature_flashcards": "Flashcards",
     "feature_quiz": "Quizzes",
-    "feature_quiz_builder": "Quiz Builder",
-    "feature_advanced_stats": "Advanced Statistics",
+    "feature_quiz_templates": "Saved quiz library",
+    "feature_stats_insights": "Insights & weak points",
     "feature_branding": "Custom branding",
     "limit_unlimited": "Unlimited",
     "limit_max_flashcards": "Max Flashcards",
@@ -2996,7 +3008,10 @@
     "empty": "No quizzes yet",
     "empty_desc": "Create your first quiz to reuse across assignments",
     "questions": "{count, plural, one {# question} other {# questions}}",
-    "last_updated": "Last updated: {date}"
+    "last_updated": "Last updated: {date}",
+    "locked_title": "Saved quiz library",
+    "locked_desc": "Saving quizzes and reusing them across assignments is part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "EduQuizNewPage": {
     "title": "New Quiz",
@@ -3007,7 +3022,10 @@
     "description_placeholder": "Optional description",
     "cancel": "Cancel",
     "creating": "Creating...",
-    "create": "Create Quiz"
+    "create": "Create Quiz",
+    "locked_title": "Saved quiz library",
+    "locked_desc": "Saving quizzes and reusing them across assignments is part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "EduQuizEditPage": {
     "title": "Edit Quiz",
@@ -3033,7 +3051,10 @@
     "all_banks": "All banks",
     "search_questions_placeholder": "Search questions...",
     "no_questions_found": "No questions found",
-    "add_to_quiz": "Add to quiz"
+    "add_to_quiz": "Add to quiz",
+    "locked_title": "Saved quiz library",
+    "locked_desc": "Saving quizzes and reusing them across assignments is part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "EduQuizDetailPage": {
     "not_found": "Quiz not found",
@@ -3043,7 +3064,10 @@
     "delete": "Delete",
     "delete_confirm": "Delete this quiz? This cannot be undone.",
     "questions": "Questions",
-    "total_points": "Total Points"
+    "total_points": "Total Points",
+    "locked_title": "Saved quiz library",
+    "locked_desc": "Saving quizzes and reusing them across assignments is part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "EduAssignmentForm": {
     "basic_info": "Basic Information",

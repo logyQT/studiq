@@ -14,6 +14,8 @@ import { GroupPerformanceCard } from '@/components/edu/dashboard/group-performan
 import { ProblemQuestionsCard } from '@/components/edu/dashboard/problem-questions-card';
 import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
 import { useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { useOrgs } from '@/hooks/use-orgs';
 import { teacherStatsKeys } from '@/lib/query-keys';
 
@@ -31,6 +33,13 @@ const STALE_MS = 60_000;
 export default function EduOverviewPage() {
   const t = useTranslations('EduOverviewPage');
   const { activeOrg, isPending: orgsPending } = useOrgs();
+
+  // Group results and the activity feed are diagnostic reads (phase 5d): gated on
+  // `stats.insights`. While unentitled the two queries stay disabled — a free teacher
+  // never fires a 403 on every dashboard load — and the cards show the plan card
+  // instead of their body.
+  const canInsights = useFeature()('stats.insights');
+  const { isPending: featuresPending } = useFeatures();
 
   // The active organization is part of every key: switching it must not show the other
   // organization's numbers while the new ones load.
@@ -56,7 +65,7 @@ export default function EduOverviewPage() {
     queryKey: teacherStatsKeys.groups(orgId, RESULT_DAYS),
     url: `/api/v1/stats/teacher/groups?days=${RESULT_DAYS}`,
     staleTime: STALE_MS,
-    enabled: !orgsPending,
+    enabled: !orgsPending && canInsights,
   });
   const {
     data: feed,
@@ -67,14 +76,15 @@ export default function EduOverviewPage() {
     queryKey: teacherStatsKeys.feed(orgId),
     url: '/api/v1/stats/teacher/feed?limit=10',
     staleTime: STALE_MS,
-    enabled: !orgsPending,
+    enabled: !orgsPending && canInsights,
   });
 
-  // While the organizations are pending every query is disabled, so TanStack's `isLoading` is
-  // false even though there is nothing to show yet: treat "waiting for the org" as pending too.
+  // While the organizations or the features are pending the gated queries are disabled, so
+  // TanStack's `isLoading` is false even though there is nothing to show yet: treat "waiting
+  // for the org/features" as pending too, so an entitled teacher never flashes the plan card.
   const statsPending = statsLoading || orgsPending;
-  const groupsPending = groupsLoading || orgsPending;
-  const feedPending = feedLoading || orgsPending;
+  const groupsPending = groupsLoading || orgsPending || featuresPending;
+  const feedPending = feedLoading || orgsPending || featuresPending;
 
   // Distinct learners and attempts from the aggregate itself: a learner in two groups is one
   // learner, so the totals are never the sum of the group rows. A failed read shows a dash.
@@ -101,13 +111,13 @@ export default function EduOverviewPage() {
         />
         <StatCard
           title={t('students_stat')}
-          value={groupsPending ? '...' : groupsError ? '—' : (students ?? 0)}
+          value={groupsPending ? '...' : groupsError || !canInsights ? '—' : (students ?? 0)}
           icon={Users}
           variant="emerald"
         />
         <StatCard
           title={t('completed_stat', { days: RESULT_DAYS })}
-          value={groupsPending ? '...' : groupsError ? '—' : (completed ?? 0)}
+          value={groupsPending ? '...' : groupsError || !canInsights ? '—' : (completed ?? 0)}
           icon={ClipboardCheck}
           variant="amber"
         />
@@ -121,6 +131,7 @@ export default function EduOverviewPage() {
             isError={groupsError}
             onRetry={() => refetchGroups()}
             days={RESULT_DAYS}
+            locked={!canInsights}
           />
         </div>
         <ActivityFeedCard
@@ -128,6 +139,7 @@ export default function EduOverviewPage() {
           isLoading={feedPending}
           isError={feedError}
           onRetry={() => refetchFeed()}
+          locked={!canInsights}
         />
       </div>
 

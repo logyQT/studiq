@@ -11,6 +11,12 @@
 
 Edytor quizu.
 
+> 2026-11-23 (phase 5d): the editor's save path (`PUT /api/v1/teacher/quizzes/:id/bulk`) is
+> gated on the `quiz.templates` entitlement, so a manual run of this case needs a tenant whose
+> org plan carries it (e.g. `hub`, as in EDU-QZ-01…03/05) — on a `launch` org the autosave and
+> „Zapisz” answer 403 and the plan card replaces the editor. The case has no spec, so nothing
+> in the suite runs it automatically.
+
 ## Steps
 
 1. Wprowadź zmianę i odczekaj kilka sekund.

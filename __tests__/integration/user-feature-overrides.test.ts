@@ -85,11 +85,11 @@ describe('User feature override expiry', () => {
     await clearOverrides();
   });
 
-  // `quiz.builder` is the grant/revoke probe key here: it has no quota, so
+  // `quiz.templates` is the grant/revoke probe key here: it has no quota, so
   // the quota-0 exclusion never masks the override semantics. `ai.chat` on the
   // `base` plan has `max_ai_tokens_per_day = 0` and is excluded regardless —
   // pinned separately below.
-  const GRANT_KEY = 'quiz.builder';
+  const GRANT_KEY = 'quiz.templates';
 
   it('resolves the base plan baseline without overrides', async () => {
     await expect(resolver.resolveEntitlements(ctx()).then((r) => r.entitlements)).resolves.toEqual([

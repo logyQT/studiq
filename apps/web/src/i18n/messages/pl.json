@@ -523,7 +523,10 @@
     "feed_assignment_submitted": "Praca „{title}” oddana: {name} ({score}%)",
     "feed_report_opened": "Zgłoszenie pytania „{title}” od {name}",
     "feed_needs_grading": "Do oceny",
-    "unknown_person": "Student"
+    "unknown_person": "Student",
+    "locked_title": "Analizy i słabe punkty",
+    "locked_desc": "Wyniki grup i aktywność uczniów są częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "NewClassroomPage": {
     "back": "Powrót do panelu",
@@ -737,7 +740,10 @@
     "hours_ago": "{hours, plural, one {# godzinę temu} few {# godziny temu} many {# godzin temu} other {# godziny temu}}",
     "days_ago": "{days, plural, one {# dzień temu} other {# dni temu}}",
     "vs_previous": "w porównaniu do poprzedniego okresu",
-    "no_previous_data": "brak danych w poprzednim okresie"
+    "no_previous_data": "brak danych w poprzednim okresie",
+    "locked_title": "Analizy i słabe punkty",
+    "locked_desc": "Diagnostyka aktywności klasy jest częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "TeacherQuizStats": {
     "title": "Statystyki testów",
@@ -1889,7 +1895,10 @@
     "mastery_title": "Opanowanie tematów",
     "mastery_desc": "Odpowiedzi w testach i powtórki fiszek według tematu (ostatnie {days} dni)",
     "mastery_empty": "Brak danych. Rozwiąż test albo powtórz fiszki z przypisanym tematem.",
-    "mastery_split": "Testy: {quiz} ({quizCount}) · Fiszki: {cards} ({cardCount})"
+    "mastery_split": "Testy: {quiz} ({quizCount}) · Fiszki: {cards} ({cardCount})",
+    "locked_title": "Analizy i słabe punkty",
+    "locked_desc": "Słabe punkty, krzywa zapamiętywania i opanowanie tematów są częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "AppStatsPage": {
     "title": "Statystyki",
@@ -1955,7 +1964,10 @@
     "self_check": "Do samodzielnej oceny",
     "no_graded_attempts": "Brak ocenionych testów",
     "score": "Wynik",
-    "date": "Data"
+    "date": "Data",
+    "locked_title": "Analizy i słabe punkty",
+    "locked_desc": "Słabe punkty, krzywa zapamiętywania i opanowanie tematów są częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "MediaUpload": {
     "too_large": "Plik jest zbyt duży. Wybierz mniejszy plik.",
@@ -2061,8 +2073,8 @@
     "current_plan_badge": "Twój plan",
     "feature_flashcards": "Fiszki",
     "feature_quiz": "Testy",
-    "feature_quiz_builder": "Kreator testów",
-    "feature_advanced_stats": "Zaawansowane statystyki",
+    "feature_quiz_templates": "Biblioteka testów",
+    "feature_stats_insights": "Analizy i słabe punkty",
     "feature_branding": "Własny branding",
     "limit_unlimited": "Bez ograniczeń",
     "limit_max_flashcards": "Maks. fiszki",
@@ -3017,7 +3029,10 @@
     "empty": "Brak quizów",
     "empty_desc": "Utwórz pierwszy quiz, aby wykorzystywać go w wielu kartkówkach",
     "questions": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}}",
-    "last_updated": "Ostatnia aktualizacja: {date}"
+    "last_updated": "Ostatnia aktualizacja: {date}",
+    "locked_title": "Biblioteka testów",
+    "locked_desc": "Zapisywanie testów i używanie ich w wielu kartkówkach jest częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "EduQuizNewPage": {
     "title": "Nowy quiz",
@@ -3028,7 +3043,10 @@
     "description_placeholder": "Opcjonalny opis",
     "cancel": "Anuluj",
     "creating": "Tworzenie...",
-    "create": "Utwórz quiz"
+    "create": "Utwórz quiz",
+    "locked_title": "Biblioteka testów",
+    "locked_desc": "Zapisywanie testów i używanie ich w wielu kartkówkach jest częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "EduQuizEditPage": {
     "title": "Edytuj quiz",
@@ -3054,7 +3072,10 @@
     "all_banks": "Wszystkie banki",
     "search_questions_placeholder": "Szukaj pytań...",
     "no_questions_found": "Nie znaleziono pytań",
-    "add_to_quiz": "Dodaj do quizu"
+    "add_to_quiz": "Dodaj do quizu",
+    "locked_title": "Biblioteka testów",
+    "locked_desc": "Zapisywanie testów i używanie ich w wielu kartkówkach jest częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "EduQuizDetailPage": {
     "not_found": "Nie znaleziono quizu",
@@ -3064,7 +3085,10 @@
     "delete": "Usuń",
     "delete_confirm": "Usunąć ten quiz? Tej operacji nie można cofnąć.",
     "questions": "Pytania",
-    "total_points": "Suma punktów"
+    "total_points": "Suma punktów",
+    "locked_title": "Biblioteka testów",
+    "locked_desc": "Zapisywanie testów i używanie ich w wielu kartkówkach jest częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "EduAssignmentPrintPage": {
     "print_hint": "Ta strona jest zoptymalizowana do druku. Użyj Ctrl+P (Cmd+P), aby zapisać jako PDF.",

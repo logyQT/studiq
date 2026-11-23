@@ -76,7 +76,7 @@ Confirmed end to end on this case's tenant:
 - Paying with the test card shows „Płatność udana! Przekierowywanie...”, then
   „Zakup udany!”, then the manager panel.
 - `GET /api/v1/organization/<id>` reports `plan: "hub"`, `GET /api/v1/me/plan`
-  reports Hub with the `branding` and `quiz.builder` features, and
+  reports Hub with the `branding` and `quiz.templates` features, and
   `GET /api/v1/me/payments` gains one Hub row (299 PLN).
 - `/manage/settings` shows „StudiQ Hub” and the unlocked controls („Wgraj logo”,
   „Kolor marki”) — the „Własny branding” lock card is gone.

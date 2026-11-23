@@ -254,6 +254,19 @@ export async function cleanupOrganizationByName(namePrefix: string) {
   }
 }
 
+/**
+ * Moves an org to another subscription plan through the service-role
+ * `change_org_plan` RPC — the same path a real purchase takes. Fixture orgs
+ * are created on the `launch` default, which carries neither `quiz.templates`
+ * nor `stats.insights`; suites that pin permission behaviour behind those
+ * gates put their org on `hub` with this helper.
+ */
+export async function setOrgPlan(orgId: string, plan: string) {
+  const supabase = createServiceClient();
+  const { error } = await supabase.rpc('change_org_plan', { p_org_id: orgId, p_plan: plan });
+  if (error) throw new Error(`Failed to set org plan to ${plan}: ${error.message}`);
+}
+
 // ============================================================
 // Cleanup Functions (use service role client to bypass RLS)
 // ============================================================

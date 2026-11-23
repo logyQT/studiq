@@ -20,6 +20,7 @@ import { Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 import { CardError } from '@/components/edu/dashboard/card-error';
+import { CardLocked } from '@/components/edu/dashboard/card-locked';
 
 interface GroupPerformanceCardProps {
   data: TeacherGroupPerformance | undefined;
@@ -27,6 +28,8 @@ interface GroupPerformanceCardProps {
   isError: boolean;
   onRetry: () => void;
   days: number;
+  /** Unentitled to `stats.insights` (phase 5d): the plan card replaces the body. */
+  locked: boolean;
 }
 
 export function GroupPerformanceCard({
@@ -35,6 +38,7 @@ export function GroupPerformanceCard({
   isError,
   onRetry,
   days,
+  locked,
 }: GroupPerformanceCardProps) {
   const t = useTranslations('EduOverviewPage');
   const groups = data?.groups;
@@ -60,6 +64,8 @@ export function GroupPerformanceCard({
           <div className="h-[220px] animate-pulse rounded-xl bg-muted" />
         ) : isError ? (
           <CardError onRetry={onRetry} />
+        ) : locked ? (
+          <CardLocked />
         ) : !groups || groups.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t('no_groups')}</p>
         ) : (

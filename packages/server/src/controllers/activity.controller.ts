@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { can, Permission } from '@studiq/server/lib/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
+import { requireEntitlement } from '@studiq/server/lib/entitlements';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import { ActivityQuerySchema } from '@studiq/server/models/activity.model';
@@ -11,6 +12,10 @@ export class ActivityController {
   constructor(private service: ActivityService) {}
 
   async getActivity(ctx: RequestContext, query: unknown): Promise<ControllerResponse> {
+    // Class activity of the active org is a diagnostic (phase 5d): the paid
+    // `stats.insights` gate is the first statement. The student's own
+    // `statsController.getActivity` stays free.
+    await requireEntitlement(ctx, 'stats.insights');
     if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
     const parsed = ActivityQuerySchema.safeParse(query);
 

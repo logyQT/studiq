@@ -1,17 +1,10 @@
 'use client';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Progress,
-  Skeleton,
-} from '@studiq/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import { InsightsError } from '@/components/stats/insights-error';
-import { useStudentInsights } from '@/hooks/use-student-insights';
+import { InsightsGate } from '@/components/stats/insights-gate';
+import { useStudentInsightsGate } from '@/hooks/use-student-insights';
 import {
   hiddenMasteryCount,
   MIN_MASTERY_ANSWERS,
@@ -30,7 +23,10 @@ const LEVEL_CLASS = {
 /** Mastery per topic: quiz answers and flashcard reviews together, with the split shown. */
 export function TopicMasteryCard() {
   const t = useTranslations('StudentInsights');
-  const { data, isLoading, isError, refetch } = useStudentInsights(DAYS);
+  // Topic mastery is a diagnostic read (phase 5d): gated on `stats.insights`
+  // by the shared gate hook.
+  const gate = useStudentInsightsGate(DAYS);
+  const { data, isError, refetch } = gate;
   const topics = visibleMastery(data?.mastery ?? []);
   const hidden = hiddenMasteryCount(data?.mastery ?? []);
 
@@ -41,49 +37,50 @@ export function TopicMasteryCard() {
         <CardDescription>{t('mastery_desc', { days: DAYS })}</CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : isError ? (
-          <InsightsError onRetry={() => refetch()} />
-        ) : topics.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">{t('mastery_empty')}</p>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">{t('mastery_note')}</p>
-            <ul className="space-y-4">
-              {topics.map((topic) => (
-                <li key={topic.topicId} className="space-y-1.5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="truncate text-sm font-medium">{topic.name}</span>
-                    <span className="shrink-0 text-sm font-semibold tabular-nums">
-                      {topic.accuracy}%
-                    </span>
-                  </div>
-                  <Progress
-                    value={topic.accuracy}
-                    className={LEVEL_CLASS[masteryLevel(topic.accuracy)]}
-                    aria-label={`${topic.name}: ${topic.accuracy}%`}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t('mastery_split', {
-                      quiz: topic.quizAccuracy === null ? '—' : `${topic.quizAccuracy}%`,
-                      quizCount: topic.quizAnswers,
-                      cards: topic.flashcardAccuracy === null ? '—' : `${topic.flashcardAccuracy}%`,
-                      cardCount: topic.flashcardReviews,
-                    })}
-                    {topic.quizAnswers + topic.flashcardReviews < MIN_MASTERY_ANSWERS &&
-                      ` · ${t('mastery_thin', { min: MIN_MASTERY_ANSWERS })}`}
-                  </p>
-                </li>
-              ))}
-            </ul>
-            {hidden > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {t('mastery_more', { count: hidden })}
-              </p>
-            )}
-          </div>
-        )}
+        <InsightsGate gate={gate} skeleton="h-40 w-full">
+          {isError ? (
+            <InsightsError onRetry={() => refetch()} />
+          ) : topics.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">{t('mastery_empty')}</p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">{t('mastery_note')}</p>
+              <ul className="space-y-4">
+                {topics.map((topic) => (
+                  <li key={topic.topicId} className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="truncate text-sm font-medium">{topic.name}</span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {topic.accuracy}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={topic.accuracy}
+                      className={LEVEL_CLASS[masteryLevel(topic.accuracy)]}
+                      aria-label={`${topic.name}: ${topic.accuracy}%`}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t('mastery_split', {
+                        quiz: topic.quizAccuracy === null ? '—' : `${topic.quizAccuracy}%`,
+                        quizCount: topic.quizAnswers,
+                        cards:
+                          topic.flashcardAccuracy === null ? '—' : `${topic.flashcardAccuracy}%`,
+                        cardCount: topic.flashcardReviews,
+                      })}
+                      {topic.quizAnswers + topic.flashcardReviews < MIN_MASTERY_ANSWERS &&
+                        ` · ${t('mastery_thin', { min: MIN_MASTERY_ANSWERS })}`}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              {hidden > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('mastery_more', { count: hidden })}
+                </p>
+              )}
+            </div>
+          )}
+        </InsightsGate>
       </CardContent>
     </Card>
   );

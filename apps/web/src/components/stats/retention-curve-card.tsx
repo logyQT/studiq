@@ -8,7 +8,6 @@ import {
   CardTitle,
   ChartContainer,
   ChartTooltipContent,
-  Skeleton,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -23,7 +22,8 @@ import {
   YAxis,
 } from 'recharts';
 import { InsightsError } from '@/components/stats/insights-error';
-import { useStudentInsights } from '@/hooks/use-student-insights';
+import { InsightsGate } from '@/components/stats/insights-gate';
+import { useStudentInsightsGate } from '@/hooks/use-student-insights';
 import { MIN_BUCKET_REVIEWS, retentionSample } from '@/lib/study-insights';
 
 const DAYS = 30;
@@ -80,7 +80,10 @@ function renderRetentionBar(props: BarShapeProps): ReactNode {
  */
 export function RetentionCurveCard() {
   const t = useTranslations('StudentInsights');
-  const { data, isLoading, isError, refetch } = useStudentInsights(DAYS);
+  // The retention curve is a diagnostic read (phase 5d): gated on
+  // `stats.insights` by the shared gate hook.
+  const gate = useStudentInsightsGate(DAYS);
+  const { data, isError, refetch } = gate;
 
   const buckets = data?.retention ?? [];
   const sample = retentionSample(buckets);
@@ -99,48 +102,48 @@ export function RetentionCurveCard() {
         <CardDescription>{t('retention_desc', { days: DAYS })}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isLoading ? (
-          <Skeleton className="h-56 w-full" />
-        ) : isError ? (
-          <InsightsError onRetry={() => refetch()} />
-        ) : sample === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{t('retention_empty')}</p>
-        ) : (
-          <>
-            <ChartContainer
-              config={{ accuracy: { label: t('accuracy'), color: 'var(--chart-5)' } }}
-              className="aspect-auto h-[220px] w-full"
-            >
-              <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
-                <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} unit="%" />
-                <Tooltip
-                  content={
-                    // The shared tooltip renders no value when it is 0; a real 0 % bucket is
-                    // drawn as a 4 px sliver and must still read "0 %".
-                    <ChartTooltipContent formatter={(value) => `${String(value)}%`} />
-                  }
-                />
-                {/* A bucket without reviews is drawn as no bar at all; a real 0 % keeps a sliver. */}
-                <Bar
-                  dataKey="accuracy"
-                  fill="var(--color-accuracy)"
-                  radius={[6, 6, 0, 0]}
-                  shape={renderRetentionBar}
-                />
-              </BarChart>
-            </ChartContainer>
-            <p className="text-xs text-muted-foreground">
-              {t('retention_axis')} {t('retention_sample', { count: sample })}
-            </p>
-            {chart.some((b) => b.thin) && (
+        <InsightsGate gate={gate} skeleton="h-56 w-full">
+          {isError ? (
+            <InsightsError onRetry={() => refetch()} />
+          ) : sample === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">{t('retention_empty')}</p>
+          ) : (
+            <>
+              <ChartContainer
+                config={{ accuracy: { label: t('accuracy'), color: 'var(--chart-5)' } }}
+                className="aspect-auto h-[220px] w-full"
+              >
+                <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} unit="%" />
+                  <Tooltip
+                    content={
+                      // The shared tooltip renders no value when it is 0; a real 0 % bucket is
+                      // drawn as a 4 px sliver and must still read "0 %".
+                      <ChartTooltipContent formatter={(value) => `${String(value)}%`} />
+                    }
+                  />
+                  {/* A bucket without reviews is drawn as no bar at all; a real 0 % keeps a sliver. */}
+                  <Bar
+                    dataKey="accuracy"
+                    fill="var(--color-accuracy)"
+                    radius={[6, 6, 0, 0]}
+                    shape={renderRetentionBar}
+                  />
+                </BarChart>
+              </ChartContainer>
               <p className="text-xs text-muted-foreground">
-                {t('retention_thin', { min: MIN_BUCKET_REVIEWS })}
+                {t('retention_axis')} {t('retention_sample', { count: sample })}
               </p>
-            )}
-          </>
-        )}
+              {chart.some((b) => b.thin) && (
+                <p className="text-xs text-muted-foreground">
+                  {t('retention_thin', { min: MIN_BUCKET_REVIEWS })}
+                </p>
+              )}
+            </>
+          )}
+        </InsightsGate>
       </CardContent>
     </Card>
   );

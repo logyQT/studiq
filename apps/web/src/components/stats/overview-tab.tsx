@@ -1,7 +1,11 @@
 'use client';
 
 import type { StateBreakdown } from '@studiq/server/models/flashcard-practice.model';
-import type { ActivityResponse, WeakPointsResponse } from '@studiq/server/models/stats.model';
+import type {
+  ActivityResponse,
+  WeakItem,
+  WeakPointsResponse,
+} from '@studiq/server/models/stats.model';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, StatCard } from '@studiq/ui';
 import { AlertTriangle, Brain, CalendarDays, CheckCircle2, TrendingUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -9,9 +13,55 @@ import { useState } from 'react';
 import { DailyActivityChart } from '@/components/stats/daily-activity-chart';
 import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
 import { WeakPointsList } from '@/components/stats/weak-points-list';
+import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { flashcardKeys } from '@/lib/query-keys';
 import { summarizeWeeklyActivity } from '@/lib/stats';
+
+/**
+ * One weak-points card. The read is a diagnostic (phase 5d): gated on
+ * `stats.insights` and disabled for a free student so no 403 fires on every
+ * visit; the descriptive cards above stay open.
+ */
+function WeakPointsCard({
+  title,
+  items,
+  type,
+  canInsights,
+  featuresPending,
+  weakLoading,
+}: {
+  title: string;
+  items: WeakItem[];
+  type: 'deck' | 'topic';
+  canInsights: boolean;
+  featuresPending: boolean;
+  weakLoading: boolean;
+}) {
+  const t = useTranslations('AppStatsPage');
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {weakLoading || featuresPending ? (
+          <Skeleton className="h-32 w-full" />
+        ) : !canInsights ? (
+          <PlanLockedCard
+            title={t('locked_title')}
+            description={t('locked_desc')}
+            cta={t('locked_cta')}
+          />
+        ) : (
+          <WeakPointsList items={items} type={type} />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function OverviewTab() {
   const t = useTranslations('AppStatsPage');
@@ -27,9 +77,16 @@ export function OverviewTab() {
     url: '/api/v1/flashcards/practice/states',
   });
 
+  // The weak-points read is a diagnostic (phase 5d): gated on `stats.insights`
+  // and disabled for a free student so no 403 fires on every visit; the
+  // descriptive cards above stay open.
+  const canInsights = useFeature()('stats.insights');
+  const { isPending: featuresPending } = useFeatures();
+
   const { data: weakPoints, isLoading: weakLoading } = useApiQuery<WeakPointsResponse>({
     queryKey: [...flashcardKeys.all, 'stats', 'weak-points'],
     url: '/api/v1/stats/weak-points',
+    enabled: canInsights,
   });
 
   // „Powtórki w tym tygodniu” and „Poprawne” are a fixed last-7-days metric; the range
@@ -109,31 +166,22 @@ export function OverviewTab() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('weak_decks')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {weakLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : (
-              <WeakPointsList items={weakPoints?.weakDecks ?? []} type="deck" />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('weak_topics')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {weakLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : (
-              <WeakPointsList items={weakPoints?.weakTopics ?? []} type="topic" />
-            )}
-          </CardContent>
-        </Card>
+        <WeakPointsCard
+          title={t('weak_decks')}
+          items={weakPoints?.weakDecks ?? []}
+          type="deck"
+          canInsights={canInsights}
+          featuresPending={featuresPending}
+          weakLoading={weakLoading}
+        />
+        <WeakPointsCard
+          title={t('weak_topics')}
+          items={weakPoints?.weakTopics ?? []}
+          type="topic"
+          canInsights={canInsights}
+          featuresPending={featuresPending}
+          weakLoading={weakLoading}
+        />
       </div>
     </div>
   );

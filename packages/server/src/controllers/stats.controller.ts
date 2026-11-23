@@ -1,7 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
 import { can, Permission } from '@studiq/server/lib/authz';
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
-import { controllerResponse } from '@studiq/server/lib/controller-response';
+import {
+  controllerResponse,
+  type ControllerResponse,
+} from '@studiq/server/lib/controller-response';
+import { requireEntitlement } from '@studiq/server/lib/entitlements';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
@@ -59,6 +62,10 @@ export class StatsController {
   }
 
   async getWeakPoints(ctx: RequestContext): Promise<ControllerResponse> {
+    // Diagnostic (why / what to do) is the paid `stats.insights` surface (phase 5d);
+    // the descriptive reads stay open. First statement, before the service — the
+    // `ai/chat` precedent.
+    await requireEntitlement(ctx, 'stats.insights');
     const result = await this.service.getWeakPoints(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
@@ -66,19 +73,40 @@ export class StatsController {
     return controllerResponse.success(result.data);
   }
 
+  /**
+   * The shared prelude of the two teacher-dashboard reads: the paid
+   * `stats.insights` gate (phase 5d), then `stats.read`, then the query parse —
+   * one definition, so the two methods cannot drift apart.
+   */
+  private async teacherDashboardGate(
+    query: unknown,
+    ctx: RequestContext,
+  ): Promise<
+    | { ok: true; data: { days: number; limit: number } }
+    | { ok: false; response: ControllerResponse }
+  > {
+    await requireEntitlement(ctx, 'stats.insights');
+    if (!(await can(ctx, Permission.STATS_READ))) {
+      return { ok: false, response: controllerResponse.error('FORBIDDEN') };
+    }
+    const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
+    if (!parsed.success) {
+      return {
+        ok: false,
+        response: controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues),
+      };
+    }
+    return { ok: true, data: parsed.data };
+  }
+
   async getTeacherGroupPerformance(
     query: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
-    const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
+    const gate = await this.teacherDashboardGate(query, ctx);
+    if (!gate.ok) return gate.response;
 
-    if (!parsed.success) {
-      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    }
-
-    const { days } = parsed.data;
-    const result = await this.service.getTeacherGroupPerformance(ctx, days);
+    const result = await this.service.getTeacherGroupPerformance(ctx, gate.data.days);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -86,11 +114,10 @@ export class StatsController {
   }
 
   async getTeacherActivityFeed(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await can(ctx, Permission.STATS_READ))) return controllerResponse.error('FORBIDDEN');
-    const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
-    if (!parsed.success)
-      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    const result = await this.service.getTeacherActivityFeed(ctx, parsed.data.limit);
+    const gate = await this.teacherDashboardGate(query, ctx);
+    if (!gate.ok) return gate.response;
+
+    const result = await this.service.getTeacherActivityFeed(ctx, gate.data.limit);
     return isFailure(result)
       ? controllerResponse.error(result.error)
       : controllerResponse.success(result.data);

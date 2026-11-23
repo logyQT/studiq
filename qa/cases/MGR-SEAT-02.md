@@ -36,7 +36,7 @@ seeded tenant instead:
 - **Profile**: `__tests__/qa/profiles/MGR-SEAT-02.json` declares
   `{"profile": "content", "plan": "hub"}` — the tenant's organization sits on the
   **hub** plan, whose ceiling carries the learner keys (`ai.chat`, `branding`,
-  `flashcards`, `quiz`) **and** the non-learner `advanced.stats` — plus an explicit
+  `flashcards`, `quiz`) **and** the non-learner `stats.insights` — plus an explicit
   `members` roster:
   - `manager` — manager account, `admin` org role;
   - `teacher` — educator account, `teacher` org role;
@@ -66,14 +66,14 @@ seeded tenant instead:
   **`pro`** seat to `student` through the UI. Before the seat the member's
   `/api/v1/features/me` is the learner profile ∩ the hub ceiling =
   `ai.chat, branding, flashcards, quiz`. After the seat the **exact diff is
-  `advanced.stats`** — a non-learner key the hub ceiling carries, so the seat ∩ ceiling
+  `stats.insights`** — a non-learner key the hub ceiling carries, so the seat ∩ ceiling
   rule (ADR-0015 §5.4: a seat cannot grant an entitlement the org did not buy) visibly
   grants it — and the seat adds no other key. `/api/v1/me/plan` → `key: 'pro'` with
-  `limits.max_ai_tokens_per_day === -1` and `features` including `advanced.stats` (the
+  `limits.max_ai_tokens_per_day === -1` and `features` including `stats.insights` (the
   seat is the member's effective plan, D28/D30). `/api/v1/ai/usage` → `limit: -1`,
   `plan: 'hub'` (the effective primary stays the org plan, D30) — the seat **raises**
   the AI limit from hub's 200000, which is the visible positive seat story.
-  `student2` (no seat) keeps `max_ai_tokens_per_day === 200000` and no `advanced.stats`:
+  `student2` (no seat) keeps `max_ai_tokens_per_day === 200000` and no `stats.insights`:
   the seat is per-member, not org-wide.
 - Dostępne są tylko pule, których plan ma `audience` równy personie (`accountType`)
   wybranego członka — filtr jest po personie, nie po roli org.
@@ -83,7 +83,7 @@ seeded tenant instead:
 > seat plan with the org ceiling”) and by the `manager-plan-model` /
 > `limits-resolution` integration cases. The case moved from a launch-org negative
 > (a seat there grants nothing, because launch's ceiling is `flashcards`+`quiz` only)
-> to a hub-org positive (the `pro` seat adds exactly `advanced.stats` and raises the
+> to a hub-org positive (the `pro` seat adds exactly `stats.insights` and raises the
 > AI-token limit to unlimited) without losing the rule. The earlier 2026-11-21 note
 > below is kept as history.
 >
@@ -110,10 +110,10 @@ seeded tenant instead:
   2 / 0 / 2 to **2 / 1 / 1** (assigned +1, available −1). The other pools keep their
   counters. The seated member disappears from the member picker.
 - On the member's next login under hub: `GET /api/v1/features/me` grows by exactly
-  `advanced.stats` (seat ∩ hub ceiling; the pre-4b launch-org walk observed no growth —
+  `stats.insights` (seat ∩ hub ceiling; the pre-4b launch-org walk observed no growth —
   superseded), `GET /api/v1/me/plan` returns `pro` with `max_ai_tokens_per_day = -1`, and
   `GET /api/v1/ai/usage` reports `limit: -1, plan: 'hub'`. The unseated `student2` keeps
-  `limit: 200000` and no `advanced.stats`. Org-scoped entitlements are never _added_
+  `limit: 200000` and no `stats.insights`. Org-scoped entitlements are never _added_
   through a seat beyond what the learner profile already grants from the ceiling
   (`branding` is in both).
 - The guards behind the pickers hold server-side too: a second seat for the

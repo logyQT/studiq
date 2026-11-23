@@ -6,6 +6,11 @@ import { TeacherDashboardQuerySchema } from '@studiq/server/models/stats.model';
 import { StatsService } from '@studiq/server/services/stats.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { asService } from '#test/helpers/service-double';
+
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
+}));
 import { asSupabaseClient } from '#test/helpers/supabase-double';
 
 // #654: the teacher dashboard reads two SQL aggregates (per-group results, activity feed). The
@@ -204,7 +209,10 @@ describe('StatsController teacher dashboard', () => {
   };
   const controller = new StatsController(asService<StatsService>(statsService));
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireEntitlementMock.mockResolvedValue(undefined);
+  });
 
   it('passes the parsed window and limit to the service', async () => {
     statsService.getTeacherGroupPerformance.mockResolvedValue(

@@ -87,8 +87,8 @@ const HUB_ENTITLEMENTS = [
   'flashcards',
   'quiz',
   'ai.chat',
-  'quiz.builder',
-  'advanced.stats',
+  'quiz.templates',
+  'stats.insights',
   'branding',
 ] as const;
 
@@ -385,8 +385,8 @@ describe('org_roles.entitlement_profile', () => {
 
     expect(await hasOrgFeature('ai.chat')).toBe(true);
     expect(await hasOrgFeature('branding')).toBe(true);
-    expect(await hasOrgFeature('quiz.builder')).toBe(true);
-    expect(await hasOrgFeature('advanced.stats')).toBe(true);
+    expect(await hasOrgFeature('quiz.templates')).toBe(true);
+    expect(await hasOrgFeature('stats.insights')).toBe(true);
 
     // A key no plan carries (the 1c-removed `documents`) is denied: the `all`
     // branch is the plan ceiling alone since 2b-7 removed the marker lists.
@@ -450,14 +450,14 @@ describe('org_roles.entitlement_profile', () => {
     // `master` carries `ai.chat`: the seat runs after the revoke and re-adds it.
     expect(await hasOrgFeature('ai.chat')).toBe(true);
 
-    // `master` also carries `quiz.builder`, which `launch` does not. Once the
+    // `master` also carries `quiz.templates`, which `launch` does not. Once the
     // org drops to `launch`, the seat cannot add it: seat ∩ ceiling.
     const { error: planError } = await service
       .from('organizations')
       .update({ plan: 'launch' })
       .eq('id', orgId);
     expect(planError).toBeNull();
-    expect(await hasOrgFeature('quiz.builder')).toBe(false);
+    expect(await hasOrgFeature('quiz.templates')).toBe(false);
 
     await service.from('org_seat_assignments').delete().eq('organization_id', orgId);
     await service.from('org_seat_pools').delete().eq('organization_id', orgId);

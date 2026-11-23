@@ -14,6 +14,7 @@ import {
   cleanupQuizAttempts,
   cleanupTeacherAssignments,
   mockUser,
+  setOrgPlan,
 } from '#test/integration/helpers';
 import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
 import { GET as flashcardTeacherStatsGet } from '@/app/(backend)/api/v1/flashcards/stats/teacher/route';
@@ -155,6 +156,11 @@ describe(`Stats Integration`, () => {
     const orgId = scopedTeacher.orgId;
     if (!orgId) throw new Error('[setup] org not created');
 
+    // Phase 5d: the activity read is gated on the `stats.insights`
+    // entitlement, which the `launch` default plan does not carry — the
+    // own-scope cases below pin the permission, so the org sits on `hub`.
+    await setOrgPlan(orgId, 'hub');
+
     member = await createTestUser({ role: 'student' });
     outsider = await createTestUser({ role: 'student' });
 
@@ -173,6 +179,19 @@ describe(`Stats Integration`, () => {
     });
     if (membershipError) {
       throw new Error(`[setup] org membership failed: ${membershipError.message}`);
+    }
+
+    // Phase 5d: the activity read is gated on the `stats.insights`
+    // entitlement. The member template's `learner` profile resolves no paid
+    // surface, so this fixture org's member role sits at `all` and the `hub`
+    // plan set above supplies the key through the plan ceiling.
+    const { error: profileError } = await service
+      .from('org_roles')
+      .update({ entitlement_profile: 'all' })
+      .eq('organization_id', orgId)
+      .eq('name', 'member');
+    if (profileError) {
+      throw new Error(`[setup] member role profile failed: ${profileError.message}`);
     }
 
     // 2b-6: a caller whose role carries no stats.read at any scope, to pin the
@@ -454,6 +473,36 @@ describe(`Stats Integration`, () => {
           createNextRequest(`http://localhost/api/v1/${label}`, undefined, orgCookie),
         );
         expect(res.status, `${label} without stats.read`).toBe(403);
+      }
+    });
+
+    // Phase 5d: the activity read moved behind the paid `stats.insights`
+    // entitlement while the descriptive teacher stats stayed free. A `launch`
+    // org holds `stats.read` but not the entitlement, so one session splits
+    // 403 on the diagnostic read and 200 on the descriptive one.
+    it('403s the activity read on a launch-plan org while /stats/teacher stays 200 (5d)', async () => {
+      const orgCookie = { active_org_id: scopedTeacher.orgId! };
+      try {
+        await setOrgPlan(scopedTeacher.orgId!, 'launch');
+
+        mockUser(member);
+        const activity = await activityGet(
+          createNextRequest(
+            'http://localhost/api/v1/stats/teacher/activity?range=30d',
+            undefined,
+            orgCookie,
+          ),
+        );
+        expect(activity.status).toBe(403);
+        const activityBody = await json<StatsErrorBody>(activity);
+        expect(activityBody).toEqual({ success: false, error: 'FORBIDDEN' });
+
+        const plain = await teacherGet(
+          createNextRequest('http://localhost/api/v1/stats/teacher', undefined, orgCookie),
+        );
+        expect(plain.status).toBe(200);
+      } finally {
+        await setOrgPlan(scopedTeacher.orgId!, 'hub');
       }
     });
   });

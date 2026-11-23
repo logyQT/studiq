@@ -6,26 +6,27 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { quizKeys } from '@/lib/query-keys';
-
-interface QuizQuestion {
-  question_id: string;
-  order_index: number;
-  points: number;
-  question?: {
-    id: string;
-    content: string;
-    type: string;
-  };
-}
 
 interface QuizDetail {
   id: string;
   name: string;
   description: string | null;
-  quiz_questions: QuizQuestion[];
+  quiz_questions: {
+    question_id: string;
+    order_index: number;
+    points: number;
+    question?: {
+      id: string;
+      content: string;
+      type: string;
+    };
+  }[];
 }
 
 export function QuizDetailClient() {
@@ -40,6 +41,13 @@ export function QuizDetailClient() {
 
   // The quiz name is the breadcrumb leaf; the raw quiz UUID must never render.
   useBreadcrumbLabel(id, quiz?.name);
+
+  // The quiz read stays open (phase 5d); only the writes that would 403 are
+  // withheld: unentitled, the edit link and the delete button are replaced by
+  // the plan card, so no control on the page can fail with 403. The
+  // „create assignment” link stays: it uses the free ad-hoc assignment path.
+  const canTemplates = useFeature()('quiz.templates');
+  const { isPending: featuresPending } = useFeatures();
 
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
@@ -60,7 +68,7 @@ export function QuizDetailClient() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || featuresPending) {
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
@@ -93,43 +101,50 @@ export function QuizDetailClient() {
           )}
         </div>
         <div className="flex gap-2">
-          <Link href={`/edu/quizzes/${id}/edit`}>
-            <Button variant="outline" size="sm">
-              <Edit className="w-4 h-4 mr-1" /> {t('edit')}
-            </Button>
-          </Link>
+          {!canTemplates ? (
+            <div className="w-72">
+              <PlanLockedCard
+                title={t('locked_title')}
+                description={t('locked_desc')}
+                cta={t('locked_cta')}
+              />
+            </div>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/edu/quizzes/${id}/edit`}>
+                  <Edit className="w-4 h-4 mr-1" /> {t('edit')}
+                </Link>
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDelete}>
+                <Trash2 className="w-4 h-4 mr-1" /> {t('delete')}
+              </Button>
+            </>
+          )}
           <Link href={`/edu/assignments/new?quizId=${id}`}>
             <Button variant="outline" size="sm">
               <Send className="w-4 h-4 mr-1" /> {t('create_assignment')}
             </Button>
           </Link>
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
-            <Trash2 className="w-4 h-4 mr-1" /> {t('delete')}
-          </Button>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t('questions')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{questions.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t('total_points')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{totalPoints}</p>
-          </CardContent>
-        </Card>
+        {[
+          { label: t('questions'), value: questions.length },
+          { label: t('total_points'), value: totalPoints },
+        ].map((stat) => (
+          <Card key={stat.label}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {stat.label}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{stat.value}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {questions.length > 0 ? (

@@ -1,9 +1,15 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { ActivityController } from '@studiq/server/controllers/activity.controller';
+import { AppError } from '@studiq/server/lib/errors';
 import type { ActivityService } from '@studiq/server/services/activity.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { success } from '@studiq/server/lib/service-result';
 import { asService } from '#test/helpers/service-double';
+
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
+}));
 
 function createMockService() {
   return { getClassActivity: vi.fn() };
@@ -27,6 +33,7 @@ const mockCtx: RequestContext = {
 describe('ActivityController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireEntitlementMock.mockResolvedValue(undefined);
     mockService = createMockService();
     controller = new ActivityController(asService<ActivityService>(mockService));
   });
@@ -61,6 +68,29 @@ describe('ActivityController', () => {
       });
 
       expect(response.success).toBe(false);
+    });
+  });
+
+  describe('entitlement gate (ADR-0015 §7, phase 5d)', () => {
+    // Class activity is the paid `stats.insights` surface; the ctx holds
+    // `stats.read`, so only the entitlement can refuse — deleting the gate
+    // line turns the rejection below into the service's 200.
+    it('refuses getActivity with FORBIDDEN before the permission check and the parse', async () => {
+      requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+      mockService.getClassActivity.mockResolvedValueOnce(success([]));
+      await expect(controller.getActivity(mockCtx, {})).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+        statusCode: 403,
+      });
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'stats.insights');
+      expect(mockService.getClassActivity).not.toHaveBeenCalled();
+    });
+
+    it('an entitled caller passes the gate', async () => {
+      mockService.getClassActivity.mockResolvedValueOnce(success([]));
+      const response = await controller.getActivity(mockCtx, {});
+      expect(response).toEqual({ success: true, statusCode: 200, data: [] });
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'stats.insights');
     });
   });
 

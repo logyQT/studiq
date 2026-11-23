@@ -257,7 +257,7 @@ describe('SubscriptionPlanService', () => {
           personalPlanKey: 'base',
           planEntitlements: {
             launch: ['flashcards', 'quiz'],
-            ace: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
+            ace: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'],
             base: ['flashcards', 'quiz'],
           },
           planLimits: {

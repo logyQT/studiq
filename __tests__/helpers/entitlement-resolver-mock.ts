@@ -57,13 +57,13 @@ export function allFlagsOn(keys: readonly string[] = ENTITLEMENT_KEYS): FlagRow[
 /** Plan → entitlement keys, the default catalog the tests resolve against. */
 const DEFAULT_PLAN_ENTITLEMENTS: Record<string, readonly string[]> = {
   base: ['flashcards', 'quiz'],
-  ace: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
-  pro: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
-  hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.builder', 'advanced.stats', 'branding'],
+  ace: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'],
+  pro: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'],
+  hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.templates', 'stats.insights', 'branding'],
   launch: ['flashcards', 'quiz'],
-  campus: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'],
+  campus: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'],
   solo: ['flashcards', 'quiz'],
-  seat: ['ai.chat', 'advanced.stats', 'quiz.builder'],
+  seat: ['ai.chat', 'stats.insights', 'quiz.templates'],
 };
 
 /** Plan → scope, as the `subscription_plans(scope)` embed reports it (phase 4a). */

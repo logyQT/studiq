@@ -1,8 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { StatsController } from '@studiq/server/controllers/stats.controller';
+import { AppError } from '@studiq/server/lib/errors';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { StatsService } from '@studiq/server/services/stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
+}));
 
 function createMockStatsService() {
   // The mocked methods never touch the database, so the client factory only
@@ -11,6 +17,10 @@ function createMockStatsService() {
     getTeacherStats: vi.fn(),
     getStudentStats: vi.fn(),
     getTeacherQuizStats: vi.fn(),
+    getWeakPoints: vi.fn(),
+    getActivity: vi.fn(),
+    getTeacherGroupPerformance: vi.fn(),
+    getTeacherActivityFeed: vi.fn(),
   });
 }
 
@@ -32,6 +42,7 @@ describe('StatsController', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    requireEntitlementMock.mockResolvedValue(undefined);
     mockService = createMockStatsService();
     controller = new StatsController(mockService);
   });
@@ -117,6 +128,57 @@ describe('StatsController', () => {
       const response = await controller.getTeacherQuizStats(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+  });
+
+  describe('entitlement gate (ADR-0015 §7, phase 5d)', () => {
+    // The ctx holds `stats.read`, so only the entitlement can refuse: deleting
+    // a gate line turns these rejections into the service's 200.
+    it('refuses the diagnostic reads with FORBIDDEN before the permission check and the parse', async () => {
+      requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+      mockService.getWeakPoints.mockResolvedValueOnce(success({ weakDecks: [], weakTopics: [] }));
+      mockService.getTeacherGroupPerformance.mockResolvedValueOnce(success({}));
+      mockService.getTeacherActivityFeed.mockResolvedValueOnce(success([]));
+      for (const call of [
+        () => controller.getWeakPoints(mockCtx),
+        () => controller.getTeacherGroupPerformance({}, mockCtx),
+        () => controller.getTeacherActivityFeed({}, mockCtx),
+      ]) {
+        await expect(call()).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+      }
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'stats.insights');
+      expect(mockService.getWeakPoints).not.toHaveBeenCalled();
+      expect(mockService.getTeacherGroupPerformance).not.toHaveBeenCalled();
+      expect(mockService.getTeacherActivityFeed).not.toHaveBeenCalled();
+    });
+
+    it('the free reads stay open without the entitlement', async () => {
+      requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+      mockService.getStudentStats.mockResolvedValueOnce(success({ totalQuizzes: 0 }));
+      mockService.getActivity.mockResolvedValueOnce(success([]));
+      mockService.getTeacherStats.mockResolvedValueOnce(success({ totalQuestions: 0 }));
+      mockService.getTeacherQuizStats.mockResolvedValueOnce(success([]));
+      expect(await controller.getStudentStats(mockCtx)).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { totalQuizzes: 0 },
+      });
+      expect(await controller.getActivity(mockCtx)).toEqual({
+        success: true,
+        statusCode: 200,
+        data: [],
+      });
+      expect(await controller.getTeacherStats({}, mockCtx)).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { totalQuestions: 0 },
+      });
+      expect(await controller.getTeacherQuizStats(mockCtx)).toEqual({
+        success: true,
+        statusCode: 200,
+        data: [],
+      });
+      expect(requireEntitlementMock).not.toHaveBeenCalled();
     });
   });
 

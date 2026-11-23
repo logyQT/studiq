@@ -29,7 +29,7 @@ decision itself is kept)
    entitlement the org did not buy. **v1 ships inheritance only**
    (`entitlement_profile`); the allocation table is deferred to a follow-up PR (§5.3).
 5. **Entitlement keys and permission keys are disjoint namespaces.**
-   `ai.chat`, `branding`, `advanced.stats` are entitlements. `org.member.manage`
+   `ai.chat`, `branding`, `stats.insights` are entitlements. `org.member.manage`
    (old `member.manage`), `org.role.manage` (old `role.builder`), `group.manage`,
    `org.admin` are permissions. No key appears in both. No plan/seat/personal
    plan/override may grant a permission.
@@ -385,8 +385,8 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 
 ```
 ai.chat            personal-portable, quota max_ai_tokens_per_day
-quiz.builder       personal-portable
-advanced.stats     personal-portable
+quiz.templates     personal-portable
+stats.insights     personal-portable
 documents          absent in v1 (re-enters with its surface, D22)
 branding           org-scoped display
 flashcards         baseline (always available, quota max_flashcards)
@@ -418,6 +418,14 @@ it has a surface.
 > in the app today, so its correct state in v1 is **absent**, not gated and not
 > permanently deleted. Re-adding it is data (catalog + flag + plan/seed rows),
 > not a resolver change.
+>
+> **2026-11-23 (phase 5d, register row 12).** `quiz.builder` → `quiz.templates`
+> and `advanced.stats` → `stats.insights`, renamed in place in
+> `ENTITLEMENTS` (declaration order unchanged) with identical metadata, plus
+> their catalog/flag rows and the renamed `plan_entitlements` rows
+> (`20261123150000_quiz_templates_stats_insights.sql`; historical migrations
+> keep the old names). Neither key had a call site, so the rename is data-only;
+> the enforcement those keys now carry is recorded in the §7 note below.
 
 ### 5.2 Plan scope (replaces the `for_account_type` inference)
 
@@ -719,6 +727,22 @@ Hard rules:
 > the server gate is `requireEntitlement` in
 > `packages/server/src/lib/entitlements.ts` (resolver-backed, fail-closed).
 > `/features/me` keeps its HTTP shape until phase 6 renames the endpoint.
+>
+> **2026-11-23 (phase 5d, register row 12).** The last two catalogued-but-ungated
+> keys are enforced, as `quiz.templates` and `stats.insights`: the saved-quiz
+> library writes on `/api/v1/teacher/quizzes` (`POST`, `PUT`/`DELETE [id]`,
+> `POST [id]/questions`, `POST [id]/create-assignment`, `PUT [id]/bulk`) gate on
+> `requireEntitlement(ctx, 'quiz.templates')` as the first statement of each
+> controller method (the `ai/chat` precedent) — the `GET` list/detail reads and
+> the ad-hoc assignment path stay open, so a free teacher can still test a class;
+> the diagnostic stats reads (`/api/v1/stats/student/insights`,
+> `/stats/weak-points`, `/stats/teacher/groups`, `/stats/teacher/activity`,
+> `/stats/teacher/feed`) gate on `stats.insights`, while the descriptive reads
+> stay free (descriptive = what happened, diagnostic = why / what to do). The UI
+> reads the same keys through `/features/me` and swaps the gated surfaces for a
+> plan card. Entitlement gates are API/UI only — no RLS twin: entitlements are
+> plan data, not authority, and RLS never implements a wider rule than the API
+> (§7's RLS rows are permission-only).
 
 ### 7.1 Links, routes, and the active org
 

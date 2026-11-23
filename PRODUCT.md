@@ -166,7 +166,7 @@ keys with it; it returns only when the roadmap has a row for it.
 
 Separately, one entitlement inconsistency that is not a roadmap question: the landing org
 card prices from `team` (99 zł) and lists "Everything in Premium", but `ace` (19.99 zł) is
-the plan carrying `ai.chat` and `advanced.stats`, and `team` carries neither. At five times
+the plan carrying `ai.chat` and `stats.insights`, and `team` carries neither. At five times
 the price, the cheap institutional tier includes less than the individual one. Fix the
 seed or fix the bullet, but the current pair cannot both be true.
 

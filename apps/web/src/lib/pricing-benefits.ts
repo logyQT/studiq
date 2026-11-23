@@ -8,8 +8,8 @@
  */
 export const FEATURE_PRIORITY: readonly string[] = [
   'ai.chat',
-  'quiz.builder',
-  'advanced.stats',
+  'quiz.templates',
+  'stats.insights',
   'branding',
   'flashcards',
   'quiz',

@@ -1,9 +1,15 @@
 import type { RequestContext } from '@studiq/authz';
 import { QuizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
+import { AppError } from '@studiq/server/lib/errors';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { QuizTeacherService } from '@studiq/server/services/quiz-teacher.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
+}));
 
 function createMockService() {
   // The mocked methods never touch the database, so the client factory only
@@ -46,6 +52,7 @@ describe('QuizTeacherController', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    requireEntitlementMock.mockResolvedValue(undefined);
     mockService = createMockService();
     controller = new QuizTeacherController(mockService);
   });
@@ -285,6 +292,65 @@ describe('QuizTeacherController', () => {
       const response = await controller.createAssignment('quiz-1', mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: assignment });
+    });
+  });
+
+  describe('entitlement gate (ADR-0015 §7, phase 5d)', () => {
+    // The ctx below holds every quiz permission, so only the entitlement can
+    // refuse: deleting the gate line turns these rejections into 200/422.
+    it('refuses every gated write with FORBIDDEN before the permission check and the parse', async () => {
+      requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+      // A resolution per method, so a deleted gate produces a 200/201 that fails
+      // the rejection assertion — not a crash on an undefined service result.
+      mockService.create.mockResolvedValueOnce(success({ id: 'q-1' }));
+      mockService.update.mockResolvedValueOnce(success({ id: 'q-1' }));
+      mockService.delete.mockResolvedValueOnce(success(undefined));
+      mockService.addQuestions.mockResolvedValueOnce(success({ added: 1 }));
+      mockService.removeQuestion.mockResolvedValueOnce(success(undefined));
+      mockService.reorderQuestions.mockResolvedValueOnce(success(undefined));
+      mockService.createAssignment.mockResolvedValueOnce(success({ id: 'a-1' }));
+      mockService.bulkSave.mockResolvedValueOnce(success({ id: 'q-1' }));
+      for (const call of [
+        () => controller.create({}, mockCtx),
+        () => controller.update('q-1', {}, mockCtx),
+        () => controller.delete('q-1', mockCtx),
+        () => controller.addQuestions('q-1', {}, mockCtx),
+        () => controller.removeQuestion('q-1', 'qq-1', mockCtx),
+        () => controller.reorderQuestions('q-1', {}, mockCtx),
+        () => controller.createAssignment('q-1', mockCtx),
+        () => controller.bulkSave('q-1', {}, mockCtx),
+      ]) {
+        await expect(call()).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
+      }
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'quiz.templates');
+      expect(mockService.create).not.toHaveBeenCalled();
+      expect(mockService.update).not.toHaveBeenCalled();
+      expect(mockService.delete).not.toHaveBeenCalled();
+      expect(mockService.addQuestions).not.toHaveBeenCalled();
+      expect(mockService.removeQuestion).not.toHaveBeenCalled();
+      expect(mockService.reorderQuestions).not.toHaveBeenCalled();
+      expect(mockService.createAssignment).not.toHaveBeenCalled();
+      expect(mockService.bulkSave).not.toHaveBeenCalled();
+    });
+
+    it('an entitled caller passes the gate and reaches the permission check', async () => {
+      mockService.create.mockResolvedValueOnce(success({ id: 'q-1' }));
+      const response = await controller.create({ name: 'My Quiz' }, mockCtx);
+      expect(response).toEqual({ success: true, statusCode: 201, data: { id: 'q-1' } });
+      expect(requireEntitlementMock).toHaveBeenCalledWith(mockCtx, 'quiz.templates');
+    });
+
+    it('the free reads stay open without the entitlement', async () => {
+      requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+      mockService.list.mockResolvedValueOnce(success([]));
+      mockService.getById.mockResolvedValueOnce(success({ id: 'q-1', name: 'Q' }));
+      expect(await controller.list(mockCtx)).toEqual({ success: true, statusCode: 200, data: [] });
+      expect(await controller.getById('q-1', mockCtx)).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { id: 'q-1', name: 'Q' },
+      });
+      expect(requireEntitlementMock).not.toHaveBeenCalled();
     });
   });
 

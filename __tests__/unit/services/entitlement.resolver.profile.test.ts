@@ -21,11 +21,11 @@ type EntitlementRows = Record<string, readonly string[]>;
 
 const PLANS: EntitlementRows = {
   // A `hub` organization: the whole remaining catalog.
-  hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.builder', 'advanced.stats', 'branding'],
+  hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.templates', 'stats.insights', 'branding'],
   launch: ['flashcards', 'quiz'],
   // Seat plans carry seat-eligible (personal-scope) surface keys only.
-  seat: ['ai.chat', 'advanced.stats'],
-  seatHub: ['ai.chat', 'quiz.builder', 'branding'],
+  seat: ['ai.chat', 'stats.insights'],
+  seatHub: ['ai.chat', 'quiz.templates', 'branding'],
 };
 
 type Scenario = {
@@ -49,7 +49,7 @@ const CASES: Scenario[] = [
     profile: 'all',
     rows: [],
     plan: 'hub',
-    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'advanced.stats', 'branding'],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
   {
     name: 'admin/all on launch: the launch ceiling, and an enabled role row adds nothing',
@@ -70,7 +70,7 @@ const CASES: Scenario[] = [
     profile: 'all',
     rows: [],
     plan: 'hub',
-    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'advanced.stats', 'branding'],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
   {
     name: 'member/learner on hub: exactly the learner set',
@@ -106,7 +106,7 @@ const CASES: Scenario[] = [
     rows: [],
     plan: 'hub',
     seatPlanKey: 'seatHub',
-    expected: ['ai.chat', 'quiz.builder', 'branding'],
+    expected: ['ai.chat', 'quiz.templates', 'branding'],
   },
   {
     name: 'no verified role, orgRoleId null: nothing, even on hub',
@@ -135,7 +135,7 @@ const CASES: Scenario[] = [
     profile: 'all',
     rows: [],
     plan: 'hub',
-    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'advanced.stats', 'branding'],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
   {
     name: 'seated learner on launch: the seat plan is intersected with the ceiling (adds nothing beyond it)',
@@ -153,7 +153,7 @@ const CASES: Scenario[] = [
     rows: [],
     plan: 'hub',
     seatPlanKey: 'seatHub',
-    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.builder', 'branding'],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'branding'],
   },
 ];
 

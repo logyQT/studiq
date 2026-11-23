@@ -13,7 +13,9 @@ ALTER TABLE public.organizations ALTER COLUMN plan SET DEFAULT 'launch';
 -- 3. Add new feature flags
 -- ==========================================================
 INSERT INTO public.entitlement_flags (key, name, description) VALUES
-  ('branding', 'Custom Branding', 'Organization logo and brand color across the app')
+  ('branding', 'Custom Branding', 'Organization logo and brand color across the app'),
+  ('quiz.templates', 'Saved quiz library', 'Save quizzes and reuse them across assignments'),
+  ('stats.insights', 'Insights & weak points', 'Weak points, retention and class-activity diagnostics')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -82,10 +84,10 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('spark', 'quiz'),
   ('guide', 'flashcards'),
   ('guide', 'quiz'),
-  ('guide', 'quiz.builder'),
+  ('guide', 'quiz.templates'),
   ('team', 'flashcards'),
   ('team', 'quiz'),
-  ('team', 'quiz.builder')
+  ('team', 'quiz.templates')
 ON CONFLICT DO NOTHING;
 
 -- Premium tier
@@ -93,17 +95,17 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('ace', 'flashcards'),
   ('ace', 'quiz'),
   ('ace', 'ai.chat'),
-  ('ace', 'advanced.stats'),
+  ('ace', 'stats.insights'),
   ('creator', 'flashcards'),
   ('creator', 'quiz'),
   ('creator', 'ai.chat'),
-  ('creator', 'quiz.builder'),
-  ('creator', 'advanced.stats'),
+  ('creator', 'quiz.templates'),
+  ('creator', 'stats.insights'),
   ('hub', 'flashcards'),
   ('hub', 'quiz'),
   ('hub', 'ai.chat'),
-  ('hub', 'quiz.builder'),
-  ('hub', 'advanced.stats'),
+  ('hub', 'quiz.templates'),
+  ('hub', 'stats.insights'),
   ('hub', 'branding')
 ON CONFLICT DO NOTHING;
 
@@ -112,17 +114,17 @@ INSERT INTO public.plan_entitlements (plan_key, entitlement_key) VALUES
   ('pro', 'flashcards'),
   ('pro', 'quiz'),
   ('pro', 'ai.chat'),
-  ('pro', 'advanced.stats'),
+  ('pro', 'stats.insights'),
   ('master', 'flashcards'),
   ('master', 'quiz'),
   ('master', 'ai.chat'),
-  ('master', 'quiz.builder'),
-  ('master', 'advanced.stats'),
+  ('master', 'quiz.templates'),
+  ('master', 'stats.insights'),
   ('campus', 'flashcards'),
   ('campus', 'quiz'),
   ('campus', 'ai.chat'),
-  ('campus', 'quiz.builder'),
-  ('campus', 'advanced.stats'),
+  ('campus', 'quiz.templates'),
+  ('campus', 'stats.insights'),
   ('campus', 'branding')
 ON CONFLICT DO NOTHING;
 

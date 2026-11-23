@@ -28,6 +28,9 @@ import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from '
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { hasTeacherActivity } from '@/lib/stats';
+import { PlanLockedCard } from '@/components/shared/plan-locked-card';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 
 type StudentRow = {
   id: string;
@@ -104,7 +107,18 @@ export default function TeacherActivityPage() {
   const [data, setData] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Class activity is a diagnostic (phase 5d): gated on `stats.insights`. The
+  // heading stays either way (EDU-02 / NFR-07 assert it); unentitled, the plan
+  // card replaces the body and the gated read is not fired.
+  const canInsights = useFeature()('stats.insights');
+  const { isPending: featuresPending } = useFeatures();
+
   const fetchData = useCallback(async () => {
+    if (!canInsights) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const result = await apiGet<ActivityData>(`/api/v1/stats/teacher/activity?range=${range}`);
@@ -114,7 +128,7 @@ export default function TeacherActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [range]);
+  }, [range, canInsights]);
 
   useEffect(() => {
     void fetchData();
@@ -171,7 +185,7 @@ export default function TeacherActivityPage() {
         </div>
       </div>
 
-      {loading ? (
+      {loading || featuresPending ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
@@ -181,6 +195,12 @@ export default function TeacherActivityPage() {
           <Skeleton className="h-72 rounded-xl" />
           <Skeleton className="h-64 rounded-xl" />
         </div>
+      ) : !canInsights ? (
+        <PlanLockedCard
+          title={t('locked_title')}
+          description={t('locked_desc')}
+          cta={t('locked_cta')}
+        />
       ) : !data || !hasTeacherActivity(data) ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
