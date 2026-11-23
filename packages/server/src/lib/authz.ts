@@ -2,6 +2,7 @@ import {
   AccountType,
   evaluateScope,
   isPermissionCatalogKey,
+  isPersonalPermissionKey,
   PERMISSIONS,
   Permission,
   type PermissionKey,
@@ -25,8 +26,6 @@ export function evaluate(args: {
   return evaluateScope(args.scope, args.userId, args.resource);
 }
 
-const PERSONA_DEFAULT_VERBS = ['.read', '.create', '.update', '.delete'] as const;
-
 /**
  * Resolves a permission's effective scope from the request context ONLY.
  * `permissionScopes` is populated by with-auth in a single batched query
@@ -34,23 +33,20 @@ const PERSONA_DEFAULT_VERBS = ['.read', '.create', '.update', '.delete'] as cons
  * org_role_permissions lookups the old rbac.getScope() performed.
  *
  * Inside an active org the stored role row is the whole answer (ADR-0015 §6.3:
- * no row → deny). The persona default is a personal-content rule — no org, a
- * content key, and never wider than `own` — so it can neither resurrect a
- * permission the org's role withholds nor grant a `group.*`/`org.*` key.
+ * no row → deny). Outside every org there is no role to read, so the
+ * personal-content key set resolves at `own` for any authenticated caller:
+ * persona decides nothing here (D35). The set carries the three assignment verbs
+ * a personal (NULL-org) row supports; `quiz.*` and `assignment.create` are
+ * absent because their services refuse a no-org call, and `assignment.publish`/
+ * `grade` because the persona default this set replaces never granted them.
  */
 export function resolveScope(ctx: RequestContext, action: string): PermissionScope | null {
   const stored = ctx.permissionScopes[action];
   if (stored !== undefined) return stored;
 
   if (ctx.activeOrgId != null) return null;
-  if (ctx.accountType !== AccountType.STUDENT && ctx.accountType !== AccountType.EDUCATOR) {
-    return null;
-  }
-  if (!PERSONA_DEFAULT_VERBS.some((verb) => action.endsWith(verb))) return null;
 
-  return isPermissionCatalogKey(action) && PERMISSIONS[action].category === 'content'
-    ? 'own'
-    : null;
+  return isPersonalPermissionKey(action) ? 'own' : null;
 }
 
 // ── Permission checks (server, synchronous — no DB round-trips) ────────────

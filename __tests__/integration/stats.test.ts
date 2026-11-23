@@ -737,7 +737,7 @@ describe(`Stats Integration`, () => {
 
     it('answers an own-scope caller with an empty list and 403s a role without stats.read (2b-6)', async () => {
       // `student` has no org membership, so the cookie org is not verified and
-      // the persona default resolves stats.read at `own`: the answer is 200
+      // the personal set resolves stats.read at `own`: the answer is 200
       // with an empty list (no active org → no class to report on), never the
       // teacher's aggregates.
       mockUser(student.user);

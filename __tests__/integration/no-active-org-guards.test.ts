@@ -1,3 +1,8 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
+import { CreateQuizSchema } from '@studiq/server/models/quiz.model';
+import { CreateTeacherAssignmentSchema } from '@studiq/server/models/teacher-assignment.model';
+import { quizTeacherService } from '@studiq/server/services/quiz-teacher.service';
+import { teacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
@@ -8,6 +13,7 @@ import {
   createTestUser,
 } from '#test/helpers/test-user';
 import {
+  cleanupFlashcardDecks,
   cleanupOrganizationDeep,
   cleanupQuestions,
   cleanupTeacherAssignments,
@@ -18,6 +24,7 @@ import {
   createNextRequestWithParams,
   requiredAt,
 } from '#test/integration/test-utils';
+import { POST as deckCreatePost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { PUT as questionPut } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as randomizePost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/randomize/route';
@@ -33,6 +40,9 @@ type ForbiddenBody = { success: boolean; error?: string };
 
 /** `POST /teacher/assignments/:id/randomize` payload — the field read below. */
 type RandomizeBody = { data: { added: number } };
+
+/** `POST /flashcards/decks` payload — the created row id. */
+type DeckBody = { data: { id: string } };
 
 /**
  * #148 — org-scoped services must not put `activeOrgId === null` into a PostgREST filter.
@@ -86,6 +96,7 @@ describe(`No active org guards`, () => {
     await cleanupQuestions(noOrgEducator.user.id);
     await cleanupQuestions(noOrgStudent.user.id);
     await cleanupQuestions(orgEducator.user.id);
+    await cleanupFlashcardDecks(noOrgManager.id);
     await cleanupTeacherAssignments(noOrgEducator.user.id);
     if (orgEducator.orgId) await cleanupOrganizationDeep(orgEducator.orgId);
 
@@ -143,6 +154,69 @@ describe(`No active org guards`, () => {
     expect(res.status).toBe(403);
     expect(body).toEqual({ success: false, error: 'FORBIDDEN' });
     expect(res.headers.get('x-error-code')).toBe('FORBIDDEN');
+  });
+
+  // D35 (register row 3): persona decides nothing, so a manager with no org
+  // resolves the personal-content set like a student does. Served through the
+  // real route so the context under test is withAuth's (no `active_org_id`
+  // cookie), not a hand-built one.
+  it('POST /api/v1/flashcards/decks creates a personal deck for a manager with no active org', async () => {
+    mockUser(noOrgManager);
+    const name = `no-org-manager-deck-${suiteId}`;
+
+    const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const res = await deckCreatePost(req);
+    const body = await json<DeckBody>(res);
+
+    expect(res.status).toBe(201);
+    if (res.status !== 201) return;
+
+    const { data } = await service
+      .from('flashcard_decks')
+      .select('name, organization_id, visibility, created_by')
+      .eq('id', body.data.id)
+      .single();
+    expect(data).toEqual({
+      name,
+      organization_id: null,
+      visibility: 'personal',
+      created_by: noOrgManager.id,
+    });
+  });
+
+  // `quiz.*` and assignment creation stay out of the personal set because their
+  // services refuse a no-org call: a context that HOLDS both keys still cannot
+  // create one, so the refusal is the service's org guard, not a missing
+  // permission.
+  it('refuses quiz and assignment creation at the service for a no-org key holder', async () => {
+    mockUser(noOrgManager);
+    const ctx: RequestContext = {
+      userId: noOrgManager.id,
+      accountType: AccountType.MANAGER,
+      traceId: 'no-org-service-probe',
+      url: '',
+      method: 'POST',
+      activeOrgId: null,
+      orgRoleId: null,
+      groupIds: [],
+      permissionScopes: { 'quiz.create': 'own', 'assignment.create': 'own' },
+    };
+
+    const quiz = await quizTeacherService.create(
+      CreateQuizSchema.parse({ name: `no-org-service-quiz-${suiteId}` }),
+      ctx,
+    );
+    expect(quiz).toEqual({ success: false, error: 'FORBIDDEN' });
+
+    const assignment = await teacherAssignmentService.create(
+      CreateTeacherAssignmentSchema.parse({ title: `no-org-service-assignment-${suiteId}` }),
+      ctx,
+    );
+    expect(assignment).toEqual({ success: false, error: 'FORBIDDEN' });
   });
 
   it('PUT /api/v1/questions/{id} updates a personal (null-org) question', async () => {

@@ -681,11 +681,31 @@ user-scope keys; #233 Q1 still holds for `scope: 'org'`.
 
 ```
 resolvePermissions(ctx):
-  if (!org) return defaultsForPersona(ctx)   // personal content only
+  if (!org) return PERSONAL_PERMISSION_KEYS  // each at `own`; the persona is never read
   perms = org_role_permissions(role)         // key -> scope
   group = group_members(ctx.userId)          // group -> role (teacher/member)
   return { perms, group }
 ```
+
+`PERSONAL_PERMISSION_KEYS` (`@studiq/authz`) is the 20 personal content
+CRUD keys (`deck`/`flashcard`/`topic`/`question`/`question_bank` ×
+read/create/update/delete), the three assignment verbs a personal
+(`organization_id` NULL) row supports (`read`/`update`/`delete`), plus
+`stats.read` — **24 keys**. `quiz.*` and `assignment.create` are deliberately
+absent: a quiz is an org row and an assignment is created inside one, so their
+services refuse a no-org call and a personal scope could only authorize a
+request that then fails. `assignment.publish`/`grade` are absent because no
+no-org caller held them: the persona default this set replaces matched only
+`read`/`create`/`update`/`delete`, and both verbs act on an org cohort. A unit
+guard derives that expected set from the catalog's `category` and fails when a
+content key is added without being classified.
+
+> **2026-11-23 (phase 6c, D35).** The no-org branch is no longer
+> `defaultsForPersona`: any authenticated caller resolves the personal set at
+> `own`, and no `accountType` read remains in `resolveScope`. Provisioning may
+> still read the persona (default plan catalogue, default dashboard); the
+> authority path never does. Inside an org nothing changes: the stored role row
+> is the whole answer, and a key without one is denied.
 
 A permission check is `(key, resource?)`:
 
@@ -1518,6 +1538,31 @@ interpretation.
 > `true` default: an enabled row is inert, so an accidental insert changes
 > nothing while a `false` default would silently revoke its key.
 > (Phase 3c, `feat/authority-3c`.)
+
+> **2026-11-23 (D35).** With **no active org**, any authenticated caller
+> resolves the personal-content key set at `own`: the 20 content CRUD keys of
+> `deck`/`flashcard`/`topic`/`question`/`question_bank`, the three assignment
+> verbs a personal (`organization_id` NULL) row supports — `read`, `update`,
+> `delete` — plus `stats.read` = **24 keys** (`PERSONAL_PERMISSION_KEYS`,
+> `@studiq/authz`). `quiz.*` and `assignment.create` are excluded because their
+> services refuse a no-org call; `assignment.publish`/`grade` are excluded
+> because the persona default this set replaces never granted them. Every
+> `group.*`/`org.*` key stays denied. No `accountType` read remains in
+> `resolveScope`; persona may seed provisioning (plan catalogue, default
+> dashboard, org/class creator defaults) but never authorization. Inside an org
+> the stored role row wins and no row denies, unchanged (§6.3).
+>
+> **Interim consequence:** until the per-user personal set lands (register row
+> 14 in the phase plan: `user_permission_scopes` + `PERSONAL_ROLE_TEMPLATES` +
+> a `withAuth` read when no org), a **manager with no org can create personal
+> decks, flashcards, topics, questions and banks** — the set is the same for
+> every persona. The same persona-free answer also resolves the
+> `assignment.read/update/delete` trio at `own` for a no-org manager; that is
+> author-only and unreachable for new rows (both layers refuse a no-org
+> `assignment.create`), so it can only ever match a legacy personal row the
+> same manager already authored. The product intent for a manager is "may edit,
+> may not create personal decks", which row 14 expresses per user rather than by
+> persona.
 
 ---
 
