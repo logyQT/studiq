@@ -5214,7 +5214,15 @@ _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
   services' own no-org guard (the exclusion is not a permission accident).
 - **Gates on this branch.** typecheck (root + web + packages) 0 errors; `lint`
   (**1567** files) 0 warnings; unit **317 files / 4918 passed, 1 skipped**;
-  `review:static`, `knip` and `format` green.
+  `review:static`, `knip` and `format` green; `pr:size` **69/400** (287 test +
+  195 doc lines excluded).
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  `resolveScope`'s personal-set branch replaced with `return null` →
+  "resolves every personal key at own with no org (manager)" **KILLED**;
+  `quiz.read` added to `PERSONAL_PERMISSION_KEYS` → "is exactly the five content
+  families CRUD plus stats.read" **KILLED**; the in-org deny deleted →
+  "denies a student read inside an org whose role has no row for it"
+  **KILLED**.
 - **Coordinator still owns:** this branch's serial integration run and the
   served probe — a manager with no `active_org_id` cookie → deck create **201**,
   quiz create still refused (entitlement/service), not a persona 403.
