@@ -3759,6 +3759,27 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
     `STU-54` expected two plan cards where the activity page renders three
     (weak decks, weak topics, study time) and matched „Poprawne” by page text,
     which the state-breakdown legend also renders once its data loads.
+  - **Review round (fresh reviewer, not the author): READY-WITH-FIXES**, all
+    closed in-slice: the `/edu` dashboard still fired `stats/teacher/groups` and
+    `/stats/teacher/feed` with no entitlement condition (two 403s per free-teacher
+    load; both now `enabled: canInsights` and the cards show the plan card, pinned
+    by `EDU-QZ-06` step 7's response collector); `removeQuestion` /
+    `reorderQuestions` were the two ungated library writes (eight methods gated
+    now, two more KILLED proofs); the `noKey` fixture role is profile `all` so its
+    403 is permission-only; the shared e2e/dev classroom teacher gets exactly the
+    two keys through `user_feature_overrides` (not a plan move, which would also
+    grant `ai.chat`/`branding` and raise limits for the demo tenant); and the
+    `PlanLockedCard`/`BrandingLockedCard` + `InsightsGate`/`WeakPointsCard`
+    duplication is recorded as pre-existing debt, not refactored here.
+  - **UI pin hand-proof (not `mutate`-able — it needs a built app):** dropping
+    `&& canInsights` from the two dashboard `enabled` conditions, rebuilding and
+    running `EDU-QZ-06` once made step 7 red (`toHaveCount(2)` got 0: the cards
+    showed their error state); restored, rebuilt, green. The deny-case loop also
+    gained a resolved service result per method, so removing a gate now fails the
+    rejection assertion instead of crashing on `fromService(undefined)`.
+  - **Final QA at the last HEAD:** `EDU-QZ-06` 5/5 and smoke
+    `STU-54`, `STU-55`, `MGR-SEAT-02`, `EDU-QZ-01` 2/2, `BIL-04` 2/2, `PUB-04`,
+    `EDU-02` 2/2 — all green, zero retries.
 
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
