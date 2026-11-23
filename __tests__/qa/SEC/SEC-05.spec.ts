@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { asJson, json } from '#test/helpers/json';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
@@ -8,8 +8,8 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  * Prerequisite (reconciled with the tenant seeder): the legacy manual account
  * `student1@…` (password `pass`) is never used. `__tests__/qa/profiles/SEC-05.json`
- * declares the default `content` profile, which the suite runner seeds **once,
- * before Playwright starts**, under the case's own run suffix:
+ * declares `{ "profile": "content", "plan": "hub" }`, which the suite runner seeds
+ * **once, before Playwright starts**, under the case's own run suffix:
  *
  *   bun scripts/qa-tenant.ts SEC-05 --fresh
  *
@@ -22,11 +22,15 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  * Acceptance points from the case, all as the **student** (org role `member`),
  * with its own organization active (the cookie `loginAs` writes for the seeded
- * membership). Phase 2b-6 replaced the route persona rule with catalog keys:
- * 1. `POST /api/v1/teacher/quizzes {name:"x"}` → **201** — the Member role holds
- *    `quiz.create` at `own`, so an own-scope content create is allowed and the row
- *    is created by the student (the boundary is the key, not the persona). The
- *    spec deletes it again as its owner, so the tenant ends empty.
+ * membership). Phase 2b-6 replaced the route persona rule with catalog keys;
+ * phase 5d then gated the saved-quiz library writes on the `quiz.templates`
+ * entitlement:
+ * 1. `POST /api/v1/teacher/quizzes {name:"x"}` → **403 `FORBIDDEN`** — the paid
+ *    library key, not the persona: `quiz.templates` is not in
+ *    `LEARNER_ENTITLEMENTS` and no student personal plan carries it, so a learner
+ *    cannot author a quiz at all since 5d. The "key, not persona" positive control
+ *    (an entitled teacher creating a quiz → 201) now lives in EDU-QZ-01 (teacher on
+ *    `hub` → the library works) and EDU-QZ-06 (teacher on `launch` → plan card + 403).
  * 2. `POST /api/v1/teacher/assignments {...}` → **403 `FORBIDDEN`** — the member
  *    template carries no `assignment.*` key, and the gate runs before input
  *    validation (a malformed body is still 403, never 422).
@@ -34,6 +38,10 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    (`stats.read` at `own`; the payload counts the student's own content only).
  *    …and no staff resource is created: after the calls the tenant organization
  *    owns zero `teacher_assignments` rows and no row created by the student there.
+ * The tenant org sits on the **hub** plan (`{ "profile": "content", "plan": "hub" }`
+ * in `__tests__/qa/profiles/SEC-05.json`) so the educator positive control passes
+ * the 5d `quiz.templates` gate; the student subject still 403s on the quiz create
+ * because the learner entitlement set never carries that key.
  *
  * Adjacent regressions that matter for this surface:
  * - the collection reads behind the same keys: `GET /api/v1/teacher/quizzes` is
@@ -232,14 +240,17 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     ).toMatchObject({ id: org.id, orgRoleName: 'member', isActive: true });
 
     // --- Step 1: POST /api/v1/teacher/quizzes -----------------------------
-    // 2b-6: the Member role holds quiz.create at `own`, so the own-scope create
-    // is allowed — the key, not the account type, is the boundary. The row is
-    // the student's own and is deleted again below, so the tenant ends empty.
-    const studentQuiz = await call(page, 'POST', TEACHER_QUIZZES, { name: 'SEC-05 own quiz' });
-    expect(studentQuiz.status, 'POST /api/v1/teacher/quizzes as the student (own scope)').toBe(201);
-    const studentQuizBody = asJson<{ data?: { id?: string } }>(JSON.parse(studentQuiz.body));
-    const studentQuizId = studentQuizBody.data?.id;
-    expect(studentQuizId, 'the created quiz carries an id').toBeTruthy();
+    // 2026-11-23 (5d): the saved-quiz library is the paid `quiz.templates`
+    // surface, and the entitlement gate is the first statement of the create.
+    // The paid library key — not the persona — is the boundary here:
+    // `quiz.templates` is not in `LEARNER_ENTITLEMENTS` and no student personal
+    // plan carries it, so a learner cannot author a quiz at all since 5d. The
+    // "key, not persona" positive control now lives in EDU-QZ-01 (teacher on
+    // `hub` → the library works) and EDU-QZ-06 (teacher on `launch` → 403).
+    expectForbidden(
+      await call(page, 'POST', TEACHER_QUIZZES, { name: 'SEC-05 own quiz' }),
+      'POST /api/v1/teacher/quizzes as the student (quiz.templates entitlement)',
+    );
 
     // --- Step 2: POST /api/v1/teacher/assignments -------------------------
     expectForbidden(
@@ -280,12 +291,6 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       'GET /api/v1/teacher/assignments as the student',
     );
 
-    // The own-scope quiz create is the student's own resource: delete it again
-    // as its owner (quiz.delete at own) so the "creates nothing" check below
-    // stays about the staff surface.
-    const deletedQuiz = await page.request.delete(`${TEACHER_QUIZZES}/${studentQuizId}`);
-    expect(deletedQuiz.status(), 'DELETE own quiz as the student').toBe(200);
-
     // --- No over-block: the student's own surface still works -------------
     // Same session, same org cookie: the account type is the only discriminator.
     const studentStats = await page.request.get(STUDENT_STATS);
@@ -306,7 +311,10 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       .select('id, name, created_by, organization_id')
       .eq('organization_id', org.id);
     expect(quizzesAfterAttempts.error).toBeNull();
-    expect(quizzesAfterAttempts.data, 'the student’s own quiz was deleted again').toEqual([]);
+    expect(
+      quizzesAfterAttempts.data,
+      'the refused create left no quiz row in the organization',
+    ).toEqual([]);
 
     const assignmentsAfterAttempts = await db
       .from('teacher_assignments')
@@ -317,7 +325,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const studentQuizzes = await db.from('quizzes').select('id').eq('created_by', student.id);
     expect(studentQuizzes.error).toBeNull();
-    expect(studentQuizzes.data, 'the student’s own quiz row is gone after its delete').toEqual([]);
+    expect(studentQuizzes.data, 'the refused create left no quiz row for the student').toEqual([]);
 
     const studentAssignments = await db
       .from('teacher_assignments')
@@ -327,8 +335,10 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     expect(studentAssignments.data, 'no assignment row is owned by the student').toEqual([]);
 
     // --- Positive control: the tenant's educator is allowed the same calls -
-    // Same endpoints, same active organization, same bodies: the server-side
-    // boundary is the account type, and the routes themselves are healthy.
+    // Same endpoints, same active organization, same bodies. The tenant org is on
+    // `hub`, so the educator's `all` role profile carries `quiz.templates` and the
+    // create succeeds: the student's 403 above is the entitlement boundary, and the
+    // routes themselves are healthy.
     await switchUser(page, tenant, 'teacher');
 
     const quizResponse = await page.request.post(TEACHER_QUIZZES, {

@@ -15,7 +15,7 @@ Aktywność studentów w ostatnich dniach.
 
 Legacy accounts (`teacher1@dev.local`, `student1@dev.local`, password `pass`) are
 never used. The case runs in its own deterministic tenant, declared in
-`__tests__/qa/profiles/EDU-ST-03.json` (`{ "profile": "content" }`):
+`__tests__/qa/profiles/EDU-ST-03.json` (`{ "profile": "content", "plan": "hub" }`):
 
 ```bash
 bun scripts/qa-tenant.ts EDU-ST-03 --fresh
@@ -24,6 +24,11 @@ bun scripts/qa-tenant.ts EDU-ST-03 --fresh
 - tenant key: `tenantKey('qa/cases/EDU-ST-03.md', 'EDU-ST-03#<suffix>', 'qa-shared')`
 - org `qa-edu-st-03-<suffix>` with a manager, an educator and a student, plus the
   default group `G1`
+- the tenant's own organization sits on the **hub** plan (applied through the seeder's
+  `--plan`): the case's range switcher (step 2) fires
+  `/api/v1/stats/teacher/activity?range=…`, which phase 5d gates on the `stats.insights`
+  entitlement — with the query disabled on a plan without it, the request never fires. The
+  tenant's own hub plan carries the key, so the educator passes the gate on every range.
 - the educator logs in through the real `/api/v1/auth/login` (fixture password
   `Seed4Test!`) with `active_org_id` set to the tenant org; the student builds the
   activity in a second browser context

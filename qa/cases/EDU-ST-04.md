@@ -18,9 +18,15 @@ the legacy `teacher-classroom@dev.local` / `student-classroom@dev.local` / `pass
 accounts):
 
 - key: `tenantKey('qa/cases/EDU-ST-04.md', 'EDU-ST-04#<run suffix>', 'qa-shared')`
-- `__tests__/qa/profiles/EDU-ST-04.json` declares the default `content` profile: one
-  organization (`qa-edu-st-04-<suffix>`) with the default group `G1`, its manager,
+- `__tests__/qa/profiles/EDU-ST-04.json` declares `{ "profile": "content", "plan": "hub" }`:
+  one organization (`qa-edu-st-04-<suffix>`) with the default group `G1`, its manager,
   an `educator` teacher and a `student`.
+- The tenant's own organization sits on the **hub** plan (applied through the seeder's
+  `--plan`, the same `change_org_plan` RPC the billing webhook calls): the case's fixture
+  is the paid saved-quiz library — the spec builds its quiz through
+  `POST /api/v1/teacher/quizzes`, which phase 5d gates on the `quiz.templates`
+  entitlement, and only a `quiz.templates`-carrying plan (here the tenant's own hub plan)
+  lets the teacher pass that gate.
 - `GET /api/v1/stats/teacher/quizzes` aggregates the attempts of the org members
   whose **org role is `member`** — i.e. the tenant's `student`. The manager (admin)
   and the teacher (teacher role) are not part of that population, so the page only

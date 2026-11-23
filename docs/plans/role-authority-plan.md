@@ -3780,6 +3780,16 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
   - **Final QA at the last HEAD:** `EDU-QZ-06` 5/5 and smoke
     `STU-54`, `STU-55`, `MGR-SEAT-02`, `EDU-QZ-01` 2/2, `BIL-04` 2/2, `PUB-04`,
     `EDU-02` 2/2 — all green, zero retries.
+  - **Product consequence (2026-11-23, 5d):** a learner can no longer create a quiz:
+    `quiz.templates` is not in `LEARNER_ENTITLEMENTS` and no student personal plan
+    carries it, so own-scope quiz authoring ends with 5d; the "key, not persona"
+    control moved to EDU-QZ-01/EDU-QZ-06. If product wants a saved-quiz library for
+    students, that is a catalog/plan decision (learner set + student plan rows), not a
+    gate change. (QA corpus drift fixed with it: `EDU-ST-03`/`EDU-ST-04`/`SEC-05`
+    profiles moved to `{ "profile": "content", "plan": "hub" }` — the first two because
+    their fixtures/reads sit behind the new gates, SEC-05 so its educator positive
+    control passes `quiz.templates` while the student subject still 403s on the learner
+    set.)
 
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
