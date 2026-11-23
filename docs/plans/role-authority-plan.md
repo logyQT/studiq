@@ -4201,6 +4201,27 @@ invite conjunct (register rows 7–9):**
   no QA case to update (recorded, none invented).
 - Rule: R41 (an `rls_caller_*` wrapper reads the actor from the JWT, not a
   mocked `getUser` — wrapper-calling paths need real sessions in tests).
+- **Review + coordinator proof (2026-11-23):**
+  - Fresh reviewer: READY, no blockers. The SQL hand-proof was run by the
+    coordinator: removing the policy's `rls_caller_may_assign_org_role`
+    conjunct **and** the guard's check 4 makes the PostgREST case
+    "refuses the member-manager an org_members update to Admin (42501), allows
+    the covered role" go red (1 failed / 6 passed); restored → 7/7.
+  - Guard limits recorded, not over-claimed: check 1 matches `'assignable'`
+    as a substring of `pg_get_functiondef`, which includes the in-body
+    comments, so a mutation that drops the conjunct but keeps the comment
+    would pass check 1 — the remaining exposure is only a **non-assignable
+    custom key**, and `org.admin` is the only non-assignable key today (its
+    refusal is pinned behaviourally, and the covers check refuses it
+    independently). Check 4 pins the `WITH CHECK` wrapper and
+    `org.member.manage` but not the `user_id <>`/same-org conjuncts; those
+    stay in `USING` and `WITH CHECK` ANDs across policies, so they cannot be
+    dropped by this file without the USING check failing first.
+  - Two pre-existing integration expectations were corrected to the new
+    rules (no product change): the student bank export now pins
+    404 (cannot read) / 403 `EXPORT_FORBIDDEN` (reads, cannot update) / 200
+    (can update, including their own bank); the `org_members` RLS case pins
+    covered-role 200, Teacher 42501, `org.admin` exemption 200.
 
 **Difficulty log**
 
