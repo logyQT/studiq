@@ -102,6 +102,7 @@ describe('org-control permission RLS', () => {
   let teacherId: string;
   let outsiderId: string;
   let disposableId: string;
+  let adminId: string;
 
   let holder: SupabaseClient<Database>;
   let legacy: SupabaseClient<Database>;
@@ -109,6 +110,7 @@ describe('org-control permission RLS', () => {
   let member: SupabaseClient<Database>;
   let teacher: SupabaseClient<Database>;
   let outsider: SupabaseClient<Database>;
+  let admin: SupabaseClient<Database>;
 
   /** A class the fixture teacher TEACHES (group.invite applies to it). */
   let taughtGroupId: string;
@@ -253,6 +255,7 @@ describe('org-control permission RLS', () => {
       'disposable',
       'student',
     );
+    adminId = await createUser(`org-control-admin-${tag}@dev.local`, 'admin', 'manager');
 
     await seedOrgMembership({ organizationId: orgId, userId: holderId, orgRoleId: holderRoleId });
     await seedOrgMembership({ organizationId: orgId, userId: legacyId, orgRoleId: legacyRoleId });
@@ -273,6 +276,8 @@ describe('org-control permission RLS', () => {
       userId: outsiderId,
       orgRoleId: foreignOrg.memberRoleId,
     });
+    // The §4.4 exemption's session: the system Admin role holds `org.admin`.
+    await seedOrgMembership({ organizationId: orgId, userId: adminId, orgRoleId: adminRoleId });
 
     // 2b-5: the teacher teaches one class of the org (group.invite applies to
     // it) and not another.
@@ -303,6 +308,7 @@ describe('org-control permission RLS', () => {
     member = await signIn(`org-control-member-${tag}@dev.local`);
     teacher = await signIn(`org-control-teacher-${tag}@dev.local`);
     outsider = await signIn(`org-control-outsider-${tag}@dev.local`);
+    admin = await signIn(`org-control-admin-${tag}@dev.local`);
   });
 
   afterAll(async () => {
@@ -316,6 +322,7 @@ describe('org-control permission RLS', () => {
       teacherId,
       outsiderId,
       disposableId,
+      adminId,
     ]) {
       if (id) await service.auth.admin.deleteUser(id).catch(() => {});
     }
@@ -388,15 +395,62 @@ describe('org-control permission RLS', () => {
   });
 
   describe('org_members UPDATE/DELETE — org.member.manage', () => {
-    it('lets the holder change a member role', async () => {
+    it('lets the holder change a member role only to a role whose keys they hold (§4.4)', async () => {
+      // A custom role carrying a subset of the holder's own keys: every row is an
+      // assignable key the holder covers at their scope, so the WITH CHECK's
+      // `rls_caller_may_assign_org_role` passes.
+      const coveredRoleId = await customRole(orgId, `org-control-covered-${tag}`, [
+        'org.settings.manage',
+        'org.member.manage',
+      ]);
+
       const { data, error } = await holder
         .from('org_members')
-        .update({ org_role_id: teacherRoleId })
+        .update({ org_role_id: coveredRoleId })
         .eq('organization_id', orgId)
         .eq('user_id', disposableId)
         .select('user_id');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
+
+      // The Teacher role carries content/group keys the holder does not hold, so the
+      // assignment predicate refuses it: 42501 is the escalation closure —
+      // `org.member.manage` alone is no longer sufficient.
+      const escalation = await holder
+        .from('org_members')
+        .update({ org_role_id: teacherRoleId })
+        .eq('organization_id', orgId)
+        .eq('user_id', disposableId)
+        .select('user_id');
+      expect(escalation.error?.code).toBe('42501');
+      expect(escalation.data).toBeNull();
+
+      const { data: persisted } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', disposableId)
+        .single();
+      expect(persisted?.org_role_id).toBe(coveredRoleId);
+
+      // The §4.4 exemption: an `org.admin` holder may grant any role, the Teacher
+      // one included.
+      const { data: adminData, error: adminError } = await admin
+        .from('org_members')
+        .update({ org_role_id: teacherRoleId })
+        .eq('organization_id', orgId)
+        .eq('user_id', disposableId)
+        .select('user_id');
+      expect(adminError).toBeNull();
+      expect(adminData).toHaveLength(1);
+
+      const { data: afterAdmin } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', disposableId)
+        .single();
+      expect(afterAdmin?.org_role_id).toBe(teacherRoleId);
     });
 
     it('refuses the Member role and the legacy manager marker', async () => {

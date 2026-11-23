@@ -6,6 +6,7 @@ import {
   cleanupOrganizationByName,
   createServiceClient,
   mockUser,
+  seedQuestion,
   useRealSupabase,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -55,6 +56,7 @@ describe('Answer key on the app surface (#1170)', () => {
   let student!: TestUserFixture;
   let orgId!: string;
   let bankId!: string;
+  let ownBankId!: string;
   let questionId!: string;
 
   beforeAll(async () => {
@@ -75,6 +77,33 @@ describe('Answer key on the app surface (#1170)', () => {
     await createServiceClient()
       .from('bank_groups')
       .insert({ bank_id: bankId, group_id: educator.defaultGroupId! });
+
+    // The student's own personal bank with one keyed question in it: outside the org the
+    // persona default gives a student `own` on content keys, so this bank is both readable
+    // and updatable by its author.
+    const { data: ownBank } = await createServiceClient()
+      .from('question_banks')
+      .insert({
+        name: `student-own-bank-${suiteId}`,
+        created_by: student.id,
+        organization_id: null,
+        visibility: 'personal',
+      })
+      .select('id')
+      .single();
+    ownBankId = ownBank!.id;
+    const ownQuestion = await seedQuestion({
+      type: 'mcq',
+      content: `own-bank-question-${suiteId}`,
+      created_by: student.id,
+      bank_id: ownBankId,
+    });
+    await createServiceClient()
+      .from('question_options')
+      .insert([
+        { question_id: ownQuestion.id, content: 'own-answer-a', is_correct: true, order_index: 0 },
+        { question_id: ownQuestion.id, content: 'own-answer-b', is_correct: false, order_index: 1 },
+      ]);
   });
 
   beforeEach(() => {
@@ -166,8 +195,30 @@ describe('Answer key on the app surface (#1170)', () => {
     ]);
   });
 
-  it('refuses a student export with EXPORT_FORBIDDEN', async () => {
+  it('answers 404 for a bank the student cannot read — the lookup runs before the permission check', async () => {
     mockUser(student);
+    // With the org active the member role's scopes are org-scoped, so the student's
+    // personal bank is invisible to the read the export starts with: NOT_FOUND, an
+    // unreadable bank indistinguishable from an unknown one (less information than a 403).
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/questions/banks/${ownBankId}/export?format=csv`,
+      { id: ownBankId },
+      { method: 'GET' },
+      orgCookies(),
+    );
+
+    const response = await GET_BANK_EXPORT(request, { params });
+    const body = await json<ErrorEnvelope>(response);
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBe('NOT_FOUND');
+  });
+
+  it('refuses with EXPORT_FORBIDDEN a bank the student can read but cannot update', async () => {
+    mockUser(student);
+    // The bank is shared with the student's group, so the member role's `group` read
+    // reaches it — but `question_bank.update` sits at `own` and the bank is the
+    // teacher's, so the export is refused.
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/questions/banks/${bankId}/export?format=csv`,
       { id: bankId },
@@ -180,28 +231,30 @@ describe('Answer key on the app surface (#1170)', () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toBe('EXPORT_FORBIDDEN');
+  });
 
-    // Even a bank the student authors: export is staff-only, so the refusal cannot come from
-    // the permission check alone.
-    const { data: ownBank } = await createServiceClient()
-      .from('question_banks')
-      .insert({
-        name: `student-own-bank-${suiteId}`,
-        created_by: student.id,
-        organization_id: null,
-        visibility: 'personal',
-      })
-      .select('id')
-      .single();
-    const own = createNextRequestWithParams(
-      `http://localhost/api/v1/questions/banks/${ownBank!.id}/export?format=csv`,
-      { id: ownBank!.id },
+  it('exports the student own personal bank — question_bank.update at own scope is the whole gate', async () => {
+    mockUser(student);
+    // Without the org cookie the persona default is `own` for content keys, so the
+    // student's own bank is readable AND updatable: the file is served with its key.
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/questions/banks/${ownBankId}/export?format=csv`,
+      { id: ownBankId },
       { method: 'GET' },
-      orgCookies(),
     );
-    const ownResponse = await GET_BANK_EXPORT(own.request, { params: own.params });
-    expect(ownResponse.status).toBe(403);
-    expect((await json<ErrorEnvelope>(ownResponse)).error).toBe('EXPORT_FORBIDDEN');
+
+    const response = await GET_BANK_EXPORT(request, { params });
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+    expect(response.headers.get('Content-Disposition')).toContain(
+      `questions-student-own-bank-${suiteId}.csv`,
+    );
+    expect(body.split('\n')[0]).toContain('answer_1');
+    expect(body).toContain(`own-bank-question-${suiteId}`);
+    // The key column names the correct answer by its 1-based position.
+    expect(body.split('\n')[1]).toContain(',1');
   });
 
   it('exports the keyed file for a teacher', async () => {
