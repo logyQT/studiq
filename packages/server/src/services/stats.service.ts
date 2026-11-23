@@ -204,10 +204,11 @@ export class StatsService {
   async getStudentStats(ctx: RequestContext): Promise<ServiceResult<StudentStatsResponse>> {
     const supabase = await this.clientFactory();
 
-    // quiz_attempts, flashcard_practice and flashcard_review_state carry no
-    // organization_id of their own (they're pure user-activity logs keyed by
-    // user_id/flashcard_id), so these three stay unscoped by org — a user in
-    // multiple orgs will see their activity from all of them combined here.
+    // quiz_attempts, flashcard_practice and flashcard_review_state are pure user-activity
+    // logs keyed by user_id (flashcard_id for practice), so these stay unscoped by org — a user
+    // in multiple orgs will see their activity from all of them combined here. (quiz_attempts
+    // does carry organization_id since 20261028100000, but it is stamped from the assignment
+    // and is not the scope of a personal read: the filter below is the caller's own user_id.)
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
       .select('id, score, total_questions, total_points, started_at, config, assignment_id')
@@ -344,13 +345,14 @@ export class StatsService {
   /**
    * Aggregated quiz performance for the caller's active organization.
    *
-   * `quiz_attempts` has no `organization_id` column, so the scope must be
-   * applied here: resolve the org's student members (`member` role) and
-   * aggregate their attempts. Without an active org (or without a verified
-   * membership — `withAuth` only sets `activeOrgId`/`orgRoleId` when the caller
-   * is actually a member) there is no class to report on, so the list is empty
-   * rather than falling back to every attempt in the deployment. RLS ("Own or
-   * same-org quiz attempts") enforces the same-org floor independently.
+   * The attempt rows are tenant-stamped (`quiz_attempts.organization_id`, set by the trigger
+   * from the assignment since 20261028100000), and the SELECT policy "Own or staff quiz
+   * attempts" enforces the floor: the caller's own rows, or same-org rows when the caller
+   * covers `stats.read`/`assignment.read`/`assignment.update` at group-or-wider scope or
+   * authored the run (D-5e3). The org's student members (`member` role) are resolved here so
+   * the aggregate is the class population; a caller whose own-scope `stats.read` does not
+   * cover `group` (the system Member) reads no other learner's attempt and gets an empty
+   * list rather than every attempt in the deployment.
    *
    * All attempts are aggregated, not just completed ones — `quiz_attempts` rows
    * are created when a quiz is started (`completed_at` stays null until submit),

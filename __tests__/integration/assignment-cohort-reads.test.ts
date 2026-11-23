@@ -43,7 +43,9 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
   let groupA: string;
   let managerAssignmentId: string;
   let assignmentId: string;
+  let educatorAssignmentId: string;
   let questionId: string;
+  let question2Id: string;
   let optionId: string;
   let deadline: string;
   const userIds: string[] = [];
@@ -141,6 +143,24 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     if (questionError) throw new Error(`question: ${questionError.message}`);
     questionId = question.id;
 
+    // A second item bound only to a run that targets the teacher directly: persona (educator)
+    // and target (learner) disagree, so this row is the R28 fixture for the seal (D-5e1).
+    const { data: question2, error: question2Error } = await service
+      .from('questions')
+      .insert({
+        organization_id: orgId,
+        created_by: teacherId,
+        bank_id: bank.id,
+        type: 'mcq',
+        content: `seal-question2-${tag}`,
+        explanation: `seal-explanation2-${tag}`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    if (question2Error) throw new Error(`question2: ${question2Error.message}`);
+    question2Id = question2.id;
+
     const { data: options, error: optionError } = await service
       .from('question_options')
       .insert([
@@ -217,6 +237,41 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     await service
       .from('assignment_targets')
       .insert({ assignment_id: managerAssignmentId, group_id: managerGroup.id });
+
+    // The run that targets the teacher directly (student_id target): the educator persona is a
+    // learner for this run by data, not by persona (D-5e1).
+    const { data: educatorAssignment, error: educatorAssignmentError } = await service
+      .from('teacher_assignments')
+      .insert({
+        organization_id: orgId,
+        created_by: teacherId,
+        title: `seal-educator-assignment-${tag}`,
+        status: 'published',
+        deadline,
+        start_time: null,
+      })
+      .select('id')
+      .single();
+    if (educatorAssignmentError)
+      throw new Error(`educator assignment: ${educatorAssignmentError.message}`);
+    educatorAssignmentId = educatorAssignment.id;
+    await service.from('assignment_questions').insert({
+      assignment_id: educatorAssignmentId,
+      question_id: question2Id,
+      order_index: 0,
+      points: 1,
+      snapshot: {
+        id: question2Id,
+        content: `seal-question2-${tag}`,
+        type: 'mcq',
+        question_answers: [],
+      },
+      snapshot_key: { explanation: 'sealed', correctOptionIds: [optionId] },
+      snapshot_version: 1,
+    });
+    await service
+      .from('assignment_targets')
+      .insert({ assignment_id: educatorAssignmentId, student_id: teacherId });
 
     studentA = await signIn(`seal-student-a-${tag}@dev.local`);
     studentB = await signIn(`seal-student-b-${tag}@dev.local`);
@@ -323,7 +378,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     ]);
   });
 
-  it('holds an org-wide run from every student, targeted or not', async () => {
+  it('holds an org-wide run from every learner in the org, and from no org staff', async () => {
     await service
       .from('teacher_assignments')
       .update({ seal_org_wide: true })
@@ -333,10 +388,38 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     expect(held.error).toBeNull();
     expect(held.data, 'a student outside the class is sealed by the org-wide run').toEqual([]);
 
+    const memberHeld = await studentA.from('questions').select('id').eq('id', questionId);
+    expect(memberHeld.data, 'a learner-profile member is sealed org-wide, targeted or not').toEqual(
+      [],
+    );
+
+    // Org staff (Admin/Teacher roles, entitlement_profile 'all') are not learners: the org-wide
+    // run holds the item from learners only (D-5e1, arm 3).
+    const managerReads = await manager.from('questions').select('id').eq('id', questionId);
+    expect(managerReads.data, 'org-wide does not seal the org admin').toEqual([{ id: questionId }]);
+    const teacherReads = await teacher.from('questions').select('id').eq('id', questionId);
+    expect(teacherReads.data, 'org-wide does not seal the org teacher').toEqual([
+      { id: questionId },
+    ]);
+
     await service
       .from('teacher_assignments')
       .update({ seal_org_wide: false })
       .eq('id', managerAssignmentId);
+  });
+
+  it('seals a directly targeted staff persona and spares an untargeted student (R28)', async () => {
+    const sealed = await teacher.from('questions').select('id').eq('id', question2Id);
+    expect(sealed.error, 'the row is filtered, not refused').toBeNull();
+    expect(sealed.data, 'an educator persona that is a direct target is a learner by data').toEqual(
+      [],
+    );
+
+    const untargeted = await studentB.from('questions').select('id').eq('id', question2Id);
+    expect(untargeted.error).toBeNull();
+    expect(untargeted.data, 'a student persona that is not targeted is not sealed').toEqual([
+      { id: question2Id },
+    ]);
   });
 
   it('releases the item at close', async () => {

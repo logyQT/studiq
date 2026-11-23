@@ -310,6 +310,51 @@ describe('Exposure ledger (#1171)', () => {
     expect(await events(student.user.id)).toHaveLength(2);
   });
 
+  it('mints events for a directly targeted educator persona, while the author preview mints none (R28, D-5e1)', async () => {
+    // An educator persona on the member role, targeted directly: persona and target disagree,
+    // and the target wins — the render is a learner exposure (#1172).
+    const email = `ledger-edu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@dev.local`;
+    const { data: created, error: createError } = await service.auth.admin.createUser({
+      email,
+      password: SEEDED_PASSWORD,
+      email_confirm: true,
+      app_metadata: { account_type: 'educator' },
+      user_metadata: { name: 'ledger-edu', account_type: 'educator' },
+    });
+    if (createError) throw new Error(`createUser educator: ${createError.message}`);
+    const educatorId = created.user.id;
+    const { data: memberRole } = await service
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'member')
+      .single();
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: educatorId,
+      orgRoleId: asJson<{ id: string }>(memberRole).id,
+    });
+    await service
+      .from('assignment_targets')
+      .insert({ assignment_id: assignmentId, student_id: educatorId });
+
+    try {
+      const targeted = await review({ id: educatorId, email, role: 'educator' });
+      expect(targeted.status, JSON.stringify(targeted)).toBe(200);
+      expect((await events(educatorId)).map((event) => event.question_id).toSorted()).toEqual(
+        [firstId, secondId].toSorted(),
+      );
+    } finally {
+      await service
+        .from('assignment_targets')
+        .delete()
+        .eq('assignment_id', assignmentId)
+        .eq('student_id', educatorId);
+      await service.from('exposure_events').delete().eq('student_id', educatorId);
+      await service.auth.admin.deleteUser(educatorId);
+    }
+  });
+
   it('records nothing for a staff preview of the cohort review', async () => {
     // The author can read the cohort artefact (the targeting rule allows the author); that read
     // renders the key to a teacher, not to a learner, so it is not an exposure event.
@@ -598,6 +643,20 @@ describe('Exposure ledger (#1171)', () => {
     expect(staffError?.message).toBeUndefined();
     expect((staffRows ?? []).length, 'staff read the org ledger').toBeGreaterThanOrEqual(2);
     expect((staffRows ?? []).every((row) => row.organization_id === orgId)).toBe(true);
+  });
+
+  it('lets a Member-role learner read only their own events through the org filter (staff arm is stats.read@group, D-5e1)', async () => {
+    // The system Member holds `stats.read` at `own`; `covers_permission` ranks own < group, so the
+    // own-scope row must NOT satisfy the staff branch — an any-scope helper here would leak every
+    // learner's ledger to every member.
+    const member = await signIn(student.user.email);
+    const { data, error } = await member
+      .from('exposure_events')
+      .select('student_id, organization_id')
+      .eq('organization_id', orgId);
+    expect(error?.message).toBeUndefined();
+    expect((data ?? []).length, 'the member’s own events are there').toBeGreaterThan(0);
+    expect(new Set((data ?? []).map((row) => row.student_id))).toEqual(new Set([student.user.id]));
   });
 
   it('refuses a client-supplied exposure insert (writes are server-only)', async () => {

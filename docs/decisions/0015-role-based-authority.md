@@ -865,6 +865,18 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > [role-authority-plan.md §5, phase 2b](role-authority-plan.md#phase-2b--authority-and-control-plane);
 > phase 5 does not rediscover them one note at a time.
 >
+> **2026-11-23 (phase 5e-1).** §7.1's "member" in the 403/404 rule is read as
+> **member of the request's org**: `QuizTeacherService` now has one derivation
+> (D-5e2) — a missing quiz and a quiz in a foreign org are both `404` (the
+> request is scoped to `active_org_id`, so a member of org B with A active
+> gets 404 and can switch; tenant existence is not leaked), and only a
+> same-org row the caller's `permission` scope does not reach answers `403`.
+> The per-call-site `foreignOrgError` parameter is deleted; the matrix is
+> pinned at API level by
+> `__tests__/integration/quiz-teacher-404-403-matrix.test.ts` (PUT: 404
+> missing, 404 foreign org, 403 same-org unreached, 200 own) and at unit level
+> by `quiz-teacher.service.test.ts`.
+>
 > **2026-11-22 (phase 5a).** The `ai/chat` + `ai/usage` pair is gone from that
 > list: both routes now gate on `requireEntitlement(ctx, 'ai.chat')` as the
 > first handler statement, so exactly two declared exceptions remain (the R5
@@ -894,6 +906,26 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > student holding the key may export (the answer-key exposure the old conjunct
 > guarded is still covered — by the key, not by the account type). The topic
 > default visibility moved here too: see the §10 note.
+>
+> **2026-11-23 (phase 5e-1).** "Learner on an assignment" is **data, not
+> persona** (D-5e1): a caller is a learner for a published, in-window (or
+> held-back) run when it targets them directly (`assignment_targets.student_id`),
+> through a group where their `group_members.role = 'member'` (a group teacher
+> is staff of that class, not a learner in it), or org-wide (`seal_org_wide`)
+> with a learner-profile org role (`org_roles.entitlement_profile = 'learner'`,
+> the system Member; Admin/Teacher are `'all'`). The same three arms drive the
+> seal (`rls_caller_is_sealed_item` in SQL and `sealedItemsFor` in TS — the two
+> halves read `group_members.role` and `org_members → org_roles.entitlement_profile`
+> and must agree), and the exposure write guard (`assessment-review.service.ts`
+> via `callerIsLearnerOnAssignment`, so #1172's author preview still mints no
+> event while a directly targeted educator does). The `exposure_events` staff
+> read moved to `rls_caller_covers_permission(organization_id, 'stats.read',
+'group')` — the scope rank own < group < organization means a Member's
+> own-scope `stats.read` does not qualify. `quiz_attempts` "Own or staff quiz
+> attempts" is now one predicate for USING and WITH CHECK (grading writes
+> another user's row): own row, or a same-org row the caller covers via
+> `stats.read` / `assignment.read` / `assignment.update` at group-or-wider
+> scope, or an attempt of an assignment the caller authored.
 
 ---
 

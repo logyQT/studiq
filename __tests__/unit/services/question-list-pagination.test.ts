@@ -1,5 +1,6 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter } from '@studiq/server/lib/authz';
+import { emptySeal } from '@studiq/server/lib/question-seal';
 import { QuestionListQuerySchema } from '@studiq/server/models/question.model';
 import { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -15,6 +16,13 @@ vi.mock('@studiq/server/lib/question-keys', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@studiq/server/lib/question-keys')>()),
   canReadQuestionKey: vi.fn(() => false),
   readQuestionKeys: vi.fn(() => Promise.resolve(new Map())),
+}));
+
+// The seal is a service-role read over the target set (#1171, D-5e1); pagination has nothing to
+// add to it, so it answers an empty seal.
+vi.mock('@studiq/server/lib/question-seal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studiq/server/lib/question-seal')>()),
+  sealFor: vi.fn(() => Promise.resolve({ success: true, data: emptySeal() })),
 }));
 
 vi.mock('@studiq/server/services/limits', () => ({
