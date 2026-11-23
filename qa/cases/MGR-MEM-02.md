@@ -81,3 +81,17 @@ bun scripts/qa-tenant.ts MGR-MEM-02 --fresh
   **403** `{"success":false,"error":"FORBIDDEN"}` (widoczne też w UI jako `(ty)` bez
   listy roli); `newOrgRoleId` spoza organizacji (losowy UUID) → **403** `FORBIDDEN`,
   rola członka pozostaje bez zmian.
+
+## Notatka 2026-11-23 (phase 5c, register row 13) — §4.4 na przypisaniu roli
+
+Serwer wymusza teraz „grant only what you hold" także na `PUT
+/api/v1/organization/members`: oprócz `org.member.manage` wywołuje
+`rls_caller_may_assign_org_role(newOrgRoleId)` (ten sam predykat co polityka
+UPDATE tabeli `org_members`), więc rola może zostać przypisana tylko
+`org.admin`-holderowi albo gdy wszystkie klucze roli docelowej są
+assignowalne i pokryte przez wywołującego. Przypadek jest niezmieniony:
+jego wywołującym jest manager z rolą systemową `admin` (ma `org.admin`), więc
+krok 2 nadal odpowiada 200 dla roli `teacher`. Dla wywołującego z samym
+`org.member.manage` (bez `org.admin`) przypisanie roli `admin` lub `teacher`
+odpowiada teraz 403 — przypadek tego nie ćwiczy (inny rola-klucz), więc nie
+ma tu zmiany do zapisania.

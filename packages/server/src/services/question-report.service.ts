@@ -1,4 +1,5 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
+import { hasPermission, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, pageParams, readPage } from '@studiq/server/lib/query-list';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -49,10 +50,11 @@ function isReportParticipant(
 }
 
 /**
- * PostgREST filter for the reports the caller may see. An org admin sees every
- * report of the active org *plus* the threads they participate in anywhere
- * (legacy `organization_id IS NULL` rows included) — the pre-fix visibility is
- * never taken away, org-wide rows are added on top.
+ * PostgREST filter for the reports the caller may see. An `org.report.manage`
+ * holder in the active org sees every report of that org *plus* the threads
+ * they participate in anywhere (legacy `organization_id IS NULL` rows
+ * included) — the pre-fix visibility is never taken away, org-wide rows are
+ * added on top.
  */
 function reportVisibilityFilter(ctx: RequestContext, orgScope: string | null): string {
   const participant = `reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`;
@@ -109,17 +111,20 @@ export class QuestionReportService {
       if (group.created_by) {
         recipientId = group.created_by;
       } else {
-        const { data: admin } = await supabase
+        // An ownerless group routes to the first org member whose role holds
+        // `org.report.manage` (the inbox key) — never a role-name lookup.
+        const { data: manager } = await supabase
           .from('org_members')
-          .select('user_id, org_roles!inner(name)')
+          .select('user_id, org_roles!inner(org_role_permissions!inner(permission_key, scope))')
           .eq('organization_id', group.organization_id)
-          .eq('org_roles.name', 'admin')
+          .eq('org_roles.org_role_permissions.permission_key', 'org.report.manage')
+          .not('org_roles.org_role_permissions.scope', 'is', null)
           .order('joined_at', { ascending: true })
           .limit(1)
           .maybeSingle();
 
-        if (!admin) return failure('NOT_FOUND');
-        recipientId = admin.user_id;
+        if (!manager) return failure('NOT_FOUND');
+        recipientId = manager.user_id;
       }
 
       organizationId = group.organization_id;
@@ -163,7 +168,7 @@ export class QuestionReportService {
     queryParams?: Partial<QuestionReportListQuery>,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
-    const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
+    const orgScope = this.resolveOrgWideReportScope(ctx);
 
     // Visibility is the first `.or()` on purpose: `supabase-js` appends the
     // `or` params, so PostgREST ANDs this scope with the search/cursor filters
@@ -386,7 +391,7 @@ export class QuestionReportService {
 
   async unreadCount(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
-    const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
+    const orgScope = this.resolveOrgWideReportScope(ctx);
 
     const { data, error } = await supabase
       .from('question_reports')
@@ -423,7 +428,7 @@ export class QuestionReportService {
       return { report: report, orgScope: null };
     }
 
-    const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
+    const orgScope = this.resolveOrgWideReportScope(ctx);
     if (!orgScope || report.organization_id !== orgScope) return null;
     return { report: report, orgScope };
   }
@@ -434,25 +439,13 @@ export class QuestionReportService {
   }
 
   /**
-   * Active org id when the caller is the org's admin and may read every report
-   * in it; null otherwise (participant-only scope applies).
+   * Active org id when the caller holds `org.report.manage` in it and may read
+   * every report of the org; null otherwise (participant-only scope applies).
+   * The key — not the persona or a role name — is the whole answer (D13).
    */
-  private async resolveOrgWideReportScope(
-    ctx: RequestContext,
-    supabase: SupabaseClient<Database>,
-  ): Promise<string | null> {
-    if (ctx.accountType !== AccountType.MANAGER) return null;
-    const orgId = ctx.activeOrgId;
-    if (!orgId || !ctx.orgRoleId) return null;
-
-    const { data } = await supabase
-      .from('org_roles')
-      .select('name, is_system')
-      .eq('id', ctx.orgRoleId)
-      .eq('organization_id', orgId)
-      .maybeSingle();
-
-    return data?.is_system === true && data.name === 'admin' ? orgId : null;
+  private resolveOrgWideReportScope(ctx: RequestContext): string | null {
+    if (!ctx.activeOrgId) return null;
+    return hasPermission(ctx, Permission.ORG_REPORT_MANAGE) ? ctx.activeOrgId : null;
   }
 }
 export const questionReportService = wrapService(

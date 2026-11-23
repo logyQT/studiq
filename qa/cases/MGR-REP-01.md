@@ -72,3 +72,13 @@ tenant with the same shape instead:
 /api/v1/question-reports/<id>` returns it) and survives a reload. The group thread
   keeps the „Grupa: G1” label.
 - No deviation from the expected result was observed.
+
+## Notatka 2026-11-23 (phase 5c, register row 5) — inbox kluczem, nie personą
+
+Dostęp do całoorganizacyjnego inboxu zgłoszeń (`/manage/reports`) wynika teraz z
+klucza `org.report.manage` w aktywnej organizacji (`hasPermission(ctx, …)`),
+a nie z persony `manager` ani z nazwy roli `admin`; zgłoszenie na grupę bez
+właściciela trafia do pierwszego członka, którego rola ma
+`org.report.manage`. Przypadek jest niezmieniony: jego manager ma rolę
+systemową `admin`, która ten klucz posiada, więc nadal widzi zgłoszenia całej
+organizacji (krok „cała organizacja” pozostaje zielony).

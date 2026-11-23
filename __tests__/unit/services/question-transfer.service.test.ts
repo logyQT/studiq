@@ -281,12 +281,22 @@ describe('QuestionTransferService.exportBank', () => {
     expect(questionService.listBankQuestions).not.toHaveBeenCalled();
   });
 
-  it('refuses a student export before reading the bank (R15)', async () => {
+  it('lets a STUDENT caller holding the bank key export (the persona no longer decides)', async () => {
+    // Changed behaviour (register row 5): the staff check below is the whole
+    // gate, so a student with `question_bank.update` on the bank exports like
+    // any other key holder.
+    listed([row()], 1);
+
     const result = await service.exportBank({ ...ctx, accountType: AccountType.STUDENT }, 'bank-1');
 
-    expect(result).toMatchObject({ success: false, error: 'EXPORT_FORBIDDEN' });
-    expect(questionBankService.getById).not.toHaveBeenCalled();
-    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(questionBankService.getById).toHaveBeenCalledWith(
+      'bank-1',
+      expect.objectContaining({
+        accountType: AccountType.STUDENT,
+      }),
+    );
+    expect(questionService.listBankQuestions).toHaveBeenCalledWith('bank-1');
   });
 
   it('refuses a caller without the staff key permission on the bank (R15)', async () => {
@@ -296,6 +306,18 @@ describe('QuestionTransferService.exportBank', () => {
     vi.mocked(can).mockResolvedValueOnce(false);
 
     const result = await service.exportBank(ctx, 'bank-1');
+
+    expect(result).toMatchObject({ success: false, error: 'EXPORT_FORBIDDEN' });
+    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
+  });
+
+  it('refuses a STUDENT without the bank key with EXPORT_FORBIDDEN as well', async () => {
+    vi.mocked(questionBankService.getById).mockResolvedValue(
+      success({ name: 'B', created_by: 'someone-else', organization_id: 'org-1' }),
+    );
+    vi.mocked(can).mockResolvedValueOnce(false);
+
+    const result = await service.exportBank({ ...ctx, accountType: AccountType.STUDENT }, 'bank-1');
 
     expect(result).toMatchObject({ success: false, error: 'EXPORT_FORBIDDEN' });
     expect(questionService.listBankQuestions).not.toHaveBeenCalled();
