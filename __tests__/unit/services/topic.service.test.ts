@@ -73,6 +73,31 @@ function qb(data: unknown, error: unknown = null, count: number | null = null): 
   return builder;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** The first row handed to `insert()`, as recorded on the builder. */
+function firstInsert(b: QueryBuilder): Record<string, unknown> {
+  const call = b.insert.mock.calls[0];
+  if (!Array.isArray(call) || call.length === 0) throw new Error('expected one insert call');
+  const row: unknown = call[0];
+  if (!isRecord(row)) throw new Error('expected an inserted row object');
+  return row;
+}
+
+/** A ctx whose `topic.create` scope is `scope` (undefined = no row), persona irrelevant. */
+function ctxWithTopicScope(
+  scope: 'own' | 'group' | 'organization' | undefined,
+  base: RequestContext,
+): RequestContext {
+  return {
+    ...base,
+    accountType: AccountType.STUDENT, // persona must not matter
+    permissionScopes: scope ? { 'topic.create': scope } : {},
+  };
+}
+
 describe('TopicService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: TopicService;
@@ -150,18 +175,131 @@ describe('TopicService', () => {
 
     it('does not run the group guard for an implicit personal topic', async () => {
       const topic = { id: 't-1', name: 'Topic', created_by: ctx.userId, visibility: 'personal' };
-      mock.from.mockReturnValueOnce(qb(topic));
+      const insertQuery = qb(topic);
+      mock.from.mockReturnValueOnce(insertQuery);
 
       const result = await service.create(
         { name: 'Topic' },
-        {
-          ...ctx,
-          accountType: AccountType.STUDENT,
-        },
+        { ...ctx, permissionScopes: { 'topic.create': 'own' } },
       );
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'personal' });
+    });
+  });
+
+  describe('default visibility from the topic.create scope (not the persona)', () => {
+    it('defaults to personal when topic.create is own', async () => {
+      const insertQuery = qb({ id: 't-1', name: 'Topic', visibility: 'personal' });
+      mock.from.mockReturnValueOnce(insertQuery);
+
+      const result = await service.create({ name: 'Topic' }, ctxWithTopicScope('own', ctx));
+
+      expect(result.success).toBe(true);
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'personal' });
+    });
+
+    it('defaults to personal when the role holds no topic.create row', async () => {
+      const insertQuery = qb({ id: 't-1', name: 'Topic', visibility: 'personal' });
+      mock.from.mockReturnValueOnce(insertQuery);
+
+      await service.create({ name: 'Topic' }, ctxWithTopicScope(undefined, ctx));
+
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'personal' });
+    });
+
+    it('defaults to group when topic.create is group', async () => {
+      const insertQuery = qb({ id: 't-1', name: 'Topic', visibility: 'group' });
+      mock.from.mockReturnValueOnce(insertQuery);
+
+      const result = await service.create({ name: 'Topic' }, ctxWithTopicScope('group', ctx));
+
+      expect(result.success).toBe(true);
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'group' });
+    });
+
+    it('defaults to group when topic.create is organization', async () => {
+      const insertQuery = qb({ id: 't-1', name: 'Topic', visibility: 'group' });
+      mock.from.mockReturnValueOnce(insertQuery);
+
+      await service.create({ name: 'Topic' }, ctxWithTopicScope('organization', ctx));
+
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'group' });
+    });
+
+    it('keeps an explicit personal visibility even at group scope', async () => {
+      const insertQuery = qb({ id: 't-1', name: 'Topic', visibility: 'personal' });
+      mock.from.mockReturnValueOnce(insertQuery);
+
+      const result = await service.create(
+        { name: 'Topic', visibility: 'personal' },
+        ctxWithTopicScope('group', ctx),
+      );
+
+      expect(result.success).toBe(true);
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'personal' });
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+    });
+
+    it('still runs the share check for an explicit group visibility at own scope', async () => {
+      const insertQuery = qb({ id: 't-1', name: 'Topic', visibility: 'group' });
+      mock.from.mockReturnValueOnce(insertQuery);
+      mock.from.mockReturnValueOnce(qb(undefined)); // topic_groups insert
+
+      const result = await service.create(
+        { name: 'Topic', visibility: 'group', groupIds: ['g-1'] },
+        ctxWithTopicScope('own', ctx),
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        ctxWithTopicScope('own', ctx),
+        ['g-1'],
+        'org-1',
+      );
+      expect(firstInsert(insertQuery)).toMatchObject({ visibility: 'group' });
+    });
+
+    it('applies the same default in bulkCreate (own ⇒ personal, group ⇒ group)', async () => {
+      const ownInsert = qb([{ id: 't-1' }, { id: 't-2' }]);
+      mock.from.mockReturnValueOnce(ownInsert);
+
+      await service.bulkCreate(
+        { topics: [{ name: 'A' }, { name: 'B' }] },
+        ctxWithTopicScope('own', ctx),
+      );
+
+      expect(firstInsert(ownInsert)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'A', visibility: 'personal' }),
+          expect.objectContaining({ name: 'B', visibility: 'personal' }),
+        ]),
+      );
+
+      mock.from.mockClear();
+      const groupInsert = qb([{ id: 't-3' }]);
+      mock.from.mockReturnValueOnce(groupInsert);
+
+      await service.bulkCreate({ topics: [{ name: 'C' }] }, ctxWithTopicScope('group', ctx));
+
+      expect(firstInsert(groupInsert)).toEqual([
+        expect.objectContaining({ name: 'C', visibility: 'group' }),
+      ]);
+    });
+
+    it('keeps an explicit per-topic visibility in bulkCreate', async () => {
+      const insertQuery = qb([{ id: 't-1' }]);
+      mock.from.mockReturnValueOnce(insertQuery);
+
+      await service.bulkCreate(
+        { topics: [{ name: 'A', visibility: 'personal' }] },
+        ctxWithTopicScope('group', ctx),
+      );
+
+      expect(firstInsert(insertQuery)).toEqual([
+        expect.objectContaining({ name: 'A', visibility: 'personal' }),
+      ]);
     });
   });
 

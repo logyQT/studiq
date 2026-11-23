@@ -169,7 +169,10 @@ describe('org-control routes authorize on org permissions', () => {
   let foreignOrgId: string;
   let memberRoleId: string;
   let teacherRoleId: string;
+  let adminRoleId: string;
   let holderRoleId: string;
+  /** A custom role whose only key the holder covers (org.settings.manage@organization). */
+  let coveredRoleId: string;
 
   let holder: TestUserFixture;
   let member: TestUserFixture;
@@ -222,6 +225,7 @@ describe('org-control routes authorize on org permissions', () => {
     orgId = org.org.id;
     memberRoleId = org.memberRoleId;
     teacherRoleId = org.teacherRoleId;
+    adminRoleId = org.adminRoleId;
 
     const foreignOrg = await seedOrganization(`org-control-api-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;
@@ -232,6 +236,10 @@ describe('org-control routes authorize on org permissions', () => {
       'org.seat.manage',
       'org.invitation.manage',
     ]);
+
+    // §4.4 (row 13): a role the holder may assign — every key they hold at a
+    // covering scope.
+    coveredRoleId = await roleWith(orgId, `org-control-covered-${tag}`, ['org.settings.manage']);
 
     holder = await createTestUser({ role: 'manager', password: PASSWORD });
     member = await createTestUser({ role: 'student', password: PASSWORD });
@@ -524,12 +532,53 @@ describe('org-control routes authorize on org permissions', () => {
       expect(data?.org_role_id).toBe(memberRoleId);
     });
 
-    it('lets the holder move a member between roles', async () => {
+    it('lets the holder move a member to a role whose keys they hold (§4.4, row 13)', async () => {
       const { status } = await call(
         holderSession,
         putMembers,
         '/api/v1/organization/members',
+        jsonInit('PUT', { targetUserId: disposable.id, newOrgRoleId: coveredRoleId }),
+        orgId,
+      );
+
+      expect(status).toBe(200);
+
+      const { data } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', disposable.id)
+        .single();
+      expect(data?.org_role_id).toBe(coveredRoleId);
+    });
+
+    it('refuses the holder an assignment of the Teacher role (keys they do not cover)', async () => {
+      const { status, body } = await call(
+        holderSession,
+        putMembers,
+        '/api/v1/organization/members',
         jsonInit('PUT', { targetUserId: disposable.id, newOrgRoleId: teacherRoleId }),
+        orgId,
+      );
+
+      expect(status).toBe(403);
+      expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
+
+      const { data } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgId)
+        .eq('user_id', disposable.id)
+        .single();
+      expect(data?.org_role_id).toBe(coveredRoleId);
+    });
+
+    it('lets a Student-persona Admin assign the Admin role (D13 + §4.4)', async () => {
+      const { status } = await call(
+        studentAdminSession,
+        putMembers,
+        '/api/v1/organization/members',
+        jsonInit('PUT', { targetUserId: disposable.id, newOrgRoleId: adminRoleId }),
         orgId,
       );
 

@@ -2624,6 +2624,7 @@ export type Database = {
         }[];
       };
       activity_stamp_client_write: { Args: Record<PropertyKey, never>; Returns: boolean };
+      actor_may_assign_org_role: { Args: { p_actor: string; p_role_id: string }; Returns: boolean };
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
       apply_entitlement_fenced: {
@@ -2882,6 +2883,7 @@ export type Database = {
       };
       rls_caller_is_org_manager: { Args: { p_organization_id: string }; Returns: boolean };
       rls_caller_is_sealed_item: { Args: { p_question_id: string }; Returns: boolean };
+      rls_caller_may_assign_org_role: { Args: { p_role_id: string }; Returns: boolean };
       rls_caller_may_set_role_permission: {
         Args: { p_org_role_id: string; p_permission_key: string; p_scope: string };
         Returns: boolean;

@@ -1,10 +1,11 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   accessibleFilter,
   check,
   Permission,
   resolveGroupResourceIds,
+  resolveScope,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import type {
@@ -31,12 +32,23 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
 
+/**
+ * Default visibility for a new topic, from the caller's `topic.create` scope —
+ * never the persona: `group`/`organization` scope means the caller may share
+ * content to groups, so the topic defaults to class-visible; anything narrower
+ * defaults to `personal`. An explicit `data.visibility` always wins.
+ */
+function defaultTopicVisibility(ctx: RequestContext): 'group' | 'personal' {
+  const scope = resolveScope(ctx, Permission.TOPIC_CREATE);
+  return scope === 'group' || scope === 'organization' ? 'group' : 'personal';
+}
+
 export class TopicService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateTopicInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
-    const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
+    const topicVisibility = defaultTopicVisibility(ctx);
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
     if (groupIds.length > 0) {
@@ -219,7 +231,7 @@ export class TopicService {
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
-    const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
+    const topicVisibility = defaultTopicVisibility(ctx);
 
     const topics = data.topics.map((t) => ({
       name: t.name,

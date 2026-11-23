@@ -14,9 +14,10 @@ import {
 /**
  * #276 (MGR-REP-01): a manager used to see only the report threads they
  * personally participate in, because `list`/`unreadCount` always applied the
- * reporter/recipient filter. The org admin must see (and answer) every report of
- * the active organization *in addition to* their own participant threads, while
- * teachers and students stay participant-only.
+ * reporter/recipient filter. A holder of `org.report.manage` in the active
+ * organization must see (and answer) every report of that org *in addition to*
+ * their own participant threads, while everyone else stays participant-only —
+ * the key, not the persona or a role name, decides (D13, register row 5).
  *
  * The services run on the service-role client (`mockUser`), i.e. with RLS out of
  * the picture, so these assertions prove the application-level scope rather than
@@ -62,7 +63,9 @@ describe('Question reports org-wide manager scope (#276)', () => {
       activeOrgId: orgId,
       orgRoleId: adminRoleId,
       groupIds: [],
-      permissionScopes: {},
+      // The admin role holds the inbox key; `withAuth` would populate exactly
+      // this from org_role_permissions (the service now reads ctx only).
+      permissionScopes: { 'org.report.manage': 'organization' },
       ...overrides,
     };
   }
@@ -230,6 +233,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
         userId: teacherId,
         accountType: AccountType.EDUCATOR,
         orgRoleId: teacherRoleId,
+        permissionScopes: {},
       }),
     );
     expect(teacherResult.success).toBe(true);
@@ -250,6 +254,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
         userId: studentId,
         accountType: AccountType.STUDENT,
         orgRoleId: memberRoleId,
+        permissionScopes: {},
       }),
     );
     expect(studentResult.success).toBe(true);
@@ -259,6 +264,24 @@ describe('Question reports org-wide manager scope (#276)', () => {
       );
       expect(ids).toEqual([questionReportId]);
     }
+  });
+
+  it('gives the org-wide scope to a student-persona Admin holding org.report.manage (D13)', async () => {
+    const result = await questionReportService.list(
+      ctxFor({
+        userId: studentId,
+        accountType: AccountType.STUDENT,
+        orgRoleId: adminRoleId,
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const ids = asJson<{ items: Array<{ id: string }> }>(result.data).items.map((r) => r.id);
+    // The org-wide inbox is the key, not the persona: a student-persona Admin
+    // sees every report of the active org (and none of the other org).
+    expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId]));
+    expect(ids).not.toContain(otherOrgReportId);
   });
 
   it('opens a non-participant question report in the active org', async () => {
@@ -316,7 +339,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
   });
 
   it('denies org-wide visibility to a manager holding only a teacher role', async () => {
-    const teacherRoleCtx = ctxFor({ orgRoleId: teacherRoleId });
+    const teacherRoleCtx = ctxFor({ orgRoleId: teacherRoleId, permissionScopes: {} });
 
     const listed = await questionReportService.list(teacherRoleCtx);
     expect(listed.success).toBe(true);

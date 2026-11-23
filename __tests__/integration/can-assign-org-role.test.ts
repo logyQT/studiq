@@ -64,16 +64,18 @@ function requireLocalDatabaseUrl(): string {
   return localDatabaseUrl;
 }
 
-/** Replay the shipped 5b migration so a reverted predicate cannot survive. */
+/** Replay the shipped 5b + 5c migrations so a reverted predicate cannot survive. */
 async function installShippedSql(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
-    await sql.unsafe(
-      readFileSync(
-        'supabase/migrations/20261122180000_can_assign_grant_only_what_you_hold.sql',
-        'utf8',
-      ),
-    );
+    for (const file of [
+      'supabase/migrations/20261122180000_can_assign_grant_only_what_you_hold.sql',
+      // 5c redefines can_assign_org_role onto actor_may_assign_org_role (R27:
+      // the newest file owns the object, so it replays after 5b's).
+      'supabase/migrations/20261123100000_member_assignment_grant_only_what_you_hold.sql',
+    ]) {
+      await sql.unsafe(readFileSync(file, 'utf8'));
+    }
   } finally {
     await sql.end();
   }

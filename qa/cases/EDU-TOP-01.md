@@ -101,3 +101,13 @@ the real system role and the premise the 2b-3 workaround protected holds again.
 `__tests__/qa/profiles/EDU-TOP-01.json` names `orgRole: "teacher"` (the default the 2b-3
 note said failed), and the spec and the bullets above cite the Teacher role instead of the
 Member role. Assertions and steps are unchanged.
+
+## Notatka 2026-11-23 (phase 5c, register row 6) — domyślna widoczność tematu z zakresu
+
+Domyślna widoczność nowego tematu (gdy żądanie API nie podaje `visibility`) wynika
+teraz z zakresu `topic.create` wywołującego (`group`/`organization` → `group`,
+inaczej `personal`), a nie z persony `educator`. Rola systemowa `teacher` ma
+`topic.create` w zakresie `own`, więc educator na tej roli domyślnie dostaje
+`personal`. Przypadek jest niezmieniony: dialog UI zawsze wysyła jawne
+`visibility` (domyślnie „personal”), więc ścieżka przypadku nie korzysta z
+serwerowej wartości domyślnej.

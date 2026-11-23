@@ -362,6 +362,20 @@ null references groups(id)` + `target_group_role text null` (pair CHECK — an
 > without `org.admin` can still assign the system Admin role. Pre-existing and
 > outside row 9's scope; recorded as the 2b-9 register's **row 13**, owner
 > phase 5, to be closed with the same `covers_permission` shape.
+>
+> **2026-11-23 (phase 5c) — row 13 closed.** The assignment half of
+> `can_assign_org_role` now lives in ONE actor-parameterized helper,
+> `public.actor_may_assign_org_role(p_actor, p_role_id)`
+> (`covers_permission(p_actor, org, 'org.admin', 'organization')` OR every
+> non-null-scope target-role row is an `assignable` key the actor covers at
+> that scope). `can_assign_org_role` is `org.invitation.manage` **and** that
+> delegate, so the invite path and the member path share the predicate, and the
+> authenticated wrapper `rls_caller_may_assign_org_role(p_role_id)` is what
+> both the service (`changeRole`, on the user client) and the `org_members`
+> UPDATE policy's WITH CHECK call (`20261123100000`). Consequence: an
+> `org.member.manage` holder without `org.admin` can no longer assign the
+> system Admin role through either plane (API 403, PostgREST 42501); an
+> `org.admin` holder still assigns any role.
 
 ---
 
@@ -844,6 +858,18 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > role-name checks (`isOrgAdmin`, `rls_caller_is_org_manager` in org delete,
 > now `org.admin` at organization scope via `scopeCovers`) are deleted from
 > every server path; the `/checkout` page gate stays cosmetic until phase 6.
+>
+> **2026-11-23 (phase 5c).** The report inbox and the bank export left the
+> persona and the role name: the org-wide report scope is
+> `hasPermission(ctx, 'org.report.manage')` in the active org (a student-persona
+> Admin reaches it — D13; a manager whose role lacks the key does not), and an
+> ownerless group's report is routed to the first member whose role holds
+> `org.report.manage`, never to a role named `admin`.
+> `exportBank` (`/api/v1/questions/banks/[id]/export`) carries no persona
+> conjunct at all: `question_bank.update` on the bank is the whole gate, so a
+> student holding the key may export (the answer-key exposure the old conjunct
+> guarded is still covered — by the key, not by the account type). The topic
+> default visibility moved here too: see the §10 note.
 
 ---
 
@@ -1061,6 +1087,18 @@ exists … on conflict do nothing`), so a membership row deleted between the
 > normalizes a class row's `target_org_role_id` to the system `member` role,
 > so a `group.invite` holder cannot persist a class invite carrying another
 > org role.
+>
+> **2026-11-23 (phase 5c).** A new topic's default visibility derives from the
+> caller's `topic.create` scope, never from the persona: `group` or
+> `organization` scope defaults to `group` (class-visible), anything narrower
+> defaults to `personal`; an explicit `visibility` in the request always wins,
+> and sharing to supplied `groupIds` still requires the group-share check.
+> Consequence of the seeded matrix (§4.2): the system **Teacher** role carries
+> `topic.create` at `own` (content writes at `own`, D29), so an educator on it
+> now defaults new topics to `personal` rather than `group`; only a role with
+> `topic.create` at `group`/`organization` (e.g. Admin) keeps the class-visible
+> default. The web UI always sends an explicit `visibility`, so this default
+> applies to API callers that omit the field.
 
 ---
 

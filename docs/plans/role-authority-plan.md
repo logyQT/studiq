@@ -28,7 +28,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 2     | authority cutover + control-plane RLS          | merged                           | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
 | 3     | entitlements and limits                        | active (3d, `feat/authority-3d`) | —           | —   | LIM, BIL, STU             | 2026-11-22 |
 | 4     | seats and personal plans                       | active (4a, `feat/authority-4a`) | —           | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | active (5b, `feat/authority-5b`) | —           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-22 |
+| 5     | enforcement closure                            | active (5c, `feat/authority-5c`) | —           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
 | 6     | UI and cache                                   | pending                          | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
 | 7     | delete, full QA, close                         | pending                          | —           | —   | all 188 + E2E             |            |
 | 8     | extendability audit (release gate)             | pending                          | —           | —   | all 188 + E2E             | 2026-11-19 |
@@ -48,10 +48,13 @@ Teacher content-read gap is closed (D29). **Phase 5a is merged** (#1411,
 both `ai/*` routes gate on `requireEntitlement('ai.chat')`, branding is
 `org.settings.manage` **and** `requireEntitlement('branding')`, and
 `lib/features.ts` (`requireFeature`) is deleted in favour of
-`lib/entitlements.ts`. **Phase 5b is active on `feat/authority-5b`
-(2026-11-22):** register rows 7–9 are closed (the billing owner + checkout
-resolver, org delete, the §4.4 invite conjunct — dated note in the 2b-9 block
-below); rows 3–6 and 10–12 remain with phase 5.
+`lib/entitlements.ts`. **Phase 5b is merged** (#1414, `554cb696`): register
+rows 7–9 are closed (the billing owner + checkout resolver, org delete, the
+§4.4 invite conjunct — dated note in the 2b-9 block below), and the 5b review
+recorded **row 13** (the member role-assignment path still gated on
+`org.member.manage` alone). **Phase 5c is active on `feat/authority-5c`
+(2026-11-23):** register rows 13, 5 and 6 are closed (dated note in the 2b-9
+block below); rows 3, 4, 10, 11 and 12 remain with phase 5.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -129,6 +132,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R38 | A join added to a query is executed with the caller role's privileges: giving an anonymous endpoint one embed of a table only `authenticated` may select turns every anonymous call into 403, and no session-authenticated test notices.                                                                                                                                                                          | 4a: `PlanInfo.seatEligible` embeds `entitlement_catalog` on every plan read, so the public pricing catalogue answered 403 for `anon` until the migration granted it SELECT (and an anon SELECT policy — the grant alone returns zero rows); the three anon census probes (`grant-parity`, `anon-grants`, `rls-tenant-isolation`) were the only tests that could see it, and the served QA run is what surfaced it                                                                                                             |
 | R39 | When a persona gate is replaced by an entitlement, the old negative QA case keeps passing for the wrong reason — the negative tenant's plan lacks the entitlement too — so the slice must also pin the _positive_ path (a persona whose plan carries the key reaches the handler), or the removal of a persona gate can silently turn an authorization boundary into nobody's job.                                | 5a: SEC-07's manager sits on `launch`, which carries no `ai.chat`, so its 403 cannot tell a persona gate from an entitlement gate; the positive path is pinned by MGR-02, whose `hub` tenant carries `ai.chat` and whose manager reaches the handler (400 on an empty body), and inside SEC-07's own tenant by its student moved to the paid `ace` personal plan (`ai.chat` is `personalPortable`, so the key carries inside the `launch` org: `features/me` contains it, `ai/usage` 200 `limit 200000`, empty-body chat 400) |
 | R40 | One source per rule holds in SQL too: an actor-parameterized helper owns the predicate and the `rls_caller_*` wrapper is a one-line delegate — two copies of a scope-rank rule drift. And a TS check that re-derives a value the code already derives from the same permission is dead code: delete it with the derivation, never keep it as a second rule.                                                       | 5b: `can_assign_org_role` got the §4.4 conjunct only after `covers_permission` was factored out of `rls_caller_covers_permission` (a second `case`-rank copy would have drifted from `scopeCovers`); `assertOrgBillingAuthority` was deleted because `ownerFromContext` derives the org owner from the very `org.billing.manage` the check re-asked                                                                                                                                                                           |
+| R41 | An `rls_caller_*` wrapper resolves its actor from the **JWT**, not from a mocked `getUser`: a service-role client in tests has `auth.uid() = null`, so every path that calls a wrapper RPC answers false under the usual `mockUser` seam — such paths must be tested with a real signed-in session, and the existing cases that silently passed (or failed for the wrong reason) move to one. | 5c: `changeRole`'s new `rls_caller_may_assign_org_role` call returned false for every `mockUser`-driven PUT (admin included), which surfaced as a wrong 403/404 in `members.test.ts`; the API half of the new member-assignment suite and the two affected cases now run on real cookie-jar sessions (`actAs`), where `auth.uid()` is the signed-in user                                                                                                                                                                                                                                               |
 
 ## 4. Decisions
 
@@ -3552,6 +3556,66 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
 
   **Rows 3–6 and 10–12 remain** with phase 5.
 
+  **2026-11-23 (phase 5c, `feat/authority-5c`): register rows 13, 5 and 6 are
+  closed.**
+  - **Row 13 (§4.4 on member assignment):** migration
+    `20261123100000_member_assignment_grant_only_what_you_hold.sql` extracts
+    the assignment half of `can_assign_org_role` into
+    `public.actor_may_assign_org_role(p_actor, p_role_id)`
+    (`covers_permission(actor, org, 'org.admin', 'organization')` OR every
+    non-null-scope target-role row is assignable AND covered — the same
+    `not exists` shape, no copy), redefines `can_assign_org_role` as
+    `org.invitation.manage` AND `actor_may_assign_org_role(...)` (one call), and
+    adds the wrapper `public.rls_caller_may_assign_org_role(p_role_id)`
+    (granted to `authenticated, service_role`; the actor-parameterized helper
+    stays `service_role`-only). The `org_members` UPDATE policy's WITH CHECK
+    gains `and public.rls_caller_may_assign_org_role(org_role_id)` (all existing
+    conjuncts kept; `org_role_id` is the only column the API path writes), and
+    `changeRole` calls the wrapper on the user client after the cross-org role
+    lookup — `failure('FORBIDDEN')` when it errors or returns false. The RLS
+    policy is the data-plane twin; both landed in the same PR (R4). Closing DO
+    guard pins the policy's `with_check`, the delegation in
+    `can_assign_org_role` (no direct `covers_permission` copy), the wrapper's
+    one-line delegate shape + grants, `actor_may_assign_org_role`'s
+    service_role-only grant, and that `covers_permission` keeps its 5b shape
+    and grants. `database.ts` regenerated with the pinned CLI — diff = the two
+    new `Functions` entries only. Integration: new
+    `__tests__/integration/member-role-assignment.test.ts` (API with real
+    sessions + PostgREST + wrapper pins), `can-assign-org-role.test.ts` replays
+    both shipped migrations (R27), `members.test.ts`/`org-control-permission-api.test.ts`
+    updated (a member-manager may now only assign roles whose keys they hold;
+    the seeded Admin still assigns anything). Live-verified on the branch
+    stack (read-only): the policy text names the wrapper in `with_check`, the
+    grants are as declared.
+  - **Row 5 (report inbox + bank export leave the persona):**
+    `question-report.service.ts#resolveOrgWideReportScope` is now
+    `hasPermission(ctx, ORG_REPORT_MANAGE)` (sync, ctx) → `ctx.activeOrgId`,
+    no `org_roles` lookup — a student-persona Admin reaches the org-wide inbox
+    (D13), a manager whose role lacks the key does not. The recipient fallback
+    for an ownerless group picks the first `org_members` row whose role holds
+    `org.report.manage` (embed `org_roles(org_role_permissions(permission_key))`,
+    non-null scope, `joined_at` order, `maybeSingle`) instead of role name
+    `admin`; `NOT_FOUND` when nobody qualifies is kept.
+    `question-transfer.service.ts#exportBank` lost the
+    `accountType === STUDENT → EXPORT_FORBIDDEN` conjunct —
+    `can(ctx, QUESTION_BANK_UPDATE, bank)` is the whole gate, so a STUDENT
+    **with** the bank key may now export (changed behaviour, pinned in unit
+    tests).
+  - **Row 6 (topic default visibility from the scope):** `topic.service.ts`
+    `#create`/`#bulkCreate` compute the default from
+    `resolveScope(ctx, TOPIC_CREATE)` — `group`/`organization` ⇒ `'group'`,
+    else `'personal'`; explicit `data.visibility` still wins and the
+    `canShareContentToGroups` check for supplied `groupIds` stays.
+    **Behaviour change:** the seeded system **Teacher** role carries
+    `topic.create` at `own` (content writes at `own`, D29), so an educator on
+    the Teacher role now defaults new topics to `personal`, not `group`; a
+    role with `topic.create` at `group`/`organization` (e.g. Admin) keeps the
+    class-visible default. The UI is unaffected — its topic dialog always sends
+    an explicit `visibility` — the default only applies to API callers that
+    omit it.
+
+  **Rows 3, 4, 10, 11 and 12 remain** with phase 5.
+
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.
 - **Gates:** `test:unit`, `typecheck:all` + `typecheck:admin`, `lint:all`,
@@ -4081,6 +4145,62 @@ invite conjunct (register rows 7–9):**
     (`rls-tenant-isolation`, `anon-grants`) to pin the dead marker's
     inert/grant behaviour — the RPC is gone from the server path, not from the
     suite.
+
+**5c on `feat/authority-5c` (2026-11-23) — member role assignment (§4.4, row
+13), report inbox + bank export (row 5), topic default (row 6):**
+
+- Migration `20261123100000_member_assignment_grant_only_what_you_hold.sql`:
+  `actor_may_assign_org_role(p_actor, p_role_id)` owns the assignment predicate
+  (service_role-only, definer, `search_path=''`),
+  `rls_caller_may_assign_org_role(p_role_id)` is the one-line
+  authenticated wrapper, `can_assign_org_role` = `org.invitation.manage` AND
+  the delegate, the `org_members` UPDATE `with check` gains the wrapper, and
+  the closing DO guard pins all of it plus `covers_permission`'s 5b grants.
+  `database.ts` regenerated (diff = the two new `Functions` entries).
+- `organization-member.service.ts#changeRole`: after the cross-org role
+  lookup, `rpc('rls_caller_may_assign_org_role', { p_role_id })` on the user
+  client; `failure('FORBIDDEN')` when it errors or returns false. RLS twin in
+  the same PR (R4). Consequence: a member-manager without `org.admin` can no
+  longer assign the system Admin role (API 403, PostgREST 42501); an
+  `org.admin` holder still assigns anything.
+- `question-report.service.ts`: the org-wide inbox scope is
+  `hasPermission(ctx, ORG_REPORT_MANAGE)` → `ctx.activeOrgId` (sync; no
+  `org_roles` lookup, no persona, no role name — D13), and the ownerless-group
+  recipient fallback picks the first member whose role holds
+  `org.report.manage` (FK embed, non-null scope, `joined_at` order).
+- `question-transfer.service.ts#exportBank`: the STUDENT persona conjunct is
+  deleted; `question_bank.update` on the bank is the whole gate, so a student
+  holding the key may export (pinned as the changed behaviour).
+- `topic.service.ts`: `#create`/`#bulkCreate` default visibility from
+  `resolveScope(ctx, TOPIC_CREATE)` (`group`/`organization` ⇒ `group`, else
+  `personal`); explicit visibility wins, the group-share check for supplied
+  `groupIds` stays. **Behaviour change:** the seeded Teacher role has
+  `topic.create` at `own`, so educators on it now default to `personal`
+  (API-level only — the UI always sends an explicit visibility).
+- Tests: unit — `organization-member.service.test.ts` (403 without the RPC,
+  no update issued; 200 with it), `question-report.service.test.ts` (org scope
+  from the key incl. student-persona Admin; keyless manager participant-only;
+  fallback query shape), `question-transfer.service.test.ts` (student with the
+  key exports; without the key EXPORT_FORBIDDEN), `topic.service.test.ts`
+  (own ⇒ personal, group/organization ⇒ group, explicit wins, share check
+  stays, bulkCreate). Integration (coordinator's stack) — NEW
+  `__tests__/integration/member-role-assignment.test.ts` (API with real
+  sessions + PostgREST + wrapper pins), `can-assign-org-role.test.ts` replays
+  5b+5c (R27), `members.test.ts` PUT cases moved to real sessions (R41),
+  `org-control-permission-api.test.ts` (holder assigns a covered role 200,
+  Teacher role 403, student-persona Admin assigns Admin 200),
+  `question-reports-org-scope.test.ts` (ctx carries the key; new
+  student-persona Admin case).
+- QA: no case changes behaviour for the seeded personas — MGR-MEM-02's manager
+  is the org Admin (assigns anything), MGR-REP-01's manager holds
+  `org.report.manage` via Admin, EDU-REP-01/02 stay participant-scoped,
+  EDU-TOP-01's UI sends an explicit visibility. No QA case covers the
+  question-bank export endpoint (`/api/v1/questions/banks/[id]/export`) — the
+  export cases in the corpus (EDU-ASG-09, SEC-09, SEC-13) are the
+  assignment-answers export, a different route; the row-5 export change has
+  no QA case to update (recorded, none invented).
+- Rule: R41 (an `rls_caller_*` wrapper reads the actor from the JWT, not a
+  mocked `getUser` — wrapper-calling paths need real sessions in tests).
 
 **Difficulty log**
 

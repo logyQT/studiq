@@ -144,6 +144,16 @@ export class OrganizationMemberService {
     if (roleError) return toDbFailure(roleError);
     if (!role) return failure('FORBIDDEN');
 
+    // §4.4 "grant only what you hold": the new role must be one the caller may
+    // assign (org.admin holder, or every target-role key covered). The UPDATE
+    // policy's WITH CHECK enforces the same predicate at the table (R4 twin);
+    // the wrapper runs as the signed-in caller on this user client.
+    const { data: mayAssign, error: assignError } = await supabase.rpc(
+      'rls_caller_may_assign_org_role',
+      { p_role_id: newOrgRoleId },
+    );
+    if (assignError || !mayAssign) return failure('FORBIDDEN');
+
     const { data: updated, error } = await supabase
       .from('org_members')
       .update({ org_role_id: newOrgRoleId })

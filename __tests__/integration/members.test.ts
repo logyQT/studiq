@@ -1,3 +1,7 @@
+import * as supabaseModule from '@studiq/server/lib/supabase/server';
+import type { Database } from '@studiq/server/types/database';
+import { createServerClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import {
@@ -15,6 +19,43 @@ import {
 } from '#test/integration/helpers';
 import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
+
+/**
+ * A real signed-in session for the app's `createClient()`: `changeRole` calls
+ * the `rls_caller_may_assign_org_role` wrapper, which resolves `auth.uid()`,
+ * so the PUT cases that reach it must run with a JWT, not the service-role
+ * mock (the GET/DELETE/401/422 cases keep using `mockUser`).
+ */
+interface AppSession {
+  build: () => SupabaseClient<Database>;
+}
+
+async function signInApp(user: TestUserFixture): Promise<AppSession> {
+  const jar = new Map<string, string>();
+  const build = () =>
+    createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => [...jar].map(([name, value]) => ({ name, value })),
+          setAll: (cookiesToSet) => {
+            for (const { name, value } of cookiesToSet) jar.set(name, value);
+          },
+        },
+      },
+    );
+  const { error } = await build().auth.signInWithPassword({
+    email: user.email,
+    password: user.password ?? 'Seed4Test!',
+  });
+  if (error) throw new Error(`[setup] signIn failed for ${user.email}: ${error.message}`);
+  return { build };
+}
+
+function actAs(session: AppSession) {
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
+}
 
 /** `GET /api/v1/organization/members` returns the rows under `data`. */
 interface MembersListPayload {
@@ -151,7 +192,11 @@ describe(`Members Integration`, () => {
 
   describe('PUT /api/v1/organization/members', () => {
     it('changes role successfully', async () => {
-      mockUser(fixture.user);
+      // §4.4 (row 13): the assignment goes through rls_caller_may_assign_org_role,
+      // so this runs on a real session; the caller is the org Admin (org.admin
+      // holder), which may assign any role including Admin.
+      const session = await signInApp(fixture.user);
+      actAs(session);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/members',
@@ -205,7 +250,11 @@ describe(`Members Integration`, () => {
         userId: target.id,
         orgRoleId: memberRoleId,
       });
-      mockUser(foreignFixture.user);
+      // Real session: the §4.4 wrapper runs before the update, and the
+      // foreign admin's own org role passes it (they hold org.admin there);
+      // the 0-row update then answers NOT_FOUND.
+      const session = await signInApp(foreignFixture.user);
+      actAs(session);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/members',
