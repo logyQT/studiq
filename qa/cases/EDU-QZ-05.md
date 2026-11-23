@@ -25,9 +25,12 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 `pass`, organization „Classroom”, quizy „Historia — Średniowiecze” / „Geografia i Nauka —
 Odkrycia”). The suite version uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`__tests__/qa/profiles/EDU-QZ-05.json`) — one organization, one default
-  group `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account
-  type `educator`, org `member` — the „TC” analogue that owns the quiz), `student`.
+- Profile: `content` on the **hub** plan (`__tests__/qa/profiles/EDU-QZ-05.json` declares
+  `{ "profile": "content", "plan": "hub" }` — the saved-quiz library is the `quiz.templates`
+  entitlement (phase 5d), which the tenant's own hub plan carries, so the teacher passes the
+  write gates) — one organization, one default group `G1`, and one account per account type:
+  `manager` (org `admin`), `teacher` (account type `educator`, org `member` — the „TC”
+  analogue that owns the quiz), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-QZ-05 --fresh` — a fresh run suffix per independent
   run, so every run gets its own org/group/users from
   `tenantKey('qa/cases/EDU-QZ-05.md', 'EDU-QZ-05#<suffix>', 'qa-shared')` +

@@ -23,7 +23,7 @@ import {
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *
  * Hub is the org ceiling that already carries `ai.chat` and `branding` (the
- * learner set) plus the non-learner `advanced.stats`, so a seat can visibly
+ * learner set) plus the non-learner `stats.insights`, so a seat can visibly
  * **raise** the member's entitlements (ADR-0015 §5.4: seat ∩ ceiling) and the
  * user-scope AI-token limit (`max(org, seat, personal)`, D4/D30).
  *
@@ -43,11 +43,11 @@ import {
  *    „Przydziały” for that member with the seat plan, and the pool moves from
  *    2/0/2 to 2/1/1 (assigned +1, available −1); the other pools are untouched.
  * 3. After the seat the member's `/api/v1/features/me` differs from before by
- *    **exactly `advanced.stats`** (seat ∩ hub ceiling); `/api/v1/me/plan` is the
+ *    **exactly `stats.insights`** (seat ∩ hub ceiling); `/api/v1/me/plan` is the
  *    seat plan `pro` with `max_ai_tokens_per_day === -1`, and
  *    `/api/v1/ai/usage` reports `limit: -1` with `plan: 'hub'` (the effective
  *    primary stays the org plan, D30) — the seat raises the AI limit from hub's
- *    200000. `student2` (no seat) keeps 200000 and no `advanced.stats`: the seat
+ *    200000. `student2` (no seat) keeps 200000 and no `stats.insights`: the seat
  *    is per-member, not org-wide.
  * 4. Adjacent regression: the guards behind the pickers hold server-side — a
  *    second seat for the same member is rejected (429 `USAGE_LIMIT_EXCEEDED`) and a
@@ -89,7 +89,7 @@ const POOLS = [
   { planKey: 'solo', quantity: 1 },
 ] as const;
 
-/** The seat assigned to `student` in step 1: a non-learner key it adds is `advanced.stats`. */
+/** The seat assigned to `student` in step 1: a non-learner key it adds is `stats.insights`. */
 const SEAT_PLAN_KEY = 'pro';
 
 /** Polish copy the case quotes; the fixture pins `NEXT_LOCALE=pl`. */
@@ -335,10 +335,10 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const creator = plan('creator');
     const solo = plan('solo');
     // Catalog facts the story leans on: hub carries the learner keys plus the
-    // non-learner `advanced.stats`; the seat plan carries `advanced.stats` too and
+    // non-learner `stats.insights`; the seat plan carries `stats.insights` too and
     // declares an unlimited AI token budget (-1).
-    expect(hub.features, 'catalog: Hub must carry advanced.stats').toContain('advanced.stats');
-    expect(pro.features, 'catalog: Pro must carry advanced.stats').toContain('advanced.stats');
+    expect(hub.features, 'catalog: Hub must carry stats.insights').toContain('stats.insights');
+    expect(pro.features, 'catalog: Pro must carry stats.insights').toContain('stats.insights');
     expect(pro.limits.max_ai_tokens_per_day, 'catalog: Pro has an unlimited AI budget').toBe(-1);
     expect(hub.limits.max_ai_tokens_per_day, 'catalog: Hub caps AI tokens at 200000').toBe(200_000);
     // The unseated member's feature set is the learner profile ∩ the hub ceiling.
@@ -385,7 +385,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(beforeFeatures.toSorted(), 'the unseated member resolves learner ∩ hub').toEqual(
       learnerOnHub.toSorted(),
     );
-    expect(beforeFeatures, 'no seat yet: no advanced.stats').not.toContain('advanced.stats');
+    expect(beforeFeatures, 'no seat yet: no stats.insights').not.toContain('stats.insights');
     const beforeUsage = (
       await readEnvelope<{ limit: number; plan: string }>(
         await page.request.get('/api/v1/ai/usage'),
@@ -585,16 +585,16 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signIn(page, tenant, 'student', /\/app$/);
 
     // ADR-0015 §5.4: seat entitlements are intersected with the org ceiling, so
-    // on the hub org the pro seat adds exactly `advanced.stats` — a non-learner
+    // on the hub org the pro seat adds exactly `stats.insights` — a non-learner
     // key the hub ceiling carries — and no other key.
     const afterFeatures = (
       await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
     ).data.features;
     expect(
       afterFeatures.toSorted(),
-      'the seat ∩ hub ceiling adds exactly advanced.stats, nothing else',
-    ).toEqual([...learnerOnHub, 'advanced.stats'].toSorted());
-    expect(afterFeatures).toContain('advanced.stats');
+      'the seat ∩ hub ceiling adds exactly stats.insights, nothing else',
+    ).toEqual([...learnerOnHub, 'stats.insights'].toSorted());
+    expect(afterFeatures).toContain('stats.insights');
     expect(afterFeatures).toContain('ai.chat');
 
     // The seat is the member's effective plan (D28/D34): /me/plan resolves `pro`
@@ -604,7 +604,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(memberPlan.key).toBe(SEAT_PLAN_KEY);
     expect(memberPlan.limits.max_ai_tokens_per_day, 'max(org, seat, personal): -1 wins').toBe(-1);
     expect(memberPlan.features, 'the effective plan carries the seat-added key').toContain(
-      'advanced.stats',
+      'stats.insights',
     );
 
     // The AI usage view reports the raised limit with the org plan as the
@@ -627,7 +627,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(controlFeatures.toSorted(), 'the unseated control keeps learner ∩ hub').toEqual(
       learnerOnHub.toSorted(),
     );
-    expect(controlFeatures, 'no seat: no advanced.stats').not.toContain('advanced.stats');
+    expect(controlFeatures, 'no seat: no stats.insights').not.toContain('stats.insights');
 
     const controlPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
       .data;

@@ -33,8 +33,11 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question-browser';
+import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { parsePointsInput } from '@/lib/quiz-editor';
 import { apiPut } from '@/lib/api';
 import { quizKeys } from '@/lib/query-keys';
@@ -241,6 +244,14 @@ export function EditQuizClient() {
     url: `/api/v1/teacher/quizzes/${id}`,
   });
 
+  // Editing a saved quiz is a `quiz.templates` write (phase 5d): unentitled,
+  // the plan card replaces the editor (the quiz read behind it stays open).
+  // While the features query is in flight the check is provisional, so the
+  // pending state shares the loading skeleton and an entitled teacher never
+  // flashes the locked card.
+  const canTemplates = useFeature()('quiz.templates');
+  const { isPending: featuresPending } = useFeatures();
+
   // The quiz name is the breadcrumb label; the raw quiz UUID must never render.
   useBreadcrumbLabel(id, quiz?.name);
 
@@ -405,7 +416,7 @@ export function EditQuizClient() {
 
   const existingIds = new Set(questions.map((q) => q.question_id));
 
-  if (isLoading) {
+  if (isLoading || featuresPending) {
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
@@ -416,6 +427,19 @@ export function EditQuizClient() {
 
   if (!quiz) {
     return <div className="p-6 text-center text-muted-foreground">{t('not_found')}</div>;
+  }
+
+  if (!canTemplates) {
+    return (
+      <div className="px-6 pb-20 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold tracking-tight mb-6">{t('title')}</h1>
+        <PlanLockedCard
+          title={t('locked_title')}
+          description={t('locked_desc')}
+          cta={t('locked_cta')}
+        />
+      </div>
+    );
   }
 
   const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);

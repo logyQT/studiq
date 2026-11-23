@@ -475,9 +475,14 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 > only `allowedAccountTypes` on the API surface are the four declared
 > exceptions: R5 org/classroom creation ×2 and this phase's `ai/*` ×2).
 
-- `requireEntitlement` on AI, quiz builder, advanced stats; `documents` is
-  excluded from the catalog and plans **until its surface ships** — there is
-  nothing to gate today, and re-entry is data-only (ADR §5.1, open catalog).
+- `requireEntitlement` on AI, the saved-quiz library, the diagnostic stats;
+  `documents` is excluded from the catalog and plans **until its surface ships**
+  — there is nothing to gate today, and re-entry is data-only (ADR §5.1, open
+  catalog). **2026-11-23 (phase 5d):** shipped as `ai.chat`, `quiz.templates`
+  (the `/api/v1/teacher/quizzes` library writes; reads and the ad-hoc
+  assignment path stay open) and `stats.insights` (the diagnostic stats reads;
+  the descriptive ones stay free) — the keys were renamed from `quiz.builder` /
+  `advanced.stats` in the same slice.
 - Branding write = `org.settings.manage` **and** the `branding` entitlement.
 - `requirePermission` on members, roles, seats, billing, invitations, settings,
   groups — replacing the remaining four mechanisms.

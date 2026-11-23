@@ -22,7 +22,12 @@ Quiz z ≥ 3 pytaniami.
   legacy plan-Lite `teacher1@dev.local` / `T1`, which the case implicitly assumes).
   No legacy/manual account or `pass` is used.
 - Organization: `qa-edu-qz-03-<suffix>` with a manager (admin), the teacher and the
-  student, plus the default group `G1`. The teacher's active org is the tenant org.
+  student, plus the default group `G1`. The tenant's active org is the tenant org, put on the
+  **hub** plan by the profile (`{ "profile": "content", "plan": "hub" }` in
+  `__tests__/qa/profiles/EDU-QZ-03.json`, applied through the seeder's `--plan`): the
+  saved-quiz library is the `quiz.templates` entitlement (phase 5d), which the tenant's own
+  hub plan carries, so the educator passes the write gates on
+  `POST /api/v1/teacher/quizzes` and `POST /api/v1/teacher/quizzes/:id/questions`.
 - Content: the spec creates the case's „quiz z ≥ 3 pytaniami” itself — one question
   bank and three questions through `POST /api/v1/questions/banks` +
   `POST /api/v1/questions`, then a quiz through `POST /api/v1/teacher/quizzes` and

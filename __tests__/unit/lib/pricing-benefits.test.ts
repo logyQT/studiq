@@ -8,8 +8,8 @@ import {
 describe('sortFeaturesByPriority', () => {
   it('orders known keys by the fixed priority list', () => {
     expect(
-      sortFeaturesByPriority(['quiz', 'branding', 'ai.chat', 'advanced.stats', 'flashcards']),
-    ).toEqual(['ai.chat', 'advanced.stats', 'branding', 'flashcards', 'quiz']);
+      sortFeaturesByPriority(['quiz', 'branding', 'ai.chat', 'stats.insights', 'flashcards']),
+    ).toEqual(['ai.chat', 'stats.insights', 'branding', 'flashcards', 'quiz']);
   });
 
   it('appends unknown keys alphabetically after the known ones', () => {
@@ -41,16 +41,16 @@ describe('getHighlightedFeatures', () => {
       'group.manage',
       'branding',
       'role.builder',
-      'advanced.stats',
-      'quiz.builder',
+      'stats.insights',
+      'quiz.templates',
       'ai.chat',
     ];
     // The removed legacy markers are unknown keys now: they sort after the
     // known priority keys, so the cap still takes the five differentiators.
     expect(getHighlightedFeatures(features)).toEqual([
       'ai.chat',
-      'quiz.builder',
-      'advanced.stats',
+      'quiz.templates',
+      'stats.insights',
       'branding',
       'flashcards',
     ]);
@@ -66,7 +66,7 @@ describe('getHighlightedFeatures', () => {
       'member.manage',
       'ai.chat',
       'custom.feature',
-      'quiz.builder',
+      'quiz.templates',
       'branding',
       'omega.feature',
     ];

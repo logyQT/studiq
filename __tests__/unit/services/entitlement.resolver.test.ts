@@ -51,8 +51,8 @@ describe('EntitlementResolver', () => {
         'ai.chat',
         'flashcards',
         'quiz',
-        'quiz.builder',
-        'advanced.stats',
+        'quiz.templates',
+        'stats.insights',
         'branding',
       ]);
     });
@@ -63,7 +63,7 @@ describe('EntitlementResolver', () => {
         roleProfile: 'all',
         orgPlan: 'launch',
         seatPlanKey: 'seat',
-        // `seat` carries ai.chat/advanced.stats/quiz.builder; the launch
+        // `seat` carries ai.chat/stats.insights/quiz.templates; the launch
         // ceiling only carries flashcards/quiz, so the seat adds nothing.
         personalPlanKey: null,
       });
@@ -79,14 +79,14 @@ describe('EntitlementResolver', () => {
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       // learner ∩ hub = ai.chat, flashcards, quiz, branding; the seat plan
-      // (ai.chat, advanced.stats, quiz.builder) is intersected with the hub
-      // ceiling and adds advanced.stats + quiz.builder.
+      // (ai.chat, stats.insights, quiz.templates) is intersected with the hub
+      // ceiling and adds stats.insights + quiz.templates.
       expect(entitlements).toEqual([
         'ai.chat',
         'flashcards',
         'quiz',
-        'quiz.builder',
-        'advanced.stats',
+        'quiz.templates',
+        'stats.insights',
         'branding',
       ]);
     });
@@ -143,15 +143,15 @@ describe('EntitlementResolver', () => {
       mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'pro' });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
-      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
+      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
     });
 
     it('does not let a personal plan grant an org-scoped key inside an org', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
       // `branding` is org-scoped and not portable: a personal plan carrying it
       // must not hand it to a member inside an org (the EDU-02 regression
-      // shape). The portable keys of the same plan (ai.chat, quiz.builder,
-      // advanced.stats) do carry over.
+      // shape). The portable keys of the same plan (ai.chat, quiz.templates,
+      // stats.insights) do carry over.
       mockTables({
         roleProfile: 'learner',
         orgPlan: 'launch',
@@ -164,8 +164,8 @@ describe('EntitlementResolver', () => {
         'ai.chat',
         'flashcards',
         'quiz',
-        'quiz.builder',
-        'advanced.stats',
+        'quiz.templates',
+        'stats.insights',
       ]);
       expect(entitlements).not.toContain('branding');
     });
@@ -204,8 +204,8 @@ describe('EntitlementResolver', () => {
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       // learner ∩ launch gives flashcards/quiz; the personal pro adds its
-      // portable keys (ai.chat, advanced.stats).
-      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
+      // portable keys (ai.chat, stats.insights).
+      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
     });
 
     it('treats a non-member active_org_id as no org context (verified membership)', async () => {
@@ -224,7 +224,7 @@ describe('EntitlementResolver', () => {
       mockTables({ personalPlanKey: 'ace' });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
-      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
+      expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
       // No active org → the org layer (and the membership read) is skipped.
       expect(mock.from).not.toHaveBeenCalledWith('org_members');
     });
@@ -237,8 +237,8 @@ describe('EntitlementResolver', () => {
         'ai.chat',
         'flashcards',
         'quiz',
-        'quiz.builder',
-        'advanced.stats',
+        'quiz.templates',
+        'stats.insights',
         'branding',
       ]);
     });
@@ -281,8 +281,8 @@ describe('EntitlementResolver', () => {
         'ai.chat',
         'flashcards',
         'quiz',
-        'quiz.builder',
-        'advanced.stats',
+        'quiz.templates',
+        'stats.insights',
       ]);
       expect(sources.overrides).toEqual(['ai.chat']);
       expect(sources.revokedOverrides).toEqual(['branding']);
@@ -378,25 +378,25 @@ describe('EntitlementResolver', () => {
           { key: 'flashcards', is_enabled: true },
           { key: 'quiz', is_enabled: true },
           { key: 'ai.chat', is_enabled: false },
-          { key: 'advanced.stats', is_enabled: true },
+          { key: 'stats.insights', is_enabled: true },
         ],
       });
 
       const { entitlements, sources } = await resolver.resolveEntitlements(baseCtx);
-      expect(entitlements).toEqual(['flashcards', 'quiz', 'advanced.stats']);
+      expect(entitlements).toEqual(['flashcards', 'quiz', 'stats.insights']);
       expect(sources.flagsOff).toEqual(['ai.chat']);
     });
 
     it('removes a surface key whose flag row is missing (fail closed, D8)', async () => {
       mockTables({
         personalPlanKey: 'ace',
-        // Only `ai.chat` has a row; `advanced.stats` is missing → removed.
+        // Only `ai.chat` has a row; `stats.insights` is missing → removed.
         flags: [{ key: 'ai.chat', is_enabled: true }],
       });
 
       const { entitlements, sources } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz']);
-      expect(sources.flagsOff).toEqual(['advanced.stats']);
+      expect(sources.flagsOff).toEqual(['stats.insights']);
     });
 
     it('never gates baseline keys, even without a flag row (D9)', async () => {
@@ -455,7 +455,7 @@ describe('EntitlementResolver', () => {
 
       const { entitlements, limits } = await resolver.resolveEntitlements(baseCtx);
       // `ai.chat` is granted by the plan but its quota is 0 → not effective.
-      expect(entitlements).toEqual(['flashcards', 'quiz', 'advanced.stats']);
+      expect(entitlements).toEqual(['flashcards', 'quiz', 'stats.insights']);
       expect(limits.max_ai_tokens_per_day).toBe(0);
     });
 
@@ -472,7 +472,7 @@ describe('EntitlementResolver', () => {
       // requireEntitlement must reject it exactly like any other non-effective
       // key.
       const fixture: ResolvedEntitlements = {
-        entitlements: ['flashcards', 'quiz', 'advanced.stats'],
+        entitlements: ['flashcards', 'quiz', 'stats.insights'],
         limits: {},
         sources: {
           org: null,
@@ -489,7 +489,7 @@ describe('EntitlementResolver', () => {
 
       await expect(requireEntitlement(baseCtx, 'flashcards')).resolves.toBeUndefined();
 
-      const outside = await requireEntitlement(baseCtx, 'quiz.builder').catch((e: unknown) => e);
+      const outside = await requireEntitlement(baseCtx, 'quiz.templates').catch((e: unknown) => e);
       expect(outside).toBeInstanceOf(AppError);
       expect(outside).toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
 

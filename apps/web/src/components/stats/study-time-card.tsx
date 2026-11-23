@@ -8,13 +8,13 @@ import {
   CardTitle,
   ChartContainer,
   ChartTooltipContent,
-  Skeleton,
 } from '@studiq/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 import { InsightsError } from '@/components/stats/insights-error';
-import { useStudentInsights } from '@/hooks/use-student-insights';
+import { InsightsGate } from '@/components/stats/insights-gate';
+import { useStudentInsightsGate } from '@/hooks/use-student-insights';
 import { busiestWeekday, splitDuration, weekdayNames } from '@/lib/study-insights';
 
 const RANGES = [7, 30, 90] as const;
@@ -24,7 +24,9 @@ export function StudyTimeCard() {
   const t = useTranslations('StudentInsights');
   const locale = useLocale();
   const [days, setDays] = useState<(typeof RANGES)[number]>(30);
-  const { data, isLoading, isError, refetch } = useStudentInsights(days);
+  // Study time is a diagnostic read (phase 5d): gated on `stats.insights`.
+  const gate = useStudentInsightsGate(days);
+  const { data, isError, refetch } = gate;
 
   const duration = (ms: number) => {
     const { hours, minutes } = splitDuration(ms);
@@ -63,70 +65,70 @@ export function StudyTimeCard() {
         </fieldset>
       </CardHeader>
       <CardContent className="space-y-6">
-        {isLoading ? (
-          <Skeleton className="h-56 w-full" />
-        ) : isError || !time ? (
-          <InsightsError onRetry={() => refetch()} />
-        ) : time.totalMs === 0 ? (
-          <div className="space-y-2 py-8 text-center text-sm text-muted-foreground">
-            <p>{t('study_time_empty')}</p>
-            {/* A session closed before it finished leaves no time behind, so this is when it matters. */}
-            <p className="text-xs">{t('study_time_note')}</p>
-          </div>
-        ) : (
-          <>
-            <dl className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                  {t('total')}
-                </dt>
-                <dd className="text-2xl font-bold tabular-nums">{duration(time.totalMs)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                  {t('avg_per_active_day')}
-                </dt>
-                <dd className="text-2xl font-bold tabular-nums">
-                  {duration(time.avgMsPerActiveDay)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                  {t('active_days')}
-                </dt>
-                <dd className="text-2xl font-bold tabular-nums">{time.activeDays}</dd>
-              </div>
-            </dl>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t('by_weekday')}</p>
-              <ChartContainer
-                config={{ minutes: { label: t('minutes'), color: 'var(--chart-1)' } }}
-                className="aspect-auto h-[200px] w-full"
-              >
-                <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={52}
-                    allowDecimals={false}
-                    unit=" min"
-                  />
-                  <Tooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="minutes" fill="var(--color-minutes)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-              <p className="text-xs text-muted-foreground">{t('study_time_note')}</p>
-              {busiestDay !== null && (
-                <p className="text-sm text-muted-foreground">
-                  {t('busiest_day', { day: busiestDay })}
-                </p>
-              )}
+        <InsightsGate gate={gate} skeleton="h-56 w-full">
+          {isError || !time ? (
+            <InsightsError onRetry={() => refetch()} />
+          ) : time.totalMs === 0 ? (
+            <div className="space-y-2 py-8 text-center text-sm text-muted-foreground">
+              <p>{t('study_time_empty')}</p>
+              {/* A session closed before it finished leaves no time behind, so this is when it matters. */}
+              <p className="text-xs">{t('study_time_note')}</p>
             </div>
-          </>
-        )}
+          ) : (
+            <>
+              <dl className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {t('total')}
+                  </dt>
+                  <dd className="text-2xl font-bold tabular-nums">{duration(time.totalMs)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {t('avg_per_active_day')}
+                  </dt>
+                  <dd className="text-2xl font-bold tabular-nums">
+                    {duration(time.avgMsPerActiveDay)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {t('active_days')}
+                  </dt>
+                  <dd className="text-2xl font-bold tabular-nums">{time.activeDays}</dd>
+                </div>
+              </dl>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{t('by_weekday')}</p>
+                <ChartContainer
+                  config={{ minutes: { label: t('minutes'), color: 'var(--chart-1)' } }}
+                  className="aspect-auto h-[200px] w-full"
+                >
+                  <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      allowDecimals={false}
+                      unit=" min"
+                    />
+                    <Tooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="minutes" fill="var(--color-minutes)" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+                <p className="text-xs text-muted-foreground">{t('study_time_note')}</p>
+                {busiestDay !== null && (
+                  <p className="text-sm text-muted-foreground">
+                    {t('busiest_day', { day: busiestDay })}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </InsightsGate>
       </CardContent>
     </Card>
   );

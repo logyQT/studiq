@@ -155,7 +155,7 @@ describe('anon role grants (#191)', () => {
       {
         p_actor: '00000000-0000-4000-8001-000000000009',
         p_organization_id: '00000000-0000-4000-8000-00000000000e',
-        p_feature: 'advanced.stats',
+        p_feature: 'stats.insights',
       },
     ],
     [

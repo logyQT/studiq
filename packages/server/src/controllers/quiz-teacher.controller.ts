@@ -4,6 +4,7 @@ import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
+import { requireEntitlement } from '@studiq/server/lib/entitlements';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure, type ServiceResult } from '@studiq/server/lib/service-result';
 import {
@@ -34,6 +35,10 @@ export class QuizTeacherController {
    * a same-org quiz the caller's scope does not reach is 403.
    */
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    // The saved-quiz library is the paid surface (phase 5d): the entitlement
+    // gate is the first statement, before the permission check and the parse —
+    // the `ai/chat` precedent. Reads (`list`, `getById`) stay open.
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = CreateQuizSchema.safeParse(body);
     if (!parsed.success)
@@ -52,6 +57,7 @@ export class QuizTeacherController {
   }
 
   async bulkSave(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = BulkSaveQuizSchema.safeParse(body);
     if (!parsed.success)
@@ -60,6 +66,7 @@ export class QuizTeacherController {
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = UpdateQuizSchema.safeParse(body);
     if (!parsed.success)
@@ -68,11 +75,13 @@ export class QuizTeacherController {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_DELETE))) return controllerResponse.error('FORBIDDEN');
     return this.fromService(await this.service.delete(id, ctx));
   }
 
   async addQuestions(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = AddQuizQuestionsSchema.safeParse(body);
     if (!parsed.success)
@@ -102,6 +111,11 @@ export class QuizTeacherController {
   }
 
   async createAssignment(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    // The saved-quiz library is the paid surface (phase 5d): minting an
+    // assignment from a saved quiz is a library write, so the entitlement
+    // gate runs first. The ad-hoc path (/edu/assignments/new without
+    // ?quizId, POST /api/v1/teacher/assignments) stays open.
+    await requireEntitlement(ctx, 'quiz.templates');
     // The child acts on the parent quiz's update key, and the assignment it mints
     // is an `assignment.create` write (the INSERT policy asks for the same key).
     if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');

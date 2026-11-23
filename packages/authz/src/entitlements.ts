@@ -51,14 +51,14 @@ export const ENTITLEMENTS = {
     personalPortable: false,
     quota: 'max_quiz_attempts_per_day',
   },
-  'quiz.builder': {
+  'quiz.templates': {
     category: 'surface',
     scope: 'personal',
     seatEligible: true,
     personalPortable: true,
     quota: null,
   },
-  'advanced.stats': {
+  'stats.insights': {
     category: 'surface',
     scope: 'personal',
     seatEligible: true,

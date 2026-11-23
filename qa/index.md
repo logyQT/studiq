@@ -1,4 +1,4 @@
-# Scenario index — 188 cases
+# Scenario index — 191 cases
 
 Prerequisite ids are greppable: `grep -n "EDU-DECK-03" index.md`.
 Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** every id in its Prereqs column.
@@ -93,6 +93,8 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | STU-51      | P2 ważny       | Zmiana hasła w koncie                                                | —           | STU – Panel studenta (/app)                       |
 | STU-52      | P3 kosmetyczny | Historia płatności                                                   | —           | STU – Panel studenta (/app)                       |
 | STU-53      | P3 kosmetyczny | Powiadomienia (centrum powiadomień w nagłówku)                       | —           | STU – Panel studenta (/app)                       |
+| STU-54      | P2 ważny       | Statystyki – część diagnostyczna bez planu (karta planu, 403)        | —           | STU – Panel studenta (/app)                       |
+| STU-55      | P2 ważny       | Statystyki – część diagnostyczna z planem osobistym ace              | —           | STU – Panel studenta (/app)                       |
 | EDU-01      | P2 ważny       | Pulpit nauczyciela (/edu)                                            | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-02      | P2 ważny       | Menu boczne nauczyciela                                              | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-DECK-01 | P2 ważny       | Hub fiszek (/edu/flashcards)                                         | —           | EDU – Panel nauczyciela (/edu)                    |
@@ -113,6 +115,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | EDU-QZ-03   | P2 ważny       | Zmiana kolejności i punktów pytań                                    | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-QZ-04   | P2 ważny       | Autozapis i zapis ręczny                                             | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-QZ-05   | P2 ważny       | Utworzenie kartkówki z quizu                                         | —           | EDU – Panel nauczyciela (/edu)                    |
+| EDU-QZ-06   | P2 ważny       | Biblioteka testów zablokowana na planie launch (karta planu, 403)    | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-ASG-01  | P1 krytyczny   | Utworzenie kartkówki (formularz)                                     | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-ASG-02  | P2 ważny       | Dodawanie pytań – ręczny wybór                                       | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-ASG-03  | P2 ważny       | Dodawanie pytań – losowanie                                          | —           | EDU – Panel nauczyciela (/edu)                    |
@@ -199,8 +202,8 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 - PUB – Strony publiczne i nawigacja ogólna — 8 cases
 - AUT – Uwierzytelnianie i sesja — 19 cases
 - ONB – Onboarding, organizacje i zaproszenia — 10 cases
-- STU – Panel studenta (/app) — 51 cases
-- EDU – Panel nauczyciela (/edu) — 41 cases
+- STU – Panel studenta (/app) — 53 cases
+- EDU – Panel nauczyciela (/edu) — 42 cases
 - MGR – Panel managera organizacji (/manage) — 28 cases
 - BIL – Plany, rozliczenia i płatność (symulowana) — 6 cases
 - LIM – Funkcje (feature flags) i limity planów — 4 cases

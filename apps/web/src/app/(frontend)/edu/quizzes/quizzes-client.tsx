@@ -4,7 +4,10 @@ import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { Plus, ScrollText } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { formatDateTime } from '@/lib/datetime';
 import { quizKeys } from '@/lib/query-keys';
 import { EmptyState, ErrorState } from '@/components/shared/empty-state';
@@ -21,6 +24,14 @@ export function QuizzesClient() {
   const t = useTranslations('EduQuizzesPage');
   const locale = useLocale();
 
+  // The saved-quiz library is the paid `quiz.templates` surface (phase 5d):
+  // unentitled, the list and the "New quiz" button are replaced by the plan
+  // card; the reads behind them stay open. While the features query is in
+  // flight the check is a provisional `false`, so the pending state shares the
+  // loading skeleton and an entitled teacher never flashes the locked card.
+  const canTemplates = useFeature()('quiz.templates');
+  const { isPending: featuresPending } = useFeatures();
+
   const {
     data: quizzes,
     isLoading,
@@ -29,9 +40,10 @@ export function QuizzesClient() {
   } = useApiQuery<Quiz[]>({
     queryKey: quizKeys.all,
     url: '/api/v1/teacher/quizzes',
+    enabled: canTemplates,
   });
 
-  if (isLoading) {
+  if (isLoading || featuresPending) {
     return (
       <div className="p-6 space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
@@ -51,14 +63,22 @@ export function QuizzesClient() {
           <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
-        <Link href="/edu/quizzes/new">
-          <Button>
-            <Plus className="w-4 h-4 mr-1" /> {t('new_quiz')}
-          </Button>
-        </Link>
+        {canTemplates && (
+          <Link href="/edu/quizzes/new">
+            <Button>
+              <Plus className="w-4 h-4 mr-1" /> {t('new_quiz')}
+            </Button>
+          </Link>
+        )}
       </div>
 
-      {isError ? (
+      {!canTemplates ? (
+        <PlanLockedCard
+          title={t('locked_title')}
+          description={t('locked_desc')}
+          cta={t('locked_cta')}
+        />
+      ) : isError ? (
         <ErrorState onRetry={() => refetch()} />
       ) : !quizzes || quizzes.length === 0 ? (
         <EmptyState icon={ScrollText} title={t('empty')} description={t('empty_desc')} />

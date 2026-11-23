@@ -253,7 +253,7 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
       seatPlanKey: 'base',
       personalPlanKey: null,
       planEntitlements: {
-        hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.builder', 'advanced.stats', 'branding'],
+        hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.templates', 'stats.insights', 'branding'],
         base: ['flashcards', 'quiz'],
       },
       planLimits: { hub: ORG_LIMITS, base: SEAT_LIMITS },
@@ -351,7 +351,7 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     );
     mockResolverTables(mock, {
       personalPlanKey: 'ace',
-      planEntitlements: { ace: ['flashcards', 'quiz', 'ai.chat', 'advanced.stats'] },
+      planEntitlements: { ace: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'] },
       planLimits: { ace: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 200000 } },
       flags,
     });

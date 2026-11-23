@@ -1128,7 +1128,7 @@ describe('RLS tenant isolation (#191)', () => {
     // A custom role has ZERO org_role_features rows, so the org-plan fallback
     // used to grant every plan capability. Since 2b-7 no plan carries a
     // management marker, the seat adds seat-eligible surface keys only
-    // (review-1-r2 B1, retargeted from `group.manage` to `advanced.stats`).
+    // (review-1-r2 B1, retargeted from `group.manage` to `stats.insights`).
     const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
     const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;
 
@@ -1157,7 +1157,7 @@ describe('RLS tenant isolation (#191)', () => {
     try {
       // The seat arm intersects the org ceiling (a seat can add a key the org
       // plan carries, never one it does not), so the fixture must carry the
-      // probed key: `advanced.stats` is in `hub`, not in `launch`.
+      // probed key: `stats.insights` is in `hub`, not in `launch`.
       const { error: planError } = await service
         .from('organizations')
         .update({ plan: 'hub' })
@@ -1198,13 +1198,13 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: unseatedStats } = await unseatedSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
-        p_feature: 'advanced.stats',
+        p_feature: 'stats.insights',
       });
       expect(unseatedStats).toBe(false);
 
       // A seat must not add management authority the app withholds: no plan
       // carries a marker any more, and the seat plan is additive for
-      // seat-eligible surface keys only — `advanced.stats` arrives through it.
+      // seat-eligible surface keys only — `stats.insights` arrives through it.
       const { data: seatedManager } = await seatedSession.rpc('rls_caller_is_org_manager', {
         p_organization_id: orgA.orgId,
       });
@@ -1212,7 +1212,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: seatedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
-        p_feature: 'advanced.stats',
+        p_feature: 'stats.insights',
       });
       expect(seatedStats).toBe(true);
 
@@ -1271,7 +1271,7 @@ describe('RLS tenant isolation (#191)', () => {
 
   it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
     // Zero-`org_role_features` custom role in a `hub` org (branding in the org
-    // plan) with a `pro` seat (advanced.stats, NO branding). FeatureResolver
+    // plan) with a `pro` seat (stats.insights, NO branding). FeatureResolver
     // resolves a seated actor against the seat plan only, so RLS must agree;
     // before the r4 fix the org-plan fallback still granted the org plan through
     // PostgREST. (Retargeted in 2b-7: `group.manage` left the catalog, so the
@@ -1350,11 +1350,11 @@ describe('RLS tenant isolation (#191)', () => {
       expect(seatedBranding).toBe(false);
 
       // ...and it must be reading the seat plan, not just denying everything:
-      // the `none` profile grants nothing, so `advanced.stats` can only arrive
+      // the `none` profile grants nothing, so `stats.insights` can only arrive
       // through the seat branch.
       const { data: seatedAdvancedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
         p_organization_id: orgA.orgId,
-        p_feature: 'advanced.stats',
+        p_feature: 'stats.insights',
       });
       expect(seatedAdvancedStats).toBe(true);
 
@@ -1390,7 +1390,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: controlAdvancedStats } = await controlSession.rpc(
         'rls_caller_has_org_feature',
-        { p_organization_id: orgA.orgId, p_feature: 'advanced.stats' },
+        { p_organization_id: orgA.orgId, p_feature: 'stats.insights' },
       );
       expect(controlAdvancedStats).toBe(false);
 
@@ -1405,7 +1405,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: unseatedAdvancedStats } = await seatedSession.rpc(
         'rls_caller_has_org_feature',
-        { p_organization_id: orgA.orgId, p_feature: 'advanced.stats' },
+        { p_organization_id: orgA.orgId, p_feature: 'stats.insights' },
       );
       expect(unseatedAdvancedStats).toBe(false);
     } finally {
@@ -1531,7 +1531,7 @@ describe('RLS tenant isolation (#191)', () => {
           studentSession.rpc('has_org_feature', {
             p_actor: studentId,
             p_organization_id: orgA.orgId,
-            p_feature: 'advanced.stats',
+            p_feature: 'stats.insights',
           }),
       ],
       [
@@ -1596,12 +1596,12 @@ describe('RLS tenant isolation (#191)', () => {
     // own rows.
     const { data: adminStats } = await adminSession.rpc('rls_caller_has_org_feature', {
       p_organization_id: orgA.orgId,
-      p_feature: 'advanced.stats',
+      p_feature: 'stats.insights',
     });
     expect(adminStats).toBe(true);
     const { data: studentStats } = await studentSession.rpc('rls_caller_has_org_feature', {
       p_organization_id: orgA.orgId,
-      p_feature: 'advanced.stats',
+      p_feature: 'stats.insights',
     });
     expect(studentStats).toBe(false);
   });

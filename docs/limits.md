@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-22 (phase 3c: the org plan is the only org entitlement state).
+> Last updated: 2026-11-23 (phase 5d: `quiz.templates` / `stats.insights` renamed and enforced).
 
 ## Summary
 
@@ -44,13 +44,29 @@ original table migrations.
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
-`quiz`, `quiz.builder`, `advanced.stats`, `branding`). The four legacy
+`quiz`, `quiz.templates`, `stats.insights`, `branding`). The four legacy
 management markers (`org.manage`, `group.manage`, `member.manage`,
 `role.builder`) left the catalog in phase 2b-7 — authority is permissions only
 (ADR-0015 §4.1). `documents` is on the roadmap but has no surface yet, so it is
 absent in v1 — excluded from the catalog, plans and pricing until it ships;
 re-entry is data-only (catalog metadata, a flag row and the plan rows), not a
 resolver change (ADR-0015 §5.1, open catalog).
+
+> **2026-11-23 (phase 5d, register row 12).** The two keys are renamed and now
+> enforced: `quiz.builder` → **`quiz.templates`** gates the saved-quiz library
+> writes on `/api/v1/teacher/quizzes` (`POST`, `PUT`/`DELETE [id]`, `POST
+[id]/questions`, `POST [id]/create-assignment`, `PUT [id]/bulk`) — the reads
+> (`GET` list/detail) and the ad-hoc assignment path (`/edu/assignments/new`
+> without `?quizId`, `POST /api/v1/teacher/assignments`) stay open — and
+> `advanced.stats` → **`stats.insights`** gates the diagnostic stats reads
+> (`/api/v1/stats/student/insights`, `/api/v1/stats/weak-points`,
+> `/api/v1/stats/teacher/groups`, `/api/v1/stats/teacher/activity`,
+> `/api/v1/stats/teacher/feed`); the descriptive stats reads
+> (`stats/student/overview`, `stats/activity`, `stats/student`,
+> `stats/teacher`, `stats/teacher/quizzes`) stay free. The line is descriptive
+> (what happened) free, diagnostic (why / what to do) paid. Enforcement is
+> API + UI only (`requireEntitlement` + the plan card): entitlements are plan
+> data, not authority, so there is deliberately no RLS twin (ADR-0015 §7).
 
 Limit keys: `LIMITS` in
 `packages/authz/src/limits.ts` — the single source of truth

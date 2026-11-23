@@ -11,6 +11,11 @@ import { StudentInsightsService } from '@studiq/server/services/student-insights
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { asService } from '#test/helpers/service-double';
+
+const requireEntitlementMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock('@studiq/server/lib/entitlements', () => ({
+  requireEntitlement: (...args: unknown[]) => requireEntitlementMock(...args),
+}));
 import {
   busiestWeekday,
   hiddenMasteryCount,
@@ -219,7 +224,10 @@ describe('StudentInsightsController', () => {
     asService<StudentInsightsService>(insightsService),
   );
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireEntitlementMock.mockResolvedValue(undefined);
+  });
 
   it('passes the parsed window to the service', async () => {
     insightsService.getInsights.mockResolvedValue(success(insights));
