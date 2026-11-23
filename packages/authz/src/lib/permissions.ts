@@ -362,11 +362,12 @@ export function isPermissionCatalogKey(value: string): value is PermissionCatalo
  *
  * `quiz.*` is deliberately absent: a quiz is an org row whose service refuses a
  * no-org call, so a default for it could only authorize a request that then
- * fails. Of `assignment.*` only create/publish/grade are absent for the same
- * reason: a personal (`organization_id` NULL) assignment is a supported scope
- * for read/update/delete, so those three verbs are personal. `stats.read` is
- * present because a no-org caller's own study statistics are a real personal
- * surface.
+ * fails. Of `assignment.*` only create/publish/grade are absent: create needs an
+ * active org for the same reason, while publish/grade were never granted without
+ * one by the persona default this set replaces. A personal (`organization_id`
+ * NULL) assignment is a supported scope for read/update/delete, so those three
+ * verbs are personal. `stats.read` is present because a no-org caller's own
+ * study statistics are a real personal surface.
  */
 export const PERSONAL_PERMISSION_KEYS: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
   'deck.read',

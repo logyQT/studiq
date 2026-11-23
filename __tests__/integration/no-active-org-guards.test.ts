@@ -188,9 +188,10 @@ describe(`No active org guards`, () => {
     });
   });
 
-  // `quiz.*`/`assignment.*` stay out of the personal set because their services
-  // refuse a no-org call: a context that HOLDS both keys still cannot create
-  // one, so the refusal is the service's org guard, not a missing permission.
+  // `quiz.*` and assignment creation stay out of the personal set because their
+  // services refuse a no-org call: a context that HOLDS both keys still cannot
+  // create one, so the refusal is the service's org guard, not a missing
+  // permission.
   it('refuses quiz and assignment creation at the service for a no-org key holder', async () => {
     mockUser(noOrgManager);
     const ctx: RequestContext = {

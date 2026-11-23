@@ -691,11 +691,14 @@ resolvePermissions(ctx):
 CRUD keys (`deck`/`flashcard`/`topic`/`question`/`question_bank` ×
 read/create/update/delete), the three assignment verbs a personal
 (`organization_id` NULL) row supports (`read`/`update`/`delete`), plus
-`stats.read` — **24 keys**. `quiz.*` and `assignment.create`/`publish`/`grade`
-are deliberately absent: a quiz is an org row and an assignment is created
-inside one, so a personal scope for those keys could only authorize a request
-that then fails. A unit guard derives that expected set from the catalog's
-`category` and fails when a content key is added without being classified.
+`stats.read` — **24 keys**. `quiz.*` and `assignment.create` are deliberately
+absent: a quiz is an org row and an assignment is created inside one, so their
+services refuse a no-org call and a personal scope could only authorize a
+request that then fails. `assignment.publish`/`grade` are absent because no
+no-org caller held them: the persona default this set replaces matched only
+`read`/`create`/`update`/`delete`, and both verbs act on an org cohort. A unit
+guard derives that expected set from the catalog's `category` and fails when a
+content key is added without being classified.
 
 > **2026-11-23 (phase 6c, D35).** The no-org branch is no longer
 > `defaultsForPersona`: any authenticated caller resolves the personal set at
@@ -1541,8 +1544,9 @@ interpretation.
 > `deck`/`flashcard`/`topic`/`question`/`question_bank`, the three assignment
 > verbs a personal (`organization_id` NULL) row supports — `read`, `update`,
 > `delete` — plus `stats.read` = **24 keys** (`PERSONAL_PERMISSION_KEYS`,
-> `@studiq/authz`). `quiz.*` and `assignment.create`/`publish`/`grade` are
-> excluded because their services refuse a no-org call, and every
+> `@studiq/authz`). `quiz.*` and `assignment.create` are excluded because their
+> services refuse a no-org call; `assignment.publish`/`grade` are excluded
+> because the persona default this set replaces never granted them. Every
 > `group.*`/`org.*` key stays denied. No `accountType` read remains in
 > `resolveScope`; persona may seed provisioning (plan catalogue, default
 > dashboard, org/class creator defaults) but never authorization. Inside an org

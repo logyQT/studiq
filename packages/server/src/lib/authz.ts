@@ -37,7 +37,8 @@ export function evaluate(args: {
  * personal-content key set resolves at `own` for any authenticated caller:
  * persona decides nothing here (D35). The set carries the three assignment verbs
  * a personal (NULL-org) row supports; `quiz.*` and `assignment.create` are
- * absent because their services refuse a no-org call.
+ * absent because their services refuse a no-org call, and `assignment.publish`/
+ * `grade` because the persona default this set replaces never granted them.
  */
 export function resolveScope(ctx: RequestContext, action: string): PermissionScope | null {
   const stored = ctx.permissionScopes[action];
