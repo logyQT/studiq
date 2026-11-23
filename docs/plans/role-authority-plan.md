@@ -5223,8 +5223,8 @@ _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
   services' own no-org guard (the exclusion is not a permission accident).
 - **Gates on this branch.** typecheck (root + web + packages) 0 errors; `lint`
   (**1567** files) 0 warnings; unit **317 files / 4921 passed, 1 skipped**;
-  `review:static`, `knip` and `format` green; `pr:size` **69/400** (287 test +
-  203 doc lines excluded).
+  `review:static`, `knip` and `format` green; `pr:size` **72/400** (346 test +
+  264 doc lines excluded).
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   `resolveScope`'s personal-set branch replaced with `return null` →
   "decides a read key by the personal set, not by its verb" **KILLED**;
