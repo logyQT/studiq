@@ -523,7 +523,10 @@
     "feed_assignment_submitted": "Praca „{title}” oddana: {name} ({score}%)",
     "feed_report_opened": "Zgłoszenie pytania „{title}” od {name}",
     "feed_needs_grading": "Do oceny",
-    "unknown_person": "Student"
+    "unknown_person": "Student",
+    "locked_title": "Analizy i słabe punkty",
+    "locked_desc": "Wyniki grup i aktywność uczniów są częścią płatnego planu.",
+    "locked_cta": "Zobacz plany"
   },
   "NewClassroomPage": {
     "back": "Powrót do panelu",

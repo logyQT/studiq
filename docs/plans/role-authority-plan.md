@@ -3689,10 +3689,10 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
     `anon-grants`, `change-org-plan`, `entitlement-profile`,
     `org-role-features-rls`, `rls-tenant-isolation`, `user-feature-overrides`).
     Mutation proofs (`bun run mutate`): gate removed from `create` /
-    `getWeakPoints` / `getInsights` / `activityController.getActivity` → the
-    matching deny case red (KILLED); gate **added** to the free
-    `getStudentStats` → its 200 case red (KILLED). SQL is hand-proved by the
-    coordinator.
+    `removeQuestion` / `reorderQuestions` / `getWeakPoints` / `getInsights` /
+    `activityController.getActivity` → the matching deny case red (KILLED);
+    gate **added** to the free `getStudentStats` → its 200 case red (KILLED).
+    SQL is hand-proved by the coordinator.
   - **QA corpus:** `EDU-QZ-01/02/03/05` profiles moved to
     `{ "profile": "content", "plan": "hub" }` (the library prerequisite is the
     `quiz.templates` entitlement via the tenant's own hub plan; each case's Seed
@@ -3718,7 +3718,7 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
     is a one-line change plus a QA case, not a reinterpretation.
   - **Gates:** `format`, `typecheck:all` + `typecheck:admin`, `lint`,
     `review:static`, `knip`, `dup:base`, `format:check`, full `test:unit`,
-    `pr:size`, and the five `bun run mutate` proofs above. No
+    `pr:size`, and the seven `bun run mutate` proofs above. No
     build/serve/Playwright — the coordinator owns those; the migration was
     applied once (idempotent) to this branch's stack to run the closing guard.
   - **Coordinator gates (measured):** `env:reset-db` from scratch (migrations +
@@ -3732,8 +3732,9 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
     permission cases ran on the `launch` default and the new entitlement 403
     masked them; `stats.test.ts` also gained the boundary case (`launch` org →
     activity 403, `/stats/teacher` 200).
-  - **Coordinator mutation proofs (independent, clean tree):** all five KILLED —
-    the gate removed from `quiz-teacher.create`, from `getWeakPoints`, from
+  - **Coordinator mutation proofs (independent, clean tree):** all seven KILLED —
+    the gate removed from `quiz-teacher.create`, from `quiz-teacher.removeQuestion`,
+    from `quiz-teacher.reorderQuestions`, from `getWeakPoints`, from
     `getInsights`, from `activityController.getActivity`, and a gate **added**
     to the free `getStudentStats`.
   - **SQL proofs (rolled-back transactions against the live stack):** the real
@@ -4382,7 +4383,9 @@ enforced:**
   `feature_*` pricing labels follow in the same positions.
 - Server gates, first statement of each method (`ai/chat` precedent), no RLS
   twin (entitlements are plan data, not authority — recorded in ADR §7's 5d
-  note): `quiz.templates` on the six `QuizTeacherController` write methods;
+  note): `quiz.templates` on the eight `QuizTeacherController` write methods —
+  the review found `removeQuestion` and `reorderQuestions` (the saved quiz's
+  item mutations) ungated; they were gated in the same slice.
   `stats.insights` on `getInsights`, `getWeakPoints`,
   `getTeacherGroupPerformance`, `getTeacherActivityFeed`,
   `activityController.getActivity`. Free: quiz reads, the ad-hoc assignment
@@ -4390,14 +4393,23 @@ enforced:**
 - UI: shared `PlanLockedCard` on the gated surfaces (list + „New quiz” on
   `/edu/quizzes`, the new/edit forms, the detail page's edit/delete controls,
   the student weak-points/retention/mastery cards with `enabled: canInsights`,
-  `/edu/stats/activity`); `useFeatures().isPending` shares the skeleton; `<h1>`s
-  kept (EDU-02 / NFR-07 / AUT-07 stay green).
+  `/edu/stats/activity`, and the `/edu` dashboard's group-results and
+  activity-feed cards — their queries get `enabled: canInsights` too, so a
+  free teacher gets no 403 per dashboard load); `useFeatures().isPending`
+  shares the skeleton; `<h1>`s kept (EDU-02 / NFR-07 / AUT-07 stay green).
+  Debt recorded, not fixed in this PR: `PlanLockedCard` duplicates the local
+  `BrandingLockedCard` in `manage/settings/page.tsx`, and `InsightsGate` /
+  `WeakPointsCard` duplicate the pending/locked/children switch —
+  pre-existing patterns, `dup:base` clean, not worth a same-PR refactor of
+  the manage page.
 - Tests: entitlement-first deny case per gated method + free-sibling 200 cases;
-  old-key literals updated across unit/integration suites. Five `bun run mutate`
-  proofs (four gate removals + one gate added to the free `getStudentStats`),
+  old-key literals updated across unit/integration suites. Seven `bun run mutate`
+  proofs (six gate removals + one gate added to the free `getStudentStats`),
   all KILLED.
 - QA: EDU-QZ-01/02/03/05 → `content`+`hub`; BIL-04 / MGR-SEAT-02 renamed; new
-  EDU-QZ-06 / STU-54 / STU-55 (case + spec + profile, index 191); EDU-QZ-04 note.
+  EDU-QZ-06 / STU-54 / STU-55 (case + spec + profile, index 191) — EDU-QZ-06 also
+  pins the `/edu` dashboard: both gated cards show the plan card and no request
+  to `stats/teacher/groups|feed` answers 4xx during the load; EDU-QZ-04 note.
   The DELETE-wording gap from the handoff is recorded in the register note
   above (gate list won).
 - Register row 12 closed; **rows 3, 4, 10 and 11 remain** with phase 5.
@@ -4457,7 +4469,7 @@ fail when one of them is removed.
 Fix: the deny cases run with a ctx that holds every permission key (only the
 entitlement can refuse), and the free-sibling cases pin the inverse — the read
 methods still answer 200 with the entitlement mock rejecting and
-`requireEntitlement` never called. All five 5d proofs are KILLED.
+`requireEntitlement` never called. All seven 5d proofs are KILLED.
 Rule: R42.
 
 _Not started beyond 5b._

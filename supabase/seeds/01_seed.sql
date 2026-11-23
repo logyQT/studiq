@@ -420,6 +420,15 @@ INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key"
   ('00000000-0000-4000-8001-00000000000B', 'student-classroom@dev.local', 'Classroom Student', 'base')
 ON CONFLICT DO NOTHING;
 
+-- User feature overrides for the Classroom teacher: the shared demo/e2e tenant must
+-- exercise the paid teacher surfaces (`quiz.templates`, `stats.insights`), which its
+-- `launch` org plan does not carry — the free-teacher boundary is pinned by QA on
+-- fresh `launch` tenants, not here.
+INSERT INTO "public"."user_feature_overrides" ("user_id", "feature_key", "is_enabled", "expires_at", "created_by") VALUES
+  ('00000000-0000-4000-8001-00000000000A', 'quiz.templates', true, NULL, '00000000-0000-4000-8001-00000000000A'),
+  ('00000000-0000-4000-8001-00000000000A', 'stats.insights', true, NULL, '00000000-0000-4000-8001-00000000000A')
+ON CONFLICT (user_id, feature_key) DO NOTHING;
+
 -- Org memberships
 INSERT INTO "public"."org_members" ("organization_id", "user_id", "org_role_id") VALUES
   ('00000000-0000-4000-8000-00000000000F', '00000000-0000-4000-8001-00000000000A', (SELECT id FROM public.org_roles WHERE organization_id = '00000000-0000-4000-8000-00000000000F' AND name = 'admin')),

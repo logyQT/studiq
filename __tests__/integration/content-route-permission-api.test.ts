@@ -252,7 +252,11 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
       'own',
     );
     statsRoleId = await roleWith(orgId, `stats-holder-${tag}`, ['stats.read'], 'group');
-    noKeyRoleId = await roleWith(orgId, `no-key-${tag}`, ['group.read'], 'group');
+    // The `all` profile reaches the `hub` ceiling, so this role's 403s below are
+    // permission-only: with the default `none` profile the `quiz.templates`
+    // entitlement gate would refuse `createQuiz` as well and the case could not
+    // attribute the 403 to the permission (R42).
+    noKeyRoleId = await roleWith(orgId, `no-key-${tag}`, ['group.read'], 'group', 'all');
     bankRoleId = await roleWith(orgId, `bank-holder-${tag}`, ['question_bank.update'], 'own');
 
     quizHolder = await memberUser('educator', quizRoleId);

@@ -37,6 +37,7 @@ Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `lite`) — b
 4. Przejdź ścieżką jednofazową: na /edu/assignments/new (bez `?quizId=`) utwórz kartkówkę z
    co najmniej jednym pytaniem i opublikuj ją dla grupy G1.
 5. Wywołaj `GET /api/v1/teacher/quizzes` przez API.
+6. Otwórz /edu (panel główny nauczyciela) i obserwuj odpowiedzi sieciowe podczas ładowania.
 
 ## Expected result
 
@@ -48,3 +49,8 @@ Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `lite`) — b
 - Ścieżka jednofazowa działa: `POST /api/v1/teacher/assignments` → 201, dodanie pytania →
   200, publikacja → 200 (to nie jest biblioteka testów).
 - `GET /api/v1/teacher/quizzes` → 200 (odczyt zostaje otwarty; pusta lista jest w porządku).
+- /edu pokazuje kartę planu („Analizy i słabe punkty” + „Zobacz plany”) w miejsce treści
+  obu kart „Wyniki grup” i „Ostatnia aktywność” (nagłówki kart zostają), a podczas
+  ładowania panelu żadne zapytanie do `/api/v1/stats/teacher/groups` ani
+  `/api/v1/stats/teacher/feed` nie odpowiada kodem 4xx (zapytania są wyłączone, gdy
+  brak entitlementu `stats.insights`).

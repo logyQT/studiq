@@ -94,6 +94,7 @@ export class QuizTeacherController {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     return this.fromService(await this.service.removeQuestion(id, questionId, ctx));
   }
@@ -103,6 +104,7 @@ export class QuizTeacherController {
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
+    await requireEntitlement(ctx, 'quiz.templates');
     if (!(await can(ctx, Permission.QUIZ_UPDATE))) return controllerResponse.error('FORBIDDEN');
     const parsed = ReorderQuizQuestionsSchema.safeParse(body);
     if (!parsed.success)

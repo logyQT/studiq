@@ -306,6 +306,8 @@ describe('QuizTeacherController', () => {
         () => controller.update('q-1', {}, mockCtx),
         () => controller.delete('q-1', mockCtx),
         () => controller.addQuestions('q-1', {}, mockCtx),
+        () => controller.removeQuestion('q-1', 'qq-1', mockCtx),
+        () => controller.reorderQuestions('q-1', {}, mockCtx),
         () => controller.createAssignment('q-1', mockCtx),
         () => controller.bulkSave('q-1', {}, mockCtx),
       ]) {
@@ -316,6 +318,8 @@ describe('QuizTeacherController', () => {
       expect(mockService.update).not.toHaveBeenCalled();
       expect(mockService.delete).not.toHaveBeenCalled();
       expect(mockService.addQuestions).not.toHaveBeenCalled();
+      expect(mockService.removeQuestion).not.toHaveBeenCalled();
+      expect(mockService.reorderQuestions).not.toHaveBeenCalled();
       expect(mockService.createAssignment).not.toHaveBeenCalled();
       expect(mockService.bulkSave).not.toHaveBeenCalled();
     });

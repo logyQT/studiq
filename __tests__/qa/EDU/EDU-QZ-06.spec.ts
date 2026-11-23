@@ -33,25 +33,36 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *    one question → 200, set the tenant group as target → 200, publish → 200.
  * 6. `GET /api/v1/teacher/quizzes` → 200 (the read stays open; an empty list is
  *    fine — this tenant owns no quiz, the write was refused).
+ * 7. The `/edu` landing fires no gated read: both dashboard cards ("Wyniki grup",
+ *    "Ostatnia aktywność") show the plan card, and no request to
+ *    `/api/v1/stats/teacher/groups` or `/api/v1/stats/teacher/feed` answers 4xx
+ *    during the load (the `stats.insights` gate disables the queries, so the
+ *    collector below stays empty).
  *
  * Mutation (proves this spec can fail): delete the
  * `await requireEntitlement(ctx, 'quiz.templates')` line from
  * `QuizTeacherController.create` — step 3 then answers 201 (the permission check
- * passes on the seeded Teacher role), so the spec goes red.
+ * passes on the seeded Teacher role), so the spec goes red. Deleting `canInsights`
+ * from the `/edu` dashboard's `enabled` conditions fires the two gated reads →
+ * 403 → step 7's collector goes red.
  */
 
 const CASE = 'EDU-QZ-06';
 
 const QUIZZES_URL = '/api/v1/teacher/quizzes';
 
-/** Polish copy from `EduQuizzesPage` / `EduQuizNewPage` (pl.json), as the UI renders it. */
+/** Polish copy from `EduQuizzesPage` / `EduQuizNewPage` / `EduOverviewPage` (pl.json). */
 const COPY = {
   listTitle: 'Quizy',
   newQuiz: 'Nowy quiz',
   lockedTitle: 'Biblioteka testów',
   lockedCta: 'Zobacz plany',
   newTitle: 'Nowy quiz',
+  insightsLockedTitle: 'Analizy i słabe punkty',
 } as const;
+
+/** The two `stats.insights`-gated dashboard reads, by URL fragment. */
+const GATED_DASHBOARD_READS = ['/api/v1/stats/teacher/groups', '/api/v1/stats/teacher/feed'];
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -97,6 +108,19 @@ test.describe('@case:EDU-QZ-06 @area:EDU @prio:P2 free teacher gets the plan car
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    // 4xx collector for the gated dashboard reads, attached before the login
+    // landing (which already loads /edu) and asserted in step 6: while
+    // unentitled the queries are disabled, so nothing may answer 4xx.
+    const gatedReads4xx: string[] = [];
+    page.on('response', (response) => {
+      if (
+        GATED_DASHBOARD_READS.some((fragment) => response.url().includes(fragment)) &&
+        response.status() >= 400
+      ) {
+        gatedReads4xx.push(`${response.status()} ${response.url()}`);
+      }
+    });
 
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
 
@@ -202,6 +226,24 @@ test.describe('@case:EDU-QZ-06 @area:EDU @prio:P2 free teacher gets the plan car
     const listBody = await json<ApiEnvelope<unknown[]>>(listResponse);
     expect(listBody.success).toBe(true);
     expect(listBody.data, 'the refused write created no quiz').toHaveLength(0);
+
+    // --- Step 6: the /edu dashboard fires no gated read -----------------------
+    await page.goto('/edu');
+    await expect(page).toHaveURL(/\/edu\/?$/);
+    // Both gated cards ("Wyniki grup", "Ostatnia aktywność") keep their headers and
+    // show the plan card in place of the body — no error state, no dead control.
+    await expect(
+      page.getByText(COPY.insightsLockedTitle, { exact: true }),
+      'the plan card in both dashboard cards',
+    ).toHaveCount(2);
+    await expect(
+      page.getByRole('button', { name: COPY.lockedCta, exact: true }),
+      'the pricing CTA in both dashboard cards',
+    ).toHaveCount(2);
+    expect(
+      gatedReads4xx,
+      'no 4xx from /api/v1/stats/teacher/groups|feed during the dashboard loads',
+    ).toEqual([]);
 
     expect(pageErrors, 'no browser console errors during the walk').toEqual([]);
   });

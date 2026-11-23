@@ -541,7 +541,10 @@
     "feed_assignment_submitted": "Assignment \"{title}\" submitted: {name} ({score}%)",
     "feed_report_opened": "Question \"{title}\" reported by {name}",
     "feed_needs_grading": "Needs grading",
-    "unknown_person": "Student"
+    "unknown_person": "Student",
+    "locked_title": "Insights & weak points",
+    "locked_desc": "Group results and the activity feed are part of a paid plan.",
+    "locked_cta": "See plans"
   },
   "NewClassroomPage": {
     "back": "Back to dashboard",
