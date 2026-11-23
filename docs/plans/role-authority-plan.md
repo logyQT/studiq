@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                               | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | -------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                            | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                            | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                            | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                            | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                      | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                            | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a on `feat/authority-6`         | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
-| 7     | delete, full QA, close                         | pending | —                                | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                     | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | -------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                  | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                  | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                  | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                  | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                  | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                            | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                            | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                  | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424       | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
+| 7     | delete, full QA, close                         | pending | —                                      | —   | all 191 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                      | —   | all 191 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -5055,8 +5055,8 @@ _Not started beyond 5b._
 
 ### Phase 6 — UI and cache
 
-**6a — the two authority endpoints and the org-keyed cache** (on
-`feat/authority-6`). No SQL, no migration.
+**6a — the two authority endpoints and the org-keyed cache** (6a-1 on
+`feat/authority-6a`, #1426; 6a-2 on `feat/authority-6`). No SQL, no migration.
 
 - **Endpoints renamed, no alias.** `GET /api/v1/features/me` →
   `GET /api/v1/me/entitlements` and `GET /api/v1/permissions/me` →
@@ -5102,12 +5102,17 @@ _Not started beyond 5b._
 - **One invalidation surface.** `invalidateAuthority(queryClient, {
 refetchPartitioned? })` — introduced in 6a-1 for the permission, entitlement and
   report caches — now also drops `['me','plan']` and `['ai']`, and takes the
-  partition flag. **13** call sites in **9** caller files (plus the helper in
+  partition flag. **14** call sites in **10** caller files (plus the helper in
   `query-cache.ts`): the org switch, role save/delete/permissions save, seat
-  assign/release/pool purchase, both checkout-success handlers and the four
+  assign/release/pool purchase, the two billing-card `onChanged` callbacks (plan
+  change, cancel and resume), the mock checkout success redirect — the third
+  plan-change path, which never leaves the SPA — and the four
   join/create-org flows. On a switch it marks the org-partitioned pair stale
   without refetching (`refetchPartitioned: false`), because the observed entry is
   still the outgoing org's key while the cookie already names the new one (R45).
+  `__tests__/unit/lib/query-cache.test.ts` pins the five prefixes and the switch's
+  `'none'` partition: deleting `['me','plan']` or hard-coding `'active'` for the
+  pair both turn it red.
 - **Consumer sweep.** The 13 page/component consumers (starting at design §1.3)
   plus `use-branding.ts` and `use-student-insights.ts` import the new hooks. The
   `featuresPending` → `entitlementsPending` rename landed in two steps: 6a-1
@@ -5138,6 +5143,13 @@ _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
 the nav-item gates; 6c `resolveScope`'s row-3 persona default; 6d role-editor
 behaviour (caller-scope awareness, atomic profile write) and the `/me/plan` union
 badge; 6e the Teacher assignment-read widening.
+
+**Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
+optional argument: the default `true` is the common case and keeping it optional
+lets every non-switch call site read as `invalidateAuthority(queryClient)`.
+`SidebarGates.feature` keeps its `feature` noun for now — 6b rewrites nav gating
+around the entitlement answer, so renaming it here would be churn the next slice
+replaces.
 
 **Difficulty log**
 

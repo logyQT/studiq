@@ -138,9 +138,9 @@ export default function ManageSeatsPage() {
       setSelectedUserId('');
       setSelectedPoolId('');
       loadData();
-      // A seat changes the member's effective entitlement set and the seat
-      // pools, so the derived authority caches are stale for everyone involved
-      // (ADR-0015 §7.1, §13 batch 7).
+      // A seat changes this caller's effective entitlement set and the seat
+      // pools; only this client's caches are dropped here. The seated member
+      // sees their new set on the next refetch on focus (≤60 s).
       invalidateAuthority(queryClient);
     } catch (error) {
       toast.error(

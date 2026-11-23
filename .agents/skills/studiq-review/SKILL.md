@@ -83,7 +83,7 @@ rg -n "withAuth|routeRules|Permission\.|usePermission|feature\(" <paths>
 Check the shape a StudiQ change must keep: route → controller → model → service,
 `withAuth()` on every non-public API route, `routeRules` for a new UI route,
 `Permission` + `accessibleFilter`/RLS for data scoping, `usePermission`/
-`useFeature` for UI gating, keys in **both** `pl.json` and `en.json`, a migration in
+`useEntitlement` for UI gating, keys in **both** `pl.json` and `en.json`, a migration in
 `supabase/migrations/` for every schema change.
 
 **If the PR claims a fix is pinned, prove the pin.** In the review worktree, on a
