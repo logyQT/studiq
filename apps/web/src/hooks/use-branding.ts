@@ -1,6 +1,6 @@
 'use client';
 
-import { useFeature } from '@/hooks/use-feature';
+import { useEntitlement } from '@/hooks/use-entitlement';
 import { useOrgs } from '@/hooks/use-orgs';
 
 export interface Branding {
@@ -15,17 +15,17 @@ export interface Branding {
 const DEFAULT_BRANDING: Branding = { logoUrl: null, brandColor: null, isEnabled: false };
 
 /**
- * Org branding (issue #108), gated by the `branding` feature flag.
+ * Org branding (issue #108), gated by the `branding` entitlement.
  *
- * Returns nulls whenever the feature is off, so a stale logo_url/brand_color
+ * Returns nulls whenever the entitlement is off, so a stale logo_url/brand_color
  * sitting in the organizations row can never leak into the UI for a plan that
  * no longer pays for it — the gate lives here rather than at each call site.
  */
 export function useBranding(): Branding {
-  const featureEnabled = useFeature()('branding');
+  const entitled = useEntitlement()('branding');
   const { activeOrg } = useOrgs();
 
-  if (!featureEnabled || !activeOrg) return DEFAULT_BRANDING;
+  if (!entitled || !activeOrg) return DEFAULT_BRANDING;
 
   return {
     logoUrl: activeOrg.logo_url ?? null,

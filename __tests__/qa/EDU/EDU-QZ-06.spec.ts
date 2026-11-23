@@ -22,7 +22,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * one-off path are created through the product API inside this tenant.
  *
  * Acceptance points:
- * 1. `GET /api/v1/features/me` as the teacher does not contain `quiz.templates`
+ * 1. `GET /api/v1/me/entitlements` as the teacher does not contain `quiz.templates`
  *    (the 403s below are the entitlement gate, not a persona rule).
  * 2. `/edu/quizzes` keeps the „Quizy” heading, shows the plan card
  *    („Biblioteka testów” + „Zobacz plany”) and has no „Nowy quiz” button.
@@ -125,9 +125,9 @@ test.describe('@case:EDU-QZ-06 @area:EDU @prio:P2 free teacher gets the plan car
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
 
     // --- Precondition: the entitlement, not the persona, is the reason ------
-    const features = await getData<{ features: string[] }>(page, '/api/v1/features/me');
+    const entitlements = await getData<{ entitlements: string[] }>(page, '/api/v1/me/entitlements');
     expect(
-      features.features,
+      entitlements.entitlements,
       'launch org + lite personal plan resolve no quiz.templates',
     ).not.toContain('quiz.templates');
 

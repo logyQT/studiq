@@ -36,7 +36,7 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
   organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
-  z profilem `all` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
+  z profilem `all` dostaje `branding`; `/api/v1/me/entitlements` zwraca tę funkcję, a
   `/manage/settings` pokazuje kontrolki logo i koloru marki.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.
@@ -60,8 +60,8 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
 
 - Hub + wgrany PNG: przełącznik organizacji pokazuje logo (`img` 32×32, `alt=""`,
   `src` = publiczny URL z `org-logos/…`), `/manage/settings` pokazuje podgląd 48×48,
-  przycisk „Wgraj logo" i „Kolor marki"; `/api/v1/features/me` zawiera `branding`.
-- Po obniżeniu do `launch` (webhook 200): `/api/v1/features/me` nie zawiera już `branding`,
+  przycisk „Wgraj logo" i „Kolor marki"; `/api/v1/me/entitlements` zawiera `branding`.
+- Po obniżeniu do `launch` (webhook 200): `/api/v1/me/entitlements` nie zawiera już `branding`,
   `/api/v1/me/plan` zwraca `launch` / „StudiQ Launch", `organizations.logo_url` pozostaje
   bez zmian, a publiczny URL pliku nadal zwraca 200.
 - Po odświeżeniu `/manage`: przełącznik (zarówno trigger, jak i pozycja w rozwijanym menu)

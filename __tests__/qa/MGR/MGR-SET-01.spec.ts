@@ -61,8 +61,8 @@ const COPY = {
   brandingFeature: 'Własny branding',
 } as const;
 
-interface FeatureSet {
-  features: string[];
+interface EntitlementSet {
+  entitlements: string[];
 }
 
 interface PlanInfo {
@@ -165,8 +165,10 @@ test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
     ).toBeVisible();
 
     // The UI state comes from the same session's entitlement data, not a pin.
-    const features = await getData<FeatureSet>(page, '/api/v1/features/me');
-    expect(features.features, 'branding must be absent on Launch').not.toContain('branding');
+    const entitlements = await getData<EntitlementSet>(page, '/api/v1/me/entitlements');
+    expect(entitlements.entitlements, 'branding must be absent on Launch').not.toContain(
+      'branding',
+    );
     const plan = await getData<PlanInfo>(page, '/api/v1/me/plan');
     expect(plan.key, 'the seeded organization plan').toBe('launch');
     expect(plan.features, 'Launch does not include branding').not.toContain('branding');

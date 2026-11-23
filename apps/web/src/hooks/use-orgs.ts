@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
-import { aiKeys, featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
+import { aiKeys, questionReportKeys } from '@/lib/query-keys';
 
 export type OrgMembership = {
   id: string;
@@ -60,11 +60,6 @@ export function useOrgs() {
         prev?.map((o) => ({ ...o, isActive: o.id === orgId })),
       );
       void queryClient.invalidateQueries({ queryKey: ['orgs'] });
-
-      // Permission scopes and plan features are resolved from the active org
-      // on the server and both hooks cache for 5 minutes.
-      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
       // The effective AI token budget is resolved from the seat/personal/org
       // plan (`getEffectiveLimit` over the single resolver), so the cached daily counter

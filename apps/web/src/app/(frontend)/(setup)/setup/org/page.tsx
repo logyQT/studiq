@@ -18,7 +18,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { apiPost } from '@/lib/api';
-import { featureKeys, permissionKeys } from '@/lib/query-keys';
+import { entitlementKeys, permissionKeys } from '@/lib/query-keys';
 
 export default function OrgSetupPage() {
   const t = useTranslations('Onboarding');
@@ -46,10 +46,10 @@ export default function OrgSetupPage() {
 
       const cachedOrgs = queryClient.getQueryData<Array<{ id: string }>>(['orgs']);
 
-      // Permission scopes and plan features are resolved from the active org on the
-      // server and both hooks cache for 5 minutes (same as useOrgs.switchOrgMutation).
+      // Permission scopes and entitlements are resolved from the active org on the
+      // server; nothing observes them here, so they are marked stale and refetch on mount.
       void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: entitlementKeys.all });
 
       if (cachedOrgs && !cachedOrgs.some((o) => o.id === org.id)) {
         // The refresh failed while a stale list is cached. A full load drops the SPA

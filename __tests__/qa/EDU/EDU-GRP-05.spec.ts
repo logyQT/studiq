@@ -116,13 +116,13 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
     await loginAs(page, tenant, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
 
-    // Prerequisite: this educator is „konto bez tej funkcji”. `/permissions/me` carries
+    // Prerequisite: this educator is „konto bez tej funkcji”. `/me/permissions` carries
     // the resolved scope map (ADR-0015 §6.3): the read key present proves the map
     // resolved, `group.manage` absent is the missing function. Read by key, never by
     // `toHaveProperty('group.manage')`: the matcher splits on the dot, so the
     // negative form passes against a map that DOES carry the key.
-    const permissions = await page.request.get('/api/v1/permissions/me');
-    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const permissions = await page.request.get('/api/v1/me/permissions');
+    expect(permissions.status(), 'GET /api/v1/me/permissions').toBe(200);
     const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
       .data.permissions;
     expect(Object.keys(scopes), 'the educator holds no group.manage').not.toContain('group.manage');
@@ -295,7 +295,7 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
       await page.request.post('/api/v1/auth/logout');
       await loginAs(page, tenant, 'teacher', { locale: 'pl' });
 
-      const withoutRead = await page.request.get('/api/v1/permissions/me');
+      const withoutRead = await page.request.get('/api/v1/me/permissions');
       const scopesAfterSave = (
         await json<ApiEnvelope<{ permissions: Record<string, string> }>>(withoutRead)
       ).data.permissions;

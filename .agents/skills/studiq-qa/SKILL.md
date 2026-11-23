@@ -65,7 +65,7 @@ Accounts, orgs/groups and seeded content are in `qa/context.md`; the alias list 
 - Walk the real user path: click the UI. APIs are for login, setup and confirming persisted state — not a substitute for the clicks the case describes.
 - If the harness has no browser tool, drive Chromium with Playwright in a throwaway spec/script outside the repo (never commit it), or report `BLOCKED: no browser`. A claim verified through API/curl only is not a `PASS`.
 - Capture the visible result, then reload (or SPA-navigate) and confirm the state persisted. A toast is not proof; a 200 is not proof.
-- Feature-gated UI appears only after `/api/v1/features/me` resolves. Wait for it before declaring a menu item or button missing.
+- Feature-gated UI appears only after `/api/v1/me/entitlements` resolves. Wait for it before declaring a menu item or button missing.
 - A full reload clears the React Query cache: reproduce a suspected cache bug with SPA navigation, never a reload.
 - Radix triggers need pointerdown → pointerup → click (real mouse press/release, not a JS `.click()`).
 - Long or ambiguous "note it" expectations: record the actual behaviour and decide per `qa/context.md`; do not invent a pass.
@@ -78,7 +78,7 @@ Run the rows the change can reach; say which you skipped and why.
 
 - **Accounts/roles** — student (`/app`), educator (`/edu`), manager (`/manage`): each on its own surface and on another's route; expect a redirect or 403, never data.
 - **Isolation** — cross-org (S1 vs S2), cross-group (O1G1 vs O1G2), personal vs group content, IDOR on a foreign UUID.
-- **Gates** — plan limit and feature flag both on and off (`/api/v1/me/plan`, `/api/v1/features/me`, `/api/v1/permissions/me`); gated action hidden or `402 FEATURE_REQUIRES_UPGRADE`; limit hit → `USAGE_LIMIT_EXCEEDED`.
+- **Gates** — plan limit and feature flag both on and off (`/api/v1/me/plan`, `/api/v1/me/entitlements`, `/api/v1/me/permissions`); gated action hidden or `402 FEATURE_REQUIRES_UPGRADE`; limit hit → `USAGE_LIMIT_EXCEEDED`.
 - **Direct access** — paste the URL of a forbidden page and call the matching API with a lower role; both must refuse.
 - **States** — empty (new account), loading/skeleton, error, retry, offline → a message, not a blank screen.
 - **Validation/limits** — required fields, max lengths, duplicates, file type/size, attempt/seat/member limits; Zod errors surfaced per field.

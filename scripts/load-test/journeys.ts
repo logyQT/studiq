@@ -109,14 +109,14 @@ function dataOf(body: unknown): Record<string, unknown> | undefined {
 const commonActions: Action[] = [
   { name: 'auth.me', weight: 3, run: ({ client }) => client.get('/api/v1/auth/me', 'auth.me') },
   {
-    name: 'permissions.me',
+    name: 'me.permissions',
     weight: 2,
-    run: ({ client }) => client.get('/api/v1/permissions/me', 'permissions.me'),
+    run: ({ client }) => client.get('/api/v1/me/permissions', 'me.permissions'),
   },
   {
-    name: 'features.me',
+    name: 'me.entitlements',
     weight: 2,
-    run: ({ client }) => client.get('/api/v1/features/me', 'features.me'),
+    run: ({ client }) => client.get('/api/v1/me/entitlements', 'me.entitlements'),
   },
   { name: 'me.orgs', weight: 2, run: ({ client }) => client.get('/api/v1/me/orgs', 'me.orgs') },
   {

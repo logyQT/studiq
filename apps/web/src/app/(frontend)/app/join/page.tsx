@@ -17,7 +17,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ApiError, apiPost } from '@/lib/api';
-import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
+import { invalidateAuthority } from '@/lib/query-cache';
 
 export default function AppJoinPage() {
   const t = useTranslations('AppJoinPage');
@@ -42,9 +42,7 @@ export default function AppJoinPage() {
       toast.success(t('success'));
       setToken('');
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      invalidateAuthority(queryClient);
       router.refresh();
     } catch (err) {
       // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).

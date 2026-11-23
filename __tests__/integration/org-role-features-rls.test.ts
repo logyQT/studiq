@@ -185,7 +185,7 @@ describe(`org_role_features RLS`, () => {
       accountType: AccountType.STUDENT,
       orgRoleId: org1MemberRole,
       activeOrgId: org1,
-      url: '/api/v1/features/me',
+      url: '/api/v1/me/entitlements',
       method: 'GET',
       groupIds: [],
       permissionScopes: {},

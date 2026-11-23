@@ -99,8 +99,8 @@ interface OrganizationDetail {
   plan: string;
 }
 
-interface FeaturesResponse {
-  features: string[];
+interface EntitlementsResponse {
+  entitlements: string[];
 }
 
 async function readPlan(page: Page): Promise<PlanInfo> {
@@ -116,9 +116,9 @@ async function readPersonalPlan(page: Page): Promise<PlanInfo> {
 }
 
 async function readFeatures(page: Page): Promise<string[]> {
-  const res = await page.request.get('/api/v1/features/me');
-  expect(res.status(), 'GET /api/v1/features/me').toBe(200);
-  return (await json<{ data: FeaturesResponse }>(res)).data.features;
+  const res = await page.request.get('/api/v1/me/entitlements');
+  expect(res.status(), 'GET /api/v1/me/entitlements').toBe(200);
+  return (await json<{ data: EntitlementsResponse }>(res)).data.entitlements;
 }
 
 async function readOrganization(page: Page, orgId: string): Promise<OrganizationDetail> {

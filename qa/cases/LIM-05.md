@@ -54,13 +54,13 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
 
 ## Observed during the suite walk (qa-env-2, shared app 3010 / DB 54421, 2026-10-29)
 
-- Hub (`plan: hub`, `/api/v1/features/me` zawiera `branding`): `/manage/settings` pokazuje
+- Hub (`plan: hub`, `/api/v1/me/entitlements` zawiera `branding`): `/manage/settings` pokazuje
   „Brak logo” / „Wgraj logo” (ukryty `input[type=file]`), „Kolor marki” z `input[type=color]`
   i przyciskiem „Zapisz”. Wgranie PNG 1×1 (`POST …/logo`) zwraca 200 i zapisuje
   `organizations.logo_url` pod `org-logos/<org-id>/…png`; zapis koloru (`PUT` z
   `brandColor`) zwraca 200 i zapisuje `#00aa00`; po odświeżeniu podgląd logo ma 48×48, a pole
   koloru pokazuje zapisaną wartość.
-- Po obniżeniu do `launch` (webhook 200): `/api/v1/features/me` nie zawiera już `branding`,
+- Po obniżeniu do `launch` (webhook 200): `/api/v1/me/entitlements` nie zawiera już `branding`,
   `/api/v1/me/plan` zwraca `launch` / „StudiQ Launch”. `/manage/settings` renderuje kartę
   blokady „Własny branding” + „Ulepsz plan, aby uzyskać dostęp do własnego brandingu” +
   „Zobacz plany”; nie ma `input[type=file]`, `input[type=color]`, „Wgraj logo” ani „Kolor

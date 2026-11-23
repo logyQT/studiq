@@ -64,7 +64,7 @@ seeded tenant instead:
 - Toast „Miejsce przydzielone pomyślnie”; w „Przydziałach” nowy wpis; w puli przydzielone +1, dostępne −1.
 - **The positive seat-upgrade story (phase 4b, on a hub org).** The case assigns the
   **`pro`** seat to `student` through the UI. Before the seat the member's
-  `/api/v1/features/me` is the learner profile ∩ the hub ceiling =
+  `/api/v1/me/entitlements` is the learner profile ∩ the hub ceiling =
   `ai.chat, branding, flashcards, quiz`. After the seat the **exact diff is
   `stats.insights`** — a non-learner key the hub ceiling carries, so the seat ∩ ceiling
   rule (ADR-0015 §5.4: a seat cannot grant an entitlement the org did not buy) visibly
@@ -109,7 +109,7 @@ seeded tenant instead:
   appears in „Przydziały” (member name, seat plan, date), and the pool row moves from
   2 / 0 / 2 to **2 / 1 / 1** (assigned +1, available −1). The other pools keep their
   counters. The seated member disappears from the member picker.
-- On the member's next login under hub: `GET /api/v1/features/me` grows by exactly
+- On the member's next login under hub: `GET /api/v1/me/entitlements` grows by exactly
   `stats.insights` (seat ∩ hub ceiling; the pre-4b launch-org walk observed no growth —
   superseded), `GET /api/v1/me/plan` returns `pro` with `max_ai_tokens_per_day = -1`, and
   `GET /api/v1/ai/usage` reports `limit: -1, plan: 'hub'`. The unseated `student2` keeps

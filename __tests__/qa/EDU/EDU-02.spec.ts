@@ -22,7 +22,7 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * The second educator is the negative control for the case's „Grupy widoczne
  * tylko gdy rola ma `group.manage`”: since 2b-7 `group.manage` exists only as
  * a permission, so the absence branch is exercised through the role's
- * permission map — exactly what `/api/v1/permissions/me` returns.
+ * permission map — exactly what `/api/v1/me/permissions` returns.
  *
  * The `hub` plan is applied to this tenant's own organization by the seeder with
  * `change_org_plan` (the same RPC the billing webhook calls), so no global plan,
@@ -143,9 +143,10 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     await loginAs(page, tenant, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'teacher lands on /edu').toBe('/edu');
 
-    const features = await page.request.get('/api/v1/features/me');
-    expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = (await json<{ data: { features: string[] } }>(features)).data.features;
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements').toBe(200);
+    const enabled = (await json<{ data: { entitlements: string[] } }>(entitlementsResponse)).data
+      .entitlements;
     expect(enabled, 'the teacher is entitled to the menu items under test').toEqual(
       expect.arrayContaining(['ai.chat', 'branding']),
     );
@@ -153,8 +154,8 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     // `group.manage` is a permission since 2b-7 (the entitlement marker is
     // gone): the org `teacher` role holds it at `group` scope, which is what
     // renders the class list's write controls.
-    const permissions = await page.request.get('/api/v1/permissions/me');
-    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const permissions = await page.request.get('/api/v1/me/permissions');
+    expect(permissions.status(), 'GET /api/v1/me/permissions').toBe(200);
     const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
       .data.permissions;
     expect(Object.keys(scopes), 'the teacher may manage classes').toContain('group.manage');
@@ -229,15 +230,16 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     await loginAs(page, tenant, 'teacher2', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
 
-    const features = await page.request.get('/api/v1/features/me');
-    expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = (await json<{ data: { features: string[] } }>(features)).data.features;
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements').toBe(200);
+    const enabled = (await json<{ data: { entitlements: string[] } }>(entitlementsResponse)).data
+      .entitlements;
     expect(enabled, 'ai.chat is entitled').toContain('ai.chat');
 
     // The negative half since 2b-7 reads the permission map: the org `member`
     // role holds `group.read` but no `group.manage` at any scope.
-    const permissions = await page.request.get('/api/v1/permissions/me');
-    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const permissions = await page.request.get('/api/v1/me/permissions');
+    expect(permissions.status(), 'GET /api/v1/me/permissions').toBe(200);
     const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
       .data.permissions;
     expect(Object.keys(scopes), 'the member role holds group.read').toContain('group.read');

@@ -33,7 +33,7 @@ import {
   GET as getDeck,
   PUT as updateDeck,
 } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
-import { GET as myPermissions } from '@/app/(backend)/api/v1/permissions/me/route';
+import { GET as myPermissions } from '@/app/(backend)/api/v1/me/permissions/route';
 import {
   GET as listAssignments,
   POST as createAssignment,
@@ -632,7 +632,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
       const res = await call<{ data: { permissions: Record<string, string> } }>(
         teacherSession,
         myPermissions,
-        '/api/v1/permissions/me',
+        '/api/v1/me/permissions',
         undefined,
         orgId,
       );

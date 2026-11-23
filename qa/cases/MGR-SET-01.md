@@ -64,7 +64,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   („Wybierz swój plan”), z przełącznikiem ustawionym na „Dla organizacji”. Wiersz
   „StudiQ Launch” jest oznaczony „Twój plan”, a plany **Hub** i **Campus** wymieniają funkcję
   „Własny branding” (Launch i Team — nie). Ścieżka ulepszenia, o której mówi karta, istnieje.
-- Ta sama sesja potwierdza bramkę po stronie API: `GET /api/v1/features/me` nie zawiera
+- Ta sama sesja potwierdza bramkę po stronie API: `GET /api/v1/me/entitlements` nie zawiera
   `branding`, `GET /api/v1/me/plan` zwraca `launch` bez `branding`,
   `PUT /api/v1/organization/<id>` z `{"brandColor":"#123456"}` → **403**
   `{"success":false,"error":"FORBIDDEN"}`, a `POST /api/v1/organization/<id>/logo`

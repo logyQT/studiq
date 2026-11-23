@@ -86,8 +86,8 @@ interface OrganizationDetail {
   brand_color: string | null;
 }
 
-interface FeatureSet {
-  features: string[];
+interface EntitlementSet {
+  entitlements: string[];
 }
 
 async function getData<T>(page: Page, url: string): Promise<T> {
@@ -99,7 +99,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
 }
 
 async function features(page: Page): Promise<string[]> {
-  return (await getData<FeatureSet>(page, '/api/v1/features/me')).features;
+  return (await getData<EntitlementSet>(page, '/api/v1/me/entitlements')).entitlements;
 }
 
 async function organization(page: Page, orgId: string): Promise<OrganizationDetail> {

@@ -29,7 +29,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 3     | entitlements and limits                        | merged  | #1406–#1409                      | —   | LIM, BIL, STU             | 2026-11-22 |
 | 4     | seats and personal plans                       | merged  | #1410                            | —   | MGR, BIL, LIM             | 2026-11-22 |
 | 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | pending | —                                | —   | PUB, AUT, MGR, STU, EDU   |            |
+| 6     | UI and cache                                   | active  | 6a-1 on `feat/authority-6a`      | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
 | 7     | delete, full QA, close                         | pending | —                                | —   | all 191 + E2E             |            |
 | 8     | extendability audit (release gate)             | pending | —                                | —   | all 191 + E2E             | 2026-11-19 |
 
@@ -41,15 +41,19 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 closed; **row 3** (`resolveScope`'s no-active-org persona default —
 personal-scope permissions) is the only one left and it is **parked until that
 key family exists**, which phase 6 owns. The only `allowedAccountTypes` left on
-the API surface are the declared exceptions (R5 org/classroom creation and the
-two `ai/*` routes until phase 6), pinned by
+the API surface are the two declared exceptions (R5 org/classroom creation),
+pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
 mints the claim. **Next slice: phase 6 (UI and cache)** — a design pass first
 (nav/shell from the active org, org-keyed query keys, the role editor UI, the
 `/me/plan` union, and the Teacher content-read follow-up recorded in phase 3),
 then sized PRs; phase 7 (deletes + full 191-case QA) and phase 8 (the
-extendability release gate) follow.
+extendability release gate) follow. **6a-1** — the two `/me/*` authority
+endpoints and the org-keyed authority cache — is on `feat/authority-6a`; 6a-2
+(the one invalidation helper and the five event call sites) follows, then 6b
+(route rules, area gate, nav gates), 6c (row 3), 6d (role editor, `/me/plan`
+union) and 6e (Teacher assignment reads).
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -5051,7 +5055,89 @@ _Not started beyond 5b._
 
 ### Phase 6 — UI and cache
 
-_Not started._
+**6a-1 — the two authority endpoints and the org-keyed cache** (on
+`feat/authority-6a`). No SQL, no migration.
+
+- **Endpoints renamed, no alias.** `GET /api/v1/features/me` →
+  `GET /api/v1/me/entitlements` and `GET /api/v1/permissions/me` →
+  `GET /api/v1/me/permissions`; the old route directories and
+  `features.controller.ts` are deleted (ADR §7 lines 723-724: the rename exists
+  so every call site is reviewed). Route handlers are still **141**
+  (`find "apps/web/src/app/(backend)/api/v1" -name route.ts | wc -l`); both stay
+  under `withAuth` and neither is in `PUBLIC_API`, so the inventory test needed
+  no change.
+- **Payloads** — both echo the org they were resolved for, so a client can
+  reject an answer that belongs to the previous org:
+  - `/me/entitlements` →
+    `{ orgId: string | null, entitlements: EntitlementKey[], limits: Record<string, number>,
+ plan: { primary: string; sources: PlanSource[] } }`,
+    read from the existing single resolver (`resolveEntitlements(ctx)`) — no new
+    query, no second source. `limits` is the resolver's own record. The broad
+    `Record<string, number>` is the accepted deviation: it is what
+    `ResolvedEntitlements.limits` and `PlanInfo` publish, and narrowing it to
+    `Record<LimitKey, number>` needs a cast at this boundary with no reader that
+    wants one. Completeness (every `LIMIT_KEYS` key present, a missing
+    `plan_limits` row = `0`) is pinned in the resolver itself —
+    `__tests__/unit/services/entitlement.resolver.limits.test.ts`; the
+    controller test mocks the resolver and pins only the pass-through, so a
+    resolver that dropped a key survives it.
+  - `/me/permissions` →
+    `{ orgId: string | null, permissions: Partial<Record<PermissionKey, PermissionScope>> }`.
+- **`/api/v1/ai/usage` unchanged** — it carries `current`, which no authority
+  endpoint should; the badge still reads `current`/`limit`.
+- **Client transport.** `useFeatures()`/`useFeature()` →
+  `useEntitlements()`/`useEntitlement()` (**15** files import `useEntitlement()`
+  — the 13 page/component consumers plus `use-branding.ts` and
+  `use-student-insights.ts`; **11** import `useEntitlements()`, one of them the
+  `useEntitlement()` wrapper itself); `usePermissions()`/
+  `usePermission()` keep their names and signatures. Both authority queries are
+  `staleTime: 60_000` and enabled only once `/me/orgs` settles, keyed
+  `activeOrg?.id ?? 'personal'` — never on `undefined` (#1125). The org switch
+  goes from **six** invalidations to **four** (`['orgs']`, `['ai']`,
+  `['me','plan']`, the report inbox): the partitioned pair's two are **deleted,
+  not repointed** — the org-keyed change is what refetches them, and an
+  active invalidate there would refetch the outgoing org's entry under the old
+  key (R45). One helper for all five events is 6a-2.
+- **Keys.** `permissionKeys.org(orgId)` = `['permissions', orgId ?? 'personal']`,
+  `entitlementKeys.org(orgId)` = `['entitlements', orgId ?? 'personal']`; the
+  literal `['features','me']` and `['permissions','me']` are gone. The `*.all`
+  prefixes still match every org entry, and the partition is pinned by
+  `__tests__/unit/lib/query-keys.test.ts`.
+- **Consumer sweep.** The 13 page/component consumers (starting at design §1.3)
+  plus `use-branding.ts` and `use-student-insights.ts` import the new hooks. The
+  `featuresPending` → `entitlementsPending` rename is **partial at this
+  commit**: **17** `entitlementsPending` occurrences in **8** files, with **9**
+  `featuresPending` survivors in **3** (`overview-tab.tsx`,
+  `insights-gate.tsx`, `use-student-insights.ts`); 6a-2 finishes it (**26**
+  occurrences, no survivors). No behaviour change beyond the transport.
+- **Tests and corpus.** 7 unit files, 4 integration files, 18 QA specs, 2 E2E
+  specs and 19 QA case docs. Corpus strings are
+  `me/entitlements` / `me/permissions`, and the response key is `entitlements`.
+  The sweep is
+  `grep -rlE 'features/me|permissions/me' apps packages __tests__ qa scripts .agents --exclude-dir=.next`:
+  at this commit it returns **8** files, every one a comment — the six client
+  modules that describe the endpoint they call (`use-permission.ts`,
+  `sidebar-nav.ts`, `nav-main.tsx`, `BrandAccent.tsx`, `group-management-screen.tsx`,
+  `manage/roles/page.tsx`) and the two `packages/{authz,server}/src/**/entitlements.ts`
+  headers; 6a-2 sweeps them to zero. The load test's two journeys and the two
+  QA/review skills still named the dead URLs, so they are fixed here. The
+  historical plan/audit/ADR mentions are the record of what happened and are
+  left alone.
+
+**Correction (design §6, a stale sentence, R8).** The phase-6 scope inherited a
+claim that two `ai/*` persona gates were still in place and had to be removed.
+They do not exist: phase 5a (`0fb14a7e`) removed both, and
+`persona-gates.test.ts` has declared exactly the two R5 creation routes since
+then (`grep -rn allowedAccountTypes apps packages __tests__` → 2 API files). There
+is no work in that item, and a slice written against the sentence would have
+_added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
+
+**Still open in phase 6:** 6a-2 (one `invalidateAuthority()` helper for the org
+switch, role save/delete, seat changes, checkout and the join/create-org flows,
+plus the `refetchOnWindowFocus` pin and `AGENTS.md`); 6b route rules,
+`resolveDashboardArea`, `AreaGate` and the nav-item gates; 6c `resolveScope`'s row-3 persona default; 6d role-editor
+behaviour (caller-scope awareness, atomic profile write) and the `/me/plan` union
+badge; 6e the Teacher assignment-read widening.
 
 ### Phase 7 — delete and close
 

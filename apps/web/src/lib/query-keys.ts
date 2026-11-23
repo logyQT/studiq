@@ -72,14 +72,16 @@ export const questionKeys = {
   },
 };
 
+// Resolved from the `active_org_id` cookie, so partitioned by org (ADR-0015
+// §7.1); `personal` is a real segment, never `undefined`/`null` (#1125).
 export const permissionKeys = {
   all: ['permissions'] as const,
-  me: ['permissions', 'me'] as const,
+  org: (orgId: string | null | undefined) => ['permissions', orgId ?? 'personal'] as const,
 };
 
-export const featureKeys = {
-  all: ['features'] as const,
-  me: ['features', 'me'] as const,
+export const entitlementKeys = {
+  all: ['entitlements'] as const,
+  org: (orgId: string | null | undefined) => ['entitlements', orgId ?? 'personal'] as const,
 };
 
 export const aiKeys = {

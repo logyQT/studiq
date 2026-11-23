@@ -8,11 +8,11 @@ import { sectionsWithBadge, visibleNavItems } from '@/lib/sidebar-nav';
 // held `group.read`: the entry used `usePermission()` without a resource, which
 // called `evaluateScope` on every key, so a `group`-scope row (a Teacher's
 // `group.read`) never matched and the page had no link at all. The nav gate is
-// now the key's presence in `/permissions/me` — the same map
+// now the key's presence in `/me/permissions` — the same map
 // `/api/v1/organization/groups` is enforced from — and this file pins both
 // halves: the map lookup, and the sections the sidebar derives from it.
 
-/** The `/edu` sidebar as `AppSidebar` renders it for one `/permissions/me` map. */
+/** The `/edu` sidebar as `AppSidebar` renders it for one `/me/permissions` map. */
 function eduSidebar(permissions: Record<string, PermissionScope>) {
   return sectionsWithBadge(
     currentSections('/edu'),
@@ -51,7 +51,7 @@ describe('the sidebar permission gate', () => {
     const withoutRead = eduSidebar({ 'deck.read': 'group', 'flashcard.read': 'group' });
     expect(handlers(withoutRead)).not.toContain('/edu/groups');
 
-    // And before `/permissions/me` resolves: absent means deny, never a flash.
+    // And before `/me/permissions` resolves: absent means deny, never a flash.
     expect(handlers(eduSidebar({}))).not.toContain('/edu/groups');
   });
 

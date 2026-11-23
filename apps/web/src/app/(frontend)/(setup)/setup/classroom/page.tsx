@@ -25,7 +25,7 @@ import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { apiPost } from '@/lib/api';
-import { featureKeys, permissionKeys } from '@/lib/query-keys';
+import { entitlementKeys, permissionKeys } from '@/lib/query-keys';
 import { SrLabel } from '@/components/shared/sr-label';
 
 const ClassroomFormSchema = z.object({
@@ -86,12 +86,12 @@ export default function ClassroomPage() {
       // `active`-only refetch runs. A `useOrgs()` observer (setup header/chooser)
       // may or may not be mounted here.
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      // Permission scopes and plan features are resolved from the active org on
-      // the server and cache for 5 minutes. No permission/feature observer here,
+      // Permission scopes and entitlements are resolved from the active org on
+      // the server. No authority observer is mounted on this screen,
       // so they are only marked stale and refetch on mount in `/edu` (as in
       // `useOrgs.switchOrgMutation`).
       void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: entitlementKeys.all });
 
       const filtered = values.invites.filter((i) => i.email.trim());
       if (filtered.length > 0) {

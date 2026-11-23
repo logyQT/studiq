@@ -44,7 +44,7 @@ the disappearing link.
   cause was the nav gate, not the role: the 2b-2 sidebar asked `usePermission('group.read')`
   without a resource, and `evaluateScope` only says yes to a `group`-scope row through a
   row (`ctx.groupRoles`), so a Teacher — the role the `group.read`/`group.manage` split was
-  built for — never saw the link. Fixed in 2b-2: the nav asks `/permissions/me` whether the
+  built for — never saw the link. Fixed in 2b-2: the nav asks `/me/permissions` whether the
   key is present (`apps/web/src/lib/sidebar-nav.ts`), the same key the API enforces.
 - `/edu/groups` renders the **read-only** list: heading „Grupy”, the seeded group with its
   real counts, the lock badge and the report button. There is no „Nowa grupa”, no

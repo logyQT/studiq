@@ -56,7 +56,7 @@ Every org/user/group id is `tenantId(key, entity)`; nothing global is written.
   reaches a read-only list, and every write control inside stays governed by
   `group.manage`. Since 2b-7 that key exists only as a permission — the four legacy
   management markers left the entitlement catalog — so the „only when” clause is
-  exercised through the role's permission map (`/api/v1/permissions/me`):
+  exercised through the role's permission map (`/api/v1/me/permissions`):
   `teacher` → `group.manage` at `group` scope, `member` → no `group.manage` at any
   scope. The spec pins both halves — the entry present, „Nowa grupa” absent.
 - The „Klasa” section is still commented out in `app-sidebar.tsx`; the sidebar renders no

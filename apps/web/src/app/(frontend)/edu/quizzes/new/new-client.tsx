@@ -15,8 +15,8 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiMutation } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { apiPost } from '@/lib/api';
 import { quizKeys } from '@/lib/query-keys';
 
@@ -29,8 +29,8 @@ export function NewQuizClient() {
   // Creating a quiz is a `quiz.templates` write (phase 5d): unentitled, the
   // plan card replaces the form. The pending features query keeps the
   // skeleton up so an entitled teacher never flashes the locked card.
-  const canTemplates = useFeature()('quiz.templates');
-  const { isPending: featuresPending } = useFeatures();
+  const canTemplates = useEntitlement()('quiz.templates');
+  const { isPending: entitlementsPending } = useEntitlements();
 
   const createMutation = useApiMutation<{ id: string }, { name: string; description?: string }>({
     mutationFn: async (data) => apiPost<{ id: string }>('/api/v1/teacher/quizzes', data),
@@ -48,7 +48,7 @@ export function NewQuizClient() {
     router.push(`/edu/quizzes/${data.id}/edit`);
   };
 
-  if (featuresPending) {
+  if (entitlementsPending) {
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-6">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />

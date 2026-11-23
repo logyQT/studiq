@@ -17,7 +17,7 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * 2. a same-org member whose role does not hold `org.role.manage` (the tenant's
  *    teacher) is refused by the API with 403 and has no editor. The persona route
  *    rule still sends an educator away from `/manage`, so the absence of the
- *    editor is asserted where the permission gate lives — `/permissions/me`
+ *    editor is asserted where the permission gate lives — `/me/permissions`
  *    (no key) and the write endpoints (403);
  * 3. a **manager-account-type** member holding a custom role without the gate is
  *    the client-gate deny case: `/manage/roles` renders (the persona rule admits a
@@ -93,7 +93,7 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
     // The gate is now the caller's permission: the admin role holds it.
     const permissions = await getData<{ permissions: Record<string, string | null> }>(
       page,
-      '/api/v1/permissions/me',
+      '/api/v1/me/permissions',
     );
     expect(permissions.permissions['org.role.manage'], 'the admin holds the gate').toBe(
       'organization',
@@ -166,7 +166,7 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
 
       const teacherPermissions = await getData<{
         permissions: Record<string, string | null>;
-      }>(teacher, '/api/v1/permissions/me');
+      }>(teacher, '/api/v1/me/permissions');
       expect(
         teacherPermissions.permissions['org.role.manage'],
         'the teacher role does not hold the gate',
@@ -218,7 +218,7 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
 
       const noGatePermissions = await getData<{
         permissions: Record<string, string | null>;
-      }>(noGatePage, '/api/v1/permissions/me');
+      }>(noGatePage, '/api/v1/me/permissions');
       expect(
         noGatePermissions.permissions['org.role.manage'],
         'the custom role does not hold the gate',

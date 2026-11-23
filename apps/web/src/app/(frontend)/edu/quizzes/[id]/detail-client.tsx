@@ -9,8 +9,8 @@ import { toast } from 'sonner';
 import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { quizKeys } from '@/lib/query-keys';
 
 interface QuizDetail {
@@ -46,8 +46,8 @@ export function QuizDetailClient() {
   // withheld: unentitled, the edit link and the delete button are replaced by
   // the plan card, so no control on the page can fail with 403. The
   // „create assignment” link stays: it uses the free ad-hoc assignment path.
-  const canTemplates = useFeature()('quiz.templates');
-  const { isPending: featuresPending } = useFeatures();
+  const canTemplates = useEntitlement()('quiz.templates');
+  const { isPending: entitlementsPending } = useEntitlements();
 
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
@@ -68,7 +68,7 @@ export function QuizDetailClient() {
     }
   };
 
-  if (isLoading || featuresPending) {
+  if (isLoading || entitlementsPending) {
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />

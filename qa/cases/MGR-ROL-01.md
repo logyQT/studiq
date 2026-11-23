@@ -57,7 +57,7 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   `__tests__/qa/profiles/MGR-ROL-01.json` (cztery konta powyżej; roster jest
   deklaratywny, więc seeder nie zgaduje).
 - Plan i uprawnienia są odczytywane w tym samym przebiegu przez `/api/v1/me/plan`,
-  `/api/v1/permissions/me` i `/api/v1/organization/roles` — nic nie jest zaszyte
+  `/api/v1/me/permissions` i `/api/v1/organization/roles` — nic nie jest zaszyte
   na sztywno.
 
 ## Walk observations (2026-11-19, po 2a-2)
@@ -69,7 +69,7 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
 - Formularz „Utwórz rolę” ma pola „Nazwa roli”, „Opis (opcjonalny)” i wybór
   „Szablon startowy” (domyślnie „Pusty”). Po zapisie: toast „Rola utworzona”,
   wiersz „Asystent” z plakietką „Niestandardowa”.
-- `GET /api/v1/permissions/me` administratora zawiera `org.role.manage`
+- `GET /api/v1/me/permissions` administratora zawiera `org.role.manage`
   (zakres `organization`); dla roli `teacher` klucza nie ma.
 - Bezpośredni `POST /api/v1/organization/roles` jako `teacher` zwraca **403**;
   to samo dotyczy `PUT` i `DELETE`. `GET` listy ról zwraca 200 dla obu użytkowników.

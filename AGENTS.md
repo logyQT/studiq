@@ -695,7 +695,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
   - `can(ctx, permission, resource?)` / `check(ctx, permission, resource)` — async resource-aware checks (`check` throws `FORBIDDEN`) — **this is what controllers and services use**
   - `accessibleFilter(ctx, permission, resourceType)` / `buildQueryFilter(ctx, permission)` — RLS-safe query filters
   - `hasPermission(ctx, permission)` / `checkPermission(ctx, permission, resource)` — synchronous ctx-only variants
-- Frontend: **`usePermission()` (`apps/web/src/hooks/use-permission.ts`) is the single source of truth for permission gating** — it returns a checker for one permission (`permission('deck.update', { createdBy })`) backed by `/api/v1/permissions/me`. Feature flags: `useFeature()` (`apps/web/src/hooks/use-feature.ts`) backed by `/api/v1/features/me` (`feature('ai.chat')`)
+- Frontend: **`usePermission()` (`apps/web/src/hooks/use-permission.ts`) is the single source of truth for permission gating** — it returns a checker for one permission (`permission('deck.update', { createdBy })`) backed by `/api/v1/me/permissions`. Entitlements: `useEntitlement()` (`apps/web/src/hooks/use-entitlement.ts`) backed by `/api/v1/me/entitlements` (`entitlement('ai.chat')`). Both endpoints echo the `orgId` they resolved for, and both query keys are partitioned by it — `['permissions', orgId]` / `['entitlements', orgId]`, with `'personal'` when there is no active org — so an org switch cannot serve the previous org's answer.
 
 ---
 

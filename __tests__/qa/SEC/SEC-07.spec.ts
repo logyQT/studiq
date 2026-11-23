@@ -21,8 +21,8 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  * Walk (rewritten 2026-11-22 for phase 5a — the served-build run of this spec is
  * the coordinator's gate, not this file's claim):
- * 1. `GET /api/v1/features/me` as the tenant manager → `200`, and `ai.chat` is
- *    **not** in `data.features` — the 403 below is the entitlement gate, not a
+ * 1. `GET /api/v1/me/entitlements` as the tenant manager → `200`, and `ai.chat` is
+ *    **not** in `data.entitlements` — the 403 below is the entitlement gate, not a
  *    persona rule.
  * 2. `POST /api/v1/ai/chat` with a valid UI-message body as the tenant manager →
  *    `403`, `x-error-code: FORBIDDEN`, body exactly
@@ -36,13 +36,13 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * 5. Anonymous `POST` → `401 UNAUTHORIZED`, so the manager's `403` is an
  *    authorization boundary and not "no session".
  * 6. The teacher (personal `lite` inside the same `launch` org) is refused for
- *    the same reason: `features/me` without `ai.chat`, and the same empty body
+ *    the same reason: `/me/entitlements` without `ai.chat`, and the same empty body
  *    → `403`. The refusal is a plan boundary, not a manager-specific rule.
  * 7. Positive control by plan, not persona: the student's
  *    `profiles.personal_plan_key` is set to the paid `ace` plan through the
  *    service-role client (`ai.chat` is `personalPortable`, so the key carries
  *    inside the org even though `launch` does not grant it; D3). The same
- *    launch-org student then has `ai.chat` in `features/me`, reads
+ *    launch-org student then has `ai.chat` in `/me/entitlements`, reads
  *    `/api/v1/ai/usage` → `200` with `limit === 200000` (`plan` stays `launch`:
  *    the effective primary is the org plan), and the same empty body reaches
  *    the handler → `400 BAD_REQUEST`. The plan key is restored in a `finally`
@@ -62,7 +62,7 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * answers `429` `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}` (their quota
  * is 0 on `launch`), and with an invalid body `400` `BAD_REQUEST`; both expected
  * 403, so the spec goes red. Conversely, a build whose resolver returns no
- * entitlements at all fails the student control in step 7 (`features/me`
+ * entitlements at all fails the student control in step 7 (`/me/entitlements`
  * without `ai.chat`, `ai/usage` 403), so the case cannot pass on an empty
  * resolution either.
  */
@@ -193,14 +193,15 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     // The tenant org is on `launch`, which carries no `ai.chat` (and
     // `max_ai_tokens_per_day = 0`), and the manager's personal `solo` plan
     // carries none either, so the resolver never makes the key effective:
-    // `features/me` does not list it. This is what makes the 403 below the
+    // `/me/entitlements` does not list it. This is what makes the 403 below the
     // entitlement gate and not an account-type rule.
-    const featuresResponse = await page.request.get('/api/v1/features/me');
-    expect(featuresResponse.status(), 'GET /api/v1/features/me as the manager').toBe(200);
-    const featuresBody = await json<{ data: { features: string[] } }>(featuresResponse);
-    expect(featuresBody.data.features, 'the launch org does not resolve ai.chat').not.toContain(
-      'ai.chat',
-    );
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements as the manager').toBe(200);
+    const entitlementsBody = await json<{ data: { entitlements: string[] } }>(entitlementsResponse);
+    expect(
+      entitlementsBody.data.entitlements,
+      'the launch org does not resolve ai.chat',
+    ).not.toContain('ai.chat');
 
     // --- Step 1: the case's one step --------------------------------------
     expectForbidden(
@@ -240,11 +241,13 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     // Same org (`launch`), personal plan `lite` — no `ai.chat` there either, so
     // the same empty body gets the gate's 403, not the handler's 400.
     await switchUser(page, tenant, 'teacher');
-    const teacherFeatures = await page.request.get('/api/v1/features/me');
-    expect(teacherFeatures.status(), 'GET /api/v1/features/me as the teacher').toBe(200);
-    const teacherFeaturesBody = await json<{ data: { features: string[] } }>(teacherFeatures);
+    const teacherEntitlements = await page.request.get('/api/v1/me/entitlements');
+    expect(teacherEntitlements.status(), 'GET /api/v1/me/entitlements as the teacher').toBe(200);
+    const teacherEntitlementsBody = await json<{ data: { entitlements: string[] } }>(
+      teacherEntitlements,
+    );
     expect(
-      teacherFeaturesBody.data.features,
+      teacherEntitlementsBody.data.entitlements,
       'the lite personal plan does not resolve ai.chat',
     ).not.toContain('ai.chat');
     expectForbidden(
@@ -275,11 +278,16 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
 
       await switchUser(page, tenant, 'student');
 
-      const studentFeatures = await page.request.get('/api/v1/features/me');
-      expect(studentFeatures.status(), 'GET /api/v1/features/me as the student on Ace').toBe(200);
-      const studentFeaturesBody = await json<{ data: { features: string[] } }>(studentFeatures);
+      const studentEntitlements = await page.request.get('/api/v1/me/entitlements');
       expect(
-        studentFeaturesBody.data.features,
+        studentEntitlements.status(),
+        'GET /api/v1/me/entitlements as the student on Ace',
+      ).toBe(200);
+      const studentEntitlementsBody = await json<{ data: { entitlements: string[] } }>(
+        studentEntitlements,
+      );
+      expect(
+        studentEntitlementsBody.data.entitlements,
         'the Ace personal plan resolves ai.chat inside the launch org',
       ).toContain('ai.chat');
 
