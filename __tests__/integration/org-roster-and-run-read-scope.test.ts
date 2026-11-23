@@ -157,8 +157,16 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
     educatorOnMemberId = await createUser('educator-on-member', 'educator');
     studentOnStatsRoleId = await createUser('student-on-stats', 'student');
 
-    await seedOrgMembership({ organizationId: orgId, userId: managerId, orgRoleId: seeded.adminRoleId });
-    await seedOrgMembership({ organizationId: orgId, userId: teacherId, orgRoleId: seeded.teacherRoleId });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: managerId,
+      orgRoleId: seeded.adminRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: teacherId,
+      orgRoleId: seeded.teacherRoleId,
+    });
     for (const id of [studentAId, studentBId, educatorOnMemberId]) {
       await seedOrgMembership({ organizationId: orgId, userId: id, orgRoleId: memberRoleId });
     }
@@ -180,12 +188,18 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
     });
 
     // Group memberships: studentA is a learner of the default group; the
-    // teacher and the stats-holder staff it.
+    // teacher, the stats-holder and the educator-on-Member staff it (so the
+    // R43 negative case would see data under the old persona branch).
     await seedGroupMembership({ groupId: defaultGroupId, userId: studentAId, role: 'member' });
     await seedGroupMembership({ groupId: defaultGroupId, userId: teacherId, role: 'teacher' });
     await seedGroupMembership({
       groupId: defaultGroupId,
       userId: studentOnStatsRoleId,
+      role: 'teacher',
+    });
+    await seedGroupMembership({
+      groupId: defaultGroupId,
+      userId: educatorOnMemberId,
       role: 'teacher',
     });
 
@@ -194,7 +208,9 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
     runA = await seedRun(teacherId, `roster-run-a-${tag}`);
     runB = await seedRun(teacherId, `roster-run-b-${tag}`);
     runAuthor = await seedRun(authorNoReadId, `roster-run-author-${tag}`);
-    await service.from('assignment_targets').insert({ assignment_id: runA, group_id: defaultGroupId });
+    await service
+      .from('assignment_targets')
+      .insert({ assignment_id: runA, group_id: defaultGroupId });
     await service
       .from('assignment_targets')
       .insert({ assignment_id: runB, student_id: studentBId });
@@ -298,14 +314,18 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
   });
 
   it('the teacher dashboard RPCs still answer for the teacher (capability stats.read@group)', async () => {
-    const { data: groups, error: groupsError } = await teacher.rpc('get_teacher_group_performance', {
-      p_user_id: teacherId,
-      p_organization_id: orgId,
-    });
-    expect(groupsError).toBeNull();
-    const payload = asJson<{ groups: { groupName: string; students: number }[]; totals: { students: number } }>(
-      groups,
+    const { data: groups, error: groupsError } = await teacher.rpc(
+      'get_teacher_group_performance',
+      {
+        p_user_id: teacherId,
+        p_organization_id: orgId,
+      },
     );
+    expect(groupsError).toBeNull();
+    const payload = asJson<{
+      groups: { groupName: string; students: number }[];
+      totals: { students: number };
+    }>(groups);
     expect(payload.groups.length).toBeGreaterThan(0);
     expect(payload.totals.students).toBeGreaterThan(0);
 
@@ -331,10 +351,13 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
       totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
     });
 
-    const { data: feed, error: feedError } = await educatorOnMember.rpc('get_teacher_activity_feed', {
-      p_user_id: educatorOnMemberId,
-      p_organization_id: orgId,
-    });
+    const { data: feed, error: feedError } = await educatorOnMember.rpc(
+      'get_teacher_activity_feed',
+      {
+        p_user_id: educatorOnMemberId,
+        p_organization_id: orgId,
+      },
+    );
     expect(feedError).toBeNull();
     expect(feed).toEqual([]);
   });
@@ -347,7 +370,9 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
       { p_user_id: studentOnStatsRoleId, p_organization_id: orgId },
     );
     expect(groupsError).toBeNull();
-    const payload = asJson<{ groups: { students: number }[]; totals: { students: number } }>(groups);
+    const payload = asJson<{ groups: { students: number }[]; totals: { students: number } }>(
+      groups,
+    );
     expect(payload.groups.length).toBeGreaterThan(0);
     expect(payload.totals.students).toBeGreaterThan(0);
 
