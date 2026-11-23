@@ -160,11 +160,17 @@ describe('Item states and versioning (#1171)', () => {
 
   async function createDraftAssignment(): Promise<string> {
     mockUser(teacher.user);
-    const request = createNextRequest('http://localhost/api/v1/teacher/assignments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: `state-draft-${Date.now().toString(36)}` }),
-    });
+    // Assignment creation is org-scoped since 5e-1: the teacher's active org must ride
+    // the request, as it does on the quiz helpers above.
+    const request = createNextRequest(
+      'http://localhost/api/v1/teacher/assignments',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: `state-draft-${Date.now().toString(36)}` }),
+      },
+      { active_org_id: teacher.orgId ?? '' },
+    );
     const response = await createAssignmentPost(request);
     expect(response.status).toBe(201);
     return (await json<{ data: { id: string } }>(response)).data.id;
@@ -418,11 +424,15 @@ describe('Item states and versioning (#1171)', () => {
     mockUser(teacher.user);
     const title = `state-copy-${Date.now().toString(36)}`;
     const createRes = await createAssignmentPost(
-      createNextRequest('http://localhost/api/v1/teacher/assignments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, quizId }),
-      }),
+      createNextRequest(
+        'http://localhost/api/v1/teacher/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, quizId }),
+        },
+        { active_org_id: teacher.orgId ?? '' },
+      ),
     );
     expect(createRes.status, await createRes.text()).toBe(422);
 

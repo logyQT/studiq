@@ -1,28 +1,94 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import {
+  callerIsLearnerOnAssignment,
   emptySeal,
   heldNotice,
   isWindowOpen,
-  sealedIdFilter,
   sealFor,
+  sealedIdFilter,
   type Seal,
 } from '@studiq/server/lib/question-seal';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // The pure half of the derived reservation (#1171, R2/R14): the window bounds, the held notice
-// and the exclusion filter. The database derivation is covered by `item-seal.test.ts`.
+// and the exclusion filter. The database derivation is covered by `item-seal.test.ts`; the
+// target-set half of `sealedItemsFor`/`callerIsLearnerOnAssignment` is driven here through a
+// table-shaped service-role mock, so the D-5e1 arms (direct / group-member / org-wide
+// non-staff profile) are pinned with fixtures where persona and target disagree (R28).
 
-function ctx(accountType: AccountType): RequestContext {
+/** The rows each table answers (swapped per test) plus a PostgREST-shaped chain over them. */
+const harness = vi.hoisted(() => {
+  const db: Record<string, Array<Record<string, unknown>>> = {
+    group_members: [],
+    assignment_targets: [],
+    org_members: [],
+    teacher_assignments: [],
+    assignment_questions: [],
+    questions: [],
+  };
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- hoisted with the mock it serves
+  function table(rows: Array<Record<string, unknown>>) {
+    const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+    const chain = {
+      select: () => chain,
+      eq: (column: string, value: unknown) => {
+        filters.push((row) => row[column] === value);
+        return chain;
+      },
+      in: (column: string, values: unknown[]) => {
+        filters.push((row) => values.includes(row[column]));
+        return chain;
+      },
+      not: () => chain,
+      order: () => chain,
+      limit: () => chain,
+      maybeSingle: () =>
+        Promise.resolve({
+          data: rows.filter((row) => filters.every((filter) => filter(row)))[0] ?? null,
+          error: null,
+        }),
+      single: () =>
+        Promise.resolve({
+          data: rows.filter((row) => filters.every((filter) => filter(row)))[0] ?? null,
+          error: null,
+        }),
+      then: (resolve: (value: unknown) => void) =>
+        resolve({
+          data: rows.filter((row) => filters.every((filter) => filter(row))),
+          error: null,
+        }),
+    };
+    return chain;
+  }
+  const serviceClient = { from: (name: string) => table(db[name] ?? []) };
+  return { db, table, serviceClient };
+});
+
+vi.mock('@studiq/server/lib/supabase/service', () => ({
+  createServiceClient: () => harness.serviceClient,
+}));
+
+const db = harness.db;
+
+function userClient(): Parameters<typeof callerIsLearnerOnAssignment>[0] {
+  const stub = { from: (name: string) => harness.table(db[name] ?? []) };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- partial SupabaseClient test double; stubbing the full surface is impossible
+  return stub as unknown as Parameters<typeof callerIsLearnerOnAssignment>[0];
+}
+
+function ctx(overrides: Partial<RequestContext> = {}): RequestContext {
   return {
-    userId: 'student-1',
-    accountType,
+    userId: 'caller-1',
+    accountType: AccountType.STUDENT,
     traceId: 't',
     url: '',
     method: 'GET',
     activeOrgId: 'org-1',
-    orgRoleId: null,
+    orgRoleId: 'role-1',
     groupIds: [],
+    groupRoles: {},
     permissionScopes: {},
+    ...overrides,
   };
 }
 
@@ -34,6 +100,40 @@ function seal(entries: Array<[string, string | null, string | null]>): Seal {
     value.closesAt.set(id, closesAt);
   }
   return value;
+}
+
+const FUTURE = () => new Date(Date.now() + 86_400_000).toISOString();
+const PAST = () => new Date(Date.now() - 86_400_000).toISOString();
+
+/** A published, open run bound to one item. */
+function liveRun(id: string, extra: Record<string, unknown> = {}) {
+  return {
+    id,
+    status: 'published',
+    start_time: null,
+    deadline: FUTURE(),
+    closed_at: null,
+    ...extra,
+  };
+}
+
+function resetDb() {
+  for (const key of Object.keys(db)) db[key] = [];
+}
+
+/** Wires the tables of one targeted, live, item-bound run and returns its question id. */
+function wireRun(assignmentId: string, questionId = 'q-1', extra: Record<string, unknown> = {}) {
+  db.teacher_assignments = [liveRun(assignmentId, extra)];
+  db.assignment_questions = [
+    {
+      assignment_id: assignmentId,
+      question_id: questionId,
+      withhold_from_review: false,
+      released_at: null,
+    },
+  ];
+  db.questions = [{ id: questionId, bank_id: 'bank-1' }];
+  return questionId;
 }
 
 describe('derived item reservation', () => {
@@ -81,9 +181,377 @@ describe('derived item reservation', () => {
     expect(sealedIdFilter(seal([['q-1', 'bank-1', null]]))).toBe('(q-1)');
   });
 
-  it('gives staff an empty seal without touching the database', async () => {
-    const staff = await sealFor(ctx(AccountType.EDUCATOR));
-    expect(staff.success).toBe(true);
-    if (staff.success) expect(staff.data.ids.size).toBe(0);
+  describe('the D-5e1 learner arms (persona and target disagree, R28)', () => {
+    it('seals an educator persona who is a direct target', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-1', student_id: 'caller-1' }];
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'all' },
+        },
+      ];
+      const questionId = wireRun('a-1');
+
+      const result = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+
+      expect(result.success).toBe(true);
+      if (result.success) expect([...result.data.ids]).toEqual([questionId]);
+    });
+
+    it('seals nothing for a student persona no assignment targets', async () => {
+      resetDb();
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'learner' },
+        },
+      ];
+
+      const result = await sealFor(ctx());
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.ids.size).toBe(0);
+    });
+
+    it('seals through a group the caller is a member of, but not through one they teach', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-1', group_id: 'g-1' }];
+      const questionId = wireRun('a-1');
+
+      db.group_members = [{ group_id: 'g-1', user_id: 'caller-1', role: 'teacher' }];
+      const taught = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+      expect(
+        taught.success && taught.data.ids.size,
+        'a group teacher is staff of the class, not a learner in it',
+      ).toBe(0);
+
+      db.group_members = [{ group_id: 'g-1', user_id: 'caller-1', role: 'member' }];
+      const member = await sealFor(ctx());
+      expect(member.success).toBe(true);
+      if (member.success) expect([...member.data.ids]).toEqual([questionId]);
+    });
+
+    it('seals org-wide only in an org whose role for the caller is a non-staff profile', async () => {
+      resetDb();
+      db.teacher_assignments = [
+        liveRun('a-org', { organization_id: 'org-1', seal_org_wide: true }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-org',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+      ];
+      db.questions = [{ id: 'q-1', bank_id: 'bank-1' }];
+
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'all' },
+        },
+      ];
+      const staff = await sealFor(ctx({ accountType: AccountType.MANAGER }));
+      expect(staff.success && staff.data.ids.size, 'org staff are not sealed org-wide').toBe(0);
+
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'learner' },
+        },
+      ];
+      const learner = await sealFor(ctx());
+      expect(learner.success).toBe(true);
+      if (learner.success) expect([...learner.data.ids]).toEqual(['q-1']);
+    });
+
+    it('seals a custom-role (none profile) holder org-wide, and not a staff (all) one (R28)', async () => {
+      resetDb();
+      db.teacher_assignments = [
+        liveRun('a-org', { organization_id: 'org-1', seal_org_wide: true }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-org',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+      ];
+      db.questions = [{ id: 'q-1', bank_id: 'bank-1' }];
+
+      // Persona and role disagree: an educator persona sitting on a custom role whose
+      // entitlement_profile defaults to 'none' is held by the org-wide run — the safe
+      // direction, and the pre-5e-1 behaviour for any non-staff persona.
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'none' },
+        },
+      ];
+      const custom = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+      expect(custom.success).toBe(true);
+      if (custom.success) expect([...custom.data.ids]).toEqual(['q-1']);
+
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'all' },
+        },
+      ];
+      const staff = await sealFor(ctx({ accountType: AccountType.MANAGER }));
+      expect(staff.success && staff.data.ids.size, 'staff profiles (all) are not sealed').toBe(0);
+    });
+
+    it('seals nothing from a run whose window has not started; once started, its held-back item is sealed', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-live', student_id: 'caller-1' }];
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'learner' },
+        },
+      ];
+      db.teacher_assignments = [
+        liveRun('a-live'),
+        liveRun('a-future', {
+          organization_id: 'org-1',
+          seal_org_wide: true,
+          start_time: FUTURE(),
+          deadline: FUTURE(),
+        }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-live',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+        {
+          assignment_id: 'a-future',
+          question_id: 'q-2',
+          withhold_from_review: true,
+          released_at: null,
+        },
+      ];
+      db.questions = [
+        { id: 'q-1', bank_id: 'bank-1' },
+        { id: 'q-2', bank_id: 'bank-1' },
+      ];
+
+      // The SQL gates every arm (the withheld arm included) on start_time <= now(), so the
+      // held-back link of the not-yet-started org-wide run seals nothing.
+      const before = await sealFor(ctx());
+      expect(before.success).toBe(true);
+      if (before.success) expect([...before.data.ids]).toEqual(['q-1']);
+
+      // Once the run has started (and closed), its withheld item stays sealed until released.
+      db.teacher_assignments = [
+        liveRun('a-live'),
+        liveRun('a-future', {
+          organization_id: 'org-1',
+          seal_org_wide: true,
+          start_time: PAST(),
+          deadline: PAST(),
+        }),
+      ];
+      const after = await sealFor(ctx());
+      expect(after.success).toBe(true);
+      if (after.success) expect([...after.data.ids].toSorted()).toEqual(['q-1', 'q-2']);
+    });
+
+    it('does not seal the author who is a member of the targeted group (R4, #1172)', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-1', group_id: 'g-1' }];
+      db.group_members = [{ group_id: 'g-1', user_id: 'caller-1', role: 'member' }];
+      wireRun('a-1', 'q-1', { created_by: 'caller-1' });
+
+      const result = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(
+          result.data.ids.size,
+          'a run never seals its own author, even when they are a member of the targeted group',
+        ).toBe(0);
+    });
+
+    it('still seals a different educator who is a member of the same targeted group (row 4)', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-1', group_id: 'g-1' }];
+      db.group_members = [{ group_id: 'g-1', user_id: 'caller-1', role: 'member' }];
+      const questionId = wireRun('a-1', 'q-1', { created_by: 'other-educator' });
+
+      const result = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+
+      expect(result.success).toBe(true);
+      if (result.success) expect([...result.data.ids]).toEqual([questionId]);
+    });
+
+    it('seals an item bound by an authored and a foreign run through the foreign one (R4)', async () => {
+      resetDb();
+      db.assignment_targets = [
+        { assignment_id: 'a-own', student_id: 'caller-1' },
+        { assignment_id: 'a-foreign', student_id: 'caller-1' },
+      ];
+      db.teacher_assignments = [
+        liveRun('a-own', { created_by: 'caller-1' }),
+        liveRun('a-foreign', { created_by: 'other-educator' }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-own',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+        {
+          assignment_id: 'a-foreign',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+      ];
+      db.questions = [{ id: 'q-1', bank_id: 'bank-1' }];
+
+      const result = await sealFor(ctx());
+
+      expect(result.success).toBe(true);
+      if (result.success) expect([...result.data.ids]).toEqual(['q-1']);
+    });
+  });
+
+  describe('callerIsLearnerOnAssignment', () => {
+    it('answers false for the author even when the run targets them (R4, #1172)', async () => {
+      resetDb();
+      const assignment = {
+        created_by: 'author-1',
+        organization_id: 'org-1',
+        seal_org_wide: false,
+        assignment_targets: [{ group_id: null, student_id: 'author-1' }],
+      };
+
+      const result = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({
+          accountType: AccountType.EDUCATOR,
+          userId: 'author-1',
+        }),
+        assignment,
+      );
+
+      expect(result).toEqual({ success: true, data: false });
+    });
+
+    it('answers true for a non-author target of the same run (R4)', async () => {
+      resetDb();
+      const assignment = {
+        created_by: 'other-educator',
+        organization_id: 'org-1',
+        seal_org_wide: false,
+        assignment_targets: [{ group_id: null, student_id: 'caller-1' }],
+      };
+
+      const result = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({ accountType: AccountType.EDUCATOR }),
+        assignment,
+      );
+
+      expect(result).toEqual({ success: true, data: true });
+    });
+
+    it('answers false for the author previewing a run they do not target', async () => {
+      resetDb();
+      const assignment = {
+        organization_id: 'org-1',
+        seal_org_wide: false,
+        assignment_targets: [{ group_id: 'g-1', student_id: null }],
+      };
+      db.group_members = [{ group_id: 'g-1', user_id: 'author-1', role: 'teacher' }];
+
+      const result = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({
+          accountType: AccountType.EDUCATOR,
+          userId: 'author-1',
+          groupRoles: { 'g-1': 'teacher' },
+        }),
+        assignment,
+      );
+
+      expect(result).toEqual({ success: true, data: false });
+    });
+
+    it('answers true for a directly targeted educator persona (R28)', async () => {
+      resetDb();
+      const assignment = {
+        organization_id: 'org-1',
+        seal_org_wide: false,
+        assignment_targets: [{ group_id: null, student_id: 'caller-1' }],
+      };
+
+      const result = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({ accountType: AccountType.EDUCATOR }),
+        assignment,
+      );
+
+      expect(result).toEqual({ success: true, data: true });
+    });
+
+    it('answers true org-wide for a learner or custom (none) profile, false for staff (all)', async () => {
+      resetDb();
+      const assignment = { organization_id: 'org-1', seal_org_wide: true, assignment_targets: [] };
+
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'all' },
+        },
+      ];
+      const staff = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({ accountType: AccountType.MANAGER }),
+        assignment,
+      );
+      expect(staff).toEqual({ success: true, data: false });
+
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'learner' },
+        },
+      ];
+      const learner = await callerIsLearnerOnAssignment(userClient(), ctx(), assignment);
+      expect(learner).toEqual({ success: true, data: true });
+
+      // A custom role's default 'none' profile is held too (the safe direction).
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'none' },
+        },
+      ];
+      const custom = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({ accountType: AccountType.EDUCATOR }),
+        assignment,
+      );
+      expect(custom).toEqual({ success: true, data: true });
+    });
   });
 });

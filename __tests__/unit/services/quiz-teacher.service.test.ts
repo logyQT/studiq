@@ -462,14 +462,14 @@ describe('QuizTeacherService', () => {
       }
     });
 
-    it('returns FORBIDDEN when org does not match', async () => {
+    it('returns NOT_FOUND for a quiz in a foreign org (D-5e2: 404, not 403 — tenant existence is not leaked)', async () => {
       mock.from.mockReturnValue(chain({ organization_id: 'other-org' }));
 
       const result = await service.bulkSave(quizId, bulkData, ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('FORBIDDEN');
+        expect(result.error).toBe('NOT_FOUND');
       }
     });
 
@@ -615,8 +615,26 @@ describe('QuizTeacherService', () => {
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
-    it('returns FORBIDDEN when org does not match', async () => {
+    it('returns NOT_FOUND for a quiz in a foreign org (D-5e2: 404, not 403)', async () => {
       const quiz = { id: quizId, name: 'My Quiz', organization_id: 'other-org' };
+      mock.from.mockReturnValue(chain(quiz));
+
+      const result = await service.createAssignment(quizId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('NOT_FOUND');
+      }
+    });
+
+    it('returns FORBIDDEN for a same-org quiz the own quiz.update scope does not reach (D-5e2)', async () => {
+      const quiz = {
+        id: quizId,
+        name: 'My Quiz',
+        organization_id: orgId,
+        created_by: 'another-user',
+        quiz_questions: [],
+      };
       mock.from.mockReturnValue(chain(quiz));
 
       const result = await service.createAssignment(quizId, ctx);

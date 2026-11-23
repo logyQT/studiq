@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import {
   readReviewItems,
@@ -8,6 +8,7 @@ import {
 import { reviewState } from '@studiq/server/lib/assignment-visibility';
 import { recordReviewExposure } from '@studiq/server/lib/exposure-ledger';
 import { wrapService } from '@studiq/server/lib/observability';
+import { callerIsLearnerOnAssignment } from '@studiq/server/lib/question-seal';
 import { carriesAnswerKey } from '@studiq/server/lib/question-keys';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -196,10 +197,13 @@ export class AssessmentReviewService {
 
     // R8: this render is the exposure. A repeat read conflicts on the unique (student, item) row and
     // adds nothing; a failed write is a server fault, not a reason to withhold the review.
-    // Only a student's render is an exposure: a teacher previewing the cohort review is not a
-    // learner who has now seen the key, and a staff row in the ledger would be a false event for
-    // phase 3's eligibility (#1172). An item whose review carries no key artefact burns nothing.
-    if (ctx.accountType === AccountType.STUDENT) {
+    // Only a learner's render is an exposure (D-5e1, #1172): the same target-set answer the seal
+    // computes — a teacher previewing the cohort review is not a learner who has now seen the
+    // key, and a staff row in the ledger would be a false event for phase 3's eligibility. An
+    // item whose review carries no key artefact burns nothing.
+    const learner = await callerIsLearnerOnAssignment(supabase, ctx, assignment);
+    if (isFailure(learner)) return learner;
+    if (learner.data) {
       const exposed = await recordReviewExposure({
         studentId: ctx.userId,
         assignmentId,

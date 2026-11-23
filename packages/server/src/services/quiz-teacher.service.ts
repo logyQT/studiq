@@ -18,22 +18,23 @@ import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
 /**
- * A quiz outside the caller's active org is indistinguishable from a missing one on reads,
- * while the flows that had already verified ownership answer the same row with FORBIDDEN.
- * The caller's `permission` scope is resolved against the loaded row (ADR-0015 §6.3): `own`
- * reaches the author, `organization` the active org (checked above), `group` nothing — a quiz
- * has no class share link, so a group-scope row authorizes only its own author.
+ * One derivation of the access failure (D-5e2, ADR-0015 §7.1): a missing quiz and a quiz outside
+ * the caller's active org are both `NOT_FOUND` — the request is scoped to the active org, so a
+ * member of another org gets 404 and can switch, and tenant existence is not leaked. Only a
+ * same-org row the caller's `permission` scope does not reach answers `FORBIDDEN`. The scope is
+ * resolved against the loaded row (§6.3): `own` reaches the author, `organization` the active org
+ * (checked above), `group` nothing — a quiz has no class share link, so a group-scope row
+ * authorizes only its own author.
  */
 function ownedQuiz<T extends { organization_id: string; created_by?: string | null }>(
   quiz: T | null,
   error: PostgrestError | null,
   ctx: RequestContext,
-  foreignOrgError: 'NOT_FOUND' | 'FORBIDDEN',
   permission?: string,
 ): ServiceResult<T> {
   if (error) return toDbFailure(error);
   if (!quiz) return failure('NOT_FOUND');
-  if (quiz.organization_id !== ctx.activeOrgId) return failure(foreignOrgError);
+  if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
   if (
     permission &&
     !evaluate({
@@ -64,7 +65,7 @@ export class QuizTeacherService {
       .eq('id', id)
       .maybeSingle();
 
-    const owned = ownedQuiz(quiz, error, ctx, 'NOT_FOUND', 'quiz.read');
+    const owned = ownedQuiz(quiz, error, ctx, 'quiz.read');
     if (!owned.success) return owned;
 
     // A deleted item leaves the builder (it is hidden from authoring); the quiz row stays.
@@ -77,14 +78,14 @@ export class QuizTeacherService {
   }
 
   /**
-   * The failure that hides a missing or foreign quiz, or `null` when the caller owns it;
-   * the single-row writes below need the verdict, not the row.
+   * The failure that hides a missing or foreign quiz, or `null` when the caller may act on it;
+   * the single-row writes below need the verdict, not the row. Foreign org and missing row are
+   * both `NOT_FOUND` (D-5e2); only a same-org row the scope does not reach is `FORBIDDEN`.
    */
   private async quizAccessFailure(
     supabase: SupabaseClient<Database>,
     id: string,
     ctx: RequestContext,
-    foreignOrgError: 'NOT_FOUND' | 'FORBIDDEN' = 'NOT_FOUND',
     permission = 'quiz.update',
   ): Promise<ServiceResult<never> | null> {
     const { data: quiz, error } = await supabase
@@ -93,7 +94,7 @@ export class QuizTeacherService {
       .eq('id', id)
       .maybeSingle();
 
-    const owned = ownedQuiz(quiz, error, ctx, foreignOrgError, permission);
+    const owned = ownedQuiz(quiz, error, ctx, permission);
     return owned.success ? null : owned;
   }
 
@@ -174,7 +175,7 @@ export class QuizTeacherService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const denied = await this.quizAccessFailure(supabase, id, ctx, 'FORBIDDEN');
+    const denied = await this.quizAccessFailure(supabase, id, ctx, 'quiz.update');
     if (denied) return denied;
 
     const { error: updateError } = await supabase
@@ -244,7 +245,7 @@ export class QuizTeacherService {
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const denied = await this.quizAccessFailure(supabase, id, ctx, 'NOT_FOUND', 'quiz.delete');
+    const denied = await this.quizAccessFailure(supabase, id, ctx, 'quiz.delete');
     if (denied) return denied;
 
     const { error: deleteError } = await supabase.from('quizzes').delete().eq('id', id);
@@ -357,7 +358,7 @@ export class QuizTeacherService {
       .eq('id', id)
       .maybeSingle();
 
-    const owned = ownedQuiz(quiz, quizError, ctx, 'FORBIDDEN', 'quiz.update');
+    const owned = ownedQuiz(quiz, quizError, ctx, 'quiz.update');
     if (!owned.success) return owned;
 
     // 2. A quiz copy is a new binding and is chosen as a whole: any retired or deleted item

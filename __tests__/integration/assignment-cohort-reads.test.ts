@@ -43,7 +43,9 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
   let groupA: string;
   let managerAssignmentId: string;
   let assignmentId: string;
+  let educatorAssignmentId: string;
   let questionId: string;
+  let question2Id: string;
   let optionId: string;
   let deadline: string;
   const userIds: string[] = [];
@@ -51,6 +53,8 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
   let studentB: SupabaseClient<Database>;
   let teacher: SupabaseClient<Database>;
   let manager: SupabaseClient<Database>;
+  let customMember: SupabaseClient<Database>;
+  let colleague: SupabaseClient<Database>;
 
   async function createUser(label: string, accountType: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -73,6 +77,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     const managerId = await createUser('manager', 'manager');
     const studentAId = await createUser('student-a', 'student');
     const studentBId = await createUser('student-b', 'student');
+    const colleagueId = await createUser('colleague', 'educator');
     await seedOrgMembership({
       organizationId: orgId,
       userId: teacherId,
@@ -93,6 +98,32 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       userId: studentBId,
       orgRoleId: seeded.memberRoleId,
     });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: colleagueId,
+      orgRoleId: seeded.teacherRoleId,
+    });
+
+    // A custom role whose entitlement_profile defaults to 'none'. Its holder below is a
+    // student persona on a non-staff, non-learner profile: an org-wide run must still seal
+    // them (the safe direction — the pre-5e-1 code sealed any non-staff persona).
+    const { data: customRole, error: customRoleError } = await service
+      .from('org_roles')
+      .insert({
+        organization_id: orgId,
+        name: `seal-custom-${tag}`,
+        display_name: 'Custom',
+        is_system: false,
+      })
+      .select('id')
+      .single();
+    if (customRoleError) throw new Error(`custom role: ${customRoleError.message}`);
+    const customMemberId = await createUser('custom-member', 'student');
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: customMemberId,
+      orgRoleId: customRole.id,
+    });
 
     const { data: group, error: groupError } = await service
       .from('groups')
@@ -102,6 +133,10 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     if (groupError) throw new Error(`group: ${groupError.message}`);
     groupA = group.id;
     await seedGroupMembership({ groupId: groupA, userId: studentAId, role: 'member' });
+    // The QA-seeder shape: the author sits in the targeted group as a plain `member`, so arm 2
+    // would seal their own item unless the author exemption (R4, #1172) holds.
+    await seedGroupMembership({ groupId: groupA, userId: teacherId, role: 'member' });
+    await seedGroupMembership({ groupId: groupA, userId: colleagueId, role: 'member' });
 
     // A second run that targets the manager: staff in a targeted group are readers, not students,
     // so a seal computed for them would be a regression the read tests must catch.
@@ -140,6 +175,24 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       .single();
     if (questionError) throw new Error(`question: ${questionError.message}`);
     questionId = question.id;
+
+    // A second item bound only to a run that targets the teacher directly: persona (educator)
+    // and target (learner) disagree, so this row is the R28 fixture for the seal (D-5e1).
+    const { data: question2, error: question2Error } = await service
+      .from('questions')
+      .insert({
+        organization_id: orgId,
+        created_by: teacherId,
+        bank_id: bank.id,
+        type: 'mcq',
+        content: `seal-question2-${tag}`,
+        explanation: `seal-explanation2-${tag}`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    if (question2Error) throw new Error(`question2: ${question2Error.message}`);
+    question2Id = question2.id;
 
     const { data: options, error: optionError } = await service
       .from('question_options')
@@ -218,10 +271,49 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       .from('assignment_targets')
       .insert({ assignment_id: managerAssignmentId, group_id: managerGroup.id });
 
+    // The run that targets an educator directly (student_id target): persona (educator) and
+    // target (learner) disagree, so this row is the R28 fixture for the seal (D-5e1). The
+    // target is the colleague, not the author, so the row-4 invariant (a targeted educator who
+    // is not the author is held) and the author exemption (R4, #1172) are one fixture apart.
+    const { data: educatorAssignment, error: educatorAssignmentError } = await service
+      .from('teacher_assignments')
+      .insert({
+        organization_id: orgId,
+        created_by: teacherId,
+        title: `seal-educator-assignment-${tag}`,
+        status: 'published',
+        deadline,
+        start_time: null,
+      })
+      .select('id')
+      .single();
+    if (educatorAssignmentError)
+      throw new Error(`educator assignment: ${educatorAssignmentError.message}`);
+    educatorAssignmentId = educatorAssignment.id;
+    await service.from('assignment_questions').insert({
+      assignment_id: educatorAssignmentId,
+      question_id: question2Id,
+      order_index: 0,
+      points: 1,
+      snapshot: {
+        id: question2Id,
+        content: `seal-question2-${tag}`,
+        type: 'mcq',
+        question_answers: [],
+      },
+      snapshot_key: { explanation: 'sealed', correctOptionIds: [optionId] },
+      snapshot_version: 1,
+    });
+    await service
+      .from('assignment_targets')
+      .insert({ assignment_id: educatorAssignmentId, student_id: colleagueId });
+
     studentA = await signIn(`seal-student-a-${tag}@dev.local`);
     studentB = await signIn(`seal-student-b-${tag}@dev.local`);
     teacher = await signIn(`seal-teacher-${tag}@dev.local`);
     manager = await signIn(`seal-manager-${tag}@dev.local`);
+    customMember = await signIn(`seal-custom-member-${tag}@dev.local`);
+    colleague = await signIn(`seal-colleague-${tag}@dev.local`);
   });
 
   afterAll(async () => {
@@ -323,7 +415,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     ]);
   });
 
-  it('holds an org-wide run from every student, targeted or not', async () => {
+  it('holds an org-wide run from every non-staff profile in the org, and from no org staff', async () => {
     await service
       .from('teacher_assignments')
       .update({ seal_org_wide: true })
@@ -333,10 +425,70 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     expect(held.error).toBeNull();
     expect(held.data, 'a student outside the class is sealed by the org-wide run').toEqual([]);
 
+    const memberHeld = await studentA.from('questions').select('id').eq('id', questionId);
+    expect(memberHeld.data, 'a learner-profile member is sealed org-wide, targeted or not').toEqual(
+      [],
+    );
+
+    const customHeld = await customMember.from('questions').select('id').eq('id', questionId);
+    expect(
+      customHeld.data,
+      'a custom-role (none profile) member is sealed org-wide too — persona/role disagree (R28)',
+    ).toEqual([]);
+
+    // Org staff (Admin/Teacher roles, entitlement_profile 'all') are not learners: the org-wide
+    // run holds the item from non-staff profiles only (D-5e1, arm 3).
+    const managerReads = await manager.from('questions').select('id').eq('id', questionId);
+    expect(managerReads.data, 'org-wide does not seal the org admin').toEqual([{ id: questionId }]);
+    const teacherReads = await teacher.from('questions').select('id').eq('id', questionId);
+    expect(teacherReads.data, 'org-wide does not seal the org teacher').toEqual([
+      { id: questionId },
+    ]);
+
     await service
       .from('teacher_assignments')
       .update({ seal_org_wide: false })
       .eq('id', managerAssignmentId);
+  });
+
+  it('seals a directly targeted educator who is not the author, and spares the author (R28, R4)', async () => {
+    const sealed = await colleague.from('questions').select('id').eq('id', question2Id);
+    expect(sealed.error, 'the row is filtered, not refused').toBeNull();
+    expect(
+      sealed.data,
+      'a directly targeted educator who is not the author is a learner by data',
+    ).toEqual([]);
+
+    const author = await teacher.from('questions').select('id').eq('id', question2Id);
+    expect(author.error).toBeNull();
+    expect(author.data, 'the run’s author is not sealed by their own run (R4, #1172)').toEqual([
+      { id: question2Id },
+    ]);
+
+    const untargeted = await studentB.from('questions').select('id').eq('id', question2Id);
+    expect(untargeted.error).toBeNull();
+    expect(untargeted.data, 'a student persona that is not targeted is not sealed').toEqual([
+      { id: question2Id },
+    ]);
+  });
+
+  it('reads the item as the author who is a member of the targeted group, while a colleague member is held (R28, R4)', async () => {
+    // The author sits in the targeted group as a `member` (the QA-seeder shape): without the
+    // author exemption, arm 2 would hide the author's own item.
+    const authorRead = await teacher.from('questions').select('id, content').eq('id', questionId);
+    expect(authorRead.error).toBeNull();
+    expect(authorRead.data, 'an assignment never seals its own author').toEqual([
+      { id: questionId, content: `seal-question-${tag}` },
+    ]);
+
+    const colleagueRead = await colleague
+      .from('questions')
+      .select('id, content')
+      .eq('id', questionId);
+    expect(colleagueRead.error, 'the row is filtered, not refused').toBeNull();
+    expect(colleagueRead.data, 'a non-author member of the targeted group is still held').toEqual(
+      [],
+    );
   });
 
   it('releases the item at close', async () => {

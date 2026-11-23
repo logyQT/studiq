@@ -283,6 +283,12 @@ export class TeacherAssignmentService {
     data: CreateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
+    // teacher_assignments.organization_id is NOT NULL: without a verified active org there is no
+    // tenant to create the run in. Guard before anything is read or written — a null org would
+    // fail at the NOT NULL/RLS floor instead of a clean FORBIDDEN (same guard as
+    // quiz-teacher.service.ts#create; #148).
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
     const supabase = await this.clientFactory();
 
     // A quiz copy is a new binding, and it is chosen as a whole: if any item is retired or
