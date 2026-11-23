@@ -4572,14 +4572,14 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   directly targeted educator persona" red; (5) restore `failure('FORBIDDEN')`
   on `ownedQuiz`'s foreign-org branch → the foreign-org 404 case red; (6)
   remove the null-org guard in `create` → "returns FORBIDDEN without an
-  active org and never queries" red. **SQL predicate mutations cannot be
-  driven by `bun run mutate` in this worktree (no DB — the one-writer rule):
-  delegated to the coordinator as hand-proofs in rolled-back transactions**,
-  e.g. replace the `quiz_attempts` USING with `true` → the Member cases in
-  `quiz-attempts-staff-scope.test.ts` go red; drop `gm.role = 'member'` from
-  the seal function → the cohort-reads group-teacher case goes red; swap
-  `rls_caller_covers_permission` for `rls_caller_has_permission` in the
-  `exposure_events` policy → the exposure-ledger Member case goes red.
+  active org and never queries" red. **SQL predicates are hand-proved against
+  the live stack** (the implementer had no DB under the one-writer rule): the
+  fixer dropped arm 3's profile clause from the live function → the
+  cohort-reads org-wide case red, restored → green; dropped the unattributed
+  arm from the policy → the two `quiz-attempts-staff-scope` Teacher/grader
+  cases red, restored → green; and in a rolled-back transaction replaced arm
+  1's `student_id = auth.uid()` conjunct, which made the migration's own
+  closing guard raise — so the guard, not a reviewer, is what detects it.
 - **Product consequence (not debt):** `getTeacherQuizStats` and the INVOKER RPC
   `get_teacher_problematic_questions` read `quiz_attempts` through the user
   client, so they see exactly what the policy admits: org-attributed attempts
@@ -4599,10 +4599,18 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   the author preview still mints no exposure event, and the only API-visible
   change for them is a foreign-org quiz write answering 404 instead of 403
   (`bulkSave`/`createAssignment`) — no QA case asserts that 403.
-- **Gates (implementer):** `test:unit` 316 files / 4893 passed, 1 skipped;
-  `typecheck:all` + `typecheck:admin` green; `lint`, `review:static`, `knip`,
-  `format:check`, `dup:changed` green; `pr:size` measured (see the PR
-  report). Integration suites and the served QA run are the coordinator's.
+- **Gates (coordinator, final HEAD `a15a1868`, measured):** unit **316 files /
+  4895 passed, 1 skipped**; `typecheck:all` + `typecheck:admin`, `lint`,
+  `review:static`, `knip`, `format:check` green; `dup:base` **0 new** (211 in
+  tree); serial integration on a fresh reset **115 files passed, 1 skipped —
+  1095 passed / 11 skipped**; build **29.5 s**, served `:3000`,
+  `build.state: current`; `pr:size` **563/400 (XL)** → `size:exception`.
+- **Served QA (coordinator): 18 passes / 25 tests, zero retries, one process,
+  a unique `--run` label per pass, fresh tenant per run** — `EDU-ASG-04` 5/5
+  (`e51asg04r1..5`), `STU-01` 5/5 (`e51stu01r1..5`, 2 tests each), and one run
+  each of `EDU-ASG-01` (`e51s1`), `EDU-ASG-07` (`e51s2`), `SEC-05` (`e51s3`),
+  `SEC-09` (`e51s4`), `LIM-05` (`e51s5`), `STU-03` (`e51s6`), `AUT-19`
+  (`e51s7`, 3 tests), `EDU-REP-01` (`e51s8`).
 - **2026-11-23 — test-corpus corrections after the 5e-1 null-org guards
   (measured):** the coordinator's serial integration run on a fresh reset
   measured 1084 passed / 3 failed / 17 skipped, all three failures sharing one
