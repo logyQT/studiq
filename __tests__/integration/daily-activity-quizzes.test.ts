@@ -252,17 +252,38 @@ describe('user_daily_activity quiz counters (#1082)', () => {
 describe('user_daily_activity regrade under RLS (#1082)', () => {
   let teacher!: BeforeResult;
   let student!: TestUserFixture;
+  let assignmentId!: string;
   let teacherSession!: SupabaseClient<Database>;
   let studentSession!: SupabaseClient<Database>;
 
   beforeAll(async () => {
-    // The student is a member of the teacher's organisation, which is what the
-    // same-org `quiz_attempts` policy requires for the teacher's write. The
+    // The student is a member of the teacher's organisation. Since 5e-1 the staff
+    // branch of "Own or staff quiz attempts" requires the attempt to carry a
+    // non-NULL organization_id in the caller's orgs plus a staff capability or
+    // the author arm, so the fixture below is an attempt on an assignment the
+    // teacher authored: the stamp trigger copies the assignment's org onto the
+    // attempt and the author arm admits the teacher's regrade write. The
     // activity row keeps its own-row-only write policy.
     teacher = await before({ role: 'educator', org: true, members: { count: 1 } });
+    if (!teacher.orgId) throw new Error('Seed created no organisation for the teacher');
     const [member] = teacher.memberUsers;
     if (!member) throw new Error('Seed created no member for the teacher organisation');
     student = member;
+
+    const { data: assignment, error: assignmentError } = await service
+      .from('teacher_assignments')
+      .insert({
+        organization_id: teacher.orgId,
+        created_by: teacher.user.id,
+        title: 'regrade-under-rls-fixture',
+        status: 'draft',
+      })
+      .select('id')
+      .single();
+    if (assignmentError) {
+      throw new Error(`Failed to seed the teacher assignment: ${assignmentError.message}`);
+    }
+    assignmentId = assignment.id;
 
     teacherSession = await signIn(teacher.email, teacher.user.password);
     studentSession = await signIn(student.email, student.password);
@@ -285,9 +306,12 @@ describe('user_daily_activity regrade under RLS (#1082)', () => {
   // the activity UPDATE matches 0 rows and the delta is lost silently, which is
   // exactly what the service-role regrade case above cannot see.
   it('applies the delta when a teacher regrades a student attempt through RLS', async () => {
+    // Referencing the teacher-authored assignment stamps the attempt with the
+    // teacher's org (quiz_attempts_stamp_organization), which the 5e-1 staff
+    // branch requires; the author arm then lets the teacher's write through.
     const { data: attempt, error: startError } = await studentSession
       .from('quiz_attempts')
-      .insert({ user_id: student.id, score: 0, total_questions: 2 })
+      .insert({ user_id: student.id, assignment_id: assignmentId, score: 0, total_questions: 2 })
       .select('id')
       .single();
     if (startError) throw new Error(`Failed to start attempt: ${startError.message}`);

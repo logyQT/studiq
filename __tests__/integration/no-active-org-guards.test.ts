@@ -19,6 +19,7 @@ import {
   requiredAt,
 } from '#test/integration/test-utils';
 import { PUT as questionPut } from '@/app/(backend)/api/v1/questions/[id]/route';
+import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as randomizePost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/randomize/route';
 import {
   GET as quizListGet,
@@ -51,7 +52,24 @@ describe(`No active org guards`, () => {
 
   beforeAll(async () => {
     // No `org: true` → no organization, so no `active_org_id` cookie on any request below.
-    noOrgEducator = await before({ role: 'educator', questions: 1, assignment: true });
+    noOrgEducator = await before({ role: 'educator', questions: 1 });
+    // 5e-1 refuses assignment creation without an active org (pinned below), so the
+    // randomize fixture is seeded in the legacy personal shape (organization_id NULL)
+    // through the service role, which bypasses the INSERT policy a real caller hits.
+    const { data: assignment, error: assignmentError } = await service
+      .from('teacher_assignments')
+      .insert({
+        organization_id: null,
+        created_by: noOrgEducator.user.id,
+        title: `no-org-assignment-${suiteId}`,
+        status: 'draft',
+      })
+      .select('id')
+      .single();
+    if (assignmentError) {
+      throw new Error(`Failed to seed the null-org assignment: ${assignmentError.message}`);
+    }
+    noOrgEducator.created.assignmentId = assignment.id;
     noOrgStudent = await before({ role: 'student', questions: 1 });
     noOrgManager = await createTestUser({ role: 'manager' });
     // Org member: its seeded question carries a non-null organization_id, which pins the
@@ -104,6 +122,22 @@ describe(`No active org guards`, () => {
       body: JSON.stringify({ name: `no-org-quiz-${suiteId}` }),
     });
     const res = await quizCreatePost(req);
+    const body = await json<ForbiddenBody>(res);
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ success: false, error: 'FORBIDDEN' });
+    expect(res.headers.get('x-error-code')).toBe('FORBIDDEN');
+  });
+
+  it('POST /api/v1/teacher/assignments returns 403 (not 400/500) without an active org', async () => {
+    mockUser(noOrgEducator.user);
+
+    const req = createNextRequest('http://localhost/api/v1/teacher/assignments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: `no-org-assignment-create-${suiteId}` }),
+    });
+    const res = await createAssignmentPost(req);
     const body = await json<ForbiddenBody>(res);
 
     expect(res.status).toBe(403);
