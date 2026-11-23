@@ -19,6 +19,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * computed here, with the service role, from the caller's own `ctx` — never from an id in a
  * request — and it never leaves the server: no client-callable function returns it, because a
  * learner who could read it would learn exactly which items their assessment holds (R14).
+ *
+ * Author exemption (R4, #1172): an assignment never seals its own author — an author must keep
+ * seeing the items they are composing — so `created_by` is part of the rule in both halves, not a
+ * persona branch on top of it.
  */
 
 /** The window a published assessment opens: a missing bound is an open end. */
@@ -86,7 +90,8 @@ function mergeClose(previous: string | null | undefined, next: string | null): s
  *
  * The three target arms are the same ones `rls_caller_is_sealed_item` evaluates in SQL (D-5e1);
  * the two halves must agree, so both read `group_members.role` and
- * `org_members → org_roles.entitlement_profile` rather than the JWT persona.
+ * `org_members → org_roles.entitlement_profile` rather than the JWT persona, and both carry the
+ * same author exemption on `created_by` (R4, #1172).
  */
 export async function sealedItemsFor(
   ctx: RequestContext,
@@ -144,12 +149,16 @@ export async function sealedItemsFor(
   //    hold an item back from the review (R10) — and the items each of them binds.
   const assignments = await supabase
     .from('teacher_assignments')
-    .select('id, start_time, deadline, closed_at')
+    .select('id, start_time, deadline, closed_at, created_by')
     .in('id', candidateIds)
     .eq('status', 'published');
   if (assignments.error) return mapSupabaseError(assignments.error);
 
-  const windows = dbRows(assignments.data);
+  // The author exemption (R4, #1172): a run never seals its own author — they must keep seeing
+  // the items they are composing — so authored candidates drop out here, before the window
+  // split. The SQL seal carries the same conjunct per binding row (`created_by IS DISTINCT FROM
+  // auth.uid()`), so an item also bound by a foreign run is still sealed through that one.
+  const windows = dbRows(assignments.data).filter((row) => row.created_by !== callerId);
   const started = (row: { start_time?: string | null }) =>
     !row.start_time || now.getTime() >= new Date(row.start_time).getTime();
   const live = windows.filter((row) => isWindowOpen(row, now));
@@ -208,6 +217,7 @@ export async function sealedItemsFor(
 
 /** The slice of a published run the learner predicate reads (D-5e1). */
 export interface LearnerAssignment {
+  created_by?: string | null;
   organization_id?: string | null;
   seal_org_wide?: boolean | null;
   assignment_targets?: readonly { group_id?: string | null; student_id?: string | null }[] | null;
@@ -217,14 +227,20 @@ export interface LearnerAssignment {
  * The D-5e1 answer for one already-loaded assignment: is the caller a learner for it? The same
  * three arms `sealedItemsFor` computes set-wise and `rls_caller_is_sealed_item` evaluates in SQL
  * — direct target, group target with `group_members.role = 'member'`, org-wide with a non-staff
- * org role. Used where only a yes/no is needed (the exposure write guard), so
- * there is one notion of "learner", not three.
+ * org role — plus the same author exemption on `created_by`. Used where only a yes/no is needed
+ * (the exposure write guard), so there is one notion of "learner", not three.
  */
 export async function callerIsLearnerOnAssignment(
   supabase: SupabaseClient<Database>,
   ctx: RequestContext,
   assignment: LearnerAssignment,
 ): Promise<ServiceResult<boolean>> {
+  // The author exemption (R4, #1172): the run's author is never a learner on their own run —
+  // the author preview keeps rendering the cohort artefact without minting an exposure event.
+  // This reads the row's `created_by`, the same data the SQL seal's per-row conjunct reads; it
+  // is not a persona branch.
+  if (assignment.created_by === ctx.userId) return success(false);
+
   const targets = assignment.assignment_targets ?? [];
 
   // Arm 1: the run targets the caller directly.
@@ -262,8 +278,9 @@ export async function callerIsLearnerOnAssignment(
 
 /**
  * The sealed set for the calling learner. A caller no published assignment targets is not sealed:
- * the reservation is a property of the target set, not of the JWT persona, so an author composing
- * an item keeps seeing it and a targeted educator is held like any other learner (D-5e1).
+ * the reservation is a property of the target set, not of the JWT persona, so an assignment's
+ * author is not sealed by their own run (R4, #1172) while a targeted educator who is not the
+ * author is held like any other learner (D-5e1).
  */
 export async function sealFor(ctx: RequestContext): Promise<ServiceResult<Seal>> {
   return sealedItemsFor(ctx);

@@ -54,6 +54,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
   let teacher: SupabaseClient<Database>;
   let manager: SupabaseClient<Database>;
   let customMember: SupabaseClient<Database>;
+  let colleague: SupabaseClient<Database>;
 
   async function createUser(label: string, accountType: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -76,6 +77,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     const managerId = await createUser('manager', 'manager');
     const studentAId = await createUser('student-a', 'student');
     const studentBId = await createUser('student-b', 'student');
+    const colleagueId = await createUser('colleague', 'educator');
     await seedOrgMembership({
       organizationId: orgId,
       userId: teacherId,
@@ -95,6 +97,11 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       organizationId: orgId,
       userId: studentBId,
       orgRoleId: seeded.memberRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: colleagueId,
+      orgRoleId: seeded.teacherRoleId,
     });
 
     // A custom role whose entitlement_profile defaults to 'none'. Its holder below is a
@@ -126,6 +133,10 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     if (groupError) throw new Error(`group: ${groupError.message}`);
     groupA = group.id;
     await seedGroupMembership({ groupId: groupA, userId: studentAId, role: 'member' });
+    // The QA-seeder shape: the author sits in the targeted group as a plain `member`, so arm 2
+    // would seal their own item unless the author exemption (R4, #1172) holds.
+    await seedGroupMembership({ groupId: groupA, userId: teacherId, role: 'member' });
+    await seedGroupMembership({ groupId: groupA, userId: colleagueId, role: 'member' });
 
     // A second run that targets the manager: staff in a targeted group are readers, not students,
     // so a seal computed for them would be a regression the read tests must catch.
@@ -260,8 +271,10 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       .from('assignment_targets')
       .insert({ assignment_id: managerAssignmentId, group_id: managerGroup.id });
 
-    // The run that targets the teacher directly (student_id target): the educator persona is a
-    // learner for this run by data, not by persona (D-5e1).
+    // The run that targets an educator directly (student_id target): persona (educator) and
+    // target (learner) disagree, so this row is the R28 fixture for the seal (D-5e1). The
+    // target is the colleague, not the author, so the row-4 invariant (a targeted educator who
+    // is not the author is held) and the author exemption (R4, #1172) are one fixture apart.
     const { data: educatorAssignment, error: educatorAssignmentError } = await service
       .from('teacher_assignments')
       .insert({
@@ -293,13 +306,14 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     });
     await service
       .from('assignment_targets')
-      .insert({ assignment_id: educatorAssignmentId, student_id: teacherId });
+      .insert({ assignment_id: educatorAssignmentId, student_id: colleagueId });
 
     studentA = await signIn(`seal-student-a-${tag}@dev.local`);
     studentB = await signIn(`seal-student-b-${tag}@dev.local`);
     teacher = await signIn(`seal-teacher-${tag}@dev.local`);
     manager = await signIn(`seal-manager-${tag}@dev.local`);
     customMember = await signIn(`seal-custom-member-${tag}@dev.local`);
+    colleague = await signIn(`seal-colleague-${tag}@dev.local`);
   });
 
   afterAll(async () => {
@@ -437,18 +451,44 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       .eq('id', managerAssignmentId);
   });
 
-  it('seals a directly targeted staff persona and spares an untargeted student (R28)', async () => {
-    const sealed = await teacher.from('questions').select('id').eq('id', question2Id);
+  it('seals a directly targeted educator who is not the author, and spares the author (R28, R4)', async () => {
+    const sealed = await colleague.from('questions').select('id').eq('id', question2Id);
     expect(sealed.error, 'the row is filtered, not refused').toBeNull();
-    expect(sealed.data, 'an educator persona that is a direct target is a learner by data').toEqual(
-      [],
-    );
+    expect(
+      sealed.data,
+      'a directly targeted educator who is not the author is a learner by data',
+    ).toEqual([]);
+
+    const author = await teacher.from('questions').select('id').eq('id', question2Id);
+    expect(author.error).toBeNull();
+    expect(author.data, 'the run’s author is not sealed by their own run (R4, #1172)').toEqual([
+      { id: question2Id },
+    ]);
 
     const untargeted = await studentB.from('questions').select('id').eq('id', question2Id);
     expect(untargeted.error).toBeNull();
     expect(untargeted.data, 'a student persona that is not targeted is not sealed').toEqual([
       { id: question2Id },
     ]);
+  });
+
+  it('reads the item as the author who is a member of the targeted group, while a colleague member is held (R28, R4)', async () => {
+    // The author sits in the targeted group as a `member` (the QA-seeder shape): without the
+    // author exemption, arm 2 would hide the author's own item.
+    const authorRead = await teacher.from('questions').select('id, content').eq('id', questionId);
+    expect(authorRead.error).toBeNull();
+    expect(authorRead.data, 'an assignment never seals its own author').toEqual([
+      { id: questionId, content: `seal-question-${tag}` },
+    ]);
+
+    const colleagueRead = await colleague
+      .from('questions')
+      .select('id, content')
+      .eq('id', questionId);
+    expect(colleagueRead.error, 'the row is filtered, not refused').toBeNull();
+    expect(colleagueRead.data, 'a non-author member of the targeted group is still held').toEqual(
+      [],
+    );
   });
 
   it('releases the item at close', async () => {

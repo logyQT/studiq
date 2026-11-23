@@ -122,8 +122,8 @@ function resetDb() {
 }
 
 /** Wires the tables of one targeted, live, item-bound run and returns its question id. */
-function wireRun(assignmentId: string, questionId = 'q-1') {
-  db.teacher_assignments = [liveRun(assignmentId)];
+function wireRun(assignmentId: string, questionId = 'q-1', extra: Record<string, unknown> = {}) {
+  db.teacher_assignments = [liveRun(assignmentId, extra)];
   db.assignment_questions = [
     {
       assignment_id: assignmentId,
@@ -369,9 +369,108 @@ describe('derived item reservation', () => {
       expect(after.success).toBe(true);
       if (after.success) expect([...after.data.ids].toSorted()).toEqual(['q-1', 'q-2']);
     });
+
+    it('does not seal the author who is a member of the targeted group (R4, #1172)', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-1', group_id: 'g-1' }];
+      db.group_members = [{ group_id: 'g-1', user_id: 'caller-1', role: 'member' }];
+      wireRun('a-1', 'q-1', { created_by: 'caller-1' });
+
+      const result = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(
+          result.data.ids.size,
+          'a run never seals its own author, even when they are a member of the targeted group',
+        ).toBe(0);
+    });
+
+    it('still seals a different educator who is a member of the same targeted group (row 4)', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-1', group_id: 'g-1' }];
+      db.group_members = [{ group_id: 'g-1', user_id: 'caller-1', role: 'member' }];
+      const questionId = wireRun('a-1', 'q-1', { created_by: 'other-educator' });
+
+      const result = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+
+      expect(result.success).toBe(true);
+      if (result.success) expect([...result.data.ids]).toEqual([questionId]);
+    });
+
+    it('seals an item bound by an authored and a foreign run through the foreign one (R4)', async () => {
+      resetDb();
+      db.assignment_targets = [
+        { assignment_id: 'a-own', student_id: 'caller-1' },
+        { assignment_id: 'a-foreign', student_id: 'caller-1' },
+      ];
+      db.teacher_assignments = [
+        liveRun('a-own', { created_by: 'caller-1' }),
+        liveRun('a-foreign', { created_by: 'other-educator' }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-own',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+        {
+          assignment_id: 'a-foreign',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+      ];
+      db.questions = [{ id: 'q-1', bank_id: 'bank-1' }];
+
+      const result = await sealFor(ctx());
+
+      expect(result.success).toBe(true);
+      if (result.success) expect([...result.data.ids]).toEqual(['q-1']);
+    });
   });
 
   describe('callerIsLearnerOnAssignment', () => {
+    it('answers false for the author even when the run targets them (R4, #1172)', async () => {
+      resetDb();
+      const assignment = {
+        created_by: 'author-1',
+        organization_id: 'org-1',
+        seal_org_wide: false,
+        assignment_targets: [{ group_id: null, student_id: 'author-1' }],
+      };
+
+      const result = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({
+          accountType: AccountType.EDUCATOR,
+          userId: 'author-1',
+        }),
+        assignment,
+      );
+
+      expect(result).toEqual({ success: true, data: false });
+    });
+
+    it('answers true for a non-author target of the same run (R4)', async () => {
+      resetDb();
+      const assignment = {
+        created_by: 'other-educator',
+        organization_id: 'org-1',
+        seal_org_wide: false,
+        assignment_targets: [{ group_id: null, student_id: 'caller-1' }],
+      };
+
+      const result = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({ accountType: AccountType.EDUCATOR }),
+        assignment,
+      );
+
+      expect(result).toEqual({ success: true, data: true });
+    });
+
     it('answers false for the author previewing a run they do not target', async () => {
       resetDb();
       const assignment = {

@@ -918,7 +918,13 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > halves read `group_members.role` and `org_members → org_roles.entitlement_profile`
 > and must agree), and the exposure write guard (`assessment-review.service.ts`
 > via `callerIsLearnerOnAssignment`, so #1172's author preview still mints no
-> event while a directly targeted educator does). The `exposure_events` staff
+> event while a directly targeted educator does). The seal and both TS halves
+> also carry the **author exemption** (R4, #1172): an assignment never seals its
+> own author — `a.created_by IS DISTINCT FROM auth.uid()` per binding row in the
+> SQL function, the same `created_by` filter in `sealedItemsFor` and in
+> `callerIsLearnerOnAssignment` — so an author keeps seeing the items they are
+> composing even when they are a `member` of the targeted group, while a
+> targeted educator who is not the author is still held. The `exposure_events` staff
 > read moved to `rls_caller_covers_permission(organization_id, 'stats.read',
 'group')` — the scope rank own < group < organization means a Member's
 > own-scope `stats.read` does not qualify. `quiz_attempts` "Own or staff quiz

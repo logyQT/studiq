@@ -18,12 +18,21 @@
 --      safe direction and the pre-5e-1 behaviour for any non-staff
 --      persona).
 --
+--   Author exemption (R4, #1172): an assignment never seals its own
+--   author — an author must keep seeing the items they are composing —
+--   so every binding row is gated on `a.created_by IS DISTINCT FROM
+--   auth.uid()`. The conjunct is per row, not per item: an item bound by
+--   an authored run AND by a foreign run is still sealed through the
+--   latter. The TS halves carry the same exemption on `created_by`.
+--
 -- This file owns three objects:
 --
 --   1. public.rls_caller_is_sealed_item — the JWT account_type conjunct is
 --      replaced by the three arms (the published/window/withheld logic is
---      kept verbatim). The function stays security definer,
---      search_path = '', stable, granted to authenticated + service_role.
+--      kept verbatim) plus the per-row author exemption
+--      (`a.created_by IS DISTINCT FROM auth.uid()`, R4/#1172). The function
+--      stays security definer, search_path = '', stable, granted to
+--      authenticated + service_role.
 --   2. The exposure_events SELECT policy — the persona staff half moves to
 --      a capability at a staff scope:
 --      rls_caller_covers_permission(organization_id, 'stats.read', 'group')
@@ -65,6 +74,10 @@ AS $$
     FROM public.assignment_questions aq
     JOIN public.teacher_assignments a ON a.id = aq.assignment_id
     WHERE aq.question_id = p_question_id
+      -- the author exemption (R4, #1172): this run does not seal its own
+      -- author — per binding row, so an item also bound by a foreign run
+      -- is still sealed through that one
+      AND a.created_by IS DISTINCT FROM auth.uid()
       AND a.status = 'published'
       AND (a.start_time IS NULL OR a.start_time <= now())
       AND (
@@ -259,9 +272,11 @@ declare
   v_def text;
 begin
   -- 1. rls_caller_is_sealed_item: the three learner arms are in (arm 1's
-  --    `t.student_id = auth.uid()` conjunct included), the JWT persona
-  --    conjunct is out, and the function keeps its security-definer,
-  --    search_path-pinned shape and its authenticated + service_role grants.
+  --    `t.student_id = auth.uid()` conjunct included), the per-row author
+  --    exemption (`created_by IS DISTINCT FROM auth.uid()`, R4/#1172) is
+  --    in, the JWT persona conjunct is out, and the function keeps its
+  --    security-definer, search_path-pinned shape and its authenticated +
+  --    service_role grants.
   select pg_get_functiondef(p.oid) into v_def
   from pg_proc p
   where p.pronamespace = 'public'::regnamespace
@@ -272,6 +287,7 @@ begin
      or position('''member''' in v_def) = 0
      or position('seal_org_wide' in v_def) = 0
      or position('student_id = auth.uid()' in v_def) = 0
+     or position('created_by is distinct from auth.uid()' in lower(v_def)) = 0
      or position('account_type' in v_def) > 0
      or not exists (
        select 1
@@ -284,7 +300,7 @@ begin
          and has_function_privilege('service_role', p.oid, 'EXECUTE')
      )
   then
-    raise exception 'rls_caller_is_sealed_item no longer carries the three D-5e1 learner arms (or still reads account_type) with its definer/search_path/grants';
+    raise exception 'rls_caller_is_sealed_item no longer carries the three D-5e1 learner arms plus the author exemption (or still reads account_type) with its definer/search_path/grants';
   end if;
 
   -- 2. The exposure_events SELECT policy: owner branch plus the

@@ -4470,10 +4470,17 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   the halves agree; the exposure write guard reuses the same arms through
   `callerIsLearnerOnAssignment` over the already-loaded assignment (one
   `group_members` read, one `org_members` read only when the run is org-wide —
-  never a query per item). Measured facts preserved (pinned by
+  never a query per item). **The author exemption (R4, #1172) is part of the
+  same rule, not a branch on top of it:** an assignment never seals its own
+  author — `a.created_by IS DISTINCT FROM auth.uid()` per binding row in the SQL
+  function, the same `created_by` filter in both TS halves — so an author who
+  is a `member` of the targeted group keeps seeing the items they compose, and
+  an item bound by an authored AND a foreign run is still sealed through the
+  foreign one. Measured facts preserved (pinned by
   `assignment-cohort-reads.test.ts`): a manager/educator with
   `group_members.role = 'teacher'` in a targeted group is a **reader**, the
-  author composing an item keeps seeing it, an org-wide run holds the item
+  author composing an item keeps seeing it, a targeted educator who is **not**
+  the author is still held, an org-wide run holds the item
   from every learner-profile member and from no org staff.
 - **Migration `20261123200000_phase_5e1_learner_predicates.sql`** owns the
   three objects with a closing DO guard (R26/R27): the seal function (persona
@@ -4542,7 +4549,13 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   service-role mock: the D-5e1 arms with persona/target disagreement (R28) —
   a directly targeted educator is sealed, an untargeted student is not, a
   group teacher is not sealed but a group member is, org-wide seals a
-  learner-profile member and not org staff — plus `callerIsLearnerOnAssignment`
+  learner-profile member and not org staff — plus the author exemption (R4,
+  #1172): an author who is a `member` of the targeted group is not sealed by
+  their own run, a different educator who is a `member` of the same group is,
+  an item bound by an authored and a foreign run is still sealed, and
+  `callerIsLearnerOnAssignment` answers false for the author even when
+  targeted and true for the non-author target — plus
+  `callerIsLearnerOnAssignment`
   (author preview → false, direct target → true, org-wide profile arm);
   `quiz-teacher.service.test.ts` (foreign-org 404 on the write paths, 403 on
   same-org unreached); `teacher-assignment.service.test.ts` (null-org guard,
@@ -4551,7 +4564,11 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   `assignment-cohort-reads.test.ts` extended (directly targeted staff persona
   sealed / untargeted student spared on a second item; org-wide now also pins
   that org staff still read and that a `none`-profile custom-role member is
-  sealed), `exposure-ledger.test.ts` extended (a directly
+  sealed; the author exemption R4/#1172 added after the STU-34 regression:
+  the author seeded as a `member` of the targeted group — the QA-seeder
+  shape — still reads the item while a colleague `member` of the same group
+  is held, and a directly targeted educator who is not the author is still
+  sealed while the author reads the same item), `exposure-ledger.test.ts` extended (a directly
   targeted educator persona mints events, the author preview still mints
   none; a Member-role learner reads only their own events through the org
   filter), new `quiz-attempts-staff-scope.test.ts` (Teacher and Admin read
@@ -4630,6 +4647,26 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   three corrected files 20 passed / 0 failed, and the narrowing-adjacent
   `stats`, `teacher-assignment-results`, `answer-key-attempts` 34 passed /
   0 failed — 54 passed / 0 failed across the six files.
+- **2026-11-23 — 5e-1 regression fix, STU-34 (PR #1421, `qa-suite (stu)` red,
+  measured):** the QA seeder leaves educators in the targeted group as
+  `group_members.role = 'member'`, so D-5e1 arm 2 sealed the **author's** own
+  item; STU-34 then failed at `__tests__/qa/STU/STU-34.spec.ts:425` with a 422
+  `UNPROCESSABLE_ENTITY` on `POST /api/v1/teacher/assignments/<id>/questions`
+  (`openQuestionIds` no longer saw the item). The pre-5e-1 persona conjunct had
+  spared every staff persona, author included. Fix (coordinator ruling, one
+  change on both planes, R4): the author exemption is part of D-5e1 —
+  `AND a.created_by IS DISTINCT FROM auth.uid()` per binding row in
+  `rls_caller_is_sealed_item` (the migration's R26 guard now asserts the
+  conjunct), the same `created_by` filter in `sealedItemsFor` (added to the
+  select, applied before the window split) and in `callerIsLearnerOnAssignment`
+  (returns false for the author, #1172). Row 4's goal survives: a targeted
+  educator who is not the author is still held. Measured after the fix: unit
+  seal suite 20 passed / 0 failed (4 new author cases); `assignment-cohort-reads`
+  - `item-seal` + `exposure-ledger` 29 passed / 0 failed on a fresh
+    `env:reset-db` (author-member reads the item, colleague-member held; targeted
+    non-author sealed, author spared); both `bun run mutate` proofs KILLED (see
+    the difficulty log). Served QA (STU-34 on a fresh `qa-tenant.ts` tenant) is
+    the coordinator's step: the served build must be rebuilt first.
 
 **Difficulty log**
 
@@ -4729,6 +4766,34 @@ an educator-persona-on-Member do not, and a staff-capable holder in another
 org does not.
 Rule: R28 (persona/role disagreement fixtures prove the data predicate, not
 the token).
+
+#### 2026-11-23 — the learner arms sealed the author: served QA caught what unit+integration missed because the QA seeder makes educators group `member`s
+
+What: `qa-suite (stu)` on PR #1421 went red on **STU-34**
+(`__tests__/qa/STU/STU-34.spec.ts:425`): after the teacher published a
+group-targeted run, reusing its item in a second assignment answered **422
+`UNPROCESSABLE_ENTITY`** on `POST /api/v1/teacher/assignments/<id>/questions`,
+because `openQuestionIds` no longer saw the item — the QA seeder leaves
+educators in the targeted group as `group_members.role = 'member'`, so D-5e1
+arm 2 sealed the author's own item. Unit and integration stayed green: their
+fixtures make the author a group `teacher` or never target the author.
+Why: the D-5e1 arms replaced the persona conjunct, which had spared every
+staff persona — the author included — and nothing re-added the author
+exemption the docblock stated ("an author must keep seeing the items they are
+composing", #1172). The 5e-1 served-QA sample covered **8 of the 46 STU**
+cases and did not include STU-34.
+Fix: the author exemption is part of D-5e1 — `a.created_by IS DISTINCT FROM
+auth.uid()` per binding row in `rls_caller_is_sealed_item` (the R26 guard
+asserts the conjunct), the same `created_by` filter in `sealedItemsFor` and
+`callerIsLearnerOnAssignment`. Row 4's goal survives: a targeted educator who
+is not the author is still held (unit cases (b)/(d); the
+`assignment-cohort-reads` author/colleague fixture, R28). Both mutation proofs
+KILLED: dropping the TS author filter turns the author-member unit case red;
+dropping the SQL conjunct (and its guard check) turns the integration
+author-member case red.
+Rule: R4 — and R16-style: a case-ID QA sample must mirror the full shard; 8 of
+46 sampled missed the one case whose seeder shape disagrees with the test
+fixtures.
 
 _Not started beyond 5b._
 
