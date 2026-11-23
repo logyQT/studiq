@@ -35,8 +35,9 @@ export function evaluate(args: {
  * Inside an active org the stored role row is the whole answer (ADR-0015 §6.3:
  * no row → deny). Outside every org there is no role to read, so the
  * personal-content key set resolves at `own` for any authenticated caller:
- * persona decides nothing here (D35), and `quiz.*`/`assignment.*` are absent
- * because their services refuse a no-org call.
+ * persona decides nothing here (D35). The set carries the three assignment verbs
+ * a personal (NULL-org) row supports; `quiz.*` and `assignment.create` are
+ * absent because their services refuse a no-org call.
  */
 export function resolveScope(ctx: RequestContext, action: string): PermissionScope | null {
   const stored = ctx.permissionScopes[action];

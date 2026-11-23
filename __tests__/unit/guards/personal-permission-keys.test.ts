@@ -25,6 +25,17 @@ const PERSONAL_FAMILIES: ReadonlySet<string> = new Set([
 /** The CRUD verbs a personal content key carries. */
 const CRUD_VERBS: ReadonlySet<string> = new Set(['read', 'create', 'update', 'delete']);
 
+/**
+ * The assignment verbs a personal (`organization_id` NULL) row supports. `create`
+ * needs an active org (`teacher-assignment.service.ts`), and `publish`/`grade`
+ * sit on an org cohort the legacy persona default never granted.
+ */
+const PERSONAL_ASSIGNMENT_KEYS: ReadonlySet<string> = new Set([
+  'assignment.read',
+  'assignment.update',
+  'assignment.delete',
+]);
+
 function family(key: string): string {
   return key.slice(0, key.indexOf('.'));
 }
@@ -33,20 +44,25 @@ function verb(key: string): string {
   return key.slice(key.indexOf('.') + 1);
 }
 
+/** Every member of the catalog's `content` category. */
+function contentKeys(): string[] {
+  return Object.entries(PERMISSIONS)
+    .filter(([, definition]) => definition.category === 'content')
+    .map(([key]) => key)
+    .toSorted();
+}
+
 /**
- * Every `content` CRUD key of the five personal families, plus `stats.read`.
- * `quiz.*` and `assignment.*` are content CRUD too and fall out on the family
- * filter; a new content family falls out until it is added here or to the set.
+ * The five personal families' CRUD keys plus the assignment verbs a personal
+ * row supports, plus `stats.read` — 24 in all. A key that has to be personal
+ * but is matched by neither arm stays out until it is classified.
  */
 function expectedPersonalKeys(): string[] {
-  const keys = Object.entries(PERMISSIONS)
-    .filter(
-      ([key, definition]) =>
-        definition.category === 'content' &&
-        PERSONAL_FAMILIES.has(family(key)) &&
-        CRUD_VERBS.has(verb(key)),
-    )
-    .map(([key]) => key);
+  const keys = contentKeys().filter(
+    (key) =>
+      PERSONAL_ASSIGNMENT_KEYS.has(key) ||
+      (PERSONAL_FAMILIES.has(family(key)) && CRUD_VERBS.has(verb(key))),
+  );
 
   keys.push('stats.read');
   return keys.toSorted();
@@ -56,20 +72,28 @@ function expectedPersonalKeys(): string[] {
 const MEMBERS: ReadonlySet<string> = PERSONAL_PERMISSION_KEYS;
 
 describe('PERSONAL_PERMISSION_KEYS', () => {
-  it('is exactly the five content families CRUD plus stats.read', () => {
-    expect([...PERSONAL_PERMISSION_KEYS].toSorted()).toEqual(expectedPersonalKeys());
+  it('is exactly the five content families CRUD, the personal assignment verbs and stats.read', () => {
+    const expected = expectedPersonalKeys();
+
+    expect(expected).toHaveLength(24);
+    expect([...PERSONAL_PERMISSION_KEYS].toSorted()).toEqual(expected);
   });
 
-  // Their services refuse a no-org call (quizzes and teacher assignments are
-  // org rows), so a personal scope for them could only authorize a failure.
-  it('leaves every quiz and assignment key out', () => {
-    const excluded = Object.keys(PERMISSIONS).filter((key) =>
-      ['quiz', 'assignment'].includes(family(key)),
-    );
+  // The complement is a decision, not an omission: every content key outside
+  // the set is named here, so a new family or verb fails until it is placed.
+  it('leaves exactly the org-only content keys out', () => {
+    const complement = contentKeys().filter((key) => !MEMBERS.has(key));
 
-    expect(excluded.length).toBeGreaterThan(0);
-    for (const key of excluded) {
-      expect(MEMBERS.has(key)).toBe(false);
+    expect(complement).toEqual([
+      'assignment.create',
+      'assignment.grade',
+      'assignment.publish',
+      'quiz.create',
+      'quiz.delete',
+      'quiz.read',
+      'quiz.update',
+    ]);
+    for (const key of complement) {
       expect(isPersonalPermissionKey(key)).toBe(false);
     }
   });

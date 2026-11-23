@@ -127,6 +127,28 @@ describe('authz (unified lib)', () => {
       },
     );
 
+    // The assignment verbs a personal (`organization_id` NULL) row supports are
+    // personal; create/publish/grade are not. Named explicitly because the loop
+    // above is vacuous if the set shrinks.
+    it.each([AccountType.STUDENT, AccountType.EDUCATOR, AccountType.MANAGER])(
+      'resolves the personal assignment verbs at own and refuses the rest with no org (%s)',
+      (accountType) => {
+        const ctx: RequestContext = { ...baseCtx, accountType };
+
+        for (const key of ['assignment.read', 'assignment.update', 'assignment.delete']) {
+          expect(resolveScope(ctx, key)).toBe('own');
+        }
+        for (const key of [
+          'assignment.create',
+          'assignment.publish',
+          'assignment.grade',
+          'quiz.read',
+        ]) {
+          expect(resolveScope(ctx, key)).toBeNull();
+        }
+      },
+    );
+
     // ADR-0015 §6.3: inside an org the role's rows are the whole answer, so a
     // member whose role withholds a content key is denied instead of falling
     // back to the personal set the org never granted.
@@ -195,17 +217,18 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(ctx, 'deck.read')).toBe('organization');
     });
 
-    // The set's complement: `quiz.*`/`assignment.*` because their services refuse
-    // a no-org call, and every group/org key because no personal row can carry
-    // one. Inside an org the role rows are the whole answer, so the same keys
-    // stay null there.
+    // The set's complement: all of `quiz.*` (quizzes are org rows) and the
+    // assignment verbs no personal row supports, plus every group/org key
+    // because no personal row can carry one. Inside an org the role rows are
+    // the whole answer, so the same keys stay null there.
     it('denies every key outside the personal set, with and without an org', () => {
       const inOrg: RequestContext = { ...baseCtx, activeOrgId: 'org-1' };
       const outside = [
         'quiz.read',
         'quiz.create',
-        'assignment.read',
         'assignment.create',
+        'assignment.publish',
+        'assignment.grade',
         'group.read',
         'group.invite',
         'org.role.manage',
@@ -222,7 +245,8 @@ describe('authz (unified lib)', () => {
 
     it('decides a read key by the personal set, not by its verb', () => {
       expect(resolveScope(baseCtx, 'flashcard.read')).toBe('own');
-      for (const key of ['quiz.read', 'assignment.read', 'group.read']) {
+      expect(resolveScope(baseCtx, 'assignment.read')).toBe('own');
+      for (const key of ['quiz.read', 'group.read', 'org.audit.read']) {
         expect(resolveScope(baseCtx, key)).toBeNull();
       }
     });

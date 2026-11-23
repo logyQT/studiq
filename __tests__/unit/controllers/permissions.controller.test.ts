@@ -91,7 +91,9 @@ describe('PermissionsController', () => {
       expect(perms['flashcard.read']).toBe('own');
       // Resolved by `resolveScope` (no org, personal key), not carried in ctx.permissionScopes.
       expect(perms['deck.delete']).toBe('own');
-      // `assignment.*` is content but outside the personal set (its services refuse a no-org call).
+      // `assignment.*` is content, but only the verbs a personal row supports are
+      // in the personal set; create/publish/grade are outside it.
+      expect(perms['assignment.create']).toBeUndefined();
       expect(perms['assignment.publish']).toBeUndefined();
       expect(perms['assignment.grade']).toBeUndefined();
     });
@@ -106,7 +108,8 @@ describe('PermissionsController', () => {
       expect(perms['deck.update']).toBe('own');
       expect(perms['stats.read']).toBe('own');
       expect(perms['quiz.read']).toBeUndefined();
-      expect(perms['assignment.read']).toBeUndefined();
+      expect(perms['assignment.read']).toBe('own');
+      expect(perms['assignment.create']).toBeUndefined();
       expect(perms['group.read']).toBeUndefined();
       expect(perms['org.audit.read']).toBeUndefined();
       expect(perms['org.role.manage']).toBeUndefined();
@@ -138,7 +141,7 @@ describe('PermissionsController', () => {
     });
 
     // D35: no account type is read, so a manager with no org resolves the same
-    // personal set a student does — the whole 21-key map, not `{}`.
+    // personal set a student does — the whole 24-key map, not `{}`.
     it('returns the personal set to a manager with no org', async () => {
       const managerCtx = { ...mockCtx, accountType: AccountType.MANAGER, permissionScopes: {} };
 
@@ -155,7 +158,9 @@ describe('PermissionsController', () => {
       for (const key of [
         'quiz.read',
         'quiz.create',
-        'assignment.read',
+        'assignment.create',
+        'assignment.publish',
+        'assignment.grade',
         'group.read',
         'org.member.manage',
       ]) {

@@ -360,11 +360,13 @@ export function isPermissionCatalogKey(value: string): value is PermissionCatalo
  * (ADR-0015 D35, phase 6c). Personal authority is the one layer a user has
  * without a tenant: no role row exists to read, and the persona decides nothing.
  *
- * `quiz.*` and `assignment.*` are content keys and deliberately absent: a quiz
- * and a teacher assignment are org rows (`organization_id` NOT NULL) whose
- * services refuse a no-org create, so a default for them could only authorize a
- * request that then fails. `stats.read` is present because a no-org caller's own
- * study statistics are a real personal surface.
+ * `quiz.*` is deliberately absent: a quiz is an org row whose service refuses a
+ * no-org call, so a default for it could only authorize a request that then
+ * fails. Of `assignment.*` only create/publish/grade are absent for the same
+ * reason: a personal (`organization_id` NULL) assignment is a supported scope
+ * for read/update/delete, so those three verbs are personal. `stats.read` is
+ * present because a no-org caller's own study statistics are a real personal
+ * surface.
  */
 export const PERSONAL_PERMISSION_KEYS: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
   'deck.read',
@@ -387,6 +389,9 @@ export const PERSONAL_PERMISSION_KEYS: ReadonlySet<PermissionKey> = new Set<Perm
   'question_bank.create',
   'question_bank.update',
   'question_bank.delete',
+  'assignment.read',
+  'assignment.update',
+  'assignment.delete',
   'stats.read',
 ]);
 
@@ -397,9 +402,6 @@ export const PERSONAL_PERMISSION_KEYS: ReadonlySet<PermissionKey> = new Set<Perm
  * can be in the set.
  */
 export function isPersonalPermissionKey(value: string): value is PermissionKey {
-  // Widening the set's type, not asserting a narrower one: the guard pins every
-  // member to a real `Permission` value, so the membership test cannot admit a
-  // key the catalog does not have.
   const keys: ReadonlySet<string> = PERSONAL_PERMISSION_KEYS;
   return keys.has(value);
 }
