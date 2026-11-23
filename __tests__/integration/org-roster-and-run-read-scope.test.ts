@@ -85,6 +85,7 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
   let studentB: SupabaseClient<Database>;
   let educatorOnMember: SupabaseClient<Database>;
   let studentOnStatsRole: SupabaseClient<Database>;
+  let outsider: SupabaseClient<Database>;
   let authorNoRead: SupabaseClient<Database>;
   const keyUsers: SupabaseClient<Database>[] = [];
 
@@ -156,6 +157,9 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
     studentBId = await createUser('student-b', 'student');
     educatorOnMemberId = await createUser('educator-on-member', 'educator');
     studentOnStatsRoleId = await createUser('student-on-stats', 'student');
+    // In NO org and NO group: the cross-tenant caller for org_report_recipient
+    // (the id is kept in userIds for afterAll cleanup).
+    await createUser('outsider', 'student');
 
     await seedOrgMembership({
       organizationId: orgId,
@@ -243,6 +247,7 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
     studentB = await signIn(`roster-student-b-${tag}@dev.local`);
     educatorOnMember = await signIn(`roster-educator-on-member-${tag}@dev.local`);
     studentOnStatsRole = await signIn(`roster-student-on-stats-${tag}@dev.local`);
+    outsider = await signIn(`roster-outsider-${tag}@dev.local`);
     authorNoRead = await signIn(userEmails[userIds.indexOf(authorNoReadId)]);
     for (const userId of keyUserIds) {
       keyUsers.push(await signIn(userEmails[userIds.indexOf(userId)]));
@@ -383,6 +388,24 @@ describe('org_members and teacher_assignments read scope (ADR-0015 5e-2, row 10)
     expect(feedError).toBeNull();
     const rows = asJson<{ assignmentId: string | null }[]>(feed);
     expect(rows.map((row) => row.assignmentId)).toContain(runA);
+  });
+
+  it('org_report_recipient is tenant-bound: NULL for a signed-in user in no org, the manager for a member', async () => {
+    // A SECURITY DEFINER RPC must not read across tenants: the outsider holds
+    // no membership anywhere, so the caller-membership conjunct must empty the
+    // result. (Red-capable: without the rls_caller_org_ids conjunct the
+    // outsider gets the manager id back.)
+    const foreign = await outsider.rpc('org_report_recipient', {
+      p_organization_id: orgId,
+    });
+    expect(foreign.error).toBeNull();
+    expect(foreign.data).toBeNull();
+
+    // Positive control: an actual member still resolves the recipient, so the
+    // NULL above is the tenant bound and not an always-empty function.
+    const own = await studentA.rpc('org_report_recipient', { p_organization_id: orgId });
+    expect(own.error).toBeNull();
+    expect(own.data).toBe(managerId);
   });
 
   it('an ownerless-group report still routes to the manager when the reporter is a learner', async () => {

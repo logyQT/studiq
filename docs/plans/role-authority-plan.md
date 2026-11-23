@@ -4674,7 +4674,7 @@ the reader census (re-derived by command before any migration was written,
 R9/R10):**
 
 - Commands (run on this branch, base `fc991415`):
-  - `git grep -n "from('org_members')" -- packages apps` → **31** sites (29
+  - `git grep -n "from('org_members')" -- packages apps` → **29** sites (27
     SELECT/UPDATE/DELETE reads + 2 INSERTs: `classroom.service.ts:40`,
     `organization.service.ts:97`), classified below.
   - `git grep -n "from('teacher_assignments')" -- packages apps` → **31**
@@ -4701,7 +4701,11 @@ c.organization_id FROM rls_caller_org_ids() c)` (membership-wide);
     claim, it decides nothing).
 
 - **`org_members` — every site** (`table / file:line / method / client /
-what the reader needs / the key that authorises it`):
+what the reader needs / the key that authorises it`). The grep command
+  above counts only `.from('org_members')` sites (29); embed readers — e.g.
+  `org-role.service.ts:140`'s `org_members:org_members(count)` — are not
+  `.from()` sites, so they appear as extra rows in this table and the table
+  lists more rows than the command's number:
 
   | table       | file:line                                                                                                 | method                                                                                                                                                                                                                                                                     | client                                                    | needs                                                                                  | key                                |
   | ----------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -4744,7 +4748,10 @@ what the reader needs / the key that authorises it`):
   client sites — `lib/question-seal.ts:136,151`, `lib/assessment-close.ts:93`,
   `lib/exposure-ledger.ts:90`, `services/notification.service.ts:349` — bypass
   RLS and are unaffected; `quiz-teacher.service.ts:380` and
-  `teacher-assignment.service.ts:351` are INSERTs, write policies untouched):
+  `teacher-assignment.service.ts:351` are INSERTs, write policies untouched).
+  As above, the `from('teacher_assignments')` grep counts only the 31
+  `.from()` sites; the embed reader `student-overview.service.ts:117` below is
+  an extra row the command does not count:
 
   | file:line                                                                                                                                                                                      | method                                                         | needs                                                                        | covered by author ∨ targeted ∨ `assignment.read` (D-5e2-2) |
   | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -4759,6 +4766,7 @@ what the reader needs / the key that authorises it`):
   | `lib/assignment-visibility.ts:36` `hiddenResultAssignmentIds` (callers: `quiz-attempt.service.ts:295`, `stats.service.ts:223` `getStudentStats` — own attempts)                                | the attempt's run                                              | targeted                                                                     |
   | `stats.service.ts:413` `getTeacherQuizStats` assignment names                                                                                                                                  | runs of the org's attempts                                     | **see (b)** — a `stats.read`-only role gets empty names (titles), no error   |
   | `question-bank.service.ts:399` `hasBoundAssessmentItems` (in-use guard)                                                                                                                        | non-draft runs binding the bank's items                        | **see (a)**                                                                  |
+  | `student-overview.service.ts:117` `getOverview` (`teacher_assignments(title, show_results)` embed on the caller's own attempts)                                                                | the caller's own attempts' runs                                | targeted / author arm                                                        |
 
 - **Census question (a) — the question-bank in-use guard
   (`question-bank.service.ts:399`).** Verdict: the guard **is** reachable by
@@ -4815,6 +4823,10 @@ what the reader needs / the key that authorises it`):
   - **D-5e2-1** — `org_members` SELECT = `user_id = auth.uid()` OR (same-org
     AND one of the nine census keys via `rls_caller_covers_permission`,
     `stats.read` at `group`). Shipped exactly as the census-derived union.
+    The privacy gain is the **role/membership** dimension only
+    (`org_role_id`, `joined_at`): `profiles`' SELECT has been "own or any
+    same-org profile" since `20261024124756`, so identity and e-mail were
+    already same-org-readable and this slice makes no identity-privacy claim.
   - **D-5e2-2** — `teacher_assignments` SELECT =
     `organization_id IN (rls_caller_org_ids()) AND (created_by = auth.uid() OR
 rls_caller_can_read_assignment_targets(id))`. The direct author arm is
@@ -4844,13 +4856,15 @@ RETURNING` on the SELECT policy and the STABLE helper cannot see the row
   preserved); `database.ts` regenerated with the pinned CLI (second run
   byte-identical, exactly one new entry).
 - **Tests:** new `__tests__/integration/org-roster-and-run-read-scope.test.ts`
-  (17 cases, real JWT/cookie-jar sessions, R41): Member reads only their own
+  (18 cases, real JWT/cookie-jar sessions, R41): Member reads only their own
   row; one case per union key (nine, table-driven); Member reads no foreign
   published run and does read a targeted one; the author reads their own run
   with no `assignment.read`; both RPCs still answer for the teacher; the R43
   pair (educator persona on the Member role → empty payload, student persona
-  on a `stats.read@group` role → data); the ownerless-group report routes to
-  the manager when the reporter is a learner, through the API route.
+  on a `stats.read@group` role → data); `org_report_recipient` is tenant-bound
+  (NULL for a signed-in user in no org, the manager for a member); the
+  ownerless-group report routes to the manager when the reporter is a learner,
+  through the API route.
   `question-report.service.test.ts` pins the RPC call/arg, no `org_members`
   embed, 0-row → NOT_FOUND, RPC error; `teacher-dashboard-org-scope.test.ts`
   now reads the newest owner of the RPCs and asserts the capability branch;
@@ -4870,13 +4884,18 @@ RETURNING` on the SELECT policy and the STABLE helper cannot see the row
   (4) `org_report_recipient` revoked from `authenticated` → the learner report
   case **red**; (5) seal reverted to `= 'learner'`, migration re-applied →
   the carry-over guard **raises P0001**; (6) direct author arm dropped → the
-  snapshot-boundary author INSERT … RETURNING case **red**.
+  snapshot-boundary author INSERT … RETURNING case **red**; (7) the
+  `rls_caller_org_ids` conjunct dropped from `org_report_recipient` → the
+  tenant-bound case (NULL for a caller in no org) **red** — it returns the
+  manager id instead; (8) the live org_members SELECT policy's `stats.read`
+  scope argument flipped `'group'` → `'own'`, the migration's guard block run
+  by hand → **raises P0001** (restored, the guard passes).
 - **Gates (measured on this branch):** `typecheck:all` + `typecheck:admin`
   0 errors; `lint`, `review:static`, `knip`, `format:check`, `dup:base`
   ("no new clones", 211 in tree) all green; unit **316 files / 4901 passed,
   1 skipped**; targeted integration (56 files run serially, `--no-file-
 parallelism`, on this branch's reset stack) **567 passed, 0 failed**;
-  `pr:size` **667/400 (XL)** → `size:exception` (522 test + 141 doc + 1
+  `pr:size` **680/400 (XL)** → `size:exception` (545 test + 263 doc + 1
   generated excluded). Two real `db reset`s plus a hand re-apply of the
   migration file all pass its guard.
 - **Register row 10 closed.** Rows 3 (personal scope, phase 6) remains the

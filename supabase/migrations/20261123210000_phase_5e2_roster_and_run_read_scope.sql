@@ -4,8 +4,10 @@
 -- decisions D-5e2-1, D-5e2-2, D-5e2-3; R4, R19, R26, R27, R40).
 --
 -- Row 10 narrows the two reads that are wider than their gate. The reader
--- census (31 org_members sites, 31 teacher_assignments sites in packages +
--- apps, every row re-derived by command) proved which key authorises each
+-- census (29 org_members `.from()` sites = 27 reads + 2 INSERTs, 31
+-- teacher_assignments sites in packages + apps, every row re-derived by
+-- command; embed readers are not `.from()` sites and are listed in the
+-- plan's census table, not counted here) proved which key authorises each
 -- reader family; the union below is that census, not D25's four.
 --
 -- D-5e2-1 — org_members SELECT is a capability union, not the D25 four:
@@ -472,7 +474,10 @@ GRANT EXECUTE ON FUNCTION public.get_teacher_activity_feed(uuid, uuid, integer)
 --    embed's semantics exactly: the first org member (by joined_at) whose
 --    role holds org.report.manage at a non-null scope. SECURITY DEFINER +
 --    search_path = '' (R18), granted to authenticated + service_role only
---    (R19).
+--    (R19). Like the sibling definer RPCs above, the definer is
+--    tenant-bound: p_organization_id must be one of the caller's own orgs
+--    (rls_caller_org_ids), so a caller outside the org gets NULL (the
+--    service maps it to NOT_FOUND), never a foreign org's recipient.
 -- ==========================================
 CREATE OR REPLACE FUNCTION public.org_report_recipient(p_organization_id uuid)
 RETURNS uuid
@@ -486,6 +491,7 @@ AS $$
   JOIN public.org_roles r ON r.id = om.org_role_id
   JOIN public.org_role_permissions rp ON rp.org_role_id = r.id
   WHERE om.organization_id = p_organization_id
+    AND p_organization_id IN (SELECT c.organization_id FROM public.rls_caller_org_ids() c)
     AND rp.permission_key = 'org.report.manage'
     AND rp.scope IS NOT NULL
   ORDER BY om.joined_at ASC
@@ -511,7 +517,11 @@ declare
 begin
   -- 1. org_members SELECT: the self branch plus all nine union keys, and no
   --    WITH CHECK (the policy is SELECT-only; the write policies are
-  --    untouched and still carry org.member.manage).
+  --    untouched and still carry org.member.manage). stats.read is pinned
+  --    as the exact stored pair 'stats.read'::text, 'group'::text (the
+  --    decompiled pg_policies.qual form), so a scope-argument flip to
+  --    'own' — which the system Member satisfies — raises here instead of
+  --    passing while admitting the whole roster to every learner.
   if (
     select count(*)
     from pg_policies p
@@ -531,12 +541,12 @@ begin
       and position('org.role.manage' in p.qual) > 0
       and position('assignment.create' in p.qual) > 0
       and position('assignment.update' in p.qual) > 0
-      and position('stats.read' in p.qual) > 0
+      and position('''stats.read''::text, ''group''::text' in p.qual) > 0
       and position('rls_caller_covers_permission' in p.qual) > 0
       and position('account_type' in p.qual) = 0
   ) <> 1
   then
-    raise exception 'the org_members SELECT policy no longer carries the self branch plus the nine-key D-5e2-1 union (or gained a WITH CHECK / a persona conjunct)';
+    raise exception 'the org_members SELECT policy no longer carries the self branch plus the nine-key D-5e2-1 union with stats.read pinned at group scope (or gained a WITH CHECK / a persona conjunct)';
   end if;
 
   -- 2. teacher_assignments SELECT: exactly one row, naming the tenant floor,
@@ -596,8 +606,10 @@ begin
   end if;
 
   -- 4. org_report_recipient: definer, search_path pinned, executable by
-  --    authenticated + service_role, not by anon, and it still names the
-  --    org.report.manage key with a non-null scope.
+  --    authenticated + service_role, not by anon, still names the
+  --    org.report.manage key with a non-null scope, and is tenant-bound:
+  --    the body names rls_caller_org_ids so a caller outside the org gets
+  --    NULL instead of a foreign org's recipient.
   select pg_get_functiondef(p.oid) into v_def
   from pg_proc p
   where p.pronamespace = 'public'::regnamespace
@@ -607,6 +619,7 @@ begin
      or position('org.report.manage' in v_def) = 0
      or position('scope IS NOT NULL' in v_def) = 0
      or position('joined_at' in v_def) = 0
+     or position('rls_caller_org_ids' in v_def) = 0
      or not exists (
        select 1
        from pg_proc p
@@ -619,7 +632,7 @@ begin
          and not has_function_privilege('anon', p.oid, 'EXECUTE')
      )
   then
-    raise exception 'org_report_recipient no longer carries the org.report.manage routing (definer, search_path pinned, authenticated + service_role only)';
+    raise exception 'org_report_recipient no longer carries the org.report.manage routing or lost the rls_caller_org_ids tenant bound (definer, search_path pinned, authenticated + service_role only)';
   end if;
 
   -- 5. The 5e-1 carry-over: rls_caller_is_sealed_item's org-wide arm must
