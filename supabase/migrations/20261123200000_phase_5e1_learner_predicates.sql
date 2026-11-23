@@ -11,8 +11,12 @@
 --   2. through a group where the caller's group_members.role = 'member'
 --      (a group teacher is staff of that class, not a learner in it);
 --   3. org-wide (seal_org_wide) and the caller's org role in the
---      assignment's organization has org_roles.entitlement_profile =
---      'learner' (the system Member role; Admin/Teacher are 'all').
+--      assignment's organization is not a staff profile:
+--      org_roles.entitlement_profile <> 'all' (Admin/Teacher are 'all';
+--      the system Member role is 'learner' and custom roles default to
+--      'none' — every non-staff profile is held by an org-wide run, the
+--      safe direction and the pre-5e-1 behaviour for any non-staff
+--      persona).
 --
 -- This file owns three objects:
 --
@@ -31,8 +35,14 @@
 --      row, so the two clauses must stay identical): own row, or a
 --      same-org row the caller covers via stats.read / assignment.read /
 --      assignment.update at group-or-wider scope, or an attempt of an
---      assignment the caller authored. quiz_attempts.organization_id is
---      trigger-stamped since 20261028100000.
+--      assignment the caller authored. An unattributed row
+--      (organization_id IS NULL — legacy/practice attempt) carries no org
+--      to authorize against, so it is an alternative arm: readable by the
+--      author of its assignment, or by a caller who shares an org with the
+--      attempt's owner AND holds stats.read / assignment.read /
+--      assignment.update at group-or-wider scope there. It cannot cross
+--      orgs, and a Member's own-scope rows do not qualify.
+--      quiz_attempts.organization_id is trigger-stamped since 20261028100000.
 --
 -- Re-runnable: create or replace / drop+create policy plus a guarded DO
 -- block — a db reset and a hand re-apply end in the same state (R19).
@@ -86,7 +96,10 @@ AS $$
             )
         )
         -- … arm 3: the run is org-wide and the caller's role in the run's
-        -- organization is a learner profile.
+        -- organization is not a staff profile. Admin/Teacher are 'all'
+        -- (staff); the learner profile and every custom role ('none') are
+        -- held — the safe direction, and the old behaviour for any
+        -- non-staff persona.
         OR (
           a.seal_org_wide
           AND EXISTS (
@@ -95,7 +108,7 @@ AS $$
             JOIN public.org_roles r ON r.id = om.org_role_id
             WHERE om.user_id = auth.uid()
               AND om.organization_id = a.organization_id
-              AND r.entitlement_profile = 'learner'
+              AND r.entitlement_profile <> 'all'
           )
         )
       )
@@ -162,6 +175,32 @@ CREATE POLICY "Own or staff quiz attempts" ON public.quiz_attempts
         )
       )
     )
+    OR (
+      -- Unattributed (legacy/practice) row: it carries no org to authorize
+      -- against, so this alternative arm requires the author of its
+      -- assignment, or a shared org with the attempt's owner AND a
+      -- staff-scope capability there. It cannot cross orgs, and a Member's
+      -- own-scope rows do not qualify.
+      organization_id IS NULL
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM public.teacher_assignments a
+          WHERE a.id = quiz_attempts.assignment_id
+            AND a.created_by = auth.uid()
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM public.org_members peer
+          JOIN public.org_members me ON me.organization_id = peer.organization_id
+          JOIN public.org_role_permissions rp ON rp.org_role_id = me.org_role_id
+          WHERE me.user_id = auth.uid()
+            AND peer.user_id = quiz_attempts.user_id
+            AND rp.permission_key IN ('stats.read', 'assignment.read', 'assignment.update')
+            AND rp.scope IN ('group', 'organization')
+        )
+      )
+    )
   )
   WITH CHECK (
     user_id = auth.uid()
@@ -180,6 +219,32 @@ CREATE POLICY "Own or staff quiz attempts" ON public.quiz_attempts
         )
       )
     )
+    OR (
+      -- Unattributed (legacy/practice) row: it carries no org to authorize
+      -- against, so this alternative arm requires the author of its
+      -- assignment, or a shared org with the attempt's owner AND a
+      -- staff-scope capability there. It cannot cross orgs, and a Member's
+      -- own-scope rows do not qualify.
+      organization_id IS NULL
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM public.teacher_assignments a
+          WHERE a.id = quiz_attempts.assignment_id
+            AND a.created_by = auth.uid()
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM public.org_members peer
+          JOIN public.org_members me ON me.organization_id = peer.organization_id
+          JOIN public.org_role_permissions rp ON rp.org_role_id = me.org_role_id
+          WHERE me.user_id = auth.uid()
+            AND peer.user_id = quiz_attempts.user_id
+            AND rp.permission_key IN ('stats.read', 'assignment.read', 'assignment.update')
+            AND rp.scope IN ('group', 'organization')
+        )
+      )
+    )
   );
 
 -- ==========================================
@@ -193,8 +258,9 @@ do $$
 declare
   v_def text;
 begin
-  -- 1. rls_caller_is_sealed_item: the three learner arms are in, the JWT
-  --    persona conjunct is out, and the function keeps its security-definer,
+  -- 1. rls_caller_is_sealed_item: the three learner arms are in (arm 1's
+  --    `t.student_id = auth.uid()` conjunct included), the JWT persona
+  --    conjunct is out, and the function keeps its security-definer,
   --    search_path-pinned shape and its authenticated + service_role grants.
   select pg_get_functiondef(p.oid) into v_def
   from pg_proc p
@@ -205,6 +271,7 @@ begin
      or position('entitlement_profile' in v_def) = 0
      or position('''member''' in v_def) = 0
      or position('seal_org_wide' in v_def) = 0
+     or position('student_id = auth.uid()' in v_def) = 0
      or position('account_type' in v_def) > 0
      or not exists (
        select 1
@@ -250,7 +317,8 @@ begin
   end if;
 
   -- 3. The quiz_attempts policy: exactly one row, USING and WITH CHECK both
-  --    carry the three capability keys and the author arm, and neither
+  --    carry the three capability keys, the author arm and the unattributed
+  --    (organization_id IS NULL, shared-org staff peer) arm, and neither
   --    reads the JWT persona.
   if (
     select count(*)
@@ -265,11 +333,17 @@ begin
       and position('assignment.read' in p.qual) > 0
       and position('assignment.update' in p.qual) > 0
       and position('teacher_assignments' in p.qual) > 0
+      and position('organization_id IS NULL' in p.qual) > 0
+      and position('org_members' in p.qual) > 0
+      and position('peer' in p.qual) > 0
       and position('account_type' in p.qual) = 0
       and position('stats.read' in p.with_check) > 0
       and position('assignment.read' in p.with_check) > 0
       and position('assignment.update' in p.with_check) > 0
       and position('teacher_assignments' in p.with_check) > 0
+      and position('organization_id IS NULL' in p.with_check) > 0
+      and position('org_members' in p.with_check) > 0
+      and position('peer' in p.with_check) > 0
       and position('account_type' in p.with_check) = 0
   ) <> 1
   then

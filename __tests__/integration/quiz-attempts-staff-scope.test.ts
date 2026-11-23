@@ -16,7 +16,9 @@ import type { Database } from '@studiq/server/types/database';
 // (R28): an educator persona on the Member role reads no other learner's attempt (the old
 // account_type branch leaked exactly this), while a student persona on a custom role holding
 // `assignment.update`@organization does (a group-or-wider capability the Member's own-scope
-// `stats.read` does not cover).
+// `stats.read` does not cover). The unattributed arm (organization_id IS NULL — a legacy/practice
+// attempt) is pinned the same way: a shared-org staff-capability holder reads it, a Member does
+// not, and a capability holder in another org does not — nothing crosses orgs.
 
 const PASSWORD = 'AttemptScope1!';
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -48,12 +50,15 @@ describe('quiz_attempts staff branch keys on capability, not persona (#1165, D-5
   let teacherRoleId: string;
   let memberRoleId: string;
   let attemptId: string;
+  let nullOrgAttemptId: string;
+  let otherOrgId: string;
   let studentAId: string;
   let teacher: SupabaseClient<Database>;
   let manager: SupabaseClient<Database>;
   let memberStudent: SupabaseClient<Database>;
   let educatorOnMember: SupabaseClient<Database>;
   let customGrader: SupabaseClient<Database>;
+  let outsider: SupabaseClient<Database>;
   let studentA: SupabaseClient<Database>;
   const userIds: string[] = [];
 
@@ -161,22 +166,54 @@ describe('quiz_attempts staff branch keys on capability, not persona (#1165, D-5
     attemptId = asJson<{ id: string; organization_id: string | null }>(attempt).id;
     expect(asJson<{ organization_id: string | null }>(attempt).organization_id).toBe(orgId);
 
+    // A practice attempt (no assignment) stays unattributed: organization_id IS NULL. The
+    // unattributed arm of the policy must still let a shared-org staff-capability holder
+    // read it — and never anyone outside that org.
+    const { data: nullOrgAttempt, error: nullOrgError } = await service
+      .from('quiz_attempts')
+      .insert({
+        user_id: studentAId,
+        assignment_id: null,
+        score: 1,
+        total_questions: 1,
+      })
+      .select('id, organization_id')
+      .single();
+    if (nullOrgError) throw new Error(`null-org attempt: ${nullOrgError.message}`);
+    nullOrgAttemptId = asJson<{ id: string; organization_id: string | null }>(nullOrgAttempt).id;
+    expect(asJson<{ organization_id: string | null }>(nullOrgAttempt).organization_id).toBeNull();
+
+    // A second org with its own Teacher-role holder: staff-capable, but sharing no org with
+    // the attempt's owner, so neither the org-attributed nor the unattributed arm may reach.
+    const otherSeeded = asJson<Awaited<ReturnType<typeof seedOrganization>>>(
+      await seedOrganization(`attempts-other-${tag}`),
+    );
+    otherOrgId = otherSeeded.org.id;
+    const outsiderId = await createUser('outsider', 'educator');
+    await seedOrgMembership({
+      organizationId: otherOrgId,
+      userId: outsiderId,
+      orgRoleId: otherSeeded.teacherRoleId,
+    });
+
     teacher = await signIn(`attempts-teacher-${tag}@dev.local`);
     manager = await signIn(`attempts-manager-${tag}@dev.local`);
     memberStudent = await signIn(`attempts-student-b-${tag}@dev.local`);
     educatorOnMember = await signIn(`attempts-educator-member-${tag}@dev.local`);
     customGrader = await signIn(`attempts-grader-${tag}@dev.local`);
+    outsider = await signIn(`attempts-outsider-${tag}@dev.local`);
     studentA = await signIn(`attempts-student-a-${tag}@dev.local`);
   });
 
   afterAll(async () => {
-    await service.from('quiz_attempts').delete().eq('id', attemptId);
+    await service.from('quiz_attempts').delete().in('id', [attemptId, nullOrgAttemptId]);
     await service.from('teacher_assignments').delete().eq('organization_id', orgId);
     await cleanupOrganizationDeep(orgId);
+    await cleanupOrganizationDeep(otherOrgId);
     for (const id of userIds) await service.auth.admin.deleteUser(id);
   });
 
-  it('stamps the attempt with the assignment’s organization', async () => {
+  it('stamps the assignment attempt with the organization, and leaves a practice attempt unattributed', async () => {
     const own = await studentA
       .from('quiz_attempts')
       .select('id, organization_id')
@@ -185,25 +222,50 @@ describe('quiz_attempts staff branch keys on capability, not persona (#1165, D-5
     expect(asJson<Array<{ id: string; organization_id: string | null }>>(own.data)).toEqual([
       { id: attemptId, organization_id: orgId },
     ]);
+
+    const practice = await studentA
+      .from('quiz_attempts')
+      .select('id, organization_id')
+      .eq('id', nullOrgAttemptId);
+    expect(practice.error).toBeNull();
+    expect(asJson<Array<{ id: string; organization_id: string | null }>>(practice.data)).toEqual([
+      { id: nullOrgAttemptId, organization_id: null },
+    ]);
   });
 
-  it('lets the author (Teacher, stats.read@group) and the Admin read the learner’s attempt', async () => {
-    expect((await attemptsOf(teacher, studentAId)).map((row) => row.id)).toEqual([attemptId]);
-    expect((await attemptsOf(manager, studentAId)).map((row) => row.id)).toEqual([attemptId]);
+  it('lets the author (Teacher, stats.read@group) and the Admin read the learner’s attempts', async () => {
+    for (const [label, session] of [
+      ['teacher', teacher],
+      ['manager', manager],
+    ] as const) {
+      const rows = await attemptsOf(session, studentAId);
+      expect(
+        rows.map((row) => row.id).toSorted(),
+        `${label} reads the org-attributed AND the unattributed attempt`,
+      ).toEqual([attemptId, nullOrgAttemptId].toSorted());
+    }
   });
 
   it('lets a custom role holding assignment.update@organization read the cohort (no read key needed)', async () => {
-    expect((await attemptsOf(customGrader, studentAId)).map((row) => row.id)).toEqual([attemptId]);
+    const rows = await attemptsOf(customGrader, studentAId);
+    expect(rows.map((row) => row.id).toSorted()).toEqual([attemptId, nullOrgAttemptId].toSorted());
   });
 
-  it('lets no Member read another learner’s attempt — own-scope stats.read does not cover group (R28)', async () => {
+  it('lets no Member read another learner’s attempts — own-scope stats.read does not cover group (R28)', async () => {
     expect(await attemptsOf(memberStudent, studentAId)).toEqual([]);
     // Persona and role disagree the other way too: an educator persona on the Member role is
-    // still not staff — the old account_type branch returned the row here.
+    // still not staff — the old account_type branch returned the rows here.
     expect(await attemptsOf(educatorOnMember, studentAId)).toEqual([]);
   });
 
+  it('lets no staff-capability holder who shares no org with the owner read the unattributed attempt', async () => {
+    // The outsider holds the Teacher role (stats.read@group) in a DIFFERENT org: the
+    // unattributed arm requires a shared org, so nothing crosses orgs.
+    expect(await attemptsOf(outsider, studentAId)).toEqual([]);
+  });
+
   it('keeps the learner’s own read working', async () => {
-    expect((await attemptsOf(studentA, studentAId)).map((row) => row.id)).toEqual([attemptId]);
+    const rows = await attemptsOf(studentA, studentAId);
+    expect(rows.map((row) => row.id).toSorted()).toEqual([attemptId, nullOrgAttemptId].toSorted());
   });
 });

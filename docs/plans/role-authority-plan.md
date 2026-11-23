@@ -4497,22 +4497,22 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   `packages/server/src`; `apps/web/src` has no direct read — grep finds only
   i18n labels and a comment — the frontend goes through the API):
 
-  | reader                                                                            | method                                                         | client                                       | rows it needs           | kept by the new predicate                                                                                                                             |
-  | --------------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `quiz-attempt.service.ts:126,261,317`                                             | `loadAnswerableAttempt`, `list`, `getById`                     | user (`clientFactory`)                       | own attempt             | own clause                                                                                                                                            |
-  | `quiz-attempt.service.ts:474`                                                     | `saveDraft` UPDATE                                             | user                                         | own                     | WITH CHECK own clause                                                                                                                                 |
-  | `quiz.service.ts:35,89`                                                           | `generateQuiz` count + INSERT                                  | user                                         | own                     | own / WITH CHECK own                                                                                                                                  |
-  | `assessment-review.service.ts:253,305`                                            | `reviewedAttempts`, `selectAttempt`                            | user                                         | own                     | own clause                                                                                                                                            |
-  | `stats.service.ts:212`                                                            | `getStudentStats`                                              | user                                         | own                     | own clause                                                                                                                                            |
-  | `stats.service.ts:383`                                                            | `getTeacherQuizStats`                                          | user                                         | org members' attempts   | staff branch (`stats.read`@group+ etc.); **NULL-stamped personal attempts of members are now invisible to staff** (see the product consequence below) |
-  | `student-overview.service.ts:98,115`                                              | `getOverview`                                                  | user                                         | own                     | own clause                                                                                                                                            |
-  | `teacher-assignment.service.ts:744,1220,1275,1868`                                | `fairness`, `getResults`, `getStudentAnswers`, `exportAnswers` | user via `ownedClient` (`assignment.update`) | all attempts of the run | author arm, or `assignment.update`@organization covers `group`                                                                                        |
-  | `teacher-assignment.service.ts:1326,1396`                                         | `gradeAnswer` read + UPDATE of the student's row               | user via `ownedClient`                       | the student's attempt   | USING = WITH CHECK keeps the grading write                                                                                                            |
-  | `teacher-assignment.service.ts:1586,1616,1650,1719,1736,1927`                     | student list/detail/start/upload                               | user                                         | own                     | own clause                                                                                                                                            |
-  | `lib/assessment-close.ts:65`                                                      | `expireInProgressAttempts`                                     | service                                      | all rows of the run     | service_role bypasses RLS                                                                                                                             |
-  | `lib/attempt-sample.ts:74`                                                        | `attemptHistory`                                               | service                                      | the student's rows      | service_role bypasses RLS                                                                                                                             |
-  | RPC `get_teacher_problematic_questions` (SECURITY INVOKER, joins `quiz_attempts`) | called from `stats.service.ts:171`                             | user                                         | learners' answers       | Teacher passes via `stats.read`@group — must stay green (it empties silently if the branch vanishes)                                                  |
-  | RPCs `get_teacher_group_performance`, `get_teacher_activity_feed`                 | `stats.service.ts:651,676`                                     | user                                         | class rows              | 5e-2 (persona gate inside stays; the Teacher role still passes RLS via `stats.read`@group)                                                            |
+  | reader                                                                            | method                                                         | client                                       | rows it needs           | kept by the new predicate                                                                                                                                                                               |
+  | --------------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `quiz-attempt.service.ts:126,261,317`                                             | `loadAnswerableAttempt`, `list`, `getById`                     | user (`clientFactory`)                       | own attempt             | own clause                                                                                                                                                                                              |
+  | `quiz-attempt.service.ts:474`                                                     | `saveDraft` UPDATE                                             | user                                         | own                     | WITH CHECK own clause                                                                                                                                                                                   |
+  | `quiz.service.ts:35,89`                                                           | `generateQuiz` count + INSERT                                  | user                                         | own                     | own / WITH CHECK own                                                                                                                                                                                    |
+  | `assessment-review.service.ts:253,305`                                            | `reviewedAttempts`, `selectAttempt`                            | user                                         | own                     | own clause                                                                                                                                                                                              |
+  | `stats.service.ts:212`                                                            | `getStudentStats`                                              | user                                         | own                     | own clause                                                                                                                                                                                              |
+  | `stats.service.ts:383`                                                            | `getTeacherQuizStats`                                          | user                                         | org members' attempts   | staff branch (`stats.read`@group+ etc.) plus the unattributed arm: NULL-stamped personal attempts of **shared-org** members stay visible to a staff-capability holder in that org; nothing crosses orgs |
+  | `student-overview.service.ts:98,115`                                              | `getOverview`                                                  | user                                         | own                     | own clause                                                                                                                                                                                              |
+  | `teacher-assignment.service.ts:744,1220,1275,1868`                                | `fairness`, `getResults`, `getStudentAnswers`, `exportAnswers` | user via `ownedClient` (`assignment.update`) | all attempts of the run | author arm, or `assignment.update`@organization covers `group`                                                                                                                                          |
+  | `teacher-assignment.service.ts:1326,1396`                                         | `gradeAnswer` read + UPDATE of the student's row               | user via `ownedClient`                       | the student's attempt   | USING = WITH CHECK keeps the grading write                                                                                                                                                              |
+  | `teacher-assignment.service.ts:1586,1616,1650,1719,1736,1927`                     | student list/detail/start/upload                               | user                                         | own                     | own clause                                                                                                                                                                                              |
+  | `lib/assessment-close.ts:65`                                                      | `expireInProgressAttempts`                                     | service                                      | all rows of the run     | service_role bypasses RLS                                                                                                                                                                               |
+  | `lib/attempt-sample.ts:74`                                                        | `attemptHistory`                                               | service                                      | the student's rows      | service_role bypasses RLS                                                                                                                                                                               |
+  | RPC `get_teacher_problematic_questions` (SECURITY INVOKER, joins `quiz_attempts`) | called from `stats.service.ts:171`                             | user                                         | learners' answers       | Teacher passes via `stats.read`@group — must stay green (it empties silently if the branch vanishes)                                                                                                    |
+  | RPCs `get_teacher_group_performance`, `get_teacher_activity_feed`                 | `stats.service.ts:651,676`                                     | user                                         | class rows              | 5e-2 (persona gate inside stays; the Teacher role still passes RLS via `stats.read`@group)                                                                                                              |
 
   No reader needs the staff branch at a scope the predicate does not cover —
   the census found no stop-and-report case. `rls-tenant-isolation.test.ts`'s
@@ -4550,13 +4550,16 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   `question-list-pagination` seal stub. Integration (coordinator runs them):
   `assignment-cohort-reads.test.ts` extended (directly targeted staff persona
   sealed / untargeted student spared on a second item; org-wide now also pins
-  that org staff still read), `exposure-ledger.test.ts` extended (a directly
+  that org staff still read and that a `none`-profile custom-role member is
+  sealed), `exposure-ledger.test.ts` extended (a directly
   targeted educator persona mints events, the author preview still mints
   none; a Member-role learner reads only their own events through the org
   filter), new `quiz-attempts-staff-scope.test.ts` (Teacher and Admin read
-  the learner's attempt, a custom role with only `assignment.update`@
-  organization reads it, a Member and an educator-persona-on-Member do not,
-  own read works) and new `quiz-teacher-404-403-matrix.test.ts` (the API
+  the learner's attempts, a custom role with only `assignment.update`@
+  organization reads them, a Member and an educator-persona-on-Member do not,
+  own read works; the unattributed arm: a Teacher reads a same-org member's
+  NULL-org practice attempt, a Member does not, and a staff-capable holder in
+  another org does not) and new `quiz-teacher-404-403-matrix.test.ts` (the API
   matrix above).
 - **Mutation proofs (`bun run mutate`, clean tree, one edit + one named
   test each) — all KILLED:** (1) drop `.eq('role', 'member')` from
@@ -4577,11 +4580,14 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
   the seal function → the cohort-reads group-teacher case goes red; swap
   `rls_caller_covers_permission` for `rls_caller_has_permission` in the
   `exposure_events` policy → the exposure-ledger Member case goes red.
-- **Product consequence (not debt):** `getTeacherQuizStats` aggregates only
-  org-stamped attempts (`organization_id IS NOT NULL`), so a teacher dashboard
-  counts only attempts attributed to an org; unattributed personal practice of
-  org members stays personal (ADR-0015 §6.3 — no active org means personal
-  content only) and is invisible to staff in the teacher dashboard.
+- **Product consequence (not debt):** `getTeacherQuizStats` and the INVOKER RPC
+  `get_teacher_problematic_questions` read `quiz_attempts` through the user
+  client, so they see exactly what the policy admits: org-attributed attempts
+  of same-org members through the staff branch, and **unattributed (NULL-org)
+  practice attempts of a shared-org member through the unattributed arm**
+  (shared org + a staff-scope capability there). Nothing crosses orgs and a
+  Member's own-scope rows do not qualify — removing the persona gate in row 4
+  did not narrow what a legitimate teacher sees.
 - **Recorded debt (not fixed here):** (a) `quiz_attempts` is `FOR ALL`, so the
   staff branch also lets a staff caller INSERT/UPDATE other users' attempt
   rows, and RLS cannot restrict _which columns_ — a teacher can still write
@@ -4695,6 +4701,26 @@ both directions pinned in fixtures where persona and role disagree (R28):
 student-on-custom-role reads), `assignment-cohort-reads.test.ts`
 (directly targeted staff persona sealed, untargeted student spared).
 Rule: R43.
+
+#### 2026-11-23 — a NULL-org narrowing was invisible to the unit suite because every stats test bypasses RLS
+
+What: the 5e-1 `quiz_attempts` staff branch required
+`organization_id IS NOT NULL`, so `getTeacherQuizStats` and the INVOKER RPC
+`get_teacher_problematic_questions` silently dropped same-org members'
+unattributed (`organization_id IS NULL`) practice attempts — a real product
+narrowing the tests could not see: `stats.test.ts` drives the service with
+`mockUser`, i.e. through the service-role client, which bypasses RLS entirely,
+so no test ever exercised the policy as a real teacher JWT.
+Why: the mock answers every row the service asks for, so the policy's staff
+branch is never on the code path the unit suite pins.
+Fix: the unattributed arm (shared org + staff-scope capability) restored the
+data set, and the boundary is now pinned where it lives —
+`quiz-attempts-staff-scope.test.ts` signs real users in and reads through
+PostgREST: a Teacher reads a same-org member's NULL-org attempt, a Member and
+an educator-persona-on-Member do not, and a staff-capable holder in another
+org does not.
+Rule: R28 (persona/role disagreement fixtures prove the data predicate, not
+the token).
 
 _Not started beyond 5b._
 

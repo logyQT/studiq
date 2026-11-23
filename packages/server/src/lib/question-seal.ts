@@ -13,7 +13,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * There is no reservation table: an item is sealed for a **learner** while a published assessment
  * targets them and the clock is inside its window (`[start_time, effective close)`). "Learner" is
  * data, not persona (D-5e1): the caller is targeted directly, through a group they are a
- * `member` of, or by an org-wide run in an org whose role for them is a learner profile. The set is
+ * `member` of, or by an org-wide run in an org whose role for them is a non-staff profile
+ * (`entitlement_profile <> 'all'` — Admin/Teacher are staff; the Member role is 'learner' and
+ * custom roles default to 'none', so every non-staff profile is held). The set is
  * computed here, with the service role, from the caller's own `ctx` — never from an id in a
  * request — and it never leaves the server: no client-callable function returns it, because a
  * learner who could read it would learn exactly which items their assessment holds (R14).
@@ -45,6 +47,16 @@ export interface HeldNotice {
 
 /** PostgREST `.in()` values travel in the URL; ids are read in chunks below the gateway limit. */
 const SEAL_CHUNK = 200;
+
+/**
+ * The one D-5e1 "held" notion for arm 3: staff profiles (`'all'` — Admin/Teacher) are not
+ * learners; every other profile (`'learner'`, and custom roles' default `'none'`) is held by an
+ * org-wide run — the safe direction, and the pre-5e-1 behaviour for any non-staff persona. A
+ * membership without a resolvable profile is not held (the SQL arm's JOIN would not match either).
+ */
+function isHeldProfile(profile: string | null | undefined): boolean {
+  return profile != null && profile !== 'all';
+}
 
 /** Whether `now` is inside a window: `[start, close)`, with a missing bound left open. */
 export function isWindowOpen(window: SealWindow, now: Date): boolean {
@@ -86,7 +98,7 @@ export async function sealedItemsFor(
   // 1. The assignments that target this caller — directly, through one of their groups as a
   //    `member` (a group teacher is staff of that class, not a learner in it), or because the
   //    teacher sealed the run for the whole organisation and the caller's role there is a
-  //    learner profile (R3).
+  //    non-staff profile (R3).
   const [groups, direct, memberships] = await Promise.all([
     supabase.from('group_members').select('group_id').eq('user_id', callerId).eq('role', 'member'),
     supabase.from('assignment_targets').select('assignment_id').eq('student_id', callerId),
@@ -112,7 +124,7 @@ export async function sealedItemsFor(
   }
 
   const learnerOrgIds = dbRows(memberships.data)
-    .filter((row) => dbNested(row.org_roles)?.entitlement_profile === 'learner')
+    .filter((row) => isHeldProfile(dbNested(row.org_roles)?.entitlement_profile))
     .map((row) => row.organization_id);
   if (learnerOrgIds.length > 0) {
     const orgWide = await supabase
@@ -145,12 +157,16 @@ export async function sealedItemsFor(
   const ended = windows.filter((row) => started(row) && !isWindowOpen(row, now));
   if (live.length === 0 && ended.length === 0) return success(emptySeal());
 
+  // Only the runs that have opened can hold anything — the SQL gates every arm (the withheld
+  // arm included) on `start_time <= now()`, so a held-back link of a not-yet-started run seals
+  // nothing here either.
+  const sealingWindows = [...live, ...ended];
   const links = await supabase
     .from('assignment_questions')
     .select('assignment_id, question_id, withhold_from_review, released_at')
     .in(
       'assignment_id',
-      windows.map((row) => row.id),
+      sealingWindows.map((row) => row.id),
     );
   if (links.error) return mapSupabaseError(links.error);
 
@@ -200,8 +216,8 @@ export interface LearnerAssignment {
 /**
  * The D-5e1 answer for one already-loaded assignment: is the caller a learner for it? The same
  * three arms `sealedItemsFor` computes set-wise and `rls_caller_is_sealed_item` evaluates in SQL
- * — direct target, group target with `group_members.role = 'member'`, org-wide with a
- * learner-profile org role. Used where only a yes/no is needed (the exposure write guard), so
+ * — direct target, group target with `group_members.role = 'member'`, org-wide with a non-staff
+ * org role. Used where only a yes/no is needed (the exposure write guard), so
  * there is one notion of "learner", not three.
  */
 export async function callerIsLearnerOnAssignment(
@@ -229,7 +245,7 @@ export async function callerIsLearnerOnAssignment(
     if (dbRows(data).length > 0) return success(true);
   }
 
-  // Arm 3: the run is org-wide and the caller's role in the run's org is a learner profile.
+  // Arm 3: the run is org-wide and the caller's role in the run's org is not a staff profile.
   if (assignment.seal_org_wide && assignment.organization_id) {
     const { data, error } = await supabase
       .from('org_members')
@@ -238,7 +254,7 @@ export async function callerIsLearnerOnAssignment(
       .eq('user_id', ctx.userId)
       .maybeSingle();
     if (error) return toDbFailure(error);
-    if (dbNested(data?.org_roles)?.entitlement_profile === 'learner') return success(true);
+    if (isHeldProfile(dbNested(data?.org_roles)?.entitlement_profile)) return success(true);
   }
 
   return success(false);

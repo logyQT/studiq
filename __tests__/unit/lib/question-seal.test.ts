@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 // and the exclusion filter. The database derivation is covered by `item-seal.test.ts`; the
 // target-set half of `sealedItemsFor`/`callerIsLearnerOnAssignment` is driven here through a
 // table-shaped service-role mock, so the D-5e1 arms (direct / group-member / org-wide
-// learner-profile) are pinned with fixtures where persona and target disagree (R28).
+// non-staff profile) are pinned with fixtures where persona and target disagree (R28).
 
 /** The rows each table answers (swapped per test) plus a PostgREST-shaped chain over them. */
 const harness = vi.hoisted(() => {
@@ -103,6 +103,7 @@ function seal(entries: Array<[string, string | null, string | null]>): Seal {
 }
 
 const FUTURE = () => new Date(Date.now() + 86_400_000).toISOString();
+const PAST = () => new Date(Date.now() - 86_400_000).toISOString();
 
 /** A published, open run bound to one item. */
 function liveRun(id: string, extra: Record<string, unknown> = {}) {
@@ -233,7 +234,7 @@ describe('derived item reservation', () => {
       if (member.success) expect([...member.data.ids]).toEqual([questionId]);
     });
 
-    it('seals org-wide only in an org whose role for the caller is a learner profile', async () => {
+    it('seals org-wide only in an org whose role for the caller is a non-staff profile', async () => {
       resetDb();
       db.teacher_assignments = [
         liveRun('a-org', { organization_id: 'org-1', seal_org_wide: true }),
@@ -268,6 +269,105 @@ describe('derived item reservation', () => {
       const learner = await sealFor(ctx());
       expect(learner.success).toBe(true);
       if (learner.success) expect([...learner.data.ids]).toEqual(['q-1']);
+    });
+
+    it('seals a custom-role (none profile) holder org-wide, and not a staff (all) one (R28)', async () => {
+      resetDb();
+      db.teacher_assignments = [
+        liveRun('a-org', { organization_id: 'org-1', seal_org_wide: true }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-org',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+      ];
+      db.questions = [{ id: 'q-1', bank_id: 'bank-1' }];
+
+      // Persona and role disagree: an educator persona sitting on a custom role whose
+      // entitlement_profile defaults to 'none' is held by the org-wide run — the safe
+      // direction, and the pre-5e-1 behaviour for any non-staff persona.
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'none' },
+        },
+      ];
+      const custom = await sealFor(ctx({ accountType: AccountType.EDUCATOR }));
+      expect(custom.success).toBe(true);
+      if (custom.success) expect([...custom.data.ids]).toEqual(['q-1']);
+
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'all' },
+        },
+      ];
+      const staff = await sealFor(ctx({ accountType: AccountType.MANAGER }));
+      expect(staff.success && staff.data.ids.size, 'staff profiles (all) are not sealed').toBe(0);
+    });
+
+    it('seals nothing from a run whose window has not started; once started, its held-back item is sealed', async () => {
+      resetDb();
+      db.assignment_targets = [{ assignment_id: 'a-live', student_id: 'caller-1' }];
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'learner' },
+        },
+      ];
+      db.teacher_assignments = [
+        liveRun('a-live'),
+        liveRun('a-future', {
+          organization_id: 'org-1',
+          seal_org_wide: true,
+          start_time: FUTURE(),
+          deadline: FUTURE(),
+        }),
+      ];
+      db.assignment_questions = [
+        {
+          assignment_id: 'a-live',
+          question_id: 'q-1',
+          withhold_from_review: false,
+          released_at: null,
+        },
+        {
+          assignment_id: 'a-future',
+          question_id: 'q-2',
+          withhold_from_review: true,
+          released_at: null,
+        },
+      ];
+      db.questions = [
+        { id: 'q-1', bank_id: 'bank-1' },
+        { id: 'q-2', bank_id: 'bank-1' },
+      ];
+
+      // The SQL gates every arm (the withheld arm included) on start_time <= now(), so the
+      // held-back link of the not-yet-started org-wide run seals nothing.
+      const before = await sealFor(ctx());
+      expect(before.success).toBe(true);
+      if (before.success) expect([...before.data.ids]).toEqual(['q-1']);
+
+      // Once the run has started (and closed), its withheld item stays sealed until released.
+      db.teacher_assignments = [
+        liveRun('a-live'),
+        liveRun('a-future', {
+          organization_id: 'org-1',
+          seal_org_wide: true,
+          start_time: PAST(),
+          deadline: PAST(),
+        }),
+      ];
+      const after = await sealFor(ctx());
+      expect(after.success).toBe(true);
+      if (after.success) expect([...after.data.ids].toSorted()).toEqual(['q-1', 'q-2']);
     });
   });
 
@@ -311,7 +411,7 @@ describe('derived item reservation', () => {
       expect(result).toEqual({ success: true, data: true });
     });
 
-    it('answers true org-wide only for a learner-profile org role', async () => {
+    it('answers true org-wide for a learner or custom (none) profile, false for staff (all)', async () => {
       resetDb();
       const assignment = { organization_id: 'org-1', seal_org_wide: true, assignment_targets: [] };
 
@@ -338,6 +438,21 @@ describe('derived item reservation', () => {
       ];
       const learner = await callerIsLearnerOnAssignment(userClient(), ctx(), assignment);
       expect(learner).toEqual({ success: true, data: true });
+
+      // A custom role's default 'none' profile is held too (the safe direction).
+      db.org_members = [
+        {
+          organization_id: 'org-1',
+          user_id: 'caller-1',
+          org_roles: { entitlement_profile: 'none' },
+        },
+      ];
+      const custom = await callerIsLearnerOnAssignment(
+        userClient(),
+        ctx({ accountType: AccountType.EDUCATOR }),
+        assignment,
+      );
+      expect(custom).toEqual({ success: true, data: true });
     });
   });
 });

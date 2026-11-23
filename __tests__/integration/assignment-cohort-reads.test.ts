@@ -53,6 +53,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
   let studentB: SupabaseClient<Database>;
   let teacher: SupabaseClient<Database>;
   let manager: SupabaseClient<Database>;
+  let customMember: SupabaseClient<Database>;
 
   async function createUser(label: string, accountType: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -94,6 +95,27 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       organizationId: orgId,
       userId: studentBId,
       orgRoleId: seeded.memberRoleId,
+    });
+
+    // A custom role whose entitlement_profile defaults to 'none'. Its holder below is a
+    // student persona on a non-staff, non-learner profile: an org-wide run must still seal
+    // them (the safe direction — the pre-5e-1 code sealed any non-staff persona).
+    const { data: customRole, error: customRoleError } = await service
+      .from('org_roles')
+      .insert({
+        organization_id: orgId,
+        name: `seal-custom-${tag}`,
+        display_name: 'Custom',
+        is_system: false,
+      })
+      .select('id')
+      .single();
+    if (customRoleError) throw new Error(`custom role: ${customRoleError.message}`);
+    const customMemberId = await createUser('custom-member', 'student');
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: customMemberId,
+      orgRoleId: customRole.id,
     });
 
     const { data: group, error: groupError } = await service
@@ -277,6 +299,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     studentB = await signIn(`seal-student-b-${tag}@dev.local`);
     teacher = await signIn(`seal-teacher-${tag}@dev.local`);
     manager = await signIn(`seal-manager-${tag}@dev.local`);
+    customMember = await signIn(`seal-custom-member-${tag}@dev.local`);
   });
 
   afterAll(async () => {
@@ -378,7 +401,7 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
     ]);
   });
 
-  it('holds an org-wide run from every learner in the org, and from no org staff', async () => {
+  it('holds an org-wide run from every non-staff profile in the org, and from no org staff', async () => {
     await service
       .from('teacher_assignments')
       .update({ seal_org_wide: true })
@@ -393,8 +416,14 @@ describe('Sealed items and cohort-scoped assignment reads (#1171)', () => {
       [],
     );
 
+    const customHeld = await customMember.from('questions').select('id').eq('id', questionId);
+    expect(
+      customHeld.data,
+      'a custom-role (none profile) member is sealed org-wide too — persona/role disagree (R28)',
+    ).toEqual([]);
+
     // Org staff (Admin/Teacher roles, entitlement_profile 'all') are not learners: the org-wide
-    // run holds the item from learners only (D-5e1, arm 3).
+    // run holds the item from non-staff profiles only (D-5e1, arm 3).
     const managerReads = await manager.from('questions').select('id').eq('id', questionId);
     expect(managerReads.data, 'org-wide does not seal the org admin').toEqual([{ id: questionId }]);
     const teacherReads = await teacher.from('questions').select('id').eq('id', questionId);
