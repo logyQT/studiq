@@ -1458,6 +1458,7 @@
     "continue_desc": "Pick up where you left off",
     "continue_empty": "Nothing is waiting to be finished. Start with a deck or a quiz.",
     "untitled_quiz": "Untitled quiz",
+    "practice_quiz": "Practice quiz",
     "quiz_progress": "Answered {answered} of {total}",
     "deck_last_studied": "Last studied deck, {when}",
     "due_title": "Today's reviews",

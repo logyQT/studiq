@@ -68,6 +68,8 @@ interface Tables {
   completed?: unknown[];
   daily?: unknown;
   deck?: unknown;
+  /** id -> name of question banks referenced by attempt configs. */
+  question_banks?: unknown[];
   /** attempt id -> number of closed (gradable) questions in its snapshot. */
   gradable?: Record<string, number>;
   errorOn?: string;
@@ -88,6 +90,7 @@ function service(tables: Tables) {
       flashcard_study_sessions: () => builder({ data: tables.sessions ?? [] }),
       user_daily_activity: () => builder({ data: tables.daily ?? null }),
       flashcard_decks: () => builder({ data: tables.deck ?? null }),
+      question_banks: () => builder({ data: tables.question_banks ?? [] }),
       quiz_attempt_questions: () =>
         builder({
           data: Object.entries(tables.gradable ?? {}).flatMap(([attempt_id, n]) =>
@@ -131,7 +134,7 @@ describe('StudentOverviewService.getOverview', () => {
           id: 'att-1',
           total_questions: 10,
           started_at: '2026-10-27T10:00:00Z',
-          config: { title: 'Fizyka' },
+          config: { bankId: 'bank-1' },
           // 4 of the 10 are answered; an empty selection and blank text do not count.
           draft_answers: {
             q1: { selected_answer_id: 'a', text_answer: null },
@@ -143,6 +146,7 @@ describe('StudentOverviewService.getOverview', () => {
           },
         },
       ],
+      question_banks: [{ id: 'bank-1', name: 'Fizyka' }],
     });
     const open = firstRecorded(attemptQueue, 'the open-attempt query');
 
@@ -207,6 +211,7 @@ describe('StudentOverviewService.getOverview', () => {
       // All five questions of the quiz are closed ones.
       gradable: { 'quiz-1': 5 },
       sessions: [{ completed_at: '2026-10-27T11:00:00Z', cards_studied: 9, deck_ids: [] }],
+      question_banks: [{ id: 'bank-a', name: 'Quiz A' }],
       completed: [
         {
           id: 'quiz-1',
@@ -215,7 +220,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_points: null,
           completed_at: '2026-10-27T08:00:00Z',
           is_assignment_attempt: false,
-          config: { title: 'Quiz A' },
+          config: { bankId: 'bank-a' },
           teacher_assignments: null,
         },
         {
@@ -247,6 +252,7 @@ describe('StudentOverviewService.getOverview', () => {
   it('uses the closed questions as the denominator of a practice quiz, like the review page', async () => {
     const { service: s } = service({
       gradable: { 'quiz-1': 4 },
+      question_banks: [{ id: 'bank-mixed', name: 'Mixed' }],
       completed: [
         {
           id: 'quiz-1',
@@ -255,7 +261,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_points: null,
           completed_at: '2026-10-27T08:00:00Z',
           is_assignment_attempt: false,
-          config: { title: 'Mixed' },
+          config: { bankId: 'bank-mixed' },
           teacher_assignments: null,
         },
       ],
@@ -264,6 +270,28 @@ describe('StudentOverviewService.getOverview', () => {
     const result = await s.getOverview(ctx, NOW);
 
     expect(result.success && result.data.activity[0]?.scorePct).toBe(50);
+  });
+
+  it('shows no title when a practice quiz has no bank (neutral copy is rendered by the UI)', async () => {
+    const { service: s } = service({
+      completed: [
+        {
+          id: 'quiz-1',
+          score: 2,
+          total_questions: 5,
+          total_points: null,
+          completed_at: '2026-10-27T08:00:00Z',
+          assignment_id: null,
+          // A real GenerateQuizInput never carries `title`; topic-only quizzes have no bank.
+          config: { topicIds: ['topic-1'] },
+          teacher_assignments: null,
+        },
+      ],
+    });
+
+    const result = await s.getOverview(ctx, NOW);
+
+    expect(result.success && result.data.activity[0]?.title).toBeNull();
   });
 
   it('leaves the percentage out when a practice quiz has no closed question', async () => {

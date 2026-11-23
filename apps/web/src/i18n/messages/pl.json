@@ -1440,6 +1440,7 @@
     "continue_desc": "Wróć do tego, co zacząłeś",
     "continue_empty": "Nic nie czeka na dokończenie. Zacznij od talii albo testu.",
     "untitled_quiz": "Test bez tytułu",
+    "practice_quiz": "Test ćwiczeniowy",
     "quiz_progress": "Odpowiedziano na {answered} z {total}",
     "deck_last_studied": "Ostatnio ćwiczona talia, {when}",
     "due_title": "Powtórki na dziś",
