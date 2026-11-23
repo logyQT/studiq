@@ -958,16 +958,14 @@ describe('control-plane permission RLS (2b-4)', () => {
     });
   });
 
-  describe('org_members SELECT stays membership-wide (recorded asymmetry)', () => {
-    it('lets a plain member read another member’s row through PostgREST', async () => {
-      // D25/R23: the roster API is four keys and answers `[]` to this caller
-      // (pinned in `org-control-permission-api.test.ts`), while the data-plane
-      // policy predates the slice and answers the row. Narrowing it means
-      // auditing every `org_members` reader — stats, assignment target
-      // validation, the report inbox, the role list's member counts — and those
-      // would silently return nothing (R21 in the read direction). Phase 5 owns
-      // that narrowing; this case is what makes the asymmetry a scheduled fact
-      // instead of an assumption.
+  describe('org_members SELECT is the 5e-2 capability union (row 10 closed)', () => {
+    it('a plain member reads only their own row through PostgREST', async () => {
+      // D-5e2-1 (the 5e-2 census closed the R23 asymmetry this block used to
+      // record): the self branch stands, and the roster arm needs one of the
+      // nine census keys — the system Member holds none of them, so the
+      // data plane now answers the same `[]`-for-this-caller shape as the
+      // D25 API (pinned in `org-control-permission-api.test.ts`). A key
+      // holder's roster read is pinned in `org-roster-and-run-read-scope`.
       const { data, error } = await member
         .from('org_members')
         .select('user_id')
@@ -975,7 +973,11 @@ describe('control-plane permission RLS (2b-4)', () => {
         .eq('user_id', teacherId);
 
       expect(error).toBeNull();
-      expect(data).toHaveLength(1);
+      expect(data).toEqual([]);
+
+      const own = await member.from('org_members').select('user_id').eq('organization_id', orgId);
+      expect(own.error).toBeNull();
+      expect(own.data).toEqual([{ user_id: memberId }]);
     });
 
     it('still hides a foreign org’s rows', async () => {

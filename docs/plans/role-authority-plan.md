@@ -135,6 +135,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R41 | An `rls_caller_*` wrapper resolves its actor from the **JWT**, not from a mocked `getUser`: a service-role client in tests has `auth.uid() = null`, so every path that calls a wrapper RPC answers false under the usual `mockUser` seam — such paths must be tested with a real signed-in session, and the existing cases that silently passed (or failed for the wrong reason) move to one.                                                        | 5c: `changeRole`'s new `rls_caller_may_assign_org_role` call returned false for every `mockUser`-driven PUT (admin included), which surfaced as a wrong 403/404 in `members.test.ts`; the API half of the new member-assignment suite and the two affected cases now run on real cookie-jar sessions (`actAs`), where `auth.uid()` is the signed-in user                                                                                                                                                                      |
 | R42 | An entitlement deny test must use a context that **passes the permission gate**: a controller that gates on both `requireEntitlement` and `can(...)` answers 403 either way, so a deny case with empty `permissionScopes` cannot attribute the refusal to the entitlement — deleting the gate line leaves the test green (SURVIVED). The deny case holds the permission keys and the free-sibling case asserts `requireEntitlement` is never called. | 5d: the first draft of the `quiz.templates` deny case in `quiz-teacher.controller.test.ts` used a keyless ctx, so the permission 403 masked the entitlement gate and the `bun run mutate` proof (gate removed from `create`) would have SURVIVED; the deny case now runs with the full `mockCtx` and the proof is KILLED                                                                                                                                                                                                      |
 | R43 | A persona branch standing in for a capability fails in both directions at once — it over-reads for one persona and leaks for the other; replace it with the capability (or the target-set fact) and pin both directions in one fixture where persona and role disagree.                                                                                                                                                                              | 5e-1: the old `quiz_attempts` staff branch let an educator persona on the Member role read every same-org learner's attempts (leak) while a student persona on a Teacher-capable role could not; the seal's persona conjunct spared a targeted educator the sealed item's key                                                                                                                                                                                                                                                 |
+| R44 | A policy that a DML statement's RETURNING must satisfy needs the row-level conjunct spelled directly on the row: PostgreSQL gates INSERT … RETURNING on the table's SELECT policy, and a STABLE helper scanning the same table cannot see the row inserted by the same command, so an author arm that lives only inside the helper evaluates false for that row.                                                                                     | 5e-2: narrowing the `teacher_assignments` SELECT to the cohort helper made the author's own INSERT … RETURNING raise 42501 while the bare insert passed; the direct `created_by = auth.uid()` arm inside the unchanged tenant floor fixed it, and child-table policies (whose helpers read the parent row) never needed it                                                                                                                                                                                                    |
 
 ## 4. Decisions
 
@@ -3451,11 +3452,11 @@ no phase-5 enforcement):**
   | Personal plan applies inside an org only for non-MANAGER                                                                                                                                                                                             | `packages/server/src/services/personal-plan.ts:21`                                                                                                                                                                                  | 4             | same persona-keyed plan composition                                                                                                                                                                                                                                                                                                                                                                                                                           |
   | Plan applicability: `resolveApplicablePlan` answers FORBIDDEN when `plan.forAccountType` names another persona                                                                                                                                       | `packages/server/src/lib/payment/checkout-rules.ts:34,59`                                                                                                                                                                           | 4             | plan composition/applicability keyed on `forAccountType` — same family as the `getMyPlan`/`personal-plan` rows                                                                                                                                                                                                                                                                                                                                                |
   | `can_assign_org_role` checks `org.invitation.manage` only — the §4.4 "grant only what you hold" conjunct is missing                                                                                                                                  | `supabase/migrations/20261120170000_class_invites.sql:292` (live def)                                                                                                                                                               | 5             | ADR §4.4's 2b-5 review note owns the conjunct                                                                                                                                                                                                                                                                                                                                                                                                                 |
-  | `org_members` SELECT stays membership-wide                                                                                                                                                                                                           | live policy "Own or same-org membership read"                                                                                                                                                                                       | 5e-2          | D25: narrowing would empty readers whose gates are not among the four keys (the 2b-4 census: org detail, report inbox, role counts, group roster, assignment target validation, teacher stats, `with-auth` itself)                                                                                                                                                                                                                                            |
-  | `teacher_assignments` org-wide SELECT                                                                                                                                                                                                                | live policy "Visible teacher assignments"                                                                                                                                                                                           | 5e-2          | its readers (student attempt flows, cohort helpers) are audited in 5e-2 (20261120190000's comment)                                                                                                                                                                                                                                                                                                                                                            |
+  | `org_members` SELECT stays membership-wide                                                                                                                                                                                                           | live policy "Own or same-org membership read"                                                                                                                                                                                       | closed (5e-2) | D-5e2-1: the SELECT is now the self row plus the nine-key census union (20261123210000); a plain Member reads only their own row                                                                                                                                                                                                                                                                                                                              | D25: narrowing would empty readers whose gates are not among the four keys (the 2b-4 census: org detail, report inbox, role counts, group roster, assignment target validation, teacher stats, `with-auth` itself) |
+  | `teacher_assignments` org-wide SELECT                                                                                                                                                                                                                | live policy "Visible teacher assignments"                                                                                                                                                                                           | closed (5e-2) | D-5e2-2: author arm (spelled on the row — INSERT ... RETURNING is gated on the SELECT policy and the STABLE helper cannot see the same-command row) OR rls_caller_can_read_assignment_targets, inside the unchanged tenant floor                                                                                                                                                                                                                              | its readers (student attempt flows, cohort helpers) are audited in 5e-2 (20261120190000's comment)                                                                                                                 |
   | `quiz_attempts` staff branch reads `account_type IN ('educator','manager')`                                                                                                                                                                          | live policy "Own or staff quiz attempts"                                                                                                                                                                                            | closed (5e-1) | one capability-based predicate (D-5e3); the reader census is in the 5e-1 block below                                                                                                                                                                                                                                                                                                                                                                          |
   | `exposure_events` staff branch reads `account_type`                                                                                                                                                                                                  | live policy "Exposure events readable by owner or org staff"                                                                                                                                                                        | closed (5e-1) | staff half is `stats.read`@group via `covers_permission`; owner branch unchanged                                                                                                                                                                                                                                                                                                                                                                              |
-  | Teacher-dashboard RPCs return empty for a non-educator/manager persona                                                                                                                                                                               | `get_teacher_group_performance`, `get_teacher_activity_feed` (20261028100100; live defs)                                                                                                                                            | 5e-2          | should key on `stats.read` / group teacher, not the JWT                                                                                                                                                                                                                                                                                                                                                                                                       |
+  | Teacher-dashboard RPCs return empty for a non-educator/manager persona                                                                                                                                                                               | `get_teacher_group_performance`, `get_teacher_activity_feed` (20261028100100; live defs)                                                                                                                                            | closed (5e-2) | D-5e2-3 (R43): the persona branch is replaced by rls_caller_covers_permission(org, 'stats.read', 'group'); both directions pinned (educator-on-Member empty, student-on-stats-read@group gets data)                                                                                                                                                                                                                                                           | should key on `stats.read` / group teacher, not the JWT                                                                                                                                                            |
   | 403-vs-404 asymmetry applied per service by hand (foreign org → NOT_FOUND, same-org unreadable → FORBIDDEN)                                                                                                                                          | `packages/server/src/services/quiz-teacher.service.ts:31,87` (`foreignOrgError`)                                                                                                                                                    | closed (5e-1) | D-5e2: one derivation in `ownedQuiz` (missing/foreign → 404, same-org unreached → 403); API matrix pinned                                                                                                                                                                                                                                                                                                                                                     |
   | `teacher-assignment.service.create` with no active org fails only at the RLS tenant floor — no API-level org check                                                                                                                                   | `packages/server/src/services/teacher-assignment.service.ts:324`                                                                                                                                                                    | closed (5e-1) | `create` refuses `FORBIDDEN` before any query when `ctx.activeOrgId` is null (same guard as `quiz-teacher.service.ts#create`)                                                                                                                                                                                                                                                                                                                                 |
   | `seatEligible` metadata not yet consumed by pool validation                                                                                                                                                                                          | `packages/authz/src/entitlements.ts:18,36-71`, `entitlement_catalog.seat_eligible` (20261119140000:57)                                                                                                                              | 4             | MGR-SEAT-01 / D15: the pool's `plan_key` must be `scope='personal'` + `seatEligible` — phase 4 owns `addPool`                                                                                                                                                                                                                                                                                                                                                 |
@@ -4668,6 +4669,238 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
     the difficulty log). Served QA (STU-34 on a fresh `qa-tenant.ts` tenant) is
     the coordinator's step: the served build must be rebuilt first.
 
+**5e-2 on `feat/authority-5e-2` (2026-11-23) — register row 10, first commit:
+the reader census (re-derived by command before any migration was written,
+R9/R10):**
+
+- Commands (run on this branch, base `fc991415`):
+  - `git grep -n "from('org_members')" -- packages apps` → **29** sites (27
+    SELECT/UPDATE/DELETE reads + 2 INSERTs: `classroom.service.ts:40`,
+    `organization.service.ts:97`), classified below.
+  - `git grep -n "from('teacher_assignments')" -- packages apps` → **31**
+    sites (19 in `teacher-assignment.service.ts` alone), classified below.
+  - Live stack `stack-d880946e2924` (this branch; SQL over the stack's
+    `DB_URL`): `pg_policies` on `org_members` — SELECT "Own or same-org
+    membership read" = `user_id = auth.uid() OR organization_id IN (SELECT
+c.organization_id FROM rls_caller_org_ids() c)` (membership-wide);
+    on `teacher_assignments` — SELECT "Visible teacher assignments" =
+    `organization_id IN (SELECT c.organization_id FROM rls_caller_org_ids())`
+    (org-wide). Functions whose `prosrc` names `org_members`:
+    `accept_org_invitation`, `covers_permission`, `get_teacher_problematic_questions`
+    (SECURITY INVOKER — subject to the new policy), `has_group_permission`,
+    `has_org_feature`, `has_permission`, `rls_caller_is_sealed_item`,
+    `rls_caller_may_set_role_permission`, `rls_caller_org_ids`,
+    `rls_caller_org_user_ids`. Functions naming `teacher_assignments`:
+    `admin_platform_stats`, `get_teacher_activity_feed`,
+    `get_teacher_group_performance`, `rls_caller_can_read_assignment_items`,
+    `rls_caller_is_sealed_item`, `stamp_quiz_attempt_organization`,
+    `teacher_assignments_cancel_once`, `teacher_assignments_close_once`,
+    `update_assignment_counts`. Policies still reading the JWT
+    `account_type`: **0**; functions: **3** (`get_teacher_activity_feed`,
+    `get_teacher_group_performance`, `handle_new_user` — the last mints the
+    claim, it decides nothing).
+
+- **`org_members` — every site** (`table / file:line / method / client /
+what the reader needs / the key that authorises it`). The grep command
+  above counts only `.from('org_members')` sites (29); embed readers — e.g.
+  `org-role.service.ts:140`'s `org_members:org_members(count)` — are not
+  `.from()` sites, so they appear as extra rows in this table and the table
+  lists more rows than the command's number:
+
+  | table       | file:line                                                                                                 | method                                                                                                                                                                                                                                                                     | client                                                    | needs                                                                                  | key                                |
+  | ----------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------- |
+  | org_members | `lib/with-auth.ts:66`                                                                                     | ctx build                                                                                                                                                                                                                                                                  | user                                                      | caller's **own** row (cookie org → membership proof)                                   | self branch `user_id = auth.uid()` |
+  | org_members | `services/entitlement.resolver.ts:158`                                                                    | `resolveEntitlements`                                                                                                                                                                                                                                                      | user                                                      | own row + role embed                                                                   | self                               |
+  | org_members | `services/org.service.ts:29` `listMyOrgs`, `:79` `verifyMembership`                                       | user                                                                                                                                                                                                                                                                       | own rows                                                  | self                                                                                   |
+  | org_members | `services/group.service.ts:481` `listMyGroups`                                                            | user                                                                                                                                                                                                                                                                       | own rows (org filter for groups)                          | self                                                                                   |
+  | org_members | `services/teacher-assignment.service.ts:1562` `listForStudent`, `:1985` `hasForeignTargets` (caller orgs) | user                                                                                                                                                                                                                                                                       | own rows                                                  | self                                                                                   |
+  | org_members | `lib/assignment-access.ts:67`                                                                             | membership proof                                                                                                                                                                                                                                                           | user                                                      | own row                                                                                | self                               |
+  | org_members | `services/invitation.service.ts:229` `resolveMemberOrganization`                                          | user                                                                                                                                                                                                                                                                       | own row                                                   | self                                                                                   |
+  | org_members | `services/organization-member.service.ts:78` `listMembers`                                                | user                                                                                                                                                                                                                                                                       | **other rows** (roster)                                   | D25 four: `org.member.manage` \| `group.manage` \| `group.invite` \| `org.seat.manage` |
+  | org_members | `services/organization-member.service.ts:158` `changeRole`, `:186` `removeMember`                         | user                                                                                                                                                                                                                                                                       | other rows (write; SELECT clause of the UPDATE policy)    | `org.member.manage` (write policies, unchanged by 5e-2)                                |
+  | org_members | `services/group.service.ts:324` `listAddableMembers`                                                      | user                                                                                                                                                                                                                                                                       | other rows (addable roster)                               | `group.member.manage`                                                                  |
+  | org_members | `services/org-role.service.ts:140` `listRoles` (`org_members(count)` embed), `:338` `deleteRole` count    | user                                                                                                                                                                                                                                                                       | other rows (count embeds)                                 | `org.role.manage`                                                                      |
+  | org_members | `services/teacher-assignment.service.ts:2025` `hasForeignTargets` (target students in the run's org)      | user                                                                                                                                                                                                                                                                       | other rows                                                | `assignment.create` / `assignment.update` (the setTargets/ownedClient gate)            |
+  | org_members | `services/stats.service.ts:374` `getTeacherQuizStats`                                                     | user                                                                                                                                                                                                                                                                       | other rows (member-role learners)                         | `stats.read` @group+                                                                   |
+  | org_members | `services/activity.service.ts:34` `getClassActivity`                                                      | user                                                                                                                                                                                                                                                                       | other rows (member-role learners)                         | `stats.read` @group+                                                                   |
+  | org_members | `services/invitation.service.ts:299` `findOrgMemberByEmail` (class invite)                                | user                                                                                                                                                                                                                                                                       | other rows                                                | `group.invite`                                                                         |
+  | org_members | `services/question-report.service.ts:117` ownerless-group recipient                                       | user                                                                                                                                                                                                                                                                       | **a learner resolves a manager row** — holds no staff key | none → the `org_report_recipient` definer RPC (D-5e2 step 3 below)                     |
+  | org_members | `lib/question-seal.ts:111,267`                                                                            | service                                                                                                                                                                                                                                                                    | caller rows / learner arms                                | unaffected (service_role bypasses RLS)                                                 |
+  | org_members | `services/organization.service.ts:139` `getAll`, `:198` `getByIdWithDetails`                              | service in the only wired app (admin's `organization-admin.controller` uses `@admin/lib/supabase/admin-client`; **no web route calls these controller methods** — `git grep -n "organizationController.getAll\|organizationController.getDetails" -- apps/web/src` → none) | unaffected                                                |
+  | org_members | `services/notification.service.ts:250`                                                                    | service (`createAdminClient`)                                                                                                                                                                                                                                              | unaffected                                                |
+  | org_members | `services/invitation.service.ts:770` `acceptInvitationForUser` count                                      | service (`createAdminClient`)                                                                                                                                                                                                                                              | unaffected                                                |
+  | org_members | `lib/payment/stripe-webhook.repository.ts:676` `findOldestOrgAdmin`                                       | service (`createAdminClient`)                                                                                                                                                                                                                                              | unaffected                                                |
+  | org_members | `apps/web/.../dev/study-simulate/route.ts:64`                                                             | service (`createServiceClient`, verified at :47)                                                                                                                                                                                                                           | unaffected (dev-only helper route)                        |
+  | org_members | `apps/admin/src/server/services/user-admin.service.ts:258`                                                | service (admin-client)                                                                                                                                                                                                                                                     | unaffected                                                |
+  | org_members | `services/classroom.service.ts:40`, `services/organization.service.ts:97`                                 | INSERTs (org creation)                                                                                                                                                                                                                                                     | write policies, untouched                                 |
+
+  Definer readers bypass RLS and do not constrain the policy (R18): the
+  `rls_caller_*`/`has_*`/`covers_permission`/`accept_org_invitation`/
+  `admin_platform_stats` set above. `get_teacher_problematic_questions` is
+  SECURITY **INVOKER** and reads `org_members` (the member-role roster): its
+  only caller is `stats.service.ts:171` (`getTeacherStats`, gated
+  `stats.read`), so a Teacher passes via `stats.read`@group and a Member's
+  own-scope `stats.read` no longer admits the roster — the class-wide
+  aggregate empties for a learner, which is row 10's direction (the old
+  membership-wide policy let a Member read it through PostgREST).
+
+- **`teacher_assignments` — every user-client SELECT** (31 sites; the service
+  client sites — `lib/question-seal.ts:136,151`, `lib/assessment-close.ts:93`,
+  `lib/exposure-ledger.ts:90`, `services/notification.service.ts:349` — bypass
+  RLS and are unaffected; `quiz-teacher.service.ts:380` and
+  `teacher-assignment.service.ts:351` are INSERTs, write policies untouched).
+  As above, the `from('teacher_assignments')` grep counts only the 31
+  `.from()` sites; the embed reader `student-overview.service.ts:117` below is
+  an extra row the command does not count:
+
+  | file:line                                                                                                                                                                                      | method                                                         | needs                                                                        | covered by author ∨ targeted ∨ `assignment.read` (D-5e2-2) |
+  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
+  | `teacher-assignment.service.ts:365`                                                                                                                                                            | create re-fetch                                                | own run (author)                                                             | author arm                                                 |
+  | `:378` `getById`                                                                                                                                                                               | the run (gate: author or `assignment.read`@organization, :391) | author / `assignment.read`                                                   |
+  | `:457` `list`                                                                                                                                                                                  | runs per `assignment.read` scope                               | `assignment.read` (any scope — the helper's any-scope arm)                   |
+  | `:497,:528` `update`, `:542` `delete`, `:557,:568` `unpublish`, `:908,:956` `publish`, `:1151,:1206` `setTargets`, `:2065,:2169,:2199,:2217` `ownedClient`/`verifyOwnership`/`loadCloseWindow` | the run being written                                          | author arm, or the write gate `assignment.update`@organization — **see (b)** |
+  | `:1571` `listForStudent`                                                                                                                                                                       | published runs (client-side target filter)                     | targeted arm                                                                 |
+  | `:1973` `hasForeignTargets`                                                                                                                                                                    | the run's org (inside setTargets, after ownedClient)           | author / write gate — see (b)                                                |
+  | `quiz-attempt.service.ts:336,507`                                                                                                                                                              | own attempt's run                                              | targeted (an attempt exists only on a targeted/authored run)                 |
+  | `lib/assignment-access.ts:33` `loadTargetedAssignment`                                                                                                                                         | published run targeting the caller (or authored preview)       | targeted / author                                                            |
+  | `lib/assignment-visibility.ts:36` `hiddenResultAssignmentIds` (callers: `quiz-attempt.service.ts:295`, `stats.service.ts:223` `getStudentStats` — own attempts)                                | the attempt's run                                              | targeted                                                                     |
+  | `stats.service.ts:413` `getTeacherQuizStats` assignment names                                                                                                                                  | runs of the org's attempts                                     | **see (b)** — a `stats.read`-only role gets empty names (titles), no error   |
+  | `question-bank.service.ts:399` `hasBoundAssessmentItems` (in-use guard)                                                                                                                        | non-draft runs binding the bank's items                        | **see (a)**                                                                  |
+  | `student-overview.service.ts:117` `getOverview` (`teacher_assignments(title, show_results)` embed on the caller's own attempts)                                                                | the caller's own attempts' runs                                | targeted / author arm                                                        |
+
+- **Census question (a) — the question-bank in-use guard
+  (`question-bank.service.ts:399`).** Verdict: the guard **is** reachable by
+  a caller holding `question_bank.delete` (the system Member holds it at
+  `own`; `seed_system_role_permissions` grants the Member every content key
+  except `assignment.*`, and `stats.read` at `own` only) but no
+  `assignment.read` — `delete`/`batchDelete` (:297, :352) reach
+  `hasBoundAssessmentItems`. **But the narrowing does not change its
+  outcome**: the guard's first hop is `assignment_questions`
+  (`rls_caller_can_read_assignment_items` = author ∨ `assignment.read`,
+  shipped in 2b-4), so a foreign run's binding rows are already invisible to
+  such a caller _today_, and every assignment id that can reach the
+  `teacher_assignments` hop at :399 (author ∨ `assignment.read`) is still
+  admitted by D-5e2-2's `rls_caller_can_read_assignment_targets` (author ∨
+  targeted ∨ `assignment.read`). Link-visible ⇒ run-visible, so old and new
+  policies resolve the same ids here. The guard's blind spot (a Member
+  deleting their own bank whose items a teacher bound to a foreign run
+  passes the guard, because the _link_ read hides it) is **pre-existing**,
+  owned by the `assignment_questions` cohort policy (2b-4, not this row), and
+  5e-2 neither worsens nor fixes it. No definer read was added here — that
+  would change delete semantics for Members, a decision above this slice
+  (owner: phase 7 restate pass; recorded, not silently shipped).
+
+- **Census question (b) — any other user-client reader needing a row it
+  neither authored, is targeted by, nor holds `assignment.read` for.**
+  Verdict: **two families, both recorded with their consequence, neither a
+  leak**:
+  1. `verifyOwnership`/`ownedClient` write paths
+     (`teacher-assignment.service.ts:2217` and everything behind it:
+     publish/unpublish/setTargets/window/delete/grade) for a **custom role
+     holding `assignment.update` (or `assignment.delete`) at `organization`
+     scope without `assignment.read`** — grantable through the role editor —
+     the ctx gate passes but the SELECT now hides the row, so the write
+     answers `NOT_FOUND` (fail closed, R25's UPDATE-needs-SELECT rule). The
+     system roles are unaffected (Teacher holds `assignment.read`@group,
+     Admin everything @organization). Same shape 5e-1 resolved for
+     `quiz_attempts` by adding `assignment.update` to _that_ policy's
+     predicate; for `teacher_assignments` 5e-2 reuses 5e-1's pinned helper
+     without forking a second rule (R40), so the consequence stands and is
+     recorded here (owner: phase 7 / §4.4 read-with-write, a product call).
+  2. `stats.service.ts:413` (assignment titles in `getTeacherQuizStats`) for
+     a `stats.read`@group+ holder with no `assignment.read` and no
+     authored/targeted runs: the name lookup silently returns empty (titles
+     null), no error — the aggregates themselves come from `quiz_attempts`
+     (5e-1 policy, unchanged). Cosmetic degradation for an unusual custom
+     role; recorded.
+     Every _read-route_ reader family is covered by the D-5e2-1 union (the nine
+     keys below) or the self branch; the one reader with no key at all
+     (`question-report.service.ts:117`) is moved to the `org_report_recipient`
+     RPC. No stop-and-report case: no system-role persona loses a read it had.
+
+- **Decisions D-5e2-1 … D-5e2-3 (recorded; the full wording is the migration
+  header of `20261123210000_phase_5e2_roster_and_run_read_scope.sql`):**
+  - **D-5e2-1** — `org_members` SELECT = `user_id = auth.uid()` OR (same-org
+    AND one of the nine census keys via `rls_caller_covers_permission`,
+    `stats.read` at `group`). Shipped exactly as the census-derived union.
+    The privacy gain is the **role/membership** dimension only
+    (`org_role_id`, `joined_at`): `profiles`' SELECT has been "own or any
+    same-org profile" since `20261024124756`, so identity and e-mail were
+    already same-org-readable and this slice makes no identity-privacy claim.
+  - **D-5e2-2** — `teacher_assignments` SELECT =
+    `organization_id IN (rls_caller_org_ids()) AND (created_by = auth.uid() OR
+rls_caller_can_read_assignment_targets(id))`. The direct author arm is
+    load-bearing, not a duplicate of the helper's: PG gates `INSERT ...
+RETURNING` on the SELECT policy and the STABLE helper cannot see the row
+    inserted by the same command (measured — see the difficulty log), so
+    without the direct conjunct the author's own `INSERT ... RETURNING`
+    raises 42501. The null-org floor is unchanged.
+  - **D-5e2-3** — both teacher-dashboard RPCs replace the JWT `account_type`
+    branch with `IF NOT rls_caller_covers_permission(p_organization_id,
+'stats.read', 'group') THEN RETURN <empty payload>`; identity (42501) and
+    org-membership checks and grants unchanged. This closes 2 of the JWT
+    `account_type` reads 2b-9's audit registered as functions; after 5e-2 the
+    live query `prosrc ilike '%account_type%'` over `public` returns only
+    `handle_new_user` (it mints/validates the claim and decides no authority —
+    out of scope, stands), policies reading it: **0**. The remaining TS-side
+    JWT reads are `with-auth.ts:46` (ctx derivation, fail-closed 401) and the
+    proxy/frontend persona reads for redirects and display — declared, not
+    authority.
+- **Shipped:** migration `20261123210000` (ALTER POLICY on both SELECTs, the
+  two RPC bodies re-created from their newest owner `20261028100100` with only
+  the branch replaced, `org_report_recipient` definer RPC + grants, closing
+  DO guard asserting count(*)=1 per policy with every conjunct, both RPCs
+  persona-free, the grants, the RPC's definer/search_path/anon-revoked shape,
+  and the 5e-1 carry-over pinning the seal's arm on `<> 'all'` and not
+  `= 'learner'`); `question-report.service.ts` calls the RPC (NOT_FOUND
+  preserved); `database.ts` regenerated with the pinned CLI (second run
+  byte-identical, exactly one new entry).
+- **Tests:** new `__tests__/integration/org-roster-and-run-read-scope.test.ts`
+  (18 cases, real JWT/cookie-jar sessions, R41): Member reads only their own
+  row; one case per union key (nine, table-driven); Member reads no foreign
+  published run and does read a targeted one; the author reads their own run
+  with no `assignment.read`; both RPCs still answer for the teacher; the R43
+  pair (educator persona on the Member role → empty payload, student persona
+  on a `stats.read@group` role → data); `org_report_recipient` is tenant-bound
+  (NULL for a signed-in user in no org, the manager for a member); the
+  ownerless-group report routes to the manager when the reporter is a learner,
+  through the API route.
+  `question-report.service.test.ts` pins the RPC call/arg, no `org_members`
+  embed, 0-row → NOT_FOUND, RPC error; `teacher-dashboard-org-scope.test.ts`
+  now reads the newest owner of the RPCs and asserts the capability branch;
+  `rls-tenant-isolation` positive control now targets the student in its
+  seeded run; `control-plane-permission-rls`'s membership-wide asymmetry
+  block now pins the union (Member reads only their own row);
+  `EDU-ASG-07.spec.ts`'s stale comment corrected.
+- **Mutation proofs:** `bun run mutate` (clean tree): RPC arg
+  `p_organization_id` mutated → "routes a report … to the org_report_recipient
+  RPC" **KILLED**; NOT_FOUND guard mutated → "returns NOT_FOUND …" **KILLED**.
+  Hand SQL mutations against the live stack (the mutate tool cannot drive
+  integration tests here), each red then restored by re-applying the
+  migration file: (1) `stats.read` conjunct dropped from the union → the
+  stats.read key case **red**; (2) teacher_assignments SELECT reverted to
+  org-wide → "a Member reads no foreign published run" **red**; (3) persona
+  branch restored in `get_teacher_group_performance` → both R43 cases **red**;
+  (4) `org_report_recipient` revoked from `authenticated` → the learner report
+  case **red**; (5) seal reverted to `= 'learner'`, migration re-applied →
+  the carry-over guard **raises P0001**; (6) direct author arm dropped → the
+  snapshot-boundary author INSERT … RETURNING case **red**; (7) the
+  `rls_caller_org_ids` conjunct dropped from `org_report_recipient` → the
+  tenant-bound case (NULL for a caller in no org) **red** — it returns the
+  manager id instead; (8) the live org_members SELECT policy's `stats.read`
+  scope argument flipped `'group'` → `'own'`, the migration's guard block run
+  by hand → **raises P0001** (restored, the guard passes).
+- **Gates (measured on this branch):** `typecheck:all` + `typecheck:admin`
+  0 errors; `lint`, `review:static`, `knip`, `format:check`, `dup:base`
+  ("no new clones", 211 in tree) all green; unit **316 files / 4901 passed,
+  1 skipped**; targeted integration (56 files run serially, `--no-file-
+parallelism`, on this branch's reset stack) **567 passed, 0 failed**;
+  `pr:size` **680/400 (XL)** → `size:exception` (545 test + 263 doc + 1
+  generated excluded). Two real `db reset`s plus a hand re-apply of the
+  migration file all pass its guard.
+- **Register row 10 closed.** Rows 3 (personal scope, phase 6) remains the
+  only open row of the phase-5 set.
+
 **Difficulty log**
 
 #### 2026-11-22 — replacing a persona gate with an entitlement needs a positive QA pin, not just the old negative case
@@ -4794,6 +5027,30 @@ author-member case red.
 Rule: R4 — and R16-style: a case-ID QA sample must mirror the full shard; 8 of
 46 sampled missed the one case whose seeder shape disagrees with the test
 fixtures.
+
+#### 2026-11-23 — a STABLE helper cannot see the row its own statement inserted, and PG gates INSERT … RETURNING on the SELECT policy
+
+What: 5e-2 narrowed the `teacher_assignments` SELECT to
+`rls_caller_can_read_assignment_targets(id)`, and the author's own
+`INSERT ... RETURNING` (PostgREST `return=representation`) started raising
+42501 while the same insert without `RETURNING` passed. Measured in raw SQL
+as the authenticated teacher: `INSERT ... RETURNING id` → 42501; with the
+policy temporarily `USING (true)` → OK and `can_read=false` for the new row;
+a plain SELECT of the author's pre-existing rows → admitted. So PostgreSQL
+applies the SELECT policy to the RETURNING rows, and the STABLE helper's
+snapshot excludes the row inserted by the same command, so the helper's
+author arm evaluates false for that row.
+Why: the policy's author arm lived only inside the helper
+(`EXISTS (... a.created_by = auth.uid() ...)` over a scan of the same table),
+which is exactly the arm that cannot see the same-command row.
+Fix: spell the author arm directly on the row —
+`organization_id IN (rls_caller_org_ids()) AND (created_by = auth.uid() OR
+rls_caller_can_read_assignment_targets(id))` — inside the unchanged tenant
+floor (the null-org floor is not widened). The closing guard asserts the
+conjunct; the hand mutation (drop it) turns the snapshot-boundary author case
+red. Child-table policies (`assignment_targets`/`assignment_questions`) do not
+need this: their helpers read the _parent_ row, which pre-exists.
+Rule: R44.
 
 _Not started beyond 5b._
 
