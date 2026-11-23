@@ -42,7 +42,7 @@ export default function AppJoinPage() {
       toast.success(t('success'));
       setToken('');
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      invalidateAuthority(queryClient);
+      invalidateAuthority(queryClient, { refetchPartitioned: false });
       router.refresh();
     } catch (err) {
       // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).

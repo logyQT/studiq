@@ -22,7 +22,7 @@ export type Entitlement = {
 };
 
 /**
- * Declaration order is the `/features/me` payload order (`EntitlementResolver`
+ * Declaration order is the `/me/entitlements` payload order (`EntitlementResolver`
  * emits it), so it is kept stable across the catalog rename: adding a key appends.
  *
  * `documents` is absent in v1 (phase 1c): it has no surface, and ADR §5.1 keeps

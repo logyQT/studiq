@@ -8,7 +8,14 @@ export interface MyEntitlementsData {
   orgId: string | null;
   /** The effective set: the resolver has already dropped quota-0 keys (§6.1). */
   entitlements: EntitlementKey[];
-  /** The resolver's own record (§6.2); completeness is pinned by its unit test. */
+  /**
+   * Every `LIMIT_KEYS` entry, `0` for a missing `plan_limits` row (§6.2) — the
+   * resolver's own record, not a re-derived one. `Record<string, number>` is the
+   * shape `ResolvedEntitlements` and `PlanInfo` both publish; completeness
+   * (every `LIMIT_KEYS` entry present) is the resolver's contract, pinned by
+   * `entitlement.resolver.limits.test.ts` — this controller only passes it through,
+   * and its own test mocks the resolver.
+   */
   limits: Record<string, number>;
   plan: { primary: string; sources: PlanSource[] };
 }

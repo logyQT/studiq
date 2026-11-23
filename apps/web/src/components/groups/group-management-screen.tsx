@@ -65,7 +65,7 @@ interface GroupManagementScreenProps {
 
 export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
   // Creating a class is the one action with no row to ask about, so it reads
-  // `group.manage` from `/permissions/me` — the same key the API's `POST`
+  // `group.manage` from `/me/permissions` — the same key the API's `POST`
   // checks (ADR-0015 §4.3). While that request is in flight the checker answers
   // `false`, so the control stays hidden until it resolves. Everything per row
   // uses the API's own `manageVia`, because a Teacher holds the keys at group
@@ -178,7 +178,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                   </TableCell>
                   <TableCell className="text-center">{group.teacherCount}</TableCell>
                   <TableCell className="text-right">
-                    {/* The API's answer, not the caller's `/permissions/me` scope:
+                    {/* The API's answer, not the caller's `/me/permissions` scope:
                         a Teacher holds these keys at group scope, so an org-wide
                         checker would hide the roster on the classes they teach
                         (ADR-0015 §4.3). */}

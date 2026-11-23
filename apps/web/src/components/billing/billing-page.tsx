@@ -14,6 +14,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { invoiceHistoryPath } from '@/lib/billing-subscription';
 import { getFeatureLabel } from '@/lib/pricing-features';
 import { getLimitLabel, getVisibleLimitKeys } from '@/lib/pricing-limits';
+import { invalidateAuthority } from '@/lib/query-cache';
 import { billingKeys } from '@/lib/query-keys';
 
 interface BillingPageProps {
@@ -161,7 +162,9 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
         plans={plans}
         accountType={accountType}
         onChanged={() => {
-          void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+          // A checkout changes the plan layer the resolver reads, so every
+          // derived authority answer is stale, not just the plan badge.
+          invalidateAuthority(queryClient);
           void refetchSubscription();
         }}
       />

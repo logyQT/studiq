@@ -72,8 +72,11 @@ export const questionKeys = {
   },
 };
 
-// Resolved from the `active_org_id` cookie, so partitioned by org (ADR-0015
-// §7.1); `personal` is a real segment, never `undefined`/`null` (#1125).
+// The authority payloads are resolved from the `active_org_id` cookie, so their
+// cache entries must be partitioned by org: invalidation alone leaves a window
+// where the previous org's answer renders under the new org (ADR-0015 §7.1).
+// `personal` is a real key segment, never `undefined`/`null` — a keyed query
+// must not be indistinguishable from a disabled one (#1125).
 export const permissionKeys = {
   all: ['permissions'] as const,
   org: (orgId: string | null | undefined) => ['permissions', orgId ?? 'personal'] as const,

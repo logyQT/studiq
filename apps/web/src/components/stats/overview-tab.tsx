@@ -30,14 +30,14 @@ function WeakPointsCard({
   items,
   type,
   canInsights,
-  featuresPending,
+  entitlementsPending,
   weakLoading,
 }: {
   title: string;
   items: WeakItem[];
   type: 'deck' | 'topic';
   canInsights: boolean;
-  featuresPending: boolean;
+  entitlementsPending: boolean;
   weakLoading: boolean;
 }) {
   const t = useTranslations('AppStatsPage');
@@ -47,7 +47,7 @@ function WeakPointsCard({
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        {weakLoading || featuresPending ? (
+        {weakLoading || entitlementsPending ? (
           <Skeleton className="h-32 w-full" />
         ) : !canInsights ? (
           <PlanLockedCard
@@ -81,7 +81,7 @@ export function OverviewTab() {
   // and disabled for a free student so no 403 fires on every visit; the
   // descriptive cards above stay open.
   const canInsights = useEntitlement()('stats.insights');
-  const { isPending: featuresPending } = useEntitlements();
+  const { isPending: entitlementsPending } = useEntitlements();
 
   const { data: weakPoints, isLoading: weakLoading } = useApiQuery<WeakPointsResponse>({
     queryKey: [...flashcardKeys.all, 'stats', 'weak-points'],
@@ -171,7 +171,7 @@ export function OverviewTab() {
           items={weakPoints?.weakDecks ?? []}
           type="deck"
           canInsights={canInsights}
-          featuresPending={featuresPending}
+          entitlementsPending={entitlementsPending}
           weakLoading={weakLoading}
         />
         <WeakPointsCard
@@ -179,7 +179,7 @@ export function OverviewTab() {
           items={weakPoints?.weakTopics ?? []}
           type="topic"
           canInsights={canInsights}
-          featuresPending={featuresPending}
+          entitlementsPending={entitlementsPending}
           weakLoading={weakLoading}
         />
       </div>
