@@ -18,43 +18,38 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State                              | PR          | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ---------------------------------- | ----------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged                             | #1162       | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged                             | #1387       | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged                             | #1388       | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged                             | #1389       | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged                             | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged                             | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | active (3d, `feat/authority-3d`)   | —           | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | active (4a, `feat/authority-4a`)   | —           | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | active (5e-1, `feat/authority-5e`) | —           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | pending                            | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
-| 7     | delete, full QA, close                         | pending                            | —           | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending                            | —           | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                               | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | -------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                            | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                            | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                            | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                            | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                      | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                            | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | pending | —                                | —   | PUB, AUT, MGR, STU, EDU   |            |
+| 7     | delete, full QA, close                         | pending | —                                | —   | all 191 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                | —   | all 191 + E2E             | 2026-11-19 |
 
-**Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389), 1c (#1390,
-`67cfeb16`) and **2 are merged — phase 2 closed 2026-11-21 with 2b-9**
-(`feat/authority-2b-9`, delivered block below): the 2a slices plus all nine 2b
-slices are on `main`, 2b-7 as `f62b896d` (#1403) and 2b-8 as `9747f372` (#1404).
-The only `allowedAccountTypes` left on the API surface are the two declared
-exceptions (R5 org/classroom creation), pinned by
-`__tests__/unit/guards/persona-gates.test.ts`; the remaining persona branches
-are named with owners in the 2b-9 deferral register. **Phase 4a is merged**
-(#1410, `c9c14138`): the four plan-resolution rows the register named to phase
-4 are closed (D32–D34, block below); 3c and 3d are delivered below and the
-Teacher content-read gap is closed (D29). **Phase 5a is merged** (#1411,
-`0fb14a7e`): the register's `ai/*` route row and the branding row are closed —
-both `ai/*` routes gate on `requireEntitlement('ai.chat')`, branding is
-`org.settings.manage` **and** `requireEntitlement('branding')`, and
-`lib/features.ts` (`requireFeature`) is deleted in favour of
-`lib/entitlements.ts`. **Phase 5b is merged** (#1414, `554cb696`): register
-rows 7–9 are closed (the billing owner + checkout resolver, org delete, the
-§4.4 invite conjunct — dated note in the 2b-9 block below), and the 5b review
-recorded **row 13** (the member role-assignment path still gated on
-`org.member.manage` alone). **Phase 5c is merged and phase 5d is active on
-`feat/authority-5d` (2026-11-23):** register rows 13, 5, 6 and 12 are closed
-(dated notes in the 2b-9 block and the phase-5 block below); rows 3 and 10 remain with phase 5 (row 10 moves to 5e-2); rows 4 and 11 are closed by 5e-1 on `feat/authority-5e` (2026-11-23).
+**Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
+(`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
+(#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
+(#1421), 5e-2 `8667e6ca` (#1424). Phase 3 (3a–3d, #1406–#1409) and phase 4
+(`c9c14138`, #1410) closed earlier. Deferral register: rows 1, 2 and 4–13 are
+closed; **row 3** (`resolveScope`'s no-active-org persona default —
+personal-scope permissions) is the only one left and it is **parked until that
+key family exists**, which phase 6 owns. The only `allowedAccountTypes` left on
+the API surface are the declared exceptions (R5 org/classroom creation and the
+two `ai/*` routes until phase 6), pinned by
+`__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
+`public` function** reads the JWT `account_type` except `handle_new_user`, which
+mints the claim. **Next slice: phase 6 (UI and cache)** — a design pass first
+(nav/shell from the active org, org-keyed query keys, the role editor UI, the
+`/me/plan` union, and the Teacher content-read follow-up recorded in phase 3),
+then sized PRs; phase 7 (deletes + full 191-case QA) and phase 8 (the
+extendability release gate) follow.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
