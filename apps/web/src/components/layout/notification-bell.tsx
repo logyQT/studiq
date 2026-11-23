@@ -85,12 +85,12 @@ export function NotificationBell() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0" aria-label={t('title')}>
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <p className="text-sm font-semibold">{t('title')}</p>
+        <div className="flex items-center justify-between border-b px-3 py-2 min-w-0">
+          <p className="min-w-0 truncate text-sm font-semibold">{t('title')}</p>
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="shrink-0 h-7 px-2 text-xs"
             disabled={unread === 0 || markAllRead.isPending}
             onClick={() => markAllRead.mutate()}
           >
