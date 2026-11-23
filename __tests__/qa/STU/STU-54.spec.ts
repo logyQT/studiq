@@ -72,6 +72,15 @@ async function expectForbidden(page: Page, url: string): Promise<void> {
   expect(body, `GET ${url} envelope`).toEqual({ success: false, error: 'FORBIDDEN' });
 }
 
+/**
+ * A StatCard title (`<p class="…uppercase…">`). Scoped to `p` because the
+ * state-breakdown legend renders the same word ("Poprawne") in a `div` once the
+ * chart data loads — the page text alone is ambiguous.
+ */
+function statCardTitle(page: Page, title: string) {
+  return page.locator('p').filter({ hasText: new RegExp(`^${title}$`) });
+}
+
 test.describe('@case:STU-54 @area:STU @prio:P2 free student sees descriptive stats and the insights plan card', () => {
   test('the weak-points/insights reads are 403 and the diagnostic cards are plan cards', async ({
     page,
@@ -102,18 +111,18 @@ test.describe('@case:STU-54 @area:STU @prio:P2 free student sees descriptive sta
     // --- Step 1: the descriptive cards render, the weak points are locked ----
     await page.goto('/app/stats/activity');
     await expect(page).toHaveURL(/\/app\/stats\/activity$/);
-    await expect(page.getByText(COPY.reviewsThisWeek, { exact: true })).toBeVisible();
-    await expect(page.getByText(COPY.correct, { exact: true })).toBeVisible();
-    await expect(page.getByText(COPY.dueToday, { exact: true })).toBeVisible();
+    await expect(statCardTitle(page, COPY.reviewsThisWeek)).toBeVisible();
+    await expect(statCardTitle(page, COPY.correct)).toBeVisible();
+    await expect(statCardTitle(page, COPY.dueToday)).toBeVisible();
     await expect(page.getByText(COPY.dailyActivity, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.weakDecks, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.weakTopics, { exact: true })).toBeVisible();
-    // Both weak-points cards carry the plan card (title + CTA), no list.
-    await expect(page.getByText(COPY.lockedTitle, { exact: true }).first()).toBeVisible();
-    expect(
-      await page.getByText(COPY.lockedTitle, { exact: true }).count(),
-      'both weak-points cards show the plan card',
-    ).toBe(2);
+    // Every diagnostic card on the page carries the plan card (weak decks, weak
+    // topics and study time), no list.
+    await expect(
+      page.getByText(COPY.lockedTitle, { exact: true }),
+      'all three diagnostic cards (weak decks, weak topics, study time) show the plan card',
+    ).toHaveCount(3);
     await expect(
       page.getByRole('button', { name: COPY.lockedCta, exact: true }).first(),
     ).toBeVisible();

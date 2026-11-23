@@ -3654,16 +3654,16 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
     `StudentInsightsController#getInsights` (which had no permission check —
     none was added), `StatsController#getWeakPoints`,
     `#getTeacherGroupPerformance`, `#getTeacherActivityFeed`, and
-    `ActivityController#getActivity`. **Free:** the quiz reads (`GET
-/teacher/quizzes`, `GET [id]`), the ad-hoc assignment path
+    `ActivityController#getActivity`. **Free:** the quiz reads
+    (`GET /teacher/quizzes`, `GET [id]`), the ad-hoc assignment path
     (`/edu/assignments/new` without `?quizId`, `POST /api/v1/teacher/assignments`
-    - `assignment_questions` snapshot), and the descriptive stats
-      (`stats/student/overview`, `GET /stats/activity`, `stats/student`,
-      `stats/teacher`, `stats/teacher/quizzes`, the `/app/stats` descriptive cards,
-      `/edu/stats/quizzes|results|data`). Line: descriptive free, diagnostic paid.
-      **No RLS twin, deliberately:** entitlements are plan data, not authority, so
-      an entitlement gate is API/UI-only (ADR-0015 §7's RLS rows are
-      permission-only).
+    and the `assignment_questions` snapshot), and the descriptive stats
+    (`stats/student/overview`, `GET /stats/activity`, `stats/student`,
+    `stats/teacher`, `stats/teacher/quizzes`, the `/app/stats` descriptive cards,
+    `/edu/stats/quizzes|results|data`). Line: descriptive free, diagnostic paid.
+    **No RLS twin, deliberately:** entitlements are plan data, not authority, so
+    an entitlement gate is API/UI-only (ADR-0015 §7's RLS rows are
+    permission-only).
   - **UI:** `useFeature()('quiz.templates')` / `('stats.insights')` swap the
     gated surfaces for the shared `PlanLockedCard` (the `branding`/
     `ai.chat` precedent: dashed card, `Lock`, pricing CTA — never a dead control
@@ -3721,6 +3721,43 @@ p_scope)` (service_role-only, SECURITY DEFINER, `search_path=''`),
     `pr:size`, and the five `bun run mutate` proofs above. No
     build/serve/Playwright — the coordinator owns those; the migration was
     applied once (idempotent) to this branch's stack to run the closing guard.
+  - **Coordinator gates (measured):** `env:reset-db` from scratch (migrations +
+    seeds replayed) → serial integration **114 files, 1081 passed / 11 skipped,
+    0 failed**; unit **316 files, 4885 passed / 1 skipped**; `typecheck:all` +
+    `typecheck:admin`, `lint`, `review:static`, `knip`, `dup:base` **0 new**,
+    `format:check` green; build **31.5 s**, served `:3000` HTTP 200
+    (`build.state: current`); `pr:size` **1242/400 (XL)** → `size:exception`.
+    Three integration suites needed their fixture orgs on `hub`
+    (`content-route-permission-api`, `item-states`, `stats`) because their
+    permission cases ran on the `launch` default and the new entitlement 403
+    masked them; `stats.test.ts` also gained the boundary case (`launch` org →
+    activity 403, `/stats/teacher` 200).
+  - **Coordinator mutation proofs (independent, clean tree):** all five KILLED —
+    the gate removed from `quiz-teacher.create`, from `getWeakPoints`, from
+    `getInsights`, from `activityController.getActivity`, and a gate **added**
+    to the free `getStudentStats`.
+  - **SQL proofs (rolled-back transactions against the live stack):** the real
+    migration replayed from a reconstructed pre-5d state → applied, 6/6 plan
+    rows, old keys absent; the `stats.insights` plan-row move removed → guard
+    raised `expected 6`; the old catalog-row DELETE removed → guard raised
+    `old entitlement keys still present in 2 row(s)`; the flag INSERT removed
+    with plan rows present → the
+    `plan_entitlements → entitlement_flags` FK refused the move first (the FK
+    is the first line of defence, measured); the same removal with zero plan
+    rows (the `db push` shape) → guard raised
+    `enabled entitlement_flags row … missing`; a second replay on the migrated
+    state → applied, 6/6 (idempotent).
+  - **Served QA (one process, one fresh tenant per run, unique labels, zero
+    retries):** `EDU-QZ-06` **5/5**, `STU-54` **5/5**, `STU-55` **5/5**,
+    `EDU-QZ-01` **5/5** (hub profile, 2 tests each), `BIL-04` **5/5** (2 tests
+    each), `MGR-SEAT-02` **5/5**, `PUB-04` **5/5** (the renamed labels render),
+    smoke `EDU-QZ-02`, `EDU-QZ-03`, `EDU-QZ-05`, `EDU-02` 2/2, `NFR-07` 2/2,
+    `AUT-07`, `STU-03`, `LIM-05` — 60 tests, 0 failed. The served run caught two
+    spec defects, fixed in-slice: `EDU-QZ-06` posted an mcq without the ≥
+    80-character explanation (422) and published without a deadline (422);
+    `STU-54` expected two plan cards where the activity page renders three
+    (weak decks, weak topics, study time) and matched „Poprawne” by page text,
+    which the state-breakdown legend also renders once its data loads.
 
 - **QA map:** no case changes — this slice changes no product behaviour, and
   SEC-07 still pins the two `ai/*` persona gates as the phase-5 deferral.

@@ -39,7 +39,8 @@ Student na darmowym planie (organizacja `launch`, plan osobisty `base`) — bez 
 
 - /app/stats/activity pokazuje karty opisowe (Powtórki w tym tygodniu, Poprawne, Do powtórki
   dziś, wykres „Aktywność dzienna”, „Podział stanów”), a sekcje „Najsłabsze talie” /
-  „Najsłabsze tematy” pokazują kartę planu („Analizy i słabe punkty” + „Zobacz plany”).
+  „Najsłabsze tematy” oraz „Czas nauki” pokazują kartę planu („Analizy i słabe punkty” +
+  „Zobacz plany”).
 - `GET /api/v1/stats/weak-points` → 403 `FORBIDDEN`; `GET /api/v1/stats/student/insights` →
   403 `FORBIDDEN` (bramka entitlementu).
 - /app/stats/content i /app/stats/results pokazują karty planu zamiast „Krzywej

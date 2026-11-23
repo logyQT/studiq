@@ -153,6 +153,9 @@ test.describe('@case:EDU-QZ-06 @area:EDU @prio:P2 free teacher gets the plan car
       bankId: bank.body.data.id,
       type: 'mcq',
       content: `EDU-QZ-06 pytanie ${runTag}`,
+      // R16/R17: an mcq carries its authoring explanation (≥ 80 chars, naming no option), or the create is a 422.
+      explanation:
+        'Uzasadnienie EDU-QZ-06: wybór wynika z treści polecenia i kolejności przedstawionych informacji.',
       answers: [
         { content: 'Odpowiedź A', isCorrect: true, orderIndex: 0 },
         { content: 'Odpowiedź B', isCorrect: false, orderIndex: 1 },
@@ -188,7 +191,8 @@ test.describe('@case:EDU-QZ-06 @area:EDU @prio:P2 free teacher gets the plan car
     const published = await postJson<unknown>(
       page,
       `/api/v1/teacher/assignments/${assignmentId}/publish`,
-      {},
+      // A published run must be able to end: the close is a publish precondition (R2/R5).
+      { deadline: new Date(Date.now() + 7 * 86_400_000).toISOString() },
     );
     expect(published.status, 'POST publish the one-off assignment').toBe(200);
 

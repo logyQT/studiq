@@ -32,7 +32,8 @@ Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `lite`) — b
 
 1. Otwórz /edu/quizzes jako nauczyciel na planie launch.
 2. Wywołaj `POST /api/v1/teacher/quizzes { "name": "Test" }` przez API.
-3. Wejdź ręcznie na /edu/quizzes/new oraz /edu/quizzes/<id>/edit (dowolny quiz z listy).
+3. Wejdź ręcznie na /edu/quizzes/new oraz na /edu/quizzes/<dowolny id>/edit (bez quizu na
+   liście sam adres wystarcza — strona ma pokazać kartę planu, nie formularz).
 4. Przejdź ścieżką jednofazową: na /edu/assignments/new (bez `?quizId=`) utwórz kartkówkę z
    co najmniej jednym pytaniem i opublikuj ją dla grupy G1.
 5. Wywołaj `GET /api/v1/teacher/quizzes` przez API.

@@ -54,10 +54,11 @@ resolver change (ADR-0015 §5.1, open catalog).
 
 > **2026-11-23 (phase 5d, register row 12).** The two keys are renamed and now
 > enforced: `quiz.builder` → **`quiz.templates`** gates the saved-quiz library
-> writes on `/api/v1/teacher/quizzes` (`POST`, `PUT`/`DELETE [id]`, `POST
-[id]/questions`, `POST [id]/create-assignment`, `PUT [id]/bulk`) — the reads
-> (`GET` list/detail) and the ad-hoc assignment path (`/edu/assignments/new`
-> without `?quizId`, `POST /api/v1/teacher/assignments`) stay open — and
+> writes on `/api/v1/teacher/quizzes` (`POST`, `PUT`/`DELETE [id]`,
+> `POST [id]/questions`, `POST [id]/create-assignment`, `PUT [id]/bulk`); the
+> reads (`GET` list/detail) and the ad-hoc assignment path
+> (`/edu/assignments/new` without `?quizId`, `POST /api/v1/teacher/assignments`)
+> stay open — and
 > `advanced.stats` → **`stats.insights`** gates the diagnostic stats reads
 > (`/api/v1/stats/student/insights`, `/api/v1/stats/weak-points`,
 > `/api/v1/stats/teacher/groups`, `/api/v1/stats/teacher/activity`,
