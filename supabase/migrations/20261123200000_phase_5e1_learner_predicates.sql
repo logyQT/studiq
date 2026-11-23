@@ -203,7 +203,7 @@ begin
 
   if v_def is null
      or position('entitlement_profile' in v_def) = 0
-     or position("'member'" in v_def) = 0
+     or position('''member''' in v_def) = 0
      or position('seal_org_wide' in v_def) = 0
      or position('account_type' in v_def) > 0
      or not exists (
