@@ -43,9 +43,9 @@ export function FlashcardToolbar({
 }: FlashcardToolbarProps) {
   const { user } = useAuth();
   const permission = usePermission();
-  const feature = useEntitlement();
+  const entitlement = useEntitlement();
   const canCreate = permission('flashcard.create', { createdBy: user?.id });
-  const hasAiAccess = feature('ai.chat');
+  const hasAiAccess = entitlement('ai.chat');
   const hasAccessGenerate = canCreate && hasAiAccess;
 
   return (

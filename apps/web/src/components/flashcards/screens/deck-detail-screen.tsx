@@ -96,7 +96,7 @@ export function DeckDetailScreen({
   const router = useRouter();
   const queryClient = useQueryClient();
   const permission = usePermission();
-  const feature = useEntitlement();
+  const entitlement = useEntitlement();
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
@@ -967,7 +967,7 @@ export function DeckDetailScreen({
                     },
                   ]
                 : []),
-              ...(feature('ai.chat')
+              ...(entitlement('ai.chat')
                 ? [
                     {
                       icon: Sparkles,

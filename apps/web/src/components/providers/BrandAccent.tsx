@@ -13,7 +13,7 @@ import { useBranding } from '@/hooks/use-branding';
  * rather than retheming the whole app.
  *
  * Not applied on the server — the org's feature set is only known client-side
- * after `/api/v1/features/me` resolves, so this is effect-driven and renders
+ * after `/api/v1/me/entitlements` resolves, so this is effect-driven and renders
  * nothing until branding is confirmed enabled.
  */
 export function BrandAccent() {

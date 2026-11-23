@@ -29,7 +29,7 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 3     | entitlements and limits                        | merged  | #1406–#1409                      | —   | LIM, BIL, STU             | 2026-11-22 |
 | 4     | seats and personal plans                       | merged  | #1410                            | —   | MGR, BIL, LIM             | 2026-11-22 |
 | 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 on `feat/authority-6a`      | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a on `feat/authority-6`         | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
 | 7     | delete, full QA, close                         | pending | —                                | —   | all 191 + E2E             |            |
 | 8     | extendability audit (release gate)             | pending | —                                | —   | all 191 + E2E             | 2026-11-19 |
 
@@ -49,11 +49,10 @@ mints the claim. **Next slice: phase 6 (UI and cache)** — a design pass first
 (nav/shell from the active org, org-keyed query keys, the role editor UI, the
 `/me/plan` union, and the Teacher content-read follow-up recorded in phase 3),
 then sized PRs; phase 7 (deletes + full 191-case QA) and phase 8 (the
-extendability release gate) follow. **6a-1** — the two `/me/*` authority
-endpoints and the org-keyed authority cache — is on `feat/authority-6a`; 6a-2
-(the one invalidation helper and the five event call sites) follows, then 6b
-(route rules, area gate, nav gates), 6c (row 3), 6d (role editor, `/me/plan`
-union) and 6e (Teacher assignment reads).
+extendability release gate) follow. **6a** — the two `/me/*` authority endpoints
+and the org-keyed authority cache — is on `feat/authority-6`; 6b (route rules,
+area gate, nav gates), 6c (row 3), 6d (role editor, `/me/plan` union) and 6e
+(Teacher assignment reads) follow.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -135,6 +134,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R42 | An entitlement deny test must use a context that **passes the permission gate**: a controller that gates on both `requireEntitlement` and `can(...)` answers 403 either way, so a deny case with empty `permissionScopes` cannot attribute the refusal to the entitlement — deleting the gate line leaves the test green (SURVIVED). The deny case holds the permission keys and the free-sibling case asserts `requireEntitlement` is never called. | 5d: the first draft of the `quiz.templates` deny case in `quiz-teacher.controller.test.ts` used a keyless ctx, so the permission 403 masked the entitlement gate and the `bun run mutate` proof (gate removed from `create`) would have SURVIVED; the deny case now runs with the full `mockCtx` and the proof is KILLED                                                                                                                                                                                                      |
 | R43 | A persona branch standing in for a capability fails in both directions at once — it over-reads for one persona and leaks for the other; replace it with the capability (or the target-set fact) and pin both directions in one fixture where persona and role disagree.                                                                                                                                                                              | 5e-1: the old `quiz_attempts` staff branch let an educator persona on the Member role read every same-org learner's attempts (leak) while a student persona on a Teacher-capable role could not; the seal's persona conjunct spared a targeted educator the sealed item's key                                                                                                                                                                                                                                                 |
 | R44 | A policy that a DML statement's RETURNING must satisfy needs the row-level conjunct spelled directly on the row: PostgreSQL gates INSERT … RETURNING on the table's SELECT policy, and a STABLE helper scanning the same table cannot see the row inserted by the same command, so an author arm that lives only inside the helper evaluates false for that row.                                                                                     | 5e-2: narrowing the `teacher_assignments` SELECT to the cohort helper made the author's own INSERT … RETURNING raise 42501 while the bare insert passed; the direct `created_by = auth.uid()` arm inside the unchanged tenant floor fixed it, and child-table policies (whose helpers read the parent row) never needed it                                                                                                                                                                                                    |
+| R45 | An org-partitioned cache is invalidated by its key, not by a refetch: invalidating the prefix while the outgoing org's entry is still observed writes the new org's payload under the old org's key, and that entry then reads as fresh when the caller returns. Mark it stale and let the key change fetch; refetch only when the key did not change.                                                                                               | 6a: `invalidateAuthority` on the switch would have refetched `['permissions', <outgoing org>]` with the new cookie live; the error is invisible until a switch back inside the 60 s `staleTime`. The rule was already recorded for org-keyed data lists in `use-orgs.ts` (#135)                                                                                                                                                                                                                                               |
 
 ## 4. Decisions
 
@@ -5055,8 +5055,8 @@ _Not started beyond 5b._
 
 ### Phase 6 — UI and cache
 
-**6a-1 — the two authority endpoints and the org-keyed cache** (on
-`feat/authority-6a`). No SQL, no migration.
+**6a — the two authority endpoints and the org-keyed cache** (on
+`feat/authority-6`). No SQL, no migration.
 
 - **Endpoints renamed, no alias.** `GET /api/v1/features/me` →
   `GET /api/v1/me/entitlements` and `GET /api/v1/permissions/me` →
@@ -5091,38 +5091,40 @@ _Not started beyond 5b._
   `use-student-insights.ts`; **11** import `useEntitlements()`, one of them the
   `useEntitlement()` wrapper itself); `usePermissions()`/
   `usePermission()` keep their names and signatures. Both authority queries are
-  `staleTime: 60_000` and enabled only once `/me/orgs` settles, keyed
-  `activeOrg?.id ?? 'personal'` — never on `undefined` (#1125). The org switch
-  goes from **six** invalidations to **four** (`['orgs']`, `['ai']`,
-  `['me','plan']`, the report inbox): the partitioned pair's two are **deleted,
-  not repointed** — the org-keyed change is what refetches them, and an
-  active invalidate there would refetch the outgoing org's entry under the old
-  key (R45). One helper for all five events is 6a-2.
+  `staleTime: 60_000` + `refetchOnWindowFocus: true` (batch 7's "refetch on
+  focus ≤60 s", via a new `useApiQuery` option) and enabled only once `/me/orgs`
+  settles, keyed `activeOrg?.id ?? 'personal'` — never on `undefined` (#1125).
 - **Keys.** `permissionKeys.org(orgId)` = `['permissions', orgId ?? 'personal']`,
   `entitlementKeys.org(orgId)` = `['entitlements', orgId ?? 'personal']`; the
   literal `['features','me']` and `['permissions','me']` are gone. The `*.all`
   prefixes still match every org entry, and the partition is pinned by
   `__tests__/unit/lib/query-keys.test.ts`.
+- **One invalidation surface.** `invalidateAuthority(queryClient, {
+refetchPartitioned? })` — introduced in 6a-1 for the permission, entitlement and
+  report caches — now also drops `['me','plan']` and `['ai']`, and takes the
+  partition flag. **13** call sites in **9** caller files (plus the helper in
+  `query-cache.ts`): the org switch, role save/delete/permissions save, seat
+  assign/release/pool purchase, both checkout-success handlers and the four
+  join/create-org flows. On a switch it marks the org-partitioned pair stale
+  without refetching (`refetchPartitioned: false`), because the observed entry is
+  still the outgoing org's key while the cookie already names the new one (R45).
 - **Consumer sweep.** The 13 page/component consumers (starting at design §1.3)
   plus `use-branding.ts` and `use-student-insights.ts` import the new hooks. The
-  `featuresPending` → `entitlementsPending` rename is **partial at this
-  commit**: **17** `entitlementsPending` occurrences in **8** files, with **9**
-  `featuresPending` survivors in **3** (`overview-tab.tsx`,
-  `insights-gate.tsx`, `use-student-insights.ts`); 6a-2 finishes it (**26**
-  occurrences, no survivors). No behaviour change beyond the transport.
+  `featuresPending` → `entitlementsPending` rename landed in two steps: 6a-1
+  renamed **17** occurrences in **8** files
+  (`grep -rn 'entitlementsPending' apps packages __tests__ qa --include='*.ts' --include='*.tsx'`),
+  and this commit finishes the **9** survivors in **3** (`overview-tab.tsx`,
+  `insights-gate.tsx`, `use-student-insights.ts`) — **26** occurrences, none
+  left. No behaviour change beyond the transport.
 - **Tests and corpus.** 7 unit files, 4 integration files, 18 QA specs, 2 E2E
-  specs and 19 QA case docs. Corpus strings are
+  specs, 19 QA case docs, `qa/AGENT-PROMPT.md` and `AGENTS.md`. Corpus strings are
   `me/entitlements` / `me/permissions`, and the response key is `entitlements`.
-  The sweep is
-  `grep -rlE 'features/me|permissions/me' apps packages __tests__ qa scripts .agents --exclude-dir=.next`:
-  at this commit it returns **8** files, every one a comment — the six client
-  modules that describe the endpoint they call (`use-permission.ts`,
-  `sidebar-nav.ts`, `nav-main.tsx`, `BrandAccent.tsx`, `group-management-screen.tsx`,
-  `manage/roles/page.tsx`) and the two `packages/{authz,server}/src/**/entitlements.ts`
-  headers; 6a-2 sweeps them to zero. The load test's two journeys and the two
-  QA/review skills still named the dead URLs, so they are fixed here. The
-  historical plan/audit/ADR mentions are the record of what happened and are
-  left alone.
+  6a-1 fixed the load test's two journeys and the two operative QA/review skills,
+  which still drove the dead URLs; with 6a-2's comment sweep the measurement is
+  clean:
+  `grep -rlE 'features/me|permissions/me' apps packages __tests__ qa scripts .agents --exclude-dir=.next`
+  returns nothing (the historical plan/audit/ADR mentions are the record of what
+  happened and are left alone).
 
 **Correction (design §6, a stale sentence, R8).** The phase-6 scope inherited a
 claim that two `ai/*` persona gates were still in place and had to be removed.
@@ -5132,12 +5134,36 @@ then (`grep -rn allowedAccountTypes apps packages __tests__` → 2 API files). T
 is no work in that item, and a slice written against the sentence would have
 _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
 
-**Still open in phase 6:** 6a-2 (one `invalidateAuthority()` helper for the org
-switch, role save/delete, seat changes, checkout and the join/create-org flows,
-plus the `refetchOnWindowFocus` pin and `AGENTS.md`); 6b route rules,
-`resolveDashboardArea`, `AreaGate` and the nav-item gates; 6c `resolveScope`'s row-3 persona default; 6d role-editor
+**Still open in phase 6:** 6b route rules, `resolveDashboardArea`, `AreaGate` and
+the nav-item gates; 6c `resolveScope`'s row-3 persona default; 6d role-editor
 behaviour (caller-scope awareness, atomic profile write) and the `/me/plan` union
 badge; 6e the Teacher assignment-read widening.
+
+**Difficulty log**
+
+#### 2026-11-23 — invalidating a partitioned cache _on the switch_ refetches under the outgoing key
+
+What: the brief's shape was "one `invalidateAuthority()` called from the org
+switch", which would have invalidated `['permissions']`/`['entitlements']` the
+way the old unpartitioned keys were invalidated. With the new org segment in the
+key, `invalidateQueries` by prefix refetches the **active** entry — and at that
+instant the active entry is still `['permissions', <outgoing org>]` while the
+cookie already names the new org, so the refetch writes the new org's payload
+under the old org's key.
+Why: the response would look correct in the UI (the key changes on the next
+render and fetches fresh data), so the defect is only visible on the way _back_:
+that poisoned entry is fresh for its `staleTime`, and switching to that org
+within 60 s serves another org's scope map. The same trap was already recorded
+for org-keyed data lists in `use-orgs.ts` ("an active refetch would write the new
+org's rows under the old org's cache key"); partitioning the authority pair moved
+it onto the two keys that gate the UI.
+Fix: the helper takes `{ refetchPartitioned }`. Every non-switch event (role
+save/delete, seat, checkout) refetches, because the observed key is the right
+one. The switch passes `false`, which marks the pair stale without a refetch —
+the key change is what fetches, and a later visit refetches because the entry is
+stale. This is design-derived, not observed in a failing run: the
+`query-keys.test.ts` partition assertions pin the key shape, not the race.
+Rule: R45.
 
 ### Phase 7 — delete and close
 

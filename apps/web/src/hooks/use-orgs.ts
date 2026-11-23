@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
-import { aiKeys, questionReportKeys } from '@/lib/query-keys';
+import { invalidateAuthority } from '@/lib/query-cache';
 
 export type OrgMembership = {
   id: string;
@@ -61,27 +61,16 @@ export function useOrgs() {
       );
       void queryClient.invalidateQueries({ queryKey: ['orgs'] });
 
-      // The effective AI token budget is resolved from the seat/personal/org
-      // plan (`getEffectiveLimit` over the single resolver), so the cached daily counter
-      // belongs to the previous org (#379).
-      void queryClient.invalidateQueries({ queryKey: aiKeys.all });
+      // Permission scopes, entitlements, the effective plan, the AI budget and
+      // the report inbox are all resolved from the active org on the server, so
+      // every one of them is now a stale answer about the previous org. The
+      // org-partitioned pair is only marked stale: refetching now would write
+      // the new org's payload under the outgoing org's key. The remaining
+      // org-keyed lists (`activeOrg.id` in the key) are not invalidated at all
+      // for the same reason — the key change is what drives their refetch
+      // (#135, #216).
+      invalidateAuthority(queryClient, { refetchPartitioned: false });
 
-      // Managers resolve `/api/v1/me/plan` from the active org; students and
-      // educators get their seat plan when seated in the org, otherwise their
-      // personal plan (#181, #270). Still invalidate so switching orgs refreshes
-      // the plan shown on billing/settings.
-      void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
-
-      // Report rows are scoped to the active org for an org admin, so the
-      // previous org's inbox (`staleTime: Infinity`) must not survive a switch.
-      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
-
-      // Org-keyed query entries are intentionally not invalidated here: at this
-      // point the observed org key may still be the previous one, so an active
-      // refetch would write the new org's rows under the old org's cache key.
-      // The key change is what drives their refetch — every org-scoped list
-      // query is keyed by `activeOrg.id` (#135, #216).
-      //
       // `navigate` is only set for an explicit user-initiated switch. The
       // implicit auto-select below must not push a dashboard URL: it runs right
       // after login and would override the `?next=` deep link (#458).

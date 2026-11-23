@@ -13,6 +13,14 @@ export function useApiQuery<T>(opts: {
   enabled?: boolean;
   staleTime?: number;
   gcTime?: number;
+  /**
+   * Authority payloads set this even though `QueryProvider` already defaults to
+   * `true`: ADR-0015 §13 batch 7 makes "refetch on focus ≤60 s" a requirement of
+   * these two queries, and a provider-wide default is not a place a requirement
+   * can live — changing it would silently remove their only signal for a change
+   * made elsewhere (another tab's role edit, an admin kill switch).
+   */
+  refetchOnWindowFocus?: boolean;
   /** Overrides the global retry policy; a function sees the failure count and the error. */
   retry?: boolean | number | ((failureCount: number, error: Error) => boolean);
 }): UseQueryResult<T> {
@@ -22,6 +30,9 @@ export function useApiQuery<T>(opts: {
     staleTime: opts.staleTime ?? Infinity,
     gcTime: opts.gcTime ?? 30 * 60 * 1000,
     enabled: opts.enabled,
+    ...(opts.refetchOnWindowFocus !== undefined
+      ? { refetchOnWindowFocus: opts.refetchOnWindowFocus }
+      : {}),
     // Only forward when set: an explicit `undefined` would clobber the global
     // `retry: 2` from `QueryProvider` with TanStack's built-in default.
     ...(opts.retry !== undefined ? { retry: opts.retry } : {}),

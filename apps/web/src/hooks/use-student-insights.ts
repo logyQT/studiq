@@ -17,7 +17,7 @@ import { studentStatsKeys } from '@/lib/query-keys';
  */
 export function useStudentInsightsGate(days: number) {
   const canInsights = useEntitlement()('stats.insights');
-  const { isPending: featuresPending } = useEntitlements();
+  const { isPending: entitlementsPending } = useEntitlements();
   const query = useApiQuery<StudentInsights>({
     queryKey: studentStatsKeys.insights(days),
     url: `/api/v1/stats/student/insights?days=${days}`,
@@ -25,5 +25,5 @@ export function useStudentInsightsGate(days: number) {
     staleTime: 60_000,
     enabled: canInsights,
   });
-  return { ...query, canInsights, featuresPending };
+  return { ...query, canInsights, entitlementsPending };
 }

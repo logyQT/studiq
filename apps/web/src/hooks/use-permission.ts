@@ -14,7 +14,7 @@ export type PermissionResource = {
 export type PermissionChecker = (permission: string, resource?: PermissionResource) => boolean;
 
 /**
- * The scope `/api/v1/permissions/me` answered for `permission`, or `null` when
+ * The scope `/api/v1/me/permissions` answered for `permission`, or `null` when
  * the map has not resolved yet or does not carry the key (absent means deny).
  * A "can this caller reach this surface at all" gate reads this instead of a
  * scoped evaluation: most keys are granted at `group`/`organization` scope,
@@ -31,7 +31,7 @@ export function permissionScope(
 /**
  * Permission gating for the client. `usePermission()` returns a checker for
  * a single permission name (e.g. `permission('deck.update', { createdBy })`)
- * backed by the `/api/v1/permissions/me` scope map. Scoped evaluations
+ * backed by the `/api/v1/me/permissions` scope map. Scoped evaluations
  * (own/org/group) resolve against the active org context.
  *
  * A permission the caller holds at *any* scope passes when no resource is given:

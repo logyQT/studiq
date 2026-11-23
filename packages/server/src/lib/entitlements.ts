@@ -4,9 +4,9 @@ import { entitlementResolver } from '@studiq/server/services/entitlement.resolve
 
 /**
  * ADR-0015 §6/§7: the resolver is the only reader that composes the layers
- * into an effective entitlement set, so this module is the only gate. The
- * `/api/v1/features/me` endpoint keeps its HTTP shape until phase 6 renames
- * it, which is why this delegate still exists.
+ * into an effective entitlement set, so this module is the only gate.
+ * `/api/v1/me/entitlements` reads through it, so the published set and the
+ * gated set cannot drift.
  */
 export async function resolveEntitlements(ctx: RequestContext): Promise<ResolvedEntitlements> {
   return entitlementResolver.resolveEntitlements(ctx);

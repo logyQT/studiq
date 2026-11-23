@@ -77,7 +77,10 @@ export default function JoinPage() {
       // `active`-only refetch runs. A `useOrgs()` observer (setup header/chooser)
       // may or may not be mounted here.
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      invalidateAuthority(queryClient);
+      // The authority caches are resolved from the active org, and the sidebar
+      // already observes them under the outgoing key, so they are marked stale
+      // and refetched by the key change; the memberships list above is separate.
+      invalidateAuthority(queryClient, { refetchPartitioned: false });
       router.push('/edu');
     } catch (error) {
       // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).

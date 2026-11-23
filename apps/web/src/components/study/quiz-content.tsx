@@ -69,8 +69,8 @@ export function QuizContent() {
   const locale = useLocale();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const feature = useEntitlement();
-  const hasAccess = feature('quiz');
+  const entitlement = useEntitlement();
+  const hasAccess = entitlement('quiz');
   const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const { data: attemptsData, isLoading: attemptsLoading } = useApiQuery<QuizAttempt[]>({
