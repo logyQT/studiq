@@ -290,9 +290,12 @@ describe('QuestionTransferService.exportBank', () => {
     const result = await service.exportBank({ ...ctx, accountType: AccountType.STUDENT }, 'bank-1');
 
     expect(result.success).toBe(true);
-    expect(questionBankService.getById).toHaveBeenCalledWith('bank-1', expect.objectContaining({
-      accountType: AccountType.STUDENT,
-    }));
+    expect(questionBankService.getById).toHaveBeenCalledWith(
+      'bank-1',
+      expect.objectContaining({
+        accountType: AccountType.STUDENT,
+      }),
+    );
     expect(questionService.listBankQuestions).toHaveBeenCalledWith('bank-1');
   });
 

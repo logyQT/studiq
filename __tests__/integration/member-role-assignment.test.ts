@@ -280,7 +280,11 @@ describe('member role assignment — §4.4 grant-only-what-you-hold (phase 5c, r
 
     it('refuses the member-manager a role holding a key they do not cover', async () => {
       const res = await putMembers(
-        putRequest(capApi, { targetUserId: targetUncovered.id, newOrgRoleId: uncoveredRoleId }, orgId),
+        putRequest(
+          capApi,
+          { targetUserId: targetUncovered.id, newOrgRoleId: uncoveredRoleId },
+          orgId,
+        ),
       );
       const body = await json<ApiEnvelope>(res);
 

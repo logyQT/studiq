@@ -63,6 +63,9 @@ describe('OrganizationMemberService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    // §4.4 (row 13): changeRole asks the rls_caller_may_assign_org_role wrapper
+    // before updating; allowed unless a test says otherwise.
+    mock.rpc.mockResolvedValue({ data: true, error: null });
   });
 
   describe('getProfile', () => {
@@ -173,8 +176,28 @@ describe('OrganizationMemberService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ success: true });
+      expect(mock.rpc).toHaveBeenCalledWith('rls_caller_may_assign_org_role', {
+        p_role_id: '00000000-0000-4000-8000-000000000001',
+      });
       expect(mock.from).toHaveBeenNthCalledWith(1, 'org_roles');
       expect(mock.from).toHaveBeenNthCalledWith(2, 'org_members');
+    });
+
+    it('returns FORBIDDEN when the assignment wrapper refuses the new role', async () => {
+      mock.from.mockReturnValueOnce(chain({ id: 'role-1', organization_id: 'uni-1' }));
+      mock.rpc.mockResolvedValueOnce({ data: false, error: null });
+
+      const result = await service.changeRole(
+        ctx,
+        'user-123',
+        '00000000-0000-4000-8000-000000000001',
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      // Only the role lookup ran — no org_members update was issued.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('org_roles');
     });
 
     it('returns FORBIDDEN when the target role belongs to another organization', async () => {
