@@ -300,7 +300,16 @@ describe('QuizTeacherController', () => {
     // refuse: deleting the gate line turns these rejections into 200/422.
     it('refuses every gated write with FORBIDDEN before the permission check and the parse', async () => {
       requireEntitlementMock.mockRejectedValue(new AppError('FORBIDDEN'));
+      // A resolution per method, so a deleted gate produces a 200/201 that fails
+      // the rejection assertion — not a crash on an undefined service result.
       mockService.create.mockResolvedValueOnce(success({ id: 'q-1' }));
+      mockService.update.mockResolvedValueOnce(success({ id: 'q-1' }));
+      mockService.delete.mockResolvedValueOnce(success(undefined));
+      mockService.addQuestions.mockResolvedValueOnce(success({ added: 1 }));
+      mockService.removeQuestion.mockResolvedValueOnce(success(undefined));
+      mockService.reorderQuestions.mockResolvedValueOnce(success(undefined));
+      mockService.createAssignment.mockResolvedValueOnce(success({ id: 'a-1' }));
+      mockService.bulkSave.mockResolvedValueOnce(success({ id: 'q-1' }));
       for (const call of [
         () => controller.create({}, mockCtx),
         () => controller.update('q-1', {}, mockCtx),
