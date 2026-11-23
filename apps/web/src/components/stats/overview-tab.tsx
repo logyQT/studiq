@@ -15,8 +15,8 @@ import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
 import { WeakPointsList } from '@/components/stats/weak-points-list';
 import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { flashcardKeys } from '@/lib/query-keys';
 import { summarizeWeeklyActivity } from '@/lib/stats';
 
@@ -80,8 +80,8 @@ export function OverviewTab() {
   // The weak-points read is a diagnostic (phase 5d): gated on `stats.insights`
   // and disabled for a free student so no 403 fires on every visit; the
   // descriptive cards above stay open.
-  const canInsights = useFeature()('stats.insights');
-  const { isPending: featuresPending } = useFeatures();
+  const canInsights = useEntitlement()('stats.insights');
+  const { isPending: featuresPending } = useEntitlements();
 
   const { data: weakPoints, isLoading: weakLoading } = useApiQuery<WeakPointsResponse>({
     queryKey: [...flashcardKeys.all, 'stats', 'weak-points'],

@@ -21,8 +21,8 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
 import { isDraftSaved, resolveBrandColor } from '@/lib/brand-color';
@@ -82,11 +82,11 @@ export default function SettingsPage() {
   // Branding controls are plan-gated (issue #108). Org name and the
   // subscription badge below stay visible either way — only the logo
   // upload and color picker are withheld.
-  const canBrand = useFeature()('branding');
-  // Same query as useFeature() — while it's in flight `canBrand` is a
+  const canBrand = useEntitlement()('branding');
+  // Same query as useEntitlement() — while it's in flight `canBrand` is a
   // provisional `false`, so the pending state shares the org-loading
   // skeleton below and entitled orgs never flash the locked card.
-  const { isPending: featuresPending } = useFeatures();
+  const { isPending: entitlementsPending } = useEntitlements();
 
   const {
     data: organization,
@@ -156,7 +156,7 @@ export default function SettingsPage() {
           <CardDescription>{t('university_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isLoading || featuresPending ? (
+          {isLoading || entitlementsPending ? (
             <div className="space-y-3">
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-4 w-32" />

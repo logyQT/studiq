@@ -8,7 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
-import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
+import { invalidateAuthority } from '@/lib/query-cache';
 
 type VerifyState = 'idle' | 'verifying' | 'valid' | 'invalid';
 
@@ -77,11 +77,7 @@ export default function JoinPage() {
       // `active`-only refetch runs. A `useOrgs()` observer (setup header/chooser)
       // may or may not be mounted here.
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      // Permission scopes, plan features and question reports are resolved from the
-      // active org and cached. They are only marked stale here and refetch on mount.
-      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      invalidateAuthority(queryClient);
       router.push('/edu');
     } catch (error) {
       // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).

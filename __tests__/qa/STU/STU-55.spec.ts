@@ -22,7 +22,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * starts clean. Nothing shared is read or written beyond that one tenant row.
  *
  * Acceptance points:
- * 1. `GET /api/v1/features/me` as the student contains `stats.insights`.
+ * 1. `GET /api/v1/me/entitlements` as the student contains `stats.insights`.
  * 2. `GET /api/v1/stats/weak-points` → 200 and `GET
  *    /api/v1/stats/student/insights?days=30` → 200 (no 403).
  * 3. `/app/stats/activity` shows the weak-points cards **without** the plan
@@ -104,9 +104,12 @@ test.describe('@case:STU-55 @area:STU @prio:P2 paid personal plan unlocks the st
       await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
 
       // --- Step 1: the entitlement resolves through the personal plan --------
-      const features = await getData<{ features: string[] }>(page, '/api/v1/features/me');
+      const entitlements = await getData<{ entitlements: string[] }>(
+        page,
+        '/api/v1/me/entitlements',
+      );
       expect(
-        features.features,
+        entitlements.entitlements,
         'the Ace personal plan resolves stats.insights inside the launch org (D3)',
       ).toContain('stats.insights');
 

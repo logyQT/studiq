@@ -6,8 +6,8 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { formatDateTime } from '@/lib/datetime';
 import { quizKeys } from '@/lib/query-keys';
 import { EmptyState, ErrorState } from '@/components/shared/empty-state';
@@ -29,8 +29,8 @@ export function QuizzesClient() {
   // card; the reads behind them stay open. While the features query is in
   // flight the check is a provisional `false`, so the pending state shares the
   // loading skeleton and an entitled teacher never flashes the locked card.
-  const canTemplates = useFeature()('quiz.templates');
-  const { isPending: featuresPending } = useFeatures();
+  const canTemplates = useEntitlement()('quiz.templates');
+  const { isPending: entitlementsPending } = useEntitlements();
 
   const {
     data: quizzes,
@@ -43,7 +43,7 @@ export function QuizzesClient() {
     enabled: canTemplates,
   });
 
-  if (isLoading || featuresPending) {
+  if (isLoading || entitlementsPending) {
     return (
       <div className="p-6 space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />

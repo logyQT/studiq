@@ -74,7 +74,7 @@ describe('toSafeInternalPath', () => {
   });
 
   it('rejects API paths (not pages)', () => {
-    expect(toSafeInternalPath('/api/v1/features/me', BASE)).toBeNull();
+    expect(toSafeInternalPath('/api/v1/me/entitlements', BASE)).toBeNull();
   });
 
   it('returns null when there is no base to resolve against', () => {
@@ -107,7 +107,7 @@ describe('toSafeInternalPath', () => {
       '/app/./..//evil.com',
       '/app/%2e%2e//evil.com',
       '/login',
-      '/api/v1/features/me',
+      '/api/v1/me/entitlements',
       '',
       null,
       undefined,

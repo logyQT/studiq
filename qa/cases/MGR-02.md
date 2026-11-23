@@ -73,7 +73,7 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   własną stronę 404 panelu managera: nagłówki „404” i „Nie znaleziono strony”, link
   „Wróć do panelu” → `/manage` oraz skróty „Przejdź do:” → `/manage`, `/manage/members`,
   `/manage/invites`, `/manage/settings`.
-- Strona managera (`GET /api/v1/features/me`) zawiera `ai.chat` w `data.features`
+- Strona managera (`GET /api/v1/me/entitlements`) zawiera `ai.chat` w `data.entitlements`
   (organizacja na Hub, rola `admin` z profilem `all`).
 - `GET /api/v1/ai/usage` sesją menedżera zwraca **200** z `data.plan = "hub"` i
   `data.limit = 200000` — licznik AI managera na Hub.

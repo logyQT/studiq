@@ -23,7 +23,7 @@ Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `lite`) — b
 - Account: the tenant's `users.teacher` (educator, org role `teacher`, personal plan `lite`),
   logged in with the tenant org as the active org (`loginAs(page, tenant, 'teacher',
 { locale: 'pl' })`). The org's `launch` plan and the `lite` personal plan both lack
-  `quiz.templates`, so `GET /api/v1/features/me` does not list it.
+  `quiz.templates`, so `GET /api/v1/me/entitlements` does not list it.
 - Organization: `qa-edu-qz-06-<suffix>` with a manager, an educator and a student, plus the
   default group `G1`. Nothing shared is read or written: no admin setting, feature flag, plan,
   platform stat or singleton row, and no other tenant.

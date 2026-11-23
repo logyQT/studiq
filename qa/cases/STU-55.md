@@ -38,7 +38,7 @@ D3) wewnątrz darmowej organizacji.
 
 ## Expected result
 
-- `GET /api/v1/features/me` zawiera `stats.insights`.
+- `GET /api/v1/me/entitlements` zawiera `stats.insights`.
 - /app/stats/activity pokazuje sekcje „Najsłabsze talie” / „Najsłabsze tematy” bez karty
   planu (puste listy są w porządku — ważne, że nie ma blokady).
 - `GET /api/v1/stats/weak-points` → 200; `GET /api/v1/stats/student/insights?days=30` → 200.

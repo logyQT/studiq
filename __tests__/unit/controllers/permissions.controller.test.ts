@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** What `listMyPermissions` puts in the response's `data`. */
 interface PermissionsBody {
+  orgId: string | null;
   permissions: Record<string, PermissionScope>;
-  features?: Record<string, boolean>;
+  entitlements?: Record<string, boolean>;
 }
 
 /** The payload is declared `unknown`; this guard narrows it to what the endpoint promises. */
@@ -57,10 +58,24 @@ describe('PermissionsController', () => {
       expect(body(response).permissions).toBeDefined();
     });
 
-    it('returns only the permissions map (features live on /features/me)', async () => {
+    it('returns only the permissions map (entitlements live on /me/entitlements)', async () => {
       const response = await controller.listMyPermissions(mockCtx);
 
-      expect(body(response).features).toBeUndefined();
+      expect(body(response).entitlements).toBeUndefined();
+    });
+
+    // The client keys its cache by the org the map belongs to, so the payload
+    // must name it instead of leaving the caller to assume the active org.
+    it('echoes the active org id the map was resolved for', async () => {
+      const inOrgCtx: RequestContext = {
+        ...mockCtx,
+        activeOrgId: 'org-9',
+        orgRoleId: 'role-9',
+        permissionScopes: { 'deck.read': 'organization' },
+      };
+
+      expect(body(await controller.listMyPermissions(inOrgCtx)).orgId).toBe('org-9');
+      expect(body(await controller.listMyPermissions(mockCtx)).orgId).toBeNull();
     });
 
     it('adds default own permissions for student', async () => {

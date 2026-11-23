@@ -19,8 +19,8 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { useAiChat } from '@/hooks/use-ai-chat';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { usePermission } from '@/hooks/use-permission';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -47,11 +47,11 @@ interface AiChatScreenProps {
 }
 
 export function AiChatScreen({ deckId }: AiChatScreenProps) {
-  // Same query pair the settings page uses (`useFeature()` + `useFeatures()`)
+  // Same query pair the settings page uses (`useEntitlement()` + `useEntitlements()`)
   // to keep a provisional `false` from rendering the locked card mid-flight.
-  const feature = useFeature();
-  const { isPending: featuresPending } = useFeatures();
-  const canChat = feature('ai.chat');
+  const entitlement = useEntitlement();
+  const { isPending: entitlementsPending } = useEntitlements();
+  const canChat = entitlement('ai.chat');
 
   const {
     messages,
@@ -145,7 +145,7 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
   // direct `/app/ai` must not render a composer every send would 429 on. Both
   // returns sit below every hook so the hook order is stable when `canChat`
   // flips once the features query settles.
-  if (featuresPending) return <AiChatSkeleton />;
+  if (entitlementsPending) return <AiChatSkeleton />;
   if (!canChat) return <AiChatLockedState />;
 
   return (

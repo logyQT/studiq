@@ -29,8 +29,8 @@ import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { hasTeacherActivity } from '@/lib/stats';
 import { PlanLockedCard } from '@/components/shared/plan-locked-card';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 
 type StudentRow = {
   id: string;
@@ -110,8 +110,8 @@ export default function TeacherActivityPage() {
   // Class activity is a diagnostic (phase 5d): gated on `stats.insights`. The
   // heading stays either way (EDU-02 / NFR-07 assert it); unentitled, the plan
   // card replaces the body and the gated read is not fired.
-  const canInsights = useFeature()('stats.insights');
-  const { isPending: featuresPending } = useFeatures();
+  const canInsights = useEntitlement()('stats.insights');
+  const { isPending: entitlementsPending } = useEntitlements();
 
   const fetchData = useCallback(async () => {
     if (!canInsights) {
@@ -185,7 +185,7 @@ export default function TeacherActivityPage() {
         </div>
       </div>
 
-      {loading || featuresPending ? (
+      {loading || entitlementsPending ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (

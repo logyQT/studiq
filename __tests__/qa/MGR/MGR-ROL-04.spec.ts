@@ -148,7 +148,7 @@ async function signInAsManager(page: Page, tenant: QaTenant): Promise<void> {
 }
 
 /**
- * Open /manage/roles. The write UI is fail-closed until `/permissions/me`
+ * Open /manage/roles. The write UI is fail-closed until `/me/permissions`
  * resolves (`usePermission()`), so the create button is the readiness signal for
  * the whole action column.
  */
@@ -190,7 +190,7 @@ test('a system role offers no delete control and the API refuses to delete it', 
   // the page's `usePermission()` hook reads.
   const permissions = await readData<{ permissions: Record<string, string | null> }>(
     page,
-    '/api/v1/permissions/me',
+    '/api/v1/me/permissions',
   );
   expect(permissions.permissions['org.role.manage'], 'the admin holds the gate').toBe(
     'organization',

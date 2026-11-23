@@ -98,7 +98,7 @@ TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs a
 ## How to test
 
 - Use the **session browser** described above. Use its JavaScript evaluation for DOM queries and its screenshot tool for visual evidence.
-- Radix dropdowns need a pointerdown→pointerup→click sequence. Use a full mouse press/release rather than JS `.click()` for Radix triggers; feature-gated menu items appear only after `/api/v1/features/me` resolves.
+- Radix dropdowns need a pointerdown→pointerup→click sequence. Use a full mouse press/release rather than JS `.click()` for Radix triggers; feature-gated menu items appear only after `/api/v1/me/entitlements` resolves.
 - A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not navigation/reload.
 - Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a). You can do this with a `fetch(...)` in the browser's JavaScript evaluation.
 - Honor the scenario's precondition (account + active org); **always log in via `POST /api/v1/auth/login` first** — never Dev Quick Login or the login form.
@@ -118,7 +118,7 @@ Pinpoint workflow (run after a failing request appears in the browser):
 1. Discover datasource UIDs once per session: `list_datasources({ type: "tempo" })` / `{ type: "loki" }` / `{ type: "prometheus" }`. Every Tempo/Loki/Prometheus tool below needs `datasourceUid`.
 2. Correlate the request to a trace:
    - Fastest: read the `x-trace-id` response header from the failed request (the browser's network log) → `get_tempo_trace({ datasourceUid, trace_id })`.
-   - Or by time window: `search_tempo_traces({ datasourceUid, query: '{ resource.service.name = "<service>" && span.http.status_code >= 400 }', start, end })`. Narrow by span name with the intrinsic `name` (not `span.name`): `&& name = "GET /api/v1/features/me"`. Discover attribute names with `list_tempo_attribute_names({ datasourceUid, scope: "span" })` and `list_tempo_attribute_values(...)`.
+   - Or by time window: `search_tempo_traces({ datasourceUid, query: '{ resource.service.name = "<service>" && span.http.status_code >= 400 }', start, end })`. Narrow by span name with the intrinsic `name` (not `span.name`): `&& name = "GET /api/v1/me/entitlements"`. Discover attribute names with `list_tempo_attribute_names({ datasourceUid, scope: "span" })` and `list_tempo_attribute_values(...)`.
 3. Read the actual error off the span: span status/message, exception events, and any `db.error.code` / `db.error.message` attributes (Postgres code). Quote this — it is the root cause you were previously approximating.
 4. Pull correlated logs: `query_loki_logs({ datasourceUid, logql: '{service_name="<service>"} | trace_id="<id>"', startRfc3339, endRfc3339 })`. Confirm label names with `list_loki_label_names({ datasourceUid })` first. (The parameters are `startRfc3339`/`endRfc3339`; `start`/`end` are ignored.)
 5. Check impact/trend (optional): `query_prometheus({ datasourceUid, expr: 'sum(rate(studiq_http_server_request_total{service_name="<service>", http_status_code=~"4..|5.."}[5m])) by (http_status_code)', queryType: "range", startTime, endTime })`. The collector prefixes every metric with the `studiq_` namespace and exposes `service_name` as a label (see `otel-collector-config.yml`); confirm with `list_prometheus_metric_names({ datasourceUid })`.

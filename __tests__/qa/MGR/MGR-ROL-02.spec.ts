@@ -106,7 +106,7 @@ test('creates „Asystent”, renames it with a description and keeps the custom
   // role carries the gate on every plan.
   const permissions = await getJson<{ permissions: Record<string, string | null> }>(
     page,
-    '/api/v1/permissions/me',
+    '/api/v1/me/permissions',
   );
   expect(permissions.permissions['org.role.manage'], 'the admin holds the gate').toBe(
     'organization',

@@ -112,8 +112,8 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
     // read-only list. The keys contain dots, so read them as object keys:
     // `toHaveProperty('group.manage')` splits on the dot and looks for a nested
     // `group.manage` object, which never matches this flat map.
-    const permissions = await page.request.get('/api/v1/permissions/me');
-    expect(permissions.status(), 'GET /api/v1/permissions/me').toBe(200);
+    const permissions = await page.request.get('/api/v1/me/permissions');
+    expect(permissions.status(), 'GET /api/v1/me/permissions').toBe(200);
     const scopes = (await json<ApiEnvelope<{ permissions: Record<string, string> }>>(permissions))
       .data.permissions;
     expect(Object.keys(scopes), 'the educator may manage classes').toContain('group.manage');
