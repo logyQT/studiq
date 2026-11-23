@@ -18,41 +18,38 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                     | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | -------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                  | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                  | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                  | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                  | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                  | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                            | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                            | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                  | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424       | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
-| 7     | delete, full QA, close                         | pending | —                                      | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                      | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                               | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ------------------------------------------------ | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                            | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                      | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                            | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
+| 7     | delete, full QA, close                         | pending | —                                                | —   | all 191 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                | —   | all 191 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
 (#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
 (#1421), 5e-2 `8667e6ca` (#1424). Phase 3 (3a–3d, #1406–#1409) and phase 4
-(`c9c14138`, #1410) closed earlier. Deferral register: rows 1, 2 and 4–13 are
-closed; **row 3** (`resolveScope`'s no-active-org persona default —
-personal-scope permissions) is the only one left and it is **parked until that
-key family exists**, which phase 6 owns. The only `allowedAccountTypes` left on
-the API surface are the two declared exceptions (R5 org/classroom creation),
+(`c9c14138`, #1410) closed earlier. Deferral register: rows 1–13 are closed —
+**row 3** (`resolveScope`'s no-active-org persona default) by **6c** under
+operator decision **D35** (persona-free personal content); the one open row is
+**row 14** (a per-user personal default permission set, owned after phase 6).
+The only `allowedAccountTypes` left on the
+API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: phase 6 (UI and cache)** — a design pass first
-(nav/shell from the active org, org-keyed query keys, the role editor UI, the
-`/me/plan` union, and the Teacher content-read follow-up recorded in phase 3),
-then sized PRs; phase 7 (deletes + full 191-case QA) and phase 8 (the
-extendability release gate) follow. **6a** — the two `/me/*` authority endpoints
-and the org-keyed authority cache — is on `feat/authority-6`; 6b (route rules,
-area gate, nav gates), 6c (row 3), 6d (role editor, `/me/plan` union) and 6e
-(Teacher assignment reads) follow.
+mints the claim. **Next slice: 6b (route rules, area gate, nav gates)**, then
+6d (role editor, `/me/plan` union) and 6e (Teacher assignment reads). 6a-1
+`bcd874f0` (#1426) and 6a-2 `800129fe` (#1427) are merged; 6c (row 3, D35) is
+on `feat/authority-6`.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -135,6 +132,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R43 | A persona branch standing in for a capability fails in both directions at once — it over-reads for one persona and leaks for the other; replace it with the capability (or the target-set fact) and pin both directions in one fixture where persona and role disagree.                                                                                                                                                                              | 5e-1: the old `quiz_attempts` staff branch let an educator persona on the Member role read every same-org learner's attempts (leak) while a student persona on a Teacher-capable role could not; the seal's persona conjunct spared a targeted educator the sealed item's key                                                                                                                                                                                                                                                 |
 | R44 | A policy that a DML statement's RETURNING must satisfy needs the row-level conjunct spelled directly on the row: PostgreSQL gates INSERT … RETURNING on the table's SELECT policy, and a STABLE helper scanning the same table cannot see the row inserted by the same command, so an author arm that lives only inside the helper evaluates false for that row.                                                                                     | 5e-2: narrowing the `teacher_assignments` SELECT to the cohort helper made the author's own INSERT … RETURNING raise 42501 while the bare insert passed; the direct `created_by = auth.uid()` arm inside the unchanged tenant floor fixed it, and child-table policies (whose helpers read the parent row) never needed it                                                                                                                                                                                                    |
 | R45 | An org-partitioned cache is invalidated by its key, not by a refetch: invalidating the prefix while the outgoing org's entry is still observed writes the new org's payload under the old org's key, and that entry then reads as fresh when the caller returns. Mark it stale and let the key change fetch; refetch only when the key did not change.                                                                                               | 6a: `invalidateAuthority` on the switch would have refetched `['permissions', <outgoing org>]` with the new cookie live; the error is invisible until a switch back inside the 60 s `staleTime`. The rule was already recorded for org-keyed data lists in `use-orgs.ts` (#135)                                                                                                                                                                                                                                               |
+| R46 | A key's **exclusion** from a personal/default permission set is a claim about another layer: prove it with a call that holds the key and still gets that layer's refusal, or the next reader cannot tell a deliberate exclusion from a missing grant.                                                                                                                                                                                                | 6c: `quiz.*`/`assignment.*` are excluded from `PERSONAL_PERMISSION_KEYS` because their services refuse a no-org call; a route-level 403 would be satisfied by the permission gate alone, so the proof calls both services with a context that holds the key                                                                                                                                                                                                                                                                   |
 
 ## 4. Decisions
 
@@ -3438,7 +3436,7 @@ no phase-5 enforcement):**
 
   | Branch                                                                                                                                                                                                                                               | file:line (live-verified where marked)                                                                                                                                                                                              | Phase         | Why it is not authority-modelled yet                                                                                                                                                                                                                                                                                                                                                                                                                          |
   | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `resolveScope` persona default: no active org + student/educator + content verb → `own`                                                                                                                                                              | `packages/server/src/lib/authz.ts:46`                                                                                                                                                                                               | 5             | §6.3's personal-content rule — inside an org the role row is the whole answer; the no-org default still keys on persona until personal-scope permissions ship                                                                                                                                                                                                                                                                                                 |
+  | `resolveScope` no-org default: the persona is never read (closed 6c)                                                                                                                                                                                 | `packages/server/src/lib/authz.ts:41`                                                                                                                                                                                               | closed (6c)   | D35: any authenticated caller resolves `PERSONAL_PERMISSION_KEYS` at `own` — the 20 personal content CRUD keys + `stats.read` = 21; `quiz.*`/`assignment.*` are excluded because their services refuse a no-org call. The guard `personal-permission-keys.test.ts` derives the set from the catalog. Interim: a no-org manager may create personal content until row 14 lands                                                                                 |
   | Seal: staff get an empty seal                                                                                                                                                                                                                        | `packages/server/src/lib/question-seal.ts:183` + SQL `rls_caller_is_sealed_item` (live def)                                                                                                                                         | closed (5e-1) | the student/staff split over sealed answer keys now keys on the target set (D-5e1), not the JWT persona                                                                                                                                                                                                                                                                                                                                                       |
   | Exposure recorded only for a STUDENT caller                                                                                                                                                                                                          | `packages/server/src/services/assessment-review.service.ts:202`                                                                                                                                                                     | closed (5e-1) | #1172: the write guard is the D-5e1 learner answer over the loaded assignment, so a staff preview mints no event and a targeted educator does                                                                                                                                                                                                                                                                                                                 |
   | Org-wide report inbox needs MANAGER persona + system role name `admin`                                                                                                                                                                               | `packages/server/src/services/question-report.service.ts:444` (recipient fallback `:116`)                                                                                                                                           | 5             | should be `org.report.manage` — D13 says a student-persona Admin must reach it                                                                                                                                                                                                                                                                                                                                                                                |
@@ -3461,6 +3459,54 @@ no phase-5 enforcement):**
   | `seatEligible` metadata not yet consumed by pool validation                                                                                                                                                                                          | `packages/authz/src/entitlements.ts:18,36-71`, `entitlement_catalog.seat_eligible` (20261119140000:57)                                                                                                                              | 4             | MGR-SEAT-01 / D15: the pool's `plan_key` must be `scope='personal'` + `seatEligible` — phase 4 owns `addPool`                                                                                                                                                                                                                                                                                                                                                 |
   | `quiz.builder` and `advanced.stats` entitlements have **no enforcement anywhere**                                                                                                                                                                    | `apps/web/src/lib/pricing-benefits.ts:11-12` (the only non-catalog references); no `requireEntitlement` call site exists (`git grep -n "quiz.builder\|advanced.stats" -- apps packages` → catalog + pricing copy + i18n + comments) | 5             | ADR §7's paid-surface contract and the rollout's phase-5 line name both keys; the register missed them because no persona branch was involved. Phase 5a named the gap; a later 5 slice needs the product decision on which builder/statistics surfaces are paid and which are baseline, then one `requireEntitlement` call per agreed surface                                                                                                                 |
   | **Assigning a role to an existing member** bypasses §4.4: `PUT /api/v1/organization/members` (`organization-member.service.ts#changeRole`) and the `org_members` UPDATE policy gate on `org.member.manage` only, never on "grant only what you hold" | `packages/server/src/services/organization-member.service.ts:124-158`, `packages/server/src/controllers/organization-member.controller.ts:63-87`, live policy "Org managers update members" (`20261120110000:53-67`)                | 5             | Phase 5b's row 9 closed the **invite** helper (`can_assign_org_role`); the member-assignment path was outside that row and is pre-existing. An `org.member.manage` holder without `org.admin` can still assign the system Admin role. The fix reuses the new `covers_permission`/`actor_may_assign_role` shape at the service and in the UPDATE policy's `with check` — row 13 owns it, in a 5c/5d slice; recorded by the 5b review so it cannot be forgotten |
+  | No per-user personal permission set: the no-org default is one fixed set for everyone                                                                                                                                                                | `packages/server/src/lib/authz.ts:41`; `packages/server/src/lib/with-auth.ts`                                                                                                                                                       | after phase 6 | D35's interim consequence — a manager should edit but not create personal decks, and future per-user overrides need a row. Shape: `user_permission_scopes(user_id, permission_key, scope)` + `PERSONAL_ROLE_TEMPLATES` (persona seeds the template at signup; provisioning may read persona) + a `withAuth` read when no org; ≈250–350 lines, one slice, no RLS twin                                                                                          |
+
+  **2026-11-23 (phase 6c, `feat/authority-6`): register row 3 is closed (D35)
+  and row 14 is registered.**
+  - **Row 3 — operator decision D35 (2026-11-23, after a live probe).**
+    Persona-free personal content: with no active org **any authenticated
+    caller** resolves `PERSONAL_PERMISSION_KEYS` (`@studiq/authz`) at `own` —
+    the 20 personal content CRUD keys (`deck`/`flashcard`/`topic`/`question`/
+    `question_bank` × read/create/update/delete) **plus `stats.read` = 21
+    keys**. `quiz.*` and `assignment.*` are excluded because their services
+    refuse a no-org call, so a personal scope for them could only authorize a
+    request that then fails. Inside an org nothing changes: the stored role row
+    wins and no row denies. No `accountType` read remains in `resolveScope`;
+    persona may seed provisioning (plan catalogue, dashboard, creator defaults),
+    never authorization.
+  - **Measured basis (live probe, seeded `EDU-DECK-01` tenant, API login, no
+    `active_org_id` cookie):** teacher and student were **identical** (201,
+    `visibility personal`, `organization_id null`) on `/flashcards/decks`,
+    `/questions/banks`, `/questions` and `/flashcards`; the **manager got 403**
+    on decks/banks although the phase-4 `solo` plan grants `flashcards`/`quiz`
+    and deck/bank limits. Inside the org all three got 201 (the role path).
+    Quiz authoring was 403 for all three on that tenant = `quiz.templates`
+    (5d), not persona.
+  - **Pinned by:** the guard
+    `__tests__/unit/guards/personal-permission-keys.test.ts` derives the
+    expected set from `PERMISSIONS` (`category === 'content'` × the five
+    families × the four CRUD verbs) + `stats.read`, asserts `quiz.*`/
+    `assignment.*` are absent and every member is a real `Permission` key;
+    `__tests__/unit/lib/authz.test.ts` pins the truth table (student, educator
+    **and manager** with no org → `own` for the 21; `quiz.read`,
+    `assignment.read`, `group.read`, `org.member.manage` → null with and
+    without an org; a stored row still wins at any scope; in-org no row →
+    null); `__tests__/unit/controllers/permissions.controller.test.ts` pins the
+    payload (a no-org manager gets the 21 keys, and nothing for
+    `quiz.*`/`assignment.*`/`group.*`/`org.*`). The integration case lives in
+    `__tests__/integration/no-active-org-guards.test.ts`: a manager with no org
+    creates a personal deck through the real route (201, `organization_id
+null`, `visibility personal`), and `quiz`/`assignment` creation still
+    refuses at the **service** for a context that holds both keys.
+  - **Row 14 — the per-user personal default permission set.** Operator
+    rationale: a manager should be able to **edit but not create** personal
+    decks/flashcards, and future per-user overrides need a row instead of a
+    persona branch. Shape: `user_permission_scopes(user_id, permission_key,
+scope)` + `PERSONAL_ROLE_TEMPLATES` (seeded from the persona at signup —
+    provisioning may read the persona, authorization never) + a `withAuth`
+    read of the personal rows when no org; ≈250–350 lines, one slice, no RLS
+    twin. **Owner: after phase 6** (phase 7 boundary or its own PR). Not
+    phase-6 scope.
 
   **2026-11-22 (phase 5a): the register gained a row it had missed.** The
   rollout's phase-5 line lists `requireEntitlement` on "AI, quiz builder,
@@ -5139,10 +5185,44 @@ then (`grep -rn allowedAccountTypes apps packages __tests__` → 2 API files). T
 is no work in that item, and a slice written against the sentence would have
 _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
 
+**6c — register row 3 (D35): the persona-free personal-content set** (on
+`feat/authority-6`; no SQL, no migration, no new table).
+
+- **The rule.** `resolveScope` no longer reads `accountType`, a verb suffix or
+  the catalog category: after the in-org deny it returns
+  `isPersonalPermissionKey(action) ? 'own' : null`. `PERSONAL_PERMISSION_KEYS`
+  (`packages/authz/src/lib/permissions.ts`, exported from the package entry) is
+  the 20 personal content CRUD keys + `stats.read` = **21**; `quiz.*` /
+  `assignment.*` stay out because their services refuse a no-org call.
+- **Guard.** `__tests__/unit/guards/personal-permission-keys.test.ts` derives
+  the expected members from `PERMISSIONS` (`category === 'content'` × the five
+  families × the four CRUD verbs) plus `stats.read`, so a content key added to
+  the catalog fails until it is classified; it also asserts
+  `quiz.*`/`assignment.*` are absent and every member is a real `Permission`
+  key.
+- **Behaviour pins.** `authz.test.ts` truth table: the 21 keys → `own` for
+  student, educator **and manager** with no org; `quiz.read`, `assignment.read`,
+  `group.read`, `org.member.manage` → null with and without an org; a stored
+  row still wins at any scope; in-org no row → null.
+  `permissions.controller.test.ts`: a no-org manager's payload is the whole
+  21-key map (it was `{}`), and nothing is claimed for
+  `quiz.*`/`assignment.*`/`group.*`/`org.*`.
+  `no-active-org-guards.test.ts` adds two integration cases: a manager with no
+  `active_org_id` creates a personal deck through the real route (201,
+  `organization_id null`, `visibility personal`), and a context that holds
+  `quiz.create` + `assignment.create` at `own` still gets `FORBIDDEN` from both
+  services' own no-org guard (the exclusion is not a permission accident).
+- **Gates on this branch.** typecheck (root + web + packages) 0 errors; `lint`
+  (**1567** files) 0 warnings; unit **317 files / 4918 passed, 1 skipped**;
+  `review:static`, `knip` and `format` green.
+- **Coordinator still owns:** this branch's serial integration run and the
+  served probe — a manager with no `active_org_id` cookie → deck create **201**,
+  quiz create still refused (entitlement/service), not a persona 403.
+
 **Still open in phase 6:** 6b route rules, `resolveDashboardArea`, `AreaGate` and
-the nav-item gates; 6c `resolveScope`'s row-3 persona default; 6d role-editor
-behaviour (caller-scope awareness, atomic profile write) and the `/me/plan` union
-badge; 6e the Teacher assignment-read widening.
+the nav-item gates; 6d role-editor behaviour (caller-scope awareness, atomic
+profile write) and the `/me/plan` union badge; 6e the Teacher assignment-read
+widening.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
 optional argument: the default `true` is the common case and keeping it optional
@@ -5176,6 +5256,24 @@ the key change is what fetches, and a later visit refetches because the entry is
 stale. This is design-derived, not observed in a failing run: the
 `query-keys.test.ts` partition assertions pin the key shape, not the race.
 Rule: R45.
+
+#### 2026-11-23 — deleting a persona default is not the same as installing a personal rule
+
+What: row 3's brief was "delete the persona branch", and the obvious test is "a
+manager with no org is now allowed". That test alone also passes if the set is
+"every content key": it cannot see the two families the set must exclude, and
+`/me/permissions` — which is what `usePermission()` gates the UI on — would then
+advertise `quiz.create` to a no-org caller whose quiz service refuses the call.
+Why: the deleted branch was a predicate (persona ∧ content ∧ CRUD) whose
+replacement is a membership test with a **reason** for its complement. Deleting
+the predicate loses that reason silently, and every later reader sees only an
+absent key.
+Fix: the expected set is derived from the catalog in
+`personal-permission-keys.test.ts` (a new content key fails until classified),
+the payload test asserts the whole 21-key map instead of one key, and the
+exclusion is proved where it is claimed — both services are called with a
+context that holds `quiz.create`/`assignment.create` and still answer FORBIDDEN.
+Rule: R46.
 
 ### Phase 7 — delete and close
 

@@ -355,6 +355,55 @@ export function isPermissionCatalogKey(value: string): value is PermissionCatalo
   return Object.hasOwn(PERMISSIONS, value);
 }
 
+/**
+ * The personal-content keys a caller resolves at `own` with **no active org**
+ * (ADR-0015 D35, phase 6c). Personal authority is the one layer a user has
+ * without a tenant: no role row exists to read, and the persona decides nothing.
+ *
+ * `quiz.*` and `assignment.*` are content keys and deliberately absent: a quiz
+ * and a teacher assignment are org rows (`organization_id` NOT NULL) whose
+ * services refuse a no-org create, so a default for them could only authorize a
+ * request that then fails. `stats.read` is present because a no-org caller's own
+ * study statistics are a real personal surface.
+ */
+export const PERSONAL_PERMISSION_KEYS: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
+  'deck.read',
+  'deck.create',
+  'deck.update',
+  'deck.delete',
+  'flashcard.read',
+  'flashcard.create',
+  'flashcard.update',
+  'flashcard.delete',
+  'topic.read',
+  'topic.create',
+  'topic.update',
+  'topic.delete',
+  'question.read',
+  'question.create',
+  'question.update',
+  'question.delete',
+  'question_bank.read',
+  'question_bank.create',
+  'question_bank.update',
+  'question_bank.delete',
+  'stats.read',
+]);
+
+/**
+ * Whether `value` names one of the personal-content keys. The cast is the Set
+ * lookup's price for a `string` caller; `__tests__/unit/guards/personal-permission-keys.test.ts`
+ * pins every member to a real `Permission` value, so no key outside the catalog
+ * can be in the set.
+ */
+export function isPersonalPermissionKey(value: string): value is PermissionKey {
+  // Widening the set's type, not asserting a narrower one: the guard pins every
+  // member to a real `Permission` value, so the membership test cannot admit a
+  // key the catalog does not have.
+  const keys: ReadonlySet<string> = PERSONAL_PERMISSION_KEYS;
+  return keys.has(value);
+}
+
 /** Whether `value` is one of the three scopes a catalog key can carry (not `any`). */
 export function isCatalogScope(value: string): value is CatalogScope {
   return value === 'own' || value === 'group' || value === 'organization';
