@@ -38,11 +38,16 @@ const AREA_ROUTES = ['/edu', '/edu/assignments', '/manage', '/manage/members'] a
 /** Step 1's onboarding routes: the declared persona exceptions, still redirected. */
 const ONBOARDING_ROUTES = ['/setup', '/setup/org'] as const;
 
-/** Path a redirect points at, resolved against the app origin. */
-function redirectTarget(response: APIResponse): string {
+/** The `Location` a redirect answered with, as the request that follows it. */
+function redirectLocation(response: APIResponse): string {
   const location = response.headers().location;
   if (!location) throw new Error(`${CASE} redirect carries no Location header`);
-  return new URL(location, APP_URL).pathname;
+  return location;
+}
+
+/** Path a redirect points at, resolved against the app origin. */
+function redirectTarget(response: APIResponse): string {
+  return new URL(redirectLocation(response), APP_URL).pathname;
 }
 
 /** The sidebar is the shell every area page renders; it is what "loaded" means. */
@@ -82,13 +87,30 @@ test('a student keeps the URL on every area route and only its own data is serve
     const gate = await page.request.get(route, { maxRedirects: 0 });
     expect(gate.status(), `${route} must load for a member, not redirect`).toBe(200);
 
-    // 2. The RSC request the client router makes is not redirected either, so a
-    //    soft navigation lands on the same page.
+    // 2. The RSC fetch the client router makes is not answered by an auth or
+    //    persona redirect either. Next canonicalises a bare RSC request with a
+    //    `307` to the same path (`?_rsc`, its cache-buster), so what must hold
+    //    here is that this framework hop is the *only* one — never `/login` or
+    //    `/setup` — and that the canonical URL answers with the page.
     const routerRequest = await page.request.get(`${route}?_rsc=qa-aut-16`, {
       headers: { RSC: '1' },
       maxRedirects: 0,
     });
-    expect(routerRequest.status(), `${route} (RSC) must answer with the page`).toBe(200);
+    const routerStatus = routerRequest.status();
+    expect(
+      [200, 307],
+      `${route} (RSC) must answer the page or Next's canonical RSC redirect, got ${routerStatus}`,
+    ).toContain(routerStatus);
+    if (routerStatus === 307) {
+      expect(redirectTarget(routerRequest), `${route} (RSC) must stay on this route`).toBe(route);
+      const canonical = await page.request.get(redirectLocation(routerRequest), {
+        headers: { RSC: '1' },
+        maxRedirects: 0,
+      });
+      expect(canonical.status(), `${route} (RSC) canonical URL must answer with the page`).toBe(
+        200,
+      );
+    }
 
     // 3. The browser keeps the URL and renders the dashboard shell.
     await page.goto(route);

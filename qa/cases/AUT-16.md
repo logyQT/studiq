@@ -30,6 +30,12 @@ Powyższy oczekiwany rezultat jest historyczny. Od phase 6 obowiązuje:
   → `200 {"success":true,"data":[]}` albo `403` (D25), `GET /api/v1/stats/teacher`
   → `200` z własnymi (pustymi) statystykami albo `403`. To jest wymóg §14.1 dla
   zakładki: strona ma się **załadować**, a nie przekierować ani zwrócić 404.
+- **Żądanie RSC routera klienta też nie dostaje przekierowania autoryzacyjnego.**
+  Next kanonikalizuje „nagie” żądanie RSC `307` na **tę samą** ścieżkę z
+  `?_rsc` (własny cache-buster frameworka), a ten kanoniczny URL odpowiada
+  `200`. Asercja pinuje więc „jedyny skok zostaje na trasie” — nigdy `/login`
+  ani `/setup` — plus `200` na kanonicznym URL, a nie „RSC musi odpowiedzieć
+  `200`”, bo to byłaby asercja o kanonikalizacji Nexta, nie o autoryzacji.
 - **Trasy onboardingowe pozostają wyjątkiem osobowym** (`/setup` — EDUCATOR,
   `/setup/org` — MANAGER). Odmowa odpowiada `307` z `Location: /dashboard`, a
   neutralny landing podstawia `/app` dla tego studenta.
