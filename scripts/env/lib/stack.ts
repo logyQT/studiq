@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { EXIT_PROBE_FAILED, EnvFailure } from './exit';
 import { REPO_ROOT, canon, currentBranchRef, isThisCheckout } from './repo';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
 
@@ -227,10 +228,41 @@ function parseServices(parsed: JsonObject): string[] {
   return serviceNames(parsed.services);
 }
 
-interface StackReadResult {
+export interface StackReadResult {
   read: StackRead | null;
   /** Spawn/timeout failure of the CLI itself; null means the CLI answered. */
   error: string | null;
+}
+
+/** Attempts at the status probe before it is reported as failed (#1360). */
+const PROBE_ATTEMPTS = 3;
+
+/**
+ * Base pause before the second attempt (it doubles for the third). Overridable so
+ * the hermetic unit tests do not sit through real pauses.
+ */
+function probeBackoffMs(): number {
+  const raw = Number(process.env.STUDIQ_STACK_PROBE_BACKOFF_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 500;
+}
+
+function sleepSync(ms: number): void {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * `stack status` is read-only, so a spawn failure, timeout or non-zero exit is
+ * retried: under build contention the CLI can miss its window while the stack is
+ * up and healthy (#1360). A stopped stack exits 0 and never reaches a retry.
+ */
+function runStatusProbe(stackName: string | null): SpawnResult {
+  const args = stackArgs('status', stackName);
+  let result = runSupabase(args);
+  for (let attempt = 1; !result.ok && attempt < PROBE_ATTEMPTS; attempt += 1) {
+    sleepSync(probeBackoffMs() * 2 ** (attempt - 1));
+    result = runSupabase(args);
+  }
+  return result;
 }
 
 /**
@@ -239,8 +271,8 @@ interface StackReadResult {
  * empty endpoints, no API URL), so an absent stack and a broken CLI stay
  * distinguishable.
  */
-function readStackWithError(stackName: string | null): StackReadResult {
-  const { ok, stdout, error } = runSupabase(stackArgs('status', stackName));
+export function readStackWithError(stackName: string | null): StackReadResult {
+  const { ok, stdout, error } = runStatusProbe(stackName);
   if (!ok) return { read: null, error };
   const parsed = parseJsonObject(stdout);
   if (!parsed) {
@@ -279,6 +311,29 @@ export function probeStackStatus(stackName: string | null): StackStatusProbe {
  */
 export function readStack(stackName: string | null): StackRead | null {
   return readStackWithError(stackName).read;
+}
+
+/**
+ * The failure a command reports when the status probe never answered. It is not
+ * `no running stack`: the stack may be up and healthy, so the message tells an
+ * agent to retry instead of restarting or reseeding it (#1360).
+ */
+export function stackProbeFailure(error: string): EnvFailure {
+  return new EnvFailure(
+    EXIT_PROBE_FAILED,
+    `could not read the Supabase stack status after ${PROBE_ATTEMPTS} attempts (${error}); this does not show the stack is gone, retry before restarting or reseeding it`,
+  );
+}
+
+/**
+ * Like {@link readStack}, but a probe that never answered throws
+ * {@link stackProbeFailure} instead of reading as an absent stack. `null` means
+ * the CLI answered and there is no running stack.
+ */
+export function readStackStrict(stackName: string | null): StackRead | null {
+  const { read, error } = readStackWithError(stackName);
+  if (error !== null) throw stackProbeFailure(error);
+  return read;
 }
 
 export function readStackStatus(stackName: string | null): StackStatus | null {
