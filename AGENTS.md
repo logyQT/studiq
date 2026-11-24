@@ -187,7 +187,7 @@ output worth reading. Everything reached through `bun run …` fails before
   non-current artifact also exits `4`, because "nothing servable" is a start
   failure, not a conflict; `5` timed out, `6` a **build-admission** refusal (no
   grant, a running web server, another checkout's stack), `7` waited out the slot
-  budget; `2` is bad usage. A failed build's re-printed tail never contains Bun's
+  budget, `8` the `supabase stack status` probe never answered (three attempts): the stack's state is **unknown**, not absent, so retry and do not restart or reseed it (`env:build`, `env:serve` and `env:run` say `could not read the Supabase stack status`, never `no running Supabase stack`); `2` is bad usage. A failed build's re-printed tail never contains Bun's
   `Exited with code N` lifecycle line: it says `code 0` next to a compiler error.
 - **A queue is not a hang.** A build waiting for a slot prints
   `build: waiting for a slot (1 of 1 busy, 1 waiting), 0:42 elapsed, 29:18 left`

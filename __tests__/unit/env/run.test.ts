@@ -6,6 +6,7 @@ import {
   createHarness,
   parseJsonObject,
   stackStatusFixture,
+  stoppedStackFixture,
   type Harness,
 } from '#test/unit/env/support';
 
@@ -128,6 +129,8 @@ describe('env:run', () => {
 
   it('fails with exit 4 and the env:ensure hint when no contract is available', async () => {
     const harness = newHarness();
+    // A stopped stack is an answer; a status call that fails is exit 8 (#1360).
+    harness.setStatusFixture(stoppedStackFixture());
     const marker = join(harness.dir, 'spawned.txt');
 
     const result = await harness.run([

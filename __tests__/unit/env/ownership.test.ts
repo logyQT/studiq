@@ -101,7 +101,7 @@ const locksModule = await loadEnvModule<{
   processStartTime(pid: number): string | null;
 }>('lib/locks.ts');
 const stackModule = await loadEnvModule<{
-  readStack(stackName: string | null): unknown;
+  readStackStrict(stackName: string | null): unknown;
 }>('lib/stack.ts');
 
 const baselineEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -394,8 +394,8 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
     // The race the early guard cannot see: serve passes it, then blocks on the
     // checkout lock while the build's prelude holds it, and the build takes its
     // mutex moments after releasing that lock — while serve reads the stack.
-    const realReadStack = stackModule.readStack;
-    const readStack = vi.spyOn(stackModule, 'readStack').mockImplementation((name) => {
+    const realReadStack = stackModule.readStackStrict;
+    const readStack = vi.spyOn(stackModule, 'readStackStrict').mockImplementation((name) => {
       writeBuildMutex(harness.registryDir);
       return realReadStack(name);
     });
