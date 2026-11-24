@@ -25,17 +25,22 @@ M1, WSB Merito (Launch).
   `org.role.manage`, a rola systemowa `admin` ma je na każdym planie.
 - Członek bez `org.role.manage` nie widzi edytora, a bezpośredni zapis
   (`POST`/`PUT`/`DELETE /api/v1/organization/roles…`) zwraca **403**
-  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna,
-  a strona `/manage/roles` otwiera się bez przekierowania — trasy paneli wymagają
-  tylko zalogowania (ADR-0015 §7.1), więc bramką jest uprawnienie, nie persona.
+  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna
+  **przez API** (`GET /api/v1/organization/roles` → **200**), a strona
+  `/manage/roles` ładuje się pod swoim adresem bez przekierowania: dla członka
+  bez żadnego klucza `org.*` renderuje kartę „Brak dostępu w tej organizacji”
+  (`AreaGate`), bo od 6b-2 cały obszar `/manage` jest bramkowany uprawnieniem
+  (ADR-0015 §7.1, §14.1). Bramką widoku i bramką zapisu jest uprawnienie, nie
+  persona.
 - Wybrany szablon (D17) zapisuje początkowe uprawnienia roli; `org.admin` nigdy
   nie jest przyznawany szablonem. Klucze `org.*` szablonu zaczną działać, gdy 2b
   zastąpi stare bramki funkcji (`member.manage`, `org.manage` itd.); klucze
   treściowe działają już teraz.
 - Członek z **kontem typu manager** i rolą niestandardową bez `org.role.manage`
-  widzi listę ról (strona jest auth-only), ale nie ma „Nowej roli” ani
-  kolumny „Akcje”, a `POST /api/v1/organization/roles` zwraca **403** — bramką
-  jest uprawnienie, nie typ konta.
+  ale z `org.member.manage` (preset Asystent) widzi listę ról — bramka obszaru go
+  wpuszcza — lecz nie ma „Nowej roli” ani kolumny „Akcje”, a
+  `POST /api/v1/organization/roles` zwraca **403** — bramką jest uprawnienie, nie
+  typ konta.
 
 ## Prerequisite context (tenant model)
 

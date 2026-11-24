@@ -136,6 +136,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R44 | A policy that a DML statement's RETURNING must satisfy needs the row-level conjunct spelled directly on the row: PostgreSQL gates INSERT … RETURNING on the table's SELECT policy, and a STABLE helper scanning the same table cannot see the row inserted by the same command, so an author arm that lives only inside the helper evaluates false for that row.                                                                                     | 5e-2: narrowing the `teacher_assignments` SELECT to the cohort helper made the author's own INSERT … RETURNING raise 42501 while the bare insert passed; the direct `created_by = auth.uid()` arm inside the unchanged tenant floor fixed it, and child-table policies (whose helpers read the parent row) never needed it                                                                                                                                                                                                    |
 | R45 | An org-partitioned cache is invalidated by its key, not by a refetch: invalidating the prefix while the outgoing org's entry is still observed writes the new org's payload under the old org's key, and that entry then reads as fresh when the caller returns. Mark it stale and let the key change fetch; refetch only when the key did not change.                                                                                               | 6a: `invalidateAuthority` on the switch would have refetched `['permissions', <outgoing org>]` with the new cookie live; the error is invisible until a switch back inside the 60 s `staleTime`. The rule was already recorded for org-keyed data lists in `use-orgs.ts` (#135)                                                                                                                                                                                                                                               |
 | R46 | A key's **exclusion** from a personal/default permission set is a claim about another layer: prove it with a call that holds the key and still gets that layer's refusal, or the next reader cannot tell a deliberate exclusion from a missing grant.                                                                                                                                                                                                | 6c: `quiz.*` and `assignment.create` are excluded from `PERSONAL_PERMISSION_KEYS` because their services refuse a no-org call; `assignment.publish`/`grade` because the persona default never granted them; the three assignment verbs a personal NULL-org row supports are included. A route-level 403 would be satisfied by the permission gate alone, so the proof calls both create services with a context that holds the key                                                                                            |
+| R47 | One predicate cannot answer "where is home" and "may this caller use this area": the two questions name different key sets when an area's home is typified by its management keys while its pages are usable through content reads, so name each predicate, state its question, and derive the admission set from the catalog.                                                                                                                       | 6b-2: reusing `resolveDashboardArea` for the gate would deny `/edu` to every Member — the landing names the three class-management keys that make `/edu` someone's _home_, while the area's pages are readable through content `.read` keys a Member holds, and the API answers `200` the moment the gate admits them                                                                                                                                                                                                         |
 
 ## 4. Decisions
 
@@ -5302,36 +5303,45 @@ table).
   org-scoped "no access" state, mounted inside `DashboardLayout` in
   `manage/layout.tsx` (`area="/manage"`) and `edu/layout.tsx` (`area="/edu"`);
   `/app` has no gate. It resolves `/me/orgs` plus the active org's
-  `['permissions', orgId]` answer and, while either is unresolved **or the
-  answer echoes a different `orgId`** (6a-1's rule), renders a neutral skeleton —
-  no children, no card, no flash and **no redirect**. A resolved map holding none
-  of the area's keys renders the card: the literal „Brak dostępu w tej
-  organizacji” / "No access in this organization", one sentence naming the active
-  organization, and the switcher action — one `Przełącz na {org}` button per
-  _other_ membership, or the `/app` link („Przejdź do swojej przestrzeni”) when
-  there is only one. Buttons disable while `isSwitching`. New i18n namespace
-  `AreaGate` in both locales.
+  `['permissions', orgId]` answer and renders a neutral skeleton — no children,
+  no card, no flash and **no redirect** — while _any_ of those facts is
+  unresolved: the list is loading, a settled list has no active org yet (the
+  auto-selection has not run, so the map under `null` is the personal layer), the
+  map is pending, **or the answer echoes a different `orgId`** (6a-1's rule). That
+  guard is `isAreaGateResolved` in `lib/dashboard-home.ts` — the landing's own
+  rule, shared rather than restated, because the gate reading the personal map
+  renders a false denial for `/manage` and a content flash for `/edu`. A **failed**
+  read is not a denial either: the gate renders a retry card with `/dashboard`'s
+  failure copy (`load_error` + „Spróbuj ponownie”, refetching both answers). A
+  resolved map holding none of the area's keys renders the card: the literal
+  „Brak dostępu w tej organizacji” / "No access in this organization", one
+  sentence naming the active organization, and the switcher action — one
+  `Przełącz na {org}` button per _other_ membership, or the `/app` link
+  („Przejdź do swojej przestrzeni”) when there is only one. Buttons disable while
+  `isSwitching`. New i18n namespace `AreaGate` in both locales.
 - **Two predicates, two questions (R47).** `hasAreaAccess(permissions, area)` sits
   next to `resolveDashboardArea` in `apps/web/src/lib/dashboard-home.ts`.
-  `/manage` is the same nine `MANAGER_AREA_KEYS`; `/edu` is **every
-  `groups`-category key plus every content `.read`**, derived from `PERMISSIONS`
-  (`Object.keys(PERMISSIONS).filter(isPermissionCatalogKey)`) so a new family or
-  `.read` key joins by declaration. The gate is broader than the landing on
-  purpose: the landing answers "where is home" (the three class-management keys),
-  the gate answers "may this caller use anything here", and a Member holds content
-  reads at `group`/`own` while a Billing-preset holder (`org.billing.manage` +
-  `org.seat.manage`) holds none.
+  `/manage` is every `org`-category catalog key (**nine** today, pinned by a count
+  in the unit test so a tenth is a decision) and `/edu` is **every
+  `groups`-category key plus every content `.read`** — both derived from
+  `PERMISSIONS` (`Object.keys(PERMISSIONS).filter(isPermissionCatalogKey)`) so a
+  new family, `.read` or `org.*` key joins by declaration. The gate is broader
+  than the landing on purpose: the landing answers "where is home" (the three
+  class-management keys), the gate answers "may this caller use anything here",
+  and a Member holds content reads at `group`/`own` while a Billing-preset holder
+  (`org.billing.manage` + `org.seat.manage`) holds none.
 - **Nav entries are any-of.** `NavItem.permission?: string` became
   `permissions?: readonly string[]` (**any one** shows the entry; `feature` stays
   for entitlements, and an item declaring both needs both) in
   `components/nav-main.tsx` + `lib/sidebar-nav.ts`. `app-sidebar.tsx` gates
-  **16** of its **34** entries with `Permission` constants (17 with the
-  pre-existing `ai.chat` entitlement gate): `/manage`'s seven
-  administration entries (roster = D25's four reads; invites; groups =
-  `group.manage`|`group.read`; reports; roles; seats; settings) with only the
+  **18** of its **34** entries: **16** on `Permission` constants and **2** on the
+  pre-existing `ai.chat` entitlement (`/edu/ai` and `/app/ai`, so `/app`'s only
+  gated entry is `ai.chat`). The 16 are `/manage`'s seven administration entries
+  (roster = D25's four reads; invites; groups = `group.manage`|`group.read`;
+  reports; roles; seats = `org.seat.manage` alone, the one key every handler on
+  that page requires, which the Billing preset holds; settings) with only the
   overview ungated, and `/edu`'s five content entries, the class entry, and the
-  three statistics entries. `/app` is unchanged (own-scope data, no org
-  authority).
+  three statistics entries.
 - **`/manage`'s counters read the role's entitlement profile.**
   `organization-member.service.ts#listMembers` adds `entitlement_profile` to the
   `org_roles!inner(...)` embed and `toMemberRows` returns `entitlementProfile`;
@@ -5345,7 +5355,11 @@ table).
   `orgRoleName` for `canBill` and renames the refusal `not-admin` →
   `not-billing` (i18n keys `org_not_billing_*`, both locales). `isOrgAdminRole`
   is deleted from `@studiq/authz` (the last reader was this file; `ORG_ADMIN_ROLE`
-  stays for the Stripe webhook's ownership write).
+  stays for the Stripe webhook's ownership write). The embed is pinned by the
+  select string in `org.service.test.ts` and by a real admin/teacher row in
+  `__tests__/integration/checkout-org.test.ts`; BIL-04's case text and spec carry
+  the shipped copy („Tylko osoba zarządzająca płatnościami organizacji może kupić
+  plan”), with the earlier walk's wording recorded as a dated note.
 - **Corpus (R6, spec + case text together).** New **AUT-20** (`qa/cases/AUT-20.md`
   - `__tests__/qa/AUT/AUT-20.spec.ts`, no profile file): a Member's bookmarked
     `/manage/members` keeps its URL, renders the card, offers the single-org
@@ -5357,11 +5371,17 @@ table).
     onto a custom role (name ≠ `member`, profile `learner`) through
     `POST /organization/roles` + `PUT /organization/members` and requires 3 / 1 /
     2 — a name-based classification cannot produce it.
+- **Recorded, not changed (6b-2 review).** N2: `/manage`'s counter classifies
+  "everyone not `learner`" as Wykładowcy, so a `none`-profile staff member counts
+  as a lecturer — documented, the label decision is deferred. N7: `usePermission()`
+  does not apply the `orgId` echo guard the gate applies — a follow-up, refused by
+  the gate in the meantime. N8: a denied area still shows the D25 and `group.read`
+  nav entries — accepted by AUT-20's case text, cleanup deferred.
 - **Gates on this branch.** `typecheck:all` (root 981, web 873, server 220,
   authz 7, ui 65 files) and `typecheck:admin` (151) 0 errors; `lint` **1574**
-  files 0 warnings; unit **319 files / 4993 passed, 1 skipped**;
+  files 0 warnings; unit **319 files / 5003 passed, 1 skipped**;
   `review:static`, `knip`, `format:check` and `dup:base` (no new clones) green;
-  `pr:size` **414/400** (676 test + 313 doc lines excluded) — over the budget, so
+  `pr:size` **514/400** (957 test + 398 doc lines excluded) — over the budget, so
   the PR needs `size:exception`; the four-item brief's own ceiling is ~700.
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   `hasAreaAccess`'s `/manage` branch replaced with `false` → "opens both areas to
@@ -5372,7 +5392,11 @@ table).
   when one of its keys is held" **KILLED**; `toMemberRows` carrying `roleName`
   instead of `entitlement_profile` → "carries the role entitlement profile"
   **KILLED**; `resolveCheckoutOrg` back on `orgRoleName === 'admin'` → "allows a
-  membership whose role can bill" **KILLED**.
+  membership whose role can bill" **KILLED**; the review pass added two: the
+  gate's `orgsCount > 0 && activeOrgId === null` clause deleted → "is unresolved
+  with memberships but no active org yet" **KILLED**, and the
+  `org_role_permissions(permission_key)` embed deleted from `listOrgs`' select →
+  "reads the billing key from the role embed in the same query" **KILLED**.
 - **Walk status.** The implementer's worktree served the base commit's build, so
   the gate and the rewritten MGR-01 spec were **not** walked here; both spec
   docblocks say so. The API half was measured against the seeded AUT-20 tenant

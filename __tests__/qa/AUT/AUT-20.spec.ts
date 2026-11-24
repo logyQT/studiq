@@ -37,10 +37,13 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * the dated record.
  *
  * Mutation (proves this spec can fail; **not run here** — the built app is the
- * base commit's): remove the `hasAreaAccess` branch in
- * `apps/web/src/components/layout/area-gate.tsx` so the gate always renders its
- * children → the no-access-card assertion below goes red (the member table
- * renders instead); restore and re-run green. The coordinator owns that run.
+ * base commit's): force `hasAreaAccess` to `true` in
+ * `apps/web/src/components/layout/area-gate.tsx`, so the gate always renders its
+ * children → the assertions that die are the card's (`[data-slot="area-gate"]`
+ * count and its title) and the absent member table; the manager control stays
+ * green, because it never renders the card either way. (Deleting the children
+ * branch instead is killed by the manager control test, which needs the table.)
+ * Restore and re-run green. The coordinator owns that run.
  */
 
 const CASE = 'AUT-20';
@@ -50,7 +53,13 @@ const NO_ACCESS_TITLE = 'Brak dostępu w tej organizacji';
 const OWN_SPACE_LINK = 'Przejdź do swojej przestrzeni';
 
 /** The `/manage` entries a Member must not be offered. */
-const HIDDEN_NAV = ['/manage/members', '/manage/invites', '/manage/roles', '/manage/seats'];
+const HIDDEN_NAV = [
+  '/manage/members',
+  '/manage/invites',
+  '/manage/roles',
+  '/manage/seats',
+  '/manage/settings',
+];
 
 function sidebar(page: Page) {
   return page.locator('[data-slot="sidebar"]');
@@ -79,6 +88,14 @@ test('a member keeps the URL on /manage/members and sees the org-scoped no-acces
   await expect(card.getByRole('heading', { name: NO_ACCESS_TITLE })).toBeVisible();
   await expect(card, 'the card names the active organization').toContainText(orgName);
 
+  // The URL is re-checked now that the gate has decided, not only after the
+  // navigation: a delayed client redirect would otherwise slip past the first
+  // assertion, which ran before anything had resolved.
+  expect(
+    new URL(page.url()).pathname,
+    'the bookmarked URL still keeps its path after the gate resolved',
+  ).toBe('/manage/members');
+
   // One membership in the `content` tenant, so the action is the own-space link.
   const ownSpace = card.getByRole('link', { name: OWN_SPACE_LINK, exact: true });
   await expect(ownSpace, 'the single-org fallback action').toHaveAttribute('href', '/app');
@@ -86,6 +103,8 @@ test('a member keeps the URL on /manage/members and sees the org-scoped no-acces
   // The page's own content is not rendered: no member table, no other people's
   // e-mail on the screen the member was refused.
   await expect(page.locator('table'), 'the member table is not rendered').toHaveCount(0);
+  // This one pins the D25 deny shape (the API answers zero rows, so no e-mail
+  // could be on screen even behind the gate), not the gate itself.
   await expect(page.getByText(manager.email)).toHaveCount(0);
 
   // --- Step 4: the /manage nav offers no administration entry -------------
@@ -93,7 +112,8 @@ test('a member keeps the URL on /manage/members and sees the org-scoped no-acces
   for (const href of HIDDEN_NAV) {
     await expect(nav.locator(`a[href="${href}"]`), `${href} is hidden`).toHaveCount(0);
   }
-  // Membership alone still offers the overview (and `group.read` the class list).
+  // Membership alone still offers the overview, and `group.read` the class
+  // lists — `/manage/groups` in this area, `/edu/groups` in the other.
   await expect(nav.locator('a[href="/manage"]')).toHaveCount(1);
 
   // --- Step 5: the API is the boundary ------------------------------------

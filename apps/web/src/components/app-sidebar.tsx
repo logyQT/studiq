@@ -170,11 +170,9 @@ const NAV_ITEMS: Record<DashboardArea, SidebarSection[]> = {
           titleKey: 'manage_seats',
           href: '/manage/seats',
           icon: CreditCard,
-          permissions: [
-            Permission.ORG_SEAT_MANAGE,
-            Permission.ORG_BILLING_MANAGE,
-            Permission.ORG_MEMBER_MANAGE,
-          ],
+          // Every handler on that page is `org.seat.manage`, so the entry is too;
+          // the Billing preset carries the key, so it still sees the entry.
+          permissions: [Permission.ORG_SEAT_MANAGE],
         },
         {
           titleKey: 'manage_settings',

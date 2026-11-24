@@ -53,8 +53,6 @@ interface Member {
   email: string;
   full_name: string | null;
   orgRoleName: string;
-  /** The role's entitlement profile; from the roster API. */
-  entitlementProfile: 'all' | 'learner' | 'none';
   /** The persona the plan picker filters pools by (D33); from the roster API. */
   accountType: string;
 }

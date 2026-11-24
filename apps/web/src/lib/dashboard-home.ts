@@ -19,21 +19,14 @@ export type LandingArea = DashboardArea | '/setup' | '/setup/org';
 export type PermissionMap = Partial<Record<PermissionKey, PermissionScope | null>>;
 
 /**
- * The nine organization-wide keys. Holding any one of them makes `/manage` this
- * caller's area, whether the caller is the seeded Admin role or a custom role
- * granted a single management key (#1391: the persona is not an input).
+ * The nine organization-wide keys: every `org`-category entry in the catalog.
+ * Holding any one of them makes `/manage` this caller's area, whether the caller
+ * is the seeded Admin role or a custom role granted a single management key
+ * (#1391: the persona is not an input).
  */
-const MANAGER_AREA_KEYS: readonly PermissionKey[] = [
-  Permission.ORG_SETTINGS_MANAGE,
-  Permission.ORG_MEMBER_MANAGE,
-  Permission.ORG_INVITATION_MANAGE,
-  Permission.ORG_ROLE_MANAGE,
-  Permission.ORG_SEAT_MANAGE,
-  Permission.ORG_BILLING_MANAGE,
-  Permission.ORG_REPORT_MANAGE,
-  Permission.ORG_AUDIT_READ,
-  Permission.ORG_ADMIN,
-];
+export const MANAGER_AREA_KEYS: readonly PermissionKey[] = Object.keys(PERMISSIONS)
+  .filter(isPermissionCatalogKey)
+  .filter((key) => PERMISSIONS[key].category === 'org');
 
 /** The class keys a Teacher holds, and the only reason to land on `/edu`. */
 const EDUCATOR_AREA_KEYS: readonly PermissionKey[] = [
@@ -102,6 +95,46 @@ export function hasAreaAccess(
   area: '/manage' | '/edu',
 ): boolean {
   return holdsAny(permissions, area === '/manage' ? MANAGER_AREA_KEYS : EDU_AREA_KEYS);
+}
+
+export interface AreaGateInput {
+  /** `['orgs']` has not resolved yet. */
+  orgsLoading: boolean;
+  /** `/me/orgs` failed. */
+  orgsError: boolean;
+  /** Memberships `/me/orgs` reported. */
+  orgsCount: number;
+  /** The org `/me/orgs` reports as active; `null` is the personal layer. */
+  activeOrgId: string | null;
+  /** The `['permissions', orgId]` query the gate reads. */
+  permissions: {
+    isPending: boolean;
+    isError: boolean;
+    data: { orgId: string | null } | undefined;
+  };
+}
+
+/**
+ * Whether `AreaGate` may render either answer — the children or the no-access
+ * card — or has to wait, and it waits on the same three facts the landing does
+ * (`resolveLandingArea` below), because a gate that resolves early makes a claim
+ * it cannot prove.
+ *
+ * The third fact is the one a naive gate misses: a settled membership list whose
+ * active org is still `null` is the moment between `/me/orgs` and the first-org
+ * auto-selection. The map under `null` is the 24-key personal set, so a gate that
+ * trusts it renders the no-access card for `/manage` and the children for `/edu`
+ * — a false denial plus a content flash, cured only by the switch that was about
+ * to run. A failed read is likewise not a denial: it stays unresolved until the
+ * caller retries.
+ */
+export function isAreaGateResolved(input: AreaGateInput): boolean {
+  if (input.orgsLoading || input.orgsError) return false;
+  if (input.orgsCount > 0 && input.activeOrgId === null) return false;
+  const permissions = input.permissions;
+  if (permissions.isPending || permissions.isError || !permissions.data) return false;
+  // A payload written under the outgoing org's key names a different org.
+  return permissions.data.orgId === input.activeOrgId;
 }
 
 export interface LandingInput {

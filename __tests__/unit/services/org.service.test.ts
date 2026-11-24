@@ -186,6 +186,31 @@ describe('OrgService', () => {
       expect(rows[0]?.canBill).toBe(false);
     });
 
+    it('reads the billing key from the role embed in the same query', async () => {
+      const membershipQuery = qb([
+        {
+          organization_id: 'org-1',
+          org_role_id: 'r-1',
+          org_roles: {
+            name: 'admin',
+            display_name: 'Admin',
+            org_role_permissions: [{ permission_key: 'org.billing.manage' }],
+          },
+        },
+      ]);
+      mock.from.mockReturnValueOnce(membershipQuery);
+      mock.from.mockReturnValueOnce(qb([{ id: 'org-1', name: 'Billable Org' }]));
+
+      expectSuccess(await service.listOrgs(ctx));
+
+      // The client cannot read another organization's map, so the row that names
+      // the membership must carry its own answer: dropping the embed leaves
+      // `canBill` false for every row, and no assertion above would notice.
+      expect(membershipQuery.select).toHaveBeenCalledWith(
+        expect.stringContaining('org_role_permissions(permission_key)'),
+      );
+    });
+
     it('returns empty when no memberships', async () => {
       mock.from.mockReturnValueOnce(qb([]));
 

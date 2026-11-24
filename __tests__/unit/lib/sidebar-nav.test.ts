@@ -169,6 +169,25 @@ describe('the sidebar permission gate', () => {
     ]);
   });
 
+  it('offers „Miejsca” on the seat key alone, the one every handler requires', () => {
+    // The neighbouring keys are not enough: `/manage/seats` answers 403 to a
+    // billing-only or roster-only role, so linking it there would offer a wall.
+    for (const key of ['org.billing.manage', 'org.member.manage']) {
+      expect(handlers(sidebar('/manage', { [key]: 'organization' })), `${key} alone`).not.toContain(
+        '/manage/seats',
+      );
+    }
+    // The Billing preset's two keys, so the preset still sees the entry.
+    expect(
+      handlers(
+        sidebar('/manage', {
+          'org.billing.manage': 'organization',
+          'org.seat.manage': 'organization',
+        }),
+      ),
+    ).toContain('/manage/seats');
+  });
+
   it('leaves other dashboard areas without the class entry', () => {
     expect(handlers(sidebar('/edu', { 'group.read': 'group' }))).toContain('/edu/groups');
     const manageHrefs = handlers(sidebar('/manage', { 'group.read': 'group' }));

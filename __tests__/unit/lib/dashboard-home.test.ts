@@ -1,4 +1,6 @@
 import {
+  isPermissionCatalogKey,
+  PERMISSIONS,
   Permission,
   PERSONAL_PERMISSION_KEYS,
   ROLE_TEMPLATES,
@@ -8,6 +10,8 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   hasAreaAccess,
+  isAreaGateResolved,
+  MANAGER_AREA_KEYS,
   type PermissionMap,
   resolveDashboardArea,
   resolveLandingArea,
@@ -100,6 +104,22 @@ describe('resolveDashboardArea', () => {
 });
 
 /**
+ * The nine `org.*` keys are derived from the catalog, so a new `org`-category
+ * entry widens `/manage` by declaration. This pins the count: a tenth key is a
+ * decision about the area, not a silent consequence of adding one.
+ */
+describe('the /manage key set', () => {
+  it('is the catalog’s nine org-category keys', () => {
+    const catalogOrgKeys = Object.keys(PERMISSIONS)
+      .filter(isPermissionCatalogKey)
+      .filter((key) => PERMISSIONS[key].category === 'org');
+
+    expect(MANAGER_AREA_KEYS).toHaveLength(9);
+    expect(new Set(MANAGER_AREA_KEYS)).toEqual(new Set(catalogOrgKeys));
+  });
+});
+
+/**
  * The area gate's predicate is deliberately broader than the landing's: `/edu`
  * also counts every content read, because that is where those surfaces live and a
  * Member holds them. The seeded role maps come from the real templates, so a
@@ -167,6 +187,99 @@ describe('hasAreaAccess', () => {
     expect(hasAreaAccess({ [Permission.GROUP_READ]: 'group' }, '/manage')).toBe(false);
     expect(hasAreaAccess({ [Permission.ORG_AUDIT_READ]: 'organization' }, '/manage')).toBe(true);
     expect(hasAreaAccess({ [Permission.ORG_AUDIT_READ]: 'organization' }, '/edu')).toBe(false);
+  });
+});
+
+/**
+ * The gate may render either answer only once all three facts agree: the
+ * membership list, an active org pinning the map, and a map that names that org.
+ * Each unresolved case is a state the gate must pass through silently — the
+ * failure mode it guards (the personal map read as the org's) renders a false
+ * denial for `/manage` and a content flash for `/edu`.
+ */
+describe('isAreaGateResolved', () => {
+  const orgId = '11111111-1111-4111-8111-111111111111';
+  const base = {
+    orgsLoading: false,
+    orgsError: false,
+    orgsCount: 1,
+    activeOrgId: orgId,
+    permissions: {
+      isPending: false,
+      isError: false,
+      data: { orgId },
+    },
+  };
+
+  it('is unresolved while the membership list loads', () => {
+    expect(isAreaGateResolved({ ...base, orgsLoading: true })).toBe(false);
+  });
+
+  it('is unresolved when the membership list failed', () => {
+    expect(isAreaGateResolved({ ...base, orgsError: true })).toBe(false);
+  });
+
+  it('is unresolved with memberships but no active org yet', () => {
+    // The auto-selection has not run: the map under `null` is the personal set,
+    // and deciding on it is the false denial this test exists for.
+    expect(
+      isAreaGateResolved({
+        ...base,
+        activeOrgId: null,
+        permissions: { isPending: false, isError: false, data: { orgId: null } },
+      }),
+    ).toBe(false);
+  });
+
+  it('is unresolved while the permission map loads', () => {
+    expect(
+      isAreaGateResolved({
+        ...base,
+        permissions: { isPending: true, isError: false, data: undefined },
+      }),
+    ).toBe(false);
+    expect(
+      isAreaGateResolved({
+        ...base,
+        permissions: { isPending: false, isError: false, data: undefined },
+      }),
+    ).toBe(false);
+  });
+
+  it('is unresolved when the permission map failed', () => {
+    expect(
+      isAreaGateResolved({
+        ...base,
+        permissions: { isPending: false, isError: true, data: undefined },
+      }),
+    ).toBe(false);
+  });
+
+  it('is unresolved when the map names a different org than the active one', () => {
+    // A payload written under the outgoing org's key during a switch.
+    expect(
+      isAreaGateResolved({
+        ...base,
+        permissions: {
+          isPending: false,
+          isError: false,
+          data: { orgId: '22222222-2222-4222-8222-222222222222' },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('resolves once the map names the active org', () => {
+    expect(isAreaGateResolved(base)).toBe(true);
+    // No membership at all: `null` is the personal layer on both sides.
+    expect(
+      isAreaGateResolved({
+        ...base,
+        orgsCount: 0,
+        activeOrgId: null,
+        permissions: { isPending: false, isError: false, data: { orgId: null } },
+      }),
+    ).toBe(true);
   });
 });
 

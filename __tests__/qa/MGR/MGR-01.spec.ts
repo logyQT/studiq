@@ -10,8 +10,9 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  *   bun scripts/qa-tenant.ts MGR-01 --fresh
  *
- * gives the organization `qa-mgr-01-<hash>` with one account per account type
- * (`tenantKey('qa/cases/MGR-01.md', 'MGR-01#<suffix>', 'qa-shared')`) and real org
+ * gives the organization `qa-mgr-01-<hash>` with a role-based roster — `admin`,
+ * `teacher` and `member` for the manager, the educator and the student
+ * (`tenantKey('qa/cases/MGR-01.md', 'MGR-01#<suffix>', 'qa-shared')`) on real org
  * roles: the manager is `admin` (`entitlement_profile='all'`), the educator is
  * `teacher` (`all`) and the student is `member` (`learner`).
  *

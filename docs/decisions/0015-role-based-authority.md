@@ -956,9 +956,11 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > **2026-11-24 (phase 6b-2).** §7.1's "no access in this org" state is now a
 > component, and it is **permission-derived throughout**: `AreaGate`
 > (`apps/web/src/components/layout/area-gate.tsx`) reads `/me/orgs` and the
-> active org's `['permissions', orgId]` answer, and while either is unresolved —
-> or the answer echoes a different `orgId` — it renders a neutral placeholder
-> rather than the children or the card. It **keeps the URL**: a bookmarked
+> active org's `['permissions', orgId]` answer, and while any of those facts is
+> unresolved — the list loading, a settled list whose active org is not pinned
+> yet (the map then describes the personal layer), the map pending, or the answer
+> echoing a different `orgId` — it renders a neutral placeholder rather than the
+> children or the card; a failed read offers a retry instead. It **keeps the URL**: a bookmarked
 > `/manage/...` or `/edu/...` loads, the card names the active organization and
 > offers one "switch to {org}" button per other membership (or the `/app`
 > fallback when there is only one), and the page's own reads remain the boundary.
@@ -1418,12 +1420,12 @@ batches. Pre-market allows a big-bang at the end if preferred.
 - A bookmarked admin URL in an org where the user is a Member returns 403 (not
   404 and not 200), and the UI shows an org-scoped "no access" state.
 
-  > **2026-11-24 (phase 6b-2).** Read the 403 as the URL's _data_: since phase 6
-  > the bookmarked route is auth-only and answers `200` with the page (the row
-  > without a `403` would be a redirect, which §14.1 forbids for this case), the
-  > roster read answers the D25 empty deny shape, the writes answer `403`, and
-  > the page renders `AreaGate`'s card instead of its content. Pinned by QA
-  > `AUT-20` (`qa/cases/AUT-20.md`, `__tests__/qa/AUT/AUT-20.spec.ts`).
+  > **2026-11-24 (phase 6b-2).** Read the 403 as the URL's _data_: the page must
+  > load and show the state (a redirect on a missing key is exactly what §14.1
+  > forbids), so the bookmarked route answers `200` with the page, the roster read
+  > answers the D25 empty deny shape, the writes answer `403`, and the page
+  > renders `AreaGate`'s card instead of its content. Pinned by QA `AUT-20`
+  > (`qa/cases/AUT-20.md`, `__tests__/qa/AUT/AUT-20.spec.ts`).
 
 ### 14.2 Quadrants
 
