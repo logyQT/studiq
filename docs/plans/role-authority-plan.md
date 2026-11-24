@@ -5372,19 +5372,30 @@ table).
     are 3 / 2 / 1 with **no role promotion**, and the new pin moves the educator
     onto a custom role (name ≠ `member`, profile `learner`) through
     `POST /organization/roles` + `PUT /organization/members` and requires 3 / 1 /
-    2 — a name-based classification cannot produce it.
+    2 — a name-based classification cannot produce it. Three more cases moved with
+    the shipped shell (R6, each with its case text): **MGR-ROL-01** (a Member's
+    `/manage/roles` is the area card; the roles list stays readable through the
+    API — `GET` 200 — and the writes stay 403), **BIL-04** (the checkout refusal
+    copy is „Tylko osoba zarządzająca płatnościami organizacji może kupić plan”,
+    the rule is `org.billing.manage`, not the role name) and **EDU-02** (a
+    member-role educator's „Treści” list has no „Kartkówki”, because each entry
+    now follows its own key and the Member row excludes `assignment.*`; „Grupy”
+    still follows `group.read`).
 - **Recorded, not changed (6b-2 review).** N2: `/manage`'s counter classifies
   "everyone not `learner`" as Wykładowcy, so a `none`-profile staff member counts
   as a lecturer — documented, the label decision is deferred. N7: `usePermission()`
   does not apply the `orgId` echo guard the gate applies — a follow-up, refused by
   the gate in the meantime. N8: a denied area still shows the D25 and `group.read`
   nav entries — accepted by AUT-20's case text, cleanup deferred.
-- **Gates on this branch.** `typecheck:all` (root 981, web 873, server 220,
-  authz 7, ui 65 files) and `typecheck:admin` (151) 0 errors; `lint` **1574**
-  files 0 warnings; unit **319 files / 5003 passed, 1 skipped**;
-  `review:static`, `knip`, `format:check` and `dup:base` (no new clones) green;
-  `pr:size` **514/400** (957 test + 398 doc lines excluded) — over the budget, so
-  the PR needs `size:exception`; the four-item brief's own ceiling is ~700.
+- **Gates on this branch (final HEAD, measured).** `typecheck:all` (root 981,
+  web 873, server 220, authz 7, ui 65 files) and `typecheck:admin` (151) 0
+  errors; `lint` **1575** files 0 warnings; unit **320 files / 5009 passed, 1
+  skipped**; fresh-reset serial integration **116 files / 1117 passed, 11
+  skipped, 0 failed**; `review:static`, `knip`, `format:check` (2252 files) and
+  `dup:base` (no new clones, 210 in tree) green; build **21.3 s**, served
+  `:3000`, `build.state: current`; `pr:size` **592/400** (1186 test + 426 doc
+  lines excluded, 41 files) — over the budget, so the PR carries
+  `size:exception`.
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   `hasAreaAccess`'s `/manage` branch replaced with `false` → "opens both areas to
   the seeded Admin role" **KILLED**; `/edu`'s content-read arm removed → "opens
@@ -5399,14 +5410,16 @@ table).
   with memberships but no active org yet" **KILLED**, and the
   `org_role_permissions(permission_key)` embed deleted from `listOrgs`' select →
   "reads the billing key from the role embed in the same query" **KILLED**.
-- **Walk status.** The implementer's worktree served the base commit's build, so
-  the gate and the rewritten MGR-01 spec were **not** walked here; both spec
-  docblocks say so. The API half was measured against the seeded AUT-20 tenant
-  (student `/me/permissions` = 26 keys, no `org.*`; roster `200 {data: []}`;
-  `PUT` `403`; seeded roles `admin`/`all`, `teacher`/`all`, `member`/`learner`).
-  The coordinator runs the UI walk and the two Playwright-level mutation proofs
-  (gate branch removed → AUT-20's card assertion; `/manage` counter filtered on
-  `orgRoleName` → MGR-01's 3 / 1 / 2).
+- **Walk status (served build, final HEAD).** Changed cases **5/5 each** with a
+  fresh tenant and a unique `--run` label per pass — AUT-20 (2 tests), MGR-01
+  (2), BIL-04 (2), MGR-ROL-01 (1), EDU-02 (2): **25/25 passes, zero retries** —
+  and the smoke set **11/11 cases / 21 tests** (AUT-16/17/18, ONB-07,
+  EDU-GRP-01/05, MGR-SET-02, MGR-MEM-01, SEC-06, LIM-05, STU-03). The two
+  Playwright-level mutation proofs ran against the served build: the gate
+  rendering its children on the denied path turned AUT-20's
+  `[data-slot="area-gate"]` count 1 → **0** (**KILLED**, manager control still
+  green), and `/manage`'s counters back on the role name turned MGR-01's
+  Wykładowcy **2 → 1** (**KILLED**); both reverted and re-verified green.
 
 **Still open in phase 6:** 6d role-editor behaviour (caller-scope awareness,
 atomic profile write) and the `/me/plan` union badge; 6e the Teacher
