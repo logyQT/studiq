@@ -1,4 +1,10 @@
-import { Permission, type PermissionKey, type PermissionScope } from '@studiq/authz';
+import {
+  isPermissionCatalogKey,
+  PERMISSIONS,
+  Permission,
+  type PermissionKey,
+  type PermissionScope,
+} from '@studiq/authz';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
 
 export type DashboardArea = '/edu' | '/manage' | '/app';
@@ -13,21 +19,14 @@ export type LandingArea = DashboardArea | '/setup' | '/setup/org';
 export type PermissionMap = Partial<Record<PermissionKey, PermissionScope | null>>;
 
 /**
- * The nine organization-wide keys. Holding any one of them makes `/manage` this
- * caller's area, whether the caller is the seeded Admin role or a custom role
- * granted a single management key (#1391: the persona is not an input).
+ * The nine organization-wide keys: every `org`-category entry in the catalog.
+ * Holding any one of them makes `/manage` this caller's area, whether the caller
+ * is the seeded Admin role or a custom role granted a single management key
+ * (#1391: the persona is not an input).
  */
-const MANAGER_AREA_KEYS: readonly PermissionKey[] = [
-  Permission.ORG_SETTINGS_MANAGE,
-  Permission.ORG_MEMBER_MANAGE,
-  Permission.ORG_INVITATION_MANAGE,
-  Permission.ORG_ROLE_MANAGE,
-  Permission.ORG_SEAT_MANAGE,
-  Permission.ORG_BILLING_MANAGE,
-  Permission.ORG_REPORT_MANAGE,
-  Permission.ORG_AUDIT_READ,
-  Permission.ORG_ADMIN,
-];
+export const MANAGER_AREA_KEYS: readonly PermissionKey[] = Object.keys(PERMISSIONS)
+  .filter(isPermissionCatalogKey)
+  .filter((key) => PERMISSIONS[key].category === 'org');
 
 /** The class keys a Teacher holds, and the only reason to land on `/edu`. */
 const EDUCATOR_AREA_KEYS: readonly PermissionKey[] = [
@@ -35,6 +34,24 @@ const EDUCATOR_AREA_KEYS: readonly PermissionKey[] = [
   Permission.GROUP_INVITE,
   Permission.GROUP_MEMBER_MANAGE,
 ];
+
+/**
+ * Every key that makes `/edu` usable at all — a different question from "is this
+ * `/edu`'s home" (`resolveDashboardArea`) and from "may this caller create a
+ * class" (`EDUCATOR_AREA_KEYS`).
+ *
+ * It is the whole class family plus every content `read`: the area's pages are
+ * the class list and the content surfaces, and a Member legitimately uses the
+ * latter. Derived from `PERMISSIONS` so a new family or a new `.read` key joins
+ * the gate by declaration instead of by a hand-written list (R40).
+ */
+const EDU_AREA_KEYS: readonly PermissionKey[] = Object.keys(PERMISSIONS)
+  .filter(isPermissionCatalogKey)
+  .filter(
+    (key) =>
+      PERMISSIONS[key].category === 'group' ||
+      (PERMISSIONS[key].category === 'content' && key.endsWith('.read')),
+  );
 
 function holdsAny(permissions: PermissionMap | undefined, keys: readonly PermissionKey[]): boolean {
   return keys.some((key) => Boolean(permissions?.[key]));
@@ -54,6 +71,99 @@ export function resolveDashboardArea(permissions?: PermissionMap): DashboardArea
   if (holdsAny(permissions, MANAGER_AREA_KEYS)) return '/manage';
   if (holdsAny(permissions, EDUCATOR_AREA_KEYS)) return '/edu';
   return '/app';
+}
+
+/**
+ * Whether the caller may use anything in an area — the gate's question, and
+ * deliberately broader than the landing's "where is home" predicate above.
+ *
+ * The landing answers which shell to open first, so it names the keys that
+ * *typify* an area (the nine `org.*` keys, the three class-management keys). The
+ * gate answers "may this caller reach any page of this area", so it also counts
+ * the content reads: a Member holds `deck.read`, `question_bank.read` and the
+ * other reads at `group` or `own`, and `/edu` is where those surfaces live, so
+ * sending them the no-access card would refuse a page the API happily serves.
+ * The reverse case is what the wider set must still catch: a Billing preset
+ * holder (`org.billing.manage` + `org.seat.manage`) holds no content read, so
+ * `/edu` is closed to them while `/manage` is open.
+ *
+ * Presence only, like `resolveDashboardArea` and `SidebarGates.permission`: an
+ * area entry has no resource row to evaluate a scope against.
+ */
+export function hasAreaAccess(
+  permissions: PermissionMap | undefined,
+  area: '/manage' | '/edu',
+): boolean {
+  return holdsAny(permissions, area === '/manage' ? MANAGER_AREA_KEYS : EDU_AREA_KEYS);
+}
+
+export interface AreaGateInput {
+  /** `['orgs']` has not resolved yet. */
+  orgsLoading: boolean;
+  /** `/me/orgs` failed. */
+  orgsError: boolean;
+  /** Memberships `/me/orgs` reported. */
+  orgsCount: number;
+  /** The org `/me/orgs` reports as active; `null` is the personal layer. */
+  activeOrgId: string | null;
+  /**
+   * The first-org auto-selection ran and failed. Distinct from "has not run":
+   * only the former is a retryable failure, and nothing retries it on its own.
+   */
+  autoSelectError: boolean;
+  /** The `['permissions', orgId]` query the gate reads. */
+  permissions: {
+    isPending: boolean;
+    isError: boolean;
+    data: { orgId: string | null; permissions: PermissionMap } | undefined;
+  };
+}
+
+/** Which failed read the gate's retry card offers to run again. */
+export type AreaGateErrorSource = 'orgs' | 'permissions' | 'auto-select';
+
+/** What `AreaGate` may render, and why. */
+export type AreaGateDecision =
+  | { state: 'pending' }
+  | { state: 'error'; source: AreaGateErrorSource }
+  | { state: 'denied' }
+  | { state: 'allowed' };
+
+/**
+ * The gate's whole answer in one place: the children (`allowed`), the no-access
+ * card (`denied`), the skeleton (`pending`), or a retry card for the read that
+ * failed (`error` plus the source the retry must re-run).
+ *
+ * It waits on the same three facts the landing does (`resolveLandingArea`
+ * below), because a gate that resolves early makes a claim it cannot prove. The
+ * third fact is the one a naive gate misses: a settled membership list whose
+ * active org is still `null` is the moment between `/me/orgs` and the first-org
+ * auto-selection. The map under `null` is the 24-key personal set, so a gate that
+ * trusts it renders the no-access card for `/manage` and the children for `/edu`
+ * — a false denial plus a content flash, cured only by the switch that was about
+ * to run.
+ *
+ * That same `null` has two meanings, and they are not interchangeable: a switch
+ * that has not run yet is `pending`, while a switch that ran and failed is an
+ * `error` whose retry re-runs it. Folding the second into the first is exactly
+ * the strand this function prevents — the hook's one-shot latch has already
+ * fired, so a plain refetch would never try again.
+ */
+export function areaGateState(input: AreaGateInput, area: '/manage' | '/edu'): AreaGateDecision {
+  if (input.orgsLoading) return { state: 'pending' };
+  if (input.orgsError) return { state: 'error', source: 'orgs' };
+
+  if (input.orgsCount > 0 && input.activeOrgId === null) {
+    return input.autoSelectError ? { state: 'error', source: 'auto-select' } : { state: 'pending' };
+  }
+
+  const permissions = input.permissions;
+  if (permissions.isError) return { state: 'error', source: 'permissions' };
+  if (permissions.isPending || !permissions.data) return { state: 'pending' };
+  // A payload written under the outgoing org's key names a different org.
+  if (permissions.data.orgId !== input.activeOrgId) return { state: 'pending' };
+
+  return { state: hasAreaAccess(permissions.data.permissions, area) ? 'allowed' : 'denied' };
 }
 
 export interface LandingInput {

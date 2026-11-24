@@ -1,5 +1,6 @@
 'use client';
 
+import { Permission } from '@studiq/authz';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from '@studiq/ui';
 import {
   BarChart3,
@@ -57,21 +58,66 @@ const NAV_ITEMS: Record<DashboardArea, SidebarSection[]> = {
     {
       label: 'sidebar_content',
       items: [
-        { titleKey: 'flashcard_decks', href: '/edu/flashcards', icon: Layers },
-        { titleKey: 'flashcard_topics', href: '/edu/topics', icon: Tag },
-        { titleKey: 'question_banks', href: '/edu/questions', icon: Database },
-        { titleKey: 'edu_quizzes', href: '/edu/quizzes', icon: ScrollText },
-        { titleKey: 'edu_assignments', href: '/edu/assignments', icon: ClipboardCheck },
+        {
+          titleKey: 'flashcard_decks',
+          href: '/edu/flashcards',
+          icon: Layers,
+          permissions: [Permission.DECK_READ],
+        },
+        {
+          titleKey: 'flashcard_topics',
+          href: '/edu/topics',
+          icon: Tag,
+          permissions: [Permission.TOPIC_READ],
+        },
+        {
+          titleKey: 'question_banks',
+          href: '/edu/questions',
+          icon: Database,
+          permissions: [Permission.QUESTION_BANK_READ],
+        },
+        {
+          titleKey: 'edu_quizzes',
+          href: '/edu/quizzes',
+          icon: ScrollText,
+          permissions: [Permission.QUIZ_READ],
+        },
+        {
+          titleKey: 'edu_assignments',
+          href: '/edu/assignments',
+          icon: ClipboardCheck,
+          permissions: [Permission.ASSIGNMENT_READ],
+        },
         { titleKey: 'question_reports', href: '/edu/reports', icon: MessageSquareWarning },
-        { titleKey: 'edu_groups', href: '/edu/groups', icon: Users, permission: 'group.read' },
+        {
+          titleKey: 'edu_groups',
+          href: '/edu/groups',
+          icon: Users,
+          permissions: [Permission.GROUP_READ],
+        },
       ],
     },
     {
       label: 'sidebar_statistics',
       items: [
-        { titleKey: 'stats_data', href: '/edu/stats/data', icon: PieChart },
-        { titleKey: 'stats_results', href: '/edu/stats/results', icon: BarChart3 },
-        { titleKey: 'stats_activity', href: '/edu/stats/activity', icon: TrendingUp },
+        {
+          titleKey: 'stats_data',
+          href: '/edu/stats/data',
+          icon: PieChart,
+          permissions: [Permission.STATS_READ],
+        },
+        {
+          titleKey: 'stats_results',
+          href: '/edu/stats/results',
+          icon: BarChart3,
+          permissions: [Permission.STATS_READ],
+        },
+        {
+          titleKey: 'stats_activity',
+          href: '/edu/stats/activity',
+          icon: TrendingUp,
+          permissions: [Permission.STATS_READ],
+        },
       ],
     },
   ],
@@ -83,13 +129,58 @@ const NAV_ITEMS: Record<DashboardArea, SidebarSection[]> = {
     {
       label: 'sidebar_administration',
       items: [
-        { titleKey: 'manage_members', href: '/manage/members', icon: Users },
-        { titleKey: 'manage_invitations', href: '/manage/invites', icon: Mail },
-        { titleKey: 'manage_groups', href: '/manage/groups', icon: Layers },
-        { titleKey: 'question_reports', href: '/manage/reports', icon: MessageSquareWarning },
-        { titleKey: 'manage_roles', href: '/manage/roles', icon: ShieldCheck },
-        { titleKey: 'manage_seats', href: '/manage/seats', icon: CreditCard },
-        { titleKey: 'manage_settings', href: '/manage/settings', icon: Settings },
+        {
+          titleKey: 'manage_members',
+          href: '/manage/members',
+          icon: Users,
+          // D25: the roster read is one capability with four authorities, so the
+          // entry follows the same any-of rule the API applies.
+          permissions: [
+            Permission.ORG_MEMBER_MANAGE,
+            Permission.GROUP_MANAGE,
+            Permission.GROUP_INVITE,
+            Permission.ORG_SEAT_MANAGE,
+          ],
+        },
+        {
+          titleKey: 'manage_invitations',
+          href: '/manage/invites',
+          icon: Mail,
+          permissions: [Permission.ORG_INVITATION_MANAGE],
+        },
+        {
+          titleKey: 'manage_groups',
+          href: '/manage/groups',
+          icon: Layers,
+          permissions: [Permission.GROUP_MANAGE, Permission.GROUP_READ],
+        },
+        {
+          titleKey: 'question_reports',
+          href: '/manage/reports',
+          icon: MessageSquareWarning,
+          permissions: [Permission.ORG_REPORT_MANAGE],
+        },
+        {
+          titleKey: 'manage_roles',
+          href: '/manage/roles',
+          icon: ShieldCheck,
+          permissions: [Permission.ORG_ROLE_MANAGE],
+        },
+        {
+          titleKey: 'manage_seats',
+          href: '/manage/seats',
+          icon: CreditCard,
+          // The seat handlers all require `org.seat.manage`, and the roster read
+          // the page also makes is satisfied by that same key; the Billing preset
+          // carries it, so it still sees the entry.
+          permissions: [Permission.ORG_SEAT_MANAGE],
+        },
+        {
+          titleKey: 'manage_settings',
+          href: '/manage/settings',
+          icon: Settings,
+          permissions: [Permission.ORG_SETTINGS_MANAGE],
+        },
       ],
     },
   ],

@@ -11,7 +11,7 @@ import type { Database } from '../types/database';
 interface MemberRow {
   user_id: string;
   org_role_id: string;
-  org_roles: { name: string; display_name: string | null };
+  org_roles: { name: string; display_name: string | null; entitlement_profile: string };
   profiles: {
     email: string;
     full_name: string | null;
@@ -40,6 +40,11 @@ export function toMemberRows(
       accountType: profile.account_type,
       orgRoleName: roleName,
       orgRoleDisplayName: orgRole.display_name ?? roleName,
+      // The role's entitlement profile (`all`/`learner`/`none`), which is what
+      // "is this holder a learner" means (ADR-0015 §5.3). The name is
+      // user-editable and a custom role carries any name, so a surface that
+      // classifies members must read this field, never `orgRoleName`.
+      entitlementProfile: orgRole.entitlement_profile,
       orgRoleId: row.org_role_id,
       organization_id: organizationId,
       created_at: profile.created_at,
@@ -77,7 +82,7 @@ export class OrganizationMemberService {
     let query = supabase
       .from('org_members')
       .select(
-        'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at, account_type)',
+        'user_id, org_role_id, org_roles!inner(name, display_name, entitlement_profile), profiles!inner(id, email, full_name, created_at, account_type)',
       )
       .eq('organization_id', ctx.activeOrgId);
 

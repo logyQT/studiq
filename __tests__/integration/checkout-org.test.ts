@@ -18,7 +18,8 @@ import { POST as createCheckoutSession } from '@/app/(backend)/api/v1/stripe/cre
  * #225 (BIL-04) — the checkout page resolves the target organization from the
  * self-scoped `/me/orgs` and then sends that id to the mock webhook. This suite
  * pins the server contract the page relies on: membership visibility is
- * self-scoped and buying an org plan requires the org admin role.
+ * self-scoped and buying an org plan requires `org.billing.manage` in the target
+ * organization (ADR-0015 §4.4 — billing authority, never the role's name).
  *
  * Requests run through the real `withAuth()` → controller → service stack with
  * real signed-in sessions, because `mockUser()` switches to a service-role
@@ -123,10 +124,28 @@ describe('org checkout resolves the target organization (#225)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await json<{ data: { id: string; orgRoleName: string }[] }>(res);
+    const body = await json<{ data: { id: string; orgRoleName: string; canBill: boolean }[] }>(res);
 
     expect(res.status).toBe(200);
-    expect(body.data).toEqual([expect.objectContaining({ id: orgId, orgRoleName: 'admin' })]);
+    expect(body.data).toEqual([
+      expect.objectContaining({ id: orgId, orgRoleName: 'admin', canBill: true }),
+    ]);
+  });
+
+  it('answers canBill from the role’s keys, so a teacher cannot bill', async () => {
+    actAs(teacher);
+    const res = await getMyOrgs(
+      createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
+    );
+    const body = await json<{ data: { id: string; orgRoleName: string; canBill: boolean }[] }>(res);
+
+    // Same org, same session shape as the buyer above: the flag follows the
+    // embedded `org_role_permissions` rows, not the role name or the account type
+    // (this teacher is a `manager` persona on the `teacher` role).
+    expect(res.status).toBe(200);
+    expect(body.data).toEqual([
+      expect.objectContaining({ id: orgId, orgRoleName: 'teacher', canBill: false }),
+    ]);
   });
 
   it('omits the org from a manager who is not a member', async () => {

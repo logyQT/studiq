@@ -20,8 +20,9 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * Walk observation (shared app, pl): the concern the case asks to verify — „the
  * simulated webhook changes only the buyer's personal plan
  * (`profiles.personal_plan_key`), never the organization plan” — does **not**
- * reproduce. For an organization plan the mock webhook requires the caller to be
- * an admin of the target org and calls `change_org_plan`, which moves
+ * reproduce. For an organization plan the mock webhook requires the caller to
+ * hold `org.billing.manage` in the target org and calls `change_org_plan`, which
+ * moves
  * `organizations.plan` only (the org layer is derived live); the buyer's personal
  * plan is deliberately left on the free `launch` tier (#228). After buying Hub
  * the organization reads `hub`, `/manage/settings` shows „Wgraj logo” and
@@ -66,7 +67,7 @@ const UI = {
   brandColor: 'Kolor marki',
   roleLockedTitle: 'Kreator ról nie jest dostępny w Twoim planie',
   newRole: 'Nowa rola',
-  notAdminTitle: 'Tylko administrator organizacji może kupić plan',
+  notBillingTitle: 'Tylko osoba zarządzająca płatnościami organizacji może kupić plan',
   plansBack: 'Wróć do planów',
 } as const;
 
@@ -326,9 +327,10 @@ test.describe('BIL-04 — organization plan purchase', () => {
     ).toBeVisible();
   });
 
-  test('a non-admin member cannot buy the organization plan', async ({ page }) => {
-    // Adjacent regression for the same surface: the organization checkout is an
-    // admin-only action, both in the UI and in the webhook that grants it.
+  test('a teacher without billing authority cannot buy the organization plan', async ({ page }) => {
+    // Adjacent regression for the same surface: the organization checkout is a
+    // billing-authority action, both in the UI (`canBill` on the `/me/orgs` row)
+    // and in the webhook that grants it (`org.billing.manage` in the target org).
     test.setTimeout(120_000);
 
     const tenant = loadTenant(CASE);
@@ -350,16 +352,16 @@ test.describe('BIL-04 — organization plan purchase', () => {
       'the checkout still shows what was asked for',
     ).toBeVisible();
     await expect(
-      page.getByText(UI.notAdminTitle, { exact: true }),
-      'a teacher is told only an admin can buy the plan',
+      page.getByText(UI.notBillingTitle, { exact: true }),
+      'a teacher is told only billing authority can buy the plan',
     ).toBeVisible();
     await expect(
       page.getByLabel(UI.cardNumber, { exact: true }),
-      'no card form for a non-admin',
+      'no card form without billing authority',
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: UI.pay }),
-      'no „Zapłać” button for a non-admin',
+      'no „Zapłać” button without billing authority',
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: UI.plansBack, exact: true }),

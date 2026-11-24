@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { AreaGate } from '@/components/layout/area-gate';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useOrgs } from '@/hooks/use-orgs';
 
@@ -19,5 +20,9 @@ export default function EduLayout({ children }: { children: React.ReactNode }) {
     }
   }, [needsOnboarding, router]);
 
-  return <DashboardLayout fullWidth={fullWidth}>{children}</DashboardLayout>;
+  return (
+    <DashboardLayout fullWidth={fullWidth}>
+      <AreaGate area="/edu">{children}</AreaGate>
+    </DashboardLayout>
+  );
 }

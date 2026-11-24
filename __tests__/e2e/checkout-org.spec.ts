@@ -6,7 +6,7 @@ import { firstRecorded } from '#test/mocks/recorded';
 const PASSWORD = 'pass';
 const WSB_MERITO = 'WSB Merito';
 
-type MeOrg = { id: string; name: string; orgRoleName: string };
+type MeOrg = { id: string; name: string; canBill: boolean };
 
 async function login(page: Page, email: string, landing: RegExp) {
   await page.goto('/login');
@@ -76,16 +76,18 @@ test.describe('Org checkout shows the target organization (#225)', () => {
     await expect(page.locator('button[type="submit"]')).toBeEnabled();
   });
 
-  test('a non-admin member is told why they cannot buy', async ({ page }) => {
+  test('a member without billing authority is told why they cannot buy', async ({ page }) => {
     await login(page, 'teacher1@dev.local', /\/edu/);
 
     const org = (await myOrgs(page)).find((o) => o.name === WSB_MERITO);
     expect(org).toBeDefined();
-    expect(org!.orgRoleName).not.toBe('admin');
+    // The rule is `org.billing.manage`, not the role name: the teacher's role
+    // does not carry it, whatever it is called.
+    expect(org!.canBill).toBe(false);
 
     await page.goto(checkoutUrl('hub', org!.id));
 
-    await expect(page.getByText(t('CheckoutPage.org_not_admin_title'))).toBeVisible();
+    await expect(page.getByText(t('CheckoutPage.org_not_billing_title'))).toBeVisible();
     await expect(page.getByText(WSB_MERITO).first()).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toHaveCount(0);
   });

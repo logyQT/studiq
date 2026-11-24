@@ -84,9 +84,17 @@ Confirmed end to end on this case's tenant:
   planie” lock card is gone.
 - The manager's personal plan stays Launch before and after the purchase.
 - A teacher of the same organization cannot buy the plan: the `/checkout` page
-  gate still keys on the org role name (cosmetic, phase 6 aligns it), so it
-  answers with „Tylko administrator organizacji może kupić plan” and no payment
-  form, and the API refuses on the permission itself — `POST
-/api/v1/stripe/webhook` and `create-checkout-session` return `403 FORBIDDEN`
-  because the teacher holds no `org.billing.manage` in the target org — leaving
-  the organization plan untouched.
+  and the API both key on `org.billing.manage` **in the target organization**.
+  The page answers „Tylko osoba zarządzająca płatnościami organizacji może kupić
+  plan” with no payment form, and `POST /api/v1/stripe/webhook` and
+  `create-checkout-session` return `403 FORBIDDEN` because the teacher holds no
+  `org.billing.manage` in the target org — leaving the organization plan
+  untouched.
+
+  > **2026-11-24 (po 6b-2).** The copy and the rule above are the shipped ones.
+  > The earlier walk quoted „Tylko administrator organizacji może kupić plan”,
+  > because the page gate then keyed on the org role _name_ and called it a
+  > cosmetic gap; 6b-2 moved that gate onto `canBill` (the membership role's
+  > `org.billing.manage` row, already in the `/me/orgs` answer) and renamed the
+  > i18n keys to `org_not_billing_*` in both locales. The API rule never
+  > changed — it was `org.billing.manage` before the page followed it.

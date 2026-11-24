@@ -64,9 +64,9 @@
  *   invitee accounts that are **not** org members, so they accept the pending
  *   invitations through `/app/join`.
  * - `two-org` — one manager who administers two organizations (`MGR-03`), with
- *   different member counts (3 vs 2, one teacher vs none), two groups each and one
- *   pending invitation each. Seeded up front like every other profile so the spec
- *   never seeds while the suite is running.
+ *   different member counts (3 vs 2, two staff vs one, one learner each), two groups
+ *   each and one pending invitation each. Seeded up front like every other profile so
+ *   the spec never seeds while the suite is running.
  *
  * Every independent run of a first-run case needs a brand-new account: the run
  * itself creates the org. `--fresh` (or an explicit `--run <suffix>`) folds a run
@@ -455,7 +455,15 @@ async function seedTwoOrg(
       groups,
       student: seeded.members[0],
       inviteEmail: invite.email,
-      counts: { total: 1 + members.length, teachers: teacher ? 1 : 0, students: 1 },
+      // The `/manage` cards classify by the org role's `entitlement_profile`, not by
+      // its name (phase 6b-2): the admin owner (`all`) and the promoted `teacher`
+      // (`all`) are Wykładowcy, and only `member` (`learner`) is a Student. The
+      // expectations are derived here so the spec never restates the rule.
+      counts: {
+        total: 1 + members.length,
+        teachers: 1 + (teacher ? 1 : 0),
+        students: members.length - (teacher ? 1 : 0),
+      },
     };
   }
 

@@ -23,13 +23,22 @@ import {
  * tenant's org graph.
  *
  * Acceptance criteria, per panel:
- * 1. an unknown sub-path answers `404` and renders the panel-specific
- *    not-found copy (exact Polish title, description and "try these" label);
+ * 1. an unknown sub-path renders the panel-specific not-found copy (exact Polish
+ *    title, description and "try these" label) after the area's permission map
+ *    resolves;
  * 2. "try these" offers exactly the documented links, in order, with the
  *    documented targets — the teacher panel intentionally has no "Klasa" link
  *    (product decision #292: `/edu/classroom` has no landing page and classroom
  *    management moved to `/manage`);
  * 3. the panel layout (sidebar) stays visible, under the signed-in tenant user.
+ *
+ * Document status: `/app` has no area gate, so its catch-all still ships a real
+ * `404`. `/edu` and `/manage` resolve the area's authority client-side
+ * (`AreaGate`, phase 6b-2), so the shell — and its 200 — is committed before the
+ * permission map is known and the not-found panel appears after hydration. The
+ * status is therefore per panel; a real 404 for the gated areas needs a static
+ * route inventory in the proxy (ADR-0015 phase 7). The specs pin the panel the
+ * user sees, and wait for the gate placeholder to leave instead of sleeping.
  *
  * Adjacent regressions on the same surface:
  * - every "try these" link from the 404 screen leads to a real page (clicked,
@@ -56,6 +65,12 @@ interface Panel {
   url: string;
   /** A deeper unknown path: the panel catch-all must still own this subtree. */
   deepUrl: string;
+  /**
+   * Document status of both paths. `/app` has no `AreaGate`, so its `notFound()`
+   * is a real 404; `/edu` and `/manage` commit the shell before the permission
+   * map resolves and answer 200 (the panel follows after hydration).
+   */
+  documentStatus: 200 | 404;
   /** Panel root the primary "back" CTA and the sidebar point at. */
   root: string;
   /** Breadcrumb / panel label shown in the dashboard header. */
@@ -71,6 +86,7 @@ const PANELS: Panel[] = [
     role: 'student',
     url: '/app/nie-istnieje',
     deepUrl: '/app/nie-istnieje/glebiej',
+    documentStatus: 404,
     root: '/app',
     label: 'Moja Nauka',
     title: 'No to niezłe combo...',
@@ -87,6 +103,7 @@ const PANELS: Panel[] = [
     role: 'teacher',
     url: '/edu/nie-istnieje',
     deepUrl: '/edu/nie-istnieje/glebiej',
+    documentStatus: 200,
     root: '/edu',
     label: 'Panel Nauczyciela',
     title: 'Nie znaleziono strony',
@@ -103,6 +120,7 @@ const PANELS: Panel[] = [
     role: 'manager',
     url: '/manage/nie-istnieje',
     deepUrl: '/manage/nie-istnieje/glebiej',
+    documentStatus: 200,
     root: '/manage',
     label: 'Zarządzanie Uczelnią',
     title: 'Nie znaleziono strony',
@@ -132,7 +150,12 @@ function sidebar(page: Page) {
 async function expectNotFoundPage(page: Page, panel: Panel): Promise<void> {
   const response = await page.goto(panel.url);
   expect(response, `${panel.url} document response`).not.toBeNull();
-  expect(response!.status(), `${panel.url} is a real 404`).toBe(404);
+  expect(response!.status(), `${panel.url} document status`).toBe(panel.documentStatus);
+
+  // A gated shell renders the gate's placeholder until the permission map
+  // resolves; wait for it to leave (no fixed sleep) and then pin the panel that
+  // replaces it.
+  await expect(page.locator('[data-slot="area-gate-pending"]')).toHaveCount(0);
 
   // The 404 layout, not a redirect to the dashboard.
   await expect(page).toHaveURL(new RegExp(`${panel.url}$`));
@@ -203,7 +226,8 @@ test.describe('PUB-08 — panel 404 keeps the layout and offers the documented r
       // unknown path keeps the sidebar as well.
       const deep = await page.goto(panel.deepUrl);
       expect(deep, `${panel.deepUrl} document response`).not.toBeNull();
-      expect(deep!.status(), `${panel.deepUrl} is a real 404`).toBe(404);
+      expect(deep!.status(), `${panel.deepUrl} document status`).toBe(panel.documentStatus);
+      await expect(page.locator('[data-slot="area-gate-pending"]')).toHaveCount(0);
       await expect(page.locator('main h2')).toHaveText(panel.title);
       await expectPanelChrome(page, panel, tenant);
     });

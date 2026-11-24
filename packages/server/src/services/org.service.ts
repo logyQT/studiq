@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { Permission, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -20,6 +20,15 @@ export class OrgService {
         isActive: boolean;
         logo_url: string | null;
         brand_color: string | null;
+        /**
+         * Whether this membership's role carries `org.billing.manage` in that
+         * organization — what the org checkout control is allowed to key on.
+         * The client cannot read another organization's permission map, so the
+         * row that names the membership carries its own answer (design §2.3).
+         * Presence, not scope: `org.*` keys are `organization`-only in the
+         * catalog, and the nav gate asks the same question.
+         */
+        canBill: boolean;
       }[]
     >
   > {
@@ -27,7 +36,9 @@ export class OrgService {
 
     const { data: membershipRows, error: mError } = await supabase
       .from('org_members')
-      .select('organization_id, org_role_id, org_roles(name, display_name)')
+      .select(
+        'organization_id, org_role_id, org_roles(name, display_name, org_role_permissions(permission_key))',
+      )
       .eq('user_id', ctx.userId);
 
     if (mError) return toDbFailure(mError);
@@ -64,6 +75,9 @@ export class OrgService {
           isActive: m.organization_id === ctx.activeOrgId,
           logo_url: org?.logo_url ?? null,
           brand_color: org?.brand_color ?? null,
+          canBill: dbRows(orgRole?.org_role_permissions).some(
+            (row) => row.permission_key === Permission.ORG_BILLING_MANAGE,
+          ),
         };
       }),
     );

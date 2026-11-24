@@ -4,7 +4,7 @@ Every case in `qa/cases/` mapped to the technique that should own it. This is th
 classification, not the scoreboard — what has actually shipped is tracked in `#926`
 (which owns the counts, so this file does not restate a snapshot that goes stale).
 
-- **191 cases**: 173 end-to-end, 10 API-level,
+- **192 cases**: 174 end-to-end, 10 API-level,
   8 manual-owned — four of them carry a partial spec, and all eight are listed
   with the reason automation cannot cover the whole case at the bottom.
 - First pass, generated from each case's front-matter and steps; a case that mixes UI and
@@ -21,7 +21,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 
 | area      |     e2e |    api | manual |   total |
 | --------- | ------: | -----: | -----: | ------: |
-| AUT       |      19 |      0 |      0 |      19 |
+| AUT       |      20 |      0 |      0 |      20 |
 | BIL       |       6 |      0 |      0 |       6 |
 | EDU       |      40 |      0 |      2 |      42 |
 | LIM       |       2 |      1 |      1 |       4 |
@@ -31,7 +31,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | PUB       |       8 |      0 |      0 |       8 |
 | SEC       |       5 |      8 |      0 |      13 |
 | STU       |      52 |      1 |      0 |      53 |
-| **total** | **173** | **10** |  **8** | **191** |
+| **total** | **174** | **10** |  **8** | **192** |
 
 ## Cases
 
@@ -56,6 +56,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | AUT-17      | AUT  | P1   | e2e    |                                                                      |
 | AUT-18      | AUT  | P1   | e2e    |                                                                      |
 | AUT-19      | AUT  | P1   | e2e    |                                                                      |
+| AUT-20      | AUT  | P1   | e2e    | zakładka `/manage` członka: karta braku dostępu, adres bez zmian     |
 | BIL-01      | BIL  | P2   | e2e    |                                                                      |
 | BIL-02      | BIL  | P2   | e2e    |                                                                      |
 | BIL-03      | BIL  | P1   | e2e    |                                                                      |

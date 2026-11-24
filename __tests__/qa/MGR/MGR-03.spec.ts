@@ -16,9 +16,13 @@ import type { SeedAccount } from '#test/helpers/tenant-seed';
  *   `mgr03-invite-a-<run>`
  * - org B — S2 only, groups `O2G1` / `O2G2`, pending invite for `mgr03-invite-b-<run>`
  *
- * The two orgs deliberately have different member counts (3 vs 2, teachers 1 vs 0), so
- * a counter that leaked from the other organization cannot coincide with the expected
- * one.
+ * The two orgs deliberately have different totals and staff counts (3 vs 2, Wykładowcy
+ * 2 vs 1), so a leaked figure from the other organization cannot coincide with the
+ * expected one; Studenci is 1 in both because each org has exactly one learner. The
+ * cards follow the org role's `entitlement_profile`, not its name (phase 6b-2): the
+ * admin owner and the promoted `teacher` both carry `all` and count as Wykładowcy, only
+ * `member` carries `learner` and counts as Studenci. Org A is therefore 3 / 2 / 1 and
+ * org B is 2 / 1 / 1 — read from the tenant, never restated here.
  *
  * Tenant: `scripts/qa-tenant.ts MGR-03` seeds both organizations up front (the
  * `two-org` profile) with one manager who is admin in each; the spec only reads
@@ -46,6 +50,7 @@ interface QaOrg {
   /** The org's own student; the seeder always gives them a display name. */
   student: SeedAccount & { name: string };
   inviteEmail: string;
+  /** `/manage` card values under the shipped `entitlement_profile` rule. */
   counts: { total: number; teachers: number; students: number };
 }
 

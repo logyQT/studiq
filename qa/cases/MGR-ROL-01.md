@@ -25,17 +25,24 @@ M1, WSB Merito (Launch).
   `org.role.manage`, a rola systemowa `admin` ma je na każdym planie.
 - Członek bez `org.role.manage` nie widzi edytora, a bezpośredni zapis
   (`POST`/`PUT`/`DELETE /api/v1/organization/roles…`) zwraca **403**
-  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna,
-  a strona `/manage/roles` otwiera się bez przekierowania — trasy paneli wymagają
-  tylko zalogowania (ADR-0015 §7.1), więc bramką jest uprawnienie, nie persona.
+  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna
+  **przez API** (`GET /api/v1/organization/roles` → **200**), a strona
+  `/manage/roles` ładuje się pod swoim adresem bez przekierowania: dla członka
+  bez żadnego klucza `org.*` renderuje kartę „Brak dostępu w tej organizacji”
+  (`AreaGate`), bo od 6b-2 cały obszar `/manage` jest bramkowany uprawnieniem
+  (ADR-0015 §7.1, §14.1). Bramką widoku i bramką zapisu jest uprawnienie, nie
+  persona.
 - Wybrany szablon (D17) zapisuje początkowe uprawnienia roli; `org.admin` nigdy
-  nie jest przyznawany szablonem. Klucze `org.*` szablonu zaczną działać, gdy 2b
-  zastąpi stare bramki funkcji (`member.manage`, `org.manage` itd.); klucze
-  treściowe działają już teraz.
+  nie jest przyznawany szablonem. Klucze `org.*` szablonu działają od fazy 2b:
+  stare bramki funkcji (`member.manage`, `org.manage` itd.) zostały zastąpione
+  kluczami uprawnień i usunięte, więc preset, który je zawiera, otwiera obszar
+  `/manage` (np. `org.member.manage` — kolejny punkt). Klucze treściowe działają
+  już teraz.
 - Członek z **kontem typu manager** i rolą niestandardową bez `org.role.manage`
-  widzi listę ról (strona jest auth-only), ale nie ma „Nowej roli” ani
-  kolumny „Akcje”, a `POST /api/v1/organization/roles` zwraca **403** — bramką
-  jest uprawnienie, nie typ konta.
+  ale z `org.member.manage` (preset Asystent) widzi listę ról — bramka obszaru go
+  wpuszcza — lecz nie ma „Nowej roli” ani kolumny „Akcje”, a
+  `POST /api/v1/organization/roles` zwraca **403** — bramką jest uprawnienie, nie
+  typ konta.
 
 ## Prerequisite context (tenant model)
 
@@ -84,6 +91,28 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   `/manage/roles`: trasa `/manage` wymaga tylko zalogowania (ADR-0015 §7.1), więc
   strona i lista ról się renderują, a uprawnienie `org.role.manage` — nie persona
   — odbiera „Nową rolę”, kolumnę „Akcje” i zapis (`POST`/`PUT`/`DELETE` → 403).
+
+## Walk observations (2026-11-24, po 6b-2)
+
+- **Cały panel `/manage` jest bramkowany uprawnieniem, nie tylko zapis.** Od fazy
+  6b-2 layout `/manage` renderuje `AreaGate`: gdy wywołujący nie ma **żadnego** z
+  dziewięciu kluczy `org.*`, każdy ekran `/manage/…` — również lista
+  `/manage/roles` — pokazuje kartę „Brak dostępu w tej organizacji” (nazwa
+  organizacji + akcja przejścia do własnej przestrzeni), a adres URL pozostaje
+  bez przekierowania (ADR-0015 §7.1, §14.1). Nauczyciel (konto educator, rola org
+  `member`) nie ma żadnego klucza `org.*`, więc **nie widzi już listy ról** na
+  stronie; poprzednia obserwacja z 2026-11-19 o renderującej się liście jest tym
+  samym nieaktualna, a zapis historyczny pozostaje powyżej.
+- **API ról się nie zmieniło i nadal jest czytelne dla członka organizacji.**
+  `GET /api/v1/organization/roles` dla nauczyciela zwraca **200** i zawiera
+  utworzoną rolę („Asystent organizacji”), `GET /api/v1/organization/roles/:id`
+  również 200; zapisy (`POST`, `PUT`, `DELETE …/roles…`) pozostają **403**
+  `{"success":false,"error":"FORBIDDEN"}`. Bramką widoku jest więc uprawnienie
+  obszaru, a bramką zapisu — `org.role.manage`; persona nie jest już żadną z nich.
+- Bez zmian dla administratora (rola `admin` ma wszystkie dziewięć kluczy `org.*`
+  na Launch: edytor, „Nowa rola”, kolumna „Akcje”) i dla członka z **kontem typu
+  manager** oraz rolą z presetu Asystent (`org.member.manage`): bramka obszaru
+  otwiera stronę, a `org.role.manage` odmawia edytora i zapisu.
 
 ## Historia przypadku
 

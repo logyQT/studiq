@@ -27,11 +27,15 @@ bun scripts/qa-tenant.ts MGR-01 --fresh
   uruchomienie ma własną organizację i własne konta.
 - organizacja `qa-mgr-01-<hash>`, grupa `G1`; konta `seed-manager-<hash>@dev.local`,
   `seed-educator-<hash>@dev.local`, `seed-student-<hash>@dev.local` / `Seed4Test!`.
-- Seeder `seedTenantGraph()` zapisuje **każdego** członka z systemową rolą `member`, a
-  pulpit liczy „Wykładowcy” po roli organizacyjnej `teacher`. Dlatego spec najpierw
-  przenosi zaseedowanego wykładowcę na rolę `teacher` przez
-  `PUT /api/v1/organization/members` — ten sam endpoint, którego używa strona
-  `/manage/members`. Zapis jest idempotentny i dotyczy wyłącznie tego tenanta.
+- Profil `content` nadaje kontom **realne role organizacyjne**: manager jest
+  `admin` (`entitlement_profile='all'`), wykładowca `teacher` (`all`), student
+  `member` (`learner`). Od phase 6b-2 pulpit liczy „Wykładowców”/„Studentów” po
+  profilu uprawnień roli, a nie po jej nazwie, więc **żadna promocja roli nie jest
+  potrzebna**: zaraz po seedzie liczniki to 3 / 2 / 1.
+- Krok 2b przypadku tworzy rolę niestandardową o nazwie innej niż `member` i
+  profilu `learner` (`POST /api/v1/organization/roles`) i przypisuje ją
+  wykładowcy (`PUT /api/v1/organization/members`) — oba endpointy należą do
+  własnej organizacji tenanta, a zapis jest idempotentny.
 - Spec: `__tests__/qa/MGR/MGR-01.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test czyta `/api/v1/organization/members` i `/api/v1/organization/roles`
@@ -47,16 +51,29 @@ bun scripts/qa-tenant.ts MGR-01 --fresh
 
 ## Expected result
 
-- Liczniki odpowiadają członkom organizacji: **3 łącznie**, w tym **1 wykładowca** i
-  **1 student**. Administrator organizacji liczy się tylko do łącznej liczby — nie
-  podnosi licznika wykładowców ani studentów. (W ręcznym seedzie WSB Merito było
-  4 / 2 / 1; tenant QA ma jednego wykładowcę, więc proporcja jest ta sama.)
+- Liczniki odpowiadają profilom uprawnień ról członków organizacji (ADR-0015
+  §5.3), a nie nazwom ról: **3 łącznie**, w tym **2 wykładowców** (admin i
+  wykładowca — oba profile `all`) i **1 student** (profil `learner`).
+  Administrator organizacji liczy się do sumy i do „Wykładowców”; nie podnosi
+  licznika studentów.
+- **Rola niestandardowa z profilem `learner` jest studentem, choćby nazywała się
+  inaczej niż `member`.** Po utworzeniu takiej roli przez
+  `POST /api/v1/organization/roles`, przypisaniu jej wykładowcy przez
+  `PUT /api/v1/organization/members` i odświeżeniu pulpitu liczniki to
+  **3 / 1 / 2**: nazwa roli nie decyduje o klasyfikacji, decyduje
+  `entitlement_profile`.
 - Szybkie akcje prowadzą do /manage/invites i /manage/members.
 - Lista „Ostatni członkowie” pokazuje wszystkich członków organizacji (maks. 5,
   najnowsi pierwsi) z ich rolą organizacyjną; stan ładowania („Ładowanie...”) i pusty
   stan („Brak członków”) renderują się bez błędów.
 
-## Observations (walk 2026-10-28, shared app :3010, worker qa-env-7)
+## Observations (walk 2026-10-28, shared app :3010, worker qa-env-7) — klasyfikacja po nazwie roli, nieaktualna od phase 6b-2
+
+Poniższy zapis opisuje pulpit sprzed phase 6b-2, gdy o kartach decydowała nazwa
+roli organizacyjnej. Dziś klasyfikuje `org_roles.entitlement_profile`, więc
+seeded tenant daje od razu 3 / 2 / 1, a po przeniesieniu wykładowcy na rolę
+niestandardową z profilem `learner` — 3 / 1 / 2. Zapis zostaje jako historia
+przebiegu.
 
 - Pulpit renderuje trzy karty `StatCard`: „Łączna liczba członków”, „Wykładowcy”,
   „Studenci”. Wartość to akapit obok tytułu karty; w trakcie ładowania zamiast liczby

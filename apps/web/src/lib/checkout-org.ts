@@ -7,18 +7,19 @@
  * page never learns a name it is not allowed to see.
  *
  * This is a *cosmetic* gate: the server re-checks `org.billing.manage` in the
- * target organization in `createCheckoutSession` and `handleWebhook` through
- * the shared checkout rules. Since phase 5b the API no longer looks at the
- * role name; phase 6 aligns the UI, so a Billing-preset holder is API-allowed
- * but not yet shown the org checkout control.
+ * target organization in `createCheckoutSession` and `handleWebhook` through the
+ * shared checkout rules. The client cannot read another organization's
+ * permission map, so the row that names the membership carries the answer
+ * (`canBill`, design §2.3) — the rule is billing authority, never the role's
+ * name, which a custom or renamed role would break.
  */
-import { isOrgAdminRole } from '@studiq/authz';
 
 /** Minimal shape of a `GET /api/v1/me/orgs` row that the checkout cares about. */
 export type CheckoutOrg = {
   id: string;
   name: string;
-  orgRoleName: string;
+  /** The membership's role carries `org.billing.manage` in that organization. */
+  canBill: boolean;
   isActive: boolean;
 };
 
@@ -30,7 +31,7 @@ export type CheckoutOrgResolution =
   | { status: 'loading' }
   | { status: 'load-error' }
   | { status: 'not-member' }
-  | { status: 'not-admin'; org: CheckoutOrg; isDifferentFromActive: boolean }
+  | { status: 'not-billing'; org: CheckoutOrg; isDifferentFromActive: boolean }
   | { status: 'ok'; org: CheckoutOrg; isDifferentFromActive: boolean };
 
 /**
@@ -59,8 +60,8 @@ export function resolveCheckoutOrg(input: {
   if (!org) return { status: 'not-member' };
 
   const isDifferentFromActive = input.orgs.some((o) => o.isActive && o.id !== org.id);
-  if (!isOrgAdminRole(org.orgRoleName)) {
-    return { status: 'not-admin', org, isDifferentFromActive };
+  if (!org.canBill) {
+    return { status: 'not-billing', org, isDifferentFromActive };
   }
   return { status: 'ok', org, isDifferentFromActive };
 }

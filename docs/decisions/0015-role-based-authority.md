@@ -953,6 +953,30 @@ org A is active. Persona is irrelevant — the active org's role is the switch.
 > `stats.read` / `assignment.read` / `assignment.update` at group-or-wider
 > scope, or an attempt of an assignment the caller authored.
 
+> **2026-11-24 (phase 6b-2).** §7.1's "no access in this org" state is now a
+> component, and it is **permission-derived throughout**: `AreaGate`
+> (`apps/web/src/components/layout/area-gate.tsx`) reads `/me/orgs` and the
+> active org's `['permissions', orgId]` answer, and while any of those facts is
+> unresolved — the list loading, a settled list whose active org is not pinned
+> yet (the map then describes the personal layer), the map pending, or the answer
+> echoing a different `orgId` — it renders a neutral placeholder rather than the
+> children or the card; a failed read offers a retry instead. It **keeps the URL**: a bookmarked
+> `/manage/...` or `/edu/...` loads, the card names the active organization and
+> offers one "switch to {org}" button per other membership (or the `/app`
+> fallback when there is only one), and the page's own reads remain the boundary.
+> Two predicates live in `apps/web/src/lib/dashboard-home.ts`, and they answer
+> **different questions**: `resolveDashboardArea` says where home is (any of the
+> nine `org.*` keys → `/manage`; the three class-management keys → `/edu`; else
+> `/app`), while `hasAreaAccess` says whether the area is usable at all —
+> `/manage` is the same nine `org.*` keys, `/edu` is every `groups`-category key
+> **plus every content `.read`**, both derived from `PERMISSIONS`. The gate is
+> broader on purpose: a Member holds content reads (so `/edu` is legitimately
+> theirs) and a Billing-preset holder holds only `org.billing.manage` +
+> `org.seat.manage` (so `/edu` is closed to them). §14.1's "returns 403 (not 404
+> and not 200)" for a bookmarked admin URL is read as its data read: the route
+> is auth-only and answers `200` with the page, the roster read answers the D25
+> empty deny shape, and the writes answer `403`.
+
 ---
 
 ## 8. Data model
@@ -1395,6 +1419,13 @@ batches. Pre-market allows a big-bang at the end if preferred.
   orgs changes it atomically, and a role in one org never authorizes another.
 - A bookmarked admin URL in an org where the user is a Member returns 403 (not
   404 and not 200), and the UI shows an org-scoped "no access" state.
+
+  > **2026-11-24 (phase 6b-2).** Read the 403 as the URL's _data_: the page must
+  > load and show the state (a redirect on a missing key is exactly what §14.1
+  > forbids), so the bookmarked route answers `200` with the page, the roster read
+  > answers the D25 empty deny shape, the writes answer `403`, and the page
+  > renders `AreaGate`'s card instead of its content. Pinned by QA `AUT-20`
+  > (`qa/cases/AUT-20.md`, `__tests__/qa/AUT/AUT-20.spec.ts`).
 
 ### 14.2 Quadrants
 

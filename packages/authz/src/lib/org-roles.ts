@@ -1,19 +1,16 @@
 // Organization role primitives.
 //
 // The role *name* is the stable identifier ("admin", "teacher", "member");
-// `org_roles.display_name` is user-editable, so authorization decisions must
-// compare against the name. Keeping the literal here means the checkout page
-// and the billing service cannot drift apart.
+// `org_roles.display_name` is user-editable. Nothing decides authority from a
+// name any more (phase 6b-2 moved the last reader onto `org.billing.manage`);
+// `ORG_ADMIN_ROLE` survives only where a database write names the ownership
+// role.
 
 import type { EntitlementProfile } from '../entitlements';
 import { PERMISSIONS, type CatalogScope, type PermissionCatalogKey } from './permissions';
 
-/** Role name that grants organization-wide administration (billing included). */
+/** Role name that the ownership role is seeded under. */
 export const ORG_ADMIN_ROLE = 'admin';
-
-export function isOrgAdminRole(roleName: string | null | undefined): boolean {
-  return roleName === ORG_ADMIN_ROLE;
-}
 
 /** The three system roles every organization carries (ADR-0015 §4.2). */
 export const SYSTEM_ROLE_NAMES = ['admin', 'teacher', 'member'] as const;

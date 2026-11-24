@@ -17,7 +17,8 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * declarative roster and the case's `hub` entitlement:
  *   - `manager`  — org role `admin`;
  *   - `teacher`  — org role `teacher` → `ai.chat` + the `group.manage` permission;
- *   - `teacher2` — org role `member`  → `ai.chat`, no `group.manage` permission;
+ *   - `teacher2` — org role `member`  → `ai.chat`, no `group.manage`, and none of
+ *     the staff-only `assignment.*` keys;
  *   - `student`  — org role `member`, member of the default group `G1`.
  * The second educator is the negative control for the case's „Grupy widoczne
  * tylko gdy rola ma `group.manage`”: since 2b-7 `group.manage` exists only as
@@ -34,7 +35,8 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * Acceptance points (confirmed on the shared app during the walk):
  * 1. Three sections with exactly these items: Główne (Przegląd, Asystent Q),
  *    Treści (Talie, Tematy, Pytania, Testy, Kartkówki, Zgłoszenia, Grupy),
- *    Statystyki (Treści, Wyniki, Aktywność).
+ *    Statystyki (Treści, Wyniki, Aktywność). That is the teacher-role menu; the
+ *    member-role control sees the same list without „Kartkówki” (point 5).
  * 2. Every item opens its own page, marks itself active and never renders the
  *    404 — including „Asystent Q”, which the case flagged as a KNOWN PROBLEM.
  *    `/edu/ai` exists since #433 and renders the assistant, so the intended
@@ -44,6 +46,11 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  *    feature: a `member` role keeps the entry and reaches a read-only list,
  *    while „Asystent Q” (ai.chat) stays for the same account — so neither gate
  *    is a persona check.
+ * 5. Since 6b-2 every content entry follows its own permission key, and the
+ *    member system role omits the staff-only `assignment.*` family, so a
+ *    member-role educator gets no „Kartkówki” entry. The rest of the content and
+ *    statistics entries are member permissions (`…read` at `group`, `stats.read`
+ *    at `own` — a nav entry asks whether the key is held, not at what scope).
  */
 
 const CASE = 'EDU-02';
@@ -69,6 +76,7 @@ interface NavEntry {
   marker: string;
 }
 
+/** The case's expected menu for the teacher-role account, which holds every content read key. */
 const SIDEBAR_GROUPS = [
   { label: 'Główne', items: ['Przegląd', 'Asystent Q'] },
   {
@@ -77,6 +85,18 @@ const SIDEBAR_GROUPS = [
   },
   { label: 'Statystyki', items: ['Treści', 'Wyniki', 'Aktywność'] },
 ] as const;
+
+/**
+ * The same menu for the `member` org role. Each content entry follows its own
+ * permission key, and the member row omits the staff-only `assignment.*` family
+ * (`packages/authz/src/lib/org-roles.ts`), so „Kartkówki” is the one item this
+ * role has no key for. Derived from the teacher list so the member test pins
+ * exactly that difference and the two lists cannot drift apart.
+ */
+const SIDEBAR_GROUPS_MEMBER = SIDEBAR_GROUPS.map((group) => ({
+  label: group.label,
+  items: group.items.filter((item) => item !== 'Kartkówki'),
+}));
 
 const NAV_ITEMS: NavEntry[] = [
   { label: 'Przegląd', href: '/edu', header: 'Panel Nauczyciela', marker: 'Pierwsze kroki' },
@@ -256,18 +276,27 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     await page.goto('/edu');
     expect(new URL(page.url()).pathname, 'the teacher area loads for the member role').toBe('/edu');
 
-    // The entry follows `group.read` (what the class routes ask for), not a
-    // plan feature: a `member` role may read the class list it cannot edit,
-    // and the link must not lie about that.
+    // The class entry follows `group.read` (what the class routes ask for), not a
+    // plan feature: a `member` role may read the class list it cannot edit, and
+    // the link must not lie about that. The other content entries follow their
+    // own permission keys, which is why „Kartkówki” is absent for this role.
     await expect
-      .poll(() => readSidebar(page), { timeout: 15_000, message: 'educator sidebar menu' })
-      .toEqual(SIDEBAR_GROUPS);
+      .poll(() => readSidebar(page), { timeout: 15_000, message: 'member-role sidebar menu' })
+      .toEqual(SIDEBAR_GROUPS_MEMBER);
 
     const nav = sidebar(page);
     await expect(
       nav.locator('[data-slot="sidebar-menu-item"] a[href="/edu/groups"]'),
       '„Grupy” follows group.read',
     ).toHaveCount(1);
+    // „Kartkówki” is gated on `assignment.read`, which the member system role
+    // deliberately does not carry (staff-only family), so the member-role educator
+    // gets no assignments link. The teacher-role account in the other test still
+    // sees it: `SIDEBAR_GROUPS` there includes the item.
+    await expect(
+      nav.locator('[data-slot="sidebar-menu-item"] a[href="/edu/assignments"]'),
+      '„Kartkówki” follows assignment.read, absent for a member role',
+    ).toHaveCount(0);
     // The gate is specific: the ai.chat item stays for the same account.
     await expect(navLink(page, '/edu/ai'), '„Asystent Q” still shows').toBeVisible();
     await expect(nav, 'the classroom section is hidden').not.toContainText('Klasa');

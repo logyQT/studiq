@@ -583,6 +583,16 @@
     "email": "Email",
     "joined": "Joined"
   },
+  "AreaGate": {
+    "no_access_title": "No access in this organization",
+    "no_access_description": "Organization {org} has not granted you any authority in this area. An administrator there can grant it.",
+    "no_access_description_no_org": "Without an active organization you have no access to this area.",
+    "switch_to": "Switch to {org}",
+    "go_to_own_space": "Go to your own space",
+    "load_error": "Could not check your access",
+    "load_error_desc": "Your membership or permissions for this area could not be read.",
+    "retry": "Try again"
+  },
   "AppJoinPage": {
     "title": "Join a Classroom",
     "description": "Enter your invite code or paste the invitation link to join a classroom",
@@ -644,8 +654,8 @@
     "org_missing_desc": "Go back to the plans and choose a plan for your organization.",
     "org_unavailable_title": "You do not have access to this organization",
     "org_unavailable_desc": "Check that you are signed in to the right account, or go back to the plans.",
-    "org_not_admin_title": "Only an organization administrator can buy a plan",
-    "org_not_admin_desc": "Ask an administrator of {org} to change the plan.",
+    "org_not_billing_title": "Only someone who manages the organization's billing can buy a plan",
+    "org_not_billing_desc": "Ask someone with billing authority in {org} to change the plan.",
     "orgs_load_error": "Could not load organization data.",
     "load_error": "Could not load the order. Please try again.",
     "retry": "Try again",

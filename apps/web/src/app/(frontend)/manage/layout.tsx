@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { AreaGate } from '@/components/layout/area-gate';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useOrgs } from '@/hooks/use-orgs';
 
@@ -15,5 +16,9 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
     }
   }, [needsOnboarding, router]);
 
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <DashboardLayout>
+      <AreaGate area="/manage">{children}</AreaGate>
+    </DashboardLayout>
+  );
 }

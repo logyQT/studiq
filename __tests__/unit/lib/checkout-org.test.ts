@@ -4,16 +4,24 @@ import { type CheckoutOrg, type OrgsStatus, resolveCheckoutOrg } from '@/lib/che
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const ORG_B = '00000000-0000-4000-8000-000000000002';
 
-function org(overrides: Partial<CheckoutOrg> & { id: string }): CheckoutOrg {
+/**
+ * A row as the old contract typed it: the fixture still carries the role *name*
+ * so these cases can say what the rule must ignore. The production type has no
+ * such field — the checkout keys on `canBill` (design §2.3).
+ */
+type FixtureOrg = CheckoutOrg & { orgRoleName?: string };
+
+function org(overrides: Partial<FixtureOrg> & { id: string }): FixtureOrg {
   return {
     name: `Org ${overrides.id.slice(-1)}`,
+    canBill: true,
     orgRoleName: 'admin',
     isActive: false,
     ...overrides,
   };
 }
 
-const activeA: CheckoutOrg[] = [
+const activeA: FixtureOrg[] = [
   org({ id: ORG_A, name: 'WSB Merito', isActive: true }),
   org({ id: ORG_B, name: 'UE Wrocław' }),
 ];
@@ -21,7 +29,7 @@ const activeA: CheckoutOrg[] = [
 function resolve(input: {
   isOrgPlan?: boolean;
   orgId?: string | null;
-  orgs?: readonly CheckoutOrg[];
+  orgs?: readonly FixtureOrg[];
   orgsStatus?: OrgsStatus;
 }) {
   return resolveCheckoutOrg({
@@ -56,7 +64,7 @@ describe('resolveCheckoutOrg', () => {
     expect(resolve({ orgs: undefined, orgsStatus: 'error' })).toEqual({ status: 'load-error' });
   });
 
-  it('resolves the selected org for an admin', () => {
+  it('resolves the selected org when its role can bill', () => {
     expect(resolve({})).toEqual({
       status: 'ok',
       org: activeA[0],
@@ -80,14 +88,25 @@ describe('resolveCheckoutOrg', () => {
     });
   });
 
-  it('returns the org with the not-admin state for a non-admin member', () => {
-    const orgs = [
-      org({ id: ORG_A, name: 'WSB Merito', orgRoleName: 'teacher', isActive: true }),
-      org({ id: ORG_B, name: 'UE Wrocław', orgRoleName: 'teacher' }),
-    ];
+  it('refuses a membership whose role cannot bill, whatever the role is called', () => {
+    // A role named `admin` without `org.billing.manage`: the name grants nothing.
+    const orgs = [org({ id: ORG_A, name: 'WSB Merito', canBill: false, isActive: true })];
     const result = resolve({ orgs });
     expect(result).toEqual({
-      status: 'not-admin',
+      status: 'not-billing',
+      org: orgs[0],
+      isDifferentFromActive: false,
+    });
+  });
+
+  it('allows a membership whose role can bill, whatever the role is called', () => {
+    // A role named `member` that carries `org.billing.manage` is the normal case
+    // for a custom billing role, and the name must not close the control.
+    const orgs = [
+      org({ id: ORG_A, name: 'WSB Merito', canBill: true, orgRoleName: 'member', isActive: true }),
+    ];
+    expect(resolve({ orgs })).toEqual({
+      status: 'ok',
       org: orgs[0],
       isDifferentFromActive: false,
     });

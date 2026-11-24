@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { type DashboardArea, resolveDashboardArea } from '@/lib/dashboard-home';
@@ -20,6 +20,12 @@ export type OrgMembership = {
   orgRoleDisplayName?: string;
   orgRoleId: string;
   isActive: boolean;
+  /**
+   * The membership's role carries `org.billing.manage` in that organization.
+   * `/me/orgs` answers it because the client cannot read another org's map, and
+   * the org checkout control must key on billing authority, not the role name.
+   */
+  canBill: boolean;
   /** Org branding (issue #108) — only honored when the `branding` feature is on. */
   logo_url?: string | null;
   brand_color?: string | null;
@@ -36,6 +42,7 @@ export function useOrgs() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const hasAutoSelected = useRef(false);
+  const [autoSelectError, setAutoSelectError] = useState(false);
 
   const {
     data: orgs = [],
@@ -56,6 +63,7 @@ export function useOrgs() {
       await apiPost('/api/v1/me/orgs/switch', { orgId });
     },
     onSuccess: async (_data, { orgId, navigate }) => {
+      setAutoSelectError(false);
       // The active org is server state (the `active_org_id` cookie) that has
       // just changed. Flip the cached isActive flag immediately so org-scoped
       // query keys re-resolve on this tick instead of waiting for the
@@ -109,6 +117,16 @@ export function useOrgs() {
       }
       router.push(area);
     },
+    onError: (_error, { navigate }) => {
+      // A user-initiated switch reports its own failure at the call site; only
+      // the implicit first-org selection is otherwise silent, and it must not
+      // stay latched: the switch already ran, so a refetch can never retry it.
+      // Clearing the latch lets the gate's retry run the same effect again,
+      // while `autoSelectError` keeps that effect from looping on its own.
+      if (navigate) return;
+      hasAutoSelected.current = false;
+      setAutoSelectError(true);
+    },
   });
 
   const activeOrg = orgs.find((o) => o.isActive) || null;
@@ -124,14 +142,22 @@ export function useOrgs() {
   const firstOrg = orgs[0];
 
   useEffect(() => {
-    if (needsOnboarding || !firstOrg) return;
+    if (needsOnboarding || !firstOrg || autoSelectError) return;
     if (!isLoading && !activeOrg && !hasAutoSelected.current) {
       hasAutoSelected.current = true;
       // No `navigate`: right after login this runs while the user is being
       // routed to the `?next=` deep link, and a dashboard push would win (#458).
       switchOrgMutation.mutate({ orgId: firstOrg.id });
     }
-  }, [needsOnboarding, firstOrg, activeOrg, isLoading, switchOrgMutation]);
+  }, [needsOnboarding, firstOrg, activeOrg, isLoading, autoSelectError, switchOrgMutation]);
+
+  // Re-arm the one-shot selection for an explicit retry. The effect above owns
+  // the request, so this only clears the two guards and lets it run; a second
+  // failure lands back in `onError`, never in a loop.
+  const retryAutoSelect = () => {
+    hasAutoSelected.current = false;
+    setAutoSelectError(false);
+  };
 
   return {
     orgs,
@@ -154,5 +180,12 @@ export function useOrgs() {
     needsOnboarding,
     switchOrg: (orgId: string) => switchOrgMutation.mutate({ orgId, navigate: true }),
     isSwitching: switchOrgMutation.isPending,
+    /**
+     * The first-org auto-selection failed. The caller's active org is still
+     * `null`, so the permission map describes the personal layer; a surface that
+     * decides from it must retry the switch, not treat the absence as a denial.
+     */
+    autoSelectError,
+    retryAutoSelect,
   };
 }

@@ -100,3 +100,20 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   strony 404, a zawartość kart planu nie jest przedmiotem przypadku.
 - Nagłówek „Licencje miejsc” różni się od etykiety menu „Licencje”; etykieta w teście
   pochodzi z paska bocznego, a nagłówek z treści strony.
+
+## Notatka 2026-11-24 (phase 6b-2) — status HTTP nieistniejącej podstrony
+
+- Layout `/manage` renderuje `AreaGate`, który rozstrzyga uprawnienia obszaru po stronie
+  klienta. Nieznana podstrona (`/manage/ai`) jest więc wysyłana z **HTTP 200**: adres
+  zostaje, powłoka panelu się renderuje, a po hydratacji (gdy mapa uprawnień jest już
+  znana) pojawia się panel 404 managera — nagłówki „404” i „Nie znaleziono strony”, link
+  „Wróć do panelu” → `/manage` oraz skróty „Przejdź do:” → `/manage`, `/manage/members`,
+  `/manage/invites`, `/manage/settings`. Wcześniejsza obserwacja o **404** opisuje stan
+  sprzed bramki obszaru i zostaje jako historia przebiegu.
+- To trade-off architektury, nie defekt tego przypadku: prawdziwy 404 dla bramkowanych
+  obszarów wymaga statycznego inwentarza tras w proxy (ADR-0015 faza 7). Spec pinuje to,
+  co widzi użytkownik — panel i jego linki — oraz czeka na zejście placeholdera bramki
+  (bez stałego `sleep`), więc przypadek nadal czerwienieje, gdyby panel przestał się
+  renderować.
+- Pozycje menu (`/manage/*`) nadal otwierają się z kodem 200 — asercja `expectPage` bez
+  zmian.

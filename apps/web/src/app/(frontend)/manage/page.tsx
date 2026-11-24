@@ -21,6 +21,7 @@ interface Member {
   email: string;
   full_name: string | null;
   orgRoleName: string;
+  entitlementProfile: 'all' | 'learner' | 'none';
   created_at: string;
 }
 
@@ -42,8 +43,11 @@ export default function ManageOverviewPage() {
 
   const loading = !activeOrg || isPending;
 
-  const teachers = members.filter((m) => m.orgRoleName === 'teacher');
-  const students = members.filter((m) => m.orgRoleName === 'member');
+  // Learner and staff are the role's entitlement profile, not its name: a custom
+  // role with `learner` is a student whatever it is called, and the two system
+  // staff roles (`all`) plus the admin count as Wykładowcy (ADR-0015 §5.3).
+  const students = members.filter((m) => m.entitlementProfile === 'learner');
+  const teachers = members.filter((m) => m.entitlementProfile !== 'learner');
   const recentMembers = members
     .toSorted((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5);
