@@ -57,6 +57,7 @@ interface Member {
   email: string;
   full_name: string | null;
   orgRoleName: string;
+  entitlementProfile: 'all' | 'learner' | 'none';
   orgRoleId: string;
   created_at: string;
   groups: GroupInfo[];

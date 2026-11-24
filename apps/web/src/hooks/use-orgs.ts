@@ -20,6 +20,12 @@ export type OrgMembership = {
   orgRoleDisplayName?: string;
   orgRoleId: string;
   isActive: boolean;
+  /**
+   * The membership's role carries `org.billing.manage` in that organization.
+   * `/me/orgs` answers it because the client cannot read another org's map, and
+   * the org checkout control must key on billing authority, not the role name.
+   */
+  canBill: boolean;
   /** Org branding (issue #108) — only honored when the `branding` feature is on. */
   logo_url?: string | null;
   brand_color?: string | null;

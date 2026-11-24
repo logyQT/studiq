@@ -1,11 +1,17 @@
 import {
   Permission,
   PERSONAL_PERMISSION_KEYS,
+  ROLE_TEMPLATES,
   SYSTEM_ROLE_TEMPLATES,
   type PermissionScope,
 } from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
-import { type PermissionMap, resolveDashboardArea, resolveLandingArea } from '@/lib/dashboard-home';
+import {
+  hasAreaAccess,
+  type PermissionMap,
+  resolveDashboardArea,
+  resolveLandingArea,
+} from '@/lib/dashboard-home';
 
 /**
  * The 24-key personal set 6c resolves for a caller without an org. Derived from
@@ -90,6 +96,77 @@ describe('resolveDashboardArea', () => {
     expect(resolveDashboardArea(undefined)).toBe('/app');
     expect(resolveDashboardArea({})).toBe('/app');
     expect(resolveDashboardArea({ [Permission.ORG_MEMBER_MANAGE]: null })).toBe('/app');
+  });
+});
+
+/**
+ * The area gate's predicate is deliberately broader than the landing's: `/edu`
+ * also counts every content read, because that is where those surfaces live and a
+ * Member holds them. The seeded role maps come from the real templates, so a
+ * template that gained or lost a key without this predicate following would fail
+ * here.
+ */
+describe('hasAreaAccess', () => {
+  it('opens both areas to the seeded Admin role', () => {
+    expect(hasAreaAccess(SYSTEM_ROLE_TEMPLATES.admin.permissions, '/manage')).toBe(true);
+    expect(hasAreaAccess(SYSTEM_ROLE_TEMPLATES.admin.permissions, '/edu')).toBe(true);
+  });
+
+  it('opens /edu and not /manage to the seeded Teacher role', () => {
+    expect(hasAreaAccess(SYSTEM_ROLE_TEMPLATES.teacher.permissions, '/edu')).toBe(true);
+    expect(hasAreaAccess(SYSTEM_ROLE_TEMPLATES.teacher.permissions, '/manage')).toBe(false);
+  });
+
+  it('opens /edu and not /manage to the seeded Member role', () => {
+    // The Member holds no class-management key, but it does hold the content
+    // reads, and `/edu` is their area — the landing still sends it to `/app`.
+    const member = SYSTEM_ROLE_TEMPLATES.member.permissions;
+    expect(hasAreaAccess(member, '/edu')).toBe(true);
+    expect(hasAreaAccess(member, '/manage')).toBe(false);
+
+    // The content-read arm is what opens the area, not the `group.read` the
+    // member also holds: with only the reads, the gate must still admit it.
+    const contentOnly = Object.fromEntries(
+      Object.entries(member).filter(([key]) => key.endsWith('.read') && !key.startsWith('group.')),
+    );
+    expect(contentOnly).toHaveProperty('deck.read');
+    expect(contentOnly).not.toHaveProperty('group.read');
+    expect(hasAreaAccess(contentOnly, '/edu'), 'content reads alone').toBe(true);
+  });
+
+  it('opens /manage and not /edu to a Billing preset holder', () => {
+    // `org.billing.manage` + `org.seat.manage`, no content read and no group key:
+    // the exact shape that separates "manages something" from "uses /edu".
+    const billing = ROLE_TEMPLATES.billing.permissions;
+    expect(hasAreaAccess(billing, '/manage')).toBe(true);
+    expect(hasAreaAccess(billing, '/edu')).toBe(false);
+  });
+
+  it('closes both areas to an empty or unresolved map', () => {
+    expect(hasAreaAccess({}, '/manage')).toBe(false);
+    expect(hasAreaAccess({}, '/edu')).toBe(false);
+    expect(hasAreaAccess(undefined, '/manage')).toBe(false);
+    expect(hasAreaAccess(undefined, '/edu')).toBe(false);
+  });
+
+  it('counts a content read as /edu access and never as /manage', () => {
+    for (const key of [
+      Permission.DECK_READ,
+      Permission.QUESTION_BANK_READ,
+      Permission.ASSIGNMENT_READ,
+      Permission.STATS_READ,
+      Permission.QUIZ_READ,
+    ]) {
+      expect(hasAreaAccess({ [key]: 'own' }, '/edu'), `${key} → /edu`).toBe(true);
+      expect(hasAreaAccess({ [key]: 'own' }, '/manage'), `${key} → /manage`).toBe(false);
+    }
+  });
+
+  it('counts a class key as /edu access and an org key as /manage access', () => {
+    expect(hasAreaAccess({ [Permission.GROUP_READ]: 'group' }, '/edu')).toBe(true);
+    expect(hasAreaAccess({ [Permission.GROUP_READ]: 'group' }, '/manage')).toBe(false);
+    expect(hasAreaAccess({ [Permission.ORG_AUDIT_READ]: 'organization' }, '/manage')).toBe(true);
+    expect(hasAreaAccess({ [Permission.ORG_AUDIT_READ]: 'organization' }, '/edu')).toBe(false);
   });
 });
 

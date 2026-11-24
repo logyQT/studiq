@@ -12,9 +12,9 @@ export interface SidebarGates {
 
 /**
  * What the sidebar renders for one section list: an item with no gate always
- * shows, a `permission` item shows while `/me/permissions` carries that key (the
- * `group.read` the class routes enforce), a `feature` item while
- * `/me/entitlements` carries its entitlement.
+ * shows, an item with `permissions` shows while `/me/permissions` carries **any
+ * one** of those keys, a `feature` item while `/me/entitlements` carries its
+ * entitlement. An item that declares both needs both.
  *
  * The permission answer is "is the key in the map", not a scoped evaluation:
  * most keys are granted at `group` or `organization` scope, and a `group`-scope
@@ -22,12 +22,16 @@ export interface SidebarGates {
  * about. A nav link must therefore follow the key, or a Teacher — who holds
  * `group.read`/`group.manage` at `group` scope — loses the entry to their own
  * class list.
+ *
+ * "Any one of" is the same rule the roster read applies (D25): several
+ * authorities reach one surface, so requiring all of them would hide the page
+ * from every caller who holds only one.
  */
 export function visibleNavItems(items: readonly NavItem[], gates: SidebarGates): NavItem[] {
   return items.filter(
     (item) =>
       (!item.feature || gates.feature(item.feature)) &&
-      (!item.permission || gates.permission(item.permission)),
+      (!item.permissions || item.permissions.some((permission) => gates.permission(permission))),
   );
 }
 

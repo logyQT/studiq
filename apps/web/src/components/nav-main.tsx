@@ -23,8 +23,13 @@ export type NavItem = {
   icon?: LucideIcon;
   children?: { titleKey: string; href: string }[];
   feature?: string;
-  /** A catalog key `/me/permissions` must carry for the active org (ADR-0015 §7.1). */
-  permission?: string;
+  /**
+   * Catalog keys `/me/permissions` may carry for the active org (ADR-0015
+   * §7.1). Any one of them shows the entry: an entry is a surface reachable by
+   * more than one authority (the roster is readable by `org.member.manage`, a
+   * class manager and an inviter), and the API stays the boundary per key.
+   */
+  permissions?: readonly string[];
   badge?: number;
 };
 

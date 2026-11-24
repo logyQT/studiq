@@ -139,6 +139,53 @@ describe('OrgService', () => {
       expect(expectSuccess(result)[0]?.brand_color).toBeNull();
     });
 
+    it('marks a membership billable only when its role carries org.billing.manage', async () => {
+      const memberships = [
+        {
+          organization_id: 'org-1',
+          org_role_id: 'r-1',
+          org_roles: {
+            name: 'custom-billing',
+            display_name: 'Billing',
+            org_role_permissions: [{ permission_key: 'org.billing.manage' }],
+          },
+        },
+        {
+          organization_id: 'org-2',
+          org_role_id: 'r-2',
+          org_roles: {
+            name: 'admin',
+            display_name: 'Admin',
+            org_role_permissions: [{ permission_key: 'org.member.manage' }],
+          },
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(memberships));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'org-1', name: 'Billable Org' },
+          { id: 'org-2', name: 'Other Org' },
+        ]),
+      );
+
+      const rows = expectSuccess(await service.listOrgs(ctx));
+
+      // The key, not the name: `custom-billing` bills, and a role named `admin`
+      // without the row does not.
+      expect(rows.map((row) => row.canBill)).toEqual([true, false]);
+    });
+
+    it('defaults canBill to false when the role embed carries no permission rows', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([{ organization_id: 'org-1', org_role_id: 'r-1', org_roles: { name: 'member' } }]),
+      );
+      mock.from.mockReturnValueOnce(qb([{ id: 'org-1', name: 'Plain Org' }]));
+
+      const rows = expectSuccess(await service.listOrgs(ctx));
+
+      expect(rows[0]?.canBill).toBe(false);
+    });
+
     it('returns empty when no memberships', async () => {
       mock.from.mockReturnValueOnce(qb([]));
 

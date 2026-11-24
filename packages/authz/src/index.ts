@@ -47,7 +47,6 @@ export {
 } from './lib/permissions';
 // ── Organization roles ──────────────────────────────────────────────────────
 export {
-  isOrgAdminRole,
   isRoleTemplateName,
   ORG_ADMIN_ROLE,
   ROLE_TEMPLATE_NAMES,

@@ -1,6 +1,5 @@
 import {
   AccountType,
-  isOrgAdminRole,
   ORG_ADMIN_ROLE,
   PERSONAL_PERMISSION_KEYS,
   type PermissionScope,
@@ -712,18 +711,7 @@ describe('authz (unified lib)', () => {
   });
 });
 
-describe('isOrgAdminRole', () => {
-  it('accepts only the exact admin role name', () => {
-    expect(isOrgAdminRole(ORG_ADMIN_ROLE)).toBe(true);
-    expect(isOrgAdminRole('admin')).toBe(true);
-  });
-
-  it('rejects every other value', () => {
-    for (const role of ['Admin', 'teacher', 'member', '', null, undefined]) {
-      expect(isOrgAdminRole(role)).toBe(false);
-    }
-  });
-
+describe('the ownership role token', () => {
   it('pins the token to the database role name', () => {
     expect(ORG_ADMIN_ROLE).toBe('admin');
   });

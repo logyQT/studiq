@@ -43,7 +43,7 @@ function memberRow(overrides: Partial<MemberRow> = {}): MemberRow {
   return {
     user_id: 'u-1',
     org_role_id: 'role-1',
-    org_roles: { name: 'member', display_name: null },
+    org_roles: { name: 'member', display_name: null, entitlement_profile: 'learner' },
     profiles: {
       email: 'student@example.com',
       full_name: 'QA student',
@@ -66,6 +66,7 @@ describe('toMemberRows', () => {
       accountType: 'student',
       orgRoleName: 'member',
       orgRoleDisplayName: 'member',
+      entitlementProfile: 'learner',
       orgRoleId: 'role-1',
       organization_id: 'org-1',
       created_at: '2026-11-01T10:00:00Z',
@@ -78,7 +79,11 @@ describe('toMemberRows', () => {
       [
         memberRow({
           user_id: 'u-2',
-          org_roles: { name: 'admin', display_name: 'Administrator' },
+          org_roles: {
+            name: 'admin',
+            display_name: 'Administrator',
+            entitlement_profile: 'all',
+          },
           profiles: {
             email: 'manager@example.com',
             full_name: 'QA manager',
@@ -94,6 +99,37 @@ describe('toMemberRows', () => {
     expect(rows[0]?.accountType).toBe('manager');
     expect(rows[0]?.orgRoleName).toBe('admin');
     expect(rows[0]?.groups).toEqual([{ id: 'g-1', name: 'G1', role: 'member' }]);
+  });
+
+  it('carries the role entitlement profile, which is what "learner" means', () => {
+    // The name is `teacher` and the profile is `none`: a dashboard that
+    // classified by the name would call this holder staff, and the profile is
+    // the only field that can answer for a custom role (ADR-0015 §5.3).
+    const rows = toMemberRows(
+      [
+        memberRow({
+          user_id: 'u-3',
+          org_roles: {
+            name: 'teacher',
+            display_name: 'Teacher',
+            entitlement_profile: 'none',
+          },
+        }),
+        memberRow({
+          user_id: 'u-4',
+          org_roles: {
+            name: 'custom-tutor',
+            display_name: 'Tutor',
+            entitlement_profile: 'learner',
+          },
+        }),
+      ],
+      'org-1',
+      {},
+    );
+
+    expect(rows.map((row) => row.entitlementProfile)).toEqual(['none', 'learner']);
+    expect(rows[1]?.orgRoleName).toBe('custom-tutor');
   });
 });
 

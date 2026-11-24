@@ -185,9 +185,9 @@ export function CheckoutMockForm() {
   const hasMoreFeatures = allFeatures.length > featuredFeatures.length;
 
   const targetOrg =
-    resolution.status === 'ok' || resolution.status === 'not-admin' ? resolution.org : null;
+    resolution.status === 'ok' || resolution.status === 'not-billing' ? resolution.org : null;
   const isDifferentFromActive =
-    resolution.status === 'ok' || resolution.status === 'not-admin'
+    resolution.status === 'ok' || resolution.status === 'not-billing'
       ? resolution.isDifferentFromActive
       : false;
 
@@ -222,10 +222,10 @@ export function CheckoutMockForm() {
       title: ct('org_unavailable_title'),
       description: ct('org_unavailable_desc'),
     };
-  } else if (resolution.status === 'not-admin') {
+  } else if (resolution.status === 'not-billing') {
     blockedState = {
-      title: ct('org_not_admin_title'),
-      description: ct('org_not_admin_desc', { org: resolution.org.name }),
+      title: ct('org_not_billing_title'),
+      description: ct('org_not_billing_desc', { org: resolution.org.name }),
     };
   }
 
