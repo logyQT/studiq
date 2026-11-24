@@ -62,17 +62,23 @@ export function countDraftAnswers(draft: unknown): number {
  * Score as a percentage, 0-100, on the same denominator the review page and /app/stats use:
  * an assignment is in points, a practice quiz is correct answers over the closed (gradable)
  * questions (#329, #619). `null` when there is no denominator, instead of a made-up 0 %.
+ *
+ * An assignment attempt is told apart by the durable `is_assignment_attempt` marker, never by
+ * `assignment_id`: deleting the assignment nulls the FK, and the attempt must not turn into a
+ * practice quiz (#1141, #657).
  */
 function scorePercent(
   row: {
-    assignment_id: string | null;
+    is_assignment_attempt: boolean;
     total_points: number | null;
     total_questions: number;
     score: number | null;
   },
   gradable: number | undefined,
 ): number | null {
-  const max = row.assignment_id ? (row.total_points ?? row.total_questions) : (gradable ?? 0);
+  const max = row.is_assignment_attempt
+    ? (row.total_points ?? row.total_questions)
+    : (gradable ?? 0);
   if (max <= 0) return null;
   return Math.round(Math.min(100, Math.max(0, ((row.score ?? 0) / max) * 100)));
 }
@@ -114,7 +120,7 @@ export class StudentOverviewService {
       supabase
         .from('quiz_attempts')
         .select(
-          'id, score, total_questions, total_points, completed_at, assignment_id, config, teacher_assignments(title, show_results)',
+          'id, score, total_questions, total_points, completed_at, is_assignment_attempt, config, teacher_assignments(title, show_results)',
         )
         .eq('user_id', ctx.userId)
         .not('completed_at', 'is', null)
@@ -162,7 +168,7 @@ export class StudentOverviewService {
     const completedRows = (completed.data ?? []).filter(hasCompletedAt);
     const gradable = await gradableQuestionCounts(
       supabase,
-      completedRows.filter((a) => a.assignment_id === null).map((a) => a.id),
+      completedRows.filter((a) => !a.is_assignment_attempt).map((a) => a.id),
     );
     if (isFailure(gradable)) return gradable;
 
@@ -176,8 +182,9 @@ export class StudentOverviewService {
         attemptId: null,
       })),
       ...completedRows.map((a): StudentActivityItem => {
-        const isAssignment = a.assignment_id !== null;
-        // A teacher may withhold the result of an assignment; the dashboard must not leak it.
+        const isAssignment = a.is_assignment_attempt;
+        // A teacher may withhold the result of an assignment; the dashboard must not leak it. An
+        // assignment that was deleted has no `show_results` left to honour, so it stays withheld.
         const hidden = isAssignment && a.teacher_assignments?.show_results !== true;
         return {
           kind: isAssignment ? 'assignment_submitted' : 'quiz_completed',

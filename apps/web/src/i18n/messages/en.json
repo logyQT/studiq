@@ -1479,7 +1479,9 @@
     "activity_quiz_completed": "Quiz \"{title}\" completed ({score}%)",
     "activity_quiz_completed_no_score": "Quiz \"{title}\" completed",
     "activity_assignment_submitted": "Assignment \"{title}\" submitted ({score}%)",
-    "activity_assignment_submitted_no_score": "Assignment \"{title}\" submitted"
+    "activity_assignment_submitted_no_score": "Assignment \"{title}\" submitted",
+    "activity_assignment_submitted_untitled": "Assignment submitted ({score}%)",
+    "activity_assignment_submitted_untitled_no_score": "Assignment submitted"
   },
   "AppOverviewPage": {
     "title": "My Learning",

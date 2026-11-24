@@ -214,7 +214,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_questions: 5,
           total_points: null,
           completed_at: '2026-10-27T08:00:00Z',
-          assignment_id: null,
+          is_assignment_attempt: false,
           config: { title: 'Quiz A' },
           teacher_assignments: null,
         },
@@ -224,7 +224,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_questions: 5,
           total_points: 10,
           completed_at: '2026-10-27T10:00:00Z',
-          assignment_id: 'a1',
+          is_assignment_attempt: true,
           config: null,
           teacher_assignments: { title: 'Kartkówka', show_results: true },
         },
@@ -254,7 +254,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_questions: 10, // six open questions can never be graded
           total_points: null,
           completed_at: '2026-10-27T08:00:00Z',
-          assignment_id: null,
+          is_assignment_attempt: false,
           config: { title: 'Mixed' },
           teacher_assignments: null,
         },
@@ -276,7 +276,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_questions: 3,
           total_points: null,
           completed_at: '2026-10-27T08:00:00Z',
-          assignment_id: null,
+          is_assignment_attempt: false,
           config: null,
           teacher_assignments: null,
         },
@@ -297,7 +297,7 @@ describe('StudentOverviewService.getOverview', () => {
           total_questions: 5,
           total_points: 10,
           completed_at: '2026-10-27T10:00:00Z',
-          assignment_id: 'a1',
+          is_assignment_attempt: true,
           config: null,
           teacher_assignments: { title: 'Sprawdzian', show_results: false },
         },
@@ -307,6 +307,103 @@ describe('StudentOverviewService.getOverview', () => {
     const result = await s.getOverview(ctx, NOW);
 
     expect(result.success && result.data.activity[0]?.scorePct).toBeNull();
+  });
+
+  // #1141: deleting an assignment nulls `quiz_attempts.assignment_id`; the durable
+  // `is_assignment_attempt` marker is what keeps its finished attempts from turning into practice
+  // quizzes.
+  describe('an attempt whose assignment was deleted (#1141)', () => {
+    const deleted = {
+      id: 'asg-gone',
+      score: 7,
+      total_questions: 5,
+      total_points: 10,
+      completed_at: '2026-10-27T10:00:00Z',
+      // What the database holds once the assignment is gone: the FK is nulled, the marker is not.
+      assignment_id: null,
+      is_assignment_attempt: true,
+      config: null,
+      teacher_assignments: null,
+    };
+
+    it('stays a submitted assignment, with no title and no result to leak', async () => {
+      const { service: s, from } = service({ completed: [deleted] });
+
+      const result = await s.getOverview(ctx, NOW);
+
+      expect(result.success && result.data.activity[0]).toMatchObject({
+        kind: 'assignment_submitted',
+        title: null,
+        scorePct: null,
+        attemptId: 'asg-gone',
+      });
+      // It is not a practice quiz, so its closed questions are never counted.
+      expect(from).not.toHaveBeenCalledWith('quiz_attempt_questions');
+    });
+
+    it('reads the marker, not the nullable foreign key', async () => {
+      const { service: s, attemptQueue } = service({ completed: [deleted] });
+      const completed = requiredValue(attemptQueue[1], 'the completed-attempts query');
+
+      await s.getOverview(ctx, NOW);
+
+      expect(completed.select).toHaveBeenCalledWith(
+        expect.stringContaining('is_assignment_attempt'),
+      );
+      expect(completed.select).toHaveBeenCalledWith(expect.not.stringContaining('assignment_id'));
+    });
+
+    it('still counts a practice quiz next to it on its own closed questions', async () => {
+      const { service: s } = service({
+        gradable: { 'quiz-1': 4 },
+        completed: [
+          deleted,
+          {
+            id: 'quiz-1',
+            score: 2,
+            total_questions: 10,
+            total_points: null,
+            completed_at: '2026-10-27T08:00:00Z',
+            is_assignment_attempt: false,
+            config: { title: 'Mixed' },
+            teacher_assignments: null,
+          },
+        ],
+      });
+
+      const result = await s.getOverview(ctx, NOW);
+      const activity = result.success ? result.data.activity : [];
+
+      expect(activity.map((item) => item.kind)).toEqual(['assignment_submitted', 'quiz_completed']);
+      expect(activity[1]).toMatchObject({ title: 'Mixed', scorePct: 50 });
+    });
+  });
+
+  it('divides an assignment attempt by its points even when the foreign key is gone (#1141)', async () => {
+    // 7 of 10 points over 5 questions: the closed-question denominator of a practice quiz would
+    // read 140 % and clamp to 100 %, or no percentage at all.
+    const { service: s } = service({
+      completed: [
+        {
+          id: 'asg-1',
+          score: 7,
+          total_questions: 5,
+          total_points: 10,
+          completed_at: '2026-10-27T10:00:00Z',
+          assignment_id: null,
+          is_assignment_attempt: true,
+          config: null,
+          teacher_assignments: { title: 'Kartkówka', show_results: true },
+        },
+      ],
+    });
+
+    const result = await s.getOverview(ctx, NOW);
+
+    expect(result.success && result.data.activity[0]).toMatchObject({
+      kind: 'assignment_submitted',
+      scorePct: 70,
+    });
   });
 
   it('keeps only the eight newest lines', async () => {
@@ -321,7 +418,7 @@ describe('StudentOverviewService.getOverview', () => {
       total_questions: 2,
       total_points: null,
       completed_at: `2026-10-1${i}T09:00:00Z`,
-      assignment_id: null,
+      is_assignment_attempt: false,
       config: null,
       teacher_assignments: null,
     }));

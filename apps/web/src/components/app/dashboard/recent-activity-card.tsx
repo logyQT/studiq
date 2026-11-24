@@ -6,6 +6,7 @@ import { ClipboardCheck, FileCheck2, History, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { CardError } from '@/components/app/dashboard/card-error';
+import { activityMessageKey } from '@/lib/recent-activity';
 import { formatRelativeTime } from '@/lib/relative-time';
 
 interface RecentActivityCardProps {
@@ -62,12 +63,11 @@ export function RecentActivityCard({
               const Icon = ICONS[item.kind];
               const href = hrefFor(item);
               const title = item.title ?? t('untitled_quiz');
+              const key = activityMessageKey(item);
               const text =
-                item.kind === 'flashcards_studied'
-                  ? t('activity_flashcards_studied', { count: item.cardsStudied ?? 0 })
-                  : item.scorePct === null
-                    ? t(`activity_${item.kind}_no_score`, { title })
-                    : t(`activity_${item.kind}`, { title, score: item.scorePct });
+                key === 'activity_flashcards_studied'
+                  ? t(key, { count: item.cardsStudied ?? 0 })
+                  : t(key, { title, score: item.scorePct ?? 0 });
               const line = (
                 <div className="flex items-start gap-3 rounded-lg p-2 hover:bg-muted/60">
                   <Icon
