@@ -1,3 +1,4 @@
+import { sample } from '@studiq/server/lib/random';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
@@ -155,5 +156,5 @@ export function sampleServed<T extends { question_id: string | null }>(
  */
 export function drawSample<T>(pool: readonly T[], count: number | null): T[] {
   if (count === null || count >= pool.length) return [...pool];
-  return [...pool].toSorted(() => Math.random() - 0.5).slice(0, count);
+  return sample(pool, count);
 }

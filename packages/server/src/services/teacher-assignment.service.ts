@@ -34,6 +34,7 @@ import {
 } from '@studiq/server/lib/assessment-close';
 import { wrapService } from '@studiq/server/lib/observability';
 import { openQuestionIds } from '@studiq/server/lib/question-status';
+import { sample as randomSample, shuffle } from '@studiq/server/lib/random';
 import { insertAssessmentItemLinks } from '@studiq/server/lib/quiz-assignment';
 import { readQuestionKeys, withAnswerKey } from '@studiq/server/lib/question-keys';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -1097,8 +1098,7 @@ export class TeacherAssignmentService {
     const available = dbRows(allQuestions).filter((q) => !existingIds.data.has(q.id));
     if (available.length === 0) return success({ added: 0 });
 
-    const shuffled = [...available].toSorted(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, Math.min(data.count, shuffled.length));
+    const selected = randomSample(available, data.count);
 
     const rows = await this.nextQuestionLinks(
       supabase,
@@ -1693,9 +1693,7 @@ export class TeacherAssignmentService {
     });
     if (isFailure(sample)) return sample;
 
-    const orderedQuestions = assignment.shuffle_questions
-      ? [...sample.data].toSorted(() => Math.random() - 0.5)
-      : [...sample.data];
+    const orderedQuestions = assignment.shuffle_questions ? shuffle(sample.data) : [...sample.data];
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
@@ -1717,7 +1715,7 @@ export class TeacherAssignmentService {
 
     if (assignment.shuffle_answers) {
       for (const question of payloads) {
-        question.question_answers = question.question_answers.toSorted(() => Math.random() - 0.5);
+        question.question_answers = shuffle(question.question_answers);
       }
     }
 
