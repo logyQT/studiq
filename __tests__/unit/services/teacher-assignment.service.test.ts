@@ -325,6 +325,29 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
+    it('refuses a quiz copy whose item is retired or deleted with a code of its own (#1171, #1185)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', order_index: 0, points: 1 }]))
+        .mockReturnValueOnce(chain([])) // the item is no longer open
+        .mockReturnValue(chain({ id: assignmentId }));
+
+      const result = await service.create(
+        {
+          title: 'From a quiz',
+          shuffleQuestions: true,
+          shuffleAnswers: false,
+          showResults: false,
+          maxAttempts: 1,
+          quizId: 'quiz-1',
+        },
+        ctx,
+      );
+
+      expect(result).toEqual({ success: false, error: 'QUESTION_NOT_OPEN' });
+      // The quiz rows and the open-items check only: nothing was created.
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
     it('returns FORBIDDEN without an active org and never queries (row 11b)', async () => {
       // The mock resolves, so a removed guard fails the assertions below instead of crashing.
       mock.from.mockReturnValue(chain({ id: assignmentId }));
@@ -889,6 +912,23 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 2 });
+    });
+
+    it('refuses a retired or deleted question with a code of its own (#1171, #1185)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ id: 'q-1' }])) // q-2 is no longer open
+        .mockReturnValue(chain(null));
+
+      const result = await service.addQuestions(assignmentId, { questionIds: ['q-1', 'q-2'] }, ctx);
+
+      expect(result).toEqual({ success: false, error: 'QUESTION_NOT_OPEN' });
+      // Ownership, status, existing links and the open-items check: nothing was written.
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('skips already-added questions', async () => {

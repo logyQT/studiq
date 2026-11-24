@@ -327,7 +327,7 @@ export class TeacherAssignmentService {
         quizQuestions.map((question) => question.question_id),
       );
       if (isFailure(open)) return open;
-      if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+      if (open.data.size !== quizQuestions.length) return failure('QUESTION_NOT_OPEN');
     }
 
     const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
@@ -995,7 +995,7 @@ export class TeacherAssignmentService {
     // one is not bindable at all.
     const open = await openQuestionIds(supabase, newIds);
     if (isFailure(open)) return open;
-    if (open.data.size !== newIds.length) return failure('UNPROCESSABLE_ENTITY');
+    if (open.data.size !== newIds.length) return failure('QUESTION_NOT_OPEN');
 
     const rows = await this.nextQuestionLinks(supabase, id, newIds);
 

@@ -373,7 +373,7 @@ export class QuizTeacherService {
       quizQuestions.map((question) => question.question_id),
     );
     if (!open.success) return open;
-    if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+    if (open.data.size !== quizQuestions.length) return failure('QUESTION_NOT_OPEN');
 
     // 3. Create assignment
     const { data: assignment, error: assignError } = await supabase

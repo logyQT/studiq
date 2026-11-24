@@ -124,6 +124,7 @@
     "ERROR_NO_UNSEEN_ITEMS": "Wszystkie pytania z tej kartkówki zostały już wykorzystane — poproś nauczyciela o nową.",
     "ERROR_EXPOSURE_ACK_REQUIRED": "Niektóre pytania są nadal dostępne dla innych klas. Potwierdź tę sytuację albo zaznacz „Zarezerwuj dla całej organizacji”.",
     "ERROR_PAYLOAD_TOO_LARGE": "Plik jest za duży.",
+    "ERROR_QUESTION_NOT_OPEN": "Część pytań jest wycofana lub usunięta i nie można jej użyć w nowej kartkówce. Otwórz je ponownie w banku pytań albo pomiń.",
     "ERROR_UNPROCESSABLE_ENTITY": "Żądanie nie mogło zostać przetworzone z powodu błędów walidacji.",
     "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
     "ERROR_LOGIN_FAILED": "Logowanie nie powiodło się. Spróbuj ponownie.",

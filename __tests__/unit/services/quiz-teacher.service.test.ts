@@ -610,7 +610,7 @@ describe('QuizTeacherService', () => {
       const result = await service.createAssignment(quizId, ctx);
 
       expect(result.success).toBe(false);
-      if (!result.success) expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      if (!result.success) expect(result.error).toBe('QUESTION_NOT_OPEN');
       // Refused before anything was created.
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
