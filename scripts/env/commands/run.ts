@@ -7,7 +7,7 @@ import { EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { writeStderrLine } from '../lib/output';
 import { assertOwnedStack, assertOwnWorkdir } from '../lib/ownership';
 import { REPO_ROOT } from '../lib/repo';
-import { readStack } from '../lib/stack';
+import { readStackWithError, stackProbeFailure } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
 
 const USAGE_LINE = 'bun run env:run -- <command> [args…]';
@@ -56,10 +56,14 @@ export function runCommand(args: string[]): number {
   process.env.APP_URL = contract.appUrl;
   process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
 
-  const stack = contract.shared ? null : readStack(contract.stackName);
+  const probed = contract.shared ? null : readStackWithError(contract.stackName);
+  const stack = probed?.read ?? null;
   if (stack) assertOwnedStack(stack, contract.stackName);
   const stackEnv = stack ? stack.env : exportedStackEnv();
   if (!stackEnv) {
+    // A probe that never answered is not an absent stack (#1360): the exported
+    // contract above is the only fallback, and without it the stack is unknown.
+    if (probed?.error) throw stackProbeFailure(probed.error);
     throw new EnvFailure(
       EXIT_START_FAILED,
       contract.shared

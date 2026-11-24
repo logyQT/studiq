@@ -3,7 +3,7 @@ import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { appPortSource, readContract } from '../lib/contract';
 import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
 import { buildInProgress, buildInProgressFailure, withCheckoutLock } from '../lib/locks';
-import { readStack } from '../lib/stack';
+import { readStackStrict } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
 import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
 import {
@@ -116,7 +116,7 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
       );
       if (conflict) return refuseConflict(parsed, contract, conflict);
 
-      const stack = contract.shared ? null : readStack(stackName);
+      const stack = contract.shared ? null : readStackStrict(stackName);
       if (!contract.shared && !stack) {
         manifestStack = stoppedStackFacts();
         throw new EnvFailure(
