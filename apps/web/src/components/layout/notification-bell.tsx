@@ -115,7 +115,7 @@ export function NotificationBell() {
           content.focus();
         }}
       >
-        <div className="flex items-center justify-between border-b px-3 py-2">
+        <div className="flex h-11 items-center justify-between border-b px-3">
           <p className="min-w-0 truncate text-sm font-semibold">{t('title')}</p>
           {unread > 0 && (
             <Tooltip>
