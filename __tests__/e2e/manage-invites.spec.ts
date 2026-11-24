@@ -18,7 +18,9 @@ async function loginAndOpenInvites(page: import('@playwright/test').Page) {
   // POST resolved and the orgs query refetched, so no later redirect can
   // interrupt the navigation below. Navigating straight to `?next=/manage/invites`
   // is not deterministic here: that push races the auto-select redirect.
-  await page.waitForURL(/\/manage\/?$/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/manage\/?$/, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 
   // Registered right before the navigation that triggers it: the login above is

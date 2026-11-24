@@ -15,7 +15,9 @@ async function loginAndOpenMembers(page: Page) {
   // A fresh session has no active-org cookie yet, so useOrgs() auto-selects the
   // first membership and pushes /manage. Wait for that arrival *and* for the
   // switcher to render the active org, so no later redirect interrupts us.
-  await page.waitForURL(/\/manage\/?$/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/manage\/?$/, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 
   // Registered right before the navigation that triggers them: the login above

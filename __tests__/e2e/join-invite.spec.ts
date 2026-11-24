@@ -18,7 +18,9 @@ async function loginAsManager(page: Page) {
   await page.getByLabel(t('LoginPage.password_label')).fill(MANAGER_PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
 
-  await page.waitForURL(/\/manage\/?$/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/manage\/?$/, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 }
 

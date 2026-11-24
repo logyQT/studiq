@@ -11,7 +11,9 @@ async function loginTeacher(page: Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(password);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/edu/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/edu/, { timeout: 15_000 });
 }
 
 /** Creates an empty quiz through the API so the test never depends on seed state. */

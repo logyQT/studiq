@@ -22,7 +22,9 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * The second educator is the negative control for the case's „Grupy widoczne
  * tylko gdy rola ma `group.manage`”: since 2b-7 `group.manage` exists only as
  * a permission, so the absence branch is exercised through the role's
- * permission map — exactly what `/api/v1/me/permissions` returns.
+ * permission map — exactly what `/api/v1/me/permissions` returns. That role is
+ * also `member`, so the permission landing answers `/app` for it (ADR-0015 §7.1);
+ * `/edu` is navigation and the spec opens it explicitly.
  *
  * The `hub` plan is applied to this tenant's own organization by the seeder with
  * `change_org_plan` (the same RPC the billing webhook calls), so no global plan,
@@ -227,8 +229,12 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     test.setTimeout(120_000);
     const { pageErrors } = watchPage(page);
 
-    await loginAs(page, tenant, 'teacher2', { locale: 'pl' });
-    expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
+    // The landing is permission-based (ADR-0015 §7.1): this educator's org role is
+    // `member`, which holds `group.read` but no `group.manage`, so the landing
+    // answers `/app` — `/edu` is navigation, not the persona gate. The case is
+    // about the teacher menu, so open it explicitly.
+    await loginAs(page, tenant, 'teacher2', { locale: 'pl', waitFor: /\/app$/ });
+    expect(new URL(page.url()).pathname, 'the member-role educator lands on /app').toBe('/app');
 
     const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
     expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements').toBe(200);
@@ -246,6 +252,9 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     expect(Object.keys(scopes), 'the member role holds no group.manage').not.toContain(
       'group.manage',
     );
+
+    await page.goto('/edu');
+    expect(new URL(page.url()).pathname, 'the teacher area loads for the member role').toBe('/edu');
 
     // The entry follows `group.read` (what the class routes ask for), not a
     // plan feature: a `member` role may read the class list it cannot edit,

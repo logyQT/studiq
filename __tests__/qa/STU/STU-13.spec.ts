@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
@@ -19,9 +20,11 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * intended behavior and then asserts the documented outcome of a complete code:
  * the "Sesje na żywo już wkrótce!" message, no navigation and no crash.
  *
- * The FAQ route is asserted separately (step 3), plus the two route-protection
- * paths that guard this student-only surface: anonymous → `/login?next=…` and
- * educator → `/edu`.
+ * The FAQ route is asserted separately (step 3). Only the session guards this
+ * surface: it lives under `/app`, the personal shell, so an educator keeps the
+ * URL too (personal content is not persona-gated since 6c, ADR-0015 §7.1) and the
+ * boundary is the caller's own data layer — asserted through the personal plan
+ * endpoint. Anonymous visitors are still sent to `/login?next=…`.
  */
 
 const CASE = 'STU-13';
@@ -167,11 +170,26 @@ test.describe('STU-13 @area:STU @prio:P3 live study page', () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Fstudy%2Flive%2Ffaq$/);
   });
 
-  test('an educator is redirected to the teacher dashboard', async ({ page }) => {
+  test('an educator keeps the URL on the personal surface and reads only their own layer', async ({
+    page,
+  }) => {
     const tenant = studentTenant();
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu/ });
 
-    await page.goto('/app/study/live');
-    await expect(page).toHaveURL(/\/edu$/);
+    // `/app` is the personal shell, not a student-only area: personal content is
+    // available to every account (6c), so the educator keeps the URL instead of
+    // being sent back to the teacher dashboard (ADR-0015 §7.1).
+    const response = await page.goto('/app/study/live');
+    expect(response?.status(), 'GET /app/study/live as an educator').toBe(200);
+    await expect(page).toHaveURL(/\/app\/study\/live$/);
+    await expect(page.getByRole('heading', { level: 1, name: COPY.title })).toBeVisible();
+    await expect(page.getByText(COPY.comingSoon)).toBeVisible();
+
+    // The boundary is the caller's own data layer: the personal plan endpoint
+    // answers the educator's own plan, never a student's.
+    const plan = await page.request.get('/api/v1/me/personal-plan');
+    expect(plan.status(), 'GET /api/v1/me/personal-plan as an educator').toBe(200);
+    const body = await json<{ data: { audience: string } }>(plan);
+    expect(body.data.audience, 'the personal layer answers the caller’s own plan').toBe('educator');
   });
 });

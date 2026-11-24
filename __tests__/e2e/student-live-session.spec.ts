@@ -13,7 +13,9 @@ test.describe('Student Live Study placeholder', () => {
     await expect(emailInput).toHaveValue(email);
     await page.getByLabel(t('LoginPage.password_label')).fill(password);
     await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-    await page.waitForURL(/\/app/);
+    // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+    // Playwright's 6 s default.
+    await page.waitForURL(/\/app/, { timeout: 15_000 });
     await page.goto('/app/study/live');
   });
 

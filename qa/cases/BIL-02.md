@@ -21,6 +21,12 @@ Zalogowany student1, następnie teacher1.
 - Student widzi plany typu student (Base, Spark, Ace, Pro); nauczyciel – edukatora (Lite, Guide, Creator, Master).
 - Aktualny plan oznaczony jako „Twój plan”, pozostałe z przyciskami zakupu/wyboru.
 
+> Kontrakt (2026-11-24, ADR-0015 §7.1): trasa planów nie jest bramką persony — oba
+> adresy otwierają się dla każdego zalogowanego konta i adres pozostaje bez zmian.
+> Publiczność planu pilnuje katalog renderowany przez stronę i checkout: zakup planu
+> osobistego o innej publiczności kończy się **403 `FORBIDDEN`**, a strona pozostaje
+> na miejscu z komunikatem o nieudanej płatności.
+
 ## Seed (reconciled with the tenant seeder)
 
 The verbatim prerequisite names the legacy manual accounts `student1@dev.local` and
@@ -68,6 +74,10 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
 - The purchase buttons are live: „Wybierz Spark” creates a mock checkout session and
   opens `/checkout?session_id=…&plan_id=spark` („Podsumowanie zamówienia”, „StudiQ
   Spark”).
-- Account-type gating holds: a signed-in student opening `/edu/upgrade` lands on `/app`,
-  an educator opening `/app/upgrade` lands on `/edu`.
+- Account-type gating is the plan audience, not the route: a signed-in student
+  opening `/edu/upgrade` keeps the URL and sees the educator catalogue, and an
+  educator opening `/app/upgrade` sees the student catalogue. `/app` and `/edu`
+  require only a session (ADR-0015 §7.1), so neither page redirects; the checkout
+  refuses the other audience's personal plan with **403 `FORBIDDEN`** and the
+  purchase control shows the failure without navigating.
 - The behavior matches the case exactly; no defect to report.

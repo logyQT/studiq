@@ -35,9 +35,13 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
  * „Obecny Plan” badge and every other card a purchase/selection button
  * („Wybierz Spark”, „Wybierz Ace”, „Wybierz Pro” / „Wybierz Guide”,
  * „Wybierz Creator”, „Wybierz Master”). „Wybierz Spark” opens
- * `/checkout?session_id=…&plan_id=spark`. A student opening `/edu/upgrade` is
- * redirected to `/app`, an educator opening `/app/upgrade` to `/edu`. The behavior
- * matches the case exactly; no defect to report.
+ * `/checkout?session_id=…&plan_id=spark`. A student opening `/edu/upgrade` keeps
+ * the URL and sees the educator catalogue, and an educator opening `/app/upgrade`
+ * sees the student catalogue: `/app` and `/edu` are auth-only areas (ADR-0015
+ * §7.1), so neither page redirects. The audience boundary is the checkout, which
+ * refuses a personal plan whose `audience` is not the caller's account type
+ * (`FORBIDDEN`, 403): the student cannot buy an educator plan, and the purchase
+ * control reports the refusal without leaving the page.
  *
  * Asserted behaviour (the case's expected result):
  * - the student page lists the student plans, the educator page the educator plans,
@@ -47,8 +51,9 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
  * - each page shows only its own account type's plans;
  * - the purchase button really starts a checkout for that plan.
  *
- * Adjacent regression that matters for this surface: the two plan pages are gated by
- * account type, so neither dashboard can render the other one's plans.
+ * Adjacent regression that matters for this surface: the route loads for either
+ * account type, while the plan audience is enforced by the catalogue each page
+ * renders and by the checkout that refuses the other audience's plan.
  *
  * Read-only shared data: the plan catalogue (`subscription_plans`, `plan_limits`) is
  * global; the spec reads it through the API and asserts the page renders it. Nothing
@@ -66,6 +71,7 @@ const CASE = 'BIL-02';
  */
 const upgradeCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'UpgradePage' });
 const pricingCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
+const checkoutCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'CheckoutPage' });
 
 const UPGRADE_COPY = {
   title: upgradeCopy('title'),
@@ -73,6 +79,8 @@ const UPGRADE_COPY = {
 } as const;
 
 const CURRENT_BADGE = pricingCopy('current_plan_badge');
+/** The toast `CheckoutButton` shows when the checkout refuses the purchase. */
+const PAYMENT_FAILED = checkoutCopy('payment_failed');
 
 /** The student plans the case names, in catalogue order. */
 const STUDENT_PLAN_NAMES = ['StudiQ Base', 'StudiQ Spark', 'StudiQ Ace', 'StudiQ Pro'] as const;
@@ -297,27 +305,68 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
 
-  test('each plan page is gated to its own account type', async ({ page, browser, baseURL }) => {
+  test('each plan page loads for either account type, but only its own audience can buy', async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
     const { tenant } = account('student');
 
-    // A student cannot open the educator plan page: the proxy sends them home.
+    // Area routes are auth-only (ADR-0015 §7.1): a student may open the educator
+    // plan page and keeps the URL. What is gated is the audience, not the route.
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/);
     await page.goto('/edu/upgrade');
-    await page.waitForURL(/\/app$/, { timeout: 20_000 });
-    await expect(page.getByRole('heading', { level: 1, name: UPGRADE_COPY.title })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/edu\/upgrade$/);
+    await expectUpgradeShell(page);
+    await expect(planCards(page), 'the educator catalogue renders for the route').toHaveCount(
+      EDUCATOR_PLAN_NAMES.length,
+    );
 
-    // An educator cannot open the student plan page either.
+    // The checkout resolves the plan's audience against the caller, so the
+    // educator catalogue is not purchasable by a student.
+    const denied = await page.request.post('/api/v1/stripe/create-checkout-session', {
+      data: { planKey: 'guide', locale: 'pl' },
+    });
+    expect(denied.status(), 'a student checking out an educator plan').toBe(403);
+    expect(await denied.json(), 'the refusal envelope').toEqual({
+      success: false,
+      error: 'FORBIDDEN',
+    });
+
+    // The purchase control surfaces that refusal and never navigates to checkout.
+    await planCard(page, 'StudiQ Guide')
+      .getByRole('button', { name: PLAN_CTA.guide, exact: true })
+      .click();
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: PAYMENT_FAILED }),
+      'the refused purchase is reported to the student',
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/edu\/upgrade$/);
+
+    // The mirror case: an educator may open the student page and cannot buy it.
     const context = await browser.newContext({ baseURL: baseURL ?? 'http://localhost:3010' });
     try {
       const educatorPage = await context.newPage();
       await loginAs(educatorPage, tenant, 'teacher', { locale: 'pl' });
       await expect(educatorPage).toHaveURL(/\/edu$/);
       await educatorPage.goto('/app/upgrade');
-      await educatorPage.waitForURL(/\/edu$/, { timeout: 20_000 });
+      await expect(educatorPage).toHaveURL(/\/app\/upgrade$/);
+      await expectUpgradeShell(educatorPage);
       await expect(
-        educatorPage.getByRole('heading', { level: 1, name: UPGRADE_COPY.title }),
-      ).toHaveCount(0);
+        planCards(educatorPage),
+        'the student catalogue renders for the route',
+      ).toHaveCount(STUDENT_PLAN_NAMES.length);
+
+      const educatorDenied = await educatorPage.request.post(
+        '/api/v1/stripe/create-checkout-session',
+        { data: { planKey: 'spark', locale: 'pl' } },
+      );
+      expect(educatorDenied.status(), 'an educator checking out a student plan').toBe(403);
+      expect(await educatorDenied.json(), 'the refusal envelope').toEqual({
+        success: false,
+        error: 'FORBIDDEN',
+      });
     } finally {
       await context.close();
     }

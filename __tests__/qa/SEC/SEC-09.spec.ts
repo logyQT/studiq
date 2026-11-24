@@ -568,9 +568,13 @@ test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     // --- Step 0: the classroom teacher owns the quiz and its results --------
+    // The landing is permission-based (ADR-0015 §7.1): `teacher2` is the admin of
+    // the classroom org, so it lands on `/manage` (the seeded org's `teacher` role
+    // lands on `/edu` below). The wait accepts the landing's area; the screen the
+    // case needs is opened explicitly.
     await switchUser(page, tenant, 'teacher2', {
       activeOrgId: classroomOrgId,
-      waitFor: /\/edu(\/|$)/,
+      waitFor: /\/(app|edu|manage)(\/|$)/,
     });
     await expectSignedInAs(page, tenant, 'teacher2');
     expect(

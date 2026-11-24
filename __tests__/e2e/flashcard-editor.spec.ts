@@ -11,7 +11,9 @@ async function login(page: Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill('student1@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill('pass');
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/app/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/app/, { timeout: 15_000 });
 }
 
 async function openFlashcardDialog(page: Page) {

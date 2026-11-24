@@ -27,7 +27,9 @@ async function login(page: Page, email: string, redirectPattern: RegExp) {
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(redirectPattern);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(redirectPattern, { timeout: 15_000 });
 
   await expect
     .poll(
@@ -40,7 +42,7 @@ async function login(page: Page, email: string, redirectPattern: RegExp) {
       { timeout: 15_000 },
     )
     .toBe(true);
-  await page.waitForURL(redirectPattern);
+  await page.waitForURL(redirectPattern, { timeout: 15_000 });
 }
 
 test.describe('a live assessment deadline may move, but not end the run (#1191)', () => {

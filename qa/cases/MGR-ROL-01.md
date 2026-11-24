@@ -25,13 +25,15 @@ M1, WSB Merito (Launch).
   `org.role.manage`, a rola systemowa `admin` ma je na każdym planie.
 - Członek bez `org.role.manage` nie widzi edytora, a bezpośredni zapis
   (`POST`/`PUT`/`DELETE /api/v1/organization/roles…`) zwraca **403**
-  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna.
+  `{"success":false,"error":"FORBIDDEN"}`. Lista ról pozostaje dla niego czytelna,
+  a strona `/manage/roles` otwiera się bez przekierowania — trasy paneli wymagają
+  tylko zalogowania (ADR-0015 §7.1), więc bramką jest uprawnienie, nie persona.
 - Wybrany szablon (D17) zapisuje początkowe uprawnienia roli; `org.admin` nigdy
   nie jest przyznawany szablonem. Klucze `org.*` szablonu zaczną działać, gdy 2b
   zastąpi stare bramki funkcji (`member.manage`, `org.manage` itd.); klucze
   treściowe działają już teraz.
 - Członek z **kontem typu manager** i rolą niestandardową bez `org.role.manage`
-  widzi listę ról (reguła persony go wpuszcza), ale nie ma „Nowej roli” ani
+  widzi listę ról (strona jest auth-only), ale nie ma „Nowej roli” ani
   kolumny „Akcje”, a `POST /api/v1/organization/roles` zwraca **403** — bramką
   jest uprawnienie, nie typ konta.
 
@@ -78,9 +80,10 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   przycisku „Nowa rola” i bez kolumny „Akcje”; `POST /api/v1/organization/roles`
   z jego sesją zwraca 403. To dowód, że edytor jest bramkowany uprawnieniem, a nie
   regułą persony.
-- Nauczyciel (account type educator) nadal jest przekierowywany z `/manage` na
-  `/edu` przez regułę persony (`AUT-17`), więc edytora nie zobaczy także z tego
-  powodu; bramką merytoryczną jest uprawnienie sprawdzane po stronie API.
+- Nauczyciel (account type educator, rola org `member`) **pozostaje** na
+  `/manage/roles`: trasa `/manage` wymaga tylko zalogowania (ADR-0015 §7.1), więc
+  strona i lista ról się renderują, a uprawnienie `org.role.manage` — nie persona
+  — odbiera „Nową rolę”, kolumnę „Akcje” i zapis (`POST`/`PUT`/`DELETE` → 403).
 
 ## Historia przypadku
 
