@@ -126,6 +126,8 @@ export interface Harness {
   setStatusFixture(value: unknown): void;
   setRawStatus(text: string): void;
   setListFixture(value: unknown): void;
+  /** Make the next `times` `stack status` calls exit 1 before the fixture answers. */
+  failStatusProbe(times: number): void;
   writeRegistryEntry(entry: Record<string, unknown>): void;
   writeRawEntry(name: string, entry: unknown): void;
   bunxCalls(): string;
@@ -160,6 +162,10 @@ const FAKE_BUNX = [
   'if [ "${1:-}" = "supabase" ]; then shift; fi',
   'printf \'%s\\n\' "$*" >> "${FAKE_BUNX_LOG:?}"',
   'if [ "${1:-}" = "stack" ] && [ "${2:-}" = "status" ]; then',
+  '  if [ -n "${FAKE_STACK_STATUS_FAILS_FILE:-}" ] && [ -f "$FAKE_STACK_STATUS_FAILS_FILE" ]; then',
+  '    left=$(cat "$FAKE_STACK_STATUS_FAILS_FILE")',
+  '    if [ "$left" -gt 0 ]; then printf \'%s\' "$((left - 1))" > "$FAKE_STACK_STATUS_FAILS_FILE"; exit 1; fi',
+  '  fi',
   '  if [ -n "${FAKE_STACK_STATUS_FILE:-}" ] && [ -f "$FAKE_STACK_STATUS_FILE" ]; then',
   '    cat "$FAKE_STACK_STATUS_FILE"',
   '    exit "${FAKE_STACK_STATUS_EXIT:-0}"',
@@ -211,6 +217,7 @@ export function createHarness(): Harness {
   const engineLog = join(dir, 'engine.log');
   const statusFile = join(dir, 'stack-status.json');
   const listFile = join(dir, 'stack-list.json');
+  const statusFailsFile = join(dir, 'stack-status-fails.txt');
   const appUrlFile = join(dir, 'supa-app-url.txt');
   const closers: Array<() => Promise<void> | void> = [];
   const children = new Set<ChildProcess>();
@@ -284,6 +291,9 @@ export function createHarness(): Harness {
     FAKE_ENGINE_LOG: engineLog,
     FAKE_STACK_STATUS_FILE: statusFile,
     FAKE_STACK_LIST_FILE: listFile,
+    FAKE_STACK_STATUS_FAILS_FILE: statusFailsFile,
+    // Hermetic: a failing probe is retried, and the unit tests must not sit through the pauses.
+    STUDIQ_STACK_PROBE_BACKOFF_MS: '0',
     FAKE_SUPA_APP_URL_FILE: appUrlFile,
   };
 
@@ -335,6 +345,9 @@ export function createHarness(): Harness {
     },
     setListFixture(value) {
       writeFileSync(listFile, JSON.stringify(value));
+    },
+    failStatusProbe(times) {
+      writeFileSync(statusFailsFile, String(times));
     },
     writeRegistryEntry(entry) {
       mkdirSync(registryDir, { recursive: true });
