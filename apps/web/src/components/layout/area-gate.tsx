@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermissions } from '@/hooks/use-permissions';
-import { type DashboardArea, hasAreaAccess, isAreaGateResolved } from '@/lib/dashboard-home';
+import { type DashboardArea, areaGateState } from '@/lib/dashboard-home';
 
 type GatedArea = Extract<DashboardArea, '/manage' | '/edu'>;
 
@@ -25,11 +25,16 @@ type GatedArea = Extract<DashboardArea, '/manage' | '/edu'>;
  * describes the personal layer), the active org's `['permissions', orgId]` is
  * unresolved, or the answer names a different org than the active one — the way
  * a payload written under the outgoing key does — the gate renders a neutral
- * placeholder and neither the children nor the card. `isAreaGateResolved` holds
- * that rule, the same one the landing applies.
+ * placeholder and neither the children nor the card. `areaGateState` holds that
+ * rule, the same one the landing applies.
  *
- * A failed read is not a denial either: the gate offers a retry (the same copy as
- * `/dashboard`'s failure state) instead of waiting forever on a skeleton.
+ * A failed read is neither a denial nor a wait. The gate renders a retry card
+ * and the retry re-runs the read that failed: a membership refetch, a permission
+ * refetch, or — when the first-org switch itself failed — that switch again,
+ * which is the one failure a plain refetch cannot cure because the hook's
+ * one-shot latch has already fired. The copy is the gate's own rather than
+ * `/dashboard`'s: the landing offers "sign in again" with no such control here,
+ * and this card's only way out is the retry.
  *
  * The action is the org switcher: one button per *other* organization, which is
  * where the caller's authority may live. With a single membership there is
@@ -37,7 +42,6 @@ type GatedArea = Extract<DashboardArea, '/manage' | '/edu'>;
  */
 export function AreaGate({ area, children }: { area: GatedArea; children: React.ReactNode }) {
   const t = useTranslations('AreaGate');
-  const tLanding = useTranslations('DashboardLanding');
   const {
     activeOrg,
     orgs,
@@ -46,47 +50,51 @@ export function AreaGate({ area, children }: { area: GatedArea; children: React.
     isLoading,
     isError: orgsError,
     refetch: refetchOrgs,
+    autoSelectError,
+    retryAutoSelect,
   } = useOrgs();
   const permissions = usePermissions();
 
-  const orgId = activeOrg?.id ?? null;
-  const resolved = isAreaGateResolved({
-    orgsLoading: isLoading,
-    orgsError,
-    orgsCount: orgs.length,
-    activeOrgId: orgId,
-    permissions,
-  });
-  // Absent only while unresolved: the second half of the guard below exists for
-  // the type, not for a state — the safe branch is the skeleton either way.
-  const permissionMap = permissions.data?.permissions;
+  const decision = areaGateState(
+    {
+      orgsLoading: isLoading,
+      orgsError,
+      orgsCount: orgs.length,
+      activeOrgId: activeOrg?.id ?? null,
+      autoSelectError,
+      permissions,
+    },
+    area,
+  );
 
-  if (!resolved || !permissionMap) {
-    if (orgsError || permissions.isError) {
-      return (
-        <Card data-slot="area-gate-error">
-          <CardContent className="p-0">
-            <EmptyState
-              icon={AlertCircle}
-              role="alert"
-              title={tLanding('load_error')}
-              description={tLanding('load_error_desc')}
-              action={
-                <Button
-                  onClick={() => {
-                    void refetchOrgs();
-                    void permissions.refetch();
-                  }}
-                >
-                  {tLanding('retry')}
-                </Button>
-              }
-            />
-          </CardContent>
-        </Card>
-      );
-    }
+  if (decision.state === 'error') {
+    const retry =
+      decision.source === 'orgs'
+        ? () => {
+            void refetchOrgs();
+          }
+        : decision.source === 'permissions'
+          ? () => {
+              void permissions.refetch();
+            }
+          : retryAutoSelect;
 
+    return (
+      <Card data-slot="area-gate-error">
+        <CardContent className="p-0">
+          <EmptyState
+            icon={AlertCircle}
+            role="alert"
+            title={t('load_error')}
+            description={t('load_error_desc')}
+            action={<Button onClick={retry}>{t('retry')}</Button>}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (decision.state === 'pending') {
     return (
       <div className="space-y-4" aria-busy="true" data-slot="area-gate-pending">
         <Skeleton className="h-8 w-48" />
@@ -96,8 +104,9 @@ export function AreaGate({ area, children }: { area: GatedArea; children: React.
     );
   }
 
-  if (hasAreaAccess(permissionMap, area)) return children;
+  if (decision.state === 'allowed') return children;
 
+  const orgId = activeOrg?.id ?? null;
   const otherOrgs = orgs.filter((org) => org.id !== orgId);
 
   return (

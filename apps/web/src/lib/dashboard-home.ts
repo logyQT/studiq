@@ -106,35 +106,64 @@ export interface AreaGateInput {
   orgsCount: number;
   /** The org `/me/orgs` reports as active; `null` is the personal layer. */
   activeOrgId: string | null;
+  /**
+   * The first-org auto-selection ran and failed. Distinct from "has not run":
+   * only the former is a retryable failure, and nothing retries it on its own.
+   */
+  autoSelectError: boolean;
   /** The `['permissions', orgId]` query the gate reads. */
   permissions: {
     isPending: boolean;
     isError: boolean;
-    data: { orgId: string | null } | undefined;
+    data: { orgId: string | null; permissions: PermissionMap } | undefined;
   };
 }
 
+/** Which failed read the gate's retry card offers to run again. */
+export type AreaGateErrorSource = 'orgs' | 'permissions' | 'auto-select';
+
+/** What `AreaGate` may render, and why. */
+export type AreaGateDecision =
+  | { state: 'pending' }
+  | { state: 'error'; source: AreaGateErrorSource }
+  | { state: 'denied' }
+  | { state: 'allowed' };
+
 /**
- * Whether `AreaGate` may render either answer — the children or the no-access
- * card — or has to wait, and it waits on the same three facts the landing does
- * (`resolveLandingArea` below), because a gate that resolves early makes a claim
- * it cannot prove.
+ * The gate's whole answer in one place: the children (`allowed`), the no-access
+ * card (`denied`), the skeleton (`pending`), or a retry card for the read that
+ * failed (`error` plus the source the retry must re-run).
  *
- * The third fact is the one a naive gate misses: a settled membership list whose
+ * It waits on the same three facts the landing does (`resolveLandingArea`
+ * below), because a gate that resolves early makes a claim it cannot prove. The
+ * third fact is the one a naive gate misses: a settled membership list whose
  * active org is still `null` is the moment between `/me/orgs` and the first-org
  * auto-selection. The map under `null` is the 24-key personal set, so a gate that
  * trusts it renders the no-access card for `/manage` and the children for `/edu`
  * — a false denial plus a content flash, cured only by the switch that was about
- * to run. A failed read is likewise not a denial: it stays unresolved until the
- * caller retries.
+ * to run.
+ *
+ * That same `null` has two meanings, and they are not interchangeable: a switch
+ * that has not run yet is `pending`, while a switch that ran and failed is an
+ * `error` whose retry re-runs it. Folding the second into the first is exactly
+ * the strand this function prevents — the hook's one-shot latch has already
+ * fired, so a plain refetch would never try again.
  */
-export function isAreaGateResolved(input: AreaGateInput): boolean {
-  if (input.orgsLoading || input.orgsError) return false;
-  if (input.orgsCount > 0 && input.activeOrgId === null) return false;
+export function areaGateState(input: AreaGateInput, area: '/manage' | '/edu'): AreaGateDecision {
+  if (input.orgsLoading) return { state: 'pending' };
+  if (input.orgsError) return { state: 'error', source: 'orgs' };
+
+  if (input.orgsCount > 0 && input.activeOrgId === null) {
+    return input.autoSelectError ? { state: 'error', source: 'auto-select' } : { state: 'pending' };
+  }
+
   const permissions = input.permissions;
-  if (permissions.isPending || permissions.isError || !permissions.data) return false;
+  if (permissions.isError) return { state: 'error', source: 'permissions' };
+  if (permissions.isPending || !permissions.data) return { state: 'pending' };
   // A payload written under the outgoing org's key names a different org.
-  return permissions.data.orgId === input.activeOrgId;
+  if (permissions.data.orgId !== input.activeOrgId) return { state: 'pending' };
+
+  return { state: hasAreaAccess(permissions.data.permissions, area) ? 'allowed' : 'denied' };
 }
 
 export interface LandingInput {

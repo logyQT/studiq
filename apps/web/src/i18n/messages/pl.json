@@ -570,7 +570,10 @@
     "no_access_description": "Organizacja {org} nie przyznała Ci żadnego uprawnienia w tym obszarze. Administrator tej organizacji może je nadać.",
     "no_access_description_no_org": "Bez aktywnej organizacji nie masz dostępu do tego obszaru.",
     "switch_to": "Przełącz na {org}",
-    "go_to_own_space": "Przejdź do swojej przestrzeni"
+    "go_to_own_space": "Przejdź do swojej przestrzeni",
+    "load_error": "Nie udało się sprawdzić dostępu",
+    "load_error_desc": "Nie udało się odczytać Twojego członkostwa lub uprawnień w tym obszarze.",
+    "retry": "Spróbuj ponownie"
   },
   "AppJoinPage": {
     "title": "Dołącz do klasy",

@@ -9,8 +9,8 @@ import {
 } from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
 import {
+  areaGateState,
   hasAreaAccess,
-  isAreaGateResolved,
   MANAGER_AREA_KEYS,
   type PermissionMap,
   resolveDashboardArea,
@@ -196,90 +196,158 @@ describe('hasAreaAccess', () => {
  * Each unresolved case is a state the gate must pass through silently — the
  * failure mode it guards (the personal map read as the org's) renders a false
  * denial for `/manage` and a content flash for `/edu`.
+ *
+ * The `null` active org has two meanings and only one of them is a failure: a
+ * switch that has not run yet stays pending, while a switch that failed is an
+ * error whose retry re-runs it. Folding the two together is the strand this
+ * block exists to catch.
  */
-describe('isAreaGateResolved', () => {
+describe('areaGateState', () => {
   const orgId = '11111111-1111-4111-8111-111111111111';
   const base = {
     orgsLoading: false,
     orgsError: false,
     orgsCount: 1,
     activeOrgId: orgId,
+    autoSelectError: false,
     permissions: {
       isPending: false,
       isError: false,
-      data: { orgId },
+      data: { orgId, permissions: SYSTEM_ROLE_TEMPLATES.admin.permissions },
     },
   };
 
-  it('is unresolved while the membership list loads', () => {
-    expect(isAreaGateResolved({ ...base, orgsLoading: true })).toBe(false);
+  it('is pending while the membership list loads', () => {
+    expect(areaGateState({ ...base, orgsLoading: true }, '/manage')).toEqual({ state: 'pending' });
   });
 
-  it('is unresolved when the membership list failed', () => {
-    expect(isAreaGateResolved({ ...base, orgsError: true })).toBe(false);
+  it('offers the membership retry when the membership list failed', () => {
+    expect(areaGateState({ ...base, orgsError: true }, '/manage')).toEqual({
+      state: 'error',
+      source: 'orgs',
+    });
   });
 
-  it('is unresolved with memberships but no active org yet', () => {
+  it('is pending with memberships but no active org yet', () => {
     // The auto-selection has not run: the map under `null` is the personal set,
     // and deciding on it is the false denial this test exists for.
     expect(
-      isAreaGateResolved({
-        ...base,
-        activeOrgId: null,
-        permissions: { isPending: false, isError: false, data: { orgId: null } },
-      }),
-    ).toBe(false);
+      areaGateState(
+        {
+          ...base,
+          activeOrgId: null,
+          permissions: {
+            isPending: false,
+            isError: false,
+            data: { orgId: null, permissions: personalPermissions() },
+          },
+        },
+        '/manage',
+      ),
+    ).toEqual({ state: 'pending' });
   });
 
-  it('is unresolved while the permission map loads', () => {
+  it('offers the auto-selection retry when that switch failed', () => {
+    // The switch ran and failed, so the one-shot latch is spent: only an error
+    // card that re-runs it can leave this state, never a refetch.
     expect(
-      isAreaGateResolved({
-        ...base,
-        permissions: { isPending: true, isError: false, data: undefined },
-      }),
-    ).toBe(false);
-    expect(
-      isAreaGateResolved({
-        ...base,
-        permissions: { isPending: false, isError: false, data: undefined },
-      }),
-    ).toBe(false);
+      areaGateState(
+        {
+          ...base,
+          activeOrgId: null,
+          autoSelectError: true,
+          permissions: {
+            isPending: false,
+            isError: false,
+            data: { orgId: null, permissions: personalPermissions() },
+          },
+        },
+        '/manage',
+      ),
+    ).toEqual({ state: 'error', source: 'auto-select' });
   });
 
-  it('is unresolved when the permission map failed', () => {
+  it('is pending while the permission map loads', () => {
     expect(
-      isAreaGateResolved({
-        ...base,
-        permissions: { isPending: false, isError: true, data: undefined },
-      }),
-    ).toBe(false);
+      areaGateState(
+        {
+          ...base,
+          permissions: { isPending: true, isError: false, data: undefined },
+        },
+        '/manage',
+      ),
+    ).toEqual({ state: 'pending' });
+    expect(
+      areaGateState(
+        {
+          ...base,
+          permissions: { isPending: false, isError: false, data: undefined },
+        },
+        '/manage',
+      ),
+    ).toEqual({ state: 'pending' });
   });
 
-  it('is unresolved when the map names a different org than the active one', () => {
+  it('offers the permission retry when the map failed', () => {
+    expect(
+      areaGateState(
+        {
+          ...base,
+          permissions: { isPending: false, isError: true, data: undefined },
+        },
+        '/manage',
+      ),
+    ).toEqual({ state: 'error', source: 'permissions' });
+  });
+
+  it('is pending when the map names a different org than the active one', () => {
     // A payload written under the outgoing org's key during a switch.
     expect(
-      isAreaGateResolved({
-        ...base,
-        permissions: {
-          isPending: false,
-          isError: false,
-          data: { orgId: '22222222-2222-4222-8222-222222222222' },
+      areaGateState(
+        {
+          ...base,
+          permissions: {
+            isPending: false,
+            isError: false,
+            data: { orgId: '22222222-2222-4222-8222-222222222222', permissions: {} },
+          },
         },
-      }),
-    ).toBe(false);
+        '/manage',
+      ),
+    ).toEqual({ state: 'pending' });
   });
 
-  it('resolves once the map names the active org', () => {
-    expect(isAreaGateResolved(base)).toBe(true);
-    // No membership at all: `null` is the personal layer on both sides.
+  it('answers allowed or denied from the map once it names the active org', () => {
+    expect(areaGateState(base, '/manage')).toEqual({ state: 'allowed' });
     expect(
-      isAreaGateResolved({
-        ...base,
-        orgsCount: 0,
-        activeOrgId: null,
-        permissions: { isPending: false, isError: false, data: { orgId: null } },
-      }),
-    ).toBe(true);
+      areaGateState(
+        {
+          ...base,
+          permissions: {
+            isPending: false,
+            isError: false,
+            data: { orgId, permissions: SYSTEM_ROLE_TEMPLATES.member.permissions },
+          },
+        },
+        '/manage',
+      ),
+    ).toEqual({ state: 'denied' });
+  });
+
+  it('resolves the personal layer when there is no membership at all', () => {
+    const personal = {
+      ...base,
+      orgsCount: 0,
+      activeOrgId: null,
+      permissions: {
+        isPending: false,
+        isError: false,
+        data: { orgId: null, permissions: personalPermissions() },
+      },
+    };
+    // The personal set holds the content reads, not the `org.*` keys.
+    expect(areaGateState(personal, '/manage')).toEqual({ state: 'denied' });
+    expect(areaGateState(personal, '/edu')).toEqual({ state: 'allowed' });
   });
 });
 

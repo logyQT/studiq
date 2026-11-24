@@ -588,7 +588,10 @@
     "no_access_description": "Organization {org} has not granted you any authority in this area. An administrator there can grant it.",
     "no_access_description_no_org": "Without an active organization you have no access to this area.",
     "switch_to": "Switch to {org}",
-    "go_to_own_space": "Go to your own space"
+    "go_to_own_space": "Go to your own space",
+    "load_error": "Could not check your access",
+    "load_error_desc": "Your membership or permissions for this area could not be read.",
+    "retry": "Try again"
   },
   "AppJoinPage": {
     "title": "Join a Classroom",
