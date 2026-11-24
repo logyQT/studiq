@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { sample } from '@studiq/server/lib/random';
 import { QUESTION_PAYLOAD_SELECT } from '@studiq/server/lib/question-view';
 import { sealedIdFilter, sealFor } from '@studiq/server/lib/question-seal';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -82,8 +83,7 @@ export class QuizService {
       return failure('NOT_FOUND');
     }
 
-    const shuffled = [...questions].toSorted(() => Math.random() - 0.5);
-    const selectedQuestions = shuffled.slice(0, Math.min(config.questionCount, shuffled.length));
+    const selectedQuestions = sample(questions, config.questionCount);
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')

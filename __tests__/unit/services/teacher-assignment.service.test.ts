@@ -3184,8 +3184,8 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
-      // A constant RNG makes the shuffle deterministic: every comparison says "swap".
-      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      // A constant RNG makes the shuffle deterministic: an RNG near 1 always draws the last remaining item, reversing the order.
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0.999);
       try {
         const result = await service.startAttempt(assignmentId, ctx);
 
