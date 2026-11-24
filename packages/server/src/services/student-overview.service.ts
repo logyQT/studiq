@@ -4,7 +4,6 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
 import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   ResumeDeck,
@@ -41,12 +40,6 @@ function configTitle(config: unknown): string | null {
   if (!isRecord(config)) return null;
   const title = config.title;
   return typeof title === 'string' && title !== '' ? title : null;
-}
-
-function bankIdOf(config: unknown): string | null {
-  if (!isRecord(config)) return null;
-  const bankId = config.bankId;
-  return typeof bankId === 'string' && bankId !== '' ? bankId : null;
 }
 
 /**
@@ -145,29 +138,11 @@ export class StudentOverviewService {
       if (result.error) return toDbFailure(result.error);
     }
 
-    // A practice quiz keeps no title of its own (its config is the generator
-    // request): name it after its question bank, same as the teacher feed.
-    const bankIds = new Set<string>();
-    for (const row of [...(open.data ?? []), ...(completed.data ?? [])]) {
-      const id = bankIdOf(row.config);
-      if (id) bankIds.add(id);
-    }
-    let bankNames = new Map<string, string>();
-    if (bankIds.size > 0) {
-      const { data: bankRows, error: bankError } = await supabase
-        .from('question_banks')
-        .select('id, name')
-        .in('id', [...bankIds]);
-      if (bankError) return toDbFailure(bankError);
-      bankNames = new Map(dbRows(bankRows).map((b) => [b.id, b.name]));
-    }
-
     const [openRow] = (open.data ?? []).filter(hasStartedAt);
     const quiz: ResumeQuiz | null = openRow
       ? {
           attemptId: openRow.id,
-          title:
-            configTitle(openRow.config) ?? bankNames.get(bankIdOf(openRow.config) ?? '') ?? null,
+          title: configTitle(openRow.config),
           answered: countDraftAnswers(openRow.draft_answers),
           total: openRow.total_questions,
           startedAt: openRow.started_at,
@@ -214,11 +189,7 @@ export class StudentOverviewService {
         return {
           kind: isAssignment ? 'assignment_submitted' : 'quiz_completed',
           at: a.completed_at,
-          title:
-            a.teacher_assignments?.title ??
-            configTitle(a.config) ??
-            bankNames.get(bankIdOf(a.config) ?? '') ??
-            null,
+          title: a.teacher_assignments?.title ?? configTitle(a.config),
           cardsStudied: null,
           scorePct: hidden ? null : scorePercent(a, gradable.data.get(a.id)),
           attemptId: a.id,
