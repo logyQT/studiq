@@ -125,6 +125,49 @@ function isWebHealthy(code: number): boolean {
   return code >= 200 && code < 400;
 }
 
+/** The five machine-wide observability services `env:doctor` probes. */
+export type ObservabilityProbe = 'grafana' | 'tempo' | 'loki' | 'prometheus' | 'otlp';
+
+const OBSERVABILITY_PROBES: readonly ObservabilityProbe[] = [
+  'grafana',
+  'tempo',
+  'loki',
+  'prometheus',
+  'otlp',
+];
+
+/**
+ * Whether one probe's HTTP status says its service is serving. Any answer is not enough (#1109):
+ * Tempo and Loki answer `503` on `/ready` while they start, which is "not ready", not "up".
+ * So a probe is healthy on 2xx/3xx; the OTLP collector alone is also healthy on `404`, because it
+ * has no handler on `/` and a running collector answers exactly that there. `0` (no answer) is
+ * never healthy.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function isObservabilityProbeHealthy(probe: ObservabilityProbe, code: number): boolean {
+  return isWebHealthy(code) || (probe === 'otlp' && code === 404);
+}
+
+/**
+ * What the five raw probe statuses add up to. `healthy` drives `up` and the status label;
+ * `answering` (any HTTP answer) is kept apart because a stack that answers `503` everywhere is
+ * not up, yet it is still holding the ports a second stack would need.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityHealth(codes: Record<ObservabilityProbe, number>): {
+  healthy: number;
+  answering: number;
+  up: boolean;
+} {
+  const healthy = OBSERVABILITY_PROBES.filter((probe) =>
+    isObservabilityProbeHealthy(probe, codes[probe]),
+  ).length;
+  const answering = OBSERVABILITY_PROBES.filter((probe) => codes[probe] > 0).length;
+  return { healthy, answering, up: healthy === OBSERVABILITY_PROBES.length };
+}
+
 /**
  * Whether the cache root already holds published snapshot directories.
  *
@@ -244,9 +287,9 @@ async function buildReport(): Promise<DoctorReport> {
     healthCode: grafana,
     healthTimeoutMs: OBSERVABILITY_PROBE_MS,
   });
-  const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
+  const health = observabilityHealth({ grafana, tempo, loki, prometheus, otlp });
   const observability: ObservabilityStatus = {
-    up: upCount === 5,
+    up: health.up,
     project: OBSERVABILITY_PROJECT,
     primary,
     primaryReady,
@@ -454,7 +497,7 @@ async function buildReport(): Promise<DoctorReport> {
     '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
-  const observabilityStatus = observabilityLabel(upCount, 5);
+  const observabilityStatus = observabilityLabel(health.healthy, OBSERVABILITY_PROBES.length);
   const authLabel = grafanaAuthLabel({
     state: observability.auth,
     serviceAccount: observability.serviceAccount,
@@ -487,7 +530,7 @@ async function buildReport(): Promise<DoctorReport> {
     if (!observability.primaryReady) {
       lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
     }
-    if (upCount > 0) {
+    if (health.answering > 0) {
       lines.push(
         '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
       );
