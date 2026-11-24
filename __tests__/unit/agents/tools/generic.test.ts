@@ -29,6 +29,7 @@ import { evaluateQualityTool } from '@studiq/server/agents/tools/generic/evaluat
 import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract-concepts.tool';
 import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
 import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
+import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/generate-flashcards.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { generateText, type ToolExecutionOptions } from 'ai';
 import type { Mock } from 'vitest';
@@ -281,6 +282,22 @@ describe('finishTool', () => {
     expect(result.deckName).toBe('Test Deck');
   });
 
+  // #1212: no name from the model stays no name, so the client can apply the localized default
+  // instead of a hardcoded English one that always won.
+  it.each([undefined, ''])(
+    'leaves the deck unnamed when the model gives %j (#1212)',
+    async (name) => {
+      const ctx = mockCtx();
+      const result = await finishTool.execute(
+        { type: 'flashcards', flashcards: [{ front: 'Q', back: 'A' }], deckName: name },
+        ctx,
+      );
+      expect(result.type).toBe('flashcards');
+      expect(result.deckName).toBe(name);
+      expect(result.deckName).not.toBe('Generated Flashcards');
+    },
+  );
+
   it('returns type chat with message when no flashcards', async () => {
     const ctx = mockCtx();
     const result = await finishTool.execute({ message: 'Hello' }, ctx);
@@ -294,4 +311,28 @@ describe('finishTool', () => {
     expect(result.type).toBe('chat');
     expect(result.content).toBe('');
   });
+});
+
+describe('generateFlashcardsTool', () => {
+  const cards = [{ front: 'Q', back: 'A' }];
+
+  it('keeps the deck name the model chose', async () => {
+    const result = await generateFlashcardsTool.execute(
+      { task: 'solar system', deck_name: 'Układ Słoneczny', flashcards: cards },
+      mockCtx(),
+    );
+    expect(result).toMatchObject({ type: 'flashcards', deckName: 'Układ Słoneczny' });
+  });
+
+  it.each([undefined, ''])(
+    'leaves the deck unnamed when the model gives %j (#1212)',
+    async (name) => {
+      const result = await generateFlashcardsTool.execute(
+        { task: 'solar system', deck_name: name, flashcards: cards },
+        mockCtx(),
+      );
+      expect(result).toMatchObject({ type: 'flashcards', deckName: name });
+      expect(result).not.toMatchObject({ deckName: 'Generated Flashcards' });
+    },
+  );
 });

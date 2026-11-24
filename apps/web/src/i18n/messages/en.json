@@ -2557,7 +2557,6 @@
     "generation_complete": "Generation complete!",
     "total_generated": "Total flashcards generated: {count}",
     "deck_name_label": "Deck name",
-    "default_deck_name": "Generated Flashcards",
     "cards_title": "Flashcards ({count})",
     "kept_count": "{count} kept",
     "question_label": "Question",

@@ -30,7 +30,8 @@ export const finishTool = tool({
     if (type === 'flashcards' && flashcards?.length) {
       return {
         type: 'flashcards' as const,
-        deckName: deckName || 'Generated Flashcards',
+        // No name from the model stays no name: the client applies the localized default (#1212).
+        deckName,
         flashcards,
       };
     }

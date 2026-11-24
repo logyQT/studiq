@@ -42,7 +42,7 @@ export function FlashcardBlock({
   const deckBasePath = pathname.startsWith('/edu') ? '/edu' : '/app';
   const [saving, setSaving] = useState(false);
   const [savedDeckId, setSavedDeckId] = useState<string | null>(null);
-  const [name, setName] = useState(deckName || t('flashcard_deck_name'));
+  const [name, setName] = useState(deckName?.trim() || t('flashcard_deck_name'));
   const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
 
   const visibleCards = flashcards.filter((_, i) => !removedIndices.has(i));
