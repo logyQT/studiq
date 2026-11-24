@@ -1,11 +1,19 @@
 'use client';
 
 import type { NotificationItem, NotificationType } from '@studiq/server/models/notification.model';
-import { Button, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
-import { Bell, ClipboardCheck, FileCheck2, Flag, UserPlus } from 'lucide-react';
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@studiq/ui';
+import { Bell, CheckCheck, ClipboardCheck, FileCheck2, Flag, UserPlus } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -39,6 +47,7 @@ export function NotificationBell() {
   const area = notificationArea(pathname);
 
   const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLElement | null>(null);
   const { data, isLoading, isError, refetch } = useNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
@@ -58,6 +67,13 @@ export function NotificationBell() {
     const href = notificationHref(item, area);
     setOpen(false);
     if (href) router.push(href);
+  }
+
+  function markAll() {
+    markAllRead.mutate(undefined, {
+      // The control unmounts once the list is read; keep the keyboard user inside the popover.
+      onSuccess: () => contentRef.current?.focus(),
+    });
   }
 
   return (
@@ -84,18 +100,42 @@ export function NotificationBell() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0" aria-label={t('title')}>
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <p className="text-sm font-semibold">{t('title')}</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            disabled={unread === 0 || markAllRead.isPending}
-            onClick={() => markAllRead.mutate()}
-          >
-            {t('mark_all_read')}
-          </Button>
+      <PopoverContent
+        align="end"
+        className="w-80 p-0"
+        aria-label={t('title')}
+        // Radix focuses the first control, which here is the bulk action: its tooltip would
+        // open over the newest notification and take the first Escape press. Focus the
+        // popover itself; one Tab still reaches the action.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          const content = event.currentTarget;
+          if (!(content instanceof HTMLElement)) return;
+          contentRef.current = content;
+          content.focus();
+        }}
+      >
+        <div className="flex h-11 items-center justify-between border-b px-3">
+          <p className="min-w-0 truncate text-sm font-semibold">{t('title')}</p>
+          {unread > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={t('mark_all_read')}
+                  disabled={markAllRead.isPending}
+                  onClick={markAll}
+                >
+                  <CheckCheck className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" aria-hidden="true">
+                {t('mark_all_read')}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         <div className="max-h-96 overflow-y-auto">
