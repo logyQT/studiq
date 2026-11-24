@@ -66,3 +66,21 @@ Every org/user/group id is `tenantId(key, entity)`; nothing global is written.
   więc ląduje na `/app`; przypadek otwiera `/edu` jawnie (trasa wymaga tylko
   zalogowania), a menu i kontrolki czyta z powłoki nauczyciela. `teacher` ma rolę
   `teacher` (`group.manage`), więc nadal ląduje na `/edu`.
+
+## Reconciliation notes (2026-11-24, 6b-2)
+
+- Każda pozycja sekcji „Treści” ma od 6b-2 własny klucz uprawnienia zamiast
+  wspólnego bramkowania po planie: „Talie” → `deck.read`, „Tematy” → `topic.read`,
+  „Pytania” → `question.bank.read`, „Testy” → `quiz.read`, „Kartkówki” →
+  `assignment.read`, „Grupy” → `group.read` (bez zmian: to nadal klucz, którego
+  pilnują trasy klas). Rola systemowa `member` nie zawiera rodzin
+  `assignment.*`, więc **nauczyciel z rolą `member` nie widzi „Kartkówki”** —
+  pozostałe pozycje widzi, bo `…read` ma na zakresie `group`, a `stats.read` na
+  `own` (pozycja pyta, czy klucz jest w mapie, nie o zakres). Lista z sekcji
+  „Expected result” pozostaje listą nauczyciela z rolą `teacher` (T1), który ma
+  wszystkie klucze.
+- Spec pinuje obie połowy: pierwszy test (rola `teacher`) oczekuje pełnej listy
+  z „Kartkówki”, drugi (rola `member`) — tej samej listy bez tej pozycji oraz
+  braku linku `/edu/assignments`; reszta asercji (mapa `group.read` bez
+  `group.manage`, „Grupy”, „Asystent Q”, brak „Klasy”, brak „Nowa grupa”) się nie
+  zmienia.
