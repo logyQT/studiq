@@ -294,7 +294,6 @@ describe('finishTool', () => {
       );
       expect(result.type).toBe('flashcards');
       expect(result.deckName).toBe(name);
-      expect(result.deckName).not.toBe('Generated Flashcards');
     },
   );
 
@@ -332,7 +331,6 @@ describe('generateFlashcardsTool', () => {
         mockCtx(),
       );
       expect(result).toMatchObject({ type: 'flashcards', deckName: name });
-      expect(result).not.toMatchObject({ deckName: 'Generated Flashcards' });
     },
   );
 });

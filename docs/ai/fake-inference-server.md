@@ -206,14 +206,14 @@ visible: the unit test pins the first, `STU-48` pins the second (a plan whose ne
 
 ### What building the suite showed about the product
 
-Each is pinned or documented in the specs, and none is changed here. Issues
-#1210–#1214 track the first five; the rest have no issue yet.
+Each is pinned or documented in the specs, and none is changed here (#1212 has since been
+fixed). Issues #1210–#1214 track the first five; the rest have no issue yet.
 
 | Finding                                                                                                                                                                                                                                                                                   | Where                                                  |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | The thinking trace is a „Thought" toggle with a **hardcoded English** label; the Polish `thinking_title` is only used by a path that never renders — **#1210**                                                                                                                            | `chat-message.tsx` `ThoughtMessage`                    |
 | `AiChatPage.status_thinking` / `status_generating` / `status_organizing` exist but nothing renders them; the case expects them — **#1211**                                                                                                                                                | `AiChatPage` messages                                  |
-| The saved deck is named by the tool („Generated Flashcards", untranslated, when the model gives none); „AI Wygenerowane Fiszki" is only the fallback of the name field — **#1212**                                                                                                        | `generate-flashcards.tool.ts`, `flashcard-block.tsx`   |
+| ~~The saved deck is named by the tool („Generated Flashcards", untranslated)~~ — **fixed, #1212**: neither tool names it now and the name field applies the localized default                                                                                                             | `generate-flashcards.tool.ts`, `flashcard-block.tsx`   |
 | A streamed turn requests no usage from the provider, so a fully streamed answer can meter 0 tokens (#1213); the nested `fetch_material` call is never metered at all and is not covered by that issue                                                                                     | `packages/server/src/ai/model.ts`, `use-ai-chat.ts`    |
 | The greeting chips are canned local replies that still become part of the history sent to the model — **#1214**                                                                                                                                                                           | `ai-chat-screen.tsx` `handleSuggestion`                |
 | The Execution Plan block never progresses: in the STU-48 plan flow the badge stays `0 / N completed` and `All steps complete` never renders, even though `use-ai-chat.ts` hoists the plan refs outside the message loop and sets `planCompleted` on `finish`; the cause is not yet pinned | `plan-block.tsx`, `use-ai-chat.ts`                     |
