@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
 import { firstRecorded } from '#test/mocks/recorded';
 
@@ -38,9 +38,7 @@ async function login(page: Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill(TEACHER_EMAIL);
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
-  // Playwright's 6 s default.
-  await page.waitForURL(/\/edu/, { timeout: 15_000 });
+  await waitForDashboardArea(page);
 }
 
 /** The type card row label, localized the same way the page localizes it. */

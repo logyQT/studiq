@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { json } from '#test/helpers/json';
 
@@ -22,14 +22,12 @@ function inHours(hours: number): string {
   return new Date(Date.now() + hours * 3_600_000).toISOString();
 }
 
-async function login(page: Page, email: string, redirectPattern: RegExp) {
+async function login(page: Page, email: string) {
   await page.goto('/login');
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
-  // Playwright's 6 s default.
-  await page.waitForURL(redirectPattern, { timeout: 15_000 });
+  await waitForDashboardArea(page);
 
   await expect
     .poll(
@@ -42,7 +40,7 @@ async function login(page: Page, email: string, redirectPattern: RegExp) {
       { timeout: 15_000 },
     )
     .toBe(true);
-  await page.waitForURL(redirectPattern, { timeout: 15_000 });
+  await waitForDashboardArea(page);
 }
 
 test.describe('a live assessment deadline may move, but not end the run (#1191)', () => {
@@ -55,7 +53,7 @@ test.describe('a live assessment deadline may move, but not end the run (#1191)'
     const studentContext = await browser.newContext({ baseURL });
 
     try {
-      await login(page, TEACHER_EMAIL, /\/edu/);
+      await login(page, TEACHER_EMAIL);
 
       const questionsRes = await page.request.get('/api/v1/questions');
       expect(questionsRes.ok()).toBeTruthy();
@@ -92,7 +90,7 @@ test.describe('a live assessment deadline may move, but not end the run (#1191)'
       expect(published.ok(), `publish -> ${published.status()}`).toBeTruthy();
 
       const studentPage = await studentContext.newPage();
-      await login(studentPage, STUDENT_EMAIL, /\/app/);
+      await login(studentPage, STUDENT_EMAIL);
       /** The sealed item's student read: 404 while held, 200 once the run releases it. */
       const sealed = async () =>
         (await studentPage.request.get(`/api/v1/questions/${questionId}`)).status();

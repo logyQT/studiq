@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { firstRecorded, requiredValue } from '#test/mocks/recorded';
 
 const PASSWORD = 'pass';
@@ -18,9 +18,10 @@ async function login(page: import('@playwright/test').Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill('teacher1@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
-  // Playwright's 6 s default.
-  await page.waitForURL(/\/edu/, { timeout: 15_000 });
+  await waitForDashboardArea(page);
+  // The org switcher and the deck link this spec drives live in the `/edu` shell;
+  // the landing puts the caller wherever its permissions point.
+  await page.goto('/edu');
 }
 
 test.describe('Teacher organization switch', () => {

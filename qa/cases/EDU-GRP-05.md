@@ -32,6 +32,15 @@ Case text settled on the model's guarantee (ADR-0015 §4.3, §7.1):
   nie możesz jej edytować”).
 - Każdy zapis na grupach odpowiada `403 FORBIDDEN` — brak niezabezpieczonych akcji.
 
+The landing is **not** part of the expectation (ADR-0015 §7.1): it is permission-based, and
+this educator's org role is `member`, so it holds `group.read` but none of the class-manage
+keys (`group.manage`, `group.invite`, `group.member.manage`) or organization-wide keys — the
+app lands it on `/app`, not `/edu`. `/edu` is navigation, not the persona gate, so the spec
+opens it explicitly (`page.goto('/edu')`) once the landing resolves and asserts the sidebar,
+the reload and the read-only list there. The negative half follows the same rule: after the
+role is stripped of every `group.*` key the landing is still `/app`, and the spec navigates
+to `/edu` before asserting that no „Grupy” entry renders.
+
 The earlier text — „Pozycja «Grupy» znika z menu” — described the 2.1 entitlement gate,
 where `group.manage` hid the entry and the page stayed reachable by hand. Under the
 permission model the list is the `group.read` surface and the writes are the
