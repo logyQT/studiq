@@ -5306,13 +5306,16 @@ table).
   `['permissions', orgId]` answer and renders a neutral skeleton — no children,
   no card, no flash and **no redirect** — while _any_ of those facts is
   unresolved: the list is loading, a settled list has no active org yet (the
-  auto-selection has not run, so the map under `null` is the personal layer), the
-  map is pending, **or the answer echoes a different `orgId`** (6a-1's rule). That
-  guard is `isAreaGateResolved` in `lib/dashboard-home.ts` — the landing's own
+  auto-selection has not run — a failed one is the retry card below, not a wait),
+  the map is pending, **or the answer echoes a different `orgId`** (6a-1's rule).
+  That guard is `areaGateState` in `lib/dashboard-home.ts` — the landing's own
   rule, shared rather than restated, because the gate reading the personal map
   renders a false denial for `/manage` and a content flash for `/edu`. A **failed**
-  read is not a denial either: the gate renders a retry card with `/dashboard`'s
-  failure copy (`load_error` + „Spróbuj ponownie”, refetching both answers). A
+  read is not a denial either: the gate renders a retry card and the retry re-runs
+  the read that failed — `/me/orgs`, the permission map, or the first-org
+  auto-selection when that switch itself failed (the one failure a refetch cannot
+  cure, because the hook's one-shot latch has already fired). Its copy is the
+  gate's own (`AreaGate.load_error` + „Spróbuj ponownie”), not `/dashboard`'s. A
   resolved map holding none of the area's keys renders the card: the literal
   „Brak dostępu w tej organizacji” / "No access in this organization", one
   sentence naming the active organization, and the switcher action — one
@@ -5338,17 +5341,16 @@ table).
   pre-existing `ai.chat` entitlement (`/edu/ai` and `/app/ai`, so `/app`'s only
   gated entry is `ai.chat`). The 16 are `/manage`'s seven administration entries
   (roster = D25's four reads; invites; groups = `group.manage`|`group.read`;
-  reports; roles; seats = `org.seat.manage` alone, the one key every handler on
-  that page requires, which the Billing preset holds; settings) with only the
-  overview ungated, and `/edu`'s five content entries, the class entry, and the
-  three statistics entries.
+  reports; roles; seats = `org.seat.manage` (every seat handler requires it, and
+  it also satisfies the roster read the page makes; the Billing preset holds it);
+  settings) with only the overview ungated, and `/edu`'s five content entries,
+  the class entry, and the three statistics entries.
 - **`/manage`'s counters read the role's entitlement profile.**
   `organization-member.service.ts#listMembers` adds `entitlement_profile` to the
   `org_roles!inner(...)` embed and `toMemberRows` returns `entitlementProfile`;
   `manage/page.tsx` counts `=== 'learner'` as Studenci and everyone else (admin
-  included) as Wykładowcy. No new query, no migration. `manage/members` and
-  `manage/seats` declare the field on their response types without changing
-  behaviour.
+  included) as Wykładowcy. No new query, no migration. The roster carries the
+  field in its response and only `manage/page.tsx` reads it.
 - **The org checkout keys on billing authority.** `org.service.ts#listOrgs`
   embeds `org_role_permissions(permission_key)` in the same read and returns
   `canBill` per row (presence of `org.billing.manage`); `checkout-org.ts` drops
