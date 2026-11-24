@@ -33,9 +33,11 @@ M1, WSB Merito (Launch).
   (ADR-0015 §7.1, §14.1). Bramką widoku i bramką zapisu jest uprawnienie, nie
   persona.
 - Wybrany szablon (D17) zapisuje początkowe uprawnienia roli; `org.admin` nigdy
-  nie jest przyznawany szablonem. Klucze `org.*` szablonu zaczną działać, gdy 2b
-  zastąpi stare bramki funkcji (`member.manage`, `org.manage` itd.); klucze
-  treściowe działają już teraz.
+  nie jest przyznawany szablonem. Klucze `org.*` szablonu działają od fazy 2b:
+  stare bramki funkcji (`member.manage`, `org.manage` itd.) zostały zastąpione
+  kluczami uprawnień i usunięte, więc preset, który je zawiera, otwiera obszar
+  `/manage` (np. `org.member.manage` — kolejny punkt). Klucze treściowe działają
+  już teraz.
 - Członek z **kontem typu manager** i rolą niestandardową bez `org.role.manage`
   ale z `org.member.manage` (preset Asystent) widzi listę ról — bramka obszaru go
   wpuszcza — lecz nie ma „Nowej roli” ani kolumny „Akcje”, a
@@ -100,7 +102,7 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   bez przekierowania (ADR-0015 §7.1, §14.1). Nauczyciel (konto educator, rola org
   `member`) nie ma żadnego klucza `org.*`, więc **nie widzi już listy ról** na
   stronie; poprzednia obserwacja z 2026-11-19 o renderującej się liście jest tym
-  samym nieaktualna, a zapis historyczny pozostaje poniżej.
+  samym nieaktualna, a zapis historyczny pozostaje powyżej.
 - **API ról się nie zmieniło i nadal jest czytelne dla członka organizacji.**
   `GET /api/v1/organization/roles` dla nauczyciela zwraca **200** i zawiera
   utworzoną rolę („Asystent organizacji”), `GET /api/v1/organization/roles/:id`
