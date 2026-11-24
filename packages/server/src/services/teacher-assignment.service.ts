@@ -14,7 +14,7 @@ import {
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import {
   attemptHistory,
-  drawSample,
+  drawStratifiedSample,
   sampleEligible,
   sampleServed,
 } from '@studiq/server/lib/attempt-sample';
@@ -206,6 +206,9 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
   const related = Array.isArray(value) ? value[0] : value;
   return related ?? null;
 }
+
+/** The item type a sample is stratified by (#1295); a link without a snapshot has none. */
+const linkType = (link: AssignmentLink): string | undefined => link.snapshot?.type;
 
 /**
  * Whether a published run has opened. Living inside the window is derived from the clock — there is
@@ -1803,13 +1806,15 @@ export class TeacherAssignmentService {
       const history = await this.attemptHistoryFor(id, studentId, links);
       if (isFailure(history)) return history;
       const same = sampleServed(links, history.data.served);
-      return success(drawSample(same.length > 0 ? same : links, options.itemCount));
+      return success(
+        drawStratifiedSample(same.length > 0 ? same : links, options.itemCount, linkType),
+      );
     }
 
     // A first attempt of a default assessment serves the whole pool: nothing can be stale yet, so
     // the history read would only ever be spent to prove it is empty.
     if (!options.unseenOnly && !options.isRetake) {
-      return success(drawSample(links, options.itemCount));
+      return success(drawStratifiedSample(links, options.itemCount, linkType));
     }
 
     const history = await this.attemptHistoryFor(id, studentId, links);
@@ -1821,7 +1826,7 @@ export class TeacherAssignmentService {
       options.unseenOnly,
     );
     if (eligible.length === 0) return failure('NO_UNSEEN_ITEMS');
-    return success(drawSample(eligible, options.itemCount));
+    return success(drawStratifiedSample(eligible, options.itemCount, linkType));
   }
 
   private async attemptHistoryFor(

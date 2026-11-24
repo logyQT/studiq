@@ -161,6 +161,18 @@ function frozen(id: string, content = 'What?') {
   return { id, content, type: 'mcq', question_answers: [] };
 }
 
+/** Links whose snapshot type is `open` for an `open-*` id and `mcq` otherwise (#1295). */
+const typed = (ids: string[]) =>
+  ids.map((id, index) => ({
+    question_id: id,
+    order_index: index,
+    points: 1,
+    taught_item: false,
+    snapshot: { ...frozen(id), type: id.startsWith('open') ? 'open' : 'mcq' },
+    snapshot_version: 1,
+  }));
+const typeOfId = (id: string) => (id.startsWith('open') ? 'open' : 'mcq');
+
 /** The `assignment_questions` rows `readAssignmentSnapshots` reads for a set of ids. */
 function snapshotRows(ids: string[]) {
   return chain(ids.map((id) => ({ question_id: id, snapshot: frozen(id), snapshot_version: 1 })));
@@ -3332,6 +3344,20 @@ describe('TeacherAssignmentService', () => {
       return asJson<AttemptPayload>(result.data).questions.map((question) => question.id);
     }
 
+    /** The ids a second attempt (a retake) of `assignmentOverride` was served. */
+    async function retakeIds(assignmentOverride: Record<string, unknown>): Promise<string[]> {
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, max_attempts: 2, ...assignmentOverride }))
+        .mockReturnValueOnce(chain([{ id: 'a-1', completed_at: '2026-11-01T00:00:00Z' }]))
+        .mockReturnValueOnce(chain({ id: 'attempt-2' }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) return [];
+      return asJson<AttemptPayload>(result.data).questions.map((question) => question.id);
+    }
+
     // The model change (#1172 revisited): exposure is information, not a default exclusion. A
     // student who studied must still be served the item on a **first** attempt.
     describe('unseen_only', () => {
@@ -3417,6 +3443,80 @@ describe('TeacherAssignmentService', () => {
         if (result.success) {
           expect(asJson<AttemptPayload>(result.data).questions.map((q) => q.id)).toEqual(['q-2']);
         }
+      });
+    });
+
+    // #1295: a subset is stratified by item type, on the pool the retake rule leaves eligible.
+    describe('type-balanced samples (#1295)', () => {
+      const ATTEMPTS = 15;
+
+      beforeEach(() => {
+        attemptHistoryState.served = new Set();
+        attemptHistoryState.seen = new Set();
+        attemptHistoryState.exposed = new Set();
+      });
+
+      it('gives every student the pool mix on a first attempt', async () => {
+        linkRows.rows = typed(['q-1', 'q-2', 'q-3', 'q-4', 'open-1', 'open-2', 'open-3', 'open-4']);
+
+        // A plain random slice of 4 from 4 + 4 is 2 + 2 only about half the time; fifteen
+        // attempts in a row are the pool mix by construction.
+        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+          const ids = await servedIds({ attempt_item_count: 4 });
+          expect(
+            ids.filter((id) => typeOfId(id) === 'open'),
+            ids.join(),
+          ).toHaveLength(2);
+          expect(
+            ids.filter((id) => typeOfId(id) === 'mcq'),
+            ids.join(),
+          ).toHaveLength(2);
+        }
+      });
+
+      it('keeps a retake disjoint from the served items and balanced on what is left', async () => {
+        linkRows.rows = typed(['q-1', 'q-2', 'q-3', 'q-4', 'open-1', 'open-2', 'open-3', 'open-4']);
+        const served = new Set(['q-1', 'q-2', 'open-1', 'open-2']);
+        attemptHistoryState.served = served;
+        attemptHistoryState.seen = served;
+
+        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+          const ids = await retakeIds({ attempt_item_count: 2 });
+          expect(
+            ids.filter((id) => served.has(id)),
+            'a fresh sample is disjoint',
+          ).toEqual([]);
+          // What is left is q-3, q-4, open-3 and open-4: one of each type.
+          expect(ids.map(typeOfId).toSorted()).toEqual(['mcq', 'open']);
+        }
+      });
+
+      it('follows the mix of the eligible pool, not of the original one, on a retake', async () => {
+        linkRows.rows = typed(['q-1', 'q-2', 'q-3', 'q-4', 'open-1', 'open-2', 'open-3', 'open-4']);
+        const served = new Set(['q-1', 'q-2', 'q-3']);
+        attemptHistoryState.served = served;
+        attemptHistoryState.seen = served;
+
+        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+          const ids = await retakeIds({ attempt_item_count: 2 });
+          expect(
+            ids.filter((id) => served.has(id)),
+            'a fresh sample is disjoint',
+          ).toEqual([]);
+          // Left: one mcq and four open items, so the share of the mcq item is 0.4 of 2.
+          expect(ids.map(typeOfId).toSorted()).toEqual(['open', 'open']);
+        }
+      });
+
+      it('serves the whole pool, unchanged, when no count is set', async () => {
+        linkRows.rows = typed(['q-1', 'open-1', 'q-2', 'open-2']);
+
+        expect((await servedIds({ attempt_item_count: null })).toSorted()).toEqual([
+          'open-1',
+          'open-2',
+          'q-1',
+          'q-2',
+        ]);
       });
     });
   });
