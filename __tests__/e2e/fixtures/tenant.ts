@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
 import { tenantKey } from '#test/e2e/fixtures/ids';
-import { accountTypeFromLogin, openDashboard } from '#test/helpers/dashboard';
+import { openDashboard } from '#test/helpers/dashboard';
 import { asJson } from '#test/helpers/json';
 
 export interface TenantUser {
@@ -89,10 +89,10 @@ async function login(
     // org at all (scopes then fall back to `own`).
     { name: 'active_org_id', value: tenant.org.id, domain: host, path: '/', httpOnly: true },
   ]);
-  // Boot the app on this account's dashboard before the spec starts clicking:
-  // the login above already set the session cookie, so `/login` would only
-  // redirect here.
-  await openDashboard(page, accountTypeFromLogin(await res.json()), /\/(edu|app|manage)/);
+  // Boot the app on this account's dashboard before the spec starts clicking.
+  // The login above already set the session cookie; `/login` redirects to the
+  // neutral landing and it resolves the area from the active org's permissions.
+  await openDashboard(page, /\/(edu|app|manage)/);
 }
 
 /** Sign a page in as one of this test's users (works outside the fixture too). */

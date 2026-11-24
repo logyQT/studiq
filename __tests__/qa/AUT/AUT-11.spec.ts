@@ -6,23 +6,27 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * AUT-11 — Zalogowany użytkownik na /login i /register.
  *
  * The case signs in as a teacher and opens both auth pages; each one must bounce
- * straight to the dashboard of the account type. The suite tenant is the case's
- * own, isolated one (`qa/cases/AUT-11.md`, profile `content`):
+ * straight to the dashboard. Since ADR-0015 §7.1 the destination is not the
+ * account type: the proxy answers the neutral `/dashboard` landing, which
+ * resolves the area from the active org's permissions (teacher → `/edu` under
+ * the seeded roles). The suite tenant is the case's own, isolated one
+ * (`qa/cases/AUT-11.md`, profile `content`):
  *
  *   bun scripts/qa-tenant.ts AUT-11 --profile content --fresh
  *
  * `content` is what the case needs: one organization with an educator, a manager
- * and a student, so the account-type redirect can be checked for all three
- * branches without touching another worker's tenant. `--fresh` gives every
+ * and a student, so the landing can be checked for all three areas without
+ * touching another worker's tenant. `--fresh` gives every
  * independent run its own run suffix (and therefore its own deterministic
  * `tenantKey`/`tenantId`s), while the spec itself derives every identity from
  * `qa/.tenants/AUT-11.json`.
  *
  * The redirect is asserted on the wire as well as in the URL: the proxy answers
- * `/login` and `/register` with a `307` and a `Location` header *before* the page
- * renders (`NextResponse.redirect` in `apps/web/src/proxy.ts`), which is what
- * "przekierowują natychmiast" means — not a client-side bounce after a flash of
- * the login form.
+ * `/login` and `/register` with a `307` and `Location: /dashboard` *before* the
+ * page renders (`NextResponse.redirect` in `apps/web/src/proxy.ts`), which is
+ * what "przekierowują natychmiast" means — not a client-side bounce after a
+ * flash of the login form. The area hop after the landing is asserted in the
+ * browser, because the area is a permission question only the shell can answer.
  *
  * Adjacent regression kept deliberately small: an anonymous visitor must still
  * get the real `/login` and `/register` forms. Otherwise a redirect that fired
@@ -35,7 +39,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 const CASE = 'AUT-11';
 
-/** The dashboard each account type must land on, with a marker unique to it. */
+/** The area each seeded org role resolves to, with a marker unique to it. */
 const DASHBOARDS: Record<'teacher' | 'manager' | 'student', { path: string; marker: string }> = {
   teacher: { path: '/edu', marker: 'Panel Nauczyciela' },
   manager: { path: '/manage', marker: 'Zarządzanie Uczelnią' },
@@ -48,8 +52,9 @@ const FORM = {
 } as const;
 
 /**
- * Assert the proxy redirects `path` to `destination` immediately (307 before the
- * document renders), then assert the browser really ends on the dashboard.
+ * Assert the proxy redirects `path` immediately (307 before the document
+ * renders) to the neutral landing, then that the browser ends on `destination`'s
+ * area — the landing resolves it from the active org's permissions.
  */
 async function expectImmediateRedirect(
   page: Page,
@@ -58,10 +63,11 @@ async function expectImmediateRedirect(
 ): Promise<void> {
   const response = await page.request.get(path, { maxRedirects: 0 });
   expect(response.status(), `GET ${path} must redirect, not render`).toBe(307);
-  expect(response.headers().location, `Location of GET ${path}`).toBe(destination.path);
+  expect(response.headers().location, `Location of GET ${path}`).toBe('/dashboard');
 
   await page.goto(path);
-  await expect(page).toHaveURL(new RegExp(`${destination.path}$`));
+  // The landing waits for `/me/orgs` and the active org's permissions.
+  await expect(page).toHaveURL(new RegExp(`${destination.path}$`), { timeout: 15_000 });
   await expect(page.locator('body')).toContainText(destination.marker);
 }
 
@@ -83,7 +89,9 @@ async function signIn(page: Page, role: keyof typeof DASHBOARDS): Promise<void> 
 }
 
 test.describe('AUT-11 — a signed-in user on /login and /register', () => {
-  test('teacher (educator) is redirected from both auth pages to /edu', async ({ page }) => {
+  test('teacher (educator) is redirected from both auth pages and lands on /edu', async ({
+    page,
+  }) => {
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
     expect(tenant.runSuffix, 'seed with --fresh so every run owns a new tenant').toBeTruthy();
@@ -106,13 +114,13 @@ test.describe('AUT-11 — a signed-in user on /login and /register', () => {
     await expectImmediateRedirect(page, '/login', DASHBOARDS.teacher);
   });
 
-  test('manager is redirected from both auth pages to /manage', async ({ page }) => {
+  test('manager is redirected from both auth pages and lands on /manage', async ({ page }) => {
     await signIn(page, 'manager');
     await expectImmediateRedirect(page, '/login', DASHBOARDS.manager);
     await expectImmediateRedirect(page, '/register', DASHBOARDS.manager);
   });
 
-  test('student is redirected from both auth pages to /app', async ({ page }) => {
+  test('student is redirected from both auth pages and lands on /app', async ({ page }) => {
     await signIn(page, 'student');
     await expectImmediateRedirect(page, '/login', DASHBOARDS.student);
     await expectImmediateRedirect(page, '/register', DASHBOARDS.student);

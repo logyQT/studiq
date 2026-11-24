@@ -12,9 +12,8 @@ import {
 import { AlertCircle, ArrowLeft, CreditCard, Loader2, RefreshCw } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/components/providers/AuthProvider';
+import { usePermissions } from '@/hooks/use-permissions';
 import { apiPost } from '@/lib/api';
-import { dashboardPathForAccountType } from '@/lib/billing-success';
 import {
   type CheckoutFailure,
   checkoutFailureFor,
@@ -23,6 +22,7 @@ import {
   initialCheckoutStatus,
   isAllowedStripeCheckoutUrl,
 } from '@/lib/checkout-entry';
+import { resolveDashboardArea } from '@/lib/dashboard-home';
 import { INDIVIDUAL_PRICING_URL, ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 
 interface StripeCheckoutRedirectProps {
@@ -51,7 +51,7 @@ type RedirectStatus = CheckoutStartupStatus | 'failed';
 export function StripeCheckoutRedirect({ planKey, orgId, canceled }: StripeCheckoutRedirectProps) {
   const t = useTranslations('CheckoutPage');
   const locale = useLocale();
-  const { user } = useAuth();
+  const permissions = usePermissions();
   const [status, setStatus] = useState<RedirectStatus>(() =>
     initialCheckoutStatus({ planKey, canceled }),
   );
@@ -101,8 +101,10 @@ export function StripeCheckoutRedirect({ planKey, orgId, canceled }: StripeCheck
   }
 
   const backPath = orgId ? ORGANIZATION_PRICING_URL : INDIVIDUAL_PRICING_URL;
-  const rawAccountType: unknown = user?.app_metadata.account_type;
-  const billingHref = `${dashboardPathForAccountType(rawAccountType)}/billing`;
+  // The billing page lives under the caller's area; the active org's permissions
+  // pick it (never the persona). Before the map resolves this is `/app/billing`,
+  // which renders the same personal billing view.
+  const billingHref = `${resolveDashboardArea(permissions.data?.permissions)}/billing`;
   const canRetry = status === 'canceled' || (status === 'failed' && failure?.retryable === true);
 
   const title =

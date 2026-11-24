@@ -9,6 +9,12 @@ import { loadTenant, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant'
  * landing URL, logs out, and checks the sidebar menu and the user menu (name +
  * e-mail) at the bottom of the sidebar for each role.
  *
+ * The landing is permission-derived (ADR-0015 §7.1): `/login` redirects to the
+ * neutral `/dashboard` landing, which routes by the active org's permissions.
+ * Under the seeded roles that is still admin → `/manage`, teacher → `/edu`,
+ * member → `/app`; the account type travels in the session but is not what picks
+ * the area.
+ *
  * The legacy accounts from the manual seed (`manager@dev.local`,
  * `teacher1@dev.local`, `student1@dev.local`, password `pass`) are replaced by
  * the case's own `content` tenant, seeded with a fresh run suffix before every
@@ -46,7 +52,7 @@ interface MenuEntry {
 interface RoleCase {
   role: 'manager' | 'teacher' | 'student';
   accountType: AccountType;
-  /** Dashboard the role must land on after login. */
+  /** Area the role's seeded org role resolves to after login. */
   dashboard: string;
   /** Breadcrumb page title rendered in the dashboard header. */
   title: string;
@@ -179,7 +185,8 @@ test.describe('AUT-07 — login for every account type', () => {
       // --- Step 1/2/3: sign in through the login form ---------------------
       await signIn(page, tenant, role.role);
 
-      // Expected result 1: the account type decides the landing page.
+      // Expected result 1: the active org's permissions decide the area (the
+      // landing page waits for `/me/permissions` before it routes).
       await expect(page, `${role.role} lands on ${role.dashboard}`).toHaveURL(
         new RegExp(`${escapeRegExp(role.dashboard)}$`),
         { timeout: 20_000 },
@@ -190,6 +197,7 @@ test.describe('AUT-07 — login for every account type', () => {
       ).toBeVisible();
 
       // The session really belongs to this tenant's user of this account type.
+      // `account_type` is identity metadata here, not the landing rule.
       const meResponse = await page.request.get('/api/v1/auth/me');
       expect(meResponse.ok(), 'GET /api/v1/auth/me').toBe(true);
       const me = await json<{

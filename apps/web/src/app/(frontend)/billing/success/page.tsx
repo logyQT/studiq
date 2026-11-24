@@ -10,15 +10,11 @@ import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import type { OrgMembership } from '@/hooks/use-orgs';
 import { apiGet, apiPost } from '@/lib/api';
-import { dashboardPathForAccountType, pollBillingActivation } from '@/lib/billing-success';
+import { pollBillingActivation } from '@/lib/billing-success';
 import { activatedPlanLabel } from '@/lib/billing-subscription';
 import { invalidateAuthority } from '@/lib/query-cache';
 
 type SuccessState = 'processing' | 'activated' | 'timeout' | 'redirecting';
-
-function accountTypeOf(user: { app_metadata?: Record<string, unknown> } | null): unknown {
-  return user?.app_metadata?.account_type;
-}
 
 /**
  * Post-checkout landing page (#662 §5.6 / X6).
@@ -36,12 +32,15 @@ function BillingSuccessContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { isLoading: isAuthLoading } = useAuth();
 
   const sessionId = searchParams.get('session_id')?.trim() || null;
   const purchasedPlanKey = searchParams.get('plan_id')?.trim() || null;
   const orgId = searchParams.get('org_id')?.trim() || null;
-  const dashboardPath = dashboardPathForAccountType(accountTypeOf(user));
+  // The area is permission-derived and the purchase may have changed the plan,
+  // role profile or seat behind it, so the neutral landing answers after the
+  // authority caches are dropped rather than reading a stale area here.
+  const dashboardPath = '/dashboard';
 
   const [state, setState] = useState<SuccessState>(sessionId ? 'processing' : 'redirecting');
   const [subscription, setSubscription] = useState<BillingSubscriptionView | null>(null);

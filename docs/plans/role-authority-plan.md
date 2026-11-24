@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                               | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ------------------------------------------------ | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                            | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                      | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                            | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
-| 7     | delete, full QA, close                         | pending | —                                                | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                     | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------ | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                  | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                  | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                  | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                  | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                  | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                            | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                            | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                  | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                       | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6b-1, 6c on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
+| 7     | delete, full QA, close                         | pending | —                                                      | —   | all 191 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                      | —   | all 191 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -46,10 +46,11 @@ API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: 6b (route rules, area gate, nav gates)**, then
-6d (role editor, `/me/plan` union) and 6e (Teacher assignment reads). 6a-1
-`bcd874f0` (#1426) and 6a-2 `800129fe` (#1427) are merged; 6c (row 3, D35) is
-on `feat/authority-6`.
+mints the claim. **Next slice: 6b-2 (`AreaGate`, nav-item gates, page
+classification, `checkout-org`)**, then 6d (role editor, `/me/plan` union) and
+6e (Teacher assignment reads). 6a-1 `bcd874f0` (#1426) and 6a-2 `800129fe`
+(#1427) are merged; 6c (row 3, D35) is on `feat/authority-6`; **6b-1** (route
+rules, `resolveDashboardArea`, landing) is on the same branch above the 6c tip.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -5248,10 +5249,44 @@ _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
   `assignment.create`, `assignment.publish`/`grade` stay excluded for the
   reasons in D35.
 
-**Still open in phase 6:** 6b route rules, `resolveDashboardArea`, `AreaGate` and
-the nav-item gates; 6d role-editor behaviour (caller-scope awareness, atomic
-profile write) and the `/me/plan` union badge; 6e the Teacher assignment-read
-widening.
+**6b-1 — the permission-derived shell** (on `feat/authority-6`; no SQL, no
+migration, no new table).
+
+- **Route rules are auth-only.** `/manage`, `/edu`, `/app` keep `requireAuth` and
+  lose `allowedAccountTypes`; `/setup/org` (MANAGER) and `/setup` (EDUCATOR) stay
+  as the declared onboarding exceptions. `/login` and `/register` redirect a
+  signed-in visitor to a new neutral `/dashboard` (auth-only), and a persona denial
+  on `/setup*` now lands there too instead of on an area.
+- **One resolver, one predicate (R40).** `resolveDashboardArea(permissions)` in
+  `apps/web/src/lib/dashboard-home.ts`: any of the nine `org.*` keys → `/manage`;
+  else `group.manage` | `group.invite` | `group.member.manage` → `/edu`; else
+  `/app` (the no-org personal set included, 6c). `dashboardHomeFor`,
+  `resolveDashboardPath` and `ROLE_TO_ACCOUNT_TYPE` are deleted, not wrapped.
+- **Landing is client-side.** `apps/web/src/app/(frontend)/dashboard/page.tsx`
+  waits for `/me/orgs` (including the first-org auto-select) and the active org's
+  `/me/permissions`, then `router.replace`s the area. No authority call happens
+  before a session exists (#458). The proxy stays permission-blind — it cannot
+  read the map — and `ACCOUNT_TYPE_REDIRECTS`/the account-type branch are gone.
+- **Six path-picking call sites** now use the resolver or the neutral landing:
+  `use-orgs.ts` (the switch awaits `/me/permissions` **under the new cookie** and
+  writes it under the new org's key before pushing), `onboarding.ts` +
+  `setup/page.tsx` + `setup-header.tsx` (`/dashboard`), `billing-success.ts` +
+  `billing/success/page.tsx` + `stripe-checkout-redirect.tsx`, `user-menu-content.tsx`,
+  `navbar/account-panel.tsx`, `shared/entity-not-found.tsx`.
+- **Corpus (R6, spec + case text together).** AUT-07, AUT-11, AUT-16, AUT-17,
+  AUT-18 and ONB-07 follow the new contract: `/login` → `307 /dashboard` and then
+  the permission-derived area; area routes load (`200`, URL kept) and the API
+  stays the boundary; `/setup*` denials land on `/dashboard`. The Playwright
+  fixtures (`__tests__/helpers/dashboard.ts`) boot through `/login` and wait for
+  the spec's own area instead of copying a persona map.
+- **Not in this slice:** `AreaGate`, the nav-item gates, `manage/page.tsx`'s
+  learner classification and `checkout-org.ts`'s `isOrgAdminRole` (6b-2), which
+  also brings the bookmarked-URL no-access case.
+
+**Still open in phase 6:** 6b-2 `AreaGate` + the nav-item gates + the page
+classification + `checkout-org`; 6d role-editor behaviour (caller-scope
+awareness, atomic profile write) and the `/me/plan` union badge; 6e the Teacher
+assignment-read widening.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
 optional argument: the default `true` is the common case and keeping it optional

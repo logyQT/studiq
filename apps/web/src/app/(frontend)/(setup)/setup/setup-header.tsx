@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
-import { resolveDashboardPath, resolveSetupGate } from '@/lib/onboarding';
+import { resolveSetupGate } from '@/lib/onboarding';
 
 /**
  * Static brand + the one contextual escape link for the first-run setup pages.
@@ -32,7 +32,7 @@ export function SetupHeader() {
 
   const back =
     gate === 'dashboard'
-      ? { href: resolveDashboardPath(accountType), label: t('back_to_dashboard') }
+      ? { href: '/dashboard', label: t('back_to_dashboard') }
       : !onChooser && accountType !== 'manager'
         ? { href: '/setup', label: t('back') }
         : null;

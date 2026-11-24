@@ -17,9 +17,9 @@ import {
   UserMenuItems,
   UserMenuLogout,
 } from '@/components/layout/user-menu-content';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { useNotifications } from '@/hooks/use-notifications';
-import { dashboardHomeFor } from '@/lib/dashboard-home';
+import { usePermissions } from '@/hooks/use-permissions';
+import { resolveDashboardArea } from '@/lib/dashboard-home';
 import { unreadBadge } from '@/lib/notifications';
 import { usePanelChrome } from '@/components/layout/navbar/use-panel-chrome';
 
@@ -43,17 +43,18 @@ const UNREAD_PILL =
 function AccountNotificationsRow({ onNavigate }: { onNavigate: () => void }) {
   const t = useTranslations('Notifications');
   const tDashboard = useTranslations('DashboardLayout');
-  const { user } = useAuth();
-  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata.account_type;
-  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
+  const permissions = usePermissions();
 
   const { data } = useNotifications();
   const unread = data?.unreadCount ?? 0;
   const badge = unreadBadge(unread);
 
   return (
-    <Link href={dashboardHomeFor(accountType)} onClick={onNavigate} className={PANEL_ROW}>
+    <Link
+      href={resolveDashboardArea(permissions.data?.permissions)}
+      onClick={onNavigate}
+      className={PANEL_ROW}
+    >
       <Bell aria-hidden className={PANEL_ROW_ICON} />
       <span className="flex-1">{tDashboard('notifications')}</span>
       {badge ? (

@@ -69,5 +69,7 @@ suite version uses the case's own tenant and never the legacy accounts.
 - Warnings (e.g. Radix' `Missing Description or aria-describedby for DialogContent`) are not
   red errors and are outside this case's acceptance criterion; none appeared on the walked
   journey anyway.
-- Authenticated visitors are redirected from `/login` to their panel by account type, so the
-  public visit and the API sign-in are separate browser contexts in the spec.
+- Authenticated visitors are redirected from `/login` to the neutral `/dashboard` landing,
+  and it resolves `/manage`, `/edu` or `/app` from the active org's permissions (ADR-0015
+  §7.1 — not the account type), so the public visit and the API sign-in are separate
+  browser contexts in the spec.

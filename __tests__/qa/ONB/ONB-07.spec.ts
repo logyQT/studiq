@@ -433,7 +433,14 @@ async function expectActiveInSwitcher(
   await expect(page.getByRole('menuitem')).toHaveCount(0);
 }
 
-/** Switch through the switcher the way a teacher does; the app must land on /edu. */
+/**
+ * Switch through the switcher the way a teacher does; the app must land on `/edu`.
+ *
+ * `/edu` is the *new* org's answer, not this teacher's persona (ADR-0015 §7.1):
+ * `useOrgs` reads `/me/permissions` under the new cookie before it pushes, so a
+ * switch into an org where this caller holds an `org.*` key would land on
+ * `/manage` instead. The wait covers that extra round trip.
+ */
 async function switchTo(page: Page, org: OrgContent): Promise<void> {
   await openSwitcher(page);
   await orgMenuItem(page, org.org).click();
@@ -495,6 +502,8 @@ async function expectOnlyOrgContent(
 /** Real login through the API, then boot the app; the context keeps the session cookie. */
 async function loginAsTeacher(page: Page): Promise<void> {
   await loginAs(page, TENANT, 'teacherA', { locale: 'pl', activeOrgId: TENANT.orgA.id });
+  // The `teacher` org role holds the class keys, so the permission-derived
+  // landing is `/edu` (ADR-0015 §7.1 — the account type is not the rule).
   expect(new URL(page.url()).pathname, 'the educator lands on /edu').toBe('/edu');
 
   await expect(sidebar(page)).toBeVisible();

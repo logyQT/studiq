@@ -5,8 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
+import { type DashboardArea, resolveDashboardArea } from '@/lib/dashboard-home';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
+import { fetchPermissions } from '@/lib/permissions';
 import { invalidateAuthority } from '@/lib/query-cache';
+import { permissionKeys } from '@/lib/query-keys';
 
 export type OrgMembership = {
   id: string;
@@ -24,7 +27,7 @@ export type OrgMembership = {
 
 type SwitchOrgVariables = {
   orgId: string;
-  /** Explicit user-initiated switch → land on the account-type dashboard. */
+  /** Explicit user-initiated switch → land on the new org's dashboard area. */
   navigate?: boolean;
 };
 
@@ -50,7 +53,7 @@ export function useOrgs() {
     mutationFn: async ({ orgId }: SwitchOrgVariables) => {
       await apiPost('/api/v1/me/orgs/switch', { orgId });
     },
-    onSuccess: (_data, { orgId, navigate }) => {
+    onSuccess: async (_data, { orgId, navigate }) => {
       // The active org is server state (the `active_org_id` cookie) that has
       // just changed. Flip the cached isActive flag immediately so org-scoped
       // query keys re-resolve on this tick instead of waiting for the
@@ -76,19 +79,23 @@ export function useOrgs() {
       // after login and would override the `?next=` deep link (#458).
       if (!navigate) return;
 
-      const switchedOrg = orgs.find((o) => o.id === orgId);
-      const rawAccountType: unknown = user?.app_metadata.account_type;
-      const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
-      const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
-        admin: 'manager',
-        teacher: 'educator',
-        member: 'student',
-      };
-      const accountType =
-        jwtAccountType ?? ROLE_TO_ACCOUNT_TYPE[switchedOrg?.orgRoleName ?? ''] ?? 'student';
-      router.push(
-        accountType === 'manager' ? '/manage' : accountType === 'educator' ? '/edu' : '/app',
-      );
+      // The area is a function of the *new* org's permissions, so read them
+      // under the new cookie before deciding; the outgoing org's map describes a
+      // role this caller no longer holds. `fetchQuery` also writes the answer
+      // under the new org's key, which is what the shell reads next.
+      let area: DashboardArea = '/app';
+      try {
+        const fresh = await queryClient.fetchQuery({
+          queryKey: permissionKeys.org(orgId),
+          queryFn: fetchPermissions,
+          staleTime: 0,
+        });
+        area = resolveDashboardArea(fresh.permissions);
+      } catch {
+        // The switch itself succeeded and the shell will retry the map; falling
+        // through to `/app` beats stranding the caller on the old page.
+      }
+      router.push(area);
     },
   });
 

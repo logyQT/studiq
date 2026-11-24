@@ -9,7 +9,6 @@ export type RouteRule = {
   allowedAccountTypes?: string[];
   /** If the user is ALREADY logged in, redirect them here (useful for /login, /register) */
   redirectIfAuthenticated?: string;
-  redirectIfAuthenticatedByAccountType?: Partial<Record<AccountType, string>>;
 };
 
 /**
@@ -19,16 +18,25 @@ export type RouteRule = {
  */
 export const routeRules: RouteRule[] = [
   // --- AUTH ROUTES ---
+  // A signed-in visitor gets a neutral landing page, never an area: which of
+  // `/manage`, `/edu` or `/app` is home is a function of the *active org's*
+  // permissions, which the proxy cannot read (ADR-0015 §7.1). `/dashboard`
+  // waits for `/me/orgs` + `/me/permissions` and then routes.
   {
     matcher: /^\/(login|register)(\/.*)?$/,
-    redirectIfAuthenticatedByAccountType: {
-      [AccountType.MANAGER]: '/manage',
-      [AccountType.EDUCATOR]: '/edu',
-      [AccountType.STUDENT]: '/app',
-    },
+    redirectIfAuthenticated: '/dashboard',
+  },
+
+  // The neutral authenticated landing. Not an area of its own, so it never
+  // renders one; it resolves and replaces itself (see `dashboard/page.tsx`).
+  {
+    matcher: /^\/dashboard\/?$/,
+    requireAuth: true,
   },
 
   // --- ONBOARDING ROUTES ---
+  // The declared persona exceptions (ADR-0015 §7): onboarding is allowed to ask
+  // which shape of account is being set up. A denial falls back to `/dashboard`.
   {
     matcher: /^\/setup\/org\/?$/,
     requireAuth: true,
@@ -57,20 +65,21 @@ export const routeRules: RouteRule[] = [
   },
 
   // --- UI DASHBOARD ROUTES ---
+  // Auth only. A link is navigation, the API is the boundary (ADR-0015 §7.1): a
+  // caller who opens an area their active role has no key for gets the page (and
+  // its 403s), never a redirect — the bookmarked-URL rule of §14.1. The area a
+  // caller *lands* on is decided from the active org's permissions.
   {
     matcher: /^\/manage(\/.*)?$/,
     requireAuth: true,
-    allowedAccountTypes: [AccountType.MANAGER],
   },
   {
     matcher: /^\/edu(\/.*)?$/,
     requireAuth: true,
-    allowedAccountTypes: [AccountType.EDUCATOR],
   },
   {
     matcher: /^\/app(\/.*)?$/,
     requireAuth: true,
-    allowedAccountTypes: [AccountType.STUDENT],
   },
 ];
 

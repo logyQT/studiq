@@ -673,13 +673,13 @@ Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 
 Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order, for UI paths only: the proxy returns for `/api/*` before `routeRules` is consulted, so an API rule could never run and none is declared.
 
-1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
+1. If the user is logged in and `redirectIfAuthenticated` matches → redirect to the neutral `/dashboard` landing (never an area: which area is home is the active org's permissions, which the proxy cannot read)
 2. If `requireAuth` + no session → redirect to `/login?next=…`
-3. If `allowedAccountTypes` + account type mismatch → redirect to the account-type dashboard
+3. If `allowedAccountTypes` + account type mismatch → redirect to `/dashboard` (only the onboarding exceptions declare a persona: `/setup/org` MANAGER, `/setup` EDUCATOR)
 
 API auth is per handler. `withAuth()` in the route file is the only gate (the proxy skips `/api/*`); the handlers that are deliberately open are declared in `PUBLIC_API` in the same `routes.config.ts`, and `__tests__/unit/proxy/api-auth-inventory.test.ts` fails on an undeclared open handler, on a declaration that no longer matches a route, or on a route rule that claims an API path. `subscription-plans` is the public pricing catalogue (`listPublic`/`getByKey`, no session). `stripe/webhook` is public because Stripe cannot send a session (signature-verified under the `stripe` driver); the mock driver still authenticates the caller itself (`withAuth`) and must keep doing so. A new route outside the declared set is public unless it calls `withAuth()`.
 
-UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/register redirect logged-in users by account type. The system admin panel is the **separate `apps/admin` app** (port 4000), not a route in `apps/web`.
+UI dashboards: `/manage`, `/edu`, `/app` are **auth-only** — a link is navigation, the API is the boundary (ADR-0015 §7.1). `apps/web/src/lib/dashboard-home.ts#resolveDashboardArea(permissions)` is the one place that picks the area (any `org.*` → `/manage`; else `group.manage`/`group.invite`/`group.member.manage` → `/edu`; else `/app`), called from the client-side landing (`/dashboard`), the org switch, the user menu and entity-not-found. Login/register redirect logged-in users to `/dashboard`. The system admin panel is the **separate `apps/admin` app** (port 4000), not a route in `apps/web`.
 
 ---
 

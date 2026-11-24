@@ -6,12 +6,6 @@ import { updateSession } from '@studiq/server/lib/supabase/session';
 import { type NextRequest, NextResponse } from 'next/server';
 import { toSafeInternalPath } from '@/lib/safe-redirect';
 
-const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
-  [AccountType.MANAGER]: '/manage',
-  [AccountType.EDUCATOR]: '/edu',
-  [AccountType.STUDENT]: '/app',
-};
-
 function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {
   originalResponse.cookies.getAll().forEach((cookie) => {
     newResponse.cookies.set(cookie.name, cookie.value);
@@ -21,9 +15,14 @@ function preserveCookies(originalResponse: NextResponse, newResponse: NextRespon
 
 /**
  * The JWT's `app_metadata.account_type` is untyped at the Supabase boundary; only
- * the three known account types are honoured, everything else is a student.
+ * the three known account types are honoured.
+ *
+ * This is **not** an authorization input: the area routes are auth-only, so the
+ * proxy never asks what a caller's persona is. The only rules that still name an
+ * account type are the declared onboarding exceptions (`/setup/org` MANAGER,
+ * `/setup` EDUCATOR, ADR-0015 §7), and they need the value narrowed to compare.
  */
-function resolveAccountType(jwtAccountType: unknown): AccountType {
+function resolveAccountType(jwtAccountType: unknown): AccountType | undefined {
   if (
     jwtAccountType === AccountType.MANAGER ||
     jwtAccountType === AccountType.EDUCATOR ||
@@ -31,7 +30,7 @@ function resolveAccountType(jwtAccountType: unknown): AccountType {
   ) {
     return jwtAccountType;
   }
-  return AccountType.STUDENT;
+  return undefined;
 }
 
 export async function proxy(request: NextRequest) {
@@ -57,19 +56,8 @@ export async function proxy(request: NextRequest) {
   if (user) {
     // A signed-in user opening `/login?next=<path>` (a reload, a retry, or a
     // back-navigation after logging in) must land on the deep link, not the
-    // dashboard — otherwise the `?next=` target is silently dropped (#458).
-    // Validated once here; the account-type rule below still applies to the
-    // target because the redirect goes through the proxy again.
+    // landing page — otherwise the `?next=` target is silently dropped (#458).
     const safeNext = toSafeInternalPath(request.nextUrl.searchParams.get('next'), request.url);
-
-    if (matchedRule.redirectIfAuthenticatedByAccountType) {
-      const destination = safeNext ?? matchedRule.redirectIfAuthenticatedByAccountType[accountType];
-
-      if (destination) {
-        const url = new URL(destination, request.url);
-        return preserveCookies(supabaseResponse, NextResponse.redirect(url));
-      }
-    }
 
     if (matchedRule.redirectIfAuthenticated) {
       const url = new URL(safeNext ?? matchedRule.redirectIfAuthenticated, request.url);
@@ -87,10 +75,12 @@ export async function proxy(request: NextRequest) {
     return preserveCookies(supabaseResponse, NextResponse.redirect(loginUrl));
   }
 
-  // 4. Handle Account Type Access Control
+  // 4. Handle Account Type Access Control — onboarding exceptions only.
   if (matchedRule.allowedAccountTypes && matchedRule.allowedAccountTypes.length > 0) {
     if (!roleGuard(accountType, matchedRule.allowedAccountTypes)) {
-      const fallbackUrl = new URL(ACCOUNT_TYPE_REDIRECTS[accountType] || '/login', request.url);
+      // The neutral landing resolves the area from the active org's permissions;
+      // a persona-shaped fallback here would be a second authority source.
+      const fallbackUrl = new URL('/dashboard', request.url);
       return preserveCookies(supabaseResponse, NextResponse.redirect(fallbackUrl));
     }
   }

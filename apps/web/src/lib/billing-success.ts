@@ -1,5 +1,4 @@
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
-import { resolveDashboardPath } from '@/lib/onboarding';
 
 /**
  * The success page may land before Stripe delivers `checkout.session.completed`
@@ -77,9 +76,4 @@ export async function pollBillingActivation(
   }
 
   return deps.isCancelled() ? { state: 'cancelled' } : { state: 'timeout' };
-}
-
-/** The dashboard (and therefore `<dashboard>/billing`) for an account type. */
-export function dashboardPathForAccountType(accountType: unknown): '/app' | '/edu' | '/manage' {
-  return resolveDashboardPath(typeof accountType === 'string' ? accountType : null);
 }

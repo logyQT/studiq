@@ -18,7 +18,8 @@ import { PANEL_ROW, PANEL_ROW_ARROW, PANEL_ROW_ICON } from '@/components/layout/
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
-import { dashboardHomeFor } from '@/lib/dashboard-home';
+import { usePermissions } from '@/hooks/use-permissions';
+import { resolveDashboardArea } from '@/lib/dashboard-home';
 import { OPEN_NOTIFICATIONS_EVENT } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
@@ -294,7 +295,7 @@ export function UserMenuItems(props: UserMenuItemsProps) {
   const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
-  const { user } = useAuth();
+  const permissions = usePermissions();
   // The language row is the only language entry; it owns the panel and the
   // locale commit (see language-menu-row.tsx) so no surface re-implements them.
   const languageRow = preferences ? (
@@ -305,10 +306,9 @@ export function UserMenuItems(props: UserMenuItemsProps) {
     )
   ) : null;
 
-  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata.account_type;
-  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
-  const dashboardPrefix = dashboardHomeFor(accountType);
+  // The account/billing/upgrade pages each live under one area; the active org's
+  // permissions pick it (the same resolver as the landing), never the persona.
+  const dashboardPrefix = resolveDashboardArea(permissions.data?.permissions);
 
   return (
     <>
