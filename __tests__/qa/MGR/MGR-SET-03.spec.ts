@@ -134,8 +134,8 @@ test('rejects .txt, .svg and an oversized image without changing the logo', asyn
 
   await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
 
-  const features = await getJson<{ features: string[] }>(page, '/api/v1/features/me');
-  expect(features.features, 'the org plan unlocks branding').toContain('branding');
+  const entitlements = await getJson<{ entitlements: string[] }>(page, '/api/v1/me/entitlements');
+  expect(entitlements.entitlements, 'the org plan unlocks branding').toContain('branding');
 
   await page.goto('/manage/settings');
   await expect(page.getByRole('heading', { name: COPY.title, level: 2 })).toBeVisible();

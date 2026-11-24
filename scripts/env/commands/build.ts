@@ -4,7 +4,7 @@ import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
 import { applyContractEnv, contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
-import { readStack } from '../lib/stack';
+import { readStackStrict } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
 import { readWebPid } from '../lib/web';
 import {
@@ -281,7 +281,7 @@ export async function runBuild(
       if (conflict) return refuseConflict(parsed, contract, conflict);
     }
 
-    const stack = contract.shared ? null : readStack(contract.stackName);
+    const stack = contract.shared ? null : readStackStrict(contract.stackName);
     if (!contract.shared && !stack) {
       throw new EnvFailure(EXIT_START_FAILED, 'no running Supabase stack; run env:ensure first');
     }

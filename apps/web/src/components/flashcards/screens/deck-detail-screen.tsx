@@ -36,7 +36,7 @@ import { PageGrid } from '@/components/shared/page-grid';
 import { SelectAllRow } from '@/components/shared/select-all-row';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { useFeature } from '@/hooks/use-feature';
+import { useEntitlement } from '@/hooks/use-entitlement';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
@@ -96,7 +96,7 @@ export function DeckDetailScreen({
   const router = useRouter();
   const queryClient = useQueryClient();
   const permission = usePermission();
-  const feature = useFeature();
+  const entitlement = useEntitlement();
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
@@ -967,7 +967,7 @@ export function DeckDetailScreen({
                     },
                   ]
                 : []),
-              ...(feature('ai.chat')
+              ...(entitlement('ai.chat')
                 ? [
                     {
                       icon: Sparkles,

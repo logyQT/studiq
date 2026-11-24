@@ -25,7 +25,7 @@ export function InsightsGate({
 }) {
   const t = useTranslations('StudentInsights');
 
-  if (gate.featuresPending || gate.isLoading) {
+  if (gate.entitlementsPending || gate.isLoading) {
     return <Skeleton className={skeleton} />;
   }
   if (!gate.canInsights) {

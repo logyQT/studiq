@@ -55,8 +55,8 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 1. POST /api/v1/ai/chat z poprawnym ciałem jako manager tenanta.
 2. POST /api/v1/ai/chat z pustym (`{}`) i uszkodzonym ciałem jako manager; GET
    /api/v1/ai/usage jako manager; POST /api/v1/ai/chat bez sesji.
-3. GET /api/v1/features/me i POST /api/v1/ai/chat z `{}` jako teacher (plan osobisty `lite`).
-4. GET /api/v1/features/me, GET /api/v1/ai/usage i POST /api/v1/ai/chat z `{}` jako student
+3. GET /api/v1/me/entitlements i POST /api/v1/ai/chat z `{}` jako teacher (plan osobisty `lite`).
+4. GET /api/v1/me/entitlements, GET /api/v1/ai/usage i POST /api/v1/ai/chat z `{}` jako student
    po przestawieniu jego `profiles.personal_plan_key` na `ace`.
 
 ## Expected result
@@ -64,13 +64,13 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 - 403 FORBIDDEN dla managera — API AI wymaga entitlementu `ai.chat` (ADR-0015 §7); plan
   `launch` tego tenanta go nie niesie (a plan osobisty managera `solo` również), a bramka
   wykonuje się przed odczytem ciała żądania (puste i uszkodzone ciało też dostają 403, nigdy
-  400). `GET /api/v1/features/me` managera nie zawiera `ai.chat` — to dowód, że 403 pochodzi
+  400). `GET /api/v1/me/entitlements` managera nie zawiera `ai.chat` — to dowód, że 403 pochodzi
   z entitlementu, a nie z typu konta. `GET /api/v1/ai/usage` managera → 403, wywołanie bez
   sesji → 401.
 - Nauczyciel (plan osobisty `lite` w tej samej organizacji `launch`) dostaje dokładnie ten
-  sam 403 (i `features/me` bez `ai.chat`) — odmowa nie jest specyficzna dla managera.
+  sam 403 (i `/me/entitlements` bez `ai.chat`) — odmowa nie jest specyficzna dla managera.
 - Student tej samej organizacji, ale z planem osobistym `ace`, dostaje `ai.chat` w
-  `features/me`, `GET /api/v1/ai/usage` → 200 z `limit = 200000` (i `plan = 'launch'` —
+  `/me/entitlements`, `GET /api/v1/ai/usage` → 200 z `limit = 200000` (i `plan = 'launch'` —
   effective primary to plan organizacji; limit to user-scope `max(org 0, personal 200000)`),
   a `POST /api/v1/ai/chat` z `{}` → 400 BAD_REQUEST: bramka entitlementu go przepuściła, więc
   odpowiedziała walidacja handlera. To ten punkt kontrolny pokazuje, że granica jest planowa,
@@ -84,5 +84,5 @@ Usunięcie `await requireEntitlement(ctx, 'ai.chat')` z trasy chatu (mutant „p
 enough”) sprawia, że manager dociera do handlera: poprawne ciało → 429
 `USAGE_LIMIT_EXCEEDED` (limit 0 na `launch`), niepoprawne → 400 `BAD_REQUEST`; oba miały
 być 403, więc spec jest czerwony. W drugą stronę: build, którego resolver zwraca pusty
-zbiór entitlementów, przegrywa kontrolę studenta (`features/me` bez `ai.chat`, `ai/usage`
+zbiór entitlementów, przegrywa kontrolę studenta (`/me/entitlements` bez `ai.chat`, `ai/usage`
 403), więc przypadek nie przechodzi też na pustym rozwiązaniu.

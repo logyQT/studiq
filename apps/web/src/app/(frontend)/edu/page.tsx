@@ -14,8 +14,8 @@ import { GroupPerformanceCard } from '@/components/edu/dashboard/group-performan
 import { ProblemQuestionsCard } from '@/components/edu/dashboard/problem-questions-card';
 import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { useOrgs } from '@/hooks/use-orgs';
 import { teacherStatsKeys } from '@/lib/query-keys';
 
@@ -38,8 +38,8 @@ export default function EduOverviewPage() {
   // `stats.insights`. While unentitled the two queries stay disabled — a free teacher
   // never fires a 403 on every dashboard load — and the cards show the plan card
   // instead of their body.
-  const canInsights = useFeature()('stats.insights');
-  const { isPending: featuresPending } = useFeatures();
+  const canInsights = useEntitlement()('stats.insights');
+  const { isPending: entitlementsPending } = useEntitlements();
 
   // The active organization is part of every key: switching it must not show the other
   // organization's numbers while the new ones load.
@@ -81,10 +81,10 @@ export default function EduOverviewPage() {
 
   // While the organizations or the features are pending the gated queries are disabled, so
   // TanStack's `isLoading` is false even though there is nothing to show yet: treat "waiting
-  // for the org/features" as pending too, so an entitled teacher never flashes the plan card.
+  // for the org/entitlements" as pending too, so an entitled teacher never flashes the plan card.
   const statsPending = statsLoading || orgsPending;
-  const groupsPending = groupsLoading || orgsPending || featuresPending;
-  const feedPending = feedLoading || orgsPending || featuresPending;
+  const groupsPending = groupsLoading || orgsPending || entitlementsPending;
+  const feedPending = feedLoading || orgsPending || entitlementsPending;
 
   // Distinct learners and attempts from the aggregate itself: a learner in two groups is one
   // learner, so the totals are never the sum of the group rows. A failed read shows a dash.

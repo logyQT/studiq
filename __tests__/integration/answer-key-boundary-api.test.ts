@@ -79,7 +79,7 @@ describe('Answer key on the app surface (#1170)', () => {
       .insert({ bank_id: bankId, group_id: educator.defaultGroupId! });
 
     // The student's own personal bank with one keyed question in it: outside the org the
-    // persona default gives a student `own` on content keys, so this bank is both readable
+    // personal set gives a student `own` on content keys, so this bank is both readable
     // and updatable by its author.
     const { data: ownBank } = await createServiceClient()
       .from('question_banks')
@@ -235,7 +235,7 @@ describe('Answer key on the app surface (#1170)', () => {
 
   it('exports the student own personal bank — question_bank.update at own scope is the whole gate', async () => {
     mockUser(student);
-    // Without the org cookie the persona default is `own` for content keys, so the
+    // Without the org cookie the personal set is `own` for content keys, so the
     // student's own bank is readable AND updatable: the file is served with its key.
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/questions/banks/${ownBankId}/export?format=csv`,

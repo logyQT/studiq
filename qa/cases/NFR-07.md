@@ -56,7 +56,7 @@ suite version uses the case's own tenant and never the legacy accounts.
   `/manage/invites`, `/manage/groups`, `/manage/reports`, `/manage/roles`, `/manage/seats`,
   `/manage/settings`.
 - Every document answered `200`; the API calls each screen fires (auth/me, stats, decks,
-  organization members, roles, features/me, subscription plans, question-report counters,
+  organization members, roles, /me/entitlements, subscription plans, question-report counters,
   avatars) all answered `2xx`. No `4xx` and no `5xx` appeared in Network during the journey.
 - Console produced no red entries and no React hydration warning on any of those loads
   (including the full-document hydration after each `page.goto`). There were no uncaught

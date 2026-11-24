@@ -7,7 +7,7 @@ import type { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { PageToolbar } from '@/components/shared/page-toolbar';
 import { SortSelect } from '@/components/shared/sort-select';
-import { useFeature } from '@/hooks/use-feature';
+import { useEntitlement } from '@/hooks/use-entitlement';
 import { usePermission } from '@/hooks/use-permission';
 
 interface FlashcardToolbarProps {
@@ -43,9 +43,9 @@ export function FlashcardToolbar({
 }: FlashcardToolbarProps) {
   const { user } = useAuth();
   const permission = usePermission();
-  const feature = useFeature();
+  const entitlement = useEntitlement();
   const canCreate = permission('flashcard.create', { createdBy: user?.id });
-  const hasAiAccess = feature('ai.chat');
+  const hasAiAccess = entitlement('ai.chat');
   const hasAccessGenerate = canCreate && hasAiAccess;
 
   return (

@@ -211,10 +211,10 @@ test('the manager sidebar has two sections whose entries all open their pages', 
   // The menu has no assistant entry because no manager AI page exists (that
   // surface is ADR-0015 phase 6) — but the API is entitlement-gated, and this
   // tenant's Hub org carries `ai.chat`, so the manager *may* call it.
-  const features = await page.request.get('/api/v1/features/me');
-  expect(features.status(), 'GET /api/v1/features/me as the manager').toBe(200);
-  const featuresBody = await json<{ data: { features: string[] } }>(features);
-  expect(featuresBody.data.features, 'the Hub org resolves ai.chat').toContain('ai.chat');
+  const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+  expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements as the manager').toBe(200);
+  const entitlementsBody = await json<{ data: { entitlements: string[] } }>(entitlementsResponse);
+  expect(entitlementsBody.data.entitlements, 'the Hub org resolves ai.chat').toContain('ai.chat');
 
   const usage = await page.request.get('/api/v1/ai/usage');
   expect(usage.status(), 'GET /api/v1/ai/usage as the manager on Hub').toBe(200);

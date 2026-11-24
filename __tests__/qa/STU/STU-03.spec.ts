@@ -25,7 +25,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *    Sprawdź się, Na żywo), Treści (Fiszki, Tematy, Pytania, Kartkówki,
  *    Zgłoszenia), Statystyki (Treści, Wyniki, Aktywność).
  * 2. „Asystent Q” is absent for this Base-plan student, because
- *    `/api/v1/features/me` resolves no `ai.chat`; the item is gated, not merely
+ *    `/api/v1/me/entitlements` resolves no `ai.chat`; the item is gated, not merely
  *    hidden by CSS.
  * 3. Every item opens its own page, is marked active (`data-active="true"`,
  *    `font-medium`) and the active state also follows subpages — the case's
@@ -163,9 +163,12 @@ test.describe('@case:STU-03 @area:STU @prio:P2 student sidebar', () => {
     //    „Asystent Q”; the assertion below is about the gate, not about copy.
     // One API round trip, not a UI step: CI's 4-vCPU runner put this call at the
     // 3 s action budget in both full runs (43445896876, 43447812598).
-    const featuresResponse = await page.request.get('/api/v1/features/me', { timeout: 10_000 });
-    expect(featuresResponse.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = (await json<{ data: { features: string[] } }>(featuresResponse)).data.features;
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements', {
+      timeout: 10_000,
+    });
+    expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements').toBe(200);
+    const enabled = (await json<{ data: { entitlements: string[] } }>(entitlementsResponse)).data
+      .entitlements;
     expect(enabled, 'the Base-plan student is not entitled to ai.chat').not.toContain('ai.chat');
 
     // 1. Sections and items, in the case's order.

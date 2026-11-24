@@ -187,7 +187,7 @@ output worth reading. Everything reached through `bun run …` fails before
   non-current artifact also exits `4`, because "nothing servable" is a start
   failure, not a conflict; `5` timed out, `6` a **build-admission** refusal (no
   grant, a running web server, another checkout's stack), `7` waited out the slot
-  budget; `2` is bad usage. A failed build's re-printed tail never contains Bun's
+  budget, `8` the `supabase stack status` probe never answered (three attempts): the stack's state is **unknown**, not absent, so retry and do not restart or reseed it (`env:build`, `env:serve` and `env:run` say `could not read the Supabase stack status`, never `no running Supabase stack`); `2` is bad usage. A failed build's re-printed tail never contains Bun's
   `Exited with code N` lifecycle line: it says `code 0` next to a compiler error.
 - **A queue is not a hang.** A build waiting for a slot prints
   `build: waiting for a slot (1 of 1 busy, 1 waiting), 0:42 elapsed, 29:18 left`
@@ -695,7 +695,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
   - `can(ctx, permission, resource?)` / `check(ctx, permission, resource)` — async resource-aware checks (`check` throws `FORBIDDEN`) — **this is what controllers and services use**
   - `accessibleFilter(ctx, permission, resourceType)` / `buildQueryFilter(ctx, permission)` — RLS-safe query filters
   - `hasPermission(ctx, permission)` / `checkPermission(ctx, permission, resource)` — synchronous ctx-only variants
-- Frontend: **`usePermission()` (`apps/web/src/hooks/use-permission.ts`) is the single source of truth for permission gating** — it returns a checker for one permission (`permission('deck.update', { createdBy })`) backed by `/api/v1/permissions/me`. Feature flags: `useFeature()` (`apps/web/src/hooks/use-feature.ts`) backed by `/api/v1/features/me` (`feature('ai.chat')`)
+- Frontend: **`usePermission()` (`apps/web/src/hooks/use-permission.ts`) is the single source of truth for permission gating** — it returns a checker for one permission (`permission('deck.update', { createdBy })`) backed by `/api/v1/me/permissions`. Entitlements: `useEntitlement()` (`apps/web/src/hooks/use-entitlement.ts`) backed by `/api/v1/me/entitlements` (`entitlement('ai.chat')`). Both endpoints echo the `orgId` they resolved for, and both query keys are partitioned by it — `['permissions', orgId]` / `['entitlements', orgId]`, with `'personal'` when there is no active org — so an org switch cannot serve the previous org's answer. Drop both (plus `['me','plan']`, `['ai']` and `['question-reports']`) through `invalidateAuthority()` (`apps/web/src/lib/query-cache.ts`) on an org switch, a role save/delete, a seat change and a checkout.
 
 ---
 

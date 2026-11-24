@@ -151,7 +151,11 @@ test.describe('Login deep link (#458)', () => {
 
     // Every user-scoped fetch that used to 401 pre-auth and poison the cache.
     const userScoped: { path: string; status: number }[] = [];
-    const USER_SCOPED_PATHS = ['/api/v1/features/me', '/api/v1/me/orgs', '/api/v1/permissions/me'];
+    const USER_SCOPED_PATHS = [
+      '/api/v1/me/entitlements',
+      '/api/v1/me/orgs',
+      '/api/v1/me/permissions',
+    ];
     page.on('response', (res) => {
       const pathname = new URL(res.url()).pathname;
       if (USER_SCOPED_PATHS.includes(pathname)) {
@@ -198,11 +202,11 @@ test.describe('Login deep link (#458)', () => {
     await page.waitForTimeout(750);
     await expect(page).toHaveURL(new RegExp(`${DEEP_LINK_PATH}$`));
 
-    // Acceptance bullet 2: the feature state was fetched with a session — no
+    // Acceptance bullet 2: the authority state was fetched with a session — no
     // pre-auth 401 survived the login (acceptance bullet 1 is the gate below).
     expect(userScoped.filter((r) => r.status === 401)).toEqual([]);
     expect(
-      userScoped.filter((r) => r.path === '/api/v1/features/me' && r.status === 200),
+      userScoped.filter((r) => r.path === '/api/v1/me/entitlements' && r.status === 200),
     ).not.toEqual([]);
 
     // Acceptance bullet 1: the gate is on without a manual reload.

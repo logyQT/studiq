@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(path, 'utf8');
 const stamp = read('supabase/migrations/20261028100000_activity_organization.sql');
-const rpcs = read('supabase/migrations/20261028100100_teacher_dashboard_rpcs.sql');
+// The newest owner of both dashboard RPCs is the 5e-2 migration (R27): it
+// re-creates the bodies with the capability branch instead of the persona one.
+const rpcs = read('supabase/migrations/20261123210000_phase_5e2_roster_and_run_read_scope.sql');
 
 describe('organization stamp of learner activity', () => {
   it('adds a nullable, indexed organization to attempts and reviews', () => {
@@ -92,9 +94,15 @@ describe('dashboard aggregates', () => {
     expect(rpcs.match(/AND assignment_org\.organization_id = p_organization_id/g)).toHaveLength(2);
   });
 
-  it('only answers for an educator or manager, never a student', () => {
-    expect(rpcs).toContain("auth.jwt() -> 'app_metadata' ->> 'account_type'");
-    expect(rpcs).toContain("'educator', 'manager'");
+  it('answers for a stats.read@group capability holder, never on the JWT persona (5e-2, R43)', () => {
+    // Only the RPC bodies: the file's closing guard legitimately names the
+    // strings it asserts absent.
+    const rpcBodies = rpcs.slice(0, rpcs.indexOf('Closing guard'));
+    expect(rpcBodies).toContain(
+      "rls_caller_covers_permission(p_organization_id, 'stats.read', 'group')",
+    );
+    expect(rpcBodies).not.toContain('app_metadata');
+    expect(rpcBodies).not.toContain("'educator', 'manager'");
   });
 
   it('never excerpts a reported question outside the reader scope', () => {

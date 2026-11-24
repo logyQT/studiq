@@ -76,7 +76,7 @@ async function getJson<T>(page: Page, url: string): Promise<T> {
 }
 
 async function features(page: Page): Promise<string[]> {
-  return (await getJson<{ features: string[] }>(page, '/api/v1/features/me')).features;
+  return (await getJson<{ entitlements: string[] }>(page, '/api/v1/me/entitlements')).entitlements;
 }
 
 async function organization(page: Page, orgId: string): Promise<OrganizationDetail> {

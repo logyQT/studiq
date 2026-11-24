@@ -18,43 +18,38 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State                              | PR          | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ---------------------------------- | ----------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged                             | #1162       | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged                             | #1387       | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged                             | #1388       | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged                             | #1389       | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged                             | #1390       | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged                             | #1397–#1404 | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | active (3d, `feat/authority-3d`)   | —           | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | active (4a, `feat/authority-4a`)   | —           | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | active (5e-1, `feat/authority-5e`) | —           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | pending                            | —           | —   | PUB, AUT, MGR, STU, EDU   |            |
-| 7     | delete, full QA, close                         | pending                            | —           | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending                            | —           | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                               | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ------------------------------------------------ | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                            | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                      | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                            | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
+| 7     | delete, full QA, close                         | pending | —                                                | —   | all 191 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                | —   | all 191 + E2E             | 2026-11-19 |
 
-**Next action:** phases 0b (#1387), 1a (#1388), 1b (#1389), 1c (#1390,
-`67cfeb16`) and **2 are merged — phase 2 closed 2026-11-21 with 2b-9**
-(`feat/authority-2b-9`, delivered block below): the 2a slices plus all nine 2b
-slices are on `main`, 2b-7 as `f62b896d` (#1403) and 2b-8 as `9747f372` (#1404).
-The only `allowedAccountTypes` left on the API surface are the two declared
-exceptions (R5 org/classroom creation), pinned by
-`__tests__/unit/guards/persona-gates.test.ts`; the remaining persona branches
-are named with owners in the 2b-9 deferral register. **Phase 4a is merged**
-(#1410, `c9c14138`): the four plan-resolution rows the register named to phase
-4 are closed (D32–D34, block below); 3c and 3d are delivered below and the
-Teacher content-read gap is closed (D29). **Phase 5a is merged** (#1411,
-`0fb14a7e`): the register's `ai/*` route row and the branding row are closed —
-both `ai/*` routes gate on `requireEntitlement('ai.chat')`, branding is
-`org.settings.manage` **and** `requireEntitlement('branding')`, and
-`lib/features.ts` (`requireFeature`) is deleted in favour of
-`lib/entitlements.ts`. **Phase 5b is merged** (#1414, `554cb696`): register
-rows 7–9 are closed (the billing owner + checkout resolver, org delete, the
-§4.4 invite conjunct — dated note in the 2b-9 block below), and the 5b review
-recorded **row 13** (the member role-assignment path still gated on
-`org.member.manage` alone). **Phase 5c is merged and phase 5d is active on
-`feat/authority-5d` (2026-11-23):** register rows 13, 5, 6 and 12 are closed
-(dated notes in the 2b-9 block and the phase-5 block below); rows 3 and 10 remain with phase 5 (row 10 moves to 5e-2); rows 4 and 11 are closed by 5e-1 on `feat/authority-5e` (2026-11-23).
+**Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
+(`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
+(#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
+(#1421), 5e-2 `8667e6ca` (#1424). Phase 3 (3a–3d, #1406–#1409) and phase 4
+(`c9c14138`, #1410) closed earlier. Deferral register: rows 1–13 are closed —
+**row 3** (`resolveScope`'s no-active-org persona default) by **6c** under
+operator decision **D35** (persona-free personal content); the one open row is
+**row 14** (a per-user personal default permission set, owned after phase 6).
+The only `allowedAccountTypes` left on the
+API surface are the two declared exceptions (R5 org/classroom creation),
+pinned by
+`__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
+`public` function** reads the JWT `account_type` except `handle_new_user`, which
+mints the claim. **Next slice: 6b (route rules, area gate, nav gates)**, then
+6d (role editor, `/me/plan` union) and 6e (Teacher assignment reads). 6a-1
+`bcd874f0` (#1426) and 6a-2 `800129fe` (#1427) are merged; 6c (row 3, D35) is
+on `feat/authority-6`.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -135,6 +130,9 @@ slices plus 2b-9's guard make phase 2 done.
 | R41 | An `rls_caller_*` wrapper resolves its actor from the **JWT**, not from a mocked `getUser`: a service-role client in tests has `auth.uid() = null`, so every path that calls a wrapper RPC answers false under the usual `mockUser` seam — such paths must be tested with a real signed-in session, and the existing cases that silently passed (or failed for the wrong reason) move to one.                                                        | 5c: `changeRole`'s new `rls_caller_may_assign_org_role` call returned false for every `mockUser`-driven PUT (admin included), which surfaced as a wrong 403/404 in `members.test.ts`; the API half of the new member-assignment suite and the two affected cases now run on real cookie-jar sessions (`actAs`), where `auth.uid()` is the signed-in user                                                                                                                                                                      |
 | R42 | An entitlement deny test must use a context that **passes the permission gate**: a controller that gates on both `requireEntitlement` and `can(...)` answers 403 either way, so a deny case with empty `permissionScopes` cannot attribute the refusal to the entitlement — deleting the gate line leaves the test green (SURVIVED). The deny case holds the permission keys and the free-sibling case asserts `requireEntitlement` is never called. | 5d: the first draft of the `quiz.templates` deny case in `quiz-teacher.controller.test.ts` used a keyless ctx, so the permission 403 masked the entitlement gate and the `bun run mutate` proof (gate removed from `create`) would have SURVIVED; the deny case now runs with the full `mockCtx` and the proof is KILLED                                                                                                                                                                                                      |
 | R43 | A persona branch standing in for a capability fails in both directions at once — it over-reads for one persona and leaks for the other; replace it with the capability (or the target-set fact) and pin both directions in one fixture where persona and role disagree.                                                                                                                                                                              | 5e-1: the old `quiz_attempts` staff branch let an educator persona on the Member role read every same-org learner's attempts (leak) while a student persona on a Teacher-capable role could not; the seal's persona conjunct spared a targeted educator the sealed item's key                                                                                                                                                                                                                                                 |
+| R44 | A policy that a DML statement's RETURNING must satisfy needs the row-level conjunct spelled directly on the row: PostgreSQL gates INSERT … RETURNING on the table's SELECT policy, and a STABLE helper scanning the same table cannot see the row inserted by the same command, so an author arm that lives only inside the helper evaluates false for that row.                                                                                     | 5e-2: narrowing the `teacher_assignments` SELECT to the cohort helper made the author's own INSERT … RETURNING raise 42501 while the bare insert passed; the direct `created_by = auth.uid()` arm inside the unchanged tenant floor fixed it, and child-table policies (whose helpers read the parent row) never needed it                                                                                                                                                                                                    |
+| R45 | An org-partitioned cache is invalidated by its key, not by a refetch: invalidating the prefix while the outgoing org's entry is still observed writes the new org's payload under the old org's key, and that entry then reads as fresh when the caller returns. Mark it stale and let the key change fetch; refetch only when the key did not change.                                                                                               | 6a: `invalidateAuthority` on the switch would have refetched `['permissions', <outgoing org>]` with the new cookie live; the error is invisible until a switch back inside the 60 s `staleTime`. The rule was already recorded for org-keyed data lists in `use-orgs.ts` (#135)                                                                                                                                                                                                                                               |
+| R46 | A key's **exclusion** from a personal/default permission set is a claim about another layer: prove it with a call that holds the key and still gets that layer's refusal, or the next reader cannot tell a deliberate exclusion from a missing grant.                                                                                                                                                                                                | 6c: `quiz.*` and `assignment.create` are excluded from `PERSONAL_PERMISSION_KEYS` because their services refuse a no-org call; `assignment.publish`/`grade` because the persona default never granted them; the three assignment verbs a personal NULL-org row supports are included. A route-level 403 would be satisfied by the permission gate alone, so the proof calls both create services with a context that holds the key                                                                                            |
 
 ## 4. Decisions
 
@@ -3436,31 +3434,85 @@ no phase-5 enforcement):**
 - **Deferral register** — every remaining branch that still decides authority
   outside the permission model, each with its owning phase:
 
-  | Branch                                                                                                                                                                                                                                               | file:line (live-verified where marked)                                                                                                                                                                                              | Phase         | Why it is not authority-modelled yet                                                                                                                                                                                                                                                                                                                                                                                                                          |
-  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `resolveScope` persona default: no active org + student/educator + content verb → `own`                                                                                                                                                              | `packages/server/src/lib/authz.ts:46`                                                                                                                                                                                               | 5             | §6.3's personal-content rule — inside an org the role row is the whole answer; the no-org default still keys on persona until personal-scope permissions ship                                                                                                                                                                                                                                                                                                 |
-  | Seal: staff get an empty seal                                                                                                                                                                                                                        | `packages/server/src/lib/question-seal.ts:183` + SQL `rls_caller_is_sealed_item` (live def)                                                                                                                                         | closed (5e-1) | the student/staff split over sealed answer keys now keys on the target set (D-5e1), not the JWT persona                                                                                                                                                                                                                                                                                                                                                       |
-  | Exposure recorded only for a STUDENT caller                                                                                                                                                                                                          | `packages/server/src/services/assessment-review.service.ts:202`                                                                                                                                                                     | closed (5e-1) | #1172: the write guard is the D-5e1 learner answer over the loaded assignment, so a staff preview mints no event and a targeted educator does                                                                                                                                                                                                                                                                                                                 |
-  | Org-wide report inbox needs MANAGER persona + system role name `admin`                                                                                                                                                                               | `packages/server/src/services/question-report.service.ts:444` (recipient fallback `:116`)                                                                                                                                           | 5             | should be `org.report.manage` — D13 says a student-persona Admin must reach it                                                                                                                                                                                                                                                                                                                                                                                |
-  | Bank export refuses a STUDENT persona                                                                                                                                                                                                                | `packages/server/src/services/question-transfer.service.ts:56`                                                                                                                                                                      | 5             | the staff branch right below already checks `question_bank.update`; the persona conjunct is the redundant legacy half                                                                                                                                                                                                                                                                                                                                         |
-  | Topic default visibility `group` for EDUCATOR                                                                                                                                                                                                        | `packages/server/src/services/topic.service.ts:39,222`                                                                                                                                                                              | 5             | visibility should derive from the `topic.*` scope and the group share, not persona                                                                                                                                                                                                                                                                                                                                                                            |
-  | Billing owner resolved only for MANAGER persona                                                                                                                                                                                                      | `packages/server/src/services/billing.service.ts:109` (`ownerFromContext`), `packages/server/src/lib/payment/billing-read.repository.ts:77`                                                                                         | 5             | ADR §7.1's 2b-4 note: derive the owner from `activeOrgId` + membership — a product decision (a member's personal subscription inside an org would stop reading)                                                                                                                                                                                                                                                                                               |
-  | Org checkout requires a role-name admin (`isOrgAdmin`)                                                                                                                                                                                               | `packages/server/src/lib/payment/checkout-rules.ts:87` (`resolveCheckoutOwner`), `packages/server/src/lib/payment/stripe-repository.ts:188`                                                                                         | 5             | the resolver is shared with the mock-completion path (no ctx) and names a target org that need not be the active one; it should check `org.billing.manage` there                                                                                                                                                                                                                                                                                              |
-  | Org delete authorizes via `rls_caller_is_org_manager` → `is_org_manager` → `has_org_feature('member.manage')`                                                                                                                                        | `packages/server/src/services/organization.service.ts:305` (live defs of all three)                                                                                                                                                 | 5             | should be `org.admin`; the marker rows are gone, so today only the system-Admin branch of `has_org_feature` can answer true — a role-name check in disguise                                                                                                                                                                                                                                                                                                   |
-  | `getMyPlan`: seat plan for non-MANAGER, org plan for MANAGER; paid org plan demoted to the free manager tier                                                                                                                                         | `packages/server/src/services/subscription-plan.service.ts:172,176,256`                                                                                                                                                             | 4             | plan composition keyed on persona instead of seat/org scope (D2/D3)                                                                                                                                                                                                                                                                                                                                                                                           |
-  | Personal plan applies inside an org only for non-MANAGER                                                                                                                                                                                             | `packages/server/src/services/personal-plan.ts:21`                                                                                                                                                                                  | 4             | same persona-keyed plan composition                                                                                                                                                                                                                                                                                                                                                                                                                           |
-  | Plan applicability: `resolveApplicablePlan` answers FORBIDDEN when `plan.forAccountType` names another persona                                                                                                                                       | `packages/server/src/lib/payment/checkout-rules.ts:34,59`                                                                                                                                                                           | 4             | plan composition/applicability keyed on `forAccountType` — same family as the `getMyPlan`/`personal-plan` rows                                                                                                                                                                                                                                                                                                                                                |
-  | `can_assign_org_role` checks `org.invitation.manage` only — the §4.4 "grant only what you hold" conjunct is missing                                                                                                                                  | `supabase/migrations/20261120170000_class_invites.sql:292` (live def)                                                                                                                                                               | 5             | ADR §4.4's 2b-5 review note owns the conjunct                                                                                                                                                                                                                                                                                                                                                                                                                 |
-  | `org_members` SELECT stays membership-wide                                                                                                                                                                                                           | live policy "Own or same-org membership read"                                                                                                                                                                                       | 5e-2          | D25: narrowing would empty readers whose gates are not among the four keys (the 2b-4 census: org detail, report inbox, role counts, group roster, assignment target validation, teacher stats, `with-auth` itself)                                                                                                                                                                                                                                            |
-  | `teacher_assignments` org-wide SELECT                                                                                                                                                                                                                | live policy "Visible teacher assignments"                                                                                                                                                                                           | 5e-2          | its readers (student attempt flows, cohort helpers) are audited in 5e-2 (20261120190000's comment)                                                                                                                                                                                                                                                                                                                                                            |
-  | `quiz_attempts` staff branch reads `account_type IN ('educator','manager')`                                                                                                                                                                          | live policy "Own or staff quiz attempts"                                                                                                                                                                                            | closed (5e-1) | one capability-based predicate (D-5e3); the reader census is in the 5e-1 block below                                                                                                                                                                                                                                                                                                                                                                          |
-  | `exposure_events` staff branch reads `account_type`                                                                                                                                                                                                  | live policy "Exposure events readable by owner or org staff"                                                                                                                                                                        | closed (5e-1) | staff half is `stats.read`@group via `covers_permission`; owner branch unchanged                                                                                                                                                                                                                                                                                                                                                                              |
-  | Teacher-dashboard RPCs return empty for a non-educator/manager persona                                                                                                                                                                               | `get_teacher_group_performance`, `get_teacher_activity_feed` (20261028100100; live defs)                                                                                                                                            | 5e-2          | should key on `stats.read` / group teacher, not the JWT                                                                                                                                                                                                                                                                                                                                                                                                       |
-  | 403-vs-404 asymmetry applied per service by hand (foreign org → NOT_FOUND, same-org unreadable → FORBIDDEN)                                                                                                                                          | `packages/server/src/services/quiz-teacher.service.ts:31,87` (`foreignOrgError`)                                                                                                                                                    | closed (5e-1) | D-5e2: one derivation in `ownedQuiz` (missing/foreign → 404, same-org unreached → 403); API matrix pinned                                                                                                                                                                                                                                                                                                                                                     |
-  | `teacher-assignment.service.create` with no active org fails only at the RLS tenant floor — no API-level org check                                                                                                                                   | `packages/server/src/services/teacher-assignment.service.ts:324`                                                                                                                                                                    | closed (5e-1) | `create` refuses `FORBIDDEN` before any query when `ctx.activeOrgId` is null (same guard as `quiz-teacher.service.ts#create`)                                                                                                                                                                                                                                                                                                                                 |
-  | `seatEligible` metadata not yet consumed by pool validation                                                                                                                                                                                          | `packages/authz/src/entitlements.ts:18,36-71`, `entitlement_catalog.seat_eligible` (20261119140000:57)                                                                                                                              | 4             | MGR-SEAT-01 / D15: the pool's `plan_key` must be `scope='personal'` + `seatEligible` — phase 4 owns `addPool`                                                                                                                                                                                                                                                                                                                                                 |
-  | `quiz.builder` and `advanced.stats` entitlements have **no enforcement anywhere**                                                                                                                                                                    | `apps/web/src/lib/pricing-benefits.ts:11-12` (the only non-catalog references); no `requireEntitlement` call site exists (`git grep -n "quiz.builder\|advanced.stats" -- apps packages` → catalog + pricing copy + i18n + comments) | 5             | ADR §7's paid-surface contract and the rollout's phase-5 line name both keys; the register missed them because no persona branch was involved. Phase 5a named the gap; a later 5 slice needs the product decision on which builder/statistics surfaces are paid and which are baseline, then one `requireEntitlement` call per agreed surface                                                                                                                 |
-  | **Assigning a role to an existing member** bypasses §4.4: `PUT /api/v1/organization/members` (`organization-member.service.ts#changeRole`) and the `org_members` UPDATE policy gate on `org.member.manage` only, never on "grant only what you hold" | `packages/server/src/services/organization-member.service.ts:124-158`, `packages/server/src/controllers/organization-member.controller.ts:63-87`, live policy "Org managers update members" (`20261120110000:53-67`)                | 5             | Phase 5b's row 9 closed the **invite** helper (`can_assign_org_role`); the member-assignment path was outside that row and is pre-existing. An `org.member.manage` holder without `org.admin` can still assign the system Admin role. The fix reuses the new `covers_permission`/`actor_may_assign_role` shape at the service and in the UPDATE policy's `with check` — row 13 owns it, in a 5c/5d slice; recorded by the 5b review so it cannot be forgotten |
+  | Branch                                                                                                                                                                                                                                               | file:line (live-verified where marked)                                                                                                                                                                                              | Phase         | Why it is not authority-modelled yet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `resolveScope` no-org default: the persona is never read (closed 6c)                                                                                                                                                                                 | `packages/server/src/lib/authz.ts:41`                                                                                                                                                                                               | closed (6c)   | D35: any authenticated caller resolves `PERSONAL_PERMISSION_KEYS` at `own` — the 20 personal content CRUD keys, the three assignment verbs a personal NULL-org row supports (read/update/delete), plus `stats.read` = 24; `quiz.*` and `assignment.create` are excluded because their services refuse a no-org call, and `assignment.publish`/`grade` because the persona default never granted them. The guard `personal-permission-keys.test.ts` derives the set from the catalog and pins that complement. Interim: a no-org manager may create personal content until row 14 lands |
+  | Seal: staff get an empty seal                                                                                                                                                                                                                        | `packages/server/src/lib/question-seal.ts:183` + SQL `rls_caller_is_sealed_item` (live def)                                                                                                                                         | closed (5e-1) | the student/staff split over sealed answer keys now keys on the target set (D-5e1), not the JWT persona                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+  | Exposure recorded only for a STUDENT caller                                                                                                                                                                                                          | `packages/server/src/services/assessment-review.service.ts:202`                                                                                                                                                                     | closed (5e-1) | #1172: the write guard is the D-5e1 learner answer over the loaded assignment, so a staff preview mints no event and a targeted educator does                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+  | Org-wide report inbox needs MANAGER persona + system role name `admin`                                                                                                                                                                               | `packages/server/src/services/question-report.service.ts:444` (recipient fallback `:116`)                                                                                                                                           | 5             | should be `org.report.manage` — D13 says a student-persona Admin must reach it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+  | Bank export refuses a STUDENT persona                                                                                                                                                                                                                | `packages/server/src/services/question-transfer.service.ts:56`                                                                                                                                                                      | 5             | the staff branch right below already checks `question_bank.update`; the persona conjunct is the redundant legacy half                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+  | Topic default visibility `group` for EDUCATOR                                                                                                                                                                                                        | `packages/server/src/services/topic.service.ts:39,222`                                                                                                                                                                              | 5             | visibility should derive from the `topic.*` scope and the group share, not persona                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+  | Billing owner resolved only for MANAGER persona                                                                                                                                                                                                      | `packages/server/src/services/billing.service.ts:109` (`ownerFromContext`), `packages/server/src/lib/payment/billing-read.repository.ts:77`                                                                                         | 5             | ADR §7.1's 2b-4 note: derive the owner from `activeOrgId` + membership — a product decision (a member's personal subscription inside an org would stop reading)                                                                                                                                                                                                                                                                                                                                                                                                                        |
+  | Org checkout requires a role-name admin (`isOrgAdmin`)                                                                                                                                                                                               | `packages/server/src/lib/payment/checkout-rules.ts:87` (`resolveCheckoutOwner`), `packages/server/src/lib/payment/stripe-repository.ts:188`                                                                                         | 5             | the resolver is shared with the mock-completion path (no ctx) and names a target org that need not be the active one; it should check `org.billing.manage` there                                                                                                                                                                                                                                                                                                                                                                                                                       |
+  | Org delete authorizes via `rls_caller_is_org_manager` → `is_org_manager` → `has_org_feature('member.manage')`                                                                                                                                        | `packages/server/src/services/organization.service.ts:305` (live defs of all three)                                                                                                                                                 | 5             | should be `org.admin`; the marker rows are gone, so today only the system-Admin branch of `has_org_feature` can answer true — a role-name check in disguise                                                                                                                                                                                                                                                                                                                                                                                                                            |
+  | `getMyPlan`: seat plan for non-MANAGER, org plan for MANAGER; paid org plan demoted to the free manager tier                                                                                                                                         | `packages/server/src/services/subscription-plan.service.ts:172,176,256`                                                                                                                                                             | 4             | plan composition keyed on persona instead of seat/org scope (D2/D3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+  | Personal plan applies inside an org only for non-MANAGER                                                                                                                                                                                             | `packages/server/src/services/personal-plan.ts:21`                                                                                                                                                                                  | 4             | same persona-keyed plan composition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+  | Plan applicability: `resolveApplicablePlan` answers FORBIDDEN when `plan.forAccountType` names another persona                                                                                                                                       | `packages/server/src/lib/payment/checkout-rules.ts:34,59`                                                                                                                                                                           | 4             | plan composition/applicability keyed on `forAccountType` — same family as the `getMyPlan`/`personal-plan` rows                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+  | `can_assign_org_role` checks `org.invitation.manage` only — the §4.4 "grant only what you hold" conjunct is missing                                                                                                                                  | `supabase/migrations/20261120170000_class_invites.sql:292` (live def)                                                                                                                                                               | 5             | ADR §4.4's 2b-5 review note owns the conjunct                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+  | `org_members` SELECT stays membership-wide                                                                                                                                                                                                           | live policy "Own or same-org membership read"                                                                                                                                                                                       | closed (5e-2) | D-5e2-1: the SELECT is now the self row plus the nine-key census union (20261123210000); a plain Member reads only their own row                                                                                                                                                                                                                                                                                                                                                                                                                                                       | D25: narrowing would empty readers whose gates are not among the four keys (the 2b-4 census: org detail, report inbox, role counts, group roster, assignment target validation, teacher stats, `with-auth` itself) |
+  | `teacher_assignments` org-wide SELECT                                                                                                                                                                                                                | live policy "Visible teacher assignments"                                                                                                                                                                                           | closed (5e-2) | D-5e2-2: author arm (spelled on the row — INSERT ... RETURNING is gated on the SELECT policy and the STABLE helper cannot see the same-command row) OR rls_caller_can_read_assignment_targets, inside the unchanged tenant floor                                                                                                                                                                                                                                                                                                                                                       | its readers (student attempt flows, cohort helpers) are audited in 5e-2 (20261120190000's comment)                                                                                                                 |
+  | `quiz_attempts` staff branch reads `account_type IN ('educator','manager')`                                                                                                                                                                          | live policy "Own or staff quiz attempts"                                                                                                                                                                                            | closed (5e-1) | one capability-based predicate (D-5e3); the reader census is in the 5e-1 block below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+  | `exposure_events` staff branch reads `account_type`                                                                                                                                                                                                  | live policy "Exposure events readable by owner or org staff"                                                                                                                                                                        | closed (5e-1) | staff half is `stats.read`@group via `covers_permission`; owner branch unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+  | Teacher-dashboard RPCs return empty for a non-educator/manager persona                                                                                                                                                                               | `get_teacher_group_performance`, `get_teacher_activity_feed` (20261028100100; live defs)                                                                                                                                            | closed (5e-2) | D-5e2-3 (R43): the persona branch is replaced by rls_caller_covers_permission(org, 'stats.read', 'group'); both directions pinned (educator-on-Member empty, student-on-stats-read@group gets data)                                                                                                                                                                                                                                                                                                                                                                                    | should key on `stats.read` / group teacher, not the JWT                                                                                                                                                            |
+  | 403-vs-404 asymmetry applied per service by hand (foreign org → NOT_FOUND, same-org unreadable → FORBIDDEN)                                                                                                                                          | `packages/server/src/services/quiz-teacher.service.ts:31,87` (`foreignOrgError`)                                                                                                                                                    | closed (5e-1) | D-5e2: one derivation in `ownedQuiz` (missing/foreign → 404, same-org unreached → 403); API matrix pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+  | `teacher-assignment.service.create` with no active org fails only at the RLS tenant floor — no API-level org check                                                                                                                                   | `packages/server/src/services/teacher-assignment.service.ts:324`                                                                                                                                                                    | closed (5e-1) | `create` refuses `FORBIDDEN` before any query when `ctx.activeOrgId` is null (same guard as `quiz-teacher.service.ts#create`)                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+  | `seatEligible` metadata not yet consumed by pool validation                                                                                                                                                                                          | `packages/authz/src/entitlements.ts:18,36-71`, `entitlement_catalog.seat_eligible` (20261119140000:57)                                                                                                                              | 4             | MGR-SEAT-01 / D15: the pool's `plan_key` must be `scope='personal'` + `seatEligible` — phase 4 owns `addPool`                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+  | `quiz.builder` and `advanced.stats` entitlements have **no enforcement anywhere**                                                                                                                                                                    | `apps/web/src/lib/pricing-benefits.ts:11-12` (the only non-catalog references); no `requireEntitlement` call site exists (`git grep -n "quiz.builder\|advanced.stats" -- apps packages` → catalog + pricing copy + i18n + comments) | 5             | ADR §7's paid-surface contract and the rollout's phase-5 line name both keys; the register missed them because no persona branch was involved. Phase 5a named the gap; a later 5 slice needs the product decision on which builder/statistics surfaces are paid and which are baseline, then one `requireEntitlement` call per agreed surface                                                                                                                                                                                                                                          |
+  | **Assigning a role to an existing member** bypasses §4.4: `PUT /api/v1/organization/members` (`organization-member.service.ts#changeRole`) and the `org_members` UPDATE policy gate on `org.member.manage` only, never on "grant only what you hold" | `packages/server/src/services/organization-member.service.ts:124-158`, `packages/server/src/controllers/organization-member.controller.ts:63-87`, live policy "Org managers update members" (`20261120110000:53-67`)                | 5             | Phase 5b's row 9 closed the **invite** helper (`can_assign_org_role`); the member-assignment path was outside that row and is pre-existing. An `org.member.manage` holder without `org.admin` can still assign the system Admin role. The fix reuses the new `covers_permission`/`actor_may_assign_role` shape at the service and in the UPDATE policy's `with check` — row 13 owns it, in a 5c/5d slice; recorded by the 5b review so it cannot be forgotten                                                                                                                          |
+  | No per-user personal permission set: the no-org default is one fixed set for everyone                                                                                                                                                                | `packages/server/src/lib/authz.ts:41`; `packages/server/src/lib/with-auth.ts`                                                                                                                                                       | after phase 6 | D35's interim consequence — a manager should edit but not create personal decks, and future per-user overrides need a row. Shape: `user_permission_scopes(user_id, permission_key, scope)` + `PERSONAL_ROLE_TEMPLATES` (persona seeds the template at signup; provisioning may read persona) + a `withAuth` read when no org; ≈250–350 lines, one slice, no RLS twin                                                                                                                                                                                                                   |
+
+  **2026-11-23 (phase 6c, `feat/authority-6`): register row 3 is closed (D35)
+  and row 14 is registered.**
+  - **Row 3 — operator decision D35 (2026-11-23, after a live probe).**
+    Persona-free personal content: with no active org **any authenticated
+    caller** resolves `PERSONAL_PERMISSION_KEYS` (`@studiq/authz`) at `own` —
+    the 20 personal content CRUD keys (`deck`/`flashcard`/`topic`/`question`/
+    `question_bank` × read/create/update/delete), the three assignment verbs a
+    personal (`organization_id` NULL) row supports (`read`/`update`/`delete`),
+    plus `stats.read` = **24 keys**. `quiz.*` and `assignment.create` are
+    excluded because their services refuse a no-org call;
+    `assignment.publish`/`grade` because the persona default this set replaces
+    never granted them and both act on an org cohort. Inside an org nothing
+    changes: the stored role row wins and no row denies. No `accountType` read
+    remains in `resolveScope`; persona may seed provisioning (plan catalogue,
+    dashboard, creator defaults), never authorization.
+  - **Measured basis (live probe, seeded `EDU-DECK-01` tenant, API login, no
+    `active_org_id` cookie):** teacher and student were **identical** (201,
+    `visibility personal`, `organization_id null`) on `/flashcards/decks`,
+    `/questions/banks`, `/questions` and `/flashcards`; the **manager got 403**
+    on decks/banks although the phase-4 `solo` plan grants `flashcards`/`quiz`
+    and deck/bank limits. Inside the org all three got 201 (the role path).
+    Quiz authoring was 403 for all three on that tenant = `quiz.templates`
+    (5d), not persona.
+  - **Pinned by:** the guard
+    `__tests__/unit/guards/personal-permission-keys.test.ts` derives the
+    expected set from `PERMISSIONS` (the five families × the four CRUD verbs,
+    the three personal assignment verbs, plus `stats.read` = 24) and asserts
+    the complement is exactly `quiz.*` + `assignment.create`/`publish`/`grade`,
+    so a new content family or a new non-CRUD verb fails until it is
+    classified; it also asserts every member is a real `Permission` key.
+    `__tests__/unit/lib/authz.test.ts` pins the truth table (student, educator
+    **and manager** with no org → `own` for the 24; the assignment trio → `own`
+    and `assignment.create`/`publish`/`grade`, `quiz.read`, `group.read`,
+    `org.member.manage` → null with and without an org; a stored row still wins
+    at any scope; in-org no row → null);
+    `__tests__/unit/controllers/permissions.controller.test.ts` pins the
+    payload (a no-org manager gets the 24 keys, and nothing for `quiz.*`,
+    `assignment.create`/`publish`/`grade`, `group.*`/`org.*`). The integration
+    case lives in `__tests__/integration/no-active-org-guards.test.ts`: a
+    manager with no org creates a personal deck through the real route (201,
+    `organization_id` null, `visibility personal`), and `quiz`/`assignment`
+    creation still refuses at the **service** for a context that holds both
+    keys.
+  - **Row 14 — the per-user personal default permission set.** Operator
+    rationale: a manager should be able to **edit but not create** personal
+    decks/flashcards, and future per-user overrides need a row instead of a
+    persona branch. Shape: a `user_permission_scopes` table
+    (`user_id`, `permission_key`, `scope`) + `PERSONAL_ROLE_TEMPLATES` (seeded
+    from the persona at signup — provisioning may read the persona,
+    authorization never) + a `withAuth` read of the personal rows when no org;
+    ≈250–350 lines, one slice, no RLS twin. **Owner: after phase 6** (phase 7
+    boundary or its own PR). Not phase-6 scope.
 
   **2026-11-22 (phase 5a): the register gained a row it had missed.** The
   rollout's phase-5 line lists `requireEntitlement` on "AI, quiz builder,
@@ -4668,6 +4720,238 @@ the JWT persona; one 403/404 derivation; a clean null-org refusal:**
     the difficulty log). Served QA (STU-34 on a fresh `qa-tenant.ts` tenant) is
     the coordinator's step: the served build must be rebuilt first.
 
+**5e-2 on `feat/authority-5e-2` (2026-11-23) — register row 10, first commit:
+the reader census (re-derived by command before any migration was written,
+R9/R10):**
+
+- Commands (run on this branch, base `fc991415`):
+  - `git grep -n "from('org_members')" -- packages apps` → **29** sites (27
+    SELECT/UPDATE/DELETE reads + 2 INSERTs: `classroom.service.ts:40`,
+    `organization.service.ts:97`), classified below.
+  - `git grep -n "from('teacher_assignments')" -- packages apps` → **31**
+    sites (19 in `teacher-assignment.service.ts` alone), classified below.
+  - Live stack `stack-d880946e2924` (this branch; SQL over the stack's
+    `DB_URL`): `pg_policies` on `org_members` — SELECT "Own or same-org
+    membership read" = `user_id = auth.uid() OR organization_id IN (SELECT
+c.organization_id FROM rls_caller_org_ids() c)` (membership-wide);
+    on `teacher_assignments` — SELECT "Visible teacher assignments" =
+    `organization_id IN (SELECT c.organization_id FROM rls_caller_org_ids())`
+    (org-wide). Functions whose `prosrc` names `org_members`:
+    `accept_org_invitation`, `covers_permission`, `get_teacher_problematic_questions`
+    (SECURITY INVOKER — subject to the new policy), `has_group_permission`,
+    `has_org_feature`, `has_permission`, `rls_caller_is_sealed_item`,
+    `rls_caller_may_set_role_permission`, `rls_caller_org_ids`,
+    `rls_caller_org_user_ids`. Functions naming `teacher_assignments`:
+    `admin_platform_stats`, `get_teacher_activity_feed`,
+    `get_teacher_group_performance`, `rls_caller_can_read_assignment_items`,
+    `rls_caller_is_sealed_item`, `stamp_quiz_attempt_organization`,
+    `teacher_assignments_cancel_once`, `teacher_assignments_close_once`,
+    `update_assignment_counts`. Policies still reading the JWT
+    `account_type`: **0**; functions: **3** (`get_teacher_activity_feed`,
+    `get_teacher_group_performance`, `handle_new_user` — the last mints the
+    claim, it decides nothing).
+
+- **`org_members` — every site** (`table / file:line / method / client /
+what the reader needs / the key that authorises it`). The grep command
+  above counts only `.from('org_members')` sites (29); embed readers — e.g.
+  `org-role.service.ts:140`'s `org_members:org_members(count)` — are not
+  `.from()` sites, so they appear as extra rows in this table and the table
+  lists more rows than the command's number:
+
+  | table       | file:line                                                                                                 | method                                                                                                                                                                                                                                                                     | client                                                    | needs                                                                                  | key                                |
+  | ----------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------- |
+  | org_members | `lib/with-auth.ts:66`                                                                                     | ctx build                                                                                                                                                                                                                                                                  | user                                                      | caller's **own** row (cookie org → membership proof)                                   | self branch `user_id = auth.uid()` |
+  | org_members | `services/entitlement.resolver.ts:158`                                                                    | `resolveEntitlements`                                                                                                                                                                                                                                                      | user                                                      | own row + role embed                                                                   | self                               |
+  | org_members | `services/org.service.ts:29` `listMyOrgs`, `:79` `verifyMembership`                                       | user                                                                                                                                                                                                                                                                       | own rows                                                  | self                                                                                   |
+  | org_members | `services/group.service.ts:481` `listMyGroups`                                                            | user                                                                                                                                                                                                                                                                       | own rows (org filter for groups)                          | self                                                                                   |
+  | org_members | `services/teacher-assignment.service.ts:1562` `listForStudent`, `:1985` `hasForeignTargets` (caller orgs) | user                                                                                                                                                                                                                                                                       | own rows                                                  | self                                                                                   |
+  | org_members | `lib/assignment-access.ts:67`                                                                             | membership proof                                                                                                                                                                                                                                                           | user                                                      | own row                                                                                | self                               |
+  | org_members | `services/invitation.service.ts:229` `resolveMemberOrganization`                                          | user                                                                                                                                                                                                                                                                       | own row                                                   | self                                                                                   |
+  | org_members | `services/organization-member.service.ts:78` `listMembers`                                                | user                                                                                                                                                                                                                                                                       | **other rows** (roster)                                   | D25 four: `org.member.manage` \| `group.manage` \| `group.invite` \| `org.seat.manage` |
+  | org_members | `services/organization-member.service.ts:158` `changeRole`, `:186` `removeMember`                         | user                                                                                                                                                                                                                                                                       | other rows (write; SELECT clause of the UPDATE policy)    | `org.member.manage` (write policies, unchanged by 5e-2)                                |
+  | org_members | `services/group.service.ts:324` `listAddableMembers`                                                      | user                                                                                                                                                                                                                                                                       | other rows (addable roster)                               | `group.member.manage`                                                                  |
+  | org_members | `services/org-role.service.ts:140` `listRoles` (`org_members(count)` embed), `:338` `deleteRole` count    | user                                                                                                                                                                                                                                                                       | other rows (count embeds)                                 | `org.role.manage`                                                                      |
+  | org_members | `services/teacher-assignment.service.ts:2025` `hasForeignTargets` (target students in the run's org)      | user                                                                                                                                                                                                                                                                       | other rows                                                | `assignment.create` / `assignment.update` (the setTargets/ownedClient gate)            |
+  | org_members | `services/stats.service.ts:374` `getTeacherQuizStats`                                                     | user                                                                                                                                                                                                                                                                       | other rows (member-role learners)                         | `stats.read` @group+                                                                   |
+  | org_members | `services/activity.service.ts:34` `getClassActivity`                                                      | user                                                                                                                                                                                                                                                                       | other rows (member-role learners)                         | `stats.read` @group+                                                                   |
+  | org_members | `services/invitation.service.ts:299` `findOrgMemberByEmail` (class invite)                                | user                                                                                                                                                                                                                                                                       | other rows                                                | `group.invite`                                                                         |
+  | org_members | `services/question-report.service.ts:117` ownerless-group recipient                                       | user                                                                                                                                                                                                                                                                       | **a learner resolves a manager row** — holds no staff key | none → the `org_report_recipient` definer RPC (D-5e2 step 3 below)                     |
+  | org_members | `lib/question-seal.ts:111,267`                                                                            | service                                                                                                                                                                                                                                                                    | caller rows / learner arms                                | unaffected (service_role bypasses RLS)                                                 |
+  | org_members | `services/organization.service.ts:139` `getAll`, `:198` `getByIdWithDetails`                              | service in the only wired app (admin's `organization-admin.controller` uses `@admin/lib/supabase/admin-client`; **no web route calls these controller methods** — `git grep -n "organizationController.getAll\|organizationController.getDetails" -- apps/web/src` → none) | unaffected                                                |
+  | org_members | `services/notification.service.ts:250`                                                                    | service (`createAdminClient`)                                                                                                                                                                                                                                              | unaffected                                                |
+  | org_members | `services/invitation.service.ts:770` `acceptInvitationForUser` count                                      | service (`createAdminClient`)                                                                                                                                                                                                                                              | unaffected                                                |
+  | org_members | `lib/payment/stripe-webhook.repository.ts:676` `findOldestOrgAdmin`                                       | service (`createAdminClient`)                                                                                                                                                                                                                                              | unaffected                                                |
+  | org_members | `apps/web/.../dev/study-simulate/route.ts:64`                                                             | service (`createServiceClient`, verified at :47)                                                                                                                                                                                                                           | unaffected (dev-only helper route)                        |
+  | org_members | `apps/admin/src/server/services/user-admin.service.ts:258`                                                | service (admin-client)                                                                                                                                                                                                                                                     | unaffected                                                |
+  | org_members | `services/classroom.service.ts:40`, `services/organization.service.ts:97`                                 | INSERTs (org creation)                                                                                                                                                                                                                                                     | write policies, untouched                                 |
+
+  Definer readers bypass RLS and do not constrain the policy (R18): the
+  `rls_caller_*`/`has_*`/`covers_permission`/`accept_org_invitation`/
+  `admin_platform_stats` set above. `get_teacher_problematic_questions` is
+  SECURITY **INVOKER** and reads `org_members` (the member-role roster): its
+  only caller is `stats.service.ts:171` (`getTeacherStats`, gated
+  `stats.read`), so a Teacher passes via `stats.read`@group and a Member's
+  own-scope `stats.read` no longer admits the roster — the class-wide
+  aggregate empties for a learner, which is row 10's direction (the old
+  membership-wide policy let a Member read it through PostgREST).
+
+- **`teacher_assignments` — every user-client SELECT** (31 sites; the service
+  client sites — `lib/question-seal.ts:136,151`, `lib/assessment-close.ts:93`,
+  `lib/exposure-ledger.ts:90`, `services/notification.service.ts:349` — bypass
+  RLS and are unaffected; `quiz-teacher.service.ts:380` and
+  `teacher-assignment.service.ts:351` are INSERTs, write policies untouched).
+  As above, the `from('teacher_assignments')` grep counts only the 31
+  `.from()` sites; the embed reader `student-overview.service.ts:117` below is
+  an extra row the command does not count:
+
+  | file:line                                                                                                                                                                                      | method                                                         | needs                                                                        | covered by author ∨ targeted ∨ `assignment.read` (D-5e2-2) |
+  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
+  | `teacher-assignment.service.ts:365`                                                                                                                                                            | create re-fetch                                                | own run (author)                                                             | author arm                                                 |
+  | `:378` `getById`                                                                                                                                                                               | the run (gate: author or `assignment.read`@organization, :391) | author / `assignment.read`                                                   |
+  | `:457` `list`                                                                                                                                                                                  | runs per `assignment.read` scope                               | `assignment.read` (any scope — the helper's any-scope arm)                   |
+  | `:497,:528` `update`, `:542` `delete`, `:557,:568` `unpublish`, `:908,:956` `publish`, `:1151,:1206` `setTargets`, `:2065,:2169,:2199,:2217` `ownedClient`/`verifyOwnership`/`loadCloseWindow` | the run being written                                          | author arm, or the write gate `assignment.update`@organization — **see (b)** |
+  | `:1571` `listForStudent`                                                                                                                                                                       | published runs (client-side target filter)                     | targeted arm                                                                 |
+  | `:1973` `hasForeignTargets`                                                                                                                                                                    | the run's org (inside setTargets, after ownedClient)           | author / write gate — see (b)                                                |
+  | `quiz-attempt.service.ts:336,507`                                                                                                                                                              | own attempt's run                                              | targeted (an attempt exists only on a targeted/authored run)                 |
+  | `lib/assignment-access.ts:33` `loadTargetedAssignment`                                                                                                                                         | published run targeting the caller (or authored preview)       | targeted / author                                                            |
+  | `lib/assignment-visibility.ts:36` `hiddenResultAssignmentIds` (callers: `quiz-attempt.service.ts:295`, `stats.service.ts:223` `getStudentStats` — own attempts)                                | the attempt's run                                              | targeted                                                                     |
+  | `stats.service.ts:413` `getTeacherQuizStats` assignment names                                                                                                                                  | runs of the org's attempts                                     | **see (b)** — a `stats.read`-only role gets empty names (titles), no error   |
+  | `question-bank.service.ts:399` `hasBoundAssessmentItems` (in-use guard)                                                                                                                        | non-draft runs binding the bank's items                        | **see (a)**                                                                  |
+  | `student-overview.service.ts:117` `getOverview` (`teacher_assignments(title, show_results)` embed on the caller's own attempts)                                                                | the caller's own attempts' runs                                | targeted / author arm                                                        |
+
+- **Census question (a) — the question-bank in-use guard
+  (`question-bank.service.ts:399`).** Verdict: the guard **is** reachable by
+  a caller holding `question_bank.delete` (the system Member holds it at
+  `own`; `seed_system_role_permissions` grants the Member every content key
+  except `assignment.*`, and `stats.read` at `own` only) but no
+  `assignment.read` — `delete`/`batchDelete` (:297, :352) reach
+  `hasBoundAssessmentItems`. **But the narrowing does not change its
+  outcome**: the guard's first hop is `assignment_questions`
+  (`rls_caller_can_read_assignment_items` = author ∨ `assignment.read`,
+  shipped in 2b-4), so a foreign run's binding rows are already invisible to
+  such a caller _today_, and every assignment id that can reach the
+  `teacher_assignments` hop at :399 (author ∨ `assignment.read`) is still
+  admitted by D-5e2-2's `rls_caller_can_read_assignment_targets` (author ∨
+  targeted ∨ `assignment.read`). Link-visible ⇒ run-visible, so old and new
+  policies resolve the same ids here. The guard's blind spot (a Member
+  deleting their own bank whose items a teacher bound to a foreign run
+  passes the guard, because the _link_ read hides it) is **pre-existing**,
+  owned by the `assignment_questions` cohort policy (2b-4, not this row), and
+  5e-2 neither worsens nor fixes it. No definer read was added here — that
+  would change delete semantics for Members, a decision above this slice
+  (owner: phase 7 restate pass; recorded, not silently shipped).
+
+- **Census question (b) — any other user-client reader needing a row it
+  neither authored, is targeted by, nor holds `assignment.read` for.**
+  Verdict: **two families, both recorded with their consequence, neither a
+  leak**:
+  1. `verifyOwnership`/`ownedClient` write paths
+     (`teacher-assignment.service.ts:2217` and everything behind it:
+     publish/unpublish/setTargets/window/delete/grade) for a **custom role
+     holding `assignment.update` (or `assignment.delete`) at `organization`
+     scope without `assignment.read`** — grantable through the role editor —
+     the ctx gate passes but the SELECT now hides the row, so the write
+     answers `NOT_FOUND` (fail closed, R25's UPDATE-needs-SELECT rule). The
+     system roles are unaffected (Teacher holds `assignment.read`@group,
+     Admin everything @organization). Same shape 5e-1 resolved for
+     `quiz_attempts` by adding `assignment.update` to _that_ policy's
+     predicate; for `teacher_assignments` 5e-2 reuses 5e-1's pinned helper
+     without forking a second rule (R40), so the consequence stands and is
+     recorded here (owner: phase 7 / §4.4 read-with-write, a product call).
+  2. `stats.service.ts:413` (assignment titles in `getTeacherQuizStats`) for
+     a `stats.read`@group+ holder with no `assignment.read` and no
+     authored/targeted runs: the name lookup silently returns empty (titles
+     null), no error — the aggregates themselves come from `quiz_attempts`
+     (5e-1 policy, unchanged). Cosmetic degradation for an unusual custom
+     role; recorded.
+     Every _read-route_ reader family is covered by the D-5e2-1 union (the nine
+     keys below) or the self branch; the one reader with no key at all
+     (`question-report.service.ts:117`) is moved to the `org_report_recipient`
+     RPC. No stop-and-report case: no system-role persona loses a read it had.
+
+- **Decisions D-5e2-1 … D-5e2-3 (recorded; the full wording is the migration
+  header of `20261123210000_phase_5e2_roster_and_run_read_scope.sql`):**
+  - **D-5e2-1** — `org_members` SELECT = `user_id = auth.uid()` OR (same-org
+    AND one of the nine census keys via `rls_caller_covers_permission`,
+    `stats.read` at `group`). Shipped exactly as the census-derived union.
+    The privacy gain is the **role/membership** dimension only
+    (`org_role_id`, `joined_at`): `profiles`' SELECT has been "own or any
+    same-org profile" since `20261024124756`, so identity and e-mail were
+    already same-org-readable and this slice makes no identity-privacy claim.
+  - **D-5e2-2** — `teacher_assignments` SELECT =
+    `organization_id IN (rls_caller_org_ids()) AND (created_by = auth.uid() OR
+rls_caller_can_read_assignment_targets(id))`. The direct author arm is
+    load-bearing, not a duplicate of the helper's: PG gates `INSERT ...
+RETURNING` on the SELECT policy and the STABLE helper cannot see the row
+    inserted by the same command (measured — see the difficulty log), so
+    without the direct conjunct the author's own `INSERT ... RETURNING`
+    raises 42501. The null-org floor is unchanged.
+  - **D-5e2-3** — both teacher-dashboard RPCs replace the JWT `account_type`
+    branch with `IF NOT rls_caller_covers_permission(p_organization_id,
+'stats.read', 'group') THEN RETURN <empty payload>`; identity (42501) and
+    org-membership checks and grants unchanged. This closes 2 of the JWT
+    `account_type` reads 2b-9's audit registered as functions; after 5e-2 the
+    live query `prosrc ilike '%account_type%'` over `public` returns only
+    `handle_new_user` (it mints/validates the claim and decides no authority —
+    out of scope, stands), policies reading it: **0**. The remaining TS-side
+    JWT reads are `with-auth.ts:46` (ctx derivation, fail-closed 401) and the
+    proxy/frontend persona reads for redirects and display — declared, not
+    authority.
+- **Shipped:** migration `20261123210000` (ALTER POLICY on both SELECTs, the
+  two RPC bodies re-created from their newest owner `20261028100100` with only
+  the branch replaced, `org_report_recipient` definer RPC + grants, closing
+  DO guard asserting count(*)=1 per policy with every conjunct, both RPCs
+  persona-free, the grants, the RPC's definer/search_path/anon-revoked shape,
+  and the 5e-1 carry-over pinning the seal's arm on `<> 'all'` and not
+  `= 'learner'`); `question-report.service.ts` calls the RPC (NOT_FOUND
+  preserved); `database.ts` regenerated with the pinned CLI (second run
+  byte-identical, exactly one new entry).
+- **Tests:** new `__tests__/integration/org-roster-and-run-read-scope.test.ts`
+  (18 cases, real JWT/cookie-jar sessions, R41): Member reads only their own
+  row; one case per union key (nine, table-driven); Member reads no foreign
+  published run and does read a targeted one; the author reads their own run
+  with no `assignment.read`; both RPCs still answer for the teacher; the R43
+  pair (educator persona on the Member role → empty payload, student persona
+  on a `stats.read@group` role → data); `org_report_recipient` is tenant-bound
+  (NULL for a signed-in user in no org, the manager for a member); the
+  ownerless-group report routes to the manager when the reporter is a learner,
+  through the API route.
+  `question-report.service.test.ts` pins the RPC call/arg, no `org_members`
+  embed, 0-row → NOT_FOUND, RPC error; `teacher-dashboard-org-scope.test.ts`
+  now reads the newest owner of the RPCs and asserts the capability branch;
+  `rls-tenant-isolation` positive control now targets the student in its
+  seeded run; `control-plane-permission-rls`'s membership-wide asymmetry
+  block now pins the union (Member reads only their own row);
+  `EDU-ASG-07.spec.ts`'s stale comment corrected.
+- **Mutation proofs:** `bun run mutate` (clean tree): RPC arg
+  `p_organization_id` mutated → "routes a report … to the org_report_recipient
+  RPC" **KILLED**; NOT_FOUND guard mutated → "returns NOT_FOUND …" **KILLED**.
+  Hand SQL mutations against the live stack (the mutate tool cannot drive
+  integration tests here), each red then restored by re-applying the
+  migration file: (1) `stats.read` conjunct dropped from the union → the
+  stats.read key case **red**; (2) teacher_assignments SELECT reverted to
+  org-wide → "a Member reads no foreign published run" **red**; (3) persona
+  branch restored in `get_teacher_group_performance` → both R43 cases **red**;
+  (4) `org_report_recipient` revoked from `authenticated` → the learner report
+  case **red**; (5) seal reverted to `= 'learner'`, migration re-applied →
+  the carry-over guard **raises P0001**; (6) direct author arm dropped → the
+  snapshot-boundary author INSERT … RETURNING case **red**; (7) the
+  `rls_caller_org_ids` conjunct dropped from `org_report_recipient` → the
+  tenant-bound case (NULL for a caller in no org) **red** — it returns the
+  manager id instead; (8) the live org_members SELECT policy's `stats.read`
+  scope argument flipped `'group'` → `'own'`, the migration's guard block run
+  by hand → **raises P0001** (restored, the guard passes).
+- **Gates (measured on this branch):** `typecheck:all` + `typecheck:admin`
+  0 errors; `lint`, `review:static`, `knip`, `format:check`, `dup:base`
+  ("no new clones", 211 in tree) all green; unit **316 files / 4901 passed,
+  1 skipped**; targeted integration (56 files run serially, `--no-file-
+parallelism`, on this branch's reset stack) **567 passed, 0 failed**;
+  `pr:size` **680/400 (XL)** → `size:exception` (545 test + 263 doc + 1
+  generated excluded). Two real `db reset`s plus a hand re-apply of the
+  migration file all pass its guard.
+- **Register row 10 closed.** Rows 3 (personal scope, phase 6) remains the
+  only open row of the phase-5 set.
+
 **Difficulty log**
 
 #### 2026-11-22 — replacing a persona gate with an entitlement needs a positive QA pin, not just the old negative case
@@ -4795,11 +5079,230 @@ Rule: R4 — and R16-style: a case-ID QA sample must mirror the full shard; 8 of
 46 sampled missed the one case whose seeder shape disagrees with the test
 fixtures.
 
+#### 2026-11-23 — a STABLE helper cannot see the row its own statement inserted, and PG gates INSERT … RETURNING on the SELECT policy
+
+What: 5e-2 narrowed the `teacher_assignments` SELECT to
+`rls_caller_can_read_assignment_targets(id)`, and the author's own
+`INSERT ... RETURNING` (PostgREST `return=representation`) started raising
+42501 while the same insert without `RETURNING` passed. Measured in raw SQL
+as the authenticated teacher: `INSERT ... RETURNING id` → 42501; with the
+policy temporarily `USING (true)` → OK and `can_read=false` for the new row;
+a plain SELECT of the author's pre-existing rows → admitted. So PostgreSQL
+applies the SELECT policy to the RETURNING rows, and the STABLE helper's
+snapshot excludes the row inserted by the same command, so the helper's
+author arm evaluates false for that row.
+Why: the policy's author arm lived only inside the helper
+(`EXISTS (... a.created_by = auth.uid() ...)` over a scan of the same table),
+which is exactly the arm that cannot see the same-command row.
+Fix: spell the author arm directly on the row —
+`organization_id IN (rls_caller_org_ids()) AND (created_by = auth.uid() OR
+rls_caller_can_read_assignment_targets(id))` — inside the unchanged tenant
+floor (the null-org floor is not widened). The closing guard asserts the
+conjunct; the hand mutation (drop it) turns the snapshot-boundary author case
+red. Child-table policies (`assignment_targets`/`assignment_questions`) do not
+need this: their helpers read the _parent_ row, which pre-exists.
+Rule: R44.
+
 _Not started beyond 5b._
 
 ### Phase 6 — UI and cache
 
-_Not started._
+**6a — the two authority endpoints and the org-keyed cache** (6a-1 on
+`feat/authority-6a`, #1426; 6a-2 on `feat/authority-6`). No SQL, no migration.
+
+- **Endpoints renamed, no alias.** `GET /api/v1/features/me` →
+  `GET /api/v1/me/entitlements` and `GET /api/v1/permissions/me` →
+  `GET /api/v1/me/permissions`; the old route directories and
+  `features.controller.ts` are deleted (ADR §7 lines 723-724: the rename exists
+  so every call site is reviewed). Route handlers are still **141**
+  (`find "apps/web/src/app/(backend)/api/v1" -name route.ts | wc -l`); both stay
+  under `withAuth` and neither is in `PUBLIC_API`, so the inventory test needed
+  no change.
+- **Payloads** — both echo the org they were resolved for, so a client can
+  reject an answer that belongs to the previous org:
+  - `/me/entitlements` →
+    `{ orgId: string | null, entitlements: EntitlementKey[], limits: Record<string, number>,
+ plan: { primary: string; sources: PlanSource[] } }`,
+    read from the existing single resolver (`resolveEntitlements(ctx)`) — no new
+    query, no second source. `limits` is the resolver's own record. The broad
+    `Record<string, number>` is the accepted deviation: it is what
+    `ResolvedEntitlements.limits` and `PlanInfo` publish, and narrowing it to
+    `Record<LimitKey, number>` needs a cast at this boundary with no reader that
+    wants one. Completeness (every `LIMIT_KEYS` key present, a missing
+    `plan_limits` row = `0`) is pinned in the resolver itself —
+    `__tests__/unit/services/entitlement.resolver.limits.test.ts`; the
+    controller test mocks the resolver and pins only the pass-through, so a
+    resolver that dropped a key survives it.
+  - `/me/permissions` →
+    `{ orgId: string | null, permissions: Partial<Record<PermissionKey, PermissionScope>> }`.
+- **`/api/v1/ai/usage` unchanged** — it carries `current`, which no authority
+  endpoint should; the badge still reads `current`/`limit`.
+- **Client transport.** `useFeatures()`/`useFeature()` →
+  `useEntitlements()`/`useEntitlement()` (**15** files import `useEntitlement()`
+  — the 13 page/component consumers plus `use-branding.ts` and
+  `use-student-insights.ts`; **11** import `useEntitlements()`, one of them the
+  `useEntitlement()` wrapper itself); `usePermissions()`/
+  `usePermission()` keep their names and signatures. Both authority queries are
+  `staleTime: 60_000` + `refetchOnWindowFocus: true` (batch 7's "refetch on
+  focus ≤60 s", via a new `useApiQuery` option) and enabled only once `/me/orgs`
+  settles, keyed `activeOrg?.id ?? 'personal'` — never on `undefined` (#1125).
+- **Keys.** `permissionKeys.org(orgId)` = `['permissions', orgId ?? 'personal']`,
+  `entitlementKeys.org(orgId)` = `['entitlements', orgId ?? 'personal']`; the
+  literal `['features','me']` and `['permissions','me']` are gone. The `*.all`
+  prefixes still match every org entry, and the partition is pinned by
+  `__tests__/unit/lib/query-keys.test.ts`.
+- **One invalidation surface.** `invalidateAuthority(queryClient, {
+refetchPartitioned? })` — introduced in 6a-1 for the permission, entitlement and
+  report caches — now also drops `['me','plan']` and `['ai']`, and takes the
+  partition flag. **14** call sites in **10** caller files (plus the helper in
+  `query-cache.ts`): the org switch, role save/delete/permissions save, seat
+  assign/release/pool purchase, the two billing-card `onChanged` callbacks (plan
+  change, cancel and resume), the mock checkout success redirect — the third
+  plan-change path, which never leaves the SPA — and the four
+  join/create-org flows. On a switch it marks the org-partitioned pair stale
+  without refetching (`refetchPartitioned: false`), because the observed entry is
+  still the outgoing org's key while the cookie already names the new one (R45).
+  `__tests__/unit/lib/query-cache.test.ts` pins the five prefixes and the switch's
+  `'none'` partition: deleting `['me','plan']` or hard-coding `'active'` for the
+  pair both turn it red.
+- **Consumer sweep.** The 13 page/component consumers (starting at design §1.3)
+  plus `use-branding.ts` and `use-student-insights.ts` import the new hooks. The
+  `featuresPending` → `entitlementsPending` rename landed in two steps: 6a-1
+  renamed **17** occurrences in **8** files
+  (`grep -rn 'entitlementsPending' apps packages __tests__ qa --include='*.ts' --include='*.tsx'`),
+  and this commit finishes the **9** survivors in **3** (`overview-tab.tsx`,
+  `insights-gate.tsx`, `use-student-insights.ts`) — **26** occurrences, none
+  left. No behaviour change beyond the transport.
+- **Tests and corpus.** 7 unit files, 4 integration files, 18 QA specs, 2 E2E
+  specs, 19 QA case docs, `qa/AGENT-PROMPT.md` and `AGENTS.md`. Corpus strings are
+  `me/entitlements` / `me/permissions`, and the response key is `entitlements`.
+  6a-1 fixed the load test's two journeys and the two operative QA/review skills,
+  which still drove the dead URLs; with 6a-2's comment sweep the measurement is
+  clean:
+  `grep -rlE 'features/me|permissions/me' apps packages __tests__ qa scripts .agents --exclude-dir=.next`
+  returns nothing (the historical plan/audit/ADR mentions are the record of what
+  happened and are left alone).
+
+**Correction (design §6, a stale sentence, R8).** The phase-6 scope inherited a
+claim that two `ai/*` persona gates were still in place and had to be removed.
+They do not exist: phase 5a (`0fb14a7e`) removed both, and
+`persona-gates.test.ts` has declared exactly the two R5 creation routes since
+then (`grep -rn allowedAccountTypes apps packages __tests__` → 2 API files). There
+is no work in that item, and a slice written against the sentence would have
+_added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
+
+**6c — register row 3 (D35): the persona-free personal-content set** (on
+`feat/authority-6`; no SQL, no migration, no new table).
+
+- **The rule.** `resolveScope` no longer reads `accountType`, a verb suffix or
+  the catalog category: after the in-org deny it returns
+  `isPersonalPermissionKey(action) ? 'own' : null`. `PERSONAL_PERMISSION_KEYS`
+  (`packages/authz/src/lib/permissions.ts`, exported from the package entry) is
+  the 20 personal content CRUD keys, the three assignment verbs a personal
+  (NULL-org) row supports, plus `stats.read` = **24**; `quiz.*` and
+  `assignment.create` stay out because their services refuse a no-org call, and
+  `assignment.publish`/`grade` because the persona default never granted them.
+- **Guard.** `__tests__/unit/guards/personal-permission-keys.test.ts` derives
+  the expected members from `PERMISSIONS` (the five families × the four CRUD
+  verbs, the three personal assignment verbs, plus `stats.read`) and asserts the
+  complement is exactly `quiz.*` + `assignment.create`/`publish`/`grade`, so a
+  new content family or a new non-CRUD verb fails until it is classified; it
+  also asserts every member is a real `Permission` key.
+- **Behaviour pins.** `authz.test.ts` truth table: the 24 keys → `own` for
+  student, educator **and manager** with no org; the assignment trio → `own`
+  and `assignment.create`/`publish`/`grade`, `quiz.read`, `group.read`,
+  `org.member.manage` → null with and without an org; a stored row still wins
+  at any scope; in-org no row → null.
+  `permissions.controller.test.ts`: a no-org manager's payload is the whole
+  24-key map (it was `{}`), and nothing is claimed for `quiz.*`,
+  `assignment.create`/`publish`/`grade`, `group.*`/`org.*`.
+  `no-active-org-guards.test.ts` adds two integration cases: a manager with no
+  `active_org_id` creates a personal deck through the real route (201,
+  `organization_id null`, `visibility personal`), and a context that holds
+  `quiz.create` + `assignment.create` at `own` still gets `FORBIDDEN` from both
+  services' own no-org guard (the exclusion is not a permission accident).
+- **Gates on this branch.** typecheck (root + web + packages) 0 errors; `lint`
+  (**1567** files) 0 warnings; unit **317 files / 4921 passed, 1 skipped**;
+  `review:static`, `knip` and `format` green; `pr:size` **74/400** (347 test +
+  268 doc lines excluded).
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  `resolveScope`'s personal-set branch replaced with `return null` →
+  "decides a read key by the personal set, not by its verb" **KILLED**;
+  `quiz.read` added to `PERSONAL_PERMISSION_KEYS` → "leaves exactly the
+  org-only content keys out" **KILLED**; the in-org deny deleted →
+  "denies a student read inside an org whose role has no row for it"
+  **KILLED**. Titles are plain substrings: `bun run mutate` passes `--name` to
+  `vitest -t` as a regex, so a title like `… (manager)` matches nothing.
+- **Measured at merge:** the four suites the first cut broke are **34/34 green**
+  (`no-active-org-guards`, `assignment-attempts`, `item-snapshot`, `item-states`);
+  fresh-reset serial integration is **116 files passed, 1 skipped — 1116 passed /
+  11 skipped / 0 failed**; the served probe (no `active_org_id`) shows
+  manager = teacher = student with `orgId:null` and the same **24 keys**
+  (0 `quiz.*`, 3 `assignment.*`), manager deck/bank/flashcard create **201**
+  with `organization_id:null`, `/teacher/quizzes` + `/teacher/assignments`
+  **403 FORBIDDEN**, and the in-org control at 44 keys with `orgId` set.
+- **D35 was amended during review** from 21 to **24 keys**: the exclusion of
+  `assignment.*` had been proved for `create` only, while the service supports
+  personal rows for `read`/`update`/`delete` (and randomize/attempt paths pinned
+  at 200). Option A of the review restored those three; `quiz.*`,
+  `assignment.create`, `assignment.publish`/`grade` stay excluded for the
+  reasons in D35.
+
+**Still open in phase 6:** 6b route rules, `resolveDashboardArea`, `AreaGate` and
+the nav-item gates; 6d role-editor behaviour (caller-scope awareness, atomic
+profile write) and the `/me/plan` union badge; 6e the Teacher assignment-read
+widening.
+
+**Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
+optional argument: the default `true` is the common case and keeping it optional
+lets every non-switch call site read as `invalidateAuthority(queryClient)`.
+`SidebarGates.feature` keeps its `feature` noun for now — 6b rewrites nav gating
+around the entitlement answer, so renaming it here would be churn the next slice
+replaces.
+
+**Difficulty log**
+
+#### 2026-11-23 — invalidating a partitioned cache _on the switch_ refetches under the outgoing key
+
+What: the brief's shape was "one `invalidateAuthority()` called from the org
+switch", which would have invalidated `['permissions']`/`['entitlements']` the
+way the old unpartitioned keys were invalidated. With the new org segment in the
+key, `invalidateQueries` by prefix refetches the **active** entry — and at that
+instant the active entry is still `['permissions', <outgoing org>]` while the
+cookie already names the new org, so the refetch writes the new org's payload
+under the old org's key.
+Why: the response would look correct in the UI (the key changes on the next
+render and fetches fresh data), so the defect is only visible on the way _back_:
+that poisoned entry is fresh for its `staleTime`, and switching to that org
+within 60 s serves another org's scope map. The same trap was already recorded
+for org-keyed data lists in `use-orgs.ts` ("an active refetch would write the new
+org's rows under the old org's cache key"); partitioning the authority pair moved
+it onto the two keys that gate the UI.
+Fix: the helper takes `{ refetchPartitioned }`. Every non-switch event (role
+save/delete, seat, checkout) refetches, because the observed key is the right
+one. The switch passes `false`, which marks the pair stale without a refetch —
+the key change is what fetches, and a later visit refetches because the entry is
+stale. This is design-derived, not observed in a failing run: the
+`query-keys.test.ts` partition assertions pin the key shape, not the race.
+Rule: R45.
+
+#### 2026-11-23 — deleting a persona default is not the same as installing a personal rule
+
+What: row 3's brief was "delete the persona branch", and the obvious test is "a
+manager with no org is now allowed". That test alone also passes if the set is
+"every content key": it cannot see the keys the set must exclude, and
+`/me/permissions` — which is what `usePermission()` gates the UI on — would then
+advertise `quiz.create` to a no-org caller whose quiz service refuses the call.
+Why: the deleted branch was a predicate (persona ∧ content ∧ CRUD) whose
+replacement is a membership test with a **reason** for its complement. Deleting
+the predicate loses that reason silently, and every later reader sees only an
+absent key.
+Fix: the expected set is derived from the catalog in
+`personal-permission-keys.test.ts` (a new content key fails until classified),
+the payload test asserts the whole 24-key map instead of one key, and the
+exclusion is proved where it is claimed — both create services are called with a
+context that holds `quiz.create`/`assignment.create` and still answer FORBIDDEN.
+Rule: R46.
 
 ### Phase 7 — delete and close
 

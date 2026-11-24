@@ -12,6 +12,7 @@ import { BillingPageShell, CurrentPlanCardHeader } from '@/components/billing/bi
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
+import { invalidateAuthority } from '@/lib/query-cache';
 import { billingKeys } from '@/lib/query-keys';
 
 /**
@@ -96,7 +97,9 @@ export default function ManageBillingPage() {
         plans={plans}
         accountType={AccountType.MANAGER}
         onChanged={() => {
-          void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+          // A checkout changes the plan layer the resolver reads, so every
+          // derived authority answer is stale, not just the plan badge.
+          invalidateAuthority(queryClient);
           void refetchSubscription();
         }}
       />

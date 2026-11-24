@@ -42,7 +42,7 @@ import {
  * 2. „Przydziel” shows the toast „Miejsce przydzielone pomyślnie”, a new row in
  *    „Przydziały” for that member with the seat plan, and the pool moves from
  *    2/0/2 to 2/1/1 (assigned +1, available −1); the other pools are untouched.
- * 3. After the seat the member's `/api/v1/features/me` differs from before by
+ * 3. After the seat the member's `/api/v1/me/entitlements` differs from before by
  *    **exactly `stats.insights`** (seat ∩ hub ceiling); `/api/v1/me/plan` is the
  *    seat plan `pro` with `max_ai_tokens_per_day === -1`, and
  *    `/api/v1/ai/usage` reports `limit: -1` with `plan: 'hub'` (the effective
@@ -150,16 +150,16 @@ function normalize(text: string): string {
  * Real login through the API, then boot the app with the locale the case's copy
  * is written in and the tenant's organization active (the cookie the app writes
  * on org creation / switch). Resolves only after the dashboard has resolved
- * `/api/v1/features/me`, so a sidebar assertion cannot pass on the provisional
- * "no features yet" state.
+ * `/api/v1/me/entitlements`, so a sidebar assertion cannot pass on the provisional
+ * "no entitlements yet" state.
  */
 async function signIn(page: Page, tenant: QaTenant, role: QaRole, landing: RegExp): Promise<void> {
-  const featuresResolved = page.waitForResponse(
-    (res) => res.url().includes('/api/v1/features/me'),
+  const entitlementsResolved = page.waitForResponse(
+    (res) => res.url().includes('/api/v1/me/entitlements'),
     { timeout: 20_000 },
   );
   await loginAs(page, tenant, role, { locale: 'pl', waitFor: landing });
-  await featuresResolved;
+  await entitlementsResolved;
   await page.waitForLoadState('networkidle');
 }
 
@@ -379,13 +379,15 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
-    const beforeFeatures = (
-      await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
-    ).data.features;
-    expect(beforeFeatures.toSorted(), 'the unseated member resolves learner ∩ hub').toEqual(
+    const beforeEntitlements = (
+      await readEnvelope<{ entitlements: string[] }>(
+        await page.request.get('/api/v1/me/entitlements'),
+      )
+    ).data.entitlements;
+    expect(beforeEntitlements.toSorted(), 'the unseated member resolves learner ∩ hub').toEqual(
       learnerOnHub.toSorted(),
     );
-    expect(beforeFeatures, 'no seat yet: no stats.insights').not.toContain('stats.insights');
+    expect(beforeEntitlements, 'no seat yet: no stats.insights').not.toContain('stats.insights');
     const beforeUsage = (
       await readEnvelope<{ limit: number; plan: string }>(
         await page.request.get('/api/v1/ai/usage'),
@@ -587,15 +589,17 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     // ADR-0015 §5.4: seat entitlements are intersected with the org ceiling, so
     // on the hub org the pro seat adds exactly `stats.insights` — a non-learner
     // key the hub ceiling carries — and no other key.
-    const afterFeatures = (
-      await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
-    ).data.features;
+    const afterEntitlements = (
+      await readEnvelope<{ entitlements: string[] }>(
+        await page.request.get('/api/v1/me/entitlements'),
+      )
+    ).data.entitlements;
     expect(
-      afterFeatures.toSorted(),
+      afterEntitlements.toSorted(),
       'the seat ∩ hub ceiling adds exactly stats.insights, nothing else',
     ).toEqual([...learnerOnHub, 'stats.insights'].toSorted());
-    expect(afterFeatures).toContain('stats.insights');
-    expect(afterFeatures).toContain('ai.chat');
+    expect(afterEntitlements).toContain('stats.insights');
+    expect(afterEntitlements).toContain('ai.chat');
 
     // The seat is the member's effective plan (D28/D34): /me/plan resolves `pro`
     // with the seat plan's own unlimited AI budget and the raised feature set.
@@ -621,13 +625,15 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signOut(page);
     await signIn(page, tenant, 'student2', /\/app$/);
 
-    const controlFeatures = (
-      await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
-    ).data.features;
-    expect(controlFeatures.toSorted(), 'the unseated control keeps learner ∩ hub').toEqual(
+    const controlEntitlements = (
+      await readEnvelope<{ entitlements: string[] }>(
+        await page.request.get('/api/v1/me/entitlements'),
+      )
+    ).data.entitlements;
+    expect(controlEntitlements.toSorted(), 'the unseated control keeps learner ∩ hub').toEqual(
       learnerOnHub.toSorted(),
     );
-    expect(controlFeatures, 'no seat: no stats.insights').not.toContain('stats.insights');
+    expect(controlEntitlements, 'no seat: no stats.insights').not.toContain('stats.insights');
 
     const controlPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
       .data;

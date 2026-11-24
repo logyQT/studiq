@@ -2,8 +2,8 @@
 
 import type { StudentInsights } from '@studiq/server/models/student-insights.model';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { studentStatsKeys } from '@/lib/query-keys';
 
 /**
@@ -16,8 +16,8 @@ import { studentStatsKeys } from '@/lib/query-keys';
  * card reads the same facts.
  */
 export function useStudentInsightsGate(days: number) {
-  const canInsights = useFeature()('stats.insights');
-  const { isPending: featuresPending } = useFeatures();
+  const canInsights = useEntitlement()('stats.insights');
+  const { isPending: entitlementsPending } = useEntitlements();
   const query = useApiQuery<StudentInsights>({
     queryKey: studentStatsKeys.insights(days),
     url: `/api/v1/stats/student/insights?days=${days}`,
@@ -25,5 +25,5 @@ export function useStudentInsightsGate(days: number) {
     staleTime: 60_000,
     enabled: canInsights,
   });
-  return { ...query, canInsights, featuresPending };
+  return { ...query, canInsights, entitlementsPending };
 }

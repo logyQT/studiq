@@ -21,7 +21,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * row, and no other tenant.
  *
  * Acceptance points:
- * 1. `GET /api/v1/features/me` as the student does not contain `stats.insights`
+ * 1. `GET /api/v1/me/entitlements` as the student does not contain `stats.insights`
  *    (the 403s below are the entitlement gate, not a persona rule).
  * 2. `/app/stats/activity` renders the descriptive stat cards („Powtórki w tym
  *    tygodniu”, „Poprawne”, „Do powtórki dziś”) and the daily-activity card, and
@@ -100,11 +100,11 @@ test.describe('@case:STU-54 @area:STU @prio:P2 free student sees descriptive sta
     await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
 
     // --- Precondition: the entitlement, not the persona, is the reason ------
-    const featuresResponse = await page.request.get('/api/v1/features/me');
-    expect(featuresResponse.status(), 'GET /api/v1/features/me as the student').toBe(200);
-    const features = await json<ApiEnvelope<{ features: string[] }>>(featuresResponse);
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements as the student').toBe(200);
+    const entitlements = await json<ApiEnvelope<{ entitlements: string[] }>>(entitlementsResponse);
     expect(
-      features.data.features,
+      entitlements.data.entitlements,
       'launch org + base personal plan resolve no stats.insights',
     ).not.toContain('stats.insights');
 

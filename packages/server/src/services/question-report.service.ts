@@ -112,19 +112,19 @@ export class QuestionReportService {
         recipientId = group.created_by;
       } else {
         // An ownerless group routes to the first org member whose role holds
-        // `org.report.manage` (the inbox key) — never a role-name lookup.
-        const { data: manager } = await supabase
-          .from('org_members')
-          .select('user_id, org_roles!inner(org_role_permissions!inner(permission_key, scope))')
-          .eq('organization_id', group.organization_id)
-          .eq('org_roles.org_role_permissions.permission_key', 'org.report.manage')
-          .not('org_roles.org_role_permissions.scope', 'is', null)
-          .order('joined_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
+        // `org.report.manage` (the inbox key) — never a role-name lookup. The
+        // roster read moves to the org_report_recipient RPC: a learner
+        // reporting a question holds no staff key, so under the narrowed
+        // org_members SELECT the embedded lookup would return 0 rows and the
+        // learner could not report at all (the reader moves, not the policy).
+        const { data: recipient, error: recipientError } = await supabase.rpc(
+          'org_report_recipient',
+          { p_organization_id: group.organization_id },
+        );
 
-        if (!manager) return failure('NOT_FOUND');
-        recipientId = manager.user_id;
+        if (recipientError) return toDbFailure(recipientError);
+        if (!recipient) return failure('NOT_FOUND');
+        recipientId = recipient;
       }
 
       organizationId = group.organization_id;

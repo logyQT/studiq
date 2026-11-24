@@ -38,6 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useState } from 'react';
@@ -48,6 +49,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { usePermission } from '@/hooks/use-permission';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { invalidateAuthority } from '@/lib/query-cache';
 import { isArrayOf } from '@/lib/unknown-value';
 
 /** The closed catalog, grouped by key family: content families, then groups, then org. */
@@ -108,10 +110,11 @@ interface RolePermission {
 
 export default function RolesPage() {
   const t = useTranslations('ManageRolesPage');
+  const queryClient = useQueryClient();
   const permission = usePermission();
   const { activeOrg } = useOrgs();
   // The write gate is `org.role.manage` (ADR-0015 §4.4). `usePermission()` is a
-  // provisional `false` until /permissions/me resolves, so the write affordances
+  // provisional `false` until `/me/permissions` resolves, so the write affordances
   // stay fail-closed; the list is ungated and stays readable for every member.
   const canBuild = permission('org.role.manage', { orgId: activeOrg?.id });
   const [data, setData] = useState<OrgRole[] | null>(null);
@@ -149,6 +152,9 @@ export default function RolesPage() {
       setEditing(null);
       setCreating(false);
       void load();
+      // A role change can change what its holders may reach, and the editor's
+      // own authority is not exempt from a colleague's edit (ADR-0015 §7.1).
+      invalidateAuthority(queryClient);
     } catch {
       toast.error(t(id ? 'update_failed' : 'create_failed'));
     }
@@ -160,6 +166,7 @@ export default function RolesPage() {
       toast.success(t('role_deleted'));
       setDeleting(null);
       void load();
+      invalidateAuthority(queryClient);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'FORBIDDEN') {
         toast.error(t('cant_delete_system'));
@@ -197,6 +204,9 @@ export default function RolesPage() {
       setPermDialogOpen(false);
       setPermRole(null);
       void load();
+      // The saved role may be the caller's own (refused server-side) or a
+      // colleague's: either way the nav and the editor gate must re-ask.
+      invalidateAuthority(queryClient);
     } catch {
       toast.error(t('perms_save_failed'));
     }

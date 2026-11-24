@@ -148,34 +148,25 @@ describe('QuestionReportService', () => {
       );
     });
 
-    it('routes a report on an ownerless group to the first member whose role holds org.report.manage', async () => {
+    it('routes a report on an ownerless group to the org_report_recipient RPC', async () => {
       const group = { id: 'g-1', created_by: null, organization_id: 'org-1' };
-      const manager = { user_id: 'manager-1' };
       const report = { id: 'r-1', group_id: 'g-1', reported_by: 'student-1' };
       const insertReport = qb(report);
-      const fallbackQuery = qb(manager);
       mock.from.mockReturnValueOnce(qb(group)); // fetch group
-      mock.from.mockReturnValueOnce(fallbackQuery); // find the report manager
       mock.from.mockReturnValueOnce(insertReport); // insert report
       mock.from.mockReturnValueOnce(qb(undefined)); // insert message
+      mock.rpc.mockResolvedValue({ data: 'manager-1', error: null });
 
       const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(true);
-      // The fallback keys on the org.report.manage permission row, never a role name.
-      expect(fallbackQuery.select).toHaveBeenCalledWith(
-        'user_id, org_roles!inner(org_role_permissions!inner(permission_key, scope))',
-      );
-      expect(fallbackQuery.eq).toHaveBeenCalledWith(
-        'org_roles.org_role_permissions.permission_key',
-        'org.report.manage',
-      );
-      expect(fallbackQuery.not).toHaveBeenCalledWith(
-        'org_roles.org_role_permissions.scope',
-        'is',
-        null,
-      );
-      expect(fallbackQuery.order).toHaveBeenCalledWith('joined_at', { ascending: true });
+      // The roster read moved to the definer RPC: a learner reporting a
+      // question holds no staff key, so the embedded org_members lookup would
+      // return 0 rows under the narrowed SELECT policy (5e-2).
+      expect(mock.rpc).toHaveBeenCalledWith('org_report_recipient', {
+        p_organization_id: 'org-1',
+      });
+      expect(mock.from).not.toHaveBeenCalledWith('org_members');
       expect(insertReport.insert).toHaveBeenCalledWith(
         expect.objectContaining({ teacher_id: 'manager-1' }),
       );
@@ -184,12 +175,22 @@ describe('QuestionReportService', () => {
     it('returns NOT_FOUND when an ownerless group has no org.report.manage holder to route to', async () => {
       const group = { id: 'g-1', created_by: null, organization_id: 'org-1' };
       mock.from.mockReturnValueOnce(qb(group));
-      mock.from.mockReturnValueOnce(qb(null, null));
+      mock.rpc.mockResolvedValue({ data: null, error: null });
 
       const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns a DB failure when the org_report_recipient RPC errors', async () => {
+      const group = { id: 'g-1', created_by: null, organization_id: 'org-1' };
+      mock.from.mockReturnValueOnce(qb(group));
+      mock.rpc.mockResolvedValue({ data: null, error: { code: 'XX000', message: 'boom' } });
+
+      const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
+
+      expect(result.success).toBe(false);
     });
 
     it('returns BAD_REQUEST when reporting a group the user themselves created', async () => {

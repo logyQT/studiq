@@ -1,4 +1,4 @@
-import { AccountType, type LimitKey, type RequestContext } from '@studiq/authz';
+import { AccountType, LIMIT_KEYS, type LimitKey, type RequestContext } from '@studiq/authz';
 import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -223,6 +223,14 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     const { limits } = await resolver.resolveEntitlements(baseCtx);
 
     expect(limits.max_flashcards).toBe(0);
+  });
+
+  it('ships every catalog limit key, so a quota-0 key is explainable from one payload', async () => {
+    mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: {} } });
+
+    const { limits } = await resolver.resolveEntitlements(baseCtx);
+
+    expect(Object.keys(limits).toSorted()).toEqual([...LIMIT_KEYS].toSorted());
   });
 
   it('unlimited -1 short-circuits the max and wins over every finite layer', async () => {

@@ -30,7 +30,7 @@ import { UserMenu } from '@/components/layout/user-menu';
 import { NavMain } from '@/components/nav-main';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
+import { useEntitlement } from '@/hooks/use-entitlement';
 import { usePermission } from '@/hooks/use-permission';
 import { questionReportKeys } from '@/lib/query-keys';
 import { type SidebarSection, sectionsWithBadge, visibleNavItems } from '@/lib/sidebar-nav';
@@ -144,7 +144,7 @@ export function currentSections(pathname: string): SidebarSection[] {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const feature = useFeature();
+  const entitlement = useEntitlement();
   const permission = usePermission();
 
   const { data: reportsUnread } = useApiQuery<{ count: number }>({
@@ -154,7 +154,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     staleTime: 30 * 1000,
   });
 
-  const gates = { feature, permission };
+  const gates = { feature: entitlement, permission };
   const groups = sectionsWithBadge(
     currentSections(pathname),
     (section) => visibleNavItems(section.items, gates),

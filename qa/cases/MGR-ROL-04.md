@@ -37,7 +37,7 @@ bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. Zapisu ról nie warunkuje już plan: `/api/v1/permissions/me`
+  tenanta na plan Hub. Zapisu ról nie warunkuje już plan: `/api/v1/me/permissions`
   administratora zwraca `org.role.manage` z roli `admin`.
 - Mapowanie skrótów z ręcznego seeda: M1 → `users.manager` (admin organizacji), T1 →
   `users.teacher`, S1 → `users.student`.

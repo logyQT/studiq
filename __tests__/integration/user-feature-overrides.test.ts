@@ -42,7 +42,7 @@ describe('User feature override expiry', () => {
       accountType: AccountType.STUDENT,
       activeOrgId: null,
       orgRoleId: null,
-      url: '/api/v1/features/me',
+      url: '/api/v1/me/entitlements',
       method: 'GET',
       groupIds: [],
       permissionScopes: {},
@@ -142,7 +142,7 @@ describe('User feature override expiry', () => {
     ]);
   });
 
-  it('enforces expiry through the resolved set as well as features/me', async () => {
+  it('enforces expiry through the resolved set as well as /me/entitlements', async () => {
     await setOverride(GRANT_KEY, true, fromNow(-DAY_MS));
 
     const { entitlements } = await resolver.resolveEntitlements(ctx());

@@ -53,7 +53,7 @@ bun scripts/qa-tenant.ts ONB-05 --profile bare --role student --fresh
   paska bocznego Główne / Nauka / Treści / Statystyki) i nic nie przekierowuje na
   `/setup` — strażnik onboardingu dotyczy tylko kont `educator`/`manager`. Odświeżenie
   `/app` również zostaje na `/app`. `GET /api/v1/me/orgs` zwraca `[]`, a
-  `/api/v1/stats/student/overview`, `/api/v1/assignments` i `/api/v1/features/me`
+  `/api/v1/stats/student/overview`, `/api/v1/assignments` i `/api/v1/me/entitlements`
   odpowiadają `200` dla konta bez organizacji.
 - Góra paska bocznego to przełącznik organizacji w stanie samodzielnym: „StudiQ”
   z wierszem roli „Student” pod spodem (brak nazwy organizacji i awatara).

@@ -19,10 +19,10 @@ async function login(page: Page, email: string, landing: RegExp) {
 
 /** Live entitlement, so the spec documents both states without hardcoding a seed. */
 async function aiChatEntitled(page: Page): Promise<boolean> {
-  const res = await page.request.get('/api/v1/features/me');
+  const res = await page.request.get('/api/v1/me/entitlements');
   expect(res.status()).toBe(200);
-  const { features } = (await json<{ data: { features: string[] } }>(res)).data;
-  return features.includes('ai.chat');
+  const { entitlements } = (await json<{ data: { entitlements: string[] } }>(res)).data;
+  return entitlements.includes('ai.chat');
 }
 
 /**
@@ -35,14 +35,19 @@ async function aiChatEntitled(page: Page): Promise<boolean> {
  * plan-gate suite.
  */
 async function mockAiChatEntitled(page: Page) {
-  await page.route('**/api/v1/features/me', (route) =>
+  await page.route('**/api/v1/me/entitlements', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         success: true,
         statusCode: 200,
-        data: { features: ['ai.chat'] },
+        data: {
+          orgId: 'mock-org',
+          entitlements: ['ai.chat'],
+          limits: {},
+          plan: { primary: 'mock', sources: [] },
+        },
       }),
     }),
   );
@@ -177,12 +182,14 @@ test.describe('AI assistant routes (#134)', () => {
 
     // Derive the expectation from the live entitlement instead of the seed, so the
     // test stays valid whether or not the fixture account has ai.chat.
-    const featuresResponse = await page.request.get('/api/v1/features/me');
-    expect(featuresResponse.status()).toBe(200);
-    const { features } = (await json<{ data: { features: string[] } }>(featuresResponse)).data;
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status()).toBe(200);
+    const { entitlements } = (
+      await json<{ data: { entitlements: string[] } }>(entitlementsResponse)
+    ).data;
 
     const aiNav = page.getByRole('link', { name: t('DashboardLayout.ai_chat') });
-    if (features.includes('ai.chat')) {
+    if (entitlements.includes('ai.chat')) {
       await expect(aiNav).toHaveCount(1);
       await aiNav.click();
       await page.waitForURL(/\/edu\/ai$/);
@@ -311,10 +318,15 @@ test.describe('AI assistant deck context (#386)', () => {
   test('deck toolbar keeps the dashboard and forwards deckId', async ({ page }) => {
     await login(page, STUDENT_EMAIL, /\/app/);
 
-    const featuresResponse = await page.request.get('/api/v1/features/me');
-    expect(featuresResponse.status()).toBe(200);
-    const { features } = (await json<{ data: { features: string[] } }>(featuresResponse)).data;
-    test.skip(!features.includes('ai.chat'), 'ai.chat is not entitled for this fixture account');
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status()).toBe(200);
+    const { entitlements } = (
+      await json<{ data: { entitlements: string[] } }>(entitlementsResponse)
+    ).data;
+    test.skip(
+      !entitlements.includes('ai.chat'),
+      'ai.chat is not entitled for this fixture account',
+    );
 
     await page.goto(`/app/flashcards/${STUDENT_DECK_ID}`);
     await page.getByRole('button', { name: t('AppFlashcardDeckViewPage.generate') }).click();
@@ -326,10 +338,15 @@ test.describe('AI assistant deck context (#386)', () => {
   test('educator deck toolbar links to /edu/ai instead of /app/ai', async ({ page }) => {
     await login(page, TEACHER_EMAIL, /\/edu/);
 
-    const featuresResponse = await page.request.get('/api/v1/features/me');
-    expect(featuresResponse.status()).toBe(200);
-    const { features } = (await json<{ data: { features: string[] } }>(featuresResponse)).data;
-    test.skip(!features.includes('ai.chat'), 'ai.chat is not entitled for this fixture account');
+    const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
+    expect(entitlementsResponse.status()).toBe(200);
+    const { entitlements } = (
+      await json<{ data: { entitlements: string[] } }>(entitlementsResponse)
+    ).data;
+    test.skip(
+      !entitlements.includes('ai.chat'),
+      'ai.chat is not entitled for this fixture account',
+    );
 
     await page.goto(`/edu/flashcards/${TEACHER_DECK_ID}`);
     await page.getByRole('button', { name: t('EduDeckViewPage.generate') }).click();

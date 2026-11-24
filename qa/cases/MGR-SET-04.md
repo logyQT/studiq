@@ -35,7 +35,7 @@ bun scripts/qa-tenant.ts MGR-SET-04 --fresh
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
   organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
-  z profilem `all` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
+  z profilem `all` dostaje `branding`; `/api/v1/me/entitlements` zwraca tę funkcję, a
   `/manage/settings` pokazuje kontrolki logo i koloru marki zamiast karty blokady.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.

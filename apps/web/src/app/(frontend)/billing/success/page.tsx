@@ -12,6 +12,7 @@ import type { OrgMembership } from '@/hooks/use-orgs';
 import { apiGet, apiPost } from '@/lib/api';
 import { dashboardPathForAccountType, pollBillingActivation } from '@/lib/billing-success';
 import { activatedPlanLabel } from '@/lib/billing-subscription';
+import { invalidateAuthority } from '@/lib/query-cache';
 
 type SuccessState = 'processing' | 'activated' | 'timeout' | 'redirecting';
 
@@ -27,8 +28,8 @@ function accountTypeOf(user: { app_metadata?: Record<string, unknown> } | null):
  * names one), reconcile once to verify ownership and reuse the idempotent
  * activation path, then poll the shared read model for up to ~15 s.
  *
- * The mock checkout (`?redirect=auto`, no `session_id`) keeps the old 3-second
- * dashboard redirect.
+ * The mock checkout (`?redirect=auto`, no `session_id`) drops the authority
+ * caches and keeps the old 3-second dashboard redirect.
  */
 function BillingSuccessContent() {
   const t = useTranslations('BillingSuccessPage');
@@ -51,6 +52,10 @@ function BillingSuccessContent() {
     if (isAuthLoading) return () => {};
 
     if (!sessionId) {
+      // A mock checkout stays in the SPA and returns here, so nothing else
+      // drops the pre-purchase authority caches before the redirect — without
+      // this the dashboard renders the old entitlement set and plan badge.
+      invalidateAuthority(queryClient);
       const timer = setTimeout(() => router.push(dashboardPath), 3_000);
       return () => clearTimeout(timer);
     }

@@ -23,7 +23,7 @@ export type NavItem = {
   icon?: LucideIcon;
   children?: { titleKey: string; href: string }[];
   feature?: string;
-  /** A catalog key `/permissions/me` must carry for the active org (ADR-0015 §7.1). */
+  /** A catalog key `/me/permissions` must carry for the active org (ADR-0015 §7.1). */
   permission?: string;
   badge?: number;
 };

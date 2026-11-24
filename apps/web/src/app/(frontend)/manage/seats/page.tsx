@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useState } from 'react';
@@ -37,6 +38,7 @@ import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { invalidateAuthority } from '@/lib/query-cache';
 import { poolsForPersona, purchasableSeatPlans } from '@/lib/seats';
 
 interface Pool {
@@ -71,6 +73,7 @@ const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
   const locale = useLocale();
+  const queryClient = useQueryClient();
   const { data: plans } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active'],
     url: '/api/v1/subscription-plans',
@@ -135,6 +138,10 @@ export default function ManageSeatsPage() {
       setSelectedUserId('');
       setSelectedPoolId('');
       loadData();
+      // A seat changes this caller's effective entitlement set and the seat
+      // pools; only this client's caches are dropped here. The seated member
+      // sees their new set on the next refetch on focus (≤60 s).
+      invalidateAuthority(queryClient);
     } catch (error) {
       toast.error(
         error instanceof ApiError && error.code === 'USAGE_LIMIT_EXCEEDED'
@@ -160,6 +167,7 @@ export default function ManageSeatsPage() {
 
       toast.success(t('unassign_success'));
       loadData();
+      invalidateAuthority(queryClient);
     } catch {
       toast.error(t('unassign_failed'));
     } finally {
@@ -181,6 +189,7 @@ export default function ManageSeatsPage() {
       setPurchasePlanKey('');
       setPurchaseQtyInput('1');
       loadData();
+      invalidateAuthority(queryClient);
     } catch (error) {
       toast.error(
         error instanceof ApiError && error.code === 'UNPROCESSABLE_ENTITY'

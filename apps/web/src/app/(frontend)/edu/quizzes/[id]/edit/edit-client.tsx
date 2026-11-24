@@ -36,8 +36,8 @@ import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question
 import { PlanLockedCard } from '@/components/shared/plan-locked-card';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
+import { useEntitlement } from '@/hooks/use-entitlement';
+import { useEntitlements } from '@/hooks/use-entitlements';
 import { parsePointsInput } from '@/lib/quiz-editor';
 import { apiPut } from '@/lib/api';
 import { quizKeys } from '@/lib/query-keys';
@@ -249,8 +249,8 @@ export function EditQuizClient() {
   // While the features query is in flight the check is provisional, so the
   // pending state shares the loading skeleton and an entitled teacher never
   // flashes the locked card.
-  const canTemplates = useFeature()('quiz.templates');
-  const { isPending: featuresPending } = useFeatures();
+  const canTemplates = useEntitlement()('quiz.templates');
+  const { isPending: entitlementsPending } = useEntitlements();
 
   // The quiz name is the breadcrumb label; the raw quiz UUID must never render.
   useBreadcrumbLabel(id, quiz?.name);
@@ -416,7 +416,7 @@ export function EditQuizClient() {
 
   const existingIds = new Set(questions.map((q) => q.question_id));
 
-  if (isLoading || featuresPending) {
+  if (isLoading || entitlementsPending) {
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />

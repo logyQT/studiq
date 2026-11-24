@@ -29,7 +29,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
+import { useEntitlement } from '@/hooks/use-entitlement';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
 import { quizAttemptKeys, topicKeys } from '@/lib/query-keys';
@@ -69,8 +69,8 @@ export function QuizContent() {
   const locale = useLocale();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const feature = useFeature();
-  const hasAccess = feature('quiz');
+  const entitlement = useEntitlement();
+  const hasAccess = entitlement('quiz');
   const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const { data: attemptsData, isLoading: attemptsLoading } = useApiQuery<QuizAttempt[]>({

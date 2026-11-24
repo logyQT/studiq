@@ -3,7 +3,9 @@ import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
   assignmentKeys,
+  entitlementKeys,
   flashcardKeys,
+  permissionKeys,
   questionKeys,
   teacherStatsKeys,
   topicKeys,
@@ -225,5 +227,45 @@ describe('teacher dashboard query keys', () => {
 
   it('separates group results for different windows', () => {
     expect(teacherStatsKeys.groups('org-a', 30)).not.toEqual(teacherStatsKeys.groups('org-a', 7));
+  });
+});
+
+/**
+ * ADR-0015 §7.1: the two authority payloads are resolved from the active org's
+ * role/plan, so their cache entries are partitioned by that org. These pin the
+ * partition itself — a key factory that returned one constant would make an org
+ * switch render the previous org's answer until the refetch landed (design §3.4).
+ */
+describe('authority query keys', () => {
+  const orgA = '0f0f0f0f-0000-4000-8000-00000000000a';
+  const orgB = '0f0f0f0f-0000-4000-8000-00000000000b';
+
+  it('partitions the permissions map by org', () => {
+    expect(permissionKeys.org(orgA)).toEqual(['permissions', orgA]);
+    expect(permissionKeys.org(orgA)).not.toEqual(permissionKeys.org(orgB));
+  });
+
+  it('partitions the entitlement set by org', () => {
+    expect(entitlementKeys.org(orgA)).toEqual(['entitlements', orgA]);
+    expect(entitlementKeys.org(orgA)).not.toEqual(entitlementKeys.org(orgB));
+  });
+
+  it('gives the personal (no-org) answer its own segment, never null/undefined', () => {
+    expect(entitlementKeys.org(null)).toEqual(['entitlements', 'personal']);
+    expect(permissionKeys.org(null)).toEqual(['permissions', 'personal']);
+    // Before `/me/orgs` settles the id is undefined: that must not collide with
+    // a real org, and it must still be a keyed (enabled) query (#1125).
+    expect(permissionKeys.org(undefined)).toEqual(['permissions', 'personal']);
+    expect(entitlementKeys.org(undefined)).toEqual(['entitlements', 'personal']);
+    expect(entitlementKeys.org(null)).not.toEqual(entitlementKeys.org(orgA));
+  });
+
+  it('keeps the family prefix, so one invalidation reaches every org entry', () => {
+    expect(permissionKeys.org(orgA).slice(0, permissionKeys.all.length)).toEqual([
+      ...permissionKeys.all,
+    ]);
+    expect(entitlementKeys.org(orgB).slice(0, entitlementKeys.all.length)).toEqual([
+      ...entitlementKeys.all,
+    ]);
   });
 });

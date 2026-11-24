@@ -12,9 +12,9 @@ export interface SidebarGates {
 
 /**
  * What the sidebar renders for one section list: an item with no gate always
- * shows, a `permission` item shows while `/permissions/me` carries that key (the
- * `group.read` the class routes enforce), a `feature` item while `/features/me`
- * carries its entitlement.
+ * shows, a `permission` item shows while `/me/permissions` carries that key (the
+ * `group.read` the class routes enforce), a `feature` item while
+ * `/me/entitlements` carries its entitlement.
  *
  * The permission answer is "is the key in the map", not a scoped evaluation:
  * most keys are granted at `group` or `organization` scope, and a `group`-scope

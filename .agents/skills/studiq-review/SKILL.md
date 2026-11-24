@@ -83,7 +83,7 @@ rg -n "withAuth|routeRules|Permission\.|usePermission|feature\(" <paths>
 Check the shape a StudiQ change must keep: route → controller → model → service,
 `withAuth()` on every non-public API route, `routeRules` for a new UI route,
 `Permission` + `accessibleFilter`/RLS for data scoping, `usePermission`/
-`useFeature` for UI gating, keys in **both** `pl.json` and `en.json`, a migration in
+`useEntitlement` for UI gating, keys in **both** `pl.json` and `en.json`, a migration in
 `supabase/migrations/` for every schema change.
 
 **If the PR claims a fix is pinned, prove the pin.** In the review worktree, on a
@@ -217,7 +217,7 @@ make a user-visible claim `PASS`.
 | --- | --- | --- |
 | Account type & role | student/educator/manager on their own surface and on another's route; no cross-role data or 404/500 instead of a redirect | AUT-15…AUT-19 |
 | Org isolation | switch active org (`POST /api/v1/me/orgs/switch`); no rows from the other org; nullable-org personal content still visible | SEC-02, SEC-04, ONB-07 |
-| Plan & feature gates | gated action hidden or `402 FEATURE_REQUIRES_UPGRADE`; limit hit → `USAGE_LIMIT_EXCEEDED`; flags from `/api/v1/features/me` | LIM-02, LIM-04, LIM-05, STU-45 |
+| Plan & feature gates | gated action hidden or `402 FEATURE_REQUIRES_UPGRADE`; limit hit → `USAGE_LIMIT_EXCEEDED`; flags from `/api/v1/me/entitlements` | LIM-02, LIM-04, LIM-05, STU-45 |
 | Permissions, deep links, API | direct URL and direct `curl` with a lower role; `withAuth` on every non-public route; IDOR on another user's id; RLS on new tables | SEC-01, SEC-05, SEC-08, SEC-13 |
 | Empty / loading / error / offline | brand-new account with no content; slow/failed request; network off → message, not a blank screen | NFR-06, NFR-07 |
 | i18n PL/EN | key present in both catalogues, no hard-coded copy, no raw key; switch locale without reload losing state | NFR-01, NFR-02 |
