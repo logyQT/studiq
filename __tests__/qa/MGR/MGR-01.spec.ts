@@ -11,17 +11,33 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *   bun scripts/qa-tenant.ts MGR-01 --fresh
  *
  * gives the organization `qa-mgr-01-<hash>` with one account per account type
- * (`tenantKey('qa/cases/MGR-01.md', 'MGR-01#<suffix>', 'qa-shared')`). The seeder
- * enrolls every member with the system `member` role, so the educator is an org
- * *student* until a manager promotes it. The case's dataset is a manager, an
- * educator and a student, and the dashboard counts Wykładowcy/Studenci by the
- * member's org role — so each test promotes the seeded educator to the org
- * `teacher` role through the same `PUT /api/v1/organization/members` the
- * `/manage/members` page calls. That write is tenant-local and idempotent; it is
- * the only reason the counters are 3 / 1 / 1 instead of 3 / 0 / 2.
+ * (`tenantKey('qa/cases/MGR-01.md', 'MGR-01#<suffix>', 'qa-shared')`) and real org
+ * roles: the manager is `admin` (`entitlement_profile='all'`), the educator is
+ * `teacher` (`all`) and the student is `member` (`learner`).
+ *
+ * Since phase 6b-2 the dashboard classifies by the role's **entitlement
+ * profile**, not by `orgRoleName`: `learner` = Studenci, everyone else =
+ * Wykładowcy (the admin included). With the seeded roles that is 3 / 2 / 1, and
+ * no role promotion is needed any more. The second half of the first test pins
+ * it: a **custom** role named something other than `member` with
+ * `entitlement_profile='learner'` is assigned to the educator, and the counters
+ * must move to 3 / 1 / 2 — a name-based classification cannot produce that.
+ *
+ * Walk: **the data contract was measured, the UI was not walked in the
+ * implementer's worktree.** 2026-11-24 on base `999c45ab` + the uncommitted
+ * change, against the served app on :3000 (whose build predates this branch):
+ * a fresh `content` tenant was seeded for AUT-20 and its roster read as the
+ * manager returned `admin`/`all`, `teacher`/`all`, `member`/`learner` with
+ * `accountType` `manager`/`educator`/`student` — so the seeded counters are
+ * 3 staff / 1 learner and the custom-role case moves one of them. The counters'
+ * page logic was read from the code: `/manage` filters
+ * `entitlementProfile === 'learner'` for Studenci. The coordinator runs the UI
+ * walk on this branch's build and should replace this paragraph with the dated
+ * record.
  *
  * Nothing global is read or written: no admin setting, feature flag, plan,
- * platform stat or singleton row.
+ * platform stat or singleton row. The custom role and the membership change live
+ * in this tenant's own organization.
  */
 
 const CASE = 'MGR-01';
@@ -44,17 +60,21 @@ const COPY = {
 } as const;
 
 /**
- * The seeded tenant graph is one admin + one educator + one student. With the
- * educator on the org `teacher` role the dashboard must show 3 total, 1 teacher
- * and 1 student: the admin is counted in the total only.
+ * The seeded `content` tenant: admin (`all`) + educator (`all`) count as staff,
+ * the student (`learner`) as a learner. The admin is counted in the total only,
+ * never as a third learner.
  */
-const EXPECTED = { total: 3, teachers: 1, students: 1 } as const;
+const SEEDED = { total: 3, staff: 2, learners: 1 } as const;
+
+/** After the educator moves to a custom `learner` role: one staff, two learners. */
+const AFTER_CUSTOM_LEARNER = { total: 3, staff: 1, learners: 2 } as const;
 
 interface OrgMember {
   id: string;
   email: string;
   full_name: string | null;
   orgRoleName: string;
+  entitlementProfile: 'all' | 'learner' | 'none';
   orgRoleId: string;
   created_at: string;
 }
@@ -87,39 +107,37 @@ async function listMembers(page: Page): Promise<OrgMember[]> {
 }
 
 /**
- * Make the educator's org role match the tenant's intent: the seeded `content`
- * profile enrolls everyone as `member`, and the dashboard counts Wykładowcy by
- * the `teacher` org role. Runs before any route stub, and is a no-op on a tenant
- * that is already in shape.
+ * Create a custom role whose *name* is not `member` and whose entitlement profile
+ * is `learner`, then put the educator on it. This is the pin against a
+ * name-based classification: the role row, not its label, says who is a student.
  */
-async function ensureEducatorIsTeacher(page: Page, tenant: QaTenant): Promise<void> {
-  const educator = tenant.users.teacher;
-  if (!educator) throw new Error(`${CASE} needs the content tenant profile (teacher account)`);
+async function moveEducatorToCustomLearnerRole(page: Page, tenant: QaTenant): Promise<string> {
+  const educator = tenantUser(tenant, 'teacher');
+  const roleName = `mgr01-learner-${Date.now().toString(36)}`;
 
-  const members = await listMembers(page);
-  const member = members.find((candidate) => candidate.email === educator.email);
-  expect(member, 'the seeded educator is an organization member').toBeTruthy();
-  if (member!.orgRoleName === 'teacher') return;
-
-  const rolesResponse = await page.request.get('/api/v1/organization/roles');
-  expect(rolesResponse.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const rolesBody = await json<{
+  const created = await page.request.post('/api/v1/organization/roles', {
+    data: { name: roleName, entitlementProfile: 'learner', template: 'blank' },
+  });
+  expect(created.status(), 'POST /api/v1/organization/roles').toBe(201);
+  const createdBody = await json<{
     success: boolean;
-    data: Array<{ id: string; name: string }>;
-  }>(rolesResponse);
-  const teacherRole = rolesBody.data.find((role) => role.name === 'teacher');
-  expect(teacherRole, 'the organization has the system teacher role').toBeTruthy();
+    data: { id: string; name: string; entitlementProfile: string };
+  }>(created);
+  expect(createdBody.data).toMatchObject({ name: roleName, entitlementProfile: 'learner' });
+
+  const member = (await listMembers(page)).find((candidate) => candidate.email === educator.email);
+  expect(member, 'the seeded educator is an organization member').toBeTruthy();
 
   const update = await page.request.put('/api/v1/organization/members', {
-    data: { targetUserId: member!.id, newOrgRoleId: teacherRole!.id },
+    data: { targetUserId: member!.id, newOrgRoleId: createdBody.data.id },
   });
   expect(update.status(), 'PUT /api/v1/organization/members').toBe(200);
 
-  const after = await listMembers(page);
-  expect(
-    after.find((candidate) => candidate.email === educator.email)?.orgRoleName,
-    'the educator now holds the org teacher role',
-  ).toBe('teacher');
+  const after = (await listMembers(page)).find((candidate) => candidate.email === educator.email);
+  expect(after?.orgRoleName, 'the educator holds the custom role by name').toBe(roleName);
+  expect(after?.entitlementProfile, 'and its learner profile is what travels').toBe('learner');
+
+  return roleName;
 }
 
 /** Sign in as the tenant manager with this case's organization active. */
@@ -135,7 +153,7 @@ async function signInAsManager(page: Page, tenant: QaTenant): Promise<void> {
     .addCookies([{ name: 'active_org_id', value: orgId, domain: HOST, path: '/', httpOnly: true }]);
 }
 
-test('counts members by org role and links the quick actions and the recent list', async ({
+test('counts members by role entitlement profile and links the quick actions and the recent list', async ({
   page,
 }) => {
   const tenant = loadTenant(CASE);
@@ -145,29 +163,42 @@ test('counts members by org role and links the quick actions and the recent list
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await signInAsManager(page, tenant);
-  await ensureEducatorIsTeacher(page, tenant);
 
   // --- Step 1: /manage ----------------------------------------------------
   await page.goto('/manage');
   await expect(page).toHaveURL(/\/manage$/, { timeout: 20_000 });
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-  // --- Step 2: the three counters ----------------------------------------
-  // The server state the cards must mirror: 1 admin, 1 teacher, 1 student.
+  // --- Step 2: the three counters, from the seeded role profiles ----------
+  // The server state the cards mirror: 1 admin, 1 teacher, 1 student.
   const members = await listMembers(page);
-  expect(members, 'organization members').toHaveLength(EXPECTED.total);
-  expect(
-    members.filter((member) => member.orgRoleName === 'teacher'),
-    'teachers in the organization',
-  ).toHaveLength(EXPECTED.teachers);
-  expect(
-    members.filter((member) => member.orgRoleName === 'member'),
-    'students in the organization',
-  ).toHaveLength(EXPECTED.students);
+  expect(members, 'organization members').toHaveLength(SEEDED.total);
 
-  await expectStat(page, COPY.statTotal, EXPECTED.total);
-  await expectStat(page, COPY.statTeachers, EXPECTED.teachers);
-  await expectStat(page, COPY.statStudents, EXPECTED.students);
+  // The classification field itself is a read the UI does not hand this spec:
+  // the roster carries each role's profile, so a dashboard that names the role
+  // instead is visibly wrong.
+  const profile = (email: string) =>
+    members.find((member) => member.email === email)?.entitlementProfile;
+  expect(profile(tenantUser(tenant, 'manager').email), 'the admin profile').toBe('all');
+  expect(profile(tenantUser(tenant, 'teacher').email), 'the educator profile').toBe('all');
+  expect(profile(tenantUser(tenant, 'student').email), 'the student profile').toBe('learner');
+
+  const staff = members.filter((member) => member.entitlementProfile !== 'learner');
+  const learners = members.filter((member) => member.entitlementProfile === 'learner');
+  expect(staff, 'staff in the organization').toHaveLength(SEEDED.staff);
+  expect(learners, 'learners in the organization').toHaveLength(SEEDED.learners);
+
+  await expectStat(page, COPY.statTotal, SEEDED.total);
+  await expectStat(page, COPY.statTeachers, SEEDED.staff);
+  await expectStat(page, COPY.statStudents, SEEDED.learners);
+
+  // --- Step 2b: a custom `learner` role is a student, whatever it is called -
+  await moveEducatorToCustomLearnerRole(page, tenant);
+  await page.reload();
+
+  await expectStat(page, COPY.statTotal, AFTER_CUSTOM_LEARNER.total);
+  await expectStat(page, COPY.statTeachers, AFTER_CUSTOM_LEARNER.staff);
+  await expectStat(page, COPY.statStudents, AFTER_CUSTOM_LEARNER.learners);
 
   // --- Step 3: quick actions reach the real screens ----------------------
   const quickActions = page.locator('[data-slot="card"]').filter({ hasText: COPY.quickActions });
@@ -194,10 +225,11 @@ test('counts members by org role and links the quick actions and the recent list
 
   // Same comparator the card uses (newest profile first, at most five rows), so
   // the expectation is derived from the tenant's own members, not a fixture list.
-  const expectedRecent = [...members]
+  const current = await listMembers(page);
+  const expectedRecent = [...current]
     .toSorted((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5);
-  expect(expectedRecent.length, 'the tenant has at most five members').toBe(EXPECTED.total);
+  expect(expectedRecent.length, 'the tenant has at most five members').toBe(SEEDED.total);
 
   const rows = recentRows(page);
   await expect(rows).toHaveCount(expectedRecent.length);
@@ -213,7 +245,7 @@ test('counts members by org role and links the quick actions and the recent list
   }
 
   // The admin appears in the list (and in the total) with the admin role, but
-  // never inflates the teacher/student counters asserted above.
+  // never inflates the learner counter asserted above.
   const adminRow = rows.filter({ hasText: tenantUser(tenant, 'manager').email });
   await expect(adminRow).toHaveCount(1);
   await expect(adminRow.locator('span')).toHaveText('admin');
@@ -231,7 +263,6 @@ test('renders the loading placeholder and the empty "Brak członków" state with
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await signInAsManager(page, tenant);
-  await ensureEducatorIsTeacher(page, tenant);
 
   // --- Loading state: hold the members request open ----------------------
   const membersRoute = '**/api/v1/organization/members';
@@ -256,8 +287,8 @@ test('renders the loading placeholder and the empty "Brak członków" state with
 
   releaseMembers();
   await expect(recent.getByText(COPY.loading, { exact: true })).toHaveCount(0);
-  await expect(recentRows(page)).toHaveCount(EXPECTED.total);
-  await expectStat(page, COPY.statTotal, EXPECTED.total);
+  await expect(recentRows(page)).toHaveCount(SEEDED.total);
+  await expectStat(page, COPY.statTotal, SEEDED.total);
 
   // --- Empty state: an organization with no members at all --------------
   // An org with zero members cannot be produced through the product (the

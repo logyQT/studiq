@@ -1,4 +1,4 @@
-# Scenario index — 191 cases
+# Scenario index — 192 cases
 
 Prerequisite ids are greppable: `grep -n "EDU-DECK-03" index.md`.
 Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** every id in its Prereqs column.
@@ -32,6 +32,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | AUT-17      | P1 krytyczny   | Nauczyciel → trasy innych ról                                        | —           | AUT – Uwierzytelnianie i sesja                    |
 | AUT-18      | P1 krytyczny   | Manager → trasy innych ról                                           | —           | AUT – Uwierzytelnianie i sesja                    |
 | AUT-19      | P1 krytyczny   | API bez sesji i z niewłaściwą rolą                                   | —           | AUT – Uwierzytelnianie i sesja                    |
+| AUT-20      | P1 krytyczny   | Zakładka /manage jako członek organizacji (bez dostępu)              | —           | AUT – Uwierzytelnianie i sesja                    |
 | ONB-01      | P2 ważny       | Nauczyciel bez organizacji → /setup                                  | —           | ONB – Onboarding, organizacje i zaproszenia       |
 | ONB-02      | P1 krytyczny   | Utworzenie klasy (bez zaproszeń)                                     | ONB-01      | ONB – Onboarding, organizacje i zaproszenia       |
 | ONB-03      | P2 ważny       | Dołączenie nauczyciela do istniejącej organizacji kodem              | —           | ONB – Onboarding, organizacje i zaproszenia       |
