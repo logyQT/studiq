@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                           | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------------ | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                        | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                        | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                        | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                        | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                        | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                  | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                                  | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
-| 7     | delete, full QA, close                         | pending | —                                                            | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                            | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                                        | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                     | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                     | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                     | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                     | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                     | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                               | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                                               | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                                     | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                          | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 on `feat/authority-6b` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-24 |
+| 7     | delete, full QA, close                         | pending | —                                                                         | —   | all 192 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                                         | —   | all 192 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -46,11 +46,13 @@ API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: 6b-2 (`AreaGate`, nav-item gates, page
-classification, `checkout-org`)**, then 6d (role editor, `/me/plan` union) and
-6e (Teacher assignment reads). 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe`
-(#1427) and 6c `14262016` (#1428) are merged; **6b-1** (route rules,
-`resolveDashboardArea`, landing) is on `feat/authority-6` above the 6c tip.
+mints the claim. **Next slice: 6d (role editor: caller-scope awareness and the
+atomic entitlement-profile write; the `/me/plan` union badge)**, then 6e
+(Teacher assignment reads). 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
+6c `14262016` (#1428) and **6b-1** `999c45ab` (#1429 — route rules,
+`resolveDashboardArea`, the landing) are merged; **6b-2** (`AreaGate`, nav-item
+gates, `/manage` classification, `checkout-org`, AUT-20) is on
+`feat/authority-6b` above the 6b-1 tip.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -5249,8 +5251,8 @@ _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
   `assignment.create`, `assignment.publish`/`grade` stay excluded for the
   reasons in D35.
 
-**6b-1 — the permission-derived shell** (on `feat/authority-6`; no SQL, no
-migration, no new table).
+**6b-1 — the permission-derived shell** (merged as `999c45ab`, #1429; no SQL,
+no migration, no new table).
 
 - **Route rules are auth-only.** `/manage`, `/edu`, `/app` keep `requireAuth` and
   lose `allowedAccountTypes`; `/setup/org` (MANAGER) and `/setup` (EDUCATOR) stay
@@ -5292,9 +5294,96 @@ migration, no new table).
   learner classification and `checkout-org.ts`'s `isOrgAdminRole` (6b-2), which
   also brings the bookmarked-URL no-access case.
 
-**Still open in phase 6:** 6b-2 `AreaGate` + the nav-item gates + the page
-classification + `checkout-org`; 6d role-editor behaviour (caller-scope
-awareness, atomic profile write) and the `/me/plan` union badge; 6e the Teacher
+**6b-2 — the area gate, the nav gates, the page classification and the org
+checkout authority** (on `feat/authority-6b`; no SQL, no migration, no new
+table).
+
+- **`AreaGate`** (`apps/web/src/components/layout/area-gate.tsx`) is §7.1's
+  org-scoped "no access" state, mounted inside `DashboardLayout` in
+  `manage/layout.tsx` (`area="/manage"`) and `edu/layout.tsx` (`area="/edu"`);
+  `/app` has no gate. It resolves `/me/orgs` plus the active org's
+  `['permissions', orgId]` answer and, while either is unresolved **or the
+  answer echoes a different `orgId`** (6a-1's rule), renders a neutral skeleton —
+  no children, no card, no flash and **no redirect**. A resolved map holding none
+  of the area's keys renders the card: the literal „Brak dostępu w tej
+  organizacji” / "No access in this organization", one sentence naming the active
+  organization, and the switcher action — one `Przełącz na {org}` button per
+  _other_ membership, or the `/app` link („Przejdź do swojej przestrzeni”) when
+  there is only one. Buttons disable while `isSwitching`. New i18n namespace
+  `AreaGate` in both locales.
+- **Two predicates, two questions (R47).** `hasAreaAccess(permissions, area)` sits
+  next to `resolveDashboardArea` in `apps/web/src/lib/dashboard-home.ts`.
+  `/manage` is the same nine `MANAGER_AREA_KEYS`; `/edu` is **every
+  `groups`-category key plus every content `.read`**, derived from `PERMISSIONS`
+  (`Object.keys(PERMISSIONS).filter(isPermissionCatalogKey)`) so a new family or
+  `.read` key joins by declaration. The gate is broader than the landing on
+  purpose: the landing answers "where is home" (the three class-management keys),
+  the gate answers "may this caller use anything here", and a Member holds content
+  reads at `group`/`own` while a Billing-preset holder (`org.billing.manage` +
+  `org.seat.manage`) holds none.
+- **Nav entries are any-of.** `NavItem.permission?: string` became
+  `permissions?: readonly string[]` (**any one** shows the entry; `feature` stays
+  for entitlements, and an item declaring both needs both) in
+  `components/nav-main.tsx` + `lib/sidebar-nav.ts`. `app-sidebar.tsx` gates
+  **16** of its **34** entries with `Permission` constants (17 with the
+  pre-existing `ai.chat` entitlement gate): `/manage`'s seven
+  administration entries (roster = D25's four reads; invites; groups =
+  `group.manage`|`group.read`; reports; roles; seats; settings) with only the
+  overview ungated, and `/edu`'s five content entries, the class entry, and the
+  three statistics entries. `/app` is unchanged (own-scope data, no org
+  authority).
+- **`/manage`'s counters read the role's entitlement profile.**
+  `organization-member.service.ts#listMembers` adds `entitlement_profile` to the
+  `org_roles!inner(...)` embed and `toMemberRows` returns `entitlementProfile`;
+  `manage/page.tsx` counts `=== 'learner'` as Studenci and everyone else (admin
+  included) as Wykładowcy. No new query, no migration. `manage/members` and
+  `manage/seats` declare the field on their response types without changing
+  behaviour.
+- **The org checkout keys on billing authority.** `org.service.ts#listOrgs`
+  embeds `org_role_permissions(permission_key)` in the same read and returns
+  `canBill` per row (presence of `org.billing.manage`); `checkout-org.ts` drops
+  `orgRoleName` for `canBill` and renames the refusal `not-admin` →
+  `not-billing` (i18n keys `org_not_billing_*`, both locales). `isOrgAdminRole`
+  is deleted from `@studiq/authz` (the last reader was this file; `ORG_ADMIN_ROLE`
+  stays for the Stripe webhook's ownership write).
+- **Corpus (R6, spec + case text together).** New **AUT-20** (`qa/cases/AUT-20.md`
+  - `__tests__/qa/AUT/AUT-20.spec.ts`, no profile file): a Member's bookmarked
+    `/manage/members` keeps its URL, renders the card, offers the single-org
+    `/app` fallback, hides the administration nav, reads the D25 empty roster and
+    gets `403` on the write; the manager control sees the list and no card. The
+    suite is **192** cases. **MGR-01** is rewritten: the seeded `content` tenant
+    gives the admin and educator `all` and the student `learner`, so the counters
+    are 3 / 2 / 1 with **no role promotion**, and the new pin moves the educator
+    onto a custom role (name ≠ `member`, profile `learner`) through
+    `POST /organization/roles` + `PUT /organization/members` and requires 3 / 1 /
+    2 — a name-based classification cannot produce it.
+- **Gates on this branch.** `typecheck:all` (root 981, web 873, server 220,
+  authz 7, ui 65 files) and `typecheck:admin` (151) 0 errors; `lint` **1574**
+  files 0 warnings; unit **319 files / 4993 passed, 1 skipped**;
+  `review:static`, `knip`, `format:check` and `dup:base` (no new clones) green;
+  `pr:size` **414/400** (676 test + 313 doc lines excluded) — over the budget, so
+  the PR needs `size:exception`; the four-item brief's own ceiling is ~700.
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  `hasAreaAccess`'s `/manage` branch replaced with `false` → "opens both areas to
+  the seeded Admin role" **KILLED**; `/edu`'s content-read arm removed → "opens
+  /edu and not /manage to the seeded Member role" **KILLED** (on the
+  content-reads-only map, because the seeded Member also holds `group.read`);
+  `visibleNavItems`' any-of reduced to `permissions[0]` → "shows an any-of entry
+  when one of its keys is held" **KILLED**; `toMemberRows` carrying `roleName`
+  instead of `entitlement_profile` → "carries the role entitlement profile"
+  **KILLED**; `resolveCheckoutOrg` back on `orgRoleName === 'admin'` → "allows a
+  membership whose role can bill" **KILLED**.
+- **Walk status.** The implementer's worktree served the base commit's build, so
+  the gate and the rewritten MGR-01 spec were **not** walked here; both spec
+  docblocks say so. The API half was measured against the seeded AUT-20 tenant
+  (student `/me/permissions` = 26 keys, no `org.*`; roster `200 {data: []}`;
+  `PUT` `403`; seeded roles `admin`/`all`, `teacher`/`all`, `member`/`learner`).
+  The coordinator runs the UI walk and the two Playwright-level mutation proofs
+  (gate branch removed → AUT-20's card assertion; `/manage` counter filtered on
+  `orgRoleName` → MGR-01's 3 / 1 / 2).
+
+**Still open in phase 6:** 6d role-editor behaviour (caller-scope awareness,
+atomic profile write) and the `/me/plan` union badge; 6e the Teacher
 assignment-read widening.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
@@ -5347,6 +5436,30 @@ the payload test asserts the whole 24-key map instead of one key, and the
 exclusion is proved where it is claimed — both create services are called with a
 context that holds `quiz.create`/`assignment.create` and still answer FORBIDDEN.
 Rule: R46.
+
+#### 2026-11-24 — one predicate cannot answer two questions about the same area
+
+What: the first shape of the area gate was "reuse `resolveDashboardArea`'s
+predicate". Applied literally it denies `/edu` to every Member: the landing names
+the three class-management keys (`group.manage` / `group.invite` /
+`group.member.manage`) because those are what make `/edu` someone's _home_, while
+a Member holds none of them and still holds every content `.read` the `/edu`
+pages read. Shipping that would have turned the area's main user away from the
+area the landing sends `/edu` users to, and the API would have answered `200` the
+moment the gate let them through.
+Why: the two questions read the same in prose — "does this caller belong in
+`/edu`" — so the same key list looks obviously right; the difference only appears
+when you ask what each answer is _for_ (choose a landing vs. admit a page). A
+test that exercises only the seeded roles cannot see it either, because a Member
+is a legitimate `/app` landing.
+Fix: two functions in one module, each stating its question in its docblock.
+`/manage` is shared — the nine `org.*` keys are both that area's home and its
+admission — while `/edu`'s gate set is **derived from `PERMISSIONS`** (every
+`groups`-category key plus every content `.read`), so a new content family joins
+by declaration instead of by edit. The unit cases pin a Member (both areas), a
+Billing preset (`/manage` only) and an empty/absent map (neither), so a
+re-broadened or re-narrowed predicate fails.
+Rule: R47.
 
 ### Phase 7 — delete and close
 
