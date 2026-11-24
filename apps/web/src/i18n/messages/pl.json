@@ -2538,7 +2538,6 @@
     "generation_complete": "Generowanie zakończone!",
     "total_generated": "Łączna liczba fiszek: {count}",
     "deck_name_label": "Nazwa talii",
-    "default_deck_name": "Wygenerowane Fiszki",
     "cards_title": "Fiszki ({count})",
     "kept_count": "{count} zachowanych",
     "question_label": "Pytanie",

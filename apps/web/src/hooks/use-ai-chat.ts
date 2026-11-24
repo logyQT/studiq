@@ -261,7 +261,8 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
 
       const parts = m.parts || [];
       let pendingCards: Array<Record<string, unknown>> | null = null;
-      let pendingDeckName = 'Generated Flashcards';
+      // The model's own deck name, if it gave one; the block applies the localized default (#1212).
+      let pendingDeckName: string | undefined;
       let finalFlashcardsProcessed = false;
 
       for (const [i, part] of parts.entries()) {
@@ -342,9 +343,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
             if (isComplete) {
               pendingCards = flashcardArray;
               pendingDeckName =
-                typeof outputMap?.deckName === 'string'
-                  ? outputMap.deckName
-                  : 'Generated Flashcards';
+                typeof outputMap?.deckName === 'string' ? outputMap.deckName : undefined;
             }
           }
 

@@ -1,0 +1,41 @@
+{
+  "key": "STU-48:unnamed-deck",
+  "case": "STU-48",
+  "match": { "lastUserContains": "Fiszki o wulkanach, bez nazwy talii", "hasTools": true },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_cards",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "Fiszki o wulkanach, bez nazwy talii",
+            "count": 2,
+            "flashcards": [
+              { "front": "Jak nazywa się stopiona skała pod powierzchnią Ziemi?", "back": "Magma" },
+              { "front": "Jak nazywa się magma, która wypłynęła na powierzchnię?", "back": "Lawa" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 200, "output": 90 }
+    },
+    {
+      "match": { "hasToolResult": true },
+      "toolCalls": [
+        {
+          "id": "call_finish",
+          "name": "finish",
+          "arguments": {
+            "type": "flashcards",
+            "flashcards": [
+              { "front": "Jak nazywa się stopiona skała pod powierzchnią Ziemi?", "back": "Magma" },
+              { "front": "Jak nazywa się magma, która wypłynęła na powierzchnię?", "back": "Lawa" }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 400, "output": 50 }
+    }
+  ]
+}

@@ -40,12 +40,13 @@ export const generateFlashcardsTool = tool({
         agentName: 'general',
         eventType: 'tool_result',
         label: 'generate_flashcards end',
-        data: { flashcardCount: parsed.length, deckName: deck_name || 'Generated Flashcards' },
+        data: { flashcardCount: parsed.length, deckName: deck_name },
       });
 
       return {
         type: 'flashcards' as const,
-        deckName: deck_name || 'Generated Flashcards',
+        // No name from the model stays no name: the client applies the localized default (#1212).
+        deckName: deck_name,
         flashcards: parsed,
         summary: `Generated ${parsed.length} flashcards`,
       };

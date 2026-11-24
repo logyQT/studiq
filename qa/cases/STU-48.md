@@ -23,9 +23,10 @@ AI włączone.
 - The model's answers are the fixtures `scripts/fake-llm/cases/STU-48.*.json`.
 - UI notes (walk 2026-11-15): the statuses „Analizuję tematy… / Generuję fiszki… /
   Organizuję w talie…" exist as messages but no component renders them, so they are
-  not asserted. The deck is named by the generation tool („Generated Flashcards"
-  when the model gives no name); „AI Wygenerowane Fiszki" is only the fallback of the
-  name field, so the spec asserts the name the fixture chose. The Expected result's
+  not asserted. Neither tool names the deck (#1212): when the model gives no name,
+  the name field shows the localized default „AI Wygenerowane Fiszki", and the spec
+  has a case for it (`STU-48:unnamed-deck`); when the model names the deck, that name
+  is used, which the main flow asserts. The Expected result's
   toast „Talia utworzona z N fiszkami" does fire on save (`flashcard_deck_created`);
   the spec asserts the inline saved panel instead, `flashcard_saved` („Zapisano N
   fiszki do talii"), which is the string that stays on screen.

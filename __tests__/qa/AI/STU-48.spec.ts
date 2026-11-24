@@ -18,10 +18,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * - The case expects the statuses „Analizuję tematy… / Generuję fiszki… /
  *   Organizuję w talie…” while generating. They exist as messages
  *   (`AiChatPage.status_*`) but no component renders them, so nothing asserts them.
- * - The case expects the deck „AI Wygenerowane Fiszki”. That is only the
- *   fallback of the name field; the generation tool always names the deck
- *   („Generated Flashcards” when the model gives none), so the name the
- *   fixture chose is the one the deck gets.
+ * - The case expects the deck „AI Wygenerowane Fiszki”. That is the localized
+ *   default of the name field, and it applies when the model gives no name (#1212):
+ *   neither tool invents one any more. When the model names the deck, that name is
+ *   the one the deck gets.
  * - The case expects the toast „Talia utworzona z N fiszkami”; saving into a new
  *   deck does fire that toast (`flashcard_deck_created`). The spec asserts the
  *   inline saved panel instead, `flashcard_saved` („Zapisano N fiszki do talii”),
@@ -118,6 +118,25 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     expect(requests.map((entry) => entry.turn)).toEqual([0, 1]);
     const second = requests[1];
     expect(second && rolesOf(second).at(-1)).toBe('tool');
+  });
+
+  test('names the deck in Polish when the model gives no name, and saves it so (#1212)', async ({
+    page,
+  }) => {
+    await openChat(page);
+    await send(page, 'Fiszki o wulkanach, bez nazwy talii');
+
+    await expect(page.getByText('Wygenerowano 2 fiszki')).toBeVisible();
+    // No name from the model: the field falls back to the localized default, not to an English one.
+    await expect(page.getByPlaceholder('AI Wygenerowane Fiszki')).toHaveValue(
+      'AI Wygenerowane Fiszki',
+    );
+
+    await saveButton(page).click();
+    await expect(page.getByText('Zapisano 2 fiszki do talii')).toBeVisible();
+    const names = await deckNames(page);
+    expect(names).toContain('AI Wygenerowane Fiszki');
+    expect(names).not.toContain('Generated Flashcards');
   });
 
   test('follows a plan through a nested material call, which is not metered today', async ({
