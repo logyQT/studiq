@@ -35,11 +35,11 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 - Organizacja A `QA MGR-03 A <run>`: student S1 `seed-student-<hash>@dev.local`, nauczyciel
   T1 `seed-educator-<hash>@dev.local` (rola organizacyjna `teacher`), grupy `O1G1-<run>`
   (domyślna, S1 i T1 w środku) i `O1G2-<run>`, jedno oczekujące zaproszenie
-  `mgr03-invite-a-<run>@test.local`. Liczniki pulpitu: 3 członków / 1 wykładowca /
+  `mgr03-invite-a-<run>@test.local`. Liczniki pulpitu: 3 członków / 2 wykładowców /
   1 student.
 - Organizacja B `QA MGR-03 B <run>`: student S2 `seed-student-<hash>@dev.local`, grupy
   `O2G1-<run>` i `O2G2-<run>`, jedno oczekujące zaproszenie
-  `mgr03-invite-b-<run>@test.local`. Liczniki pulpitu: 2 członków / 0 wykładowców /
+  `mgr03-invite-b-<run>@test.local`. Liczniki pulpitu: 2 członków / 1 wykładowca /
   1 student — celowo inne niż w A, żeby licznik przeciekający z drugiej organizacji nie
   mógł przypadkiem zgodzić się z oczekiwanym.
 - Druga grupa w każdej organizacji ma managera jako nauczyciela. Lista grup
@@ -84,3 +84,19 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 - Wybór organizacji jest stanem serwera (`active_org_id` w cookie): odświeżenie
   `/manage/members` pokazuje nadal tę samą organizację, a powrót przełącznikiem przywraca
   dane pierwszej organizacji w obu kierunkach.
+
+## Notatka 2026-11-24 (phase 6b-2) — liczniki pulpitu według `entitlement_profile`
+
+- Od fazy 6b-2 karty „Wykładowcy” / „Studenci” na `/manage` klasyfikują po
+  `org_roles.entitlement_profile`, a nie po nazwie roli: profil `learner` to Studenci,
+  każdy inny profil to Wykładowcy — **admin liczy się jako Wykładowca**. Wcześniejszy
+  zapis z 2026-10-28 (3 / 1 / 1 dla A i 2 / 0 / 1 dla B) opisywał klasyfikację po nazwie
+  roli i zostaje jako historia przebiegu.
+- Seeded tenant po tej zmianie: organizacja A = admin (manager) + wykładowca T1
+  (`teacher`, profil `all`) + student S1 (`member`, profil `learner`) → **3 / 2 / 1**;
+  organizacja B = admin + student S2 → **2 / 1 / 1**. Liczniki wylicza seeder
+  (`seedTwoOrg`, pole `counts`), a spec czyta je z `qa/.tenants/MGR-03.json`, więc
+  oczekiwanie nie jest w specu przepisane drugi raz.
+- Wartości potwierdzone na żywym API `GET /api/v1/organization/members` sesją managera:
+  A zwraca `admin/all`, `member/learner`, `teacher/all`, B — `admin/all`,
+  `member/learner`.

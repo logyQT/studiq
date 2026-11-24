@@ -86,3 +86,20 @@ bun scripts/qa-tenant.ts PUB-08 --fresh
   (**200**); `/app/study` przekierowuje klientowo na `/app/study/learn`.
 - Głębsza nieistniejąca ścieżka w panelu (`/…/nie-istnieje/glebiej`) również
   trafia w catch-all panelu i zachowuje sidebar.
+
+## Notatka 2026-11-24 (phase 6b-2) — status HTTP paneli nauczyciela i managera
+
+- Od fazy 6b-2 layouty `/edu` i `/manage` renderują `AreaGate`, który rozstrzyga
+  uprawnienia obszaru po stronie klienta. Nieznana podstrona w tych panelach jest więc
+  wysyłana z **HTTP 200**, a nie 404: adres zostaje, powłoka panelu się renderuje, a po
+  hydratacji (gdy mapa uprawnień jest znana) pojawia się panel 404 z opisem i linkami
+  odzyskiwania. `/app` nie ma bramki obszaru, więc jego catch-all nadal odpowiada
+  prawdziwym **404**. Wcześniejsza obserwacja o 404 we wszystkich trzech panelach
+  opisuje stan sprzed bramki i zostaje jako historia przebiegu.
+- To trade-off architektury, nie defekt przypadku: prawdziwy 404 w bramkowanych obszarach
+  wymaga statycznego inwentarza tras w proxy (ADR-0015 faza 7). Spec pinuje więc treść
+  panelu (nagłówek „404”, tytuł, opis, linki odzyskiwania, sidebar) i czeka na zejście
+  placeholdera bramki, a status dokumentu jest per panel — oczekiwana wartość jest
+  zapisana w danych przypadku, nie ukryta w asercji.
+- Gdyby panel przestał się renderować, przypadek nadal czerwienieje: asercje nagłówków i
+  linków idą po statusie, nie zamiast niego.

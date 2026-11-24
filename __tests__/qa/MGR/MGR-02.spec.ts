@@ -28,9 +28,15 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * `GET /api/v1/ai/usage` require the `ai.chat` entitlement, and this tenant's
  * Hub org carries it, so the manager *may* call the API. The intended manager
  * menu is therefore „Główne: Przegląd” and the seven „Administracja” entries
- * below; the spec pins that absence (and the 404 the case asked about) instead of
- * reproducing the old broken link, plus the positive entitlement path on the
- * API.
+ * below; the spec pins the absence of the dead link instead of reproducing it,
+ * plus the positive entitlement path on the API.
+ *
+ * Since phase 6b-2 the `/manage` shell resolves authority client-side
+ * (`AreaGate`), so an unknown subpath is committed before the permission map is
+ * known: `GET /manage/ai` answers **200** and, after hydration, renders the
+ * manager 404 panel with its recovery links. The 200 is the price of that gate —
+ * a real 404 needs a static route inventory in the proxy (ADR-0015 phase 7) —
+ * so the spec pins the panel the user actually sees, not the old status.
  */
 
 const CASE = 'MGR-02';
@@ -184,13 +190,18 @@ test('the manager sidebar has two sections whose entries all open their pages', 
     await expect(active).toHaveAttribute('href', item.href);
   }
 
-  // --- The 404 the case asked about ----------------------------------------
+  // --- The 404 panel the case asked about ----------------------------------
   // `/manage/ai` is not part of the app (never was); the catcher renders the
-  // manager 404 surface with a way back instead of a crash.
+  // manager 404 surface with a way back instead of a crash. The document answers
+  // 200 because `AreaGate` resolves the area's authority after the shell is
+  // committed — see the header note; the panel is what the user sees.
   const deadRoute = await page.request.get('/manage/ai');
-  expect(deadRoute.status(), 'GET /manage/ai').toBe(404);
+  expect(deadRoute.status(), 'GET /manage/ai').toBe(200);
 
   await page.goto('/manage/ai');
+  // The gate's placeholder stands in until the permission map resolves; wait for
+  // it to leave instead of sleeping, then pin the panel it reveals.
+  await expect(page.locator('[data-slot="area-gate-pending"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '404', exact: true })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Nie znaleziono strony', exact: true }),
