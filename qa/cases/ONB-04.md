@@ -51,9 +51,10 @@ bun scripts/qa-tenant.ts ONB-04 --profile bare --role manager --fresh
 
 ## Observed during the suite walk (qa-env-4, shared app 3010 / DB 54421)
 
-- Logowanie przez `/login` z managerem bez organizacji trafia najpierw na `/manage`,
-  a strażnik dashboardu (`manage/layout.tsx`, `needsOnboarding`) podmienia adres na
-  `/setup/org`. Wejście na `/manage` bezpośrednio kończy się tak samo.
+- Logowanie przez `/login` z managerem bez organizacji trafia (307) na neutralny
+  `/dashboard`; landing czeka na `/me/orgs`, widzi zero organizacji i zadeklarowany
+  wyjątek MANAGER, po czym podmienia adres na `/setup/org`. Wejście na `/manage`
+  bezpośrednio kończy się tak samo (strażnik `manage/layout.tsx`, `needsOnboarding`).
 - `/setup/org` renderuje kartę z tytułem `[data-slot="card-title"]` „Skonfiguruj swoją
   organizację”, opis „Utwórz organizację, aby rozpocząć.”, pole „Nazwa organizacji”
   (placeholder „Uniwersytet ...”) i przycisk „Utwórz organizację”.

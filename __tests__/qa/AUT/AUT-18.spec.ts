@@ -132,6 +132,9 @@ test.describe('AUT-18 — a manager on the routes of the other roles', () => {
       }>(me)
     ).data?.user;
     expect(signedIn?.email, 'the session belongs to the tenant manager').toBe(manager.email);
+    // Fixture identity (the seeded account is the manager this case says it is),
+    // not an authorization input: the area and the onboarding verdicts below are
+    // permission-derived.
     expect(signedIn?.app_metadata?.account_type, 'account type of the signed-in user').toBe(
       'manager',
     );

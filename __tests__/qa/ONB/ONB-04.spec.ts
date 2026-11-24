@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectNeutralLandingRedirect } from '#test/helpers/dashboard';
 import { json } from '#test/helpers/json';
 import { qaDbNow, resetFirstRunTenant } from '#test/helpers/db-admin';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
@@ -50,12 +51,15 @@ test('a manager without an organization creates it from /setup/org and lands on 
   await resetFirstRunTenant(manager.id, attemptStarted);
 
   // --- Prerequisite: a manager with zero organizations, signed in -----------
-  // `/login` forwards the manager to `/manage`; the dashboard gate then replaces
-  // the URL with `/setup/org` (step 1: "po zalogowaniu obserwuj adres").
+  // `/login` 307s the manager to the neutral `/dashboard`; the landing sees the
+  // settled empty org list plus the declared MANAGER onboarding exception and
+  // replaces the URL with `/setup/org` (step 1: "po zalogowaniu obserwuj adres").
   await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/setup\/org/ });
 
   await expect(page).toHaveURL(/\/setup\/org$/, { timeout: 20_000 });
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+
+  await expectNeutralLandingRedirect(page);
 
   const beforeResponse = await page.request.get('/api/v1/me/orgs');
   expect(beforeResponse.status(), 'GET /api/v1/me/orgs').toBe(200);

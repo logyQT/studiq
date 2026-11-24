@@ -44,8 +44,9 @@ the default `content` one:
 ## Observed during the suite walk (qa-env-1, shared app 3010 / DB 54421)
 
 - Logging in through `/login` with the bare educator ends on `/setup`: the proxy
-  sends the authenticated user to `/edu`, whose onboarding guard replaces the URL
-  once `['orgs']` settles empty.
+  307s an authenticated visitor to the neutral `/dashboard`, whose landing waits
+  for `/me/orgs` to settle empty, applies the declared EDUCATOR onboarding
+  exception and replaces the URL with `/setup`. `/login` itself names no area.
 - `/setup` shows the `SetupPage` chooser in Polish: `<h1>` „Witaj w StudiQ”,
   description „Skonfiguruj swoją klasę, aby rozpocząć.”, and exactly two option
   buttons — „Dołącz do istniejącej organizacji” („Dołącz do szkoły lub uczelni, do

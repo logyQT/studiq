@@ -1,6 +1,21 @@
-import { Permission, SYSTEM_ROLE_TEMPLATES, type PermissionScope } from '@studiq/authz';
+import {
+  Permission,
+  PERSONAL_PERMISSION_KEYS,
+  SYSTEM_ROLE_TEMPLATES,
+  type PermissionScope,
+} from '@studiq/authz';
 import { describe, expect, it } from 'vitest';
 import { type PermissionMap, resolveDashboardArea, resolveLandingArea } from '@/lib/dashboard-home';
+
+/**
+ * The 24-key personal set 6c resolves for a caller without an org. Derived from
+ * the catalog so a key that is classified personal there is exercised here too.
+ */
+function personalPermissions(): PermissionMap {
+  const map: PermissionMap = {};
+  for (const key of PERSONAL_PERMISSION_KEYS) map[key] = 'own';
+  return map;
+}
 
 /**
  * The area a caller lands on is a function of the **active org's permissions**
@@ -24,15 +39,7 @@ describe('resolveDashboardArea', () => {
   it('sends a caller without an org (the personal content set) to /app', () => {
     // 6c: outside an org every caller resolves the personal content keys at
     // `own` — no `org.*`, no `group.*`, so the personal shell is the answer.
-    const personal: PermissionMap = {
-      'deck.read': 'own',
-      'flashcard.read': 'own',
-      'question_bank.read': 'own',
-      'quiz.read': null,
-      'assignment.read': 'own',
-      'stats.read': 'own',
-    };
-    expect(resolveDashboardArea(personal)).toBe('/app');
+    expect(resolveDashboardArea(personalPermissions())).toBe('/app');
   });
 
   it('sends a custom role holding a single org.* key to /manage', () => {
@@ -87,16 +94,24 @@ describe('resolveDashboardArea', () => {
 });
 
 /**
- * The landing must not resolve from an answer that is not about the caller's
- * current org: the personal map under a half-completed switch, or a payload
- * written under the outgoing org's key (design §3.4), both render a shell for an
- * org the visitor is not in. `null` means "not yet".
+ * The landing answers onboarding first, then the permission-derived area, and
+ * `null` while it cannot answer. The first-run branch matters because 6c gives a
+ * caller without an org the personal keys: without it a first-run manager or
+ * educator would resolve `/app` and the declared `/setup*` exception would be
+ * unreachable from `/login`.
  */
 describe('resolveLandingArea', () => {
   const admin = SYSTEM_ROLE_TEMPLATES.admin.permissions;
   const member = SYSTEM_ROLE_TEMPLATES.member.permissions;
   const orgId = '11111111-1111-4111-8111-111111111111';
-  const base = { orgsPending: false, isSwitching: false, activeOrgId: orgId };
+  const base = {
+    orgsCount: 1,
+    orgsPending: false,
+    orgsFetching: false,
+    isSwitching: false,
+    activeOrgId: orgId,
+    accountType: 'manager',
+  };
 
   it('waits for the org list, the auto-selection and the map', () => {
     expect(
@@ -114,6 +129,18 @@ describe('resolveLandingArea', () => {
       }),
     ).toBeNull();
     expect(resolveLandingArea({ ...base, permissions: undefined })).toBeNull();
+  });
+
+  it('waits for the first-org auto-selection instead of reading the personal map', () => {
+    // The membership list has settled but no org is active yet: the `null` map
+    // would answer `/app`, which is not where `useOrgs` is about to switch.
+    expect(
+      resolveLandingArea({
+        ...base,
+        activeOrgId: null,
+        permissions: { orgId: null, permissions: personalPermissions() },
+      }),
+    ).toBeNull();
   });
 
   it('waits for a map that names a different org than the active one', () => {
@@ -145,14 +172,62 @@ describe('resolveLandingArea', () => {
     );
   });
 
-  it('resolves /app for a caller without an org (both ids null)', () => {
+  it('resolves /app for a learner without an org (both ids null)', () => {
     expect(
       resolveLandingArea({
+        orgsCount: 0,
         orgsPending: false,
+        orgsFetching: false,
         isSwitching: false,
         activeOrgId: null,
-        permissions: { orgId: null, permissions: member },
+        accountType: 'student',
+        permissions: { orgId: null, permissions: personalPermissions() },
       }),
     ).toBe('/app');
+  });
+
+  describe('a first run (settled, zero orgs)', () => {
+    const firstRun = {
+      orgsCount: 0,
+      orgsPending: false,
+      orgsFetching: false,
+      isSwitching: false,
+      activeOrgId: null,
+    };
+
+    it('sends a manager to /setup/org before the permission answer exists', () => {
+      expect(resolveLandingArea({ ...firstRun, accountType: 'manager' })).toBe('/setup/org');
+    });
+
+    it('sends an educator to the /setup chooser', () => {
+      expect(resolveLandingArea({ ...firstRun, accountType: 'educator' })).toBe('/setup');
+    });
+
+    it('keeps the personal set from winning over onboarding', () => {
+      // 6c's 24 personal keys would otherwise make this a `/app` landing.
+      expect(
+        resolveLandingArea({
+          ...firstRun,
+          accountType: 'manager',
+          permissions: { orgId: null, permissions: personalPermissions() },
+        }),
+      ).toBe('/setup/org');
+      expect(
+        resolveLandingArea({
+          ...firstRun,
+          accountType: 'educator',
+          permissions: { orgId: null, permissions: personalPermissions() },
+        }),
+      ).toBe('/setup');
+    });
+
+    it('waits while the org list is still settling', () => {
+      expect(
+        resolveLandingArea({ ...firstRun, accountType: 'manager', orgsPending: true }),
+      ).toBeNull();
+      expect(
+        resolveLandingArea({ ...firstRun, accountType: 'manager', orgsFetching: true }),
+      ).toBeNull();
+    });
   });
 });

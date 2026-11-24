@@ -42,6 +42,8 @@ export function useOrgs() {
     isLoading,
     isPending,
     isFetching,
+    isError,
+    refetch,
   } = useQuery<OrgMembership[]>({
     queryKey: ['orgs'],
     queryFn: () => apiGet<OrgMembership[]>('/api/v1/me/orgs'),
@@ -87,7 +89,17 @@ export function useOrgs() {
       try {
         const fresh = await queryClient.fetchQuery({
           queryKey: permissionKeys.org(orgId),
-          queryFn: fetchPermissions,
+          // `fetchQuery` stores whatever the endpoint answers under `orgId`'s
+          // key. A payload that names another org is a request that raced the
+          // cookie change; refusing it inside the query function rejects the
+          // result instead of caching it under the new key (design §3.4).
+          queryFn: async () => {
+            const payload = await fetchPermissions();
+            if (payload.orgId !== orgId) {
+              throw new Error(`permissions payload names ${payload.orgId}, expected ${orgId}`);
+            }
+            return payload;
+          },
           staleTime: 0,
         });
         area = resolveDashboardArea(fresh.permissions);
@@ -125,6 +137,12 @@ export function useOrgs() {
     orgs,
     activeOrg,
     isLoading,
+    isError,
+    refetch,
+    // The JWT claim is the caller's declared persona. Only the onboarding
+    // exception reads it (the landing's `/setup*` split); authorization never
+    // does, and no area is chosen from it.
+    accountType: jwtAccountType,
     // `true` until `['orgs']` settles. Org-scoped list queries gate on this so
     // they do not fetch under a `null` org and then refetch under the real one
     // (content → skeleton → content flicker on a cold load).

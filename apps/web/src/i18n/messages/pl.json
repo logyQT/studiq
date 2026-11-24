@@ -475,6 +475,12 @@
     "edu_groups": "Grupy",
     "user_menu": "Menu użytkownika"
   },
+  "DashboardLanding": {
+    "load_error": "Nie udało się otworzyć panelu",
+    "load_error_desc": "Nie udało się odczytać Twoich uprawnień. Spróbuj ponownie lub zaloguj się jeszcze raz.",
+    "retry": "Spróbuj ponownie",
+    "sign_in_again": "Zaloguj się ponownie"
+  },
   "EduOverviewPage": {
     "feed_quiz_completed_plain": "Test ukończony: {name} ({score}%)",
     "feed_assignment_submitted_plain": "Praca oddana: {name} ({score}%)",

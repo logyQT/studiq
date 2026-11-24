@@ -60,9 +60,12 @@ identity; the two accounts are created by the spec through `/register`:
 - The confirmation mail points at `{{ .SiteURL }}/auth/callback?token_hash=…&type=signup&next=/login`
   (`http://localhost:3010`), and opening it verifies the address and signs the new
   user in.
-- The educator then ends on `/setup` („Witaj w StudiQ”); a later login through
+- The educator then ends on `/setup` („Witaj w StudiQ”): `/login` 307s the session
+  to the neutral `/dashboard`, whose landing applies the declared EDUCATOR
+  onboarding exception once `/me/orgs` has settled empty; a later login through
   `/login` reaches the same place. `/manage` bounces the educator back to `/setup`.
-- The manager ends on `/setup/org` („Skonfiguruj swoją organizację”); a later login
-  reaches the same place, and `/edu` bounces the manager back to `/setup/org`.
+- The manager ends on `/setup/org` („Skonfiguruj swoją organizację”) through the
+  same landing and the declared MANAGER exception; a later login reaches the same
+  place, and `/edu` bounces the manager back to `/setup/org`.
 - The access token carries `app_metadata.account_type` = `educator` / `manager`
   respectively (verified by decoding the session cookie's JWT).

@@ -1,4 +1,5 @@
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { expectNeutralLandingRedirect } from '#test/helpers/dashboard';
 import { json } from '#test/helpers/json';
 import { qaAppUrl } from '#test/helpers/qa-pointer';
 import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
@@ -175,13 +176,15 @@ test.describe('@case:ONB-03 @area:ONB @prio:P2 join an organization by invite co
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
+    // Prerequisite: the teacher has no organization, so the landing resolves
+    // `/setup` for them once `/me/orgs` has settled empty.
     await loginAs(page, TENANT, 'invitee', {
       locale: 'pl',
       activeOrgId: null,
       waitFor: /\/setup$/,
     });
-    // Prerequisite: the teacher has no organization, so /setup is the chooser.
     expect(await currentOrgs(page)).toEqual([]);
+    await expectNeutralLandingRedirect(page);
 
     await page.goto('/setup');
     await expect(page.getByRole('heading', { name: 'Witaj w StudiQ', exact: true })).toBeVisible();

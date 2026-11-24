@@ -46,7 +46,9 @@ seeded tenant instead:
 
 ## Walk observations (shared app, pl)
 
-- Login as the org-less educator lands on `/setup` ("Witaj w StudiQ"); both options are
+- Login as the org-less educator lands on `/setup` ("Witaj w StudiQ"): `/login`
+  sends the session to the neutral `/dashboard`, whose landing sees the settled
+  empty org list and the declared EDUCATOR exception; both options are
   present: „Dołącz do istniejącej organizacji” and „Utwórz własną klasę”.
 - The join screen is `/setup/join`: heading „Dołącz do organizacji”, field label „Kod
   zaproszenia” (`#invite-code`), hint „Wklej kod lub link, który otrzymałeś od swojej

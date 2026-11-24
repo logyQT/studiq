@@ -83,7 +83,13 @@ async function signIn(page: Page, role: keyof typeof DASHBOARDS): Promise<void> 
   ).toBeVisible();
 }
 
-/** The session really belongs to this tenant's user of this account type. */
+/**
+ * The session really belongs to this tenant's user of this account type.
+ *
+ * `account_type` is asserted as **fixture identity** — the seeded account is the
+ * one this case says it is — never as an authorization input; the landing and
+ * the area routes read permissions, not the persona.
+ */
 async function expectTenantSession(page: Page, role: QaRole): Promise<void> {
   const tenant = loadTenant(CASE);
   const me = await page.request.get('/api/v1/auth/me');

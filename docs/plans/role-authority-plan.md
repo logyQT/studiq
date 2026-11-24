@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                     | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------ | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                  | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                  | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                  | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                  | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                  | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                            | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                            | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                  | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                       | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6b-1, 6c on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
-| 7     | delete, full QA, close                         | pending | —                                                      | —   | all 191 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                      | —   | all 191 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                           | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------------ | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                        | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                        | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                  | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                                  | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 on `feat/authority-6` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-23 |
+| 7     | delete, full QA, close                         | pending | —                                                            | —   | all 191 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                            | —   | all 191 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -48,9 +48,9 @@ pinned by
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
 mints the claim. **Next slice: 6b-2 (`AreaGate`, nav-item gates, page
 classification, `checkout-org`)**, then 6d (role editor, `/me/plan` union) and
-6e (Teacher assignment reads). 6a-1 `bcd874f0` (#1426) and 6a-2 `800129fe`
-(#1427) are merged; 6c (row 3, D35) is on `feat/authority-6`; **6b-1** (route
-rules, `resolveDashboardArea`, landing) is on the same branch above the 6c tip.
+6e (Teacher assignment reads). 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe`
+(#1427) and 6c `14262016` (#1428) are merged; **6b-1** (route rules,
+`resolveDashboardArea`, landing) is on `feat/authority-6` above the 6c tip.
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -3462,7 +3462,7 @@ no phase-5 enforcement):**
   | **Assigning a role to an existing member** bypasses §4.4: `PUT /api/v1/organization/members` (`organization-member.service.ts#changeRole`) and the `org_members` UPDATE policy gate on `org.member.manage` only, never on "grant only what you hold" | `packages/server/src/services/organization-member.service.ts:124-158`, `packages/server/src/controllers/organization-member.controller.ts:63-87`, live policy "Org managers update members" (`20261120110000:53-67`)                | 5             | Phase 5b's row 9 closed the **invite** helper (`can_assign_org_role`); the member-assignment path was outside that row and is pre-existing. An `org.member.manage` holder without `org.admin` can still assign the system Admin role. The fix reuses the new `covers_permission`/`actor_may_assign_role` shape at the service and in the UPDATE policy's `with check` — row 13 owns it, in a 5c/5d slice; recorded by the 5b review so it cannot be forgotten                                                                                                                          |
   | No per-user personal permission set: the no-org default is one fixed set for everyone                                                                                                                                                                | `packages/server/src/lib/authz.ts:41`; `packages/server/src/lib/with-auth.ts`                                                                                                                                                       | after phase 6 | D35's interim consequence — a manager should edit but not create personal decks, and future per-user overrides need a row. Shape: `user_permission_scopes(user_id, permission_key, scope)` + `PERSONAL_ROLE_TEMPLATES` (persona seeds the template at signup; provisioning may read persona) + a `withAuth` read when no org; ≈250–350 lines, one slice, no RLS twin                                                                                                                                                                                                                   |
 
-  **2026-11-23 (phase 6c, `feat/authority-6`): register row 3 is closed (D35)
+  **2026-11-23 (phase 6c, merged as `14262016` / #1428): register row 3 is closed (D35)
   and row 14 is registered.**
   - **Row 3 — operator decision D35 (2026-11-23, after a live probe).**
     Persona-free personal content: with no active org **any authenticated
@@ -5192,8 +5192,8 @@ then (`grep -rn allowedAccountTypes apps packages __tests__` → 2 API files). T
 is no work in that item, and a slice written against the sentence would have
 _added_ a gate to keep itself meaningful (R5/R39). §1 is corrected in this PR.
 
-**6c — register row 3 (D35): the persona-free personal-content set** (on
-`feat/authority-6`; no SQL, no migration, no new table).
+**6c — register row 3 (D35): the persona-free personal-content set** (merged as
+`14262016`, #1428; no SQL, no migration, no new table).
 
 - **The rule.** `resolveScope` no longer reads `accountType`, a verb suffix or
   the catalog category: after the in-org deny it returns
@@ -5267,6 +5267,15 @@ migration, no new table).
   `/me/permissions`, then `router.replace`s the area. No authority call happens
   before a session exists (#458). The proxy stays permission-blind — it cannot
   read the map — and `ACCOUNT_TYPE_REDIRECTS`/the account-type branch are gone.
+- **Onboarding is answered before the map.** Since 6c a caller without an org
+  holds the 24 personal keys, so `resolveDashboardArea` alone would answer `/app`
+  for a first-run manager or educator and the declared `/setup*` exception would
+  be unreachable from `/login`. `resolveLandingArea` therefore runs
+  `resolveNeedsOnboarding` first on a settled empty list and returns `/setup/org`
+  (manager) or `/setup` (educator); a learner still gets `/app`. The persona is
+  read in that branch alone and never re-enters authorization. A `/me/permissions`
+  failure shows a retry + sign-in state instead of an endless spinner, and a
+  settled list with a `null` active org waits for the auto-select.
 - **Six path-picking call sites** now use the resolver or the neutral landing:
   `use-orgs.ts` (the switch awaits `/me/permissions` **under the new cookie** and
   writes it under the new org's key before pushing), `onboarding.ts` +
