@@ -7,7 +7,12 @@ import {
   isUserOverrideActive,
 } from '@studiq/server/services/entitlement.resolver';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { allFlagsOn, mockResolverTables } from '#test/helpers/entitlement-resolver-mock';
+import {
+  allFlagsOn,
+  mockResolverTables,
+  RESOLVER_TABLES,
+  STATEMENT_TIMEOUT,
+} from '#test/helpers/entitlement-resolver-mock';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('EntitlementResolver', () => {
@@ -82,7 +87,7 @@ describe('EntitlementResolver', () => {
         orgPlan: 'hub',
         seatPlanKey: 'seat',
         personalPlanKey: 'ace',
-        seatReadError: { code: '57014', message: 'statement timeout' },
+        readErrors: { org_seat_assignments: STATEMENT_TIMEOUT },
       });
 
       await expect(resolver.resolveEntitlements(ctx)).rejects.toMatchObject({
@@ -93,13 +98,97 @@ describe('EntitlementResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
     });
 
+    describe('a failed read fails the resolution (#1435)', () => {
+      const memberCtx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      const memberTables = {
+        roleProfile: 'learner',
+        orgPlan: 'hub',
+        seatPlanKey: 'seat',
+        personalPlanKey: 'ace',
+      };
+      const readsWithoutSeat = RESOLVER_TABLES.filter((table) => table !== 'org_seat_assignments');
+
+      it.each(readsWithoutSeat)(
+        'rejects when the %s read fails and reads nothing after it',
+        async (table) => {
+          mockTables({ ...memberTables, readErrors: { [table]: STATEMENT_TIMEOUT } });
+
+          await expect(resolver.resolveEntitlements(memberCtx)).rejects.toMatchObject({
+            name: 'DatabaseError',
+            code: '57014',
+          });
+
+          const read = vi.mocked(mock.from).mock.calls.map(([name]: unknown[]): unknown => name);
+          const after = RESOLVER_TABLES.slice(RESOLVER_TABLES.indexOf(table) + 1);
+          expect(read).toContain(table);
+          for (const later of after) expect(read, later).not.toContain(later);
+        },
+      );
+
+      it('does not bring a revoked override back when the overrides read fails', async () => {
+        const revoked = [{ feature_key: 'ai.chat', is_enabled: false }];
+        mockTables({ ...memberTables, overrides: revoked });
+        // Control: with the read answering, the admin's revoke removes the key.
+        const answered = await resolver.resolveEntitlements(memberCtx);
+        expect(answered.entitlements).not.toContain('ai.chat');
+
+        const fresh = new EntitlementResolver(() => Promise.resolve(mock));
+        mockTables({
+          ...memberTables,
+          overrides: revoked,
+          readErrors: { user_feature_overrides: STATEMENT_TIMEOUT },
+        });
+        // Before the fix the failed read resolved with no overrides, so the plan's
+        // `ai.chat` came back for a user an admin had cut off.
+        await expect(fresh.resolveEntitlements(memberCtx)).rejects.toMatchObject({
+          code: '57014',
+        });
+      });
+
+      it('does not widen limits through an org-scope personal plan when plan_entitlements fails (D34)', async () => {
+        const tables = {
+          orgPlan: 'launch',
+          roleProfile: 'all',
+          personalPlanKey: 'campus', // the legacy org-buyer mirror, scope = 'organization'
+          planScopes: { campus: 'organization' },
+          planLimits: {
+            launch: { max_flashcards: 100 },
+            campus: { max_flashcards: -1 },
+          },
+        };
+        mockTables(tables);
+        const answered = await resolver.resolveEntitlements(memberCtx);
+        expect(answered.limits.max_flashcards).toBe(100);
+
+        const fresh = new EntitlementResolver(() => Promise.resolve(mock));
+        mockTables({ ...tables, readErrors: { plan_entitlements: STATEMENT_TIMEOUT } });
+        // Without the scope rows `personalApplies` is true and the mirror's -1 would
+        // have entered `max(org, seat, personal)`.
+        await expect(fresh.resolveEntitlements(memberCtx)).rejects.toMatchObject({
+          code: '57014',
+        });
+      });
+
+      it('resolves again once a failed read recovers (the failure is not memoised)', async () => {
+        mockTables({ ...memberTables, readErrors: { entitlement_flags: STATEMENT_TIMEOUT } });
+        await expect(resolver.resolveEntitlements(memberCtx)).rejects.toMatchObject({
+          code: '57014',
+        });
+
+        mockTables(memberTables);
+        const { entitlements } = await resolver.resolveEntitlements(memberCtx);
+
+        expect(entitlements).toContain('ai.chat');
+      });
+    });
+
     it('resolves again once the seat read recovers (the failure is not memoised)', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
       mockTables({
         roleProfile: 'learner',
         orgPlan: 'hub',
         seatPlanKey: 'seat',
-        seatReadError: { code: '57014', message: 'statement timeout' },
+        readErrors: { org_seat_assignments: STATEMENT_TIMEOUT },
       });
       await expect(resolver.resolveEntitlements(ctx)).rejects.toBeInstanceOf(AppError);
 

@@ -86,6 +86,27 @@ const DEFAULT_PLAN_LIMITS: Record<string, Record<string, number>> = Object.fromE
   ]),
 );
 
+/** Every table the resolver reads, in the order it reads them. */
+export const RESOLVER_TABLES = [
+  'org_members',
+  'org_seat_assignments',
+  'profiles',
+  'plan_entitlements',
+  'plan_limits',
+  'user_feature_overrides',
+  'entitlement_flags',
+] as const;
+
+export type ResolverTable = (typeof RESOLVER_TABLES)[number];
+
+export interface ReadError {
+  code: string;
+  message: string;
+}
+
+/** A statement timeout: not in the PG error map, so it surfaces as a `DatabaseError`. */
+export const STATEMENT_TIMEOUT: ReadError = { code: '57014', message: 'statement timeout' };
+
 export interface ResolverTablesOpts {
   /** `false` simulates a forged `active_org_id` (no `org_members` row). */
   member?: boolean;
@@ -93,8 +114,8 @@ export interface ResolverTablesOpts {
   roleProfile?: string | null;
   roleRows?: Array<{ feature_key: string; is_enabled?: boolean }>;
   seatPlanKey?: string | null;
-  /** The `org_seat_assignments` read fails (timeout, pool exhaustion) instead of answering. */
-  seatReadError?: { code: string; message: string };
+  /** Tables whose read fails (timeout, pool exhaustion) instead of answering, with `data: null`. */
+  readErrors?: Partial<Record<ResolverTable, ReadError>>;
   personalPlanKey?: string | null;
   planEntitlements?: Record<string, readonly string[]>;
   planScopes?: Record<string, string>;
@@ -110,9 +131,13 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
   const planLimits = opts.planLimits ?? DEFAULT_PLAN_LIMITS;
 
   mock.from.mockImplementation((table: string) => {
+    const known = RESOLVER_TABLES.find((name) => name === table);
+    const readError = (known && opts.readErrors?.[known]) ?? null;
+    // A failed read answers `data: null` with an error, like PostgREST does.
+    const read = (data: unknown) => chain(readError ? null : data, readError);
     if (table === 'org_members') {
-      if (opts.member === false) return chain(null);
-      return chain({
+      if (opts.member === false) return read(null);
+      return read({
         organization_id: 'org-1',
         organizations: { plan: opts.orgPlan ?? null },
         org_roles:
@@ -125,16 +150,15 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
       });
     }
     if (table === 'org_seat_assignments') {
-      return chain(
-        opts.seatPlanKey && !opts.seatReadError
+      return read(
+        opts.seatPlanKey
           ? { pool_id: 'pool-1', org_seat_pools: { plan_key: opts.seatPlanKey } }
           : null,
-        opts.seatReadError ?? null,
       );
     }
-    if (table === 'profiles') return chain({ personal_plan_key: opts.personalPlanKey ?? null });
+    if (table === 'profiles') return read({ personal_plan_key: opts.personalPlanKey ?? null });
     if (table === 'plan_entitlements') {
-      return chain(
+      return read(
         Object.entries(planEntitlements).flatMap(([plan_key, keys]) =>
           keys.map((entitlement_key) => ({
             plan_key,
@@ -145,7 +169,7 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
       );
     }
     if (table === 'plan_limits') {
-      return chain(
+      return read(
         Object.entries(planLimits).flatMap(([plan_key, limits]) =>
           Object.entries(limits).map(([limit_key, limit_value]) => ({
             plan_key,
@@ -155,8 +179,8 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
         ),
       );
     }
-    if (table === 'user_feature_overrides') return chain(opts.overrides ?? []);
-    if (table === 'entitlement_flags') return chain(opts.flags ?? allFlagsOn());
+    if (table === 'user_feature_overrides') return read(opts.overrides ?? []);
+    if (table === 'entitlement_flags') return read(opts.flags ?? allFlagsOn());
     return chain(null);
   });
 }

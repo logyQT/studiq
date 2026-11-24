@@ -19,8 +19,9 @@ import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
 /**
@@ -98,6 +99,9 @@ type RoleFeatureRow = { feature_key: string; is_enabled?: boolean | null };
  *   9. Quota-0 exclusion — an entitlement whose quota limit resolves to `0` is
  *      not effective, so the API and the UI agree (§6.1).
  *
+ * A read that fails fails the whole resolution (`assertRead`, #1435): a failed
+ * read must never resolve as "no rows" and answer from another layer.
+ *
  * The whole resolution is at most seven queries — one per table read
  * (`org_members` + embeds, `org_seat_assignments` + embed, `profiles`,
  * `plan_entitlements`, `plan_limits`, `user_feature_overrides`,
@@ -129,6 +133,17 @@ export class EntitlementResolver {
     return pending;
   }
 
+  /**
+   * A failed read is not an empty one (#1435): `dbRows` would turn it into `[]`
+   * and the resolver would answer from another layer: a revoked override comes
+   * back, every limit reads 0, a paid feature looks flagged off. Every read
+   * fails the request instead (span annotation, then a mapped `AppError` or a
+   * `DatabaseError`), and the rejected resolution is evicted from the memo.
+   */
+  private assertRead(error: PostgrestError | null): void {
+    if (error) mapSupabaseError(error);
+  }
+
   private async resolve(ctx: RequestContext): Promise<ResolvedEntitlements> {
     const supabase = await this.clientFactory();
     const enabled = new Set<EntitlementKey>();
@@ -155,7 +170,7 @@ export class EntitlementResolver {
     let roleRows: RoleFeatureRow[] = [];
 
     if (orgId) {
-      const { data: membership } = await supabase
+      const { data: membership, error: membershipError } = await supabase
         .from('org_members')
         .select(
           'organization_id, organizations(plan), org_roles(entitlement_profile, org_role_features(feature_key, is_enabled))',
@@ -163,6 +178,7 @@ export class EntitlementResolver {
         .eq('organization_id', orgId)
         .eq('user_id', ctx.userId)
         .maybeSingle();
+      this.assertRead(membershipError);
 
       if (membership) {
         inOrg = true;
@@ -194,11 +210,12 @@ export class EntitlementResolver {
     }
 
     // ── 3. Personal plan key ──────────────────────────────────────────────
-    const { data: personalProfile } = await supabase
+    const { data: personalProfile, error: profileError } = await supabase
       .from('profiles')
       .select('personal_plan_key')
       .eq('id', ctx.userId)
       .maybeSingle();
+    this.assertRead(profileError);
     const personalPlanKey = personalProfile?.personal_plan_key ?? null;
 
     // ── 4. Batched catalog reads: every layer plan in one query each ──────
@@ -215,10 +232,11 @@ export class EntitlementResolver {
     const limitsByPlan = new Map<string, Map<LimitKey, number>>();
     const scopeByPlan = new Map<string, string>();
     if (planKeys.length > 0) {
-      const { data: entitlementRows } = await supabase
+      const { data: entitlementRows, error: entitlementError } = await supabase
         .from('plan_entitlements')
         .select('plan_key, entitlement_key, subscription_plans(scope)')
         .in('plan_key', planKeys);
+      this.assertRead(entitlementError);
       for (const row of dbRows(entitlementRows) as PlanEntitlementRow[]) {
         if (row.subscription_plans?.scope)
           scopeByPlan.set(row.plan_key, row.subscription_plans.scope);
@@ -228,10 +246,11 @@ export class EntitlementResolver {
         entitlementsByPlan.set(row.plan_key, set);
       }
 
-      const { data: limitRows } = await supabase
+      const { data: limitRows, error: limitError } = await supabase
         .from('plan_limits')
         .select('plan_key, limit_key, limit_value')
         .in('plan_key', planKeys);
+      this.assertRead(limitError);
       for (const row of dbRows(limitRows) as PlanLimitRow[]) {
         if (!isLimitKey(row.limit_key)) continue;
         const map = limitsByPlan.get(row.plan_key) ?? new Map<LimitKey, number>();
@@ -308,10 +327,11 @@ export class EntitlementResolver {
     }
 
     // ── 10. User overrides (final word on their keys, D26) ────────────────
-    const { data: overrides } = await supabase
+    const { data: overrides, error: overridesError } = await supabase
       .from('user_feature_overrides')
       .select('feature_key, is_enabled, expires_at')
       .eq('user_id', ctx.userId);
+    this.assertRead(overridesError);
 
     // Expired rows (`expires_at <= now`) are kept as an audit trail but must
     // not grant or revoke anything (#382). One `now` for the whole batch keeps
@@ -332,7 +352,10 @@ export class EntitlementResolver {
     }
 
     // ── 11. Flag gate (kill switch only, fails closed) ────────────────────
-    const { data: flags } = await supabase.from('entitlement_flags').select('key, is_enabled');
+    const { data: flags, error: flagsError } = await supabase
+      .from('entitlement_flags')
+      .select('key, is_enabled');
+    this.assertRead(flagsError);
     const flagMap = new Map<string, boolean | null>(
       dbRows(flags).map((f) => [f.key, f.is_enabled]),
     );
