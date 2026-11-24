@@ -9,12 +9,12 @@ import { vi } from 'vitest';
  * the catalogs are read batched with `.in('plan_key', …)`).
  */
 
-export function chain(result: unknown) {
+export function chain(result: unknown, error: { code: string; message: string } | null = null) {
   // `in(column, values)` filters the seeded rows, so a read that drops a layer
   // key from its `plan_key` list loses that layer's rows instead of silently
   // resolving from the full catalog.
   let data = result;
-  const resolved = () => ({ data, error: null });
+  const resolved = () => ({ data, error });
   const terminal = vi.fn(() => Promise.resolve(resolved()));
   const c: Record<string, unknown> = {};
   c.select = vi.fn(() => c);
@@ -93,6 +93,8 @@ export interface ResolverTablesOpts {
   roleProfile?: string | null;
   roleRows?: Array<{ feature_key: string; is_enabled?: boolean }>;
   seatPlanKey?: string | null;
+  /** The `org_seat_assignments` read fails (timeout, pool exhaustion) instead of answering. */
+  seatReadError?: { code: string; message: string };
   personalPlanKey?: string | null;
   planEntitlements?: Record<string, readonly string[]>;
   planScopes?: Record<string, string>;
@@ -124,9 +126,10 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
     }
     if (table === 'org_seat_assignments') {
       return chain(
-        opts.seatPlanKey
+        opts.seatPlanKey && !opts.seatReadError
           ? { pool_id: 'pool-1', org_seat_pools: { plan_key: opts.seatPlanKey } }
           : null,
+        opts.seatReadError ?? null,
       );
     }
     if (table === 'profiles') return chain({ personal_plan_key: opts.personalPlanKey ?? null });

@@ -14,6 +14,7 @@ import {
   type RequestContext,
   type ResolvedEntitlements,
 } from '@studiq/authz';
+import { AppError } from '@studiq/server/lib/errors';
 import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
@@ -184,7 +185,12 @@ export class EntitlementResolver {
     // `active_org_id` must never supply limits or entitlements (phase 3b).
     let seatPlanKey: string | null = null;
     if (inOrg && ctx.orgRoleId) {
-      seatPlanKey = await getSeatPlanKey(ctx, supabase);
+      const seat = await getSeatPlanKey(ctx, supabase);
+      // A failed read is not "not seated": falling through would hand a seated
+      // member the personal/org plan (or a looser limit) while the database is
+      // down (#1373). Throw, so the request fails and the memo drops the promise.
+      if (!seat.success) throw new AppError(seat.error);
+      seatPlanKey = seat.data;
     }
 
     // ── 3. Personal plan key ──────────────────────────────────────────────

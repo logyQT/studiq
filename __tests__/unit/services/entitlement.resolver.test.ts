@@ -73,6 +73,42 @@ describe('EntitlementResolver', () => {
       expect(sources.seat).toEqual({ planKey: 'seat', origin: 'seat' });
     });
 
+    it('fails when the seat read fails instead of resolving as "not seated" (#1373)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      // The member is seated, but the lookup times out: the personal and org plans
+      // must not answer in place of the seat plan.
+      mockTables({
+        roleProfile: 'learner',
+        orgPlan: 'hub',
+        seatPlanKey: 'seat',
+        personalPlanKey: 'ace',
+        seatReadError: { code: '57014', message: 'statement timeout' },
+      });
+
+      await expect(resolver.resolveEntitlements(ctx)).rejects.toMatchObject({
+        name: 'AppError',
+        code: 'INTERNAL_SERVER',
+      });
+      // Nothing after the seat read ran, so no fallback layer was consulted.
+      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+    });
+
+    it('resolves again once the seat read recovers (the failure is not memoised)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      mockTables({
+        roleProfile: 'learner',
+        orgPlan: 'hub',
+        seatPlanKey: 'seat',
+        seatReadError: { code: '57014', message: 'statement timeout' },
+      });
+      await expect(resolver.resolveEntitlements(ctx)).rejects.toBeInstanceOf(AppError);
+
+      mockTables({ roleProfile: 'learner', orgPlan: 'hub', seatPlanKey: 'seat' });
+      const { sources } = await resolver.resolveEntitlements(ctx);
+
+      expect(sources.seat).toEqual({ planKey: 'seat', origin: 'seat' });
+    });
+
     it('adds seat keys that are in the ceiling on top of a learner profile', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
       mockTables({ roleProfile: 'learner', orgPlan: 'hub', seatPlanKey: 'seat' });
