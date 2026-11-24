@@ -75,6 +75,11 @@ const ROUND_TRIP_QUESTIONS = [MCQ, TF, OPEN];
 
 const ANSWER_COLUMNS = 10;
 
+// The two round-trip tests walk one long flow (create, seed, export, delete, create, import,
+// edit, delete) that needs ~25-30 s on the CI Firefox leg, i.e. the whole 30 s default
+// (#1431). A step that is merely slow must not fail the test, so give the flow real headroom.
+const ROUND_TRIP_TIMEOUT_MS = 60_000;
+
 function stamp() {
   return `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
 }
@@ -359,6 +364,8 @@ test.describe('Question bank transfer', () => {
   });
 
   test('A CSV export imports into a new bank unchanged', async ({ page, loginAs }) => {
+    test.setTimeout(ROUND_TRIP_TIMEOUT_MS);
+
     const source = uniqueBankName('CSV source');
     const target = uniqueBankName('CSV target');
 
@@ -435,6 +442,8 @@ test.describe('Question bank transfer', () => {
   });
 
   test('A JSON export imports into a new bank unchanged', async ({ page, loginAs }) => {
+    test.setTimeout(ROUND_TRIP_TIMEOUT_MS);
+
     const source = uniqueBankName('JSON source');
     const target = uniqueBankName('JSON target');
 
