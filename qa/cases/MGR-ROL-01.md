@@ -85,6 +85,28 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   strona i lista ról się renderują, a uprawnienie `org.role.manage` — nie persona
   — odbiera „Nową rolę”, kolumnę „Akcje” i zapis (`POST`/`PUT`/`DELETE` → 403).
 
+## Walk observations (2026-11-24, po 6b-2)
+
+- **Cały panel `/manage` jest bramkowany uprawnieniem, nie tylko zapis.** Od fazy
+  6b-2 layout `/manage` renderuje `AreaGate`: gdy wywołujący nie ma **żadnego** z
+  dziewięciu kluczy `org.*`, każdy ekran `/manage/…` — również lista
+  `/manage/roles` — pokazuje kartę „Brak dostępu w tej organizacji” (nazwa
+  organizacji + akcja przejścia do własnej przestrzeni), a adres URL pozostaje
+  bez przekierowania (ADR-0015 §7.1, §14.1). Nauczyciel (konto educator, rola org
+  `member`) nie ma żadnego klucza `org.*`, więc **nie widzi już listy ról** na
+  stronie; poprzednia obserwacja z 2026-11-19 o renderującej się liście jest tym
+  samym nieaktualna, a zapis historyczny pozostaje poniżej.
+- **API ról się nie zmieniło i nadal jest czytelne dla członka organizacji.**
+  `GET /api/v1/organization/roles` dla nauczyciela zwraca **200** i zawiera
+  utworzoną rolę („Asystent organizacji”), `GET /api/v1/organization/roles/:id`
+  również 200; zapisy (`POST`, `PUT`, `DELETE …/roles…`) pozostają **403**
+  `{"success":false,"error":"FORBIDDEN"}`. Bramką widoku jest więc uprawnienie
+  obszaru, a bramką zapisu — `org.role.manage`; persona nie jest już żadną z nich.
+- Bez zmian dla administratora (rola `admin` ma wszystkie dziewięć kluczy `org.*`
+  na Launch: edytor, „Nowa rola”, kolumna „Akcje”) i dla członka z **kontem typu
+  manager** oraz rolą z presetu Asystent (`org.member.manage`): bramka obszaru
+  otwiera stronę, a `org.role.manage` odmawia edytora i zapisu.
+
 ## Historia przypadku
 
 Wydanie v1.3 opisywało Launch jako plan bez `role.builder`, a krok 1 kończył się

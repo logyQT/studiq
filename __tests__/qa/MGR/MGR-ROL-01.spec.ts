@@ -15,13 +15,22 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * 1. the manager (org role `admin`) sees the editor and can create/edit a role —
  *    no locked card, no plan upgrade path;
  * 2. a same-org member whose role does not hold `org.role.manage` (the tenant's
- *    teacher) stays on `/manage/roles`: `/manage` is auth-only, so a bookmarked
- *    URL loads for any member (ADR-0015 §7.1). The member reads the list, is
- *    offered no editor, and the API refuses the write with 403;
+ *    teacher) keeps the URL but sees the **area gate**: since 6b-2 the `/manage`
+ *    shell is permission-gated for every `/manage` screen, and a Member holds
+ *    none of the nine `org.*` keys, so `/manage/roles` renders the org-scoped
+ *    no-access card instead of the list (ADR-0015 §7.1, §14.1). The role list
+ *    stays membership-readable through the API, and the write is 403;
  * 3. a **manager-account-type** member holding a custom role without the gate is
- *    the second client-gate deny case: the page renders, and only the permission
- *    withholds „Nowa rola”, the actions column and the API write. Together the two
- *    members show the gate is the key, not the persona.
+ *    the permission-only deny case: the Assistant preset the admin applies grants
+ *    `org.member.manage`, so the area gate opens and the page renders, while only
+ *    `org.role.manage` withholds „Nowa rola”, the actions column and the API
+ *    write. Together the two members show the editor is gated by the key, not the
+ *    persona.
+ *
+ * 2026-11-24 (6b-2): the pre-6b-2 version of point 2 expected the teacher to read
+ * the list on `/manage/roles`. `AreaGate` on the `/manage` layout replaces that
+ * page for a caller without any `org.*` key, so the teacher block below asserts
+ * the card and the absent list; its API half is unchanged.
  *
  * Tenant: the `content` profile of this case
  * (`__tests__/qa/profiles/MGR-ROL-01.json`), seeded before the suite starts by
@@ -156,6 +165,8 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
     await expect(roleRow(page, ROLE_NAME_EDITED), 'the rename reached the page').toHaveCount(1);
 
     // ── A same-org member without the permission ────────────────────────────
+    const orgName = TENANT.org?.name;
+    if (!orgName) throw new Error(`${CASE} needs the content tenant profile (an organization)`);
     const teacherContext = await browser.newContext({
       baseURL: process.env.QA_APP_URL ?? 'http://localhost:3010',
     });
@@ -171,19 +182,25 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
         'the teacher role does not hold the gate',
       ).toBeUndefined();
 
-      // `/manage` is auth-only (ADR-0015 §7.1): the page loads for a member the
-      // same way a bookmarked URL does — no persona redirect — and the permission
-      // is what withholds the editor.
+      // Since 6b-2 the `/manage` shell is permission-gated for every `/manage`
+      // screen (ADR-0015 §7.1, §14.1). This Member holds none of the nine `org.*`
+      // keys, so the area gate — not the role list's read — is what the page
+      // shows: the URL stays and the page's own content never renders.
       await teacher.goto('/manage/roles');
       await expect(teacher).toHaveURL(/\/manage\/roles$/);
+      const noAccess = teacher.locator('[data-slot="area-gate"]');
+      await expect(noAccess, 'the area gate replaces the role list for a Member').toHaveCount(1);
+      await expect(
+        noAccess.getByRole('heading', { name: 'Brak dostępu w tej organizacji' }),
+      ).toBeVisible();
+      await expect(noAccess, 'the card names the active organization').toContainText(orgName);
       await expect(
         teacher.getByRole('heading', { level: 1, name: 'Role', exact: true }),
-      ).toBeVisible();
-      await expect(roleRow(teacher, ROLE_NAME_EDITED), 'the list stays readable').toHaveCount(1);
-      await expect(teacher.getByRole('button', { name: 'Nowa rola', exact: true })).toHaveCount(0);
+        'the role page is not rendered behind the gate',
+      ).toHaveCount(0);
       await expect(
-        teacher.getByRole('columnheader', { name: 'Akcje', exact: true }),
-        'no actions column without org.role.manage',
+        roleRow(teacher, ROLE_NAME_EDITED),
+        'no role row is rendered behind the gate',
       ).toHaveCount(0);
 
       // The permission, not the persona, is what the API enforces: the write paths
@@ -206,10 +223,11 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
     }
 
     // ── A manager-account-type member holding a custom role without the gate ──
-    // The teacher above is out of /manage because of the persona rule, not the
-    // permission, so it cannot show the permission-only deny. This member has the
-    // manager account type and a custom role built from the Assistant preset: the
-    // page is theirs, and only `org.role.manage` can withhold the write UI.
+    // The teacher above never renders the page (the area gate replaces it), so it
+    // cannot show the permission-only deny. This member's custom role is built
+    // from the Assistant preset, which grants `org.member.manage`: the area gate
+    // opens and the page is theirs, while only `org.role.manage` withholds the
+    // write UI.
     const roleless = tenantUser(TENANT, 'roleless');
     const assign = await page.request.put('/api/v1/organization/members', {
       data: { targetUserId: roleless.id, newOrgRoleId: created.id },
