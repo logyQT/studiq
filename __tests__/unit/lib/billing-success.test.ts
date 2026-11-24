@@ -2,7 +2,6 @@ import type { BillingSubscriptionView } from '@studiq/server/services/billing.se
 import {
   BILLING_SUCCESS_POLL_ATTEMPTS,
   BILLING_SUCCESS_POLL_INTERVAL_MS,
-  dashboardPathForAccountType,
   isActivatedSubscription,
   pollBillingActivation,
 } from '@/lib/billing-success';
@@ -218,14 +217,5 @@ describe('pollBillingActivation', () => {
 
     await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'cancelled' });
     expect(d.readSubscription).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('dashboardPathForAccountType', () => {
-  it('routes each account type to its dashboard', () => {
-    expect(dashboardPathForAccountType('manager')).toBe('/manage');
-    expect(dashboardPathForAccountType('educator')).toBe('/edu');
-    expect(dashboardPathForAccountType('student')).toBe('/app');
-    expect(dashboardPathForAccountType(undefined)).toBe('/edu');
   });
 });

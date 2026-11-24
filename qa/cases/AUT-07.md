@@ -23,6 +23,22 @@ Brak sesji. Hasło wszystkich kont seed: pass.
 - W pasku bocznym widoczny odpowiedni zestaw menu (patrz moduły STU/EDU/MGR).
 - W menu użytkownika (dół paska bocznego) widoczne imię (M1/T1/S1) i e-mail.
 
+## Kontrakt adresu docelowego po ADR-0015 §7.1 (phase 6)
+
+Adresy pozostają te same, ale **nie wybiera ich typ konta**. Po zalogowaniu
+`/login` przekierowuje na neutralny `/dashboard`, który czeka na `/me/orgs` i
+`/me/permissions` aktywnej organizacji, a następnie podstawia obszar:
+
+- dowolny z dziewięciu kluczy `org.*` → `/manage`,
+- w przeciwnym razie `group.manage` / `group.invite` / `group.member.manage` → `/edu`,
+- w przeciwnym razie (także brak organizacji) → `/app`.
+
+Dla ról systemowych z seeda daje to dokładnie tę samą tabelę (admin → `/manage`,
+teacher → `/edu`, member → `/app`), więc oczekiwany rezultat powyżej nadal
+obowiązuje; `app_metadata.account_type` jest odtąd wyłącznie metadanymi sesji, a
+nie regułą nawigacji. Rola custom z jednym kluczem `org.*` ląduje w `/manage`,
+mimo że jej typ konta to np. `educator`.
+
 ## Seed (QA-suite tenant)
 
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`,
@@ -72,5 +88,6 @@ bun scripts/qa-tenant.ts AUT-07 --profile content --fresh
 - Po wylogowaniu wejście na adres panelu przekierowuje na
   `/login?next=%2Fmanage` (analogicznie `%2Fedu`, `%2Fapp`) — trasa jest nadal
   chroniona.
-- Wejście na `/login` z aktywną sesją przekierowuje na panel właściwy dla typu
-  konta (`/manage`, `/edu`, `/app`).
+- Wejście na `/login` z aktywną sesją przekierowuje na neutralny `/dashboard`, a
+  ten podstawia obszar wskazany przez uprawnienia aktywnej organizacji
+  (`/manage`, `/edu` albo `/app`) — nie przez typ konta.

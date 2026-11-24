@@ -20,6 +20,15 @@ Zalogowany jako teacher1.
 
 - Oba adresy przekierowują natychmiast do panelu odpowiedniego dla typu konta (/edu).
 
+## Kontrakt po ADR-0015 §7.1 (phase 6)
+
+Proxy nie zna już obszaru użytkownika, więc „natychmiast” dotyczy pierwszego
+skoku: `GET /login` i `GET /register` dla zalogowanego odpowiadają `307` z
+`Location: /dashboard` (przed wyrenderowaniem dokumentu). To neutralna strona
+docelowa; ona czeka na `/me/orgs` + `/me/permissions` aktywnej organizacji i
+podstawia obszar — dla nauczyciela `/edu`. Typ konta nie jest już celem
+przekierowania; liczy się rola w aktywnej organizacji.
+
 ## Suite seed — tenant model (reconciled)
 
 The case was written against the legacy manual seed (`teacher1@dev.local`, `pass`). The
@@ -48,13 +57,17 @@ suite never signs in as a legacy account; it uses the case's own isolated tenant
 - `/login` and `/register` are public for an anonymous visitor: both answer `200` and
   render their own form („Witaj ponownie” / „Utwórz konto”).
 - For a signed-in educator, `GET /login` and `GET /register` answer `307` with
-  `Location: /edu` **before** any document renders (`NextResponse.redirect` in
-  `apps/web/src/proxy.ts`); the browser lands on the teacher panel („Panel Nauczyciela”).
+  `Location: /dashboard` **before** any document renders (`NextResponse.redirect` in
+  `apps/web/src/proxy.ts`), and the landing then resolves `/edu` from the active
+  org's permissions; the browser lands on the teacher panel („Panel Nauczyciela”).
   That is the „natychmiast” of the case — the login/register form never flashes.
-- The same rule covers the other account types: manager → `/manage` („Zarządzanie
-  Uczelnią”), student → `/app` („Moja Nauka”). The case names only the teacher branch;
-  its `/edu` is the teacher panel.
+  (The walk recorded `Location: /edu` before phase 6; the proxy no longer names an
+  area at all, see the contract section above.)
+- The same landing covers the other roles: admin → `/manage` („Zarządzanie
+  Uczelnią”), member → `/app` („Moja Nauka”). The case names only the teacher
+  branch; its `/edu` is the teacher panel.
 - A safe internal `?next=` target is preserved by the redirect (AUT-09); this case passes
-  none, so the account-type dashboard is always the destination.
+  none, so the landing (`/dashboard`, then the permission-derived area) is the
+  destination.
 - The session behind the redirect is the tenant's own account: `GET /api/v1/auth/me`
   returns the seeded e-mail and `app_metadata.account_type` = `educator`.

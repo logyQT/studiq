@@ -54,10 +54,3 @@ export function resolveSetupGate({ orgsCount, isPending, isFetching }: SetupGate
   if (isPending || isFetching) return 'loading';
   return orgsCount === 0 ? 'onboarding' : 'dashboard';
 }
-
-/** Dashboard to return to, matching the account types the proxy allows. */
-export function resolveDashboardPath(accountType?: string | null): '/manage' | '/edu' | '/app' {
-  if (accountType === 'manager') return '/manage';
-  if (accountType === 'student') return '/app';
-  return '/edu';
-}

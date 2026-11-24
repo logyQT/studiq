@@ -61,3 +61,8 @@ Every org/user/group id is `tenantId(key, entity)`; nothing global is written.
   scope. The spec pins both halves — the entry present, „Nowa grupa” absent.
 - The „Klasa” section is still commented out in `app-sidebar.tsx`; the sidebar renders no
   classroom group and no `/edu/classroom` link.
+- Landing (2026-11-24, ADR-0015 §7.1): `/login` wybiera obszar na podstawie
+  uprawnień aktywnej organizacji. `teacher2` ma rolę `member` (tylko `group.read`),
+  więc ląduje na `/app`; przypadek otwiera `/edu` jawnie (trasa wymaga tylko
+  zalogowania), a menu i kontrolki czyta z powłoki nauczyciela. `teacher` ma rolę
+  `teacher` (`group.manage`), więc nadal ląduje na `/edu`.

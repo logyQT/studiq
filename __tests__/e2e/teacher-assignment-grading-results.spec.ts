@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
 
 /** The publish gate requires a close (R2/R5): a published run must be able to end. */
@@ -21,12 +21,12 @@ const TEACHER_EMAIL = 'teacher-classroom@dev.local';
 const STUDENT_EMAIL = 'student-classroom@dev.local';
 const STUDENT_ID = '00000000-0000-4000-8001-00000000000B';
 
-async function login(page: Page, email: string, redirectPattern: RegExp) {
+async function login(page: Page, email: string) {
   await page.goto('/login');
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(redirectPattern);
+  await waitForDashboardArea(page);
 
   // Login does not set the active-org cookie; the app pins it right after the
   // redirect (`useOrgs`, both seeded accounts only belong to Classroom). Wait
@@ -43,7 +43,7 @@ async function login(page: Page, email: string, redirectPattern: RegExp) {
       { timeout: 15_000 },
     )
     .toBe(true);
-  await page.waitForURL(redirectPattern);
+  await waitForDashboardArea(page);
 }
 
 test.describe('teacher assignment grading refreshes the results table (#168)', () => {
@@ -57,7 +57,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
 
     try {
       // ── Provision: one open question, targeted at SC and published ──────
-      await login(page, TEACHER_EMAIL, /\/edu/);
+      await login(page, TEACHER_EMAIL);
 
       const questionsRes = await page.request.get('/api/v1/questions');
       expect(questionsRes.ok()).toBeTruthy();
@@ -97,7 +97,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
 
       // ── The student submits a text answer ───────────────────────────────
       const studentPage = await studentContext.newPage();
-      await login(studentPage, STUDENT_EMAIL, /\/app/);
+      await login(studentPage, STUDENT_EMAIL);
 
       const startRes = await studentPage.request.post(`/api/v1/assignments/${assignmentId}/start`);
       expect(startRes.ok()).toBeTruthy();

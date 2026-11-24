@@ -25,7 +25,9 @@ async function login(page: Page) {
   await page.getByLabel(/E-mail|Email/i).fill(STUDENT_EMAIL);
   await page.getByLabel(/Hasło|Password/i).fill(PASSWORD);
   await page.getByRole('button', { name: /Zaloguj|Log in|Sign in/i }).click();
-  await page.waitForURL(/\/app/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/app/, { timeout: 15_000 });
 }
 
 /** A marker that only survives a client-side refresh, not a document reload. */

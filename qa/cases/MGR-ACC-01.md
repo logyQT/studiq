@@ -69,8 +69,9 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
   „Plan uczelniany” description, the current plan name as a badge (`/api/v1/me/plan`
   resolves the active organization's plan) and the „Kontakt z handlowcem” mailto link —
   the only action of the simulated billing module.
-- Comparison path (last bullet of the case): the same menu routes by account type. The
-  teacher's „Konto” goes to `/edu/account`, the student's to `/app/account`.
+- Comparison path (last bullet of the case): the same menu uses the caller's area. The
+  teacher's „Konto” goes to `/edu/account`, the student's to `/app/account` (the area
+  comes from the active org's permissions, ADR-0015 §7.1).
 - Environment caveat: the shared app answered `/edu/upgrade` with a redirect to
   `/checkout?plan_id=teacher_license` — the pre-#631 behaviour, i.e. the running build
   predates that fix even though `qa-suite` contains it. The teacher/student leg of this

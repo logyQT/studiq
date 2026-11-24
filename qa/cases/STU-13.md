@@ -35,3 +35,11 @@ Zalogowany student1.
 - Strona opisuje trzy kroki oraz komunikat „Sesje na żywo już wkrótce!”.
 - Próba dołączenia nie powoduje awarii (brak realnej funkcji – zanotuj faktyczne zachowanie).
 - Strona FAQ „Jak dołączyć do sesji na żywo” ładuje się poprawnie.
+
+## Kontrakt trasy (2026-11-24, ADR-0015 §7.1)
+
+`/app/study/live` należy do powłoki osobistej `/app`, która wymaga wyłącznie
+zalogowania — nie persony. Nauczyciel, który otworzy ten adres, pozostaje na nim
+i widzi tę samą stronę „w przygotowaniu”; granicą jest warstwa danych
+wywołującego (`/api/v1/me/personal-plan` zwraca jego własny plan), a nie
+przekierowanie na `/edu`. Wylogowany gość nadal trafia na `/login?next=…`.

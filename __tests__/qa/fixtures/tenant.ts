@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
-import { accountTypeFromLogin, openDashboard } from '#test/helpers/dashboard';
+import { openDashboard } from '#test/helpers/dashboard';
 
 /**
  * The tenant a case runs against. `bun scripts/qa-tenant.ts <CASEID>` writes
@@ -181,13 +181,9 @@ export async function loginAs(
     });
   }
   await page.context().addCookies(cookies);
-  // Straight to the account's dashboard: the login response above already told us
-  // the type, and `/login` would only redirect there.
-  await openDashboard(
-    page,
-    accountTypeFromLogin(await res.json()),
-    options.waitFor ?? /\/(edu|app|manage)/,
-  );
+  // Straight to the account's dashboard: `/login` redirects to the neutral
+  // landing, which resolves the area from the active org's permissions.
+  await openDashboard(page, options.waitFor ?? /\/(edu|app|manage)/);
 }
 
 export const test = base;

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
 import { recordedAt } from '#test/mocks/recorded';
 
@@ -11,7 +11,7 @@ async function loginTeacher(page: Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(password);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/edu/);
+  await waitForDashboardArea(page);
 }
 
 /** Creates an empty quiz through the API so the test never depends on seed state. */

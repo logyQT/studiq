@@ -34,3 +34,19 @@ export const t = (path: string) => {
 export function sidebarLink(page: Page, key: string) {
   return page.locator('a[data-sidebar="menu-button"]', { hasText: t(key) });
 }
+
+/**
+ * The post-login dashboard, whichever area the caller's permissions resolve.
+ *
+ * `/login` → `/dashboard` picks `/app`, `/edu` or `/manage` from the active
+ * org's permission map (ADR-0015 §7.1), so the same seeded account lands in
+ * different areas depending on its role keys — a spec that waits for one area
+ * hangs on the landing chain instead of failing on the page it is about. A spec
+ * that needs an area navigates to it explicitly once this resolves.
+ *
+ * 15 s: the landing chain (document → /dashboard → orgs/permissions → area)
+ * outlives Playwright's 6 s navigation default.
+ */
+export async function waitForDashboardArea(page: Page): Promise<void> {
+  await page.waitForURL(/\/(app|edu|manage)(\/|$)/, { timeout: 15_000 });
+}

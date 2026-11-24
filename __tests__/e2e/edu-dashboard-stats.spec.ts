@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
@@ -12,7 +12,10 @@ async function loginTeacher(page: import('@playwright/test').Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(password);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/edu/);
+  await waitForDashboardArea(page);
+  // Classroom Admin holds org keys, so the permission landing answers `/manage`;
+  // the stat cards are the `/edu` overview, which is navigation.
+  await page.goto('/edu');
 }
 
 /**

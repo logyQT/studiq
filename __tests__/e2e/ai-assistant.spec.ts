@@ -14,7 +14,9 @@ async function login(page: Page, email: string, landing: RegExp) {
   await page.getByLabel(t('LoginPage.email_label')).fill(email);
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(landing);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(landing, { timeout: 15_000 });
 }
 
 /** Live entitlement, so the spec documents both states without hardcoding a seed. */

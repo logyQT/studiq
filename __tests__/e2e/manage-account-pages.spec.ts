@@ -19,7 +19,9 @@ async function loginAsManager(page: import('@playwright/test').Page) {
   // first membership and pushes /manage. Wait for that arrival *and* for the
   // switcher to render the active org — that push races any navigation we make
   // before the org switch resolves (see manage-invites.spec.ts).
-  await page.waitForURL(/\/manage\/?$/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/manage\/?$/, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible();
 }
 

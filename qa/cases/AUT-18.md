@@ -21,6 +21,18 @@ Zalogowany manager@dev.local.
 - Trasy /app, /edu, /setup → przekierowanie do /manage.
 - /setup/org jest dozwolone dla managera.
 
+## Kontrakt po ADR-0015 §7.1 i §14.1 (phase 6)
+
+Powyższy oczekiwany rezultat jest historyczny w części dotyczącej `/app` i `/edu`:
+
+- **Trasy obszarów (`/app`, `/edu`, `/edu/assignments`) nie przekierowują** —
+  manager dostaje stronę (`200`, adres bez zmian); granicą jest API (§7.1).
+- **`/setup` pozostaje wyjątkiem osobowym** (tylko EDUCATOR) i nadal przekierowuje,
+  ale na neutralny `/dashboard` (`307`, `Location: /dashboard`); landing podstawia
+  `/manage` z uprawnień aktywnej organizacji. Typ konta nie jest celem.
+- **`/setup/org` pozostaje trasą managera** i jest serwowane jako prawdziwa strona
+  z formularzem organizacji (`200`).
+
 ## Suite seed — tenant model (reconciled)
 
 The case was written against the legacy manual seed (`manager@dev.local`, `pass`). The
@@ -50,18 +62,20 @@ suite never signs in as a legacy account; it uses the case's own isolated tenant
 ## Observed during the suite walk (qa-env-7, shared app 3010 / DB 54421)
 
 - Signed in as the tenant manager (`app_metadata.account_type = manager`), `GET /app`,
-  `GET /edu`, `GET /edu/assignments` and `GET /setup` answer `307` with `Location:
-/manage` **before** any document renders (`roleGuard` branch of
-  `apps/web/src/proxy.ts`); the browser lands on the manager dashboard
-  („Zarządzanie Uczelnią”). `/edu/assignments` is covered by the `/edu(/.*)?` rule, so it
-  is part of the same matrix even though the „Expected result” line names only `/edu`.
+  `GET /edu` and `GET /edu/assignments` are served as pages (`200`, URL preserved,
+  dashboard shell rendered) — the area rules are auth-only since phase 6.
+  `GET /setup` is the educator exception and answers `307` with `Location: /dashboard`
+  **before** any document renders (`roleGuard` branch of
+  `apps/web/src/proxy.ts`); the landing then resolves `/manage` and the browser shows
+  the manager dashboard („Zarządzanie Uczelnią”).
 - `GET /setup/org` answers `200` for the manager and renders the organization form
   („Skonfiguruj swoją organizację”, „Utwórz organizację, aby rozpocząć.”, field „Nazwa
   organizacji”, button „Utwórz organizację”). This is the manager-only rule sitting in
   front of the educator-only `/setup` catch-all; with an inverted order the manager would
   be bounced from `/setup/org` too.
 - The rule is not "setup is closed": as the tenant educator, `GET /setup/org` answers
-  `307` with `Location: /edu`, while `GET /setup` answers `200`. That pair is the adjacent
+  `307` with `Location: /dashboard` (the landing resolves `/edu`), while
+  `GET /setup` answers `200`. That pair is the adjacent
   regression the spec pins, so opening `/setup/org` to everybody cannot leave the manager
   assertions green.
 - The manager tenant already owns an organization, and `/setup/org` is still served (the

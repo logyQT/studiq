@@ -10,15 +10,18 @@ import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import type { OrgMembership } from '@/hooks/use-orgs';
 import { apiGet, apiPost } from '@/lib/api';
-import { dashboardPathForAccountType, pollBillingActivation } from '@/lib/billing-success';
+import { pollBillingActivation } from '@/lib/billing-success';
 import { activatedPlanLabel } from '@/lib/billing-subscription';
 import { invalidateAuthority } from '@/lib/query-cache';
 
 type SuccessState = 'processing' | 'activated' | 'timeout' | 'redirecting';
 
-function accountTypeOf(user: { app_metadata?: Record<string, unknown> } | null): unknown {
-  return user?.app_metadata?.account_type;
-}
+/**
+ * The area is permission-derived and the purchase may have changed the plan, role
+ * profile or seat behind it, so every redirect goes through the neutral landing,
+ * which answers after the authority caches are dropped.
+ */
+const DASHBOARD_PATH = '/dashboard';
 
 /**
  * Post-checkout landing page (#662 §5.6 / X6).
@@ -36,12 +39,11 @@ function BillingSuccessContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { isLoading: isAuthLoading } = useAuth();
 
   const sessionId = searchParams.get('session_id')?.trim() || null;
   const purchasedPlanKey = searchParams.get('plan_id')?.trim() || null;
   const orgId = searchParams.get('org_id')?.trim() || null;
-  const dashboardPath = dashboardPathForAccountType(accountTypeOf(user));
 
   const [state, setState] = useState<SuccessState>(sessionId ? 'processing' : 'redirecting');
   const [subscription, setSubscription] = useState<BillingSubscriptionView | null>(null);
@@ -56,7 +58,7 @@ function BillingSuccessContent() {
       // drops the pre-purchase authority caches before the redirect — without
       // this the dashboard renders the old entitlement set and plan badge.
       invalidateAuthority(queryClient);
-      const timer = setTimeout(() => router.push(dashboardPath), 3_000);
+      const timer = setTimeout(() => router.push(DASHBOARD_PATH), 3_000);
       return () => clearTimeout(timer);
     }
 
@@ -112,7 +114,7 @@ function BillingSuccessContent() {
       cancelled = true;
       if (sleepTimer !== undefined) clearTimeout(sleepTimer);
     };
-  }, [sessionId, orgId, isAuthLoading, dashboardPath, router, purchasedPlanKey, queryClient]);
+  }, [sessionId, orgId, isAuthLoading, router, purchasedPlanKey, queryClient]);
 
   if (isAuthLoading) {
     return (
@@ -183,7 +185,7 @@ function BillingSuccessContent() {
           <Button
             className="w-full"
             disabled={isProcessing}
-            onClick={() => router.push(dashboardPath)}
+            onClick={() => router.push(DASHBOARD_PATH)}
           >
             {t('go_dashboard')} <ArrowRight className="size-4 ml-2" />
           </Button>

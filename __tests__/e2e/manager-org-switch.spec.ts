@@ -18,7 +18,9 @@ async function login(page: import('@playwright/test').Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill('manager@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/manage/);
+  // The landing chain (document → /dashboard → orgs/permissions → area) outlives
+  // Playwright's 6 s default.
+  await page.waitForURL(/\/manage/, { timeout: 15_000 });
 }
 
 test.describe('Manager organization switch', () => {

@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { expectNeutralLandingRedirect } from '#test/helpers/dashboard';
 import { asJson, json } from '#test/helpers/json';
 import { waitForMailLink } from '#test/helpers/mailpit';
 import { loadTenant } from '#test/qa/fixtures/tenant';
@@ -19,10 +20,12 @@ import { skipBrandedAuthTemplateTest } from '#test/helpers/stack-mode';
  * suffix therefore means fresh addresses on every run, while ids stay
  * deterministic; the seeded bare account itself is never signed in.
  *
- * The acceptance points are the intended post-login destinations — educator →
- * `/setup` (ONB-01), manager → `/setup/org` (ONB-04) — and the account type in the
- * issued token. Activation uses the confirmation mail read from the shared stack's
- * mail catcher (read-only, filtered to this run's own address).
+ * The acceptance points are the intended post-login destinations — `/login` 307s
+ * a signed-in visitor to the neutral `/dashboard`, whose landing then resolves
+ * educator → `/setup` (ONB-01) or manager → `/setup/org` (ONB-04) — and the
+ * account type in the issued token. Activation uses the confirmation mail read
+ * from the shared stack's mail catcher (read-only, filtered to this run's own
+ * address).
  *
  * Polish copy is asserted because the case quotes the Polish UI; the fixture pins
  * `NEXT_LOCALE=pl` so a locale cookie from an earlier case cannot change it.
@@ -212,6 +215,7 @@ test('an educator registers, activates and lands on /setup with account_type edu
     const logout = await userPage.request.post('/api/v1/auth/logout');
     expect(logout.ok(), 'POST /api/v1/auth/logout').toBe(true);
     await signIn(userPage, email, /\/setup$/);
+    await expectNeutralLandingRedirect(userPage);
 
     // Expected: the educator token carries account_type=educator, and the
     // first-run chooser is what the login lands on.
@@ -263,6 +267,7 @@ test('a manager registers, activates and lands on /setup/org with account_type m
     const logout = await userPage.request.post('/api/v1/auth/logout');
     expect(logout.ok(), 'POST /api/v1/auth/logout').toBe(true);
     await signIn(userPage, email, /\/setup\/org$/);
+    await expectNeutralLandingRedirect(userPage);
 
     // Expected: account_type=manager in the token, and the org setup screen.
     expect(await tokenClaims(context)).toEqual({ email, accountType: 'manager' });

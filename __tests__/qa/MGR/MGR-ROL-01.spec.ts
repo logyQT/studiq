@@ -15,14 +15,13 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  * 1. the manager (org role `admin`) sees the editor and can create/edit a role —
  *    no locked card, no plan upgrade path;
  * 2. a same-org member whose role does not hold `org.role.manage` (the tenant's
- *    teacher) is refused by the API with 403 and has no editor. The persona route
- *    rule still sends an educator away from `/manage`, so the absence of the
- *    editor is asserted where the permission gate lives — `/me/permissions`
- *    (no key) and the write endpoints (403);
+ *    teacher) stays on `/manage/roles`: `/manage` is auth-only, so a bookmarked
+ *    URL loads for any member (ADR-0015 §7.1). The member reads the list, is
+ *    offered no editor, and the API refuses the write with 403;
  * 3. a **manager-account-type** member holding a custom role without the gate is
- *    the client-gate deny case: `/manage/roles` renders (the persona rule admits a
- *    manager), and only the permission withholds „Nowa rola”, the actions column
- *    and the API write.
+ *    the second client-gate deny case: the page renders, and only the permission
+ *    withholds „Nowa rola”, the actions column and the API write. Together the two
+ *    members show the gate is the key, not the persona.
  *
  * Tenant: the `content` profile of this case
  * (`__tests__/qa/profiles/MGR-ROL-01.json`), seeded before the suite starts by
@@ -172,11 +171,20 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role management permission', 
         'the teacher role does not hold the gate',
       ).toBeUndefined();
 
-      // The persona route rule still keeps an educator out of /manage (AUT-17 owns
-      // that surface), so no editor is rendered for this member.
+      // `/manage` is auth-only (ADR-0015 §7.1): the page loads for a member the
+      // same way a bookmarked URL does — no persona redirect — and the permission
+      // is what withholds the editor.
       await teacher.goto('/manage/roles');
-      await expect(teacher).toHaveURL(/\/edu(\/|$)/);
+      await expect(teacher).toHaveURL(/\/manage\/roles$/);
+      await expect(
+        teacher.getByRole('heading', { level: 1, name: 'Role', exact: true }),
+      ).toBeVisible();
+      await expect(roleRow(teacher, ROLE_NAME_EDITED), 'the list stays readable').toHaveCount(1);
       await expect(teacher.getByRole('button', { name: 'Nowa rola', exact: true })).toHaveCount(0);
+      await expect(
+        teacher.getByRole('columnheader', { name: 'Akcje', exact: true }),
+        'no actions column without org.role.manage',
+      ).toHaveCount(0);
 
       // The permission, not the persona, is what the API enforces: the write paths
       // answer 403 for exactly the caller the editor is withheld from.

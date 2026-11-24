@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { t, waitForDashboardArea } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
 
 /**
@@ -20,7 +20,7 @@ async function login(page: Page) {
   await page.getByLabel(t('LoginPage.email_label')).fill(TEACHER_EMAIL);
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/edu/);
+  await waitForDashboardArea(page);
 
   // Login does not set the active-org cookie; the app pins it right after the
   // redirect (`useOrgs`), and the assignment request is org-scoped.
@@ -35,7 +35,7 @@ async function login(page: Page) {
       { timeout: 15_000 },
     )
     .toBe(true);
-  await page.waitForURL(/\/edu/);
+  await waitForDashboardArea(page);
 }
 
 test.describe('assignment edit page for a missing id (#1225)', () => {

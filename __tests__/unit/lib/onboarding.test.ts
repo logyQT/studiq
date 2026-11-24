@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDashboardPath, resolveNeedsOnboarding, resolveSetupGate } from '@/lib/onboarding';
+import { resolveNeedsOnboarding, resolveSetupGate } from '@/lib/onboarding';
 
 const settled = { isPending: false, isFetching: false };
 
@@ -96,24 +96,5 @@ describe('resolveSetupGate', () => {
         }
       }
     }
-  });
-});
-
-describe('resolveDashboardPath', () => {
-  it('sends educators to /edu', () => {
-    expect(resolveDashboardPath('educator')).toBe('/edu');
-  });
-
-  it('sends managers to /manage', () => {
-    expect(resolveDashboardPath('manager')).toBe('/manage');
-  });
-
-  it('sends students to /app', () => {
-    expect(resolveDashboardPath('student')).toBe('/app');
-  });
-
-  it('falls back to /edu when the account type is unknown', () => {
-    expect(resolveDashboardPath(undefined)).toBe('/edu');
-    expect(resolveDashboardPath(null)).toBe('/edu');
   });
 });

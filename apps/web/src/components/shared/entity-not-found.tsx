@@ -4,8 +4,8 @@ import { Button, Card, CardContent } from '@studiq/ui';
 import { FileX, Home, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { dashboardHomeFor } from '@/lib/dashboard-home';
+import { usePermissions } from '@/hooks/use-permissions';
+import { resolveDashboardArea } from '@/lib/dashboard-home';
 
 type Props = {
   titleKey: string;
@@ -20,10 +20,8 @@ type Props = {
 
 export function EntityNotFound({ titleKey, descriptionKey, fallback }: Props) {
   const t = useTranslations('EntityNotFound');
-  const { user } = useAuth();
-  const accountType: unknown = user?.app_metadata.account_type;
-  const href =
-    fallback?.href ?? dashboardHomeFor(typeof accountType === 'string' ? accountType : null);
+  const permissions = usePermissions();
+  const href = fallback?.href ?? resolveDashboardArea(permissions.data?.permissions);
   const RecoveryIcon = fallback ? Layers : Home;
 
   return (

@@ -106,10 +106,10 @@ sequenceDiagram
         M->>M: Match route rule (no match → forward)
         alt Auth required + no session
             M->>C: 302 to /login?next=…
-        else Role restricted + wrong role
-            M->>C: 302 to role dashboard
+        else Persona restricted + wrong role
+            M->>C: 302 to /dashboard (onboarding exceptions only)
         else Redirect if authenticated
-            M->>C: 302 to role-specific dashboard (by role)
+            M->>C: 302 to /dashboard (neutral landing)
         else All checks pass
             M->>R: Forward request
             R->>C: Response
@@ -121,17 +121,15 @@ Route rules are defined in `packages/server/src/config/routes.config.ts` and cov
 
 ```typescript
 export const routeRules: RouteRule[] = [
-  {
-    matcher: /^\/(login|register)(\/.*)?$/,
-    redirectIfAuthenticatedByAccountType: {
-      [AccountType.MANAGER]: '/manage',
-      [AccountType.EDUCATOR]: '/edu',
-      [AccountType.STUDENT]: '/app',
-    },
-  },
-  { matcher: /^\/edu(\/.*)?$/, requireAuth: true, allowedAccountTypes: [AccountType.EDUCATOR] },
-  { matcher: /^\/app(\/.*)?$/, requireAuth: true, allowedAccountTypes: [AccountType.STUDENT] },
-  // ...
+  { matcher: /^\/(login|register)(\/.*)?$/, redirectIfAuthenticated: '/dashboard' },
+  // Area routes are auth-only: a link is navigation, the API is the boundary
+  // (ADR-0015 §7.1). Which area is home comes from the active org's permissions.
+  { matcher: /^\/manage(\/.*)?$/, requireAuth: true },
+  { matcher: /^\/edu(\/.*)?$/, requireAuth: true },
+  { matcher: /^\/app(\/.*)?$/, requireAuth: true },
+  // The declared persona exceptions: onboarding asks what is being set up.
+  { matcher: /^\/setup\/org\/?$/, requireAuth: true, allowedAccountTypes: [AccountType.MANAGER] },
+  { matcher: /^\/setup(\/.*)?$/, requireAuth: true, allowedAccountTypes: [AccountType.EDUCATOR] },
 ];
 ```
 

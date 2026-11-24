@@ -191,7 +191,11 @@ async function openSession(
   await loginAs(page, TENANT, role, {
     locale: 'pl',
     activeOrgId: orgId,
-    waitFor: /\/(edu|app|manage)$/,
+    // The landing is permission-based (ADR-0015 §7.1): a seeded member lands on
+    // their area (`/manage` admin, `/edu` class keys, `/app` otherwise) and the
+    // org-less `teacherB` is a first-run staff account, so it lands on `/setup`.
+    // This session only calls the API, so any settled landing will do.
+    waitFor: /\/(edu|app|manage|setup)(\/|$)/,
   });
   return { page, close: () => context.close() };
 }

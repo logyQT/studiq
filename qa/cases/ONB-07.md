@@ -41,7 +41,8 @@ the visible content', 'qa-shared')` plus a per-run suffix (`QA_RUN_SUFFIX`, othe
 ## Expected result
 
 - Lista zawiera „WSB Merito” i „UE Wrocław” z rolą „Teacher” i zaznaczoną aktywną (✓).
-- Po przełączeniu następuje przekierowanie na pulpit /edu.
+- Po przełączeniu następuje przekierowanie na pulpit /edu — adres obszaru wynika z
+  uprawnień nowej roli w nowej organizacji (ADR-0015 §7.1), nie z typu konta.
 - Dane widoczne dla aktywnej organizacji różnią się (np. banki O1G1T1/O1G2T2 vs O2G1T1/O2G2T2; grupy O1G1/O1G2 vs O2G1/O2G2).
 - Dane organizacji nieaktywnej nie są widoczne (izolacja).
 
@@ -51,7 +52,10 @@ the visible content', 'qa-shared')` plus a per-run suffix (`QA_RUN_SUFFIX`, othe
   and its role (`Teacher`); the menu label is „Organizacje”, both memberships are listed
   with `Teacher`, and only the active one carries the check glyph.
 - Choosing an org from any `/edu` page (dashboard, questions, flashcards, groups) closes
-  the menu and pushes `/edu`; `GET /api/v1/me/orgs` then reports the new org as `isActive`.
+  the menu and pushes the area the **new** org's role resolves to — `/edu` for the
+  teacher role, after the app has read `/me/permissions` under the new cookie
+  (`useOrgs` awaits the new map; the outgoing org's map is never used to pick the
+  target). `GET /api/v1/me/orgs` then reports the new org as `isActive`.
 - Content surfaces: `/edu/questions` (Pytania) renders bank cards with their group badges,
   `/edu/flashcards` (Talie) renders deck cards, `/edu/groups` (Grupy) renders the org's
   group table.

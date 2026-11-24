@@ -113,8 +113,14 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
     expect(tenant.org, 'the tenant has an organization').toBeTruthy();
     expect(tenant.group, 'the tenant has a default group').toBeTruthy();
 
-    await loginAs(page, tenant, 'teacher', { locale: 'pl' });
-    expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
+    // The landing is permission-based (ADR-0015 §7.1): this educator's org role is
+    // `member`, which holds `group.read` but none of the class-manage keys, so the
+    // landing answers `/app`. `/edu` is navigation, not the persona gate — the case is
+    // about the teacher menu, so open it explicitly after the landing resolves.
+    await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/app$/ });
+    expect(new URL(page.url()).pathname, 'the member-role educator lands on /app').toBe('/app');
+    await page.goto('/edu');
+    expect(new URL(page.url()).pathname, 'the teacher area loads for the member role').toBe('/edu');
 
     // Prerequisite: this educator is „konto bez tej funkcji”. `/me/permissions` carries
     // the resolved scope map (ADR-0015 §6.3): the read key present proves the map
@@ -293,7 +299,12 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
       );
 
       await page.request.post('/api/v1/auth/logout');
-      await loginAs(page, tenant, 'teacher', { locale: 'pl' });
+      // The role now carries no `group.*` key at all, so the permission landing still
+      // answers `/app` for it; the sidebar assertions below are about the `/edu` menu,
+      // which is navigation.
+      await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/app$/ });
+      await page.goto('/edu');
+      expect(new URL(page.url()).pathname, 'the teacher area still loads').toBe('/edu');
 
       const withoutRead = await page.request.get('/api/v1/me/permissions');
       const scopesAfterSave = (

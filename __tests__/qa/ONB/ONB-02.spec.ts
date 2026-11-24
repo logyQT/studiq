@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectNeutralLandingRedirect } from '#test/helpers/dashboard';
 import { json } from '#test/helpers/json';
 import { qaDbNow, resetFirstRunTenant } from '#test/helpers/db-admin';
 import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
@@ -40,9 +41,13 @@ test.describe('ONB-02 — teacher creates a class without invitations', () => {
     await resetFirstRunTenant(tenantUser(tenant, 'teacher').id, attemptStarted);
 
     // --- Prerequisite ONB-01: an org-less educator lands on /setup ---------
+    // `/login` 307s the educator to the neutral `/dashboard`; the landing reads
+    // the settled empty org list and the declared EDUCATOR exception and
+    // replaces the URL with `/setup`.
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/setup/ });
     await expect(page).toHaveURL(/\/setup$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+    await expectNeutralLandingRedirect(page);
 
     const chooserTitle = page.getByRole('heading', { level: 1, name: 'Witaj w StudiQ' });
     await expect(chooserTitle).toBeVisible();

@@ -4,26 +4,22 @@ import { Button, Skeleton } from '@studiq/ui';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect } from 'react';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
-import { resolveDashboardPath, resolveSetupGate } from '@/lib/onboarding';
+import { resolveSetupGate } from '@/lib/onboarding';
 
 export default function SetupLandingPage() {
   const t = useTranslations('SetupPage');
   const router = useRouter();
-  const { user } = useAuth();
   const { orgs, isPending, isFetching } = useOrgs();
   const gate = resolveSetupGate({ orgsCount: orgs.length, isPending, isFetching });
-  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata.account_type;
-  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
 
   useEffect(() => {
     if (gate !== 'dashboard') return;
     // replace(), not push(): /setup must not stay in history, so "back" cannot
-    // re-open the first-run chooser (same rule as setup/org).
-    router.replace(resolveDashboardPath(accountType));
-  }, [gate, accountType, router]);
+    // re-open the first-run chooser (same rule as setup/org). The landing picks
+    // the area from the org just joined, which is not the outgoing shell's.
+    router.replace('/dashboard');
+  }, [gate, router]);
 
   // The chooser is first-run only: render it only once the org list has
   // settled empty. While settling, keep the layout footprint so the redirect

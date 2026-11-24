@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { expectNeutralLandingRedirect } from '#test/helpers/dashboard';
 import { json } from '#test/helpers/json';
 import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
 
@@ -53,8 +54,10 @@ test('an educator without an organization lands on the /setup chooser right afte
   await loginAs(page, TENANT, 'teacher', { locale: 'pl', waitFor: /\/setup$/ });
   await expectNoOrganizations(page);
 
-  // `/login` is where an authenticated user is sent next; the proxy forwards the
-  // educator to `/edu`, whose onboarding guard replaces the URL with `/setup`.
+  // `/login` forwards an authenticated visitor to the neutral `/dashboard`
+  // (307, no area named); the landing then replaces it with the declared
+  // educator onboarding screen once `/me/orgs` has settled empty.
+  await expectNeutralLandingRedirect(page);
   await page.goto('/login');
 
   await expect(page).toHaveURL(/\/setup$/, { timeout: 20_000 });

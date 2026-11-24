@@ -50,10 +50,32 @@ describe('routeRules — trailing slash consistency', () => {
       assertSameRule('/register', '/register/');
     });
 
-    it('/app requires auth + student', () => {
-      const rule = matchRule('/app');
+    it('matches /dashboard and /dashboard/ to same rule', () => {
+      assertSameRule('/dashboard', '/dashboard/');
+    });
+
+    // ADR-0015 §7.1: a link is navigation and the API is the boundary, so the
+    // three area rules stay auth-only. Re-adding `allowedAccountTypes` here is
+    // the exact bug the phase removes (a Student persona who is Admin in org B
+    // could not reach `/manage`), so a persona gate fails this audit.
+    it.each(['/manage', '/edu', '/app'])('%s requires auth and no persona', (path) => {
+      const rule = matchRule(path);
       expect(rule?.requireAuth).toBe(true);
-      expect(rule?.allowedAccountTypes).toContain('student');
+      expect(rule?.allowedAccountTypes).toBeUndefined();
+    });
+
+    it('/setup keeps the two declared persona exceptions', () => {
+      expect(matchRule('/setup/org')?.allowedAccountTypes).toEqual(['manager']);
+      expect(matchRule('/setup')?.allowedAccountTypes).toEqual(['educator']);
+    });
+
+    it('redirects a signed-in visitor from /login to the neutral landing', () => {
+      const rule = matchRule('/login');
+      expect(rule?.redirectIfAuthenticated).toBe('/dashboard');
+    });
+
+    it('/dashboard requires auth', () => {
+      expect(matchRule('/dashboard')?.requireAuth).toBe(true);
     });
   });
 });

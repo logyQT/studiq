@@ -64,9 +64,10 @@ bun scripts/qa-tenant.ts ONB-02 --profile bare --fresh
 
 ## Observed during the suite walk (qa-env-2, shared app 3010 / DB 54421)
 
-- Logowanie konta bez organizacji: `/edu` najpierw ładuje panel, a następnie klient
-  przekierowuje na `/setup`; adres końcowy to `/setup`. Wejście na `/edu` z tej samej sesji
-  wraca na `/setup`. `<html lang="pl">`.
+- Logowanie konta bez organizacji: `/login` odsyła zalogowanego użytkownika
+  (307) na neutralny `/dashboard`; landing czeka, aż `/me/orgs` zwróci pustą listę,
+  i przekierowuje na `/setup`; adres końcowy to `/setup`. Wejście na `/edu` z tej
+  samej sesji wraca na `/setup`. `<html lang="pl">`.
 - `/setup`: nagłówek „Witaj w StudiQ”, opis „Skonfiguruj swoją klasę, aby rozpocząć.”,
   dwa przyciski: „Dołącz do istniejącej organizacji” i „Utwórz własną klasę”.
 - `/setup/classroom`: h1 „Skonfiguruj swoją klasę”, pole „Nazwa klasy” (placeholder

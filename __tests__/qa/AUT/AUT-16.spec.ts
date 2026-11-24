@@ -3,7 +3,20 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
- * AUT-16 — Student → trasy innych ról.
+ * AUT-16 — a student on the routes of other roles.
+ *
+ * Contract (ADR-0015 §7.1 + §14.1): a link is navigation, the API is the
+ * boundary. The three area URLs are **auth-only**, so opening one is not a
+ * redirect and not a 404 — the page loads and the caller's own reads decide. What
+ * stays closed for a Member is the panel *data*: the roster read is empty or 403
+ * (D25) and `/teacher/assignments` is 403 (no `assignment.read` on the Member
+ * role). The org-scoped "no access in this org / switch org" card is the second
+ * half of the phase and is pinned by its own case.
+ *
+ * The declared persona exceptions are unchanged and still redirect: `/setup`
+ * (EDUCATOR) and `/setup/org` (MANAGER). Since the proxy no longer names an
+ * area, their denial target is the neutral `/dashboard` landing, which then
+ * resolves `/app` for this student.
  *
  * The case was written against the legacy manual seed (`student1@dev.local`), but
  * it only needs *a* student session: the account comes from the case's own tenant
@@ -11,93 +24,38 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *
  *   bun scripts/qa-tenant.ts AUT-16 --profile content --fresh
  *
- * The spec reads `qa/.tenants/AUT-16.json` and never creates accounts itself. Every
- * assertion is a read inside that tenant, so no other worker's tenant and no global
- * row (admin settings, feature flags, plans, singletons) is touched.
- *
- * Acceptance points (case step 1 and expected result): a student opening `/edu`,
- * `/edu/assignments`, `/manage`, `/manage/members`, `/setup` and `/setup/org` lands
- * on `/app`, and the teacher/manager panel content is never displayed — not even
- * for a moment. The redirect is therefore asserted at three levels, because "not
- * even briefly" is a property of *how* the page is delivered, not only of the final
- * URL:
- *
- *   1. the server answers the document request with a redirect, so the panel HTML
- *      is never sent (a 200 + client-side redirect would paint it first);
- *   2. the same gate applies to the RSC request the client router makes on a soft
- *      navigation (otherwise a link click could paint the panel);
- *   3. a mutation observer watches every document for teacher/manager navigation
- *      chrome and must stay empty for the whole navigation.
- *
- * Adjacent regression paths that matter for the tested surface: the gate must stay
- * role-based rather than a blanket block (the tenant's teacher still reaches
- * `/edu/assignments`, its manager still reaches `/manage/members`), and the panel
- * data must be unreachable through the API as well: the teacher/stats endpoints
- * answer `403 FORBIDDEN`, while the roster read (D25) answers `200` with an empty
- * list or the same `403` — never a member row.
- *
- * No UI copy is asserted — the tenant's teacher/manager pages render in the run
- * locale — so the test only uses URLs, roles and the tenant's own account data.
+ * Every assertion is a read inside that tenant, so no other worker's tenant and
+ * no global row (admin settings, feature flags, plans, singletons) is touched.
  */
-
-declare global {
-  interface Window {
-    qaPanelChrome?: string[];
-  }
-}
 
 const CASE = 'AUT-16';
 const APP_URL = process.env.QA_APP_URL ?? 'http://localhost:3010';
 const STUDENT_HOME = '/app';
 
-/** Step 1 of the case: teacher, manager and onboarding routes. */
-const PROTECTED_ROUTES = [
-  '/edu',
-  '/edu/assignments',
-  '/manage',
-  '/manage/members',
-  '/setup',
-  '/setup/org',
-] as const;
+/** Step 1's area routes: the page loads, the data does not. */
+const AREA_ROUTES = ['/edu', '/edu/assignments', '/manage', '/manage/members'] as const;
 
-/** Chrome only a teacher or manager panel renders (locale-independent). */
-const PANEL_CHROME = 'a[href="/edu"], a[href^="/edu/"], a[href="/manage"], a[href^="/manage/"]';
+/** Step 1's onboarding routes: the declared persona exceptions, still redirected. */
+const ONBOARDING_ROUTES = ['/setup', '/setup/org'] as const;
 
-/**
- * Remembers every teacher/manager href ever attached to the DOM in the current
- * document, including transient paints that are replaced before the navigation
- * settles. `page.evaluate` after the navigation reads the result.
- */
-async function recordForeignPanelChrome(page: Page): Promise<() => Promise<string[]>> {
-  await page.addInitScript((selector: string) => {
-    const seen: string[] = [];
-    window.qaPanelChrome = seen;
-    const scan = () => {
-      for (const anchor of document.querySelectorAll(selector)) {
-        const href = anchor.getAttribute('href') ?? '';
-        if (href && !seen.includes(href)) seen.push(href);
-      }
-    };
-    new MutationObserver(scan).observe(document, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['href'],
-    });
-    document.addEventListener('DOMContentLoaded', scan);
-  }, PANEL_CHROME);
-
-  return () => page.evaluate<string[]>(() => window.qaPanelChrome ?? []);
+/** The `Location` a redirect answered with, as the request that follows it. */
+function redirectLocation(response: APIResponse): string {
+  const location = response.headers().location;
+  if (!location) throw new Error(`${CASE} redirect carries no Location header`);
+  return location;
 }
 
 /** Path a redirect points at, resolved against the app origin. */
 function redirectTarget(response: APIResponse): string {
-  const location = response.headers().location;
-  if (!location) throw new Error(`${CASE} redirect carries no Location header`);
-  return new URL(location, APP_URL).pathname;
+  return new URL(redirectLocation(response), APP_URL).pathname;
 }
 
-test('a student is redirected from every teacher, manager and onboarding route to /app', async ({
+/** The sidebar is the shell every area page renders; it is what "loaded" means. */
+function sidebar(page: Page) {
+  return page.locator('[data-slot="sidebar"]');
+}
+
+test('a student keeps the URL on every area route and only its own data is served', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -105,7 +63,6 @@ test('a student is redirected from every teacher, manager and onboarding route t
   const tenant = loadTenant(CASE);
   const student = tenantUser(tenant, 'student');
 
-  const panelChrome = await recordForeignPanelChrome(page);
   await loginAs(page, tenant, 'student');
   expect(new URL(page.url()).pathname, 'the student starts on their own dashboard').toBe(
     STUDENT_HOME,
@@ -117,50 +74,60 @@ test('a student is redirected from every teacher, manager and onboarding route t
     student.email,
   );
 
-  // Every document response of this test, so a protected page served as HTML
-  // (200) would stand out from the proxy's redirect (3xx).
+  // Every document response of this test, so a page that answered with a
+  // redirect would stand out from the 200 document the contract promises.
   const documents: { path: string; status: number }[] = [];
   page.on('response', (response) => {
     if (response.request().resourceType() !== 'document') return;
     documents.push({ path: new URL(response.url()).pathname, status: response.status() });
   });
 
-  for (const route of PROTECTED_ROUTES) {
-    // 1. Server-side gate: a redirect, never the panel document.
+  for (const route of AREA_ROUTES) {
+    // 1. The route is auth-only: a page, not a redirect (§14.1's bookmarked URL).
     const gate = await page.request.get(route, { maxRedirects: 0 });
-    expect(gate.status(), `${route} must answer with a redirect`).toBe(307);
-    expect(redirectTarget(gate), `${route} redirect target`).toBe(STUDENT_HOME);
+    expect(gate.status(), `${route} must load for a member, not redirect`).toBe(200);
 
-    // 2. Soft navigation: the client router's RSC request is redirected too.
+    // 2. The RSC fetch the client router makes is not answered by an auth or
+    //    persona redirect either. Next canonicalises a bare RSC request with a
+    //    `307` to the same path (`?_rsc`, its cache-buster), so what must hold
+    //    here is that this framework hop is the *only* one — never `/login` or
+    //    `/setup` — and that the canonical URL answers with the page.
     const routerRequest = await page.request.get(`${route}?_rsc=qa-aut-16`, {
       headers: { RSC: '1' },
       maxRedirects: 0,
     });
-    expect(routerRequest.status(), `${route} (RSC) must answer with a redirect`).toBe(307);
-    expect(redirectTarget(routerRequest), `${route} (RSC) redirect target`).toBe(STUDENT_HOME);
+    const routerStatus = routerRequest.status();
+    expect(
+      [200, 307],
+      `${route} (RSC) must answer the page or Next's canonical RSC redirect, got ${routerStatus}`,
+    ).toContain(routerStatus);
+    if (routerStatus === 307) {
+      expect(redirectTarget(routerRequest), `${route} (RSC) must stay on this route`).toBe(route);
+      const canonical = await page.request.get(redirectLocation(routerRequest), {
+        headers: { RSC: '1' },
+        maxRedirects: 0,
+      });
+      expect(canonical.status(), `${route} (RSC) canonical URL must answer with the page`).toBe(
+        200,
+      );
+    }
 
-    // 3. Browser navigation: lands on /app, and the protected path never came
-    //    back as an HTML document (no panel to paint, not even for a frame).
+    // 3. The browser keeps the URL and renders the dashboard shell.
     await page.goto(route);
-    expect(new URL(page.url()).pathname, `${route} must land on /app`).toBe(STUDENT_HOME);
-    await expect(
-      page.locator('a[href="/app/flashcards"]').first(),
-      `the student dashboard is rendered after ${route}`,
-    ).toBeVisible();
+    expect(new URL(page.url()).pathname, `${route} must keep its URL`).toBe(route);
+    await expect(sidebar(page), `the shell rendered for ${route}`).toHaveCount(1);
 
     const hops = documents.filter((entry) => entry.path === route).map((entry) => entry.status);
     expect(hops.length, `${route} must be requested as a document`).toBeGreaterThan(0);
     expect(
-      hops.every((status) => status >= 300 && status < 400),
-      `${route} document must only ever be a redirect, got ${JSON.stringify(hops)}`,
+      hops.every((status) => status === 200),
+      `${route} document must be served, got ${JSON.stringify(hops)}`,
     ).toBe(true);
-
-    expect(await panelChrome(), `${route} must not paint teacher/manager chrome`).toEqual([]);
   }
 
-  // The panel data is gated as well, not only the pages. The assignment list
-  // has no deny shape other than the error: a Member role carries no
-  // assignment.read, so it stays 403 (2b-6: the key, not the persona, decides).
+  // The panel data is gated, not only the pages. The assignment list has no deny
+  // shape other than the error: a Member role carries no assignment.read, so it
+  // stays 403 (2b-6: the key, not the persona, decides).
   const assignments = await page.request.get('/api/v1/teacher/assignments');
   expect(assignments.status(), 'GET /api/v1/teacher/assignments as a student').toBe(403);
   expect(await assignments.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
@@ -204,7 +171,29 @@ test('a student is redirected from every teacher, manager and onboarding route t
   expect(membersRaw, 'the roster deny leaks the student').not.toContain(student.email);
 });
 
-test('the role gate still lets a teacher into the teacher routes', async ({ page }) => {
+test('a student is still redirected from the onboarding routes to /app', async ({ page }) => {
+  test.setTimeout(90_000);
+
+  const tenant = loadTenant(CASE);
+  await loginAs(page, tenant, 'student');
+
+  for (const route of ONBOARDING_ROUTES) {
+    // `/setup` is educator-only and `/setup/org` manager-only. The proxy answers
+    // the neutral landing, which resolves this student's area — never `/edu` or
+    // `/manage` by persona (ADR-0015 §7.1).
+    const gate = await page.request.get(route, { maxRedirects: 0 });
+    expect(gate.status(), `${route} must answer with a redirect`).toBe(307);
+    expect(redirectTarget(gate), `${route} redirect target`).toBe('/dashboard');
+
+    await page.goto(route);
+    await expect(page, `${route} must land on /app`).toHaveURL(new RegExp(`${STUDENT_HOME}$`), {
+      // The landing waits for `/me/orgs` and the active org's permissions.
+      timeout: 15_000,
+    });
+  }
+});
+
+test('the auth-only rule still serves a teacher the teacher routes', async ({ page }) => {
   test.setTimeout(90_000);
 
   const tenant = loadTenant(CASE);
@@ -225,7 +214,7 @@ test('the role gate still lets a teacher into the teacher routes', async ({ page
   );
 });
 
-test('the role gate still lets a manager into the manager routes', async ({ page }) => {
+test('the auth-only rule still serves a manager the manager routes', async ({ page }) => {
   test.setTimeout(90_000);
 
   const tenant = loadTenant(CASE);
