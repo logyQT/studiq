@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                                        | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                     | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                     | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                     | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                     | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                     | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                               | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                                               | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                                     | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                          | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 on `feat/authority-6b` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-24 |
-| 7     | delete, full QA, close                         | pending | —                                                                         | —   | all 192 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                                         | —   | all 192 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                       | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | -------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                    | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                    | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                    | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                    | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                    | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                              | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                              | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                    | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                         | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-24 |
+| 7     | delete, full QA, close                         | pending | —                                                        | —   | all 192 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                        | —   | all 192 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -51,8 +51,8 @@ atomic entitlement-profile write; the `/me/plan` union badge)**, then 6e
 (Teacher assignment reads). 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
 6c `14262016` (#1428) and **6b-1** `999c45ab` (#1429 — route rules,
 `resolveDashboardArea`, the landing) are merged; **6b-2** (`AreaGate`, nav-item
-gates, `/manage` classification, `checkout-org`, AUT-20) is on
-`feat/authority-6b` above the 6b-1 tip.
+gates, `/manage` classification, `checkout-org`, AUT-20) is merged as
+`949da9ac` (#1447).
 
 Phase 2b is complete — nine slices, in the settled order recorded in the
 phase-2b table below: **2b-1** (the `permission_key` foreign key and its
@@ -5296,7 +5296,7 @@ no migration, no new table).
   also brings the bookmarked-URL no-access case.
 
 **6b-2 — the area gate, the nav gates, the page classification and the org
-checkout authority** (on `feat/authority-6b`; no SQL, no migration, no new
+checkout authority** (merged as `949da9ac`, #1447; no SQL, no migration, no new
 table).
 
 - **`AreaGate`** (`apps/web/src/components/layout/area-gate.tsx`) is §7.1's
