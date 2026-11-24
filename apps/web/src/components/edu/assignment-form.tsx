@@ -12,7 +12,7 @@ import {
   Textarea,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 /** Form state as the inputs hold it: every number/date field is a string until submit. */
 export interface AssignmentFormValues {
@@ -73,6 +73,12 @@ interface AssignmentFormProps {
   onCancel: () => void;
   /** A published run that has opened: its close may move forward, never into the past. */
   live?: boolean;
+  /**
+   * The sampling rules (items per attempt, same-item retake, unseen-only) are frozen once a run is
+   * published (#1300). `scheduled` can still be withdrawn to a draft to change them; `started`
+   * cannot. Omitted for a draft and for the create form.
+   */
+  samplingFrozen?: 'scheduled' | 'started';
   /** The server's per-field refusal of the deadline, as a key of the `Errors` namespace. */
   deadlineError?: string | null;
   /** Drops a stale server refusal once the teacher edits the field. */
@@ -90,6 +96,7 @@ export function AssignmentForm({
   onSubmit,
   onCancel,
   live = false,
+  samplingFrozen,
   deadlineError = null,
   onDeadlineChange,
   onCloseNow,
@@ -120,6 +127,8 @@ export function AssignmentForm({
       : deadlineInPast
         ? 'VALIDATION_DEADLINE_END_IS_CLOSE'
         : null;
+
+  const frozenHint = samplingFrozen ? t(`sampling_frozen_${samplingFrozen}`) : null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,8 +250,10 @@ export function AssignmentForm({
               value={values.attemptItemCount}
               onChange={(e) => set('attemptItemCount', e.target.value)}
               placeholder={t('whole_pool')}
+              disabled={samplingFrozen !== undefined}
             />
             <p className="text-xs text-muted-foreground">{t('attempt_item_count_desc')}</p>
+            {frozenHint && <p className="text-xs text-muted-foreground">{frozenHint}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="passingScore">{t('passing_score')}</Label>
@@ -287,13 +298,16 @@ export function AssignmentForm({
             description={t('same_item_retake_desc')}
             checked={values.allowSameItemRetake}
             onCheckedChange={(checked) => set('allowSameItemRetake', checked)}
+            disabled={samplingFrozen !== undefined}
           />
           <ToggleRow
             label={t('unseen_only')}
             description={t('unseen_only_desc')}
             checked={values.unseenOnly}
             onCheckedChange={(checked) => set('unseenOnly', checked)}
+            disabled={samplingFrozen !== undefined}
           />
+          {frozenHint && <p className="text-xs text-muted-foreground">{frozenHint}</p>}
         </CardContent>
       </Card>
 
@@ -316,16 +330,18 @@ interface ToggleRowProps {
   description: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
-function ToggleRow({ label, description, checked, onCheckedChange }: ToggleRowProps) {
+function ToggleRow({ label, description, checked, onCheckedChange, disabled }: ToggleRowProps) {
+  const id = useId();
   return (
     <div className="flex items-center justify-between">
       <div>
-        <Label>{label}</Label>
+        <Label htmlFor={id}>{label}</Label>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
     </div>
   );
 }

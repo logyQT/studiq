@@ -293,6 +293,16 @@ describe('TeacherAssignmentService', () => {
     service = new TeacherAssignmentService(() => Promise.resolve(mock));
   });
 
+  /** Ownership, then the one read that decides the freeze, then whatever the write returns. */
+  function mockRun(row: Record<string, unknown>, written: Record<string, unknown> = {}) {
+    const write = chain({ id: assignmentId, ...written });
+    mock.from
+      .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+      .mockReturnValueOnce(chain(row))
+      .mockReturnValue(write);
+    return write;
+  }
+
   describe('create', () => {
     it('creates an assignment successfully', async () => {
       const dbRow = { id: assignmentId, title: 'Quiz 1', organization_id: orgId };
@@ -608,6 +618,102 @@ describe('TeacherAssignmentService', () => {
         const result = await service.update(assignmentId, { unseenOnly: true }, ctx);
 
         expect(result.success).toBe(true);
+      });
+    });
+
+    describe('sampling rules frozen at publish (#1300)', () => {
+      const stored = {
+        unseen_only: false,
+        allow_same_item_retake: false,
+        attempt_item_count: 2,
+      };
+
+      it.each([
+        ['the unseen-only mode', { unseenOnly: true }],
+        ['the same-item retake flag', { allowSameItemRetake: true }],
+        ['the item count', { attemptItemCount: 5 }],
+        ['the item count back to the whole pool', { attemptItemCount: null }],
+      ])('refuses to change %s on a published run', async (_label, patch) => {
+        mockRun({ status: 'published', ...stored });
+
+        const result = await service.update(assignmentId, patch, ctx);
+
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+        // Ownership and the one read only: the refused edit never reaches the write.
+        expect(mock.from).toHaveBeenCalledTimes(2);
+      });
+
+      it('refuses when only one of several sampling fields changes', async () => {
+        mockRun({ status: 'published', ...stored });
+
+        const result = await service.update(
+          assignmentId,
+          { title: 'T', unseenOnly: false, allowSameItemRetake: true, attemptItemCount: 2 },
+          ctx,
+        );
+
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      });
+
+      it('accepts a save that re-sends every stored sampling value', async () => {
+        const write = mockRun({ status: 'published', ...stored });
+
+        const result = await service.update(
+          assignmentId,
+          {
+            title: 'New title',
+            unseenOnly: false,
+            allowSameItemRetake: false,
+            attemptItemCount: 2,
+          },
+          ctx,
+        );
+
+        expect(result.success).toBe(true);
+        expect(write.update).toHaveBeenCalled();
+      });
+
+      it('accepts re-sending the whole pool (a stored null count)', async () => {
+        mockRun({ status: 'published', ...stored, attempt_item_count: null });
+
+        const result = await service.update(assignmentId, { attemptItemCount: null }, ctx);
+
+        expect(result.success).toBe(true);
+      });
+
+      it('does not read the run for a save that names no sampling field', async () => {
+        mock.from
+          .mockReturnValueOnce(
+            chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+          )
+          .mockReturnValue(chain({ id: assignmentId, title: 'T' }));
+
+        const result = await service.update(assignmentId, { title: 'T' }, ctx);
+
+        expect(result.success).toBe(true);
+        // Ownership, then straight to the write.
+        expect(mock.from).toHaveBeenCalledTimes(2);
+      });
+
+      it('lets a draft change every sampling rule, including clearing the count', async () => {
+        const write = mockRun({ status: 'draft', ...stored });
+
+        const result = await service.update(
+          assignmentId,
+          { unseenOnly: true, allowSameItemRetake: true, attemptItemCount: null },
+          ctx,
+        );
+
+        expect(result.success).toBe(true);
+        expect(write.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            unseen_only: true,
+            allow_same_item_retake: true,
+            attempt_item_count: null,
+          }),
+        );
       });
     });
 
