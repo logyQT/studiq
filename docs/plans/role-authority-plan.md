@@ -5508,8 +5508,9 @@ migration, no new table).
   MGR-SET-05, BIL-04, LIM-05) assert the org layer as a substring of
   `[data-plan-union]`; BIL-01 does the same on the card description (its student
   is an org member, so the org layer precedes the personal Base layer). BIL-01
-  and LIM-03 exclude the union badge from their status-badge count
-  (`:not([data-plan-union])`), and six case texts carry a dated 2026-11-25 note.
+  and LIM-03 resolve their status badge with a single-element text matcher that
+  excludes the union badge (`:not([data-plan-union])`), and six case texts carry
+  a dated 2026-11-25 note.
 - **3b's rule stands and is now provably pinned.** The feature/limit lists under
   the header are the **catalogue row's**
   (`plans.find(p => p.key === plan.key)`), never `plan.features`/`plan.limits`:
@@ -5518,7 +5519,7 @@ migration, no new table).
   design's "no test" note was stale); the phase-6d mutation run proves it.
   `__tests__/unit/app/plan-union-badge.test.ts` covers one layer, three layers
   and an unknown key.
-- **Gates on this branch (reviewed head `bc42290f`, measured).**
+- **Gates on this branch (measured).**
   `typecheck:all` (root 983, web 875, server 220, authz 7, ui 65 files) and
   `typecheck:admin` (151) 0 errors; `lint` **1580** files 0 warnings; unit
   **323 files / 5056 passed, 1 skipped**; `review:static` clean (5/5 rule
