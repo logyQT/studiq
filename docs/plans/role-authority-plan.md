@@ -39,9 +39,9 @@ phase 7 on 2026-11-25 (D23) — one migration + one catalog constant + one surfa
 call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
-**Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499)
-and #1502 (#1503) have merged; #1484 is PR #1506 (this PR); next are #1482, #1478 and #1492,
-then the plans, then the shell, then the `/app` decision, then onboarding.
+**Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499),
+#1502 (#1503) and #1484 (#1506) have merged; next are #1482, #1478 and #1492, then the plans,
+then the shell, then the `/app` decision, then onboarding.
 **Open follow-ups (owned):** **#1483** notify org admins when a new
 entitlement is grantable; **#1482** move the daily-stats triggers behind a
 definer function and revoke user writes to `user_daily_activity` (the phase-7
