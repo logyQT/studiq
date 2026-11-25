@@ -5435,12 +5435,13 @@ table).
 - **The service, in order.** `OrgRoleService.setPermissions` validates the
   profile with `isEntitlementProfile` (it is a direct entry point too) and
   answers `UNPROCESSABLE_ENTITY` before it reads or writes anything. The role
-  read now selects `id, name, is_system, entitlement_profile,
-org_role_permissions(permission_key, scope)`; a requested profile equal to the
-  stored one is a no-op (no `org_roles` update). Every existing authorization —
-  complete payload, cross-org 404, self-edit D21, grant/removal coverage, the
-  last-`org.role.manage`-holder 409 — still runs **before any write**. The write
-  order is **profile first, then the target-first upsert + prune**.
+  read now selects `id, name, is_system, entitlement_profile` plus the
+  `org_role_permissions(permission_key, scope)` embed; a requested profile equal
+  to the stored one is a no-op (no `org_roles` update). Every existing
+  authorization — complete payload, cross-org 404, self-edit D21, grant/removal
+  coverage, the last-`org.role.manage`-holder 409 — still runs **before any
+  write**. The write order is **profile first, then the target-first upsert +
+  prune**.
 - **Compensation, not a transaction.** The two writes are not one database
   transaction and the code/docblock do not claim one: when the profile write
   succeeds and either permission write then fails, one scoped update
@@ -5450,10 +5451,9 @@ org_role_permissions(permission_key, scope)`; a requested profile equal to the
   D20 log record now also carries `role.is_system` and
   `entitlement_profile.before/after`.
 - **The web save is one PUT.** `manage/roles/page.tsx#handleSavePermissions`
-  issues one `apiPut(/organization/roles/:id/permissions, { permissions,
-entitlementProfile })` (null for system roles), keeps
-  `invalidateAuthority(queryClient)` and shows one toast: the second PUT and the
-  half-saved role it could leave are gone.
+  issues one `apiPut` with `{ permissions, entitlementProfile }` (null for
+  system roles), keeps `invalidateAuthority(queryClient)` and shows one toast:
+  the second PUT and the half-saved role it could leave are gone.
 - **The two-plane grant rule, in the UI.** New
   `apps/web/src/lib/role-grants.ts` — `grantableScopes`, `narrowestGrantable`,
   `canGrant` — built on `scopeCovers`, `PERMISSIONS` and
@@ -5501,7 +5501,7 @@ entitlementProfile })` (null for system roles), keeps
   errors; `lint` **1580** files 0 warnings; unit **323 files / 5045 passed, 1
   skipped**; `review:static` clean (5/5 rule tests); `knip` clean;
   `format:check` **2258** files; `dup:base` no new clones (**210** in the tree);
-  `pr:size` **328/400** (388 test + 0 doc lines excluded). No build/serve/reset
+  `pr:size` **330/400** (388 test + 151 doc lines excluded). No build/serve/reset
   was run by this slice — the coordinator owns them.
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   the compensation made a no-op (`if (profileToWrite === null) return;` →
