@@ -36,14 +36,3 @@ export function recordsOf(value: unknown): Array<Record<string, unknown>> {
   }
   return records;
 }
-
-/** The value when it is an array of strings, else `undefined`. */
-export function stringsOf(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const strings: string[] = [];
-  for (const item of value) {
-    if (typeof item !== 'string') return undefined;
-    strings.push(item);
-  }
-  return strings;
-}

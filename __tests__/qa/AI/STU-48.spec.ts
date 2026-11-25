@@ -139,9 +139,7 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     expect(names).not.toContain('Generated Flashcards');
   });
 
-  test('follows a plan through a nested material call, which is not metered today', async ({
-    page,
-  }) => {
+  test('runs a nested material call, which is not metered today', async ({ page }) => {
     await openChat(page);
     const before = await usedTokens(page);
 
@@ -152,20 +150,22 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
 
     // The preview can render before the last continuation request reaches the server.
     await expect
-      .poll(async () => (await fakeLlm.requestsOf('STU-48:plan-path')).length, { timeout: 10_000 })
-      .toBe(5);
+      .poll(async () => (await fakeLlm.requestsOf('STU-48:material-path')).length, {
+        timeout: 10_000,
+      })
+      .toBe(4);
     const requests = await fakeLlm.journal();
-    const outer = requests.filter((entry) => entry.fixture === 'STU-48:plan-path');
-    const nested = requests.filter((entry) => entry.fixture === 'STU-48:plan-material');
-    expect(outer.map((entry) => entry.turn)).toEqual([0, 1, 2, 3, 4]);
+    const outer = requests.filter((entry) => entry.fixture === 'STU-48:material-path');
+    const nested = requests.filter((entry) => entry.fixture === 'STU-48:material-content');
+    expect(outer.map((entry) => entry.turn)).toEqual([0, 1, 2, 3]);
     expect(outer.every((entry) => wasStreamed(entry))).toBe(true);
     expect(nested).toHaveLength(1);
     expect(nested.every((entry) => wasStreamed(entry))).toBe(false);
 
-    // The five streamed turns report 1 160 + 320 + 580 + 790 + 940 = 2 830 tokens; the
-    // nested call's 2 000 never reach the daily counter. If metering is fixed, this
-    // number changes by design.
-    await expect.poll(() => usedTokens(page)).toBe(before + 2830);
+    // The four streamed turns report 320 + 580 + 790 + 940 = 2 630 tokens; the nested
+    // call's 2 000 never reach the daily counter. If metering is fixed, this number
+    // changes by design.
+    await expect.poll(() => usedTokens(page)).toBe(before + 2630);
   });
 
   test('feeds a truncated tool call back to the model and creates nothing', async ({ page }) => {

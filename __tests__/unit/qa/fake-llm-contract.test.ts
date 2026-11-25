@@ -14,7 +14,7 @@ import {
  * beside the engine.
  */
 const PRODUCT_VOCABULARY =
-  /flashcard|deck|quiz|create_plan|fetch_material|extract_concepts|evaluate_quality|ask_user/i;
+  /flashcard|deck|quiz|fetch_material|extract_concepts|evaluate_quality|ask_user/i;
 
 describe('fake-llm engine purity', () => {
   it.each(FAKE_LLM_ENGINE_FILES.map((file) => [file.split(/[\\/]/).pop(), file] as const))(

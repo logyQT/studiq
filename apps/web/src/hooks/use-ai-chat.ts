@@ -9,7 +9,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { parseAiChatErrorCode } from '@/lib/ai-chat-error';
 import { resetChat } from '@/lib/ai-chat-reset';
 import { aiKeys } from '@/lib/query-keys';
-import { countOf, isRecord, recordsOf, stringsOf } from '@/lib/unknown-value';
+import { countOf, isRecord, recordsOf } from '@/lib/unknown-value';
 
 interface ChatPart {
   type: string;
@@ -101,16 +101,9 @@ function toQuestionData(value: unknown): QuestionData | undefined {
   return question;
 }
 
-export interface PlanStep {
-  index: number;
-  action: string;
-  rationale: string;
-  dependsOn?: string[];
-}
-
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'thought' | 'tool_call' | 'plan';
+  role: 'user' | 'assistant' | 'thought' | 'tool_call';
   content: string;
   result?: { type: string; data: unknown; deckName?: string; count?: number; readOnly?: boolean };
   status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
@@ -118,9 +111,6 @@ export interface ChatMessage {
   file?: { name: string; mimeType: string; data: string };
   thinkingTraces: string[];
   question?: QuestionData;
-  plan?: PlanStep[];
-  planCompleted?: boolean;
-  completedSteps?: number[];
   step?: number;
   reasoning?: string;
   agent?: string;
@@ -159,7 +149,6 @@ export interface UseAiChatReturn {
 
 function toolLabel(toolName: string): string {
   const labels: Record<string, string> = {
-    create_plan: '📋 Creating execution plan...',
     ask_user: '❓ Asking you a question...',
     fetch_material: '📝 Generating material...',
     webfetch: '🌐 Fetching content...',
@@ -174,8 +163,6 @@ function toolLabel(toolName: string): string {
 function toolResultLabel(toolName: string, output: unknown): string {
   const o = isRecord(output) ? output : undefined;
   switch (toolName) {
-    case 'create_plan':
-      return `📋 Created plan with ${countOf(o?.steps)} steps`;
     case 'fetch_material':
       return `📝 Generated ${typeof o?.length === 'number' ? o.length : 0} characters of material`;
     case 'webfetch':
@@ -243,9 +230,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     const isStreaming = status === 'streaming';
     const lastMsg = uiMessages[uiMessages.length - 1];
     const isLastAssistant = lastMsg?.role === 'assistant';
-    let planMsgRef: ChatMessage | null = null;
-    let totalPlanSteps = 0;
-    const completedStepSet = new Set<number>();
 
     for (const m of uiMessages) {
       if (m.role === 'user') {
@@ -375,61 +359,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
             }
           }
 
-          if (state === 'output-available' && toolName === 'create_plan') {
-            const outputMap: Record<string, unknown> | undefined = part.output;
-            if (outputMap?.steps) {
-              const steps = recordsOf(outputMap.steps);
-              const planMsg: ChatMessage = {
-                id: `${m.id}-plan-${i}`,
-                role: 'plan',
-                content: '',
-                status: 'complete',
-                thinkingTraces: [],
-                plan: steps.map((s: Record<string, unknown>, idx: number) => ({
-                  index: idx,
-                  action: typeof s.action === 'string' ? s.action : '',
-                  rationale: typeof s.rationale === 'string' ? s.rationale : '',
-                  dependsOn: stringsOf(s.dependsOn),
-                })),
-                planCompleted: false,
-                completedSteps: [],
-              };
-              planMsgRef = planMsg;
-              totalPlanSteps = steps.length;
-              completedStepSet.clear();
-              mapped.push(planMsg);
-            }
-          }
-
-          if (
-            planMsgRef &&
-            state === 'output-available' &&
-            !['create_plan', 'finish', 'ask_user'].includes(toolName)
-          ) {
-            const stepAction = planMsgRef.plan?.find((s) => s.action === toolName);
-            if (stepAction !== undefined) {
-              completedStepSet.add(stepAction.index);
-            } else {
-              const nextPending = [...Array(totalPlanSteps).keys()].find(
-                (stepIndex) => !completedStepSet.has(stepIndex),
-              );
-              if (nextPending !== undefined) {
-                completedStepSet.add(nextPending);
-              }
-            }
-            planMsgRef.completedSteps = [...completedStepSet];
-            planMsgRef.planCompleted = completedStepSet.size >= totalPlanSteps;
-          }
-
           if (state === 'output-available' && toolName === 'finish') {
-            if (planMsgRef) {
-              for (let si = 0; si < totalPlanSteps; si++) {
-                completedStepSet.add(si);
-              }
-              planMsgRef.completedSteps = [...completedStepSet];
-              planMsgRef.planCompleted = true;
-            }
-
             const outputMap: Record<string, unknown> | undefined = part.output;
             if (outputMap?.type === 'flashcards') {
               const cards =

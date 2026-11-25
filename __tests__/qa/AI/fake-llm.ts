@@ -49,7 +49,7 @@ export const fakeLlm = {
     return body.entries;
   },
 
-  /** The requests of one fixture, e.g. `STU-48:plan-path`. */
+  /** The requests of one fixture, e.g. `STU-48:material-path`. */
   async requestsOf(fixture: string): Promise<JournalEntry[]> {
     return (await this.journal()).filter((entry) => entry.fixture === fixture);
   },
