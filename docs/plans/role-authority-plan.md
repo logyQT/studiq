@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                                               | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                            | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                      | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                                            | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                                 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d `feat/authority-6d` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
-| 7     | delete, full QA, close                         | pending | —                                                                                | —   | all 192 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                                                | —   | all 192 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                                                         | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------ | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                                      | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                                      | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                                      | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                                      | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                                      | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                                | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                                | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                                                      | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                                           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e `feat/authority-6e` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
+| 7     | delete, full QA, close                         | pending | —                                                                                          | —   | all 193 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                                                          | —   | all 193 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -46,9 +46,9 @@ API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: 6e (Teacher assignment reads)**; **6d** (one role
-save, caller-scope awareness in the editor, the `/me/plan` union badge) is
-**active, not merged**, on `feat/authority-6d` (reviewed head `bc42290f`).
+mints the claim. **Next slice: 6e (Teacher assignment reads)**, active on
+`feat/authority-6e`; **6d** (one role save, caller-scope awareness in the editor,
+the `/me/plan` union badge) is merged as `7aaca9d4` (#1449).
 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
 6c `14262016` (#1428) and **6b-1** `999c45ab` (#1429 — route rules,
 `resolveDashboardArea`, the landing) are merged; **6b-2** (`AreaGate`, nav-item
@@ -5424,8 +5424,8 @@ table).
   Wykładowcy **2 → 1** (**KILLED**); both reverted and re-verified green.
 
 **6d — one role save, caller-scope awareness and the `/me/plan` union badge**
-(active on `feat/authority-6d`, reviewed head `bc42290f`; not merged; no SQL, no
-migration, no new table).
+(merged as `7aaca9d4`, #1449; the measurements below are the reviewed head
+`bc42290f`, and no SQL, migration or new table was involved).
 
 - **One request, profile first, compensated.** `SetRolePermissionsSchema` gains
   `entitlementProfile: EntitlementProfileSchema.nullable().optional()` — the
@@ -5552,9 +5552,83 @@ migration, no new table).
   (`logError(` → `void (`) → "returns the permission failure when the profile
   restore also fails" **KILLED**.
 
-**Still open in phase 6:** 6e the Teacher assignment-read widening. 6d (active)
-carries the role editor's caller-scope awareness, the one-request profile write
-and the `/me/plan` union badge.
+**6e — the Teacher assignment read: the list widens, the detail stays the
+author's** (active on `feat/authority-6e`; no SQL, no migration, no new table).
+
+- **Three arms in `TeacherAssignmentService.list`, all inside the active org.**
+  `organization` → `organization_id = activeOrgId` (unchanged); `group` →
+  `organization_id = activeOrgId AND (created_by = me OR id IN (runs targeting a
+class I teach))`; anything else (`own`, or no active org) → `created_by = me`
+  (unchanged). Before this slice the `group` scope was as narrow as `own`, so
+  D29's `assignment.read @ group` was inert on the one read a Teacher actually
+  needs — "what runs exist for my classes".
+- **"Teaches" is `ctx.groupRoles[g] === 'teacher'`, never `ctx.groupIds` (§4.3,
+  2b-2).** The taught ids are resolved once, `assignment_targets` is read for
+  `assignment_id` in `TARGET_CHUNK` batches (a teacher's class list travels in
+  the request URL), and the `id.in(…)` arm is only added when it has ids — an
+  empty `id.in.()` is a PostgREST 400, so the empty case falls back to the author
+  filter. Plain membership would hand a learner every run aimed at their own
+  class: a `member` is the audience, not the staff.
+- **The detail stays narrow on purpose (R23).** `getById`, `verifyOwnership` and
+  `ownedClient` are untouched: the composer/detail payload is the draft **with
+  its answer key** (`withAnswerKey`) and the seal's author exemption (D-5e1) is
+  scoped to the author, so widening it would hand a co-teacher of the class a
+  colleague's key. The API is therefore narrower than the RLS SELECT (which
+  admits any member of a targeted class) — the asymmetry is recorded at
+  `getById` and in ADR §12, owner **phase 7** (e.g. a read-only header for a
+  colleague's run). `select('*')` on `teacher_assignments` is safe to widen: the
+  row carries title/status/window/counters and no answer key (the generated
+  `Database['public']['Tables']['teacher_assignments']['Row']` has no key
+  column), so a target of the widening is not a key leak.
+- **Tests.** `__tests__/unit/services/teacher-assignment.service.test.ts`: the
+  group-scope caller with one taught class gets the author-OR-targeted query (the
+  filters the mock received), a caller who teaches nothing falls back to the
+  author filter, an `own` caller never gets the group arm even while teaching a
+  class, and a caller who is merely a `member` of a class in `groupIds` does not
+  get its runs. `__tests__/integration/content-route-permission-api.test.ts`
+  (its route/session helpers are reused rather than cloned) seeds a Teacher who
+  teaches G-taught and is a plain `member` of G-member: the colleague's run for
+  G-taught is listed, the one for G-member is not, a Member gets 403 on the list,
+  and the colleague's run still answers **403** (not 404) from
+  `GET /api/v1/teacher/assignments/:id` — the assertion that stops a future
+  "fix" from widening the detail.
+- **Corpus (R6, text + spec together).** EDU-ASG-07's case text and spec docblock
+  are corrected: the tenant's teacher holds `assignment.read` at `group` and the
+  writes at `own` (D29), the SELECT is author / targeted / `assignment.read`
+  (D-5e2-2), and the results service stays author-gated (`created_by`). The same
+  stale "`assignment.*` = `own`" claim was fixed in EDU-ASG-03's case text and in
+  EDU-ST-04's case text and spec docblock (the default tenant teacher is on the
+  system `teacher` role, not the old member-role default of R24).
+- **New case EDU-ASG-11** („Kartkówka kolegi z klasy, której uczę”, e2e): two
+  teachers, `groupTeachers: { teacher: [G1], teacher2: [G2] }`; teacher2 targets
+  one run at G1 (the class teacher 1 teaches) and one at G2 (a class teacher 1
+  does not teach), both drafts — the list does not filter by status, and a draft
+  is the state that _would_ render the composer, which is what makes the refusal
+  assertion meaningful. Teacher 1 sees the G1 run in `/edu/assignments` and via
+  the API, not the G2 one, and opening the colleague's run renders
+  „Nie znaleziono kartkówki” (the 403 as the app presents it) with no composer
+  and no key. `qa/index.md`, `qa/coverage.md` and `qa/README.md` move to **193**
+  cases (EDU 43).
+- **Gates on this branch (measured).** `typecheck:all` (root 983, web 875, server
+  220, authz 7, ui 65 files) and `typecheck:admin` (151) 0 errors; `lint` **1582**
+  files 0 problems; unit **324 files / 5074 passed, 1 skipped**; `review:static`
+  clean (5/5 rule tests); `knip` clean; `format:check` **2262** files;
+  `pr:size` **66/400** (M; 469 test + 246 doc lines excluded) and `dup:base` no
+  new clones (**210** in the tree). No build/serve/reset/integration/Playwright
+  was run by this slice — the coordinator owns them.
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  the taught-group arm deleted from `list` → "widens a group-scope read to the
+  runs authored or targeting a taught class" **KILLED**; the taught set replaced
+  with `ctx.groupIds` → "does not widen to a class the caller is merely a member
+  of" **KILLED**; the `group` arm widened to every caller with an active org →
+  "keeps an own-scope caller on the author filter even when they teach a class"
+  **KILLED**.
+- **No new rule was earned.** The slice reuses **R23** (a deliberately narrower
+  API gate with a named owner) and R6; there is no new §3 row, by design rather
+  than by omission.
+
+**Still open in phase 6:** nothing — 6e is the last slice (6a–6d are merged and
+6e is on `feat/authority-6e`), so phase 7 is next.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
 optional argument: the default `true` is the common case and keeping it optional

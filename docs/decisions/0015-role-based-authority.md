@@ -1299,6 +1299,21 @@ features/permissions in the meantime.
 > plane inside one slice; the phase-5 closure owns the narrowing with the rest
 > of this section.
 
+> **2026-11-25 (phase 6e).** The run **list** now reads at the caller's scope:
+> `TeacherAssignmentService.list` returns the active org's runs the caller
+> authored **or** that target a class they **teach**
+> (`ctx.groupRoles[groupId] === 'teacher'`, §4.3 — not plain `ctx.groupIds`
+> membership, because a `member` of a class is its audience, not its staff). The
+> run **detail** is deliberately narrower than the RLS SELECT, which admits any
+> member of a targeted class: `getById` stays the author's, or an
+> `organization`-scope `assignment.read` holder's (R23). The reason is the key —
+> the detail payload is the live composer or the frozen snapshot **with** its
+> answer key (`withAnswerKey`), and the seal's author exemption (D-5e1) is scoped
+> to the author, so widening it would hand a co-teacher a colleague's key. The
+> asymmetry is recorded at `getById`; its owner is **phase 7** (e.g. a read-only
+> header for a colleague's run). The 2026-11-20 note above still governs the
+> assignment's **item set**; this note governs the run list.
+
 ---
 
 ## 13. Migration plan (ordered batches)

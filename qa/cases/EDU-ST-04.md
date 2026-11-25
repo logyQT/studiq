@@ -31,11 +31,12 @@ accounts):
   whose **org role is `member`** — i.e. the tenant's `student`. The manager (admin)
   and the teacher (teacher role) are not part of that population, so the page only
   ever shows this tenant's student's attempts.
-- the tenant's `teacher` is an org member, so `assignment.*` / `quiz.*` resolve to
-  the `own` scope: it may create a bank, questions, a saved quiz and an assignment
-  from that quiz, target `G1` and publish it. Nothing global is written (no admin
-  setting, feature flag, plan, platform stat or singleton row) and no other worker's
-  tenant is read.
+- the tenant's `teacher` is an org member on the system `teacher` role, so the
+  content reads (`assignment.read`, `quiz.read`) resolve to `group` and the writes
+  to `own` (ADR-0015 D29): it may create a bank, questions, a saved quiz and an
+  assignment from that quiz, target `G1` and publish it. Nothing global is written
+  (no admin setting, feature flag, plan, platform stat or singleton row) and no
+  other worker's tenant is read.
 - the spec builds the prerequisite through the product API inside this tenant: two
   true/false questions, a quiz „EDU-ST-04 Test”, an assignment created from that
   quiz with `maxAttempts: 3`, then the student's two attempts — one completed at

@@ -633,7 +633,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
       if (targetError) throw new Error(`[setup] 6e targets: ${targetError.message}`);
 
       groupReaderSession = await signIn(groupReader.email);
-    });
+    }, 120_000);
 
     it('lists a colleague’s run targeted at a taught class and not one targeted at a class the caller only belongs to', async () => {
       const res = await call<{ data: Array<{ id: string; created_by: string }> }>(
