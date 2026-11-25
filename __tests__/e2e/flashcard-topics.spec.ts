@@ -6,12 +6,6 @@ const topicNamePlaceholder = t('EduFlashcardTopicsPage.topic_name_placeholder');
 
 async function openTopics(page: Page) {
   await page.goto('/edu/topics');
-  // Deliberate idle wait: creating a topic before the initial list query settles
-  // lets its stale response overwrite the refetch, so the new card never renders
-  // (#699). Drop this once that race is fixed on the page, not in the test.
-  // `networkidle` is a 500 ms quiet-window heuristic, not a step, so it keeps a
-  // longer explicit budget than the 6 s navigation default.
-  await page.waitForLoadState('networkidle', { timeout: 10_000 });
   await expect(topicCard(page, 'Topic A')).toBeVisible();
 }
 
