@@ -565,6 +565,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     let groupReader: TestUserFixture;
     let colleague: TestUserFixture;
     let groupReaderSession: Session;
+    let colleagueSession: Session;
     let taughtGroupId: string;
     let memberOnlyGroupId: string;
     let taughtRunId: string;
@@ -633,6 +634,7 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
       if (targetError) throw new Error(`[setup] 6e targets: ${targetError.message}`);
 
       groupReaderSession = await signIn(groupReader.email);
+      colleagueSession = await signIn(colleague.email);
     }, 120_000);
 
     it('lists a colleague’s run targeted at a taught class and not one targeted at a class the caller only belongs to', async () => {
@@ -652,16 +654,17 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
       );
     });
 
-    it('still refuses a Member the list (no assignment.* key)', async () => {
-      const res = await call(
-        memberSession,
-        listAssignments,
-        '/api/v1/teacher/assignments',
+    it('serves the author the same run (200), so the colleague’s 403 is scope, not breakage', async () => {
+      const res = await callWithParams<{ id: string }, { data: { created_by: string } }>(
+        colleagueSession,
+        getAssignment,
+        `/api/v1/teacher/assignments/${taughtRunId}`,
         undefined,
         orgId,
+        { id: taughtRunId },
       );
-      expect(res.status).toBe(403);
-      expect(res.body).toEqual({ success: false, error: 'FORBIDDEN' });
+      expect(res.status).toBe(200);
+      expect(res.body.data.created_by).toBe(colleague.id);
     });
 
     it('refuses the colleague’s run detail — the list is wider, the composer is not (R23)', async () => {

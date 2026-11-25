@@ -5561,20 +5561,29 @@ author's** (active on `feat/authority-6e`; no SQL, no migration, no new table).
 class I teach))`; anything else (`own`, or no active org) → `created_by = me`
   (unchanged). Before this slice the `group` scope was as narrow as `own`, so
   D29's `assignment.read @ group` was inert on the one read a Teacher actually
-  needs — "what runs exist for my classes".
+  needs — "what runs exist for my classes". The response is assembled from
+  bounded queries rather than one request: the authored arm
+  (`organization_id` + `created_by`) plus, when the taught-group lookup returned
+  ids, `teacher_assignments` fetched in `TARGET_CHUNK`-sized `.in('id', …)`
+  batches, merged by id (a run may be both authored and targeted) and sorted
+  `created_at` desc. The id list used to ride in one
+  `.or('created_by.eq.…,id.in.(…)')` URL, which crosses the gateway's 8 KB limit
+  at ~213 ids — a teacher's lifetime list does.
 - **"Teaches" is `ctx.groupRoles[g] === 'teacher'`, never `ctx.groupIds` (§4.3,
   2b-2).** The taught ids are resolved once, `assignment_targets` is read for
   `assignment_id` in `TARGET_CHUNK` batches (a teacher's class list travels in
-  the request URL), and the `id.in(…)` arm is only added when it has ids — an
-  empty `id.in.()` is a PostgREST 400, so the empty case falls back to the author
-  filter. Plain membership would hand a learner every run aimed at their own
-  class: a `member` is the audience, not the staff.
+  the request URL), and the targeted runs are fetched in `TARGET_CHUNK`-sized
+  `.in('id', …)` batches; an empty target set adds no chunk (an empty
+  `id.in.()` is a PostgREST 400), so the caller still reads their authored arm.
+  Plain membership would hand a learner every run aimed at their own class: a
+  `member` is the audience, not the staff.
 - **The detail stays narrow on purpose (R23).** `getById`, `verifyOwnership` and
   `ownedClient` are untouched: the composer/detail payload is the draft **with
-  its answer key** (`withAnswerKey`) and the seal's author exemption (D-5e1) is
-  scoped to the author, so widening it would hand a co-teacher of the class a
-  colleague's key. The API is therefore narrower than the RLS SELECT (which
-  admits any member of a targeted class) — the asymmetry is recorded at
+  its answer key** (`withAnswerKey`) behind the authorship /
+  `organization`-scope gate, so widening that gate would hand a co-teacher of the
+  class a colleague's key. The seal's author exemption (D-5e1) concerns item
+  sealing, not key visibility. The API is therefore narrower than the RLS SELECT
+  (which admits any member of a targeted class) — the asymmetry is recorded at
   `getById` and in ADR §12, owner **phase 7** (e.g. a read-only header for a
   colleague's run). `select('*')` on `teacher_assignments` is safe to widen: the
   row carries title/status/window/counters and no answer key (the generated
@@ -5585,13 +5594,18 @@ class I teach))`; anything else (`own`, or no active org) → `created_by = me`
   filters the mock received), a caller who teaches nothing falls back to the
   author filter, an `own` caller never gets the group arm even while teaching a
   class, and a caller who is merely a `member` of a class in `groupIds` does not
-  get its runs. `__tests__/integration/content-route-permission-api.test.ts`
+  get its runs. A 250-id case pins the bounded fetch: the list issues more than
+  one `teacher_assignments` fetch, every `.in('id', …)` carries ≤ 200 ids, the
+  merged result returns each id once, and the order is `created_at` desc.
+  `__tests__/integration/content-route-permission-api.test.ts`
   (its route/session helpers are reused rather than cloned) seeds a Teacher who
   teaches G-taught and is a plain `member` of G-member: the colleague's run for
-  G-taught is listed, the one for G-member is not, a Member gets 403 on the list,
-  and the colleague's run still answers **403** (not 404) from
-  `GET /api/v1/teacher/assignments/:id` — the assertion that stops a future
-  "fix" from widening the detail.
+  G-taught is listed, the one for G-member is not, a Member gets 403 on the list
+  (the earlier `assignments (assignment.*)` case covers it, so it is not
+  duplicated here), the author gets **200** on the same run's detail, and the
+  colleague's run still answers **403** (not 404) from
+  `GET /api/v1/teacher/assignments/:id` — the pair that stops a future "fix"
+  from widening the detail.
 - **Corpus (R6, text + spec together).** EDU-ASG-07's case text and spec docblock
   are corrected: the tenant's teacher holds `assignment.read` at `group` and the
   writes at `own` (D29), the SELECT is author / targeted / `assignment.read`
@@ -5607,22 +5621,43 @@ class I teach))`; anything else (`own`, or no active org) → `created_by = me`
   assertion meaningful. Teacher 1 sees the G1 run in `/edu/assignments` and via
   the API, not the G2 one, and opening the colleague's run renders
   „Nie znaleziono kartkówki” (the 403 as the app presents it) with no composer
-  and no key. `qa/index.md`, `qa/coverage.md` and `qa/README.md` move to **193**
-  cases (EDU 43).
+  and no key. The spec first opens the run's composer as teacher 2 (the
+  „Opublikuj” control and the title), so the later not-found state is provably a
+  refusal and not a broken page. `qa/index.md`, `qa/coverage.md` and
+  `qa/README.md` move to **193** cases (EDU 43).
 - **Gates on this branch (measured).** `typecheck:all` (root 983, web 875, server
   220, authz 7, ui 65 files) and `typecheck:admin` (151) 0 errors; `lint` **1582**
-  files 0 problems; unit **324 files / 5074 passed, 1 skipped**; `review:static`
-  clean (5/5 rule tests); `knip` clean; `format:check` **2262** files;
-  `pr:size` **66/400** (M; 469 test + 246 doc lines excluded) and `dup:base` no
-  new clones (**210** in the tree). No build/serve/reset/integration/Playwright
-  was run by this slice — the coordinator owns them.
+  files 0 problems; unit **326 files / 5125 passed, 1 skipped**; fresh-reset
+  serial integration **116 files / 1120 passed, 11 skipped, 0 failed**;
+  `review:static` clean (5/5 rule tests); `knip` clean; `format:check` **2267**
+  files; `dup:base` no new clones (**210** in the tree); build **22.4 s**, served
+  `:3000`, `build.state: current`. The coordinator owns build/serve/reset/
+  integration/Playwright; `pr:size` is **120/400** (M; tests and docs excluded from the
+  reviewable count) and the served walk is recorded below.
+- **Served QA (coordinator, 2026-11-25).** The four touched cases ran **5/5 each**
+  with a fresh tenant per pass, one process, a unique `--run` label per case —
+  EDU-ASG-11 5/5, EDU-ASG-07 5/5, EDU-ASG-03 5/5, EDU-ST-04 **10/10** (two tests
+  × 5, run under `env:run` because the spec needs the DB contract) — 25/25 test
+  passes, zero retries. The served-build mutation of the taught-group arm failed
+  the new case at the list assertion (`Received array: []`), then passed once
+  reverted and rebuilt.
+- **Delta review (fresh reviewer, pre-fix head and delta).** First pass
+  **READY-WITH-FIXES**: B1 the targeted run ids travelled in one request URL
+  (measured 8,096 bytes at 213 ids), which the fixed bounded fetch removes; S1
+  the 403 assertions lacked a 200 control (author-200 in integration, teacher2
+  composer in the QA spec); S2 §4.3 is amended to the taught-group rule; S3
+  D-5e1 was mis-cited; S4 the two-org own-run gap is recorded; S5 two tautological
+  unit assertions and a duplicate Member-403 case removed. Delta pass
+  **READY-WITH-FIXES** on documentation numbers only, all corrected here.
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   the taught-group arm deleted from `list` → "widens a group-scope read to the
   runs authored or targeting a taught class" **KILLED**; the taught set replaced
   with `ctx.groupIds` → "does not widen to a class the caller is merely a member
   of" **KILLED**; the `group` arm widened to every caller with an active org →
   "keeps an own-scope caller on the author filter even when they teach a class"
-  **KILLED**.
+  **KILLED**; the targeted chunk loop submitting all ids in one call
+  (`.slice(i, i + TARGET_CHUNK)` → `targeted.data`) → "fetches targeted runs in
+  URL-sized batches and merges them by id" **KILLED**.
 - **No new rule was earned.** The slice reuses **R23** (a deliberately narrower
   API gate with a named owner) and R6; there is no new §3 row, by design rather
   than by omission.

@@ -88,6 +88,9 @@ const STUDENT_ATTEMPT_SELECT =
 
 type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
 
+/** The `teacher_assignments` row `list` reads and merges. */
+type AssignmentRow = Database['public']['Tables']['teacher_assignments']['Row'];
+
 /** A run the caller may write, with the client that proved they may. */
 interface OwnedWindow {
   supabase: SupabaseClient<Database>;
@@ -403,9 +406,10 @@ export class TeacherAssignmentService {
    * member of a targeted class, while this path admits the author or an
    * `assignment.read` holder at `organization` scope. The reason is the key — a
    * draft is the live composer and a published run serves its frozen snapshot,
-   * both through `withAnswerKey`, and the seal's author exemption (D-5e1) is
-   * scoped to the author, so widening this would hand a co-teacher of the class
-   * a colleague's answer key. The asymmetry is recorded, not left as two unnamed
+   * both through `withAnswerKey` behind this authorship / `organization`-scope
+   * gate, so widening the gate would hand a co-teacher of the class a colleague's
+   * answer key. (The seal's author exemption, D-5e1, is about item sealing, not
+   * key visibility.) The asymmetry is recorded, not left as two unnamed
    * answers; its owner is phase 7 (e.g. a read-only header for a colleague's
    * run).
    */
@@ -500,35 +504,67 @@ export class TeacherAssignmentService {
    * `select('*')` is safe to widen here: `teacher_assignments` carries the title,
    * status, window and counters and no answer key — the key lives on the item
    * rows and their frozen snapshots, which no list read touches.
+   *
+   * The targeted ids are fetched in `TARGET_CHUNK` batches because the id list
+   * also travels in the request URL.
    */
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
     const scope = ctx.permissionScopes['assignment.read'];
 
-    let query = supabase
-      .from('teacher_assignments')
-      .select('*')
-      .order('created_at', { ascending: false });
-
     if (scope === 'organization' && ctx.activeOrgId) {
-      query = query.eq('organization_id', ctx.activeOrgId);
-    } else if (scope === 'group' && ctx.activeOrgId) {
+      const { data, error } = await supabase
+        .from('teacher_assignments')
+        .select('*')
+        .eq('organization_id', ctx.activeOrgId)
+        .order('created_at', { ascending: false });
+      if (error) return toDbFailure(error);
+      return success(dbRows(data));
+    }
+
+    if (scope === 'group' && ctx.activeOrgId) {
       const targeted = await this.targetedRunIds(supabase, ctx);
       if (isFailure(targeted)) return targeted;
 
-      query = query.eq('organization_id', ctx.activeOrgId);
-      // An empty `id.in.()` is a PostgREST 400, so the arm is only added when the
-      // caller teaches a class with runs.
-      query =
-        targeted.data.length > 0
-          ? query.or(`created_by.eq.${ctx.userId},id.in.(${targeted.data.join(',')})`)
-          : query.eq('created_by', ctx.userId);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+      // A run the caller both authored and targeted at a class they teach arrives in
+      // both arms; the map merges it by id.
+      const runs = new Map<string, AssignmentRow>();
+
+      const { data: authored, error: authoredError } = await supabase
+        .from('teacher_assignments')
+        .select('*')
+        .eq('organization_id', ctx.activeOrgId)
+        .eq('created_by', ctx.userId)
+        .order('created_at', { ascending: false });
+      if (authoredError) return toDbFailure(authoredError);
+      for (const row of dbRows(authored)) runs.set(row.id, row);
+
+      // An empty `id.in.()` is a PostgREST 400, so no chunk is issued without ids.
+      for (let i = 0; i < targeted.data.length; i += TARGET_CHUNK) {
+        const { data: targetedRows, error: targetedError } = await supabase
+          .from('teacher_assignments')
+          .select('*')
+          .eq('organization_id', ctx.activeOrgId)
+          .in('id', targeted.data.slice(i, i + TARGET_CHUNK))
+          .order('created_at', { ascending: false });
+        if (targetedError) return toDbFailure(targetedError);
+        for (const row of dbRows(targetedRows)) runs.set(row.id, row);
+      }
+
+      // Every query orders explicitly; the merge is the one place that sorts across them.
+      return success(
+        [...runs.values()].toSorted((a, b) =>
+          (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+        ),
+      );
     }
 
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('teacher_assignments')
+      .select('*')
+      .eq('created_by', ctx.userId)
+      .order('created_at', { ascending: false });
     if (error) return toDbFailure(error);
     return success(dbRows(data));
   }

@@ -29,10 +29,11 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * the spec builds both runs through the product API inside this tenant — no
  * account, group or run is seeded at runtime, and nothing global is written.
  *
- * Walk record (2026-11-25, `feat/authority-6e` @ a226f8b7) — **code-read, not a
- * browser walk**: this session could not start the served build (the coordinator
- * owns build/serve), so the selectors below come from the components the routes
- * render, not from a screenshot. The cases the walk still owes are named:
+ * Walk record (2026-11-25, `feat/authority-6e` @ 9ecbe211) — **served walk: the
+ * spec passed 5/5 independent runs with fresh tenants**, one process, a unique
+ * `--run` label per pass (the coordinator built and served the branch and ran
+ * the spec; the pre-fix head 52da622c passed 5/5 the same way). The selectors
+ * below are the ones that walk exercised:
  * - the list card is `apps/web/src/app/(frontend)/edu/assignments/assignments-client.tsx`
  *   (`<Link href="/edu/assignments/<id>">` around a card whose title is the run's
  *   `title` and whose badge is `EduAssignmentsPage.draft` → „Szkic”);
@@ -45,14 +46,19 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  *   SELECT admits a member of the targeted class, and the service is the
  *   narrower gate (R23).
  *
- * Mutation (proves this spec can fail): the whole taught-group arm of
- * `TeacherAssignmentService.list` deleted (the `else if (scope === 'group' …)`
- * block, replaced by `} else {`), so a group-scope caller falls back to the author
- * filter and this run is no longer on teacher 1's list. The unit-level proof ran
- * through `bun run mutate` on the list-scope case and printed
- * `AssertionError: expected [ 'teacher_assignments' ] to include 'assignment_targets'`
- * (KILLED). The served-app Playwright re-run of this spec under the same mutation
- * belongs to the coordinator's verify pass; this session did not run Playwright.
+ * Mutation (proves this spec can fail): the taught-group arm gated off
+ * (`if (scope === 'group' && ctx.activeOrgId)` → `&& !ctx.activeOrgId`), so a
+ * group-scope caller falls back to the author filter and this run is no longer on
+ * teacher 1's list. The unit-level proof ran through `bun run mutate` on the
+ * list-scope case and printed `AssertionError: expected [ { assignment_id:
+ * 'a-targeted' } ] to deeply equal [ { id: 'a-authored', …(4) }, …(1) ]`
+ * (KILLED). Served-build mutation (2026-11-25, served at `:3000` by the
+ * coordinator, spec at 52da622c): the taught-group arm narrowed to the author
+ * filter
+ * (`query.eq('organization_id', …).eq('created_by', …)`, `void targeted`) made
+ * this spec fail with `Expected value:
+ * "a59bdc30-f248-4246-8f5f-1eeb7b812290" / Received array: []` at the list
+ * assertion; reverted, rebuilt and re-run → green.
  */
 
 const CASE = 'EDU-ASG-11';
@@ -181,6 +187,18 @@ test.describe('@case:EDU-ASG-11 @area:EDU @prio:P2 colleague run in the assignme
     expect(ownIds, 'the author sees both runs').toEqual(
       expect.arrayContaining([positiveId, negativeId]),
     );
+
+    // Control: the author's detail renders the composer, so the not-found state
+    // below is a refusal and not a broken page.
+    await page.goto(`/edu/assignments/${positiveId}`);
+    await expect(
+      page.getByRole('heading', { level: 1, name: POSITIVE_TITLE, exact: true }),
+      'the author’s run loads in the composer',
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: COPY.publish, exact: true }),
+      'the author sees the composer',
+    ).toBeVisible();
 
     // --- Steps 3–4: teacher 1 reads the list ---------------------------------
     await loginAs(page, tenant, 'teacher', { locale: 'pl' });

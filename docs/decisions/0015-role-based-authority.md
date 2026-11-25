@@ -289,6 +289,17 @@ Scope resolution:
   `withAuth`.
 - `organization` → the caller's role has the permission at org scope.
 
+> **2026-11-25 (phase 6e).** For **content** reads, `group` scope means the
+> classes the caller **teaches** (`group_members.role = 'teacher'`), per the
+> plan's 2b-2 operator decision (`docs/plans/role-authority-plan.md`, 2b-2:
+> "Teacher reaches only the classes they teach") — not "any member of the
+> group". A plain `member` of a class is its audience, so membership alone must
+> not widen a content read. The `group` **read** line above keeps its meaning for
+> the class itself; this note fixes what `group` scope reaches when the row is
+> content. The seeded Member role carries no `assignment.*` key, so the
+> membership guard in `TeacherAssignmentService.list` protects a **custom** role
+> granted `assignment.read` at `group`, not a shipped default.
+
 A group teacher **does not** get `org.member.manage`. Inviting a student to a
 class is `group.invite` on that group, not an org invitation. The invitation row
 carries `group_id` and `target_group_role`; RLS checks `group.invite` for that
@@ -1302,17 +1313,23 @@ features/permissions in the meantime.
 > **2026-11-25 (phase 6e).** The run **list** now reads at the caller's scope:
 > `TeacherAssignmentService.list` returns the active org's runs the caller
 > authored **or** that target a class they **teach**
-> (`ctx.groupRoles[groupId] === 'teacher'`, §4.3 — not plain `ctx.groupIds`
-> membership, because a `member` of a class is its audience, not its staff). The
-> run **detail** is deliberately narrower than the RLS SELECT, which admits any
-> member of a targeted class: `getById` stays the author's, or an
-> `organization`-scope `assignment.read` holder's (R23). The reason is the key —
-> the detail payload is the live composer or the frozen snapshot **with** its
-> answer key (`withAnswerKey`), and the seal's author exemption (D-5e1) is scoped
-> to the author, so widening it would hand a co-teacher a colleague's key. The
-> asymmetry is recorded at `getById`; its owner is **phase 7** (e.g. a read-only
-> header for a colleague's run). The 2026-11-20 note above still governs the
-> assignment's **item set**; this note governs the run list.
+> (`ctx.groupRoles[groupId] === 'teacher'`, the plan's 2b-2 operator decision —
+> not plain `ctx.groupIds` membership, because a `member` of a class is its
+> audience, not its staff). The run **detail** is deliberately narrower than the
+> RLS SELECT, which admits any member of a targeted class: `getById` stays the
+> author's, or an `organization`-scope `assignment.read` holder's (R23). The
+> reason is the key — the detail payload is the live composer or the frozen
+> snapshot **with** its answer key (`withAnswerKey`) behind the authorship /
+> `organization`-scope gate, so widening that gate hands a co-teacher a
+> colleague's key. (The seal's author exemption, D-5e1, is about item sealing,
+> not key visibility.) The asymmetry is recorded at `getById`; its owner is
+> **phase 7** (e.g. a read-only header for a colleague's run). The `group` arm is
+> pinned to the active org, so a teacher who belongs to two orgs no longer lists
+> their authored runs from the other org (before this slice the `group` scope
+> fell through to `created_by` only), while `getById` still serves the author;
+> this is deliberate for the active-org list, no follow-up. The 2026-11-20 note
+> above still governs the assignment's **item set**; this note governs the run
+> list.
 
 ---
 
