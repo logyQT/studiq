@@ -180,7 +180,7 @@ merge_one() {
 }
 
 queue_entries() { # commented lines are held, not merged
-  sed 's/#.*//' "$QUEUE_FILE" 2>/dev/null | tr -d '[:space:]' | grep -v '^$'
+  sed 's/#.*//' "$QUEUE_FILE" 2>/dev/null | tr -d ' \t\r' | grep -v '^$'
 }
 
 cmd_once() {
