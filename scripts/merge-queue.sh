@@ -70,7 +70,10 @@ pr_field() { gh pr view "$1" --json "$2" --jq ".$2" 2>/dev/null; }
 
 required_green() {
   gh pr checks "$1" --json name,state 2>/dev/null | jq -e --argjson req "$REQUIRED_JSON" '
-    . as $all | all($req[]; . as $n | any($all[]; .name == $n and .state == "SUCCESS"))' >/dev/null 2>&1
+    # A job skipped by the scope job narrowing reports success to branch
+    # protection, so it satisfies a required context too — a docs-only PR has
+    # unit/integration SKIPPED, not SUCCESS, and would otherwise wait forever.
+    . as $all | all($req[]; . as $n | any($all[]; .name == $n and (.state == "SUCCESS" or .state == "SKIPPED")))' >/dev/null 2>&1
 }
 
 any_failed() {
