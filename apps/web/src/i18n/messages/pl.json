@@ -1461,7 +1461,9 @@
     "activity_quiz_completed": "Test „{title}” ukończony ({score}%)",
     "activity_quiz_completed_no_score": "Test „{title}” ukończony",
     "activity_assignment_submitted": "Praca „{title}” oddana ({score}%)",
-    "activity_assignment_submitted_no_score": "Praca „{title}” oddana"
+    "activity_assignment_submitted_no_score": "Praca „{title}” oddana",
+    "activity_assignment_submitted_untitled": "Praca oddana ({score}%)",
+    "activity_assignment_submitted_untitled_no_score": "Praca oddana"
   },
   "AppOverviewPage": {
     "title": "Moja Nauka",
