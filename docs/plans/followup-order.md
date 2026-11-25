@@ -12,16 +12,22 @@ Fix open defects before new features. The order below follows that rule.
 
 ## A. Close the open defects
 
-| Step | Issue     | What it fixes                                                                                                           | Exit criterion                                                                                                                                                                                      | Depends on                   |
-| ---- | --------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| A1   | **#1494** | Migrations own the plan catalogue. The seed stops seeding plans, entitlements, limits and flags.                        | `db reset` and `db push` give the same matrix. A source-scan test fails if a seed writes plan data. An idempotency test passes.                                                                     | —                            |
-| A2   | **#1502** | Seeds hold test data only. The permission catalogue, the realtime publication and all DDL leave `supabase/seeds/`.      | A reset with seeds disabled serves a working app: both catalogues are present and `/api/v1/subscription-plans` returns 200. A source scan fails if a seed writes a configuration table or runs DDL. | A1 (the seed-ownership rule) |
-| A3   | **#1484** | The public pricing list ignores the TS catalog and the entitlement flags. It can sell a disabled key or an unknown key. | An anonymous request to `/api/v1/subscription-plans` returns 200. A kill-switched key and a DB-ahead key do not appear.                                                                             | A1 (one owner for plan rows) |
-| A4   | **#1482** | `authenticated` can write `user_daily_activity` directly and reset its own AI meter.                                    | The stats triggers run behind a definer function. `has_table_privilege('authenticated', …, 'UPDATE')` is false. An integration case pins it.                                                        | —                            |
-| A5   | **#1478** | The merge queue does not merge a docs-only PR.                                                                          | A docs-only PR merges through `bun run merge:queue`.                                                                                                                                                | —                            |
-| A6   | **#1492** | `bun run mutate --name` treats the test title as a regex. A title with parentheses reports `ERROR`.                     | A title with parentheses reports `KILLED`. The help and the skill state the semantics.                                                                                                              | —                            |
+| Step | Issue     | What it fixes                                                                                       | Exit criterion                                                                                                                               | Depends on |
+| ---- | --------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| A4   | **#1482** | `authenticated` can write `user_daily_activity` directly and reset its own AI meter.                | The stats triggers run behind a definer function. `has_table_privilege('authenticated', …, 'UPDATE')` is false. An integration case pins it. | —          |
+| A5   | **#1478** | The merge queue does not merge a docs-only PR.                                                      | A docs-only PR merges through `bun run merge:queue`.                                                                                         | —          |
+| A6   | **#1492** | `bun run mutate --name` treats the test title as a regex. A title with parentheses reports `ERROR`. | A title with parentheses reports `KILLED`. The help and the skill state the semantics.                                                       | —          |
 
-A2 closes the seed half of A1's rule. A3 must land before B1 and B2, because both steps change the pricing read.
+A2 closed the seed half of A1's rule. A3 merged the public pricing filter, so B1
+and B2 are unblocked on it.
+
+## Done
+
+| Step | Issue     | PR    | Result                                                                          |
+| ---- | --------- | ----- | ------------------------------------------------------------------------------- |
+| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                |
+| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL. |
+| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.           |
 
 ## B. Simplify the plans
 
