@@ -305,9 +305,12 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
       planCard.locator('[data-slot="card-description"]'),
       'the card names the new plan',
     ).toHaveText(UI.sparkName);
-    await expect(planCard.locator('[data-slot="badge"]'), 'the plan is active').toContainText(
-      'Aktywny',
-    );
+    // The plan union is its own badge inside the card description; the status
+    // badge is the generic one without `data-plan-union`.
+    await expect(
+      planCard.locator('[data-slot="badge"]:not([data-plan-union])'),
+      'the plan is active',
+    ).toContainText('Aktywny');
 
     const sparkLimits: Record<string, number> = {
       max_flashcards: 500,

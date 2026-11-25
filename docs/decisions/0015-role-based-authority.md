@@ -1154,6 +1154,23 @@ The role editor is a first-class admin screen, not an API-only feature.
 > exemption (D21) applies to removals/grants but never to `org.admin` itself;
 > service-role/owner writes are exempt by design (trusted plane); and the
 > `org_members` SELECT asymmetry stays with phase 5 (D25).
+>
+> **2026-11-25 (phase 6d).** The editor now answers §4.4's "grant only what you
+> hold" before the save instead of after it: `apps/web/src/lib/role-grants.ts`
+> reads `scopeCovers`/`PERMISSIONS` from `@studiq/authz` and disables a scope
+> (and a grant checkbox) the caller cannot grant, with a title; the
+> `org.admin`@organization exemption is the one the server's `grantDenied`
+> applies (D16/D21). Keys are never hidden — the complete payload would delete a
+> grant the editor does not render — so a stored grant beyond the caller's
+> authority stays visible and non-editable, and removal remains the server's
+> decision. A new grant defaults to the narrowest scope the caller may grant,
+> and every catalog key's `allowedScopes` is now pinned narrowest→widest so that
+> default is a rule rather than declaration order. The profile picker's write
+> joined the permissions payload (`SetRolePermissionsSchema`'s
+> `entitlementProfile`, `null`/omitted = not managed): one request, profile
+> written **first**, and a permission-write failure restores the stored profile
+> by one scoped update and logs a failed restore. This is a compensation path,
+> not a database transaction — no atomicity beyond that is claimed.
 
 ---
 

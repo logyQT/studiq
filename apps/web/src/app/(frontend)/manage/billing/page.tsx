@@ -3,12 +3,13 @@
 import { AccountType } from '@studiq/authz';
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
-import { Badge, Button, Card, CardContent, Skeleton } from '@studiq/ui';
+import { Button, Card, CardContent, Skeleton } from '@studiq/ui';
 import { Mail, Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
-import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
 import { BillingPageShell, CurrentPlanCardHeader } from '@/components/billing/billing-page-parts';
+import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
+import { PlanUnionBadge } from '@/components/billing/plan-union-badge';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -54,7 +55,6 @@ export default function ManageBillingPage() {
     staleTime: 0,
   });
 
-  const planName = myPlan ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name) : null;
   const seatsTotal = seatPools?.reduce((sum, pool) => sum + pool.total, 0) ?? 0;
   const seatsUsed = seatPools?.reduce((sum, pool) => sum + pool.assigned, 0) ?? 0;
 
@@ -66,8 +66,8 @@ export default function ManageBillingPage() {
           badge={
             planLoading || plansLoading ? (
               <Skeleton className="h-6 w-24" />
-            ) : planName ? (
-              <Badge variant="secondary">{planName}</Badge>
+            ) : myPlan ? (
+              <PlanUnionBadge plan={myPlan} plans={plans} />
             ) : null
           }
         />

@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                       | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | -------------------------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                    | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                    | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                    | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                    | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                    | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                              | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                              | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                    | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                         | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-24 |
-| 7     | delete, full QA, close                         | pending | —                                                        | —   | all 192 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                        | —   | all 192 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                                               | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                            | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                            | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                      | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                                            | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                                 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d `feat/authority-6d` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
+| 7     | delete, full QA, close                         | pending | —                                                                                | —   | all 192 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                                                | —   | all 192 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -46,9 +46,10 @@ API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: 6d (role editor: caller-scope awareness and the
-atomic entitlement-profile write; the `/me/plan` union badge)**, then 6e
-(Teacher assignment reads). 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
+mints the claim. **Next slice: 6e (Teacher assignment reads)**; **6d** (one role
+save, caller-scope awareness in the editor, the `/me/plan` union badge) is
+**active, not merged**, on `feat/authority-6d` (reviewed head `bc42290f`).
+6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
 6c `14262016` (#1428) and **6b-1** `999c45ab` (#1429 — route rules,
 `resolveDashboardArea`, the landing) are merged; **6b-2** (`AreaGate`, nav-item
 gates, `/manage` classification, `checkout-org`, AUT-20) is merged as
@@ -137,6 +138,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R45 | An org-partitioned cache is invalidated by its key, not by a refetch: invalidating the prefix while the outgoing org's entry is still observed writes the new org's payload under the old org's key, and that entry then reads as fresh when the caller returns. Mark it stale and let the key change fetch; refetch only when the key did not change.                                                                                               | 6a: `invalidateAuthority` on the switch would have refetched `['permissions', <outgoing org>]` with the new cookie live; the error is invisible until a switch back inside the 60 s `staleTime`. The rule was already recorded for org-keyed data lists in `use-orgs.ts` (#135)                                                                                                                                                                                                                                               |
 | R46 | A key's **exclusion** from a personal/default permission set is a claim about another layer: prove it with a call that holds the key and still gets that layer's refusal, or the next reader cannot tell a deliberate exclusion from a missing grant.                                                                                                                                                                                                | 6c: `quiz.*` and `assignment.create` are excluded from `PERSONAL_PERMISSION_KEYS` because their services refuse a no-org call; `assignment.publish`/`grade` because the persona default never granted them; the three assignment verbs a personal NULL-org row supports are included. A route-level 403 would be satisfied by the permission gate alone, so the proof calls both create services with a context that holds the key                                                                                            |
 | R47 | One predicate cannot answer "where is home" and "may this caller use this area": the two questions name different key sets when an area's home is typified by its management keys while its pages are usable through content reads, so name each predicate, state its question, and derive the admission set from the catalog.                                                                                                                       | 6b-2: reusing `resolveDashboardArea` for the gate would deny `/edu` to every Member — the landing names the three class-management keys that make `/edu` someone's _home_, while the area's pages are readable through content `.read` keys a Member holds, and the API answers `200` the moment the gate admits them                                                                                                                                                                                                         |
+| R48 | A label that gains provenance is a QA-corpus change, not a component change: grep the literal label across `__tests__/qa` and `qa/cases`, and keep the badge on its generic `data-slot` while adding `data-plan-union` — a single-element text matcher on the surrounding card keeps resolving the status badge through `:not([data-plan-union])`, and the component's own test only proves the string it builds.                                    | 6d: `PlanUnionBadge` named every `/me/plan` layer, so five specs pinning „StudiQ Launch”/„StudiQ Hub” on `/manage/billing` and `/manage/settings`, BIL-01's card description and six case texts went stale while the component test stayed green; overriding `data-slot="badge"` turned the generic billing badge locator into 0 elements, and restoring it made the two status-badge text matchers resolve the union badge until they excluded it with `:not([data-plan-union])`                                             |
 
 ## 4. Decisions
 
@@ -5421,9 +5423,138 @@ table).
   green), and `/manage`'s counters back on the role name turned MGR-01's
   Wykładowcy **2 → 1** (**KILLED**); both reverted and re-verified green.
 
-**Still open in phase 6:** 6d role-editor behaviour (caller-scope awareness,
-atomic profile write) and the `/me/plan` union badge; 6e the Teacher
-assignment-read widening.
+**6d — one role save, caller-scope awareness and the `/me/plan` union badge**
+(active on `feat/authority-6d`, reviewed head `bc42290f`; not merged; no SQL, no
+migration, no new table).
+
+- **One request, profile first, compensated.** `SetRolePermissionsSchema` gains
+  `entitlementProfile: EntitlementProfileSchema.nullable().optional()` — the
+  existing enum reused, not a new one. `null` **and** omitted both mean "this
+  save does not manage the profile" (the system-role editor sends `null`); they
+  never mean "clear it", so a role keeps its profile unless the payload names a
+  different value. `OrgRoleController.setPermissions` keeps its single
+  `org.role.manage` gate and passes the field through in the same
+  `SetRolePermissionsInput`.
+- **The service, in order.** `OrgRoleService.setPermissions` validates the
+  profile with `isEntitlementProfile` (it is a direct entry point too) and
+  answers `UNPROCESSABLE_ENTITY` before it reads or writes anything. The role
+  read now selects `id, name, is_system, entitlement_profile` plus the
+  `org_role_permissions(permission_key, scope)` embed; a requested profile equal
+  to the stored one is a no-op (no `org_roles` update). Every existing
+  authorization — complete payload, cross-org 404, self-edit D21, grant/removal
+  coverage, the last-`org.role.manage`-holder 409 — still runs **before any
+  write**. The write order is **profile first, then the target-first upsert +
+  prune**.
+- **Compensation, not a transaction.** The two writes are not one database
+  transaction and the code/docblock do not claim one: when the profile write
+  succeeds and either permission write then fails, one scoped update
+  (`.eq('id').eq('organization_id').eq('entitlement_profile', profileToWrite)`)
+  restores the stored profile and the original DB failure is returned. The
+  restore is a compare-and-swap on the value this save wrote, so a concurrent
+  save's newer profile is deliberately not overwritten. A restore that itself
+  fails is logged through `@studiq/server/lib/log` and not retried — the next
+  save rewrites both. The D20 log record now also carries `role.is_system` and
+  `entitlement_profile.before/after`.
+- **The web save is one PUT.** `manage/roles/page.tsx#handleSavePermissions`
+  issues one `apiPut` with `{ permissions, entitlementProfile }` (null for
+  system roles), keeps `invalidateAuthority(queryClient)` and shows one toast:
+  the second PUT and the half-saved role it could leave are gone.
+- **The two-plane grant rule, in the UI.** New
+  `apps/web/src/lib/role-grants.ts` — `grantableScopes`, `narrowestGrantable`,
+  `canGrant` — built on `scopeCovers`, `PERMISSIONS` and
+  `isPermissionCatalogKey` from `@studiq/authz` (R40; the rank table is never
+  copied). It returns the key's `allowedScopes` the caller's own scope covers,
+  and every allowed scope for an `org.admin` holder at organization scope — the
+  same exemption the server's `grantDenied` applies (D16/D21) — while a
+  non-assignable key (`org.admin`) answers `[]` like the server's `422`. The
+  editor reads the raw map with `usePermissions()` (`.data?.permissions`) while
+  `usePermission()` keeps answering `canBuild`. `startScopeFor` (the grant path)
+  and `rowAuthority` (the row's decision: locked, grantable, editable, toggle,
+  and whether the caller's own authority is the denial) keep the page's
+  behaviour in one testable place: a checkbox or radio the caller cannot grant is
+  **disabled** with a `title` naming that authority, and a locked ownership row
+  carries none (the catalog, not the caller, refuses it); a stored grant beyond
+  the caller's authority stays visible and non-editable (removal needs authority
+  over the held scope, and the server decides). No key is ever hidden: a hidden
+  key's absence from the complete payload would delete its grant (ADR §9's
+  completeness contract). A new grant starts at `narrowestGrantable`, falling
+  back to `allowedScopes[0]` only while the map is unresolved (then the server's
+  403 answers). An inline note under the dialog header states the rule in both
+  locales (`perms_authority_hint`); the specific denial is a `title` on the
+  disabled control (`perms_scope_denied`), not a second inline note.
+- **The ordering the default rests on is pinned.**
+  `__tests__/unit/lib/org-roles.test.ts` now asserts every catalog key's
+  `allowedScopes` is ordered narrowest→widest (own < group < organization), so
+  `[0]` is a declared rule, not declaration luck (design §4.3).
+- **`PlanUnionBadge`.** New
+  `apps/web/src/components/billing/plan-union-badge.tsx`
+  (`{ plan: PlanInfo; plans?: PlanInfo[]; className?: string; variant?: 'default' | 'secondary' }`):
+  `sources.length <= 1` renders the catalogue name of `plan.key` (falling back to
+  `plan.name`); several sources render
+  `A (origin) + B (origin)` from the catalogue the client already holds, with
+  `origin_org` / `origin_seat` / `origin_personal` in `BillingPage` (pl:
+  „organizacja”, „licencja”, „plan osobisty”). An unknown layer key falls back to
+  the key, never drops the layer. It keeps Badge's generic `data-slot="badge"`
+  and adds `data-plan-union` for the specific locator; `/manage/settings` keeps
+  its pre-6d `variant="default"` (size through `className`), the other three
+  surfaces stay `secondary`. It is used by `/app|/edu/billing` (the header
+  description), `/manage/billing` (the plan badge) and `/manage/settings` (the
+  plan row); `/pricing` (a catalogue page) and `manage/seats`' per-pool labels
+  are untouched.
+- **The label is a corpus contract (R48, review fix).** Because a manager's
+  `/me/plan` union always has the org layer plus the personal `solo` layer, the
+  shipped label is „StudiQ Launch (organizacja) + StudiQ Solo (plan osobisty)” on
+  `/manage/billing` and `/manage/settings`. Five specs (MGR-ACC-01, MGR-SET-01,
+  MGR-SET-05, BIL-04, LIM-05) assert the org layer as a substring of
+  `[data-plan-union]`; BIL-01 does the same on the card description (its student
+  is an org member, so the org layer precedes the personal Base layer). BIL-01
+  and LIM-03 resolve their status badge with a single-element text matcher that
+  excludes the union badge (`:not([data-plan-union])`), and six case texts carry
+  a dated 2026-11-25 note.
+- **3b's rule stands and is now provably pinned.** The feature/limit lists under
+  the header are the **catalogue row's**
+  (`plans.find(p => p.key === plan.key)`), never `plan.features`/`plan.limits`:
+  the badge states provenance, not a merged feature list under one plan's name.
+  `__tests__/unit/app/billing-page.test.ts` carried that assertion since 3b (the
+  design's "no test" note was stale); the phase-6d mutation run proves it.
+  `__tests__/unit/app/plan-union-badge.test.ts` covers one layer, three layers
+  and an unknown key.
+- **Gates on this branch (measured).**
+  `typecheck:all` (root 983, web 875, server 220, authz 7, ui 65 files) and
+  `typecheck:admin` (151) 0 errors; `lint` **1580** files 0 warnings; unit
+  **323 files / 5056 passed, 1 skipped**; `review:static` clean (5/5 rule
+  tests); `knip` clean; `format:check` **2258** files; `dup:base` no new clones
+  (**210** in the tree); `pr:size` **408/400** at `bc42290f` (572 test + 240 doc
+  lines excluded) — the review fix added 78 reviewable lines, and no PR exists
+  yet, so nothing is labelled `size/exception`. No build/serve/reset was run by
+  this slice — the coordinator owns them.
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  the compensation made a no-op (`if (profileToWrite === null) return;` →
+  `return;`) → "restores the previous profile when the permission upsert fails"
+  **KILLED**; `grantableScopes` filtered by the key's first scope only → "offers
+  own and group for a content key to a group-scope caller" **KILLED**; the
+  `org.admin` exemption dropped → "lets an org.admin holder at organization
+  scope grant every allowed scope" **KILLED**; `CONTENT_SCOPES` swapped to
+  `group, own, organization` → "lists every key narrowest to widest"
+  **KILLED**; `shown.features` swapped for `plan.features` → "renders the
+  feature and limit lists from the catalogue row, not the effective union"
+  **KILLED**. The review fix added three: a profile write on the denied path →
+  "does not write the profile when a permission change is denied" **KILLED**
+  (`from` called 2× instead of 1×); the restore's
+  `.eq('entitlement_profile', profileToWrite)` removed → "restores the previous
+  profile when the permission upsert fails" **KILLED**; the non-assignable check
+  narrowed to callers without `org.admin` → "offers nothing for the
+  non-assignable ownership key" **KILLED**. This pass added three: the row's
+  denial read as the bare `!canToggle` (`!locked` dropped) → "names the caller
+  authority as the denial, never the lock" **KILLED** (the locked row claims a
+  denial); the same constant inverted (`!locked && canToggle`) → the same case
+  **KILLED** (a usable row claims one); the failed restore's log record dropped
+  (`logError(` → `void (`) → "returns the permission failure when the profile
+  restore also fails" **KILLED**.
+
+**Still open in phase 6:** 6e the Teacher assignment-read widening. 6d (active)
+carries the role editor's caller-scope awareness, the one-request profile write
+and the `/me/plan` union badge.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
 optional argument: the default `true` is the common case and keeping it optional
@@ -5499,6 +5630,30 @@ by declaration instead of by edit. The unit cases pin a Member (both areas), a
 Billing preset (`/manage` only) and an empty/absent map (neither), so a
 re-broadened or re-narrowed predicate fails.
 Rule: R47.
+
+#### 2026-11-25 — a provenance badge changed a label the QA corpus asserts, and the component was the wrong place to grep
+
+What: 6d replaced three surfaces' single plan name with `PlanUnionBadge`, which
+names every layer of `/me/plan`'s union. A manager in an org has two layers (the
+org plan plus the personal `solo` plan), so `/manage/billing` and
+`/manage/settings` read „StudiQ Launch (organizacja) + StudiQ Solo (plan
+osobisty)” where the QA corpus asserted „StudiQ Launch”. The badge also spread
+`data-slot="plan-union-badge"` **after** Badge's own `data-slot="badge"`, so
+MGR-ACC-01's generic badge locator resolved **0** elements — and restoring the
+generic mark makes a card description carry a second Badge, so BIL-01's and
+LIM-03's single-element status-badge text matchers resolve two until they
+exclude it with `:not([data-plan-union])`.
+Why: the component's unit test is green because it asserts the union the
+component builds; the corpus asserts the **rendered label** through `getByText`,
+`toHaveText` and `[data-slot="badge"]` on surfaces that test never renders. The
+review read the component and saw a correct component.
+Fix: the badge keeps `data-slot="badge"` and adds `data-plan-union` for the
+specific locator; five specs assert the org layer as a substring of
+`[data-plan-union]`, two status-badge assertions exclude the union badge
+(`:not([data-plan-union])`), and six case texts carry a dated note. The sweep is
+`grep -rn "StudiQ \(Hub\|Launch\|Spark\|Base\|Lite\|Ace\)" __tests__/qa qa/cases`
+plus the dynamic `catalogue.find(...)` assertions the literal grep cannot see.
+Rule: R48.
 
 ### Phase 7 — delete and close
 

@@ -67,7 +67,8 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
   disabled while the fields are empty). This is the screen the case reports missing.
 - „Płatności” → `/manage/billing`: heading „Rozliczenia”, card „Aktualny plan” with the
   „Plan uczelniany” description, the current plan name as a badge (`/api/v1/me/plan`
-  resolves the active organization's plan) and the „Kontakt z handlowcem” mailto link —
+  resolves the active organization's plan; since 6d the badge names every layer of the
+  union, see the 6d note below) and the „Kontakt z handlowcem” mailto link —
   the only action of the simulated billing module.
 - Comparison path (last bullet of the case): the same menu uses the caller's area. The
   teacher's „Konto” goes to `/edu/account`, the student's to `/app/account` (the area
@@ -77,3 +78,11 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
   predates that fix even though `qa-suite` contains it. The teacher/student leg of this
   case therefore only covers the account screen (the student's `/app/upgrade` renders
   normally, but a per-role asymmetry is not worth encoding).
+
+> **2026-11-25 (6d).** The billing badge now names every layer of `/me/plan`'s
+> union, so a manager's plan reads „StudiQ Launch (organizacja) + StudiQ Solo
+> (plan osobisty)” — the personal `solo` layer is part of a manager's plan. The
+> spec therefore asserts the org layer's catalogue name as a substring of
+> `[data-plan-union]` instead of pinning the badge's whole text; the walk bullet's
+> „the current plan name as a badge” is that org layer, and its 6d parenthetical
+> records the union.

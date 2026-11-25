@@ -306,9 +306,9 @@ test.describe('BIL-04 — organization plan purchase', () => {
       'the brand colour picker is available',
     ).toBeVisible();
     await expect(
-      page.getByText(UI.hubName, { exact: true }),
-      'the subscription shows Hub',
-    ).toBeVisible();
+      page.locator('[data-plan-union]'),
+      'the subscription names Hub first (the personal solo layer follows)',
+    ).toContainText(UI.hubName);
 
     // --- Step 2 (cont.): /manage/roles shows the role builder -------------
     await page.goto('/manage/roles');

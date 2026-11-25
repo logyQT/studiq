@@ -73,3 +73,9 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
   „StudiQ Launch".
 - Po powrocie na Hub (webhook `hub`): logo wraca w przełączniku i jako podgląd 48×48
   w Ustawieniach, bez ponownego wgrywania — plik i `logo_url` przetrwały obniżenie planu.
+
+> **2026-11-25 (6d).** The subscription card's badge now names every layer of
+> `/me/plan`'s union, so it reads „StudiQ Launch (organizacja) + StudiQ Solo
+> (plan osobisty)” — the personal `solo` layer is part of a manager's plan. The
+> earlier walks' „StudiQ Launch” is the org layer of that label; the spec asserts
+> it as a substring of `[data-plan-union]`.

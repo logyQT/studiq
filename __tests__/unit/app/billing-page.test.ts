@@ -95,12 +95,14 @@ describe('BillingPage current-plan card', () => {
     ];
   });
 
-  it('takes the name and price from /me/plan', () => {
+  it('takes the price from /me/plan and the name from its catalogue row', () => {
     const markup = render();
 
-    expect(markup).toContain('Lite effective');
+    // The badge names the catalogue row; the effective row's name is not shown.
+    expect(markup).toContain('Lite');
     // The catalogue row prices at 29,00, so this reads the header's source.
     expect(markup).toContain('19,00');
+    expect(markup).not.toContain('Lite effective');
   });
 
   it('renders the feature and limit lists from the catalogue row, not the effective union', () => {

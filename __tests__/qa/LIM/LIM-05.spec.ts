@@ -237,7 +237,9 @@ test('rejects branding writes and keeps the stored values once the feature is go
 
   // The rest of the page is not blanked: the profile and the current plan show.
   await expect(settings.getByText(orgName, { exact: true })).toBeVisible();
-  await expect(settings.getByText(COPY.launchPlan, { exact: true })).toBeVisible();
+  // The badge names every layer; the personal `solo` layer is part of a manager's
+  // plan, so the org plan is asserted as a substring.
+  await expect(settings.locator('[data-plan-union]')).toContainText(COPY.launchPlan);
 
   // --- Step 2: the API rejects both branding writes with 403 -----------------
   const colorAttempt = await page.request.put(ORG_API(orgId), {
@@ -286,7 +288,7 @@ test('rejects branding writes and keeps the stored values once the feature is go
   const entitledAgain = mainContent(page);
   await expect(entitledAgain.locator(`img[src="${logoUrl}"]`)).toBeVisible({ timeout: 20_000 });
   await expect(entitledAgain.locator('input[type="color"]')).toHaveValue(brandColor);
-  await expect(entitledAgain.getByText(COPY.hubPlan, { exact: true })).toBeVisible();
+  await expect(entitledAgain.locator('[data-plan-union]')).toContainText(COPY.hubPlan);
   await expect(entitledAgain.getByText(COPY.lockedTitle, { exact: true })).toHaveCount(0);
   await expect(entitledAgain.getByText(COPY.logoLabel, { exact: true })).toBeVisible();
   await expect(entitledAgain.getByText(COPY.profileCard, { exact: true })).toBeVisible();

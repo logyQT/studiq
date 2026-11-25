@@ -116,6 +116,27 @@ describe('OrgRoleController.setPermissions', () => {
     expect(mockService.setPermissions).toHaveBeenCalledWith(ctx, ROLE_ID, body);
   });
 
+  it('passes the entitlement profile through the same request', async () => {
+    mockService.setPermissions.mockResolvedValueOnce({ success: true, data: undefined });
+    const body = { ...payload({ 'flashcard.read': 'own' }), entitlementProfile: 'learner' };
+
+    const response = await controller.setPermissions(ctx, ROLE_ID, body);
+
+    expect(response.success).toBe(true);
+    expect(mockService.setPermissions).toHaveBeenCalledWith(ctx, ROLE_ID, {
+      permissions: body.permissions,
+      entitlementProfile: 'learner',
+    });
+  });
+
+  it('does not introduce a second permission gate for the profile', async () => {
+    mockService.setPermissions.mockResolvedValueOnce({ success: true, data: undefined });
+
+    await controller.setPermissions(ctx, ROLE_ID, { ...payload(), entitlementProfile: null });
+
+    expect(vi.mocked(requirePermission).mock.calls).toEqual([[ctx, 'org.role.manage']]);
+  });
+
   it('maps a service refusal to its status code', async () => {
     mockService.setPermissions.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
 

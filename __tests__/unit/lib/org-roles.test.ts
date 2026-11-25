@@ -140,3 +140,22 @@ describe('ROLE_TEMPLATES', () => {
     expect(ROLE_TEMPLATES.blank.permissions).toEqual({});
   });
 });
+
+/**
+ * `allowedScopes` is declared narrowest → widest (ADR-0015 §4.1). The role
+ * editor and `grantableScopes` read `[0]` as "the narrowest scope this key
+ * accepts", so the order is load-bearing, not cosmetic — a swapped pair would
+ * turn a new grant into the widest scope by declaration luck (phase 6d).
+ */
+describe('PERMISSIONS.allowedScopes ordering', () => {
+  const RANK = { own: 0, group: 1, organization: 2 } as const;
+
+  it('lists every key narrowest to widest', () => {
+    for (const [key, definition] of Object.entries(PERMISSIONS)) {
+      const ranks = definition.allowedScopes.map((scope) => RANK[scope]);
+      const sorted = [...ranks].toSorted((a, b) => a - b);
+
+      expect(ranks, `${key} must be ordered narrowest → widest`).toEqual(sorted);
+    }
+  });
+});

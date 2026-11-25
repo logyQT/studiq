@@ -124,6 +124,29 @@ describe('SetRolePermissionsSchema', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('carries an optional, nullable entitlement profile in the same payload', () => {
+    expect(SetRolePermissionsSchema.safeParse(payload()).success).toBe(true);
+    expect(
+      SetRolePermissionsSchema.safeParse({ ...payload(), entitlementProfile: null }).success,
+    ).toBe(true);
+    const withProfile = SetRolePermissionsSchema.safeParse({
+      ...payload(),
+      entitlementProfile: 'learner',
+    });
+    expect(withProfile.success).toBe(true);
+    if (!withProfile.success) throw new Error('unreachable');
+    expect(withProfile.data.entitlementProfile).toBe('learner');
+  });
+
+  it('rejects an unknown entitlement profile', () => {
+    const result = SetRolePermissionsSchema.safeParse({
+      ...payload(),
+      entitlementProfile: 'everything',
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('org role schemas — entitlement profile', () => {

@@ -159,13 +159,14 @@ test.describe('MGR-ACC-01 — manager user menu', () => {
     await expect(page.getByText('Aktualny plan', { exact: true })).toBeVisible();
     await expect(page.getByText('Plan uczelniany', { exact: true })).toBeVisible();
 
-    // The badge names this organization's plan: `/me/plan` resolves the active org
-    // plan first, and the page renders the same row from the catalogue.
+    // The badge names every layer of `/me/plan`'s union, not one plan name: the
+    // org plan is the first source and a manager also carries the free personal
+    // `solo` layer, so the org layer is asserted as a substring.
     const activePlan = await getData<PlanInfo>(page, '/api/v1/me/plan');
     const catalogue = await getData<PlanInfo[]>(page, '/api/v1/subscription-plans');
     const expectedPlanName =
       catalogue.find((plan) => plan.key === activePlan.key)?.name ?? activePlan.name;
-    await expect(page.locator('[data-slot="badge"]')).toHaveText(expectedPlanName);
+    await expect(page.locator('[data-plan-union]')).toContainText(expectedPlanName);
 
     // The only action the simulated billing module offers.
     await expect(page.getByRole('link', { name: 'Kontakt z handlowcem' })).toHaveAttribute(
