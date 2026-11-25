@@ -87,13 +87,15 @@ export class SubscriptionPlanService {
 
   /**
    * The keys a buyer actually receives — the public reads mirror the
-   * resolver's step-11 gate (D8/D9): an unknown key is dropped, a surface key
-   * survives only with an enabled flag row, a baseline key is never gated. The
-   * flag state comes from `entitlement_flags`, not from a TS constant (R37).
+   * resolver's step-4 catalog filter and step-11 flag gate (D8/D9): an unknown
+   * key is dropped, a surface key survives only with an enabled flag row, a
+   * baseline key is never gated. The flag state comes from `entitlement_flags`,
+   * not from a TS constant (R37).
    *
    * This filters `features` only. `seatEligible` keeps reading the unfiltered
-   * rows because it mirrors `addPool`'s rule, which reads `plan_entitlements`
-   * regardless of flags (a plan's keys are all seat-eligible or none).
+   * rows because it mirrors `addPool` (`seat.service.ts`), which reads the full
+   * plan-row set; deriving it from filtered rows would flip a plan with a mixed
+   * key set (hub carries `branding`) to `true` and let `addPool` accept it.
    */
   private static advertisedFeatures(
     entitlementRows: readonly PlanEntitlementRead[],

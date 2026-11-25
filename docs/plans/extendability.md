@@ -343,7 +343,7 @@ fix:
 | `GET /api/v1/subscription-plans`                                             | `200`, **13** plans                                                                                                                                                                                                                  |
 | `GET /pricing`                                                               | `200`                                                                                                                                                                                                                                |
 | Cell C: `quiz.templates` flag `is_enabled = false`                           | **0 of 13** plans advertise the key. `6` do before the switch and after the restore: `guide`, `team`, `creator`, `hub`, `master`, `campus`. `GET /api/v1/subscription-plans/guide` returns 2 features while off, 3 after the restore |
-| Cell G: DB-ahead `voice.probe` (catalog row + enabled flag + `hub` plan row) | `200`, **13** plans, the key is absent from all of them; `hub.seatEligible` stays `false`, computed from the unfiltered rows                                                                                                         |
+| Cell G: DB-ahead `voice.probe` (catalog row + enabled flag + `hub` plan row) | `200`, **13** plans, the key is absent from all of them. `hub.seatEligible` stays `false`; the unfiltered-rows property is pinned by the unit case, not by this probe (`hub` is already `false` because of `branding`)               |
 
 The anonymous read needs the kill switch, so `anon` gained SELECT on
 `entitlement_flags` with a read policy (#1484). The rogue rows were removed after

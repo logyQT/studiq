@@ -14,12 +14,13 @@ Fix open defects before new features. The order below follows that rule.
 
 | Step | Issue     | What it fixes                                                                                       | Exit criterion                                                                                                                               | Depends on |
 | ---- | --------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| A3   | **#1484** | The public pricing read hides a kill-switched key and a DB-ahead key. PR #1506 (this PR).           | Anonymous pricing advertises only catalog-known keys whose flag is enabled.                                                                  | —          |
 | A4   | **#1482** | `authenticated` can write `user_daily_activity` directly and reset its own AI meter.                | The stats triggers run behind a definer function. `has_table_privilege('authenticated', …, 'UPDATE')` is false. An integration case pins it. | —          |
 | A5   | **#1478** | The merge queue does not merge a docs-only PR.                                                      | A docs-only PR merges through `bun run merge:queue`.                                                                                         | —          |
 | A6   | **#1492** | `bun run mutate --name` treats the test title as a regex. A title with parentheses reports `ERROR`. | A title with parentheses reports `KILLED`. The help and the skill state the semantics.                                                       | —          |
 
-A2 closed the seed half of A1's rule. A3 merged the public pricing filter, so B1
-and B2 are unblocked on it.
+A2 closed the seed half of A1's rule. A3 is PR #1506, so B1 and B2 are unblocked
+on it once it merges.
 
 ## Done
 
@@ -27,7 +28,6 @@ and B2 are unblocked on it.
 | ---- | --------- | ----- | ------------------------------------------------------------------------------- |
 | A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                |
 | A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL. |
-| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.           |
 
 ## B. Simplify the plans
 
