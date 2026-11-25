@@ -24,7 +24,7 @@ qa/
   README.md        this file
   AGENT-PROMPT.md  the copy-paste agent prompt
   context.md       global rules: accounts, org+seed data, plans, priorities, defect template (PL, verbatim)
-  index.md         all 192 scenarios: ID | Prio | Title | Prereqs | Module
+  index.md         all 193 scenarios: ID | Prio | Title | Prereqs | Module
   cases/<ID>.md    one scenario per file, steps verbatim (PL) + embedded prerequisite context
   source/          the original .docx (archival — the cases above are the corpus)
 ```

@@ -88,6 +88,9 @@ const STUDENT_ATTEMPT_SELECT =
 
 type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
 
+/** The `teacher_assignments` row `list` reads and merges. */
+type AssignmentRow = Database['public']['Tables']['teacher_assignments']['Row'];
+
 /** A run the caller may write, with the client that proved they may. */
 interface OwnedWindow {
   supabase: SupabaseClient<Database>;
@@ -397,6 +400,19 @@ export class TeacherAssignmentService {
     return success(full);
   }
 
+  /**
+   * The composer/detail payload, deliberately narrower than `list` and than the
+   * data plane (R23): the RLS SELECT ("Visible teacher assignments") admits any
+   * member of a targeted class, while this path admits the author or an
+   * `assignment.read` holder at `organization` scope. The reason is the key — a
+   * draft is the live composer and a published run serves its frozen snapshot,
+   * both through `withAnswerKey` behind this authorship / `organization`-scope
+   * gate, so widening the gate would hand a co-teacher of the class a colleague's
+   * answer key. (The seal's author exemption, D-5e1, is about item sealing, not
+   * key visibility.) The asymmetry is recorded, not left as two unnamed
+   * answers; its owner is phase 7 (e.g. a read-only header for a colleague's
+   * run).
+   */
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
@@ -474,25 +490,111 @@ export class TeacherAssignmentService {
     });
   }
 
+  /**
+   * The runs the caller may read (ADR-0015 D29, phase 6e):
+   *
+   * - `organization` → every run of the active org;
+   * - `group` → that org's runs the caller authored **or** that target a class
+   *   they teach. "Teaches" is `ctx.groupRoles[groupId] === 'teacher'` (§4.3, the
+   *   rule 2b-2 installed), never plain `ctx.groupIds` membership: a `member` of
+   *   the class is its audience, so membership would show a learner every run
+   *   aimed at their own class;
+   * - anything else (`own`, or no active org) → the caller's own runs.
+   *
+   * `select('*')` is safe to widen here: `teacher_assignments` carries the title,
+   * status, window and counters and no answer key — the key lives on the item
+   * rows and their frozen snapshots, which no list read touches.
+   *
+   * The targeted ids are fetched in `TARGET_CHUNK` batches because the id list
+   * also travels in the request URL.
+   */
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
     const scope = ctx.permissionScopes['assignment.read'];
 
-    let query = supabase
-      .from('teacher_assignments')
-      .select('*')
-      .order('created_at', { ascending: false });
-
     if (scope === 'organization' && ctx.activeOrgId) {
-      query = query.eq('organization_id', ctx.activeOrgId);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+      const { data, error } = await supabase
+        .from('teacher_assignments')
+        .select('*')
+        .eq('organization_id', ctx.activeOrgId)
+        .order('created_at', { ascending: false });
+      if (error) return toDbFailure(error);
+      return success(dbRows(data));
     }
 
-    const { data, error } = await query;
+    if (scope === 'group' && ctx.activeOrgId) {
+      const targeted = await this.targetedRunIds(supabase, ctx);
+      if (isFailure(targeted)) return targeted;
+
+      // A run the caller both authored and targeted at a class they teach arrives in
+      // both arms; the map merges it by id.
+      const runs = new Map<string, AssignmentRow>();
+
+      const { data: authored, error: authoredError } = await supabase
+        .from('teacher_assignments')
+        .select('*')
+        .eq('organization_id', ctx.activeOrgId)
+        .eq('created_by', ctx.userId)
+        .order('created_at', { ascending: false });
+      if (authoredError) return toDbFailure(authoredError);
+      for (const row of dbRows(authored)) runs.set(row.id, row);
+
+      // An empty `id.in.()` is a PostgREST 400, so no chunk is issued without ids.
+      for (let i = 0; i < targeted.data.length; i += TARGET_CHUNK) {
+        const { data: targetedRows, error: targetedError } = await supabase
+          .from('teacher_assignments')
+          .select('*')
+          .eq('organization_id', ctx.activeOrgId)
+          .in('id', targeted.data.slice(i, i + TARGET_CHUNK))
+          .order('created_at', { ascending: false });
+        if (targetedError) return toDbFailure(targetedError);
+        for (const row of dbRows(targetedRows)) runs.set(row.id, row);
+      }
+
+      // Every query orders explicitly; the merge is the one place that sorts across them.
+      return success(
+        [...runs.values()].toSorted((a, b) =>
+          (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+        ),
+      );
+    }
+
+    const { data, error } = await supabase
+      .from('teacher_assignments')
+      .select('*')
+      .eq('created_by', ctx.userId)
+      .order('created_at', { ascending: false });
     if (error) return toDbFailure(error);
     return success(dbRows(data));
+  }
+
+  /**
+   * The ids of the runs targeted at a class the caller teaches (§4.3). The
+   * caller's class list travels in the request URL, so it is read in
+   * `TARGET_CHUNK` batches rather than one `.in()`.
+   */
+  private async targetedRunIds(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<string[]>> {
+    const taught = Object.entries(ctx.groupRoles).flatMap(([groupId, role]) =>
+      role === 'teacher' ? [groupId] : [],
+    );
+    if (taught.length === 0) return success([]);
+
+    const ids = new Set<string>();
+    for (let i = 0; i < taught.length; i += TARGET_CHUNK) {
+      const { data, error } = await supabase
+        .from('assignment_targets')
+        .select('assignment_id')
+        .in('group_id', taught.slice(i, i + TARGET_CHUNK));
+      if (error) return toDbFailure(error);
+      for (const row of dbRows(data)) {
+        if (row.assignment_id) ids.add(row.assignment_id);
+      }
+    }
+    return success([...ids]);
   }
 
   async update(

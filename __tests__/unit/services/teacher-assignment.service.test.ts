@@ -238,8 +238,22 @@ const ctx: RequestContext = {
   activeOrgId: orgId,
   orgRoleId: 'role-id',
   groupIds: [],
+  groupRoles: {},
   permissionScopes: {},
 };
+
+/** A caller whose role holds `assignment.read` at `group` (the seeded Teacher, D29). */
+function withGroupScope(
+  groupRoles: RequestContext['groupRoles'],
+  groupIds: string[] = Object.keys(groupRoles),
+): RequestContext {
+  return {
+    ...ctx,
+    groupIds,
+    groupRoles,
+    permissionScopes: { 'assignment.read': 'group', 'assignment.update': 'own' },
+  };
+}
 
 function withOrgScope(): RequestContext {
   return {
@@ -520,6 +534,173 @@ describe('TeacherAssignmentService', () => {
       expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
     });
 
+    it('widens a group-scope read to the runs authored or targeting a taught class', async () => {
+      const authoredRows = [
+        {
+          id: 'a-authored',
+          title: 'Mine',
+          created_by: userId,
+          organization_id: orgId,
+          created_at: '2026-01-02T00:00:00.000Z',
+        },
+      ];
+      const targetedRows = [
+        {
+          id: 'a-targeted',
+          title: 'Colleague',
+          created_by: 'colleague',
+          organization_id: orgId,
+          created_at: '2026-01-01T00:00:00.000Z',
+        },
+      ];
+      const targets = chain([{ assignment_id: 'a-targeted' }]);
+      const authoredChain = chain(authoredRows);
+      const targetedChain = chain(targetedRows);
+      mock.from
+        .mockReturnValueOnce(targets)
+        .mockReturnValueOnce(authoredChain)
+        .mockReturnValueOnce(targetedChain);
+
+      const result = await service.list(withGroupScope({ 'g-taught': 'teacher' }));
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual([...authoredRows, ...targetedRows]);
+      // The taught class's runs are resolved from the target table, then merged with
+      // the caller's authored runs inside the active org.
+      expect(targets.in).toHaveBeenCalledWith('group_id', ['g-taught']);
+      expect(authoredChain.eq).toHaveBeenCalledWith('organization_id', orgId);
+      expect(authoredChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(targetedChain.eq).toHaveBeenCalledWith('organization_id', orgId);
+      expect(targetedChain.in).toHaveBeenCalledWith('id', ['a-targeted']);
+      // The org conjunct stays: the group arm lives inside the active org.
+    });
+
+    it('fetches targeted runs in URL-sized batches and merges them by id', async () => {
+      const targetedIds = Array.from({ length: 250 }, (_, index) => `a${index}`);
+      const targetedRows = targetedIds.map((id, index) => ({
+        id,
+        title: `Colleague ${id}`,
+        created_by: 'colleague',
+        organization_id: orgId,
+        created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      }));
+      const authoredOnly = {
+        id: 'authored-only',
+        title: 'Mine',
+        created_by: userId,
+        organization_id: orgId,
+        created_at: '2027-01-01T00:00:00.000Z',
+      };
+      // `a5` arrives in both arms: authored here, targeted in the colleague's rows. The
+      // merge must return it once, from the targeted arm (fetched last).
+      const a5 = targetedRows[5];
+      if (!a5) throw new Error('expected a5 in the targeted rows');
+      const authoredRows = [
+        authoredOnly,
+        { ...a5, created_by: userId, created_at: '2026-06-01T00:00:00.000Z' },
+      ];
+
+      const chunks: string[][] = [];
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'assignment_targets') {
+          return chain(targetedIds.map((assignment_id) => ({ assignment_id })));
+        }
+        let ids: Set<string> | null = null;
+        let author: string | null = null;
+        const rowChain = chain([...authoredRows, ...targetedRows]);
+        rowChain.eq = vi.fn((column: string, value: unknown) => {
+          if (column === 'created_by') author = String(value);
+          return rowChain;
+        });
+        rowChain.in = vi.fn((column: string, values: unknown) => {
+          const idArgument = Array.isArray(values)
+            ? values.filter((value): value is string => typeof value === 'string')
+            : [];
+          chunks.push(idArgument);
+          ids = new Set(idArgument);
+          return rowChain;
+        });
+        rowChain.then = ((onFulfilled, onRejected) =>
+          Promise.resolve({
+            data: [...authoredRows, ...targetedRows].filter(
+              (row) =>
+                (ids === null || ids.has(row.id)) && (author === null || row.created_by === author),
+            ),
+            error: null,
+          }).then(onFulfilled, onRejected)) as QueryChain['then'];
+        return rowChain;
+      });
+
+      const result = await service.list(withGroupScope({ 'g-taught': 'teacher' }));
+
+      expect(result.success).toBe(true);
+      const fetchCount = mock.from.mock.calls.filter(([table]) => table === 'teacher_assignments');
+      expect(fetchCount.length, 'authored arm plus one fetch per chunk').toBeGreaterThan(1);
+      expect(chunks.length, 'the id list is split').toBeGreaterThan(1);
+      for (const ids of chunks) expect(ids.length).toBeLessThanOrEqual(200);
+
+      const merged = result.success ? asJson<Array<{ id: string }>>(result.data) : [];
+      const ids = merged.map((row) => row.id);
+      expect(ids).toHaveLength(new Set(ids).size);
+      expect(new Set(ids)).toEqual(new Set([...targetedIds, authoredOnly.id]));
+
+      const expected = new Map(authoredRows.map((row) => [row.id, row]));
+      for (const row of targetedRows) expected.set(row.id, row);
+      expect(ids).toEqual(
+        [...expected.values()]
+          .toSorted((a, b) => b.created_at.localeCompare(a.created_at))
+          .map((row) => row.id),
+      );
+    });
+
+    it('falls back to the author filter when the caller teaches no class', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list(withGroupScope({}, []));
+
+      expect(result.success).toBe(true);
+      // Nothing taught: no target query, no `id.in.()` arm, just their own runs.
+      expect(mock.from.mock.calls.map(([table]: [string]) => table)).toEqual([
+        'teacher_assignments',
+      ]);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(listChain.or).not.toHaveBeenCalled();
+    });
+
+    it('keeps an own-scope caller on the author filter even when they teach a class', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list({
+        ...ctx,
+        groupIds: ['g-taught'],
+        groupRoles: { 'g-taught': 'teacher' },
+        permissionScopes: { 'assignment.read': 'own' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mock.from.mock.calls.map(([table]: [string]) => table)).toEqual([
+        'teacher_assignments',
+      ]);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(listChain.or).not.toHaveBeenCalled();
+    });
+
+    it('does not widen to a class the caller is merely a member of', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      // `ctx.groupIds` contains the class — the membership is real — but the
+      // caller is its `member`, not its teacher (ADR-0015 §4.3).
+      const result = await service.list(withGroupScope({ 'g-member': 'member' }, ['g-member']));
+
+      expect(result.success).toBe(true);
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_targets');
+      expect(listChain.or).not.toHaveBeenCalled();
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+    });
+
     it('returns empty array when no assignments', async () => {
       mock.from.mockReturnValue(chain([]));
 
@@ -530,13 +711,7 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns INTERNAL_SERVER on DB error', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn(() => ({
-          order: vi.fn(() => ({
-            eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          })),
-        })),
-      });
+      mock.from.mockReturnValue(failingChain({ code: 'XX000', message: 'DB error' }));
 
       const result = await service.list(ctx);
 

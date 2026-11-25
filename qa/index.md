@@ -1,4 +1,4 @@
-# Scenario index — 192 cases
+# Scenario index — 193 cases
 
 Prerequisite ids are greppable: `grep -n "EDU-DECK-03" index.md`.
 Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** every id in its Prereqs column.
@@ -127,6 +127,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | EDU-ASG-08  | P1 krytyczny   | Ocena odpowiedzi ucznia (per uczeń)                                  | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-ASG-09  | P2 ważny       | Eksport odpowiedzi                                                   | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-ASG-10  | P2 ważny       | Wydruk kartkówki i klucz odpowiedzi                                  | —           | EDU – Panel nauczyciela (/edu)                    |
+| EDU-ASG-11  | P2 ważny       | Kartkówka kolegi z klasy, której uczę                                | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-GRP-01  | P2 ważny       | Lista i tworzenie grup                                               | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-GRP-02  | P2 ważny       | Zarządzanie członkami grupy                                          | EDU-GRP-01  | EDU – Panel nauczyciela (/edu)                    |
 | EDU-GRP-03  | P2 ważny       | Edycja i usuwanie grupy                                              | —           | EDU – Panel nauczyciela (/edu)                    |

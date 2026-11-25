@@ -24,14 +24,15 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  *
  * gives `qa-edu-asg-07-<suffix>` (`tenantKey('qa/cases/EDU-ASG-07.md',
  * 'EDU-ASG-07#<suffix>', 'qa-shared')` + `tenantId` for every org/user/group id).
- * The tenant's `teacher` is an educator and an org member, so it may create its own
- * assignments (`assignment.*` = `own`); the `teacher_assignments` SELECT is scoped to
- * author / targeted / `assignment.read` runs (ADR-0015 5e-2, D-5e2-2), and
- * `getResults` is gated by `created_by`, so the results list only ever contains this
- * tenant's attempts. The `student` is an org member and a
- * `G1` member, i.e. the assignment's group target. Nothing global is written: the
- * bank, question, assignment, target and the student's attempt all live in this
- * tenant and are created through the product API.
+ * The tenant's `teacher` holds `assignment.read` at `group` and the writes at `own`
+ * (ADR-0015 D29, phase 6e): it may create its own assignments and list the org's runs
+ * that target a class it teaches. `getResults` stays author-gated (`created_by`), so
+ * the results list only ever contains this tenant's attempts, and the
+ * `teacher_assignments` SELECT policy is one rule for "may read this run" —
+ * author / targeted / `assignment.read` (5e-2, D-5e2-2). The `student` is an org
+ * member and a `G1` member, i.e. the assignment's group target. Nothing global is
+ * written: the bank, question, assignment, target and the student's attempt all live
+ * in this tenant and are created through the product API.
  *
  * Entry point: the case's „W szczegółach kliknij «Wyniki» / «Zobacz wyniki»”. The
  * detail page renders both — a „Wyniki” link in the header and the „Zobacz wyniki”
