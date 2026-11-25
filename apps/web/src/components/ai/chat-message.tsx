@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import { memo, useState } from 'react';
 import type { FlashcardData } from '@/components/ai/generated-cards';
 import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
-import { PlanBlock } from '@/components/ai/plan-block';
 import { QuestionBlock } from '@/components/ai/question-block';
 import { ThinkingBlock } from '@/components/ai/thinking-block';
 import { ToolCallBlock } from '@/components/ai/tool-call-block';
@@ -38,30 +37,14 @@ export const ChatMessage = memo(
     const isUser = message.role === 'user';
     const isThought = message.role === 'thought';
     const isToolCall = message.role === 'tool_call';
-    const isPlan = message.role === 'plan';
 
     if (isThought) {
       return <ThoughtMessage message={message} />;
     }
 
-    if (isPlan) {
-      return (
-        <div className="flex justify-start">
-          <div className="max-w-[80%] w-full">
-            <PlanBlock
-              steps={message.plan || []}
-              isComplete={message.planCompleted ?? false}
-              completedSteps={message.completedSteps}
-            />
-          </div>
-        </div>
-      );
-    }
-
     if (
       isToolCall &&
-      (message.toolName === 'create_plan' ||
-        message.toolName === 'finish' ||
+      (message.toolName === 'finish' ||
         message.toolName === 'ask_user' ||
         message.toolName === 'generate_flashcards')
     ) {
@@ -182,6 +165,9 @@ export const ChatMessage = memo(
       a.toolName === b.toolName &&
       a.label === b.label &&
       a.error === b.error &&
+      a.question?.id === b.question?.id &&
+      a.question?.question === b.question?.question &&
+      a.question?.answered === b.question?.answered &&
       a.thinkingTraces.length === b.thinkingTraces.length
     );
   },

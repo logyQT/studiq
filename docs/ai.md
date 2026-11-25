@@ -38,7 +38,7 @@ Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispa
 | -------------------------------------------- | -------------------------------------------------------------------- |
 | `src/app/(backend)/api/v1/ai/chat/route.ts`  | Entry point — auth, streamText, tool registration                    |
 | `src/server/agents/core/base.agent.ts`       | Abstract ReAct loop                                                  |
-| `src/server/agents/general.agent.ts`         | Agent Q orchestrator (9 generic tools)                               |
+| `src/server/agents/general.agent.ts`         | Agent Q orchestrator (8 generic tools)                               |
 | `src/server/agents/flashcard.agent.ts`       | Flashcard sub-agent (5 tools)                                        |
 | `src/server/agents/agent-registry.ts`        | Singleton — maps agent names to instances                            |
 | `src/server/agents/system.ts`                | Agent Q system prompt                                                |
@@ -54,11 +54,10 @@ Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispa
 
 ## Tools
 
-### GeneralAgent (Agent Q) — 9 tools
+### GeneralAgent (Agent Q) — 8 tools
 
 | Tool               | Description                                       | Side Effects            | DB Access |
 | ------------------ | ------------------------------------------------- | ----------------------- | --------- |
-| `create_plan`      | Build multi-step execution plan                   | Trace log               | None      |
 | `ask_user`         | Ask clarifying question (SSE `question` event)    | Trace log, stream pause | None      |
 | `fetch_material`   | Generate educational content via nested LLM call  | `generateText()`        | None      |
 | `webfetch`         | Fetch content from URL                            | External HTTP           | None      |

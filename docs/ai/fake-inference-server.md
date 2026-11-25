@@ -201,28 +201,27 @@ failure far from the file that caused it.
 The last two matter beyond the harness: the provider never sends `stream_options.include_usage`
 (verified in `dist/index.js:541,1075`), so **streaming turns currently meter zero tokens**, and
 the nested `fetch_material` call is never metered at all. The usage fixtures are what make that
-visible: the unit test pins the first, `STU-48` pins the second (a plan whose nested call reports
-2 000 tokens moves the counter by the outer turns only).
+visible: the unit test pins the first, `STU-48` pins the second (its nested call reports
+2 000 tokens that never move the counter, which the outer turns change only).
 
 ### What building the suite showed about the product
 
 Each is pinned or documented in the specs, and none is changed here (#1212 has since been
 fixed). Issues #1210–#1214 track the first five; the rest have no issue yet.
 
-| Finding                                                                                                                                                                                                                                                                                   | Where                                                  |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| ~~The thinking trace is a „Thought" toggle with a **hardcoded English** label~~ — **fixed, part of #1210**: it uses `thinking_title`; the other labels #1210 covers are listed below                                                                                                      | `chat-message.tsx` `ThoughtMessage`                    |
-| `AiChatPage.status_thinking` / `status_generating` / `status_organizing` exist but nothing renders them; the case expects them — **#1211**                                                                                                                                                | `AiChatPage` messages                                  |
-| ~~The saved deck is named by the tool („Generated Flashcards", untranslated)~~ — **fixed, #1212**: neither tool names it now and the name field applies the localized default                                                                                                             | `generate-flashcards.tool.ts`, `flashcard-block.tsx`   |
-| A streamed turn requests no usage from the provider, so a fully streamed answer can meter 0 tokens (#1213); the nested `fetch_material` call is never metered at all and is not covered by that issue                                                                                     | `packages/server/src/ai/model.ts`, `use-ai-chat.ts`    |
-| The greeting chips are canned local replies that still become part of the history sent to the model — **#1214**                                                                                                                                                                           | `ai-chat-screen.tsx` `handleSuggestion`                |
-| The Execution Plan block never progresses: in the STU-48 plan flow the badge stays `0 / N completed` and `All steps complete` never renders, even though `use-ai-chat.ts` hoists the plan refs outside the message loop and sets `planCompleted` on `finish`; the cause is not yet pinned | `plan-block.tsx`, `use-ai-chat.ts`                     |
-| A stopped answer meters 0 tokens: the Stop probe in STU-47 measured `1280 → 1280`                                                                                                                                                                                                         | `use-ai-chat.ts` (`stop`)                              |
-| The plan, tool and result labels are hardcoded English: `Execution Plan (N steps)`, `N / M completed`, `All steps complete`, `Generated N characters of material`, `Found N key concepts`, `Summary ready` / `Quiz questions ready` / `Explanation ready`                                 | `plan-block.tsx`, `use-ai-chat.ts`, `chat-message.tsx` |
-| The flashcard preview shows `(N removed)` untranslated                                                                                                                                                                                                                                    | `flashcard-block.tsx`                                  |
-| The AI chat copy has no Polish plural forms („Wygenerowano 4 fiszek"); the preview and save strings fixed here still sit beside `flashcards_preview` and `flashcard_deck_created`, which do not inflect („z 1 fiszkami")                                                                  | `apps/web/src/i18n/messages/pl.json`                   |
-| A tool call with truncated or unknown input is fed back to the model as a tool error and has no UI                                                                                                                                                                                        | `use-ai-chat.ts`                                       |
-| The counter is in tokens; the case document says „zapytań" (requests)                                                                                                                                                                                                                     | `usage-badge.tsx`                                      |
+| Finding                                                                                                                                                                                                                  | Where                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| ~~The thinking trace is a „Thought" toggle with a **hardcoded English** label~~ — **fixed, part of #1210**: it uses `thinking_title`; the other labels #1210 covers are listed below                                     | `chat-message.tsx` `ThoughtMessage`                  |
+| `AiChatPage.status_thinking` / `status_generating` / `status_organizing` exist but nothing renders them; the case expects them — **#1211**                                                                               | `AiChatPage` messages                                |
+| ~~The saved deck is named by the tool („Generated Flashcards", untranslated)~~ — **fixed, #1212**: neither tool names it now and the name field applies the localized default                                            | `generate-flashcards.tool.ts`, `flashcard-block.tsx` |
+| A streamed turn requests no usage from the provider, so a fully streamed answer can meter 0 tokens (#1213); the nested `fetch_material` call is never metered at all and is not covered by that issue                    | `packages/server/src/ai/model.ts`, `use-ai-chat.ts`  |
+| The greeting chips are canned local replies that still become part of the history sent to the model — **#1214**                                                                                                          | `ai-chat-screen.tsx` `handleSuggestion`              |
+| A stopped answer meters 0 tokens: the Stop probe in STU-47 measured `1280 → 1280`                                                                                                                                        | `use-ai-chat.ts` (`stop`)                            |
+| The tool and result labels are hardcoded English: `Generated N characters of material`, `Found N key concepts`, `Summary ready` / `Quiz questions ready` / `Explanation ready`                                           | `use-ai-chat.ts`, `chat-message.tsx`                 |
+| The flashcard preview shows `(N removed)` untranslated                                                                                                                                                                   | `flashcard-block.tsx`                                |
+| The AI chat copy has no Polish plural forms („Wygenerowano 4 fiszek"); the preview and save strings fixed here still sit beside `flashcards_preview` and `flashcard_deck_created`, which do not inflect („z 1 fiszkami") | `apps/web/src/i18n/messages/pl.json`                 |
+| A tool call with truncated or unknown input is fed back to the model as a tool error and has no UI                                                                                                                       | `use-ai-chat.ts`                                     |
+| The counter is in tokens; the case document says „zapytań" (requests)                                                                                                                                                    | `usage-badge.tsx`                                    |
 
 ## 5. How this was validated
 
@@ -248,7 +247,7 @@ shows up in a Playwright spec.
 `__tests__/unit/qa/fake-llm-contract.test.ts` reads the engine sources and fails if they match:
 
 ```
-/flashcard|deck|quiz|create_plan|fetch_material|extract_concepts|evaluate_quality|ask_user/
+/flashcard|deck|quiz|fetch_material|extract_concepts|evaluate_quality|ask_user/
 ```
 
 The match is case-insensitive and covers every engine file (`server`, `engine`, `stream`,
@@ -297,7 +296,7 @@ bun run test:qa __tests__/qa/AI               # QA_APP_URL must be the app URL, 
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Text instead of a tool call | assert today's behaviour — text rendered, zero cards, zero decks; no app change                                                  |
 | Malformed tool call         | no app-side retry; rely on the SDK feeding the error back; assert the step count                                                 |
-| Happy path                  | two baselines: direct `generate_flashcards` → `finish`, and plan → `fetch_material` → `extract_concepts` → cards → `finish`      |
+| Happy path                  | two baselines: direct `generate_flashcards` → `finish`, and `fetch_material` → `extract_concepts` → cards → `finish`             |
 | Schema strictness           | mirror Zod exactly — strip extras, reject wrong types, `count` never enforced                                                    |
 | First cases                 | `STU-48` + `STU-47` (`STU-45`/`46`/`SEC-07` need no inference)                                                                   |
 | Usage / rate limit          | usage assertions yes, rate limit no                                                                                              |
