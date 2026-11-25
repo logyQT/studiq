@@ -172,7 +172,9 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     await expect(card).toHaveCount(1);
     await expect(card.locator('[data-slot="card-title"]')).toHaveText(BILLING_COPY.currentPlan);
     // The page renders the plan the API resolved for this user, not a pinned name.
-    await expect(card.locator('[data-slot="card-description"]')).toHaveText(plan.name);
+    // The description is the plan union: this student's org layer (`launch`) comes
+    // first and their personal Base layer second, so Base is asserted as a substring.
+    await expect(card.locator('[data-slot="card-description"]')).toContainText(plan.name);
     // The plan union is a badge of its own inside the card description, so the
     // status badge is the generic one without `data-plan-union`.
     await expect(card.locator('[data-slot="badge"]:not([data-plan-union])')).toHaveText(

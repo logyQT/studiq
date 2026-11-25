@@ -59,3 +59,9 @@ bun scripts/qa-tenant.ts BIL-01 --fresh   # new org + users per independent run
   student plan even though Base stores `-1` for them.
 - „Wybierz plan” performs a full navigation to `/app/upgrade` (heading „Rozwiń swój
   plan”). The behavior matches the case exactly; no defect to report.
+
+> **2026-11-25 (6d).** The „Aktualny plan” card's description now names every
+> layer of `/me/plan`'s union, so this student in an org reads „StudiQ Launch
+> (organizacja) + StudiQ Base (plan osobisty)” — the personal `solo`/`base` layer
+> is part of the caller's plan. The spec asserts „StudiQ Base” as a substring;
+> the „Darmowy” badge, features and limits above are unchanged.
