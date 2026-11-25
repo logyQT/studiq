@@ -398,9 +398,27 @@ describe('QuizAttemptService', () => {
     it('withholds the score of a hidden assignment attempt (#374)', async () => {
       mock.from.mockReturnValueOnce(
         qb([
-          { id: 'a-1', user_id: ctx.userId, score: 3, assignment_id: 'assignment-hidden' },
-          { id: 'a-2', user_id: ctx.userId, score: 2, assignment_id: 'assignment-visible' },
-          { id: 'a-3', user_id: ctx.userId, score: 1, assignment_id: null },
+          {
+            id: 'a-1',
+            user_id: ctx.userId,
+            score: 3,
+            assignment_id: 'assignment-hidden',
+            is_assignment_attempt: true,
+          },
+          {
+            id: 'a-2',
+            user_id: ctx.userId,
+            score: 2,
+            assignment_id: 'assignment-visible',
+            is_assignment_attempt: true,
+          },
+          {
+            id: 'a-3',
+            user_id: ctx.userId,
+            score: 1,
+            assignment_id: null,
+            is_assignment_attempt: false,
+          },
         ]),
       );
       mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-1', questions: { type: 'mcq' } }]));
@@ -421,8 +439,49 @@ describe('QuizAttemptService', () => {
       ]);
     });
 
+    it("withholds a deleted assignment's attempt instead of turning it into practice (#1141)", async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            id: 'a-orphan',
+            user_id: ctx.userId,
+            score: 7,
+            assignment_id: null,
+            is_assignment_attempt: true,
+          },
+          {
+            id: 'a-practice',
+            user_id: ctx.userId,
+            score: 2,
+            assignment_id: null,
+            is_assignment_attempt: false,
+          },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-practice', questions: { type: 'mcq' } }]));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      // No assignment row survives, so there is no `show_results` to honour and
+      // the orphan's score is withheld; the practice attempt is untouched.
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: 'a-orphan', score: null }),
+        expect.objectContaining({ id: 'a-practice', score: 2 }),
+      ]);
+    });
+
     it('fails closed when the assignment lookup fails (#374)', async () => {
-      mock.from.mockReturnValueOnce(qb([{ id: 'a-1', score: 3, assignment_id: 'assignment-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            id: 'a-1',
+            score: 3,
+            assignment_id: 'assignment-1',
+            is_assignment_attempt: true,
+          },
+        ]),
+      );
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
