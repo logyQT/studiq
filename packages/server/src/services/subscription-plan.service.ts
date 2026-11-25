@@ -1,4 +1,9 @@
-import type { PlanSource, RequestContext } from '@studiq/authz';
+import {
+  ENTITLEMENTS,
+  isEntitlementKey,
+  type PlanSource,
+  type RequestContext,
+} from '@studiq/authz';
 import { hasPermission, Permission } from '@studiq/server/lib/authz';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -81,6 +86,41 @@ export class SubscriptionPlanService {
   }
 
   /**
+   * The keys a buyer actually receives — the public reads mirror the
+   * resolver's step-11 gate (D8/D9): an unknown key is dropped, a surface key
+   * survives only with an enabled flag row, a baseline key is never gated. The
+   * flag state comes from `entitlement_flags`, not from a TS constant (R37).
+   *
+   * This filters `features` only. `seatEligible` keeps reading the unfiltered
+   * rows because it mirrors `addPool`'s rule, which reads `plan_entitlements`
+   * regardless of flags (a plan's keys are all seat-eligible or none).
+   */
+  private static advertisedFeatures(
+    entitlementRows: readonly PlanEntitlementRead[],
+    flagStates: ReadonlyMap<string, boolean | null>,
+  ): string[] {
+    const features: string[] = [];
+    for (const row of entitlementRows) {
+      if (!isEntitlementKey(row.entitlement_key)) continue;
+      const gated = ENTITLEMENTS[row.entitlement_key].category === 'surface';
+      if (gated && flagStates.get(row.entitlement_key) !== true) continue;
+      features.push(row.entitlement_key);
+    }
+    return features;
+  }
+
+  /** The kill-switch state the public reads gate on (D8, fails closed). */
+  private async flagStates(
+    supabase: SupabaseClient<Database>,
+  ): Promise<ServiceResult<Map<string, boolean | null>>> {
+    const { data, error } = await supabase.from('entitlement_flags').select('key, is_enabled');
+
+    if (error) return toDbFailure(error);
+
+    return success(new Map(dbRows(data).map((row) => [row.key, row.is_enabled])));
+  }
+
+  /**
    * `seatEligible` is derived from the plan's entitlement rows and the live
    * catalog embed (D33): a plan with no entitlements is not seat-eligible.
    */
@@ -121,11 +161,13 @@ export class SubscriptionPlanService {
    * Features and limits are keyed by plan, so every single-plan read performs the
    * same two lookups before it can render `PlanInfo`. The entitlement read embeds
    * the catalog's `seat_eligible` flag, so `seatEligible` is database truth, not a
-   * TS constant.
+   * TS constant. A public read also reads the kill switch, so it advertises only
+   * what the resolver would hand out.
    */
   private async planView(
     supabase: SupabaseClient<Database>,
     plan: SubscriptionPlanRow,
+    publicRead = false,
   ): Promise<ServiceResult<PlanInfo>> {
     const { data: planEntitlements, error: pfError } = await supabase
       .from('plan_entitlements')
@@ -134,21 +176,24 @@ export class SubscriptionPlanService {
 
     if (pfError) return toDbFailure(pfError);
 
+    const rows = dbRows(planEntitlements).map((row) => ({ ...row, plan_key: plan.key }));
+    let features: string[] | undefined;
+    if (publicRead) {
+      const flags = await this.flagStates(supabase);
+      if (isFailure(flags)) return flags;
+      features = SubscriptionPlanService.advertisedFeatures(rows, flags.data);
+    }
+
     const limitsByPlan = await this.fetchLimitsByPlan([plan.key]);
 
-    return success(
-      this.toPlanInfo(
-        plan,
-        dbRows(planEntitlements).map((row) => ({ ...row, plan_key: plan.key })),
-        limitsByPlan.get(plan.key) ?? {},
-      ),
-    );
+    return success(this.toPlanInfo(plan, rows, limitsByPlan.get(plan.key) ?? {}, [], features));
   }
 
   /** Catalog variant: one entitlement read covers every plan in the listing. */
   private async planViews(
     supabase: SupabaseClient<Database>,
     plans: SubscriptionPlanRow[],
+    publicRead = false,
   ): Promise<ServiceResult<PlanInfo[]>> {
     const planKeys = plans.map((p) => p.key);
 
@@ -166,12 +211,26 @@ export class SubscriptionPlanService {
       rowsByPlan.set(pe.plan_key, rows);
     }
 
+    let flagStates: Map<string, boolean | null> | undefined;
+    if (publicRead) {
+      const flags = await this.flagStates(supabase);
+      if (isFailure(flags)) return flags;
+      flagStates = flags.data;
+    }
+
     const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
 
     return success(
-      plans.map((p) =>
-        this.toPlanInfo(p, rowsByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
-      ),
+      plans.map((p) => {
+        const rows = rowsByPlan.get(p.key) ?? [];
+        return this.toPlanInfo(
+          p,
+          rows,
+          limitsByPlan.get(p.key) ?? {},
+          [],
+          flagStates ? SubscriptionPlanService.advertisedFeatures(rows, flagStates) : undefined,
+        );
+      }),
     );
   }
 
@@ -192,7 +251,8 @@ export class SubscriptionPlanService {
 
     if (error) return toDbFailure(error);
 
-    return this.planViews(supabase, plans);
+    // Public read: advertise only what the resolver would grant (#1484).
+    return this.planViews(supabase, plans, true);
   }
 
   /**
@@ -308,7 +368,8 @@ export class SubscriptionPlanService {
     if (error) return toDbFailure(error);
     if (!plan) return failure('NOT_FOUND');
 
-    return this.planView(supabase, plan);
+    // Public plan detail: same filter as the list (#1484).
+    return this.planView(supabase, plan, true);
   }
 
   async getById(id: string) {
