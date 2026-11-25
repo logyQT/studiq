@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
 import { openDashboard } from '#test/helpers/dashboard';
+import { qaAppUrl } from '#test/helpers/qa-pointer';
 
 /**
  * The tenant a case runs against. `bun scripts/qa-tenant.ts <CASEID>` writes
@@ -57,8 +58,6 @@ export function tenantUser(tenant: QaTenant, role: QaRole): QaUser {
   if (!user) throw new Error(`tenant ${tenant.case} has no seeded ${role} user`);
   return user;
 }
-
-const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname;
 
 const TENANTS_DIR = join(process.cwd(), 'qa', '.tenants');
 const tenantCache = new Map<string, QaTenant>();
@@ -159,14 +158,16 @@ export async function loginAs(
     const body = await res.text();
     throw new Error(`login ${role} (${user.email}) failed: ${res.status()} ${body}`);
   }
-  // The suite asserts English copy in places; pin the locale a returning user would have.
+  // The suite asserts English copy in places; pin the locale a returning user would have. The
+  // cookie domain follows the app under test: the same resolution as the config's `baseURL`.
+  const host = new URL(qaAppUrl()).hostname;
   const cookies: {
     name: string;
     value: string;
     domain: string;
     path: string;
     httpOnly?: boolean;
-  }[] = [{ name: 'NEXT_LOCALE', value: options.locale ?? 'en', domain: HOST, path: '/' }];
+  }[] = [{ name: 'NEXT_LOCALE', value: options.locale ?? 'en', domain: host, path: '/' }];
   // The app only writes `active_org_id` when an org is created or switched, so a
   // seeded membership starts with no org context: `withAuth` would scope the
   // first requests to no org at all.
@@ -175,7 +176,7 @@ export async function loginAs(
     cookies.push({
       name: 'active_org_id',
       value: activeOrgId,
-      domain: HOST,
+      domain: host,
       path: '/',
       httpOnly: true,
     });

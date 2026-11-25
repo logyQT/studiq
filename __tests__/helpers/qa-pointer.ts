@@ -40,7 +40,43 @@ export function readQaPointer(root = process.cwd()): QaPointerFile | null {
   };
 }
 
-/** The app a QA run talks to: explicit env, then the pointer, then the local default. */
-export function qaAppUrl(root = process.cwd()): string {
-  return process.env.QA_APP_URL ?? readQaPointer(root)?.appUrl ?? 'http://localhost:3010';
+/** The shared QA app, which the env tool deliberately never leases. */
+const SHARED_QA_APP_URL = 'http://localhost:3010';
+
+/**
+ * The app a QA run was told to talk to, or `null` when nobody told it (#1286): an explicit
+ * `QA_APP_URL`, then the pointer `env:share` wrote. CI exports `QA_APP_URL` and `CI` itself, so
+ * there the shared app is the right default; anywhere else `:3010` is another checkout's app and
+ * must never be a silent one. An empty `QA_APP_URL=` (the env schema declares the key optional)
+ * is "not set".
+ *
+ * Never throws, so it is safe where a config is merely loaded (listing, knip's Playwright plugin).
+ */
+export function resolveQaAppUrl(
+  root = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const url = env.QA_APP_URL || readQaPointer(root)?.appUrl;
+  if (url) return url;
+  return env.CI ? SHARED_QA_APP_URL : null;
+}
+
+/**
+ * The app a QA run talks to, or an actionable error: a bare `bunx playwright test` would
+ * otherwise silently exercise the shared `:3010` app, or hang on a port with nothing behind it.
+ * Reaching the shared app on purpose takes `QA_APP_URL=http://localhost:3010`.
+ */
+export function qaAppUrl(root = process.cwd(), env: NodeJS.ProcessEnv = process.env): string {
+  const url = resolveQaAppUrl(root, env);
+  if (url) return url;
+  throw new Error(
+    [
+      'QA_APP_URL is not set and there is no qa/env.json pointer: this run would silently hit',
+      `the shared QA app on ${SHARED_QA_APP_URL}, which is another checkout's app.`,
+      "Run it through the wrapper, which sets QA_APP_URL to this checkout's app:",
+      '  bun run env:run -- bun run test:qa <spec>',
+      'or set QA_APP_URL yourself, or write the pointer with `bun run env:share --write`.',
+      `To target the shared app on purpose, set QA_APP_URL=${SHARED_QA_APP_URL}.`,
+    ].join('\n'),
+  );
 }
