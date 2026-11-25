@@ -48,8 +48,10 @@ import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useOrgs } from '@/hooks/use-orgs';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { usePermission } from '@/hooks/use-permission';
+import { usePermissions } from '@/hooks/use-permissions';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { invalidateAuthority } from '@/lib/query-cache';
+import { type CallerScopeMap, grantableScopes, narrowestGrantable } from '@/lib/role-grants';
 import { isArrayOf } from '@/lib/unknown-value';
 
 /** The closed catalog, grouped by key family: content families, then groups, then org. */
@@ -112,6 +114,10 @@ export default function RolesPage() {
   const t = useTranslations('ManageRolesPage');
   const queryClient = useQueryClient();
   const permission = usePermission();
+  // The raw authority map, so the editor can disable a scope the caller does not
+  // hold instead of letting the server answer 403 after the save.
+  const { data: permissionsData } = usePermissions();
+  const callerScopes = permissionsData?.permissions;
   const { activeOrg } = useOrgs();
   // The write gate is `org.role.manage` (ADR-0015 §4.4). `usePermission()` is a
   // provisional `false` until `/me/permissions` resolves, so the write affordances
@@ -195,11 +201,12 @@ export default function RolesPage() {
     entitlementProfile: EntitlementProfile | null,
   ) {
     try {
-      await apiPut(`/api/v1/organization/roles/${roleId}/permissions`, { permissions });
-      // `null` = the editor does not manage this role's profile (system roles).
-      if (entitlementProfile !== null) {
-        await apiPut(`/api/v1/organization/roles/${roleId}`, { entitlementProfile });
-      }
+      // One request: the profile rides with the permission rows, so a failed
+      // profile write can no longer leave a half-saved role behind a second PUT.
+      await apiPut(`/api/v1/organization/roles/${roleId}/permissions`, {
+        permissions,
+        entitlementProfile,
+      });
       toast.success(t('perms_saved'));
       setPermDialogOpen(false);
       setPermRole(null);
@@ -367,6 +374,7 @@ export default function RolesPage() {
         }}
         role={permRole}
         t={t}
+        callerScopes={callerScopes}
         onSave={handleSavePermissions}
       />
     </div>
@@ -463,12 +471,14 @@ function PermissionEditorDialog({
   onOpenChange,
   role,
   t,
+  callerScopes,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   role: OrgRoleDetail | null;
   t: RolesTranslator;
+  callerScopes: CallerScopeMap | undefined;
   onSave: (
     roleId: string,
     permissions: RolePermission[],
@@ -490,6 +500,7 @@ function PermissionEditorDialog({
           <PermissionEditorBody
             role={role}
             t={t}
+            callerScopes={callerScopes}
             onSave={onSave}
             onCancel={() => onOpenChange(false)}
           />
@@ -532,11 +543,13 @@ function sectionTitle(family: string, t: RolesTranslator): string {
 function PermissionEditorBody({
   role,
   t,
+  callerScopes,
   onSave,
   onCancel,
 }: {
   role: OrgRoleDetail;
   t: RolesTranslator;
+  callerScopes: CallerScopeMap | undefined;
   onSave: (
     roleId: string,
     permissions: RolePermission[],
@@ -548,8 +561,12 @@ function PermissionEditorBody({
   const [profile, setProfile] = useState<EntitlementProfile>(role.entitlementProfile);
 
   function grant(key: PermissionCatalogKey, granted: boolean) {
-    // A granted key starts at its narrowest allowed scope (ADR §4.1).
-    const next = granted ? PERMISSIONS[key].allowedScopes[0] : null;
+    // A granted key starts at the narrowest scope the caller may grant
+    // (ADR-0015 §4.1); an unresolved authority map falls back to the catalog's
+    // first scope, and the server's own 403 is then the answer.
+    const next = granted
+      ? (narrowestGrantable(callerScopes ?? {}, key) ?? PERMISSIONS[key].allowedScopes[0])
+      : null;
     setScopes((current) => ({ ...current, [key]: next }));
   }
 
@@ -559,6 +576,9 @@ function PermissionEditorBody({
 
   return (
     <>
+      {/* ADR-0015 §4.4: the editor offers only what the caller can grant, but the
+          whole catalog stays visible (a hidden key would delete its grant). */}
+      <p className="text-xs text-muted-foreground">{t('perms_authority_hint')}</p>
       <p className="text-xs text-muted-foreground">{t('perms_hint')}</p>
       <div className="space-y-6 py-4">
         {CATALOG_SECTIONS.map((section) => (
@@ -575,6 +595,10 @@ function PermissionEditorBody({
                   // Ownership is not grantable through the editor (D16): a held
                   // `org.admin` stays a no-op, an absent one stays revoked.
                   locked={!PERMISSIONS[key].assignable}
+                  // `null` means the authority map has not resolved yet: every
+                  // scope stays offered and the server decides (fail-open only
+                  // on the affordance, never on the write).
+                  grantable={callerScopes === undefined ? null : grantableScopes(callerScopes, key)}
                   t={t}
                   onGrant={(granted) => grant(key, granted)}
                   onScope={(scope) => setScope(key, scope)}
@@ -637,6 +661,7 @@ function PermissionRow({
   permissionKey,
   scope,
   locked,
+  grantable,
   t,
   onGrant,
   onScope,
@@ -644,20 +669,32 @@ function PermissionRow({
   permissionKey: PermissionCatalogKey;
   scope: CatalogScope | null;
   locked: boolean;
+  /** The scopes the caller may grant, or `null` while their map is unresolved. */
+  grantable: readonly CatalogScope[] | null;
   t: RolesTranslator;
   onGrant: (granted: boolean) => void;
   onScope: (scope: CatalogScope) => void;
 }) {
   const granted = scope !== null;
+  // A stored grant may be removed only with authority over the scope it holds;
+  // that is the same coverage check the server runs on the removal (ADR §4.4).
+  const canEditCurrent = grantable === null || scope === null || grantable.includes(scope);
+  const canToggle =
+    grantable === null || (scope !== null ? grantable.includes(scope) : grantable.length > 0);
+  const toggleDisabled = locked || !canToggle;
+  const deniedTitle = t('perms_scope_denied');
 
   return (
     <div className="flex items-center justify-between gap-4 text-sm" data-perm-row={permissionKey}>
-      <label className="flex flex-1 items-center gap-2 font-medium">
+      <label
+        className="flex flex-1 items-center gap-2 font-medium"
+        title={!locked && !canToggle ? deniedTitle : undefined}
+      >
         <input
           type="checkbox"
           name={permissionKey}
           checked={granted}
-          disabled={locked}
+          disabled={toggleDisabled}
           onChange={(e) => onGrant(e.target.checked)}
           data-perm-toggle="true"
           className="size-4"
@@ -665,24 +702,31 @@ function PermissionRow({
         <span>{actionLabel(permissionKey, t)}</span>
       </label>
       <div className="flex gap-4">
-        {PERMISSIONS[permissionKey].allowedScopes.map((candidate) => (
-          <label
-            key={candidate}
-            className={`flex items-center gap-1.5 ${locked || !granted ? 'opacity-50' : 'cursor-pointer'}`}
-          >
-            <input
-              type="radio"
-              name={permissionKey}
-              value={candidate}
-              checked={scope === candidate}
-              disabled={locked || !granted}
-              onChange={() => onScope(candidate)}
-              data-perm-radio="true"
-              className="size-4"
-            />
-            <span className="text-muted-foreground">{t(`scope_${candidate}`)}</span>
-          </label>
-        ))}
+        {PERMISSIONS[permissionKey].allowedScopes.map((candidate) => {
+          const allowedByCaller = grantable === null || grantable.includes(candidate);
+          const radioDisabled = locked || !granted || !canEditCurrent || !allowedByCaller;
+          const authorityDenied = !locked && granted && (!canEditCurrent || !allowedByCaller);
+
+          return (
+            <label
+              key={candidate}
+              className={`flex items-center gap-1.5 ${radioDisabled ? 'opacity-50' : 'cursor-pointer'}`}
+              title={authorityDenied ? deniedTitle : undefined}
+            >
+              <input
+                type="radio"
+                name={permissionKey}
+                value={candidate}
+                checked={scope === candidate}
+                disabled={radioDisabled}
+                onChange={() => onScope(candidate)}
+                data-perm-radio="true"
+                className="size-4"
+              />
+              <span className="text-muted-foreground">{t(`scope_${candidate}`)}</span>
+            </label>
+          );
+        })}
       </div>
     </div>
   );

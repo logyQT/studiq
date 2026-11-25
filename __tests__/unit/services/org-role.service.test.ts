@@ -99,8 +99,17 @@ function unknownProfile(value: string): EntitlementProfile {
 }
 
 /** The `org_roles` lookup row `setPermissions` reads before it authorizes anything. */
-function roleRow(permissions: { permission_key: string; scope: string }[] = []) {
-  return { id: 'r-1', name: 'editor', org_role_permissions: permissions };
+function roleRow(
+  permissions: { permission_key: string; scope: string }[] = [],
+  entitlementProfile = 'none',
+) {
+  return {
+    id: 'r-1',
+    name: 'editor',
+    is_system: false,
+    entitlement_profile: entitlementProfile,
+    org_role_permissions: permissions,
+  };
 }
 
 describe('OrgRoleService', () => {
@@ -853,6 +862,114 @@ describe('OrgRoleService', () => {
       expect(callOrder(upsertQb.upsert)).toBeLessThan(callOrder(pruneQb.delete));
     });
 
+    it('returns UNPROCESSABLE_ENTITY for an unknown profile without reading or writing', async () => {
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload(),
+        // The schema rejects this first; the service is a direct entry point too.
+        entitlementProfile: unknownProfile('everything'),
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      // No read and no write: the profile is validated before the role lookup.
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('writes the profile before the permission rows on a successful save', async () => {
+      mockRoleLookup(roleRow([{ permission_key: 'deck.read', scope: 'group' }], 'none'));
+      const profileQb = qb(undefined);
+      const upsertQb = qb(undefined);
+      const pruneQb = qb(undefined);
+      mock.from.mockReturnValueOnce(profileQb);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(pruneQb);
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload({ 'deck.read': 'group' }),
+        entitlementProfile: 'learner',
+      });
+
+      expect(result.success).toBe(true);
+      expect(profileQb.update).toHaveBeenCalledWith({ entitlement_profile: 'learner' });
+      expect(callOrder(profileQb.update)).toBeLessThan(callOrder(upsertQb.upsert));
+      expect(callOrder(upsertQb.upsert)).toBeLessThan(callOrder(pruneQb.delete));
+    });
+
+    it('does not rewrite a profile the role already holds', async () => {
+      mockRoleLookup(roleRow([], 'learner'));
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload({ 'flashcard.read': 'own' }),
+        entitlementProfile: 'learner',
+      });
+
+      expect(result.success).toBe(true);
+      // Role lookup, upsert, prune — no `org_roles` update in between.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from).toHaveBeenNthCalledWith(2, 'org_role_permissions');
+    });
+
+    it('leaves the profile alone when the save sends null (system roles)', async () => {
+      mockRoleLookup(roleRow([], 'all'));
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload(),
+        entitlementProfile: null,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenNthCalledWith(2, 'org_role_permissions');
+    });
+
+    it('restores the previous profile when the permission upsert fails', async () => {
+      mockRoleLookup(roleRow([], 'all'));
+      const profileQb = qb(undefined);
+      const upsertQb = qb(null, { message: 'DB error' });
+      const restoreQb = qb(undefined);
+      mock.from.mockReturnValueOnce(profileQb);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(restoreQb);
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload({ 'flashcard.read': 'own' }),
+        entitlementProfile: 'learner',
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(profileQb.update).toHaveBeenCalledWith({ entitlement_profile: 'learner' });
+      // The compensation writes the stored value back, scoped to the same role+org.
+      expect(restoreQb.update).toHaveBeenCalledWith({ entitlement_profile: 'all' });
+      expect(restoreQb.eq).toHaveBeenCalledWith('id', 'r-1');
+      expect(restoreQb.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(callOrder(upsertQb.upsert)).toBeLessThan(callOrder(restoreQb.update));
+    });
+
+    it('restores the previous profile when the prune fails', async () => {
+      mockRoleLookup(roleRow([{ permission_key: 'deck.read', scope: 'group' }], 'all'));
+      const profileQb = qb(undefined);
+      const upsertQb = qb(undefined);
+      const pruneQb = qb(null, { message: 'DB error' });
+      const restoreQb = qb(undefined);
+      mock.from.mockReturnValueOnce(profileQb);
+      mock.from.mockReturnValueOnce(upsertQb);
+      mock.from.mockReturnValueOnce(pruneQb);
+      mock.from.mockReturnValueOnce(restoreQb);
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload({ 'flashcard.read': 'own' }),
+        entitlementProfile: 'learner',
+      });
+
+      expect(result.success).toBe(false);
+      expect(restoreQb.update).toHaveBeenCalledWith({ entitlement_profile: 'all' });
+    });
+
     it('succeeds with a complete all-null payload and prunes every row', async () => {
       mockRoleLookup(roleRow([{ permission_key: 'deck.read', scope: 'group' }]));
       const pruneQb = qb(undefined);
@@ -1067,15 +1184,18 @@ describe('OrgRoleService', () => {
 
       expect(result.success).toBe(true);
       expect(roleQb.select).toHaveBeenCalledWith(
-        'id, name, org_role_permissions(permission_key, scope)',
+        'id, name, is_system, entitlement_profile, org_role_permissions(permission_key, scope)',
       );
       expect(log).toHaveBeenCalledWith('org role permissions changed', {
         'actor.user_id': 'test-user-id',
         'org.id': 'org-1',
         'role.id': 'r-1',
         'role.name': 'editor',
+        'role.is_system': false,
         'permissions.before': { 'flashcard.read': 'own', 'deck.read': 'group' },
         'permissions.after': { 'flashcard.read': 'own', 'deck.read': 'organization' },
+        'entitlement_profile.before': 'none',
+        'entitlement_profile.after': 'none',
       });
     });
 

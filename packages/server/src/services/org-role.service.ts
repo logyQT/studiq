@@ -10,7 +10,7 @@ import {
   type RoleTemplate,
   scopeCovers,
 } from '@studiq/authz';
-import { log } from '@studiq/server/lib/log';
+import { error as logError, log } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -370,7 +370,8 @@ export class OrgRoleService {
   }
 
   /**
-   * Replace a role's permission set (ADR-0015 §4.4, §9; D16, D20, D21, D24).
+   * Replace a role's permission set and, when the payload names one, its
+   * entitlement profile (ADR-0015 §4.4, §9; D16, D20, D21, D24).
    *
    * The payload is the role's whole catalog set, so the write below cannot strand a
    * permission the editor does not render (D24). It is written target-first — upsert
@@ -379,6 +380,15 @@ export class OrgRoleService {
    * change is authorized first: no self-edit unless the caller owns the org, no
    * ownership grant or revoke, and no change to a scope the caller does not hold —
    * removal needs authority over what is removed, addition over what is added.
+   *
+   * The profile is written **before** the permission rows: a save that changed the
+   * profile but not the rows would widen (or narrow) the role's surface without the
+   * authority change that asked for it, while rows without a new profile at least
+   * keep the previous surface. The two writes are not one database transaction:
+   * when a permission write fails after the profile write, the previous profile is
+   * restored with one scoped update and the original failure is returned. A restore
+   * that itself fails is logged, not retried — the role keeps the new profile and
+   * the next save rewrites both.
    */
   async setPermissions(
     ctx: RequestContext,
@@ -394,9 +404,23 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
+    // Captured for the compensation closure below: a narrowed `ctx.activeOrgId`
+    // does not survive into a nested function.
+    const activeOrgId = ctx.activeOrgId;
+
     // The schema enforces this at the controller; the service is a direct entry
     // point too (tests, scripts) and the write below relies on the guarantee.
     if (!isCompleteCatalogPayload(data.permissions)) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
+
+    // Same rule for the profile: the schema's enum is the write contract, and a
+    // direct caller must not be able to put an unreadable value in the column.
+    if (
+      data.entitlementProfile !== undefined &&
+      data.entitlementProfile !== null &&
+      !isEntitlementProfile(data.entitlementProfile)
+    ) {
       return failure('UNPROCESSABLE_ENTITY');
     }
 
@@ -405,12 +429,26 @@ export class OrgRoleService {
     // (PGRST116 -> NOT_FOUND, 404) so role ids cannot be probed across tenants.
     const { data: role, error: roleError } = await supabase
       .from('org_roles')
-      .select('id, name, org_role_permissions(permission_key, scope)')
+      .select(
+        'id, name, is_system, entitlement_profile, org_role_permissions(permission_key, scope)',
+      )
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
     if (roleError) return toDbFailure(roleError);
+
+    const storedProfile = profileOf(role.entitlement_profile);
+    // `null` and an omitted field both mean "this save does not manage the
+    // profile" — never "clear it" (system roles send `null`).
+    const requestedProfile =
+      data.entitlementProfile === undefined || data.entitlementProfile === null
+        ? null
+        : data.entitlementProfile;
+    // Writing the stored value back is a no-op, and only a real change gives the
+    // compensation below something to restore.
+    const profileToWrite =
+      requestedProfile !== null && requestedProfile !== storedProfile ? requestedProfile : null;
 
     const storedRows = dbRows(role.org_role_permissions);
     const current = new Map<string, CatalogScope>();
@@ -475,12 +513,50 @@ export class OrgRoleService {
     // row, then insert) would empty the role on a write timeout, and the Admin role
     // could not be restored through the editor afterwards (its own `org.admin` row
     // would be gone before the self-edit guard, and nothing else writes permissions).
+    if (profileToWrite !== null) {
+      const { error: profileError } = await supabase
+        .from('org_roles')
+        .update({ entitlement_profile: profileToWrite })
+        .eq('id', id)
+        .eq('organization_id', activeOrgId);
+
+      // The profile write is first and unaided: there is nothing to compensate
+      // because no permission row has moved yet.
+      if (profileError) return toDbFailure(profileError);
+    }
+
+    // The compensation path for the profile write above. One scoped update puts
+    // the stored value back; a failure here is logged and the original (more
+    // important) failure is still the answer, because a retried save rewrites both.
+    const restoreProfile = async (): Promise<void> => {
+      if (profileToWrite === null) return;
+
+      const { error: restoreError } = await supabase
+        .from('org_roles')
+        .update({ entitlement_profile: storedProfile })
+        .eq('id', id)
+        .eq('organization_id', activeOrgId);
+
+      if (restoreError) {
+        logError('org role entitlement profile restore failed', {
+          'actor.user_id': ctx.userId,
+          'org.id': ctx.activeOrgId,
+          'role.id': id,
+          'profile.wanted': profileToWrite,
+          'profile.stored': storedProfile,
+        });
+      }
+    };
+
     if (rows.length > 0) {
       const { error: upsertError } = await supabase
         .from('org_role_permissions')
         .upsert(rows, { onConflict: 'org_role_id,permission_key', ignoreDuplicates: false });
 
-      if (upsertError) return toDbFailure(upsertError);
+      if (upsertError) {
+        await restoreProfile();
+        return toDbFailure(upsertError);
+      }
     }
 
     const granted = rows.map((row) => row.permission_key);
@@ -497,19 +573,25 @@ export class OrgRoleService {
 
     const { error: pruneError } = await prune;
 
-    if (pruneError) return toDbFailure(pruneError);
+    if (pruneError) {
+      await restoreProfile();
+      return toDbFailure(pruneError);
+    }
 
     // D20: no audit table in phase 2 — the change is a log record with the actor,
-    // the role and both key→scope maps.
+    // the role, both key→scope maps and the profile that was written with them.
     log('org role permissions changed', {
       'actor.user_id': ctx.userId,
       'org.id': ctx.activeOrgId,
       'role.id': id,
       'role.name': role.name,
+      'role.is_system': role.is_system ?? false,
       'permissions.before': Object.fromEntries(current),
       'permissions.after': Object.fromEntries(
         rows.map((row) => [row.permission_key, row.scope] as const),
       ),
+      'entitlement_profile.before': storedProfile,
+      'entitlement_profile.after': profileToWrite ?? storedProfile,
     });
 
     return success(undefined);

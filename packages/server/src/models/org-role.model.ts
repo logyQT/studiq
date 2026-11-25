@@ -86,12 +86,18 @@ export const RolePermissionEntrySchema = registry.register(
  * replaces every row for the role, so a partial payload would delete the keys it
  * does not mention — the completeness and scope checks below are what make that
  * write safe (R12, D24).
+ *
+ * `entitlementProfile` rides in the same payload so a role's surface and its
+ * permission rows are saved by one request (phase 6d). `null` or omitted means
+ * "this save does not manage the profile" — system roles withhold the picker and
+ * send `null`; it never means "clear the profile".
  */
 export const SetRolePermissionsSchema = registry.register(
   'SetRolePermissionsRequest',
   z
     .object({
       permissions: z.array(RolePermissionEntrySchema),
+      entitlementProfile: EntitlementProfileSchema.nullable().optional(),
     })
     .superRefine((value, ctx) => {
       const seen = new Set<string>();

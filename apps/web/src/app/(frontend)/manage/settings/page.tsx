@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { PlanUnionBadge } from '@/components/billing/plan-union-badge';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useEntitlement } from '@/hooks/use-entitlement';
@@ -75,7 +76,6 @@ export default function SettingsPage() {
     queryKey: ['subscription-plans', 'active'],
     url: '/api/v1/subscription-plans',
   });
-  const planName = myPlan ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name) : null;
   const { activeOrg } = useOrgs();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -254,10 +254,8 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             {planLoading || plansLoading ? (
               <Skeleton className="h-6 w-24" />
-            ) : planName ? (
-              <Badge variant="default" className="text-sm px-3 py-1">
-                {planName}
-              </Badge>
+            ) : myPlan ? (
+              <PlanUnionBadge plan={myPlan} plans={plans} className="text-sm px-3 py-1" />
             ) : null}
             <span className="text-sm text-muted-foreground">{t('managed_by_admins')}</span>
           </div>

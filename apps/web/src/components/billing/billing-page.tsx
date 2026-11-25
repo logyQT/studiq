@@ -9,6 +9,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
 import { BillingPageShell, CurrentPlanCardHeader } from '@/components/billing/billing-page-parts';
+import { PlanUnionBadge } from '@/components/billing/plan-union-badge';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { invoiceHistoryPath } from '@/lib/billing-subscription';
@@ -84,7 +85,7 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
     <BillingPageShell>
       <Card>
         <CurrentPlanCardHeader
-          description={plan.name}
+          description={<PlanUnionBadge plan={plan} plans={plans} />}
           badge={
             <Badge variant={hasPrice ? 'default' : 'secondary'}>
               {hasPrice ? t('active') : t('free')}
