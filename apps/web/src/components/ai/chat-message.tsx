@@ -182,6 +182,9 @@ export const ChatMessage = memo(
       a.toolName === b.toolName &&
       a.label === b.label &&
       a.error === b.error &&
+      a.planCompleted === b.planCompleted &&
+      String(a.completedSteps) === String(b.completedSteps) &&
+      a.question?.id === b.question?.id &&
       a.thinkingTraces.length === b.thinkingTraces.length
     );
   },
