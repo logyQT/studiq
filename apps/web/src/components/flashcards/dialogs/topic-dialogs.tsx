@@ -238,6 +238,7 @@ export function TopicDialogs({
               value={newTopicName}
               onChange={(e) => setNewTopicName(e.target.value)}
               placeholder={t('add_topic_input_placeholder')}
+              aria-label={t('add_topic_input_placeholder')}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newTopicName.trim()) {
                   e.preventDefault();
@@ -357,6 +358,7 @@ export function TopicDialogs({
               const topicOptions = topics.map((topic) => ({ label: topic.name, value: topic.id }));
               return (
                 <MultiSelect
+                  aria-label={t('manage_topic_title')}
                   options={topicOptions}
                   selected={topicActionIds ?? currentIds}
                   onChange={(ids) => setTopicActionIds(ids)}

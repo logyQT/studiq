@@ -10,13 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-  Label,
-  MultiSelect,
-  RadioGroup,
-  RadioGroupItem,
   Textarea,
 } from '@studiq/ui';
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { SharingFields } from '@/components/flashcards/shared/sharing-fields';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 
 interface GroupOption {
@@ -108,6 +105,7 @@ function FormBody({
   );
   const [visibility, setVisibility] = useState(formData.visibility ?? 'personal');
   const [groupIds, setGroupIds] = useState<string[]>(formData.groupIds ?? []);
+  const id = useId();
   // A group-visible deck must share to at least one group, otherwise it is visible only
   // to its creator (#139). `groups` guard keeps the dialog usable without the group feature.
   const groupsMissing = !!groups && visibility === 'group' && groupIds.length === 0;
@@ -135,15 +133,21 @@ function FormBody({
               </svg>
             </div>
             <div className="flex-1 space-y-3">
-              <label className="sr-only">{nameLabel}</label>
+              <label htmlFor={`${id}-name`} className="sr-only">
+                {nameLabel}
+              </label>
               <Input
+                id={`${id}-name`}
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder={namePlaceholder}
                 className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary"
               />
-              <label className="sr-only">{descriptionLabel}</label>
+              <label htmlFor={`${id}-description`} className="sr-only">
+                {descriptionLabel}
+              </label>
               <Textarea
+                id={`${id}-description`}
                 value={formData.description}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -159,43 +163,20 @@ function FormBody({
           </div>
         </Card>
         {groups && (
-          <div className="mt-4 space-y-3">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">{visibilityLabel}</Label>
-              <RadioGroup
-                value={visibility}
-                onValueChange={(v: 'personal' | 'group') => setVisibility(v)}
-                className="flex gap-4"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="personal" id="visibility-personal" />
-                  <Label htmlFor="visibility-personal" className="text-sm cursor-pointer">
-                    {visibilityPersonalLabel}
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="group" id="visibility-group" />
-                  <Label htmlFor="visibility-group" className="text-sm cursor-pointer">
-                    {visibilityGroupLabel}
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-            {visibility === 'group' && (
-              <div className="space-y-1.5">
-                <MultiSelect
-                  options={groups.map((g) => ({ label: g.name, value: g.id }))}
-                  selected={groupIds}
-                  onChange={setGroupIds}
-                  placeholder={groupsPlaceholder}
-                  emptyText={groupsEmptyText}
-                />
-                {groupsMissing && groupsRequiredText && (
-                  <p className="text-xs text-destructive">{groupsRequiredText}</p>
-                )}
-              </div>
-            )}
-          </div>
+          <SharingFields
+            idPrefix="visibility"
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            groups={groups}
+            groupIds={groupIds}
+            onGroupIdsChange={setGroupIds}
+            visibilityLabel={visibilityLabel}
+            personalLabel={visibilityPersonalLabel}
+            groupLabel={visibilityGroupLabel}
+            groupsPlaceholder={groupsPlaceholder}
+            groupsEmptyText={groupsEmptyText}
+            groupsRequiredText={groupsRequiredText}
+          />
         )}
       </div>
       <DialogFooter>
