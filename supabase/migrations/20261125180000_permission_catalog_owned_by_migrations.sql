@@ -4,7 +4,7 @@
 -- `supabase/seeds/09_perms.sql` inserted all 44 rows of the closed catalogue
 -- (ADR-0015 §4.1) and then repaired every organization with
 -- `seed_system_role_permissions`. The migration chain inserted only 24 of the
--- keys — the legacy six, the `assignment.*` family and the 18 added by
+-- keys — the six `assignment.*` keys and the 18 added by
 -- `20261119140000_catalog_rename.sql` — so `db push`, which never runs seeds,
 -- left every database without the 20 base content permissions and without the
 -- role grants that depend on them. A seeded reset hid the gap because the seed
@@ -48,8 +48,15 @@ insert into public.permissions (key, category, allowed_scopes, assignable, descr
 on conflict (key) do nothing;
 
 -- ==========================================================
--- 2. Repair every organization. The system-role templates live in
---    `DEFAULT_ROLE_PERMISSIONS`, and `seed_system_role_permissions` inserts
---    only the rows a role is missing, so this is safe to re-run.
+-- 2. Repair every organization. This call restores the full system-role
+--    template, not only the 20 keys above: it inserts every grant the function
+--    declares for admin, teacher and member, and a manager may edit a system
+--    role's grants (only rename and delete are refused). So on `db push` a
+--    customised system-role grant set is repaired to the template.
+--
+--    That is deliberate — the template is canonical, and premarket no
+--    organization carries a customised system role. The same repair already ran
+--    in `20261116120000` and `20261122140000`. The function inserts only the
+--    rows a role is missing, so this is safe to re-run.
 -- ==========================================================
 select public.seed_system_role_permissions(id) from public.organizations;

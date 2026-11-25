@@ -92,7 +92,9 @@ A schema change is a migration. `config.toml` keeps `[db.migrations] schema_path
 Seed files are located in `supabase/seeds/` and hold **test data only**: fixture
 users, organizations, classes and content. A reset with `[db.seed] enabled = false`
 still gives a working app, because the permission and plan catalogues, every
-table, grant and the realtime publication belong to `supabase/migrations/`.
+table and every grant belong to `supabase/migrations/`. Realtime is not started
+(`[realtime] enabled = false`), and no seed creates the `supabase_realtime`
+publication.
 A configuration row or a DDL statement in a seed is a second home for migration
 state — `db push` never runs seeds, so the two paths would disagree.
 

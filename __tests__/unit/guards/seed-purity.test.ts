@@ -36,7 +36,6 @@ import { describe, expect, it } from 'vitest';
 
 const SEEDS_ROOT = path.join(process.cwd(), 'supabase/seeds');
 const CONFIG_FILE = path.join(process.cwd(), 'supabase/config.toml');
-const SEED_GLOB = "sql_paths = ['./seeds/*.sql']";
 
 /** Configuration tables a seed must never write; the migration chain owns them. */
 const CONFIG_TABLES = [
@@ -49,12 +48,25 @@ const CONFIG_TABLES = [
   'limit_catalog',
 ] as const;
 
-/** `INSERT INTO` / `UPDATE` / `DELETE FROM` / `TRUNCATE` against a config table. */
+/**
+ * `INSERT INTO` / `UPDATE` / `DELETE FROM` / `TRUNCATE` / `MERGE INTO` / `COPY`
+ * against a config table.
+ */
 const TABLE_WRITE_PATTERN = new RegExp(
-  String.raw`\b(?:insert\s+into|update|delete\s+from|truncate(?:\s+table)?)\s+` +
+  String.raw`\b(?:insert\s+into|update|delete\s+from|truncate(?:\s+table)?|merge\s+into|copy)\s+` +
     String.raw`(?:public\.)?(?:${CONFIG_TABLES.join('|')})\b`,
   'gi',
 );
+
+/**
+ * A `do` block. `codeOnly()` blanks its dollar-quoted body, so the statement is
+ * opaque: any write can be inside it. The `on conflict … do nothing` / `do
+ * update` forms are the only `do` in ordinary DML and stay out.
+ */
+const DO_PATTERN = /\bdo\b(?!\s+(?:nothing|update)\b)/gi;
+
+/** A `public.*` function call from `select`/`perform`; the body may write config. */
+const FUNCTION_CALL_PATTERN = /\b(?:select|perform)\b[^;]*?\bpublic\.\w+\s*\(/gi;
 
 /** DDL a seed must never run: the migration chain owns schema and grants. */
 const DDL_PATTERN = /\b(?:create|alter|drop|grant|revoke|publication)\b/gi;
@@ -73,18 +85,11 @@ function seedFiles(): string[] {
     .map((entry) => path.join(SEEDS_ROOT, entry.name));
 }
 
-/** Recursive `*.sql` files, used only to prove the seed directory is populated. */
-function allSqlFiles(directory: string): string[] {
-  const files: string[] = [];
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...allSqlFiles(target));
-      continue;
-    }
-    if (entry.name.endsWith('.sql')) files.push(target);
-  }
-  return files;
+/** The `[db.seed] sql_paths` entries `config.toml` declares. */
+function configuredSeedPaths(): string[] {
+  const config = fs.readFileSync(CONFIG_FILE, 'utf8');
+  const block = /sql_paths\s*=\s*\[([^\]]*)\]/.exec(config);
+  return [...(block?.[1] ?? '').matchAll(/'([^']*)'/g)].map((match) => match[1] ?? '');
 }
 
 /** Replace every character except a newline, so line numbers survive the strip. */
@@ -117,7 +122,7 @@ function findingsInSource(file: string, source: string): SeedFinding[] {
   // with one pattern.
   const normalized = codeOnly(source).replaceAll('"', '');
   const findings = new Map<string, SeedFinding>();
-  for (const pattern of [TABLE_WRITE_PATTERN, DDL_PATTERN]) {
+  for (const pattern of [TABLE_WRITE_PATTERN, DO_PATTERN, FUNCTION_CALL_PATTERN, DDL_PATTERN]) {
     for (const match of normalized.matchAll(pattern)) {
       const line = normalized.slice(0, match.index).split('\n').length;
       const statement = statementAt(normalized, match.index);
@@ -139,9 +144,10 @@ const REMEDY =
   '(see 20261125170000_plan_catalog_owned_by_migrations.sql), never in supabase/seeds/';
 
 describe('supabase/seeds holds test data only (#1502)', () => {
-  it('scans the files the seed glob runs', () => {
-    const config = fs.readFileSync(CONFIG_FILE, 'utf8');
-    expect(config).toContain(SEED_GLOB);
+  it('scans exactly the files the seed glob runs', () => {
+    // The parsed list, not a substring: a second `sql_paths` entry (such as
+    // `./seeds/demo/*.sql`) would put files outside the scan's reach.
+    expect(configuredSeedPaths()).toEqual(['./seeds/*.sql']);
 
     const files = seedFiles().map(relative);
     expect(files).toContain('supabase/seeds/00_plans.sql');
@@ -149,9 +155,9 @@ describe('supabase/seeds holds test data only (#1502)', () => {
   });
 
   it('scans a non-empty set of seed files', () => {
-    // A missing or empty directory would make the main assertion pass for the
-    // wrong reason; the seed directory carries the demo seeds too.
-    expect(allSqlFiles(SEEDS_ROOT).length).toBeGreaterThan(3);
+    // A missing or empty top-level set would make the main assertion pass for
+    // the wrong reason.
+    expect(seedFiles().length).toBeGreaterThan(0);
   });
 
   it('no seed writes a config table or runs DDL', () => {
@@ -203,6 +209,34 @@ describe('findingsInSource()', () => {
     ]);
   });
 
+  it('reports a do block, whose blanked body is opaque', () => {
+    const source = [
+      'select 1;',
+      "do $$ begin insert into public.permissions (key) values ('base'); end $$;",
+    ].join('\n');
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([2]);
+  });
+
+  it('reports merge into a config table', () => {
+    const source =
+      'merge into public.permissions as p using (select $$base$$ as key) as v on p.key = v.key ' +
+      'when not matched then insert (key) values (v.key);';
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([1]);
+  });
+
+  it('reports copy against a config table', () => {
+    const source = "copy public.permissions (key) from '/tmp/permissions.csv';";
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([1]);
+  });
+
+  it('reports a public function call from select or perform', () => {
+    const source = [
+      'select public.seed_system_role_permissions(id) from public.organizations;',
+      'perform public.seed_system_role_permissions(id);',
+    ].join('\n');
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([1, 2]);
+  });
+
   it('reports the line and statement of a write on a later line', () => {
     const source = 'select 1;\n\n  delete from public.plan_limits;\n';
     expect(findingsInSource('seeds/x.sql', source)).toEqual([
@@ -219,6 +253,8 @@ describe('findingsInSource()', () => {
       'select count(*) from plan_limits;',
       "insert into public.organizations (id, name) values ($$org$$, 'Create and drop');",
       "insert into public.topics (name) values ('grant revoked');",
+      'insert into public.topics (id) values (1) on conflict (id) do nothing;',
+      'insert into public.topics (id) values (1) on conflict (id) do update set name = $$x$$;',
     ].join('\n');
     expect(findingsInSource('seeds/x.sql', source)).toEqual([]);
   });

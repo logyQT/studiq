@@ -6,11 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
 
 // #1256 pinned the `assignment.*` family on the org-creation trigger and on
-// `09_perms.sql`. Phase 2a-1 makes both call `seed_system_role_permissions()`,
-// so this asserts the stronger contract: a freshly created organization
-// (trigger) and the organizations `01_seed.sql` inserts carry exactly the
-// `SYSTEM_ROLE_TEMPLATES` matrix — content, group and org keys alike. The
-// TypeScript matrix is the pin; the SQL mirror is what could drift from it.
+// the seed's repair call. Both now go through `seed_system_role_permissions()`
+// (the seed itself retired in #1502), so this asserts the stronger contract: a
+// freshly created organization (trigger) and the organizations `01_seed.sql`
+// inserts carry exactly the `SYSTEM_ROLE_TEMPLATES` matrix — content, group and
+// org keys alike. The TypeScript matrix is the pin; the SQL mirror is what
+// could drift from it.
 
 const ROLES: readonly SystemRoleName[] = SYSTEM_ROLE_NAMES;
 
