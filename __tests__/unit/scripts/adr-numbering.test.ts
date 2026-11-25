@@ -7,7 +7,7 @@
  * git checkout.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +61,13 @@ function fixture(files: [string, string][], references: [string, string][] = [])
   execFileSync('git', ['init', '-q'], { cwd: root, env: GIT_ENV, stdio: 'pipe' });
   execFileSync('git', ['add', '-A'], { cwd: root, env: GIT_ENV, stdio: 'pipe' });
   return root;
+}
+
+/** A checkout whose index still lists `gone.ts` after a plain `rm`. */
+function withDeletedFile(references: [string, string][] = []): string {
+  const dir = fixture([adr('0001-a.md')], [['gone.ts', '// gone\n'], ...references]);
+  rmSync(join(dir, 'gone.ts'));
+  return dir;
 }
 
 function run(dir: string): { status: number; output: string } {
@@ -255,6 +262,39 @@ describe('check-adr-numbering', () => {
     const dir = fixture([adr('0001-a.md')]);
     writeFileSync(join(dir, 'scratch.md'), 'See ADR-0007 and [x](docs/decisions/0007-gone.md).\n');
     expect(run(dir).status).toBe(0);
+  });
+
+  // `git ls-files` reads the index, which still lists a file removed with a plain
+  // `rm` (#1412).
+  describe('with a tracked file missing from the working tree', () => {
+    it('passes', () => {
+      expect(run(withDeletedFile()).status).toBe(0);
+    });
+
+    it('still fails a dangling citation in a file that exists', () => {
+      // `later.md` sorts after `gone.ts`, so the scan has to get past the deleted file.
+      const result = run(withDeletedFile([['later.md', 'See ADR-0007.\n']]));
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('later.md:1 cites ADR-0007');
+      expect(result.output).not.toContain('gone.ts');
+    });
+
+    it('still fails a deleted mid-sequence record', () => {
+      const dir = fixture([adr('0001-a.md'), adr('0002-b.md'), adr('0003-c.md')]);
+      rmSync(join(dir, 'docs', 'decisions', '0002-b.md'));
+      const result = run(dir);
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('gap: 0002 is missing');
+    });
+
+    it('still fails a dangling symlink, which exists but cannot be read', () => {
+      const dir = fixture([adr('0001-a.md')]);
+      symlinkSync('nowhere.md', join(dir, 'dangling.md'));
+      execFileSync('git', ['add', '-A'], { cwd: dir, env: GIT_ENV, stdio: 'pipe' });
+      const result = run(dir);
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('dangling.md — cannot be read');
+    });
   });
 
   it('fails a subdirectory', () => {
