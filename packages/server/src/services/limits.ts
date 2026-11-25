@@ -3,6 +3,7 @@ import { AppError } from '@studiq/server/lib/errors';
 import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
 import { entitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -134,38 +135,65 @@ export async function getUsage(ctx: RequestContext, limitKey: LimitKey): Promise
   return { current, limit, plan: resolved.plan.primary, resetsAt };
 }
 
+/**
+ * The caller's daily token reservation, as `reserve_ai_tokens` returns it.
+ * `accepted = false` is a domain answer (the ceiling would be passed), not an
+ * error.
+ */
+export interface TokenReservation {
+  accepted: boolean;
+  inputTotal: number;
+  outputTotal: number;
+}
+
+/**
+ * Reserve the stream's tokens against the caller's daily ceiling.
+ *
+ * One database statement does the check and the write (ADR-0015 R29):
+ * `reserve_ai_tokens` derives the actor from `auth.uid()` and enforces the
+ * ceiling in `insert … on conflict … do update … where`, so two concurrent
+ * streams cannot both pass on the same snapshot.
+ *
+ * A refusal is returned, logged and **not** thrown: `onFinish` records usage
+ * after the answer has streamed, and turning a refused post-stream reservation
+ * into an error would break a response the user already received. The
+ * user-facing gate is the pre-stream `getUsage` check in `/api/v1/ai/chat`,
+ * which reads the same two columns this function writes.
+ */
 export async function trackTokenUsage(
   ctx: RequestContext,
   inputTokens: number,
   outputTokens: number,
-): Promise<void> {
+): Promise<TokenReservation> {
+  const limit = await getEffectiveLimit(ctx, AI_TOKENS_LIMIT_KEY);
   const today = new Date().toISOString().slice(0, 10);
   const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from('user_daily_activity')
-    .select('ai_input_tokens, ai_output_tokens')
-    .eq('user_id', ctx.userId)
-    .eq('date', today)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('reserve_ai_tokens', {
+    p_day: today,
+    p_input_tokens: inputTokens,
+    p_output_tokens: outputTokens,
+    p_limit: limit,
+  });
+  if (error) mapSupabaseError(error);
 
-  if (existing) {
-    await supabase
-      .from('user_daily_activity')
-      .update({
-        ai_input_tokens: existing.ai_input_tokens + inputTokens,
-        ai_output_tokens: existing.ai_output_tokens + outputTokens,
-      })
-      .eq('user_id', ctx.userId)
-      .eq('date', today);
-  } else {
-    await supabase.from('user_daily_activity').insert({
-      user_id: ctx.userId,
-      date: today,
-      ai_input_tokens: inputTokens,
-      ai_output_tokens: outputTokens,
+  const row = data[0];
+  if (!row) throw new AppError('INTERNAL_SERVER');
+  if (!row.accepted) {
+    warn('limits: AI token reservation refused at the daily ceiling', {
+      limit,
+      inputTokens,
+      outputTokens,
+      inputTotal: row.input_total,
+      outputTotal: row.output_total,
     });
   }
+
+  return {
+    accepted: row.accepted,
+    inputTotal: row.input_total,
+    outputTotal: row.output_total,
+  };
 }
 
 /** The service-shaped facade over these helpers (`limitsResolver.checkLimit(...)`). */

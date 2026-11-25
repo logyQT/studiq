@@ -1,5 +1,6 @@
 import { AccountType, type RequestContext, SYSTEM_ROLE_TEMPLATES } from '@studiq/authz';
 import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
+import postgres from 'postgres';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   useRealSupabase,
@@ -10,6 +11,18 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** The local stack's direct connection, for schema-shape assertions PostgREST cannot express. */
+function requireLocalDatabaseUrl(): string {
+  const raw = process.env.SUPABASE_DB_URL;
+  if (!raw) {
+    throw new Error(
+      'org-features needs SUPABASE_DB_URL to assert the legacy table is gone; run the suite ' +
+        'through `bun run env:run -- bun run test:integration`.',
+    );
+  }
+  return raw;
+}
 
 describe(`Org Features (trigger)`, () => {
   const PREFIX = 'of-test-org-';
@@ -81,19 +94,28 @@ describe(`Org Features (trigger)`, () => {
     }
   });
 
-  it('writes no org_role_features rows for any role (profiles are the role layer)', async () => {
-    const supabase = createTypedServiceClient();
+  it('writes no legacy role-feature state: the table is gone and the profile is the role layer', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      // ADR-0015 phase 7 (D19/D27): the revoke store was dropped with its four
+      // readers, so a fresh org cannot carry a per-role feature row at all.
+      const [{ table }] = await sql<{ table: string | null }[]>`
+        select to_regclass('public.org_role_features')::text as table
+      `;
+      expect(table).toBeNull();
 
-    // ADR-0015 phase 3c (D19/D27): the trigger seeds roles, profiles and
-    // permissions only. `org_role_features` is revokes-only, so a fresh org has
-    // zero rows and the resolver reads `org_roles.entitlement_profile`.
-    const { data: features, error } = await supabase
-      .from('org_role_features')
-      .select('feature_key, is_enabled, org_roles!inner(organization_id)')
-      .eq('org_roles.organization_id', orgId);
-
-    expect(error).toBeNull();
-    expect(features).toEqual([]);
+      // The surviving half: the role layer is the profile column the trigger
+      // writes, so the absence above is not a vacuously empty schema.
+      const [{ profile }] = await sql<{ profile: string }[]>`
+        select entitlement_profile as profile
+        from public.org_roles
+        where organization_id = ${orgId}
+          and name = 'member'
+      `;
+      expect(profile).toBe('learner');
+    } finally {
+      await sql.end();
+    }
   });
 
   it('derives org limits from plan_limits (no snapshot)', async () => {

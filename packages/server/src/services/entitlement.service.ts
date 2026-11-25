@@ -46,8 +46,8 @@ export interface EntitlementPlan {
  *
  * - organization → `rpc('change_org_plan')`, which moves `organizations.plan`
  *   and nothing else (service-role only). The org layer is derived live:
- *   `plan_entitlements`/`plan_limits` plus `org_roles.entitlement_profile`,
- *   with `org_role_features` read as revokes-only (ADR-0015 D19/D31);
+ *   `plan_entitlements`/`plan_limits` plus `org_roles.entitlement_profile`
+ *   (ADR-0015 D19/D31);
  * - user → `profiles.personal_plan_key`, write-locked for `authenticated`
  *   (migration 20261022000001), so it is written with the service-role client.
  *

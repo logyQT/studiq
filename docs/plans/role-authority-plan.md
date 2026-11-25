@@ -18,22 +18,25 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                                                         | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------ | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                                      | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                                      | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                                      | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                                      | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                                      | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                                | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                                | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                                                      | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                                           | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e `feat/authority-6e` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
-| 7     | delete, full QA, close                         | pending | —                                                                                          | —   | all 193 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                                                          | —   | all 193 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                                           | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | ---------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                        | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                        | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                  | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                  | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | merged  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e #1459 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
+| 7     | delete, full QA, close                         | active  | PR 1 `feat/authority-7` (not pushed)                                         | —   | all 193 + E2E             | 2026-11-25 |
+| 8     | extendability audit (release gate)             | pending | —                                                                            | —   | all 193 + E2E             | 2026-11-19 |
 
-**Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
+**Next action:** **phase 7 PR 1 is on `feat/authority-7`** (legacy surface
+deletion, atomic `reserve_ai_tokens`, docs, grep classification); the full QA
+and E2E corpus plus the phase-8 extendability audit remain coordinator-owned.
+Phase 6 closed with **6e** (`6e92e52d`, #1459). **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
 (#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
 (#1421), 5e-2 `8667e6ca` (#1424). Phase 3 (3a–3d, #1406–#1409) and phase 4
@@ -5766,7 +5769,71 @@ Rule: R48.
 
 ### Phase 7 — delete and close
 
-_Not started._
+**PR 1 — delete and close (in progress on `feat/authority-7`, not yet a PR).**
+
+Landed in this slice:
+
+- **Legacy surface removed** (`20261125120000_legacy_role_feature_surface_removed.sql`):
+  `public.org_role_features` (`drop table … cascade`) and the four dead helpers
+  `has_org_feature(uuid,uuid,text)`, `is_org_manager(uuid,uuid)`,
+  `rls_caller_has_org_feature(uuid,text)`, `rls_caller_is_org_manager(uuid)`.
+  The closing guard (R26) pins both sides: the table and all four functions
+  `IS NULL` via `to_regclass`/`to_regprocedure`, **and** the surviving
+  `org_roles.entitlement_profile` column plus the phase-2/5e policies
+  (`Org managers update roles`, `Org managers insert roles`,
+  `Visible teacher assignments`) answer, so it cannot pass on an empty schema.
+  It also fails if any policy still names either helper.
+- **Resolver/catalog deletes:** the `org_role_features` embed and
+  `revokedRoleRows` left `entitlement.resolver.ts`; the field and comment left
+  `packages/authz/src/entitlements.ts`. The role layer is now stated as
+  `profile − (nothing) + seat ∩ ceiling`, with a docblock recording that the
+  revoke store is gone (D27, premarket).
+- **Atomic token accounting** (`20261125130000_reserve_ai_tokens.sql`, R29/R41):
+  `public.reserve_ai_tokens(p_day, p_input_tokens, p_output_tokens, p_limit)`
+  derives the actor from `auth.uid()` inside, is `security definer` with
+  `set search_path = ''`, grants execute to `authenticated` only, and enforces
+  the ceiling in one self-guarding `insert … select … where … on conflict …
+do update … where` (`-1` unlimited). It returns `accepted`, `input_total`,
+  `output_total`. `limits.ts#trackTokenUsage` calls it; a refusal is a typed,
+  logged result (never a 500), and the pre-stream `getUsage` stays the
+  user-facing gate.
+- **Fixtures/tests:** the per-role table RLS suite was recast as
+  `__tests__/integration/entitlement-org-resolution-rls.test.ts` (live resolver
+  cases kept, table cases deleted); `org-features` and `catalog-invariants`
+  assert absence; `change-org-plan` keeps the plan move and a permission
+  fingerprint; the RPC-wrapper assertions across `rls-tenant-isolation`,
+  `anon-grants`, `control-plane`, `org-control` and `org-role-manage` were
+  removed or moved to the resolver. New `reserve-ai-tokens.test.ts` (real
+  signed-in session, concurrent burst) and unit cases for the service mapping.
+- **`docs/limits.md`** rewritten for the shipped model; **`database.ts`**
+  regenerated with the pinned CLI in the same slice (R2/R14).
+
+Measured inventory at HEAD `6e92e52d` (live stack `514f452e`), then after:
+
+| Probe                                                           | Before                                               | After                               |
+| --------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
+| `org_role_features` rows / triggers / policies                  | 0 / 0 / 2 (both on the table itself)                 | table `NULL`, 0                     |
+| Four helper functions                                           | 4 present; 0 policy readers, 0 other function bodies | 0 present                           |
+| TS files naming `org_role_features` (excl. `types/database.ts`) | resolver, authz, 11 tests, mock helper               | 2 absence assertions only           |
+| `reserve_ai_tokens`                                             | absent                                               | present; generated types include it |
+
+Grep gate (`org.manage`): 32 files — 16 migrations, 7 plan, 3 ADR, 1
+`docs/limits.md`, 1 audit, 3 `qa/cases`, 1 integration test.
+Classification: **history** = migrations, plan/ADR/audit prose, `qa/cases`
+MGR-ROL-01/02 (both say the old gates were replaced) and MGR-SEAT-02 (now says
+the per-role store does not exist); **live** = none left (`docs/limits.md` keeps
+the markers only in the past-tense "left the catalog" sentence, and the
+resolver unit test's non-catalog fixture now uses fictional `test.*` keys);
+**stale** = none. `AUTHORITY_MODEL`, `legacyOnly`, `nextOnly`,
+`ADMIN_ONLY_*`, `ORG_SCOPED_*` remain at 0 (`FEATURES` has only unrelated
+`FREE_FEATURES`/`HIGHLIGHTED_FEATURES` identifiers).
+
+**Still open in phase 7 (coordinator-owned):** the full 193-case QA corpus + E2E
+on a clean reset, served evidence, and the phase-8 extendability audit (D23 is
+the close gate). **Difficulty log:** none — no new rule was earned. The slice
+reuses R26 (a guard pins both sides), R29 (check and write in one statement),
+R41 (a JWT-derived actor needs a real session) and R2/R14 (regenerate, never
+hand-edit); there is no new §3 row.
 
 ### Phase 8 — extendability (release gate)
 

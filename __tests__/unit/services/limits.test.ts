@@ -6,9 +6,11 @@ import {
   getEffectiveLimit,
   getUsage,
   limitsResolver,
+  trackTokenUsage,
 } from '@studiq/server/services/limits';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chain, mockResolverTables } from '#test/helpers/entitlement-resolver-mock';
+import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { asSupabaseClient } from '#test/helpers/supabase-double';
 
@@ -243,6 +245,67 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
       expect(usage.current).toBe(0);
       expect(usage.limit).toBe(5000);
       expect(usage.plan).toBe('base');
+    });
+  });
+
+  describe('trackTokenUsage (atomic reserve_ai_tokens)', () => {
+    const TOKEN_LIMIT = 100;
+
+    function mockTokenLimit(): void {
+      mockResolverTables(mock, {
+        personalPlanKey: 'base',
+        planLimits: { base: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: TOKEN_LIMIT } },
+      });
+    }
+
+    it('maps an accepted reservation and passes the resolved ceiling to the RPC', async () => {
+      mockTokenLimit();
+      mock.rpc.mockResolvedValue({
+        data: [{ accepted: true, input_total: 14, output_total: 5 }],
+        error: null,
+      });
+
+      const reservation = await trackTokenUsage(freshCtx(), 4, 5);
+
+      expect(reservation).toEqual({ accepted: true, inputTotal: 14, outputTotal: 5 });
+      const [fn, args] = asJson<
+        [
+          string,
+          { p_day: string; p_input_tokens: number; p_output_tokens: number; p_limit: number },
+        ]
+      >(mock.rpc.mock.calls[0]);
+      expect(fn).toBe('reserve_ai_tokens');
+      expect(args).toMatchObject({ p_input_tokens: 4, p_output_tokens: 5, p_limit: TOKEN_LIMIT });
+      expect(args.p_day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // No read-modify-write: the service never reads the activity table.
+      expect(mock.from).not.toHaveBeenCalledWith('user_daily_activity');
+    });
+
+    it('returns a refusal as a typed result and logs it, never throwing', async () => {
+      mockTokenLimit();
+      mock.rpc.mockResolvedValue({
+        data: [{ accepted: false, input_total: 100, output_total: 0 }],
+        error: null,
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const reservation = await trackTokenUsage(freshCtx(), 4, 4);
+
+      expect(reservation).toEqual({ accepted: false, inputTotal: 100, outputTotal: 0 });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('AI token reservation refused at the daily ceiling'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('maps a database error through the Supabase error mapper', async () => {
+      mockTokenLimit();
+      mock.rpc.mockResolvedValue({
+        data: null,
+        error: { code: '57014', message: 'canceling statement due to statement timeout' },
+      });
+
+      await expect(trackTokenUsage(freshCtx(), 1, 1)).rejects.toThrow('statement timeout');
     });
   });
 

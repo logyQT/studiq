@@ -222,32 +222,12 @@ describe('EntitlementResolver', () => {
         roleProfile: 'all',
         orgPlan: 'launch',
         planEntitlements: {
-          launch: ['flashcards', 'quiz', 'org.manage', 'member.manage', 'role.builder'],
+          launch: ['flashcards', 'quiz', 'test.fictional', 'test.other', 'test.legacy'],
         },
       });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual(['flashcards', 'quiz']);
-    });
-
-    it('lets the profile grant the ceiling and role rows only revoke (D19)', async () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-teacher' };
-      mockTables({
-        roleProfile: 'all',
-        orgPlan: 'launch',
-        roleRows: [
-          // An enabled row adds nothing since the markers left the catalog
-          // (2b-7): `ai.chat` is not in the launch ceiling, so a row that
-          // granted it would show up below. The revoked row must win over the
-          // profile grant.
-          { feature_key: 'ai.chat', is_enabled: true },
-          { feature_key: 'quiz', is_enabled: false },
-        ],
-      });
-
-      const { entitlements, sources } = await resolver.resolveEntitlements(ctx);
-      expect(entitlements).toEqual(['flashcards']);
-      expect(sources.revokedRoleRows).toEqual(['quiz']);
     });
 
     it('does not add non-portable personal keys inside an org (whitelist, D3)', async () => {
@@ -375,18 +355,6 @@ describe('EntitlementResolver', () => {
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual([]);
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
-    });
-
-    it('lets an explicit revoke row beat the profile ceiling', async () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
-      mockTables({
-        roleProfile: 'all',
-        orgPlan: 'launch',
-        roleRows: [{ feature_key: 'quiz', is_enabled: false }],
-      });
-
-      const { entitlements } = await resolver.resolveEntitlements(ctx);
-      expect(entitlements).toEqual(['flashcards']);
     });
 
     it('applies user_feature_overrides as the strongest plan layer', async () => {
@@ -605,7 +573,6 @@ describe('EntitlementResolver', () => {
           personal: { planKey: 'ace', origin: 'personal' },
           overrides: [],
           revokedOverrides: [],
-          revokedRoleRows: [],
           flagsOff: [],
         },
         plan: { primary: 'ace', sources: [{ planKey: 'ace', origin: 'personal' }] },

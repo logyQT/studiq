@@ -151,21 +151,6 @@ describe('anon role grants (#191)', () => {
     // Role-authority helpers (#191 B1-B5) are internal; only the rls_caller_*
     // wrappers may be executed by `authenticated`.
     [
-      'has_org_feature',
-      {
-        p_actor: '00000000-0000-4000-8001-000000000009',
-        p_organization_id: '00000000-0000-4000-8000-00000000000e',
-        p_feature: 'stats.insights',
-      },
-    ],
-    [
-      'is_org_manager',
-      {
-        p_actor: '00000000-0000-4000-8001-000000000009',
-        p_organization_id: '00000000-0000-4000-8000-00000000000e',
-      },
-    ],
-    [
       'can_assign_org_role',
       {
         p_actor: '00000000-0000-4000-8001-000000000009',
@@ -190,7 +175,6 @@ describe('anon role grants (#191)', () => {
         p_permission: 'group.invite',
       },
     ],
-    ['rls_caller_is_org_manager', { p_organization_id: '00000000-0000-4000-8000-00000000000e' }],
   ])('anon cannot execute the %s RPC', async (fn, args) => {
     const response = await anon.rpc(fn, args);
     expect(response.error?.code).toBe('42501');

@@ -58,45 +58,43 @@ type PlanEntitlementRow = {
 /** A `plan_limits` row. */
 type PlanLimitRow = { plan_key: string; limit_key: string; limit_value: number };
 
-/** An `org_role_features` row embedded under the membership's role. */
-type RoleFeatureRow = { feature_key: string; is_enabled?: boolean | null };
-
 /**
  * The single entitlement resolver (ADR-0015 §6.1/§6.2, phase 3a + 3b). It is
  * the only reader that composes `plan_entitlements` and `plan_limits` into a
  * resolved set (`limits.ts` and `subscription-plan.service.ts` read them for
- * their own narrow purposes), and it owns `org_role_features` (revoke-only,
- * D19), `org_roles.entitlement_profile`, `entitlement_flags`,
- * `user_feature_overrides`, `org_seat_*`, `organizations.plan` and
- * `profiles.personal_plan_key` as resolution inputs.
+ * their own narrow purposes), and it owns `org_roles.entitlement_profile`,
+ * `entitlement_flags`, `user_feature_overrides`, `org_seat_*`,
+ * `organizations.plan` and `profiles.personal_plan_key` as resolution inputs.
+ * The role layer is `profile − (nothing) + seat ∩ ceiling`: phase 7 dropped the
+ * revoke store (D27, premarket), so there is no subtraction between the profile
+ * and the seat any more.
  *
  * Resolution order (§6.1):
  *
  *   1. Verified membership — `active_org_id` is a cookie hint; only a real
  *      `org_members` row makes it an org context. The same query embeds the
- *      org plan, the role profile and the revoke rows (the membership row's
- *      FKs), so the whole org layer is one query.
+ *      org plan and the role profile (the membership row's FKs), so the whole
+ *      org layer is one query.
  *   2. Role profile — `all` = the org plan ceiling, `learner` =
  *      `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` = ∅. A missing ctx role id
  *      grants no entitlement; the org plan is still read, because limits use
  *      it for every member.
- *   3. Revoke rows — `org_role_features` `is_enabled = false` only (D19).
- *   4. Seat plan — `planEntitlements(seat.plan) ∩ ceiling`; consulted only
+ *   3. Seat plan — `planEntitlements(seat.plan) ∩ ceiling`; consulted only
  *      inside a verified org (a stale seat row plus a forged cookie supplies
  *      nothing).
- *   5. Personal plan — outside an org, all its keys; inside an org only the
+ *   4. Personal plan — outside an org, all its keys; inside an org only the
  *      `personalPortable` whitelist (D3).
- *   6. User overrides — an active row is the final word on its key in both
+ *   5. User overrides — an active row is the final word on its key in both
  *      directions (D26); expired rows are ignored (#382).
- *   7. Flags — surface keys only: a missing row or `is_enabled = false`
+ *   6. Flags — surface keys only: a missing row or `is_enabled = false`
  *      removes the key (fail closed, D8); baseline keys are never gated (D9);
  *      keys an active override owns are skipped (D26).
- *   8. Limits — the §6.2 truth table, composed in `composeLimits` from one
+ *   7. Limits — the §6.2 truth table, composed in `composeLimits` from one
  *      batched `plan_limits` read: `scope:'user'` keys take
  *      `max(org, seat, personal)` with `-1` short-circuiting; `scope:'org'`
  *      keys come from the verified org's plan only (0 outside one). A missing
  *      `plan_limits` row is `0` (blocked) in every path.
- *   9. Quota-0 exclusion — an entitlement whose quota limit resolves to `0` is
+ *   8. Quota-0 exclusion — an entitlement whose quota limit resolves to `0` is
  *      not effective, so the API and the UI agree (§6.1).
  *
  * A read that fails fails the whole resolution (`assertRead`, #1435): a failed
@@ -153,7 +151,6 @@ export class EntitlementResolver {
       personal: null,
       overrides: [],
       revokedOverrides: [],
-      revokedRoleRows: [],
       flagsOff: [],
     };
     const planSources: PlanSource[] = [];
@@ -161,20 +158,17 @@ export class EntitlementResolver {
     // ── 1. Verified membership + the org layer, one embedded query ────────
     // `active_org_id` is a client cookie: only a real `org_members` row makes
     // it a tenant scope (same rule as `withAuth`). The embed rides that row's
-    // FKs, so the org plan, the role profile and the revoke rows arrive with
-    // the proof of membership in a single query.
+    // FKs, so the org plan and the role profile arrive with the proof of
+    // membership in a single query.
     const orgId = ctx.activeOrgId;
     let inOrg = false;
     let orgPlanKey: string | null = null;
     let entitlementProfile: EntitlementProfile = 'none';
-    let roleRows: RoleFeatureRow[] = [];
 
     if (orgId) {
       const { data: membership, error: membershipError } = await supabase
         .from('org_members')
-        .select(
-          'organization_id, organizations(plan), org_roles(entitlement_profile, org_role_features(feature_key, is_enabled))',
-        )
+        .select('organization_id, organizations(plan), org_roles(entitlement_profile)')
         .eq('organization_id', orgId)
         .eq('user_id', ctx.userId)
         .maybeSingle();
@@ -187,11 +181,8 @@ export class EntitlementResolver {
         // real membership); the embedded role is the membership's own row, so
         // a forged `orgRoleId` cannot widen it.
         const role = ctx.orgRoleId ? dbNested(membership.org_roles) : null;
-        if (role) {
-          if (isEntitlementProfile(role.entitlement_profile)) {
-            entitlementProfile = role.entitlement_profile;
-          }
-          roleRows = dbRows(role.org_role_features);
+        if (role && isEntitlementProfile(role.entitlement_profile)) {
+          entitlementProfile = role.entitlement_profile;
         }
       }
     }
@@ -290,20 +281,10 @@ export class EntitlementResolver {
       const ceiling = entitlementsByPlan.get(orgPlanKey) ?? new Set<EntitlementKey>();
       this.applyProfile(enabled, entitlementProfile, ceiling);
 
-      // Legacy rows come after the profile so an explicit revoke wins over a
-      // profile grant, exactly as the row semantics always did (D19). An
-      // enabled row adds nothing: the profile is authoritative for every key
-      // since the legacy management markers left the catalog (phase 2b-7).
-      for (const row of roleRows) {
-        if (!isEntitlementKey(row.feature_key)) continue;
-        if (row.is_enabled === false) {
-          enabled.delete(row.feature_key);
-          sources.revokedRoleRows.push(row.feature_key);
-        }
-      }
-
       // A seat plan intersects the ceiling: it can add a key the org plan
-      // carries, never one it does not (§6.1).
+      // carries, never one it does not (§6.1). The role layer is
+      // `profile + seat ∩ ceiling`; phase 7 dropped the revoke store, so there
+      // is no subtraction between the two arms (D27, premarket).
       if (seatPlanKey) {
         for (const key of entitlementsByPlan.get(seatPlanKey) ?? []) {
           if (ceiling.has(key)) enabled.add(key);
