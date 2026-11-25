@@ -5448,10 +5448,12 @@ migration, no new table).
 - **Compensation, not a transaction.** The two writes are not one database
   transaction and the code/docblock do not claim one: when the profile write
   succeeds and either permission write then fails, one scoped update
-  (`.eq('id').eq('organization_id')`) restores the stored profile and the
-  original DB failure is returned. A restore that itself fails is logged through
-  `@studiq/server/lib/log` and not retried — the next save rewrites both. The
-  D20 log record now also carries `role.is_system` and
+  (`.eq('id').eq('organization_id').eq('entitlement_profile', profileToWrite)`)
+  restores the stored profile and the original DB failure is returned. The
+  restore is a compare-and-swap on the value this save wrote, so a concurrent
+  save's newer profile is deliberately not overwritten. A restore that itself
+  fails is logged through `@studiq/server/lib/log` and not retried — the next
+  save rewrites both. The D20 log record now also carries `role.is_system` and
   `entitlement_profile.before/after`.
 - **The web save is one PUT.** `manage/roles/page.tsx#handleSavePermissions`
   issues one `apiPut` with `{ permissions, entitlementProfile }` (null for
@@ -5463,34 +5465,48 @@ migration, no new table).
   `isPermissionCatalogKey` from `@studiq/authz` (R40; the rank table is never
   copied). It returns the key's `allowedScopes` the caller's own scope covers,
   and every allowed scope for an `org.admin` holder at organization scope — the
-  same exemption the server's `grantDenied` applies (D16/D21). The editor reads
-  the raw map with `usePermissions()` (`.data?.permissions`) while
-  `usePermission()` keeps answering `canBuild`. A checkbox or radio the caller
-  cannot grant is **disabled** with a `title`; a stored grant beyond the caller's
-  authority stays visible and non-editable (removal needs authority over the
-  held scope, and the server decides). No key is ever hidden: a hidden key's
-  absence from the complete payload would delete its grant (ADR §9's
+  same exemption the server's `grantDenied` applies (D16/D21) — while a
+  non-assignable key (`org.admin`) answers `[]` like the server's `422`. The
+  editor reads the raw map with `usePermissions()` (`.data?.permissions`) while
+  `usePermission()` keeps answering `canBuild`. `startScopeFor` (the grant path)
+  and `rowAuthority` (the row's decision: locked, grantable, editable, toggle)
+  keep the page's behaviour in one testable place: a checkbox or radio the
+  caller cannot grant is **disabled** with a `title`; a stored grant beyond the
+  caller's authority stays visible and non-editable (removal needs authority
+  over the held scope, and the server decides). No key is ever hidden: a hidden
+  key's absence from the complete payload would delete its grant (ADR §9's
   completeness contract). A new grant starts at `narrowestGrantable`, falling
   back to `allowedScopes[0]` only while the map is unresolved (then the server's
   403 answers). An inline note under the dialog header states the rule in both
-  locales (`perms_authority_hint`, `perms_scope_denied`).
+  locales (`perms_authority_hint`); the specific denial is a `title` on the
+  disabled control (`perms_scope_denied`), not a second inline note.
 - **The ordering the default rests on is pinned.**
   `__tests__/unit/lib/org-roles.test.ts` now asserts every catalog key's
   `allowedScopes` is ordered narrowest→widest (own < group < organization), so
   `[0]` is a declared rule, not declaration luck (design §4.3).
 - **`PlanUnionBadge`.** New
   `apps/web/src/components/billing/plan-union-badge.tsx`
-  (`{ plan: PlanInfo; plans?: PlanInfo[]; className?: string }`):
+  (`{ plan: PlanInfo; plans?: PlanInfo[]; className?: string; variant?: 'default' | 'secondary' }`):
   `sources.length <= 1` renders the catalogue name of `plan.key` (falling back to
   `plan.name`); several sources render
   `A (origin) + B (origin)` from the catalogue the client already holds, with
   `origin_org` / `origin_seat` / `origin_personal` in `BillingPage` (pl:
   „organizacja”, „licencja”, „plan osobisty”). An unknown layer key falls back to
-  the key, never drops the layer. It renders inside the existing
-  `Badge variant="secondary"` weight and is used by `/app|/edu/billing` (the
-  header description), `/manage/billing` (the plan badge) and `/manage/settings`
-  (the plan row, size preserved through `className`); `/pricing` (a catalogue
-  page) and `manage/seats`' per-pool labels are untouched.
+  the key, never drops the layer. It keeps Badge's generic `data-slot="badge"`
+  and adds `data-plan-union` for the specific locator; `/manage/settings` keeps
+  its pre-6d `variant="default"` (size through `className`), the other three
+  surfaces stay `secondary`. It is used by `/app|/edu/billing` (the header
+  description), `/manage/billing` (the plan badge) and `/manage/settings` (the
+  plan row); `/pricing` (a catalogue page) and `manage/seats`' per-pool labels
+  are untouched.
+- **The label is a corpus contract (R48, review fix).** Because a manager's
+  `/me/plan` union always has the org layer plus the personal `solo` layer, the
+  shipped label is „StudiQ Launch (organizacja) + StudiQ Solo (plan osobisty)” on
+  `/manage/billing` and `/manage/settings`. Five specs (MGR-ACC-01, MGR-SET-01,
+  MGR-SET-05, BIL-04, LIM-05) assert the org layer as a substring of
+  `[data-plan-union]`; BIL-01 and LIM-03 exclude the union badge from their
+  status-badge count (`:not([data-plan-union])`), and the five case texts carry a
+  dated 2026-11-25 note.
 - **3b's rule stands and is now provably pinned.** The feature/limit lists under
   the header are the **catalogue row's**
   (`plans.find(p => p.key === plan.key)`), never `plan.features`/`plan.limits`:
@@ -5501,7 +5517,7 @@ migration, no new table).
   and an unknown key.
 - **Gates on this branch (final HEAD, measured).** `typecheck:all` (root 983,
   web 875, server 220, authz 7, ui 65 files) and `typecheck:admin` (151) 0
-  errors; `lint` **1580** files 0 warnings; unit **323 files / 5045 passed, 1
+  errors; `lint` **1580** files 0 warnings; unit **323 files / 5055 passed, 1
   skipped**; `review:static` clean (5/5 rule tests); `knip` clean;
   `format:check` **2258** files; `dup:base` no new clones (**210** in the tree);
   `pr:size` **330/400** (388 test + 151 doc lines excluded). No build/serve/reset
@@ -5516,7 +5532,13 @@ migration, no new table).
   `group, own, organization` → "lists every key narrowest to widest"
   **KILLED**; `shown.features` swapped for `plan.features` → "renders the
   feature and limit lists from the catalogue row, not the effective union"
-  **KILLED**.
+  **KILLED**. The review fix added three: a profile write on the denied path →
+  "does not write the profile when a permission change is denied" **KILLED**
+  (`from` called 2× instead of 1×); the restore's
+  `.eq('entitlement_profile', profileToWrite)` removed → "restores the previous
+  profile when the permission upsert fails" **KILLED**; the non-assignable check
+  narrowed to callers without `org.admin` → "offers nothing for the
+  non-assignable ownership key" **KILLED**.
 
 **Still open in phase 6:** 6e the Teacher assignment-read widening. 6d (active)
 carries the role editor's caller-scope awareness, the one-request profile write
