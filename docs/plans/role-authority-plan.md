@@ -5959,14 +5959,19 @@ resolver changes.** Measured by adding the fictional `voice.notes`
 - **Deploy order / split brain:** 12 cells measured on the served app
   (code-ahead, missing flag, flag off, missing plan row, DB-ahead catalog/flag/
   plan/override, quota FK, catalog-first retirement, a revoked catalog grant,
-  the UI and anonymous pricing). All pass: an absent key is a `403` and an
-  absent payload entry, never a `500`; an unknown DB row is inert; pricing stays
-  an anonymous `200`. Table in [extendability.md](extendability.md).
+  the UI and anonymous pricing), plus cell M — an unknown or absent
+  `org_roles.entitlement_profile` resolving to nothing — which is a unit case,
+  mutation-proved rather than measured on the served app. All pass: an absent key
+  is a `403` and an absent payload entry, never a `500`; an unknown DB row is
+  inert; pricing stays an anonymous `200`. Table in
+  [extendability.md](extendability.md).
 - **Mutation proofs** (`bun run mutate`, clean tree): catalog filter **KILLED**,
-  missing-flag fail-closed **KILLED**, a removed surface gate **KILLED**. The
+  missing-flag fail-closed **KILLED**, a removed surface gate **KILLED**, and an
+  unrecognised role profile read as a grant **KILLED**:
+  `expected [ 'ai.chat', 'flashcards', …(2) ] to deeply equal []` (cell M). The
   first run **SURVIVED** on the pre-existing unknown-plan-key assertion (profile
   `all` never lets the row reach the payload), so that guard was rewritten on the
-  personal-plan path where the filter is load-bearing. The three runs,
+  personal-plan path where the filter is load-bearing. The four runs,
   re-runnable as written:
 
   ```bash
@@ -5991,6 +5996,18 @@ resolver changes.** Measured by adding the fictional `voice.notes`
     --replace "    if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');" \
     --test __tests__/unit/controllers/quiz-teacher.controller.test.ts \
     --name "refuses every gated write with FORBIDDEN before the permission check and the parse"
+
+  # unknown role profile — the guard becomes a bare cast, so the unknown value
+  # reaches applyProfile's learner arm (cell M)
+  bun run mutate -- --file packages/server/src/services/entitlement.resolver.ts \
+    --find "        if (role && isEntitlementProfile(role.entitlement_profile)) {
+          entitlementProfile = role.entitlement_profile;
+        }" \
+    --replace "        if (role) {
+          entitlementProfile = role.entitlement_profile as EntitlementProfile;
+        }" \
+    --test __tests__/unit/services/entitlement.resolver.test.ts \
+    --name "resolves nothing when the stored role profile is unrecognised, never the learner set"
   ```
 
 - **Corpus:** the 37 at-risk cases from §4 plus `EDU-QZ-01/02/03/05/06` and the

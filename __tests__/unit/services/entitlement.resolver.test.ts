@@ -418,6 +418,27 @@ describe('EntitlementResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
+    it('resolves nothing when the stored role profile is unrecognised, never the learner set', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      // A value a migration could ship before the code knows it (the `role_v2`
+      // shape), on a plan that carries the whole learner set. `applyProfile` takes
+      // its learner arm for anything that is not `all`/`none`, so the
+      // `isEntitlementProfile` guard in the resolver is the only thing between this
+      // role and a silent learner grant.
+      mockTables({ roleProfile: 'role_v2', orgPlan: 'hub', personalPlanKey: null });
+
+      const { entitlements } = await resolver.resolveEntitlements(ctx);
+      expect(entitlements).toEqual([]);
+    });
+
+    it('resolves nothing when the membership row carries no role embed', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      mockTables({ roleProfile: null, orgPlan: 'hub', personalPlanKey: null });
+
+      const { entitlements } = await resolver.resolveEntitlements(ctx);
+      expect(entitlements).toEqual([]);
+    });
+
     it('applies user_feature_overrides as the strongest plan layer', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
       mockTables({
