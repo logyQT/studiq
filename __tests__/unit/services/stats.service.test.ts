@@ -238,6 +238,7 @@ describe('StatsService', () => {
           id: 'q-1',
           content: 'Który rok uważa się za datę chrztu Polski?',
           type: 'mcq',
+          bankId: 'bank-1',
           correctRate: 0.4,
           totalAnswers: 5,
         },

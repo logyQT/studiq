@@ -1,5 +1,7 @@
 'use client';
 
+import type { ProblematicQuestionStats } from '@studiq/server/models/stats.model';
+import { ProblemQuestionLink } from '@/components/edu/problem-question-link';
 import {
   Badge,
   Card,
@@ -55,13 +57,6 @@ interface FlashcardStats {
   }>;
 }
 
-interface ProblematicQuestion {
-  id: string;
-  content: string;
-  type: string;
-  correctRate: number;
-}
-
 const difficultyConfig = [
   { key: 'easy', labelKey: 'difficulty_easy', color: 'bg-emerald-500' },
   { key: 'medium', labelKey: 'difficulty_medium', color: 'bg-amber-500' },
@@ -73,18 +68,18 @@ export default function StatsResultsPage() {
   const t = useTranslations('StatsResultsPage');
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([]);
   const [flashStats, setFlashStats] = useState<FlashcardStats | null>(null);
-  const [problematic, setProblematic] = useState<ProblematicQuestion[]>([]);
+  const [problematic, setProblematic] = useState<ProblematicQuestionStats[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       apiGet<QuizSummary[]>('/api/v1/stats/teacher/quizzes').catch((): QuizSummary[] => []),
       apiGet<FlashcardStats>('/api/v1/flashcards/stats/teacher').catch(() => null),
-      apiGet<{ subject?: { problematicQuestions?: ProblematicQuestion[] } }>(
+      apiGet<{ subject?: { problematicQuestions?: ProblematicQuestionStats[] } }>(
         '/api/v1/stats/teacher',
       )
         .then((r) => r.subject?.problematicQuestions ?? [])
-        .catch((): ProblematicQuestion[] => []),
+        .catch((): ProblematicQuestionStats[] => []),
     ])
       .then(([q, f, p]) => {
         setQuizzes(q);
@@ -230,7 +225,11 @@ export default function StatsResultsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {sortedProblematic.map((q) => (
-              <div key={q.id} className="flex items-center justify-between p-3 rounded-lg border">
+              <ProblemQuestionLink
+                key={q.id}
+                question={q}
+                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/60"
+              >
                 <div>
                   <p className="font-medium text-sm">{q.content}</p>
                   <p className="text-xs text-muted-foreground">{q.type}</p>
@@ -238,7 +237,7 @@ export default function StatsResultsPage() {
                 <span className="text-sm font-bold text-red-600 tabular-nums">
                   {Math.round(q.correctRate * 100)}% {t('correct_suffix')}
                 </span>
-              </div>
+              </ProblemQuestionLink>
             ))}
           </CardContent>
         </Card>

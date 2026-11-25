@@ -38,6 +38,8 @@ const QUESTIONS_PAGE_SIZE = 25;
 interface QuestionBankDetailScreenProps {
   bankId: string;
   basePath: string;
+  /** What the search box starts with, e.g. from a link that points at one question. */
+  initialSearch?: string;
   t: ReturnType<typeof useTranslations>;
   tForm: ReturnType<typeof useTranslations>;
 }
@@ -45,6 +47,7 @@ interface QuestionBankDetailScreenProps {
 export function QuestionBankDetailScreen({
   bankId,
   basePath,
+  initialSearch = '',
   t,
   tForm,
 }: QuestionBankDetailScreenProps) {
@@ -52,7 +55,7 @@ export function QuestionBankDetailScreen({
   const permission = usePermission();
   const locale = useLocale();
   const { activeOrg, isPending: orgsPending } = useOrgs();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');

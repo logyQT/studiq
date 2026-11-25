@@ -44,6 +44,9 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  *    Świetna robota!” instead.
  * 6. The three links („Zobacz wszystkie testy”, „Zobacz szczegóły fiszek”,
  *    „Zobacz szczegóły pytań”) open their own pages.
+ * 7. A problematic question leads to its bank, searched down to it, from the
+ *    three teacher screens that list it (#654); the group chart on `/edu` shows
+ *    its whole „100%” tick.
  */
 
 const CASE = 'EDU-ST-02';
@@ -137,6 +140,7 @@ interface CaseContent {
   cardIds: string[];
   quizName: string;
   assignmentId: string;
+  bankId: string;
   questions: QuestionSeed[];
 }
 
@@ -274,7 +278,14 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
     deadline: PUBLISH_DEADLINE,
   });
 
-  return { deckName, cardIds, quizName, assignmentId: assignment.id, questions };
+  return {
+    deckName,
+    cardIds,
+    quizName,
+    assignmentId: assignment.id,
+    bankId: bank.id,
+    questions,
+  };
 }
 
 /**
@@ -372,7 +383,36 @@ async function readDifficulty(page: Page): Promise<Record<string, number>> {
 
 /** The question rows inside „Problematyczne pytania”. */
 function problematicRows(page: Page): Locator {
-  return namedCard(page, COPY.problematic).locator('div.rounded-lg.border');
+  return namedCard(page, COPY.problematic).locator('a.rounded-lg.border');
+}
+
+/**
+ * Clicks the problem question's alert on `screen` and checks that its bank opens
+ * searched down to that one question.
+ */
+async function followAlert(page: Page, screen: string, content: CaseContent): Promise<void> {
+  const [first, second, belowHalf] = content.questions;
+  if (!first || !second || !belowHalf)
+    throw new Error(`${CASE} the case quiz needs three questions`);
+
+  await page.goto(screen);
+  const alert = page
+    .locator(`main a[href^="/edu/questions/${content.bankId}?search="]`)
+    .filter({ hasText: belowHalf.content });
+  await expect(alert, `the alert on ${screen} is one link`).toHaveCount(1);
+  await alert.click();
+
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === `/edu/questions/${content.bankId}` &&
+      url.searchParams.get('search') === belowHalf.content,
+  );
+  await expect(page.locator(`main input[value="${belowHalf.content}"]`)).toBeVisible();
+  await expect(page.locator('main tbody tr'), 'only the searched question').toHaveCount(1);
+  await expect(page.locator('main tbody tr')).toContainText(belowHalf.content);
+  for (const healthy of [first, second]) {
+    await expect(page.getByText(healthy.content, { exact: true })).toHaveCount(0);
+  }
 }
 
 test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', () => {
@@ -546,6 +586,19 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
       await page.goBack();
       await expect(page).toHaveURL(new RegExp(`${RESULTS_PATH}$`));
     }
+
+    // 7. Every alert leads to its question, and the group chart's top tick is whole.
+    for (const screen of [RESULTS_PATH, '/edu/statistics', '/edu']) {
+      await followAlert(page, screen, content);
+    }
+    await page.goto('/edu');
+    const topTick = page.locator('main svg.recharts-surface text').filter({ hasText: /^100%$/ });
+    await expect(topTick, 'the group chart draws its 100% tick').toBeVisible();
+    const overflow = await topTick.evaluate((tick) => {
+      const chart = tick.closest('svg')!.getBoundingClientRect();
+      return chart.left - tick.getBoundingClientRect().left;
+    });
+    expect(overflow, 'pixels of the „100%” tick cut off at the left edge').toBeLessThanOrEqual(0);
 
     expect(failedRequests, 'no API request may fail during the walk').toEqual([]);
     expect(pageErrors, 'uncaught page errors during the walk').toEqual([]);
