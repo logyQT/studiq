@@ -4,10 +4,12 @@ import { Card, CardContent, CardHeader, Skeleton } from '@studiq/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { AssignmentForm, type AssignmentPayload } from '@/components/edu/assignment-form';
 import { AssignmentPage } from '@/components/edu/assignment-page';
 import { useApiMutation } from '@/hooks/use-api';
-import { apiGet, apiPost } from '@/lib/api';
+import { ApiError, apiGet, apiPost } from '@/lib/api';
+import { translateErrorCode } from '@/lib/error-messages';
 import { assignmentKeys } from '@/lib/query-keys';
 
 /**
@@ -41,6 +43,7 @@ export default function NewAssignmentClient() {
   const searchParams = useSearchParams();
   const quizId = searchParams.get('quizId');
   const t = useTranslations('EduAssignmentNewPage');
+  const tErrors = useTranslations('Errors');
   const [quizName, setQuizName] = useState('');
   // The form seeds its state once from the quiz, so it waits for a `quizId` lookup
   // rather than overwriting what the teacher has already typed.
@@ -63,12 +66,18 @@ export default function NewAssignmentClient() {
     invalidateKeys: [assignmentKeys.all],
   });
 
+  // A refused create (a plan limit, a validation error, a quiz copy holding a retired or deleted
+  // item) must say so and leave the form as the teacher filled it; the failure was silent (#1185).
   const handleSubmit = async (payload: AssignmentPayload) => {
-    const data = await createMutation.mutateAsync({
-      ...payload,
-      quizId: quizId || undefined,
-    });
-    router.push(`/edu/assignments/${data.id}`);
+    try {
+      const data = await createMutation.mutateAsync({
+        ...payload,
+        quizId: quizId || undefined,
+      });
+      router.push(`/edu/assignments/${data.id}`);
+    } catch (error) {
+      toast.error(translateErrorCode(tErrors, error instanceof ApiError ? error.code : null));
+    }
   };
 
   return (

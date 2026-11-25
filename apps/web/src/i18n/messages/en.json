@@ -125,6 +125,7 @@
     "ERROR_EXPOSURE_ACK_REQUIRED": "Some questions are still open to other classes. Acknowledge that, or choose “Seal for the whole organisation”.",
     "ERROR_PAYLOAD_TOO_LARGE": "The file is too large.",
     "ERROR_UNPROCESSABLE_ENTITY": "The request could not be processed due to validation errors.",
+    "ERROR_QUESTION_NOT_OPEN": "Some of these questions are retired or deleted and cannot be used in a new assessment. Reopen them in the question bank or leave them out.",
     "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
     "ERROR_USER_ALREADY_EXISTS": "An account with this email address already exists.",
     "ERROR_LOGIN_FAILED": "Login failed. Please try again.",
