@@ -7,9 +7,12 @@ import { asJson } from '#test/helpers/json';
 // login. Only the public pricing data may be visible to an unauthenticated caller.
 
 // `entitlement_catalog` joined the public set in phase 4a: `PlanInfo.seatEligible`
-// embeds it from `plan_entitlements` on every plan read.
+// embeds it from `plan_entitlements` on every plan read. `entitlement_flags`
+// joined in #1484: the public plan list drops a kill-switched surface key, so the
+// anonymous read needs the flag truth.
 const PUBLIC_TABLES = [
   'entitlement_catalog',
+  'entitlement_flags',
   'plan_entitlements',
   'plan_limits',
   'subscription_plans',
@@ -47,6 +50,15 @@ describe('anon role grants (#191)', () => {
     expect((data ?? []).length, 'the anonymous catalog payload is not empty').toBeGreaterThan(0);
   });
 
+  // Same half-state as the catalog: without a policy the grant raises nothing
+  // but returns no rows, so the anonymous pricing list would fail closed on
+  // every surface key and silently stop selling them (#1484).
+  it('anon reads entitlement_flags rows, not just the privilege', async () => {
+    const { data, error } = await anon.from('entitlement_flags').select('key, is_enabled');
+    expect(error).toBeNull();
+    expect((data ?? []).length, 'the anonymous flag payload is not empty').toBeGreaterThan(0);
+  });
+
   it.each([
     'question_banks',
     'quizzes',
@@ -56,7 +68,6 @@ describe('anon role grants (#191)', () => {
     'org_roles',
     'org_role_permissions',
     'user_daily_activity',
-    'entitlement_flags',
     'profiles',
     'invitations',
     'payments',
