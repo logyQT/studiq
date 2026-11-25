@@ -131,7 +131,7 @@ describe('StudentOverviewService.getOverview', () => {
           id: 'att-1',
           total_questions: 10,
           started_at: '2026-10-27T10:00:00Z',
-          config: { title: 'Fizyka' },
+          config: { topicIds: ['topic-1'] },
           // 4 of the 10 are answered; an empty selection and blank text do not count.
           draft_answers: {
             q1: { selected_answer_id: 'a', text_answer: null },
@@ -150,7 +150,7 @@ describe('StudentOverviewService.getOverview', () => {
 
     expect(result.success && result.data.resume.quiz).toEqual({
       attemptId: 'att-1',
-      title: 'Fizyka',
+      title: null,
       answered: 4,
       total: 10,
       startedAt: '2026-10-27T10:00:00Z',
