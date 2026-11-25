@@ -5469,10 +5469,12 @@ migration, no new table).
   non-assignable key (`org.admin`) answers `[]` like the server's `422`. The
   editor reads the raw map with `usePermissions()` (`.data?.permissions`) while
   `usePermission()` keeps answering `canBuild`. `startScopeFor` (the grant path)
-  and `rowAuthority` (the row's decision: locked, grantable, editable, toggle)
-  keep the page's behaviour in one testable place: a checkbox or radio the
-  caller cannot grant is **disabled** with a `title`; a stored grant beyond the
-  caller's authority stays visible and non-editable (removal needs authority
+  and `rowAuthority` (the row's decision: locked, grantable, editable, toggle,
+  and whether the caller's own authority is the denial) keep the page's
+  behaviour in one testable place: a checkbox or radio the caller cannot grant is
+  **disabled** with a `title` naming that authority, and a locked ownership row
+  carries none (the catalog, not the caller, refuses it); a stored grant beyond
+  the caller's authority stays visible and non-editable (removal needs authority
   over the held scope, and the server decides). No key is ever hidden: a hidden
   key's absence from the complete payload would delete its grant (ADR §9's
   completeness contract). A new grant starts at `narrowestGrantable`, falling
@@ -5516,15 +5518,15 @@ migration, no new table).
   design's "no test" note was stale); the phase-6d mutation run proves it.
   `__tests__/unit/app/plan-union-badge.test.ts` covers one layer, three layers
   and an unknown key.
-- **Gates on this branch (final HEAD, measured).** `typecheck:all` (root 983,
-  web 875, server 220, authz 7, ui 65 files) and `typecheck:admin` (151) 0
-  errors; `lint` **1580** files 0 warnings; unit **323 files / 5055 passed, 1
-  skipped**; `review:static` clean (5/5 rule tests); `knip` clean;
-  `format:check` **2258** files; `dup:base` no new clones (**210** in the tree);
-  `pr:size` **408/400** (572 test + 240 doc lines excluded) — the review fix
-  added 78 reviewable lines, and no PR exists yet, so nothing is labelled
-  `size/exception`. No build/serve/reset was run by this slice — the coordinator
-  owns them.
+- **Gates on this branch (reviewed head `bc42290f`, measured).**
+  `typecheck:all` (root 983, web 875, server 220, authz 7, ui 65 files) and
+  `typecheck:admin` (151) 0 errors; `lint` **1580** files 0 warnings; unit
+  **323 files / 5056 passed, 1 skipped**; `review:static` clean (5/5 rule
+  tests); `knip` clean; `format:check` **2258** files; `dup:base` no new clones
+  (**210** in the tree); `pr:size` **408/400** at `bc42290f` (572 test + 240 doc
+  lines excluded) — the review fix added 78 reviewable lines, and no PR exists
+  yet, so nothing is labelled `size/exception`. No build/serve/reset was run by
+  this slice — the coordinator owns them.
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   the compensation made a no-op (`if (profileToWrite === null) return;` →
   `return;`) → "restores the previous profile when the permission upsert fails"
@@ -5541,7 +5543,13 @@ migration, no new table).
   `.eq('entitlement_profile', profileToWrite)` removed → "restores the previous
   profile when the permission upsert fails" **KILLED**; the non-assignable check
   narrowed to callers without `org.admin` → "offers nothing for the
-  non-assignable ownership key" **KILLED**.
+  non-assignable ownership key" **KILLED**. This pass added three: the row's
+  denial read as the bare `!canToggle` (`!locked` dropped) → "names the caller
+  authority as the denial, never the lock" **KILLED** (the locked row claims a
+  denial); the same constant inverted (`!locked && canToggle`) → the same case
+  **KILLED** (a usable row claims one); the failed restore's log record dropped
+  (`logError(` → `void (`) → "returns the permission failure when the profile
+  restore also fails" **KILLED**.
 
 **Still open in phase 6:** 6e the Teacher assignment-read widening. 6d (active)
 carries the role editor's caller-scope awareness, the one-request profile write
