@@ -426,10 +426,15 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 | `scripts/spin --list`                   | List all active worktrees and the base each one was cut from                                       |
 | `scripts/spin <branch> --clean`         | Remove worktree and delete branch; refuses when it has uncommitted changes                         |
 | `scripts/spin <branch> --clean --force` | Remove it even with uncommitted changes (git-ignored files are removed either way)                 |
-| `scripts/pr [title]`                    | Create a PR from current branch via `gh` CLI                                                       |
+| `scripts/pr [title]`                    | Push the current branch and open its PR. If the branch has an open PR, print its URL               |
 | `scripts/pr --base <branch>`            | Create the PR against a base other than `main`; the base must exist on `origin`                    |
 | `scripts/pr --draft`                    | Create a draft PR                                                                                  |
-| `scripts/pr --list`                     | List open PRs for this repo                                                                        |
+| `scripts/pr --body-file <file>`         | Read the PR body from a file (`-` reads stdin)                                                     |
+
+`scripts/pr` runs `git push -u` each time. When there are new commits, the
+pre-push hooks check them. If the push fails, it creates no PR. Without a title or `--body-file`,
+`gh pr create --fill` takes the missing text from the commits. The script does
+not run on `main`, and it rejects an option that it does not know.
 
 `scripts/spin` records the full base SHA in `<worktree>/.spin-base` (git-ignored).
 It is the branch's intended fork point even after `origin/main` moves; read it

@@ -13,7 +13,7 @@
  *
  * Usage:
  *   bun scripts/pr-triage.ts                 # human summary vs origin/main
- *   bun scripts/pr-triage.ts --json          # machine output (pr-triage.yml, scripts/pr)
+ *   bun scripts/pr-triage.ts --json          # machine output (pr-triage.yml)
  *   bun scripts/pr-triage.ts --base main     # explicit base ref
  *   bun scripts/pr-triage.ts --limit 300     # override the 400-line budget
  *   bun scripts/pr-triage.ts --enforce       # exit 1 when over the budget
