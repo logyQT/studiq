@@ -125,6 +125,94 @@ function isWebHealthy(code: number): boolean {
   return code >= 200 && code < 400;
 }
 
+/** The five machine-wide observability services `env:doctor` probes. */
+export type ObservabilityProbe = 'grafana' | 'tempo' | 'loki' | 'prometheus' | 'otlp';
+
+const OBSERVABILITY_PROBES: readonly ObservabilityProbe[] = [
+  'grafana',
+  'tempo',
+  'loki',
+  'prometheus',
+  'otlp',
+];
+
+/**
+ * Whether one probe's HTTP status says its service is serving. Any answer is not enough (#1109):
+ * Tempo and Loki answer `503` on `/ready` while they start, which is "not ready", not "up".
+ * So a probe is healthy on 2xx/3xx; the OTLP collector alone is also healthy on `404`, because it
+ * has no handler on `/` and a running collector answers exactly that there. `0` (no answer) is
+ * never healthy.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function isObservabilityProbeHealthy(probe: ObservabilityProbe, code: number): boolean {
+  return isWebHealthy(code) || (probe === 'otlp' && code === 404);
+}
+
+/**
+ * What the five raw probe statuses add up to. `healthy` drives `up` and the status label;
+ * `answering` (any HTTP answer) is kept apart because a stack that answers `503` everywhere is
+ * not up, yet it is still holding the ports a second stack would need.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityHealth(codes: Record<ObservabilityProbe, number>): {
+  healthy: number;
+  answering: number;
+  up: boolean;
+} {
+  const healthy = OBSERVABILITY_PROBES.filter((probe) =>
+    isObservabilityProbeHealthy(probe, codes[probe]),
+  ).length;
+  const answering = OBSERVABILITY_PROBES.filter((probe) => codes[probe] > 0).length;
+  return { healthy, answering, up: healthy === OBSERVABILITY_PROBES.length };
+}
+
+/**
+ * The report's whole observability decision: whether the stack counts as up, what the status
+ * label says, and which notes to print.
+ *
+ * Pure because the two shapes that get this wrong are timing, not services: right after
+ * `docker compose up -d` Tempo and Loki answer `503` on `/ready` for a few seconds (#1109), and a
+ * stack that answers but serves nothing at all is a foreign project holding the ports. Only the
+ * second warrants the stop-that-project note; a booting stack serving `3/5` is waiting, not
+ * conflicting.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilitySummary(
+  codes: Record<ObservabilityProbe, number>,
+  options: { primary: string; primaryReady: boolean; authOk: boolean },
+): { up: boolean; label: string; notes: string[] } {
+  const health = observabilityHealth(codes);
+  const up = health.up;
+  const label = observabilityLabel(health.healthy, OBSERVABILITY_PROBES.length);
+  if (up) {
+    return {
+      up,
+      label,
+      notes: options.authOk
+        ? []
+        : [
+            'the MCP token is not valid — run `bun run env:observability ensure`; do not substitute a local trace id',
+          ],
+    };
+  }
+  const notes = [
+    'start it once from the primary checkout, never from a worktree',
+    'traces/logs are not readable by agents; do not substitute a local trace id',
+  ];
+  if (!options.primaryReady) {
+    notes.push(`update the primary first: git -C "${options.primary}" pull`);
+  }
+  if (health.healthy === 0 && health.answering > 0) {
+    notes.push(
+      'a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
+    );
+  }
+  return { up, label, notes };
+}
+
 /**
  * Whether the cache root already holds published snapshot directories.
  *
@@ -244,9 +332,12 @@ async function buildReport(): Promise<DoctorReport> {
     healthCode: grafana,
     healthTimeoutMs: OBSERVABILITY_PROBE_MS,
   });
-  const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
+  const summary = observabilitySummary(
+    { grafana, tempo, loki, prometheus, otlp },
+    { primary, primaryReady, authOk: grafanaAuth.state === 'ok' },
+  );
   const observability: ObservabilityStatus = {
-    up: upCount === 5,
+    up: summary.up,
     project: OBSERVABILITY_PROJECT,
     primary,
     primaryReady,
@@ -454,7 +545,6 @@ async function buildReport(): Promise<DoctorReport> {
     '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
-  const observabilityStatus = observabilityLabel(upCount, 5);
   const authLabel = grafanaAuthLabel({
     state: observability.auth,
     serviceAccount: observability.serviceAccount,
@@ -466,7 +556,7 @@ async function buildReport(): Promise<DoctorReport> {
   lines.push(
     '',
     '▸ Observability (machine-wide)',
-    `  status     ${observabilityStatus}`,
+    `  status     ${summary.label}`,
     `  project    ${observability.project}`,
     `  primary    ${observability.primary}${observability.primaryReady ? '' : ' (compose file predates the fixed project name; update it first)'}`,
     `  grafana    http=${httpLabel(observability.grafana)}`,
@@ -479,24 +569,7 @@ async function buildReport(): Promise<DoctorReport> {
     `  mcp        ${observability.mcpBinary ? 'mcp-grafana on PATH' : 'mcp-grafana NOT on PATH'}`,
     `  start      ${observability.start}`,
   );
-  if (!observability.up) {
-    lines.push('  note       start it once from the primary checkout, never from a worktree');
-    lines.push(
-      '  note       traces/logs are not readable by agents; do not substitute a local trace id',
-    );
-    if (!observability.primaryReady) {
-      lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
-    }
-    if (upCount > 0) {
-      lines.push(
-        '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
-      );
-    }
-  } else if (observability.auth !== 'ok') {
-    lines.push(
-      '  note       the MCP token is not valid — run `bun run env:observability ensure`; do not substitute a local trace id',
-    );
-  }
+  for (const note of summary.notes) lines.push(`  note       ${note}`);
 
   lines.push('', '▸ Ports');
   if (appPortProbe.state === 'unavailable') {

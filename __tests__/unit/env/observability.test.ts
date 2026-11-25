@@ -25,8 +25,19 @@ const lifecycle = await loadEnvModule<StackLifecycleModule>('lib/stack-lifecycle
 const repo = await loadEnvModule<{
   composeFileNamesProject(path: string, project: string): boolean;
 }>('lib/repo.ts');
+type Probe = 'grafana' | 'tempo' | 'loki' | 'prometheus' | 'otlp';
 const doctor = await loadEnvModule<{
   observabilityLabel(upCount: number, total: number): string;
+  isObservabilityProbeHealthy(probe: Probe, code: number): boolean;
+  observabilityHealth(codes: Record<Probe, number>): {
+    healthy: number;
+    answering: number;
+    up: boolean;
+  };
+  observabilitySummary(
+    codes: Record<Probe, number>,
+    options: { primary: string; primaryReady: boolean; authOk: boolean },
+  ): { up: boolean; label: string; notes: string[] };
 }>('commands/doctor.ts');
 
 const OBSERVABILITY_PORT_KEYS = [
@@ -143,6 +154,159 @@ describe('observabilityLabel', () => {
     expect(doctor.observabilityLabel(5, 5)).toBe('up');
     expect(doctor.observabilityLabel(1, 5)).toBe('partial (1/5)');
     expect(doctor.observabilityLabel(0, 5)).toBe('down');
+  });
+});
+
+// #1109: any HTTP answer used to count as "up", so Tempo and Loki still answering 503 on /ready
+// while they start made `env:doctor` report the whole stack as up.
+describe('isObservabilityProbeHealthy', () => {
+  const READINESS_PROBES: Probe[] = ['grafana', 'tempo', 'loki', 'prometheus'];
+
+  it.each(READINESS_PROBES)('%s is healthy on any 2xx or 3xx', (probe) => {
+    for (const code of [200, 204, 301, 302, 399]) {
+      expect(doctor.isObservabilityProbeHealthy(probe, code), `${probe} ${code}`).toBe(true);
+    }
+  });
+
+  it.each(READINESS_PROBES)('%s is not healthy on a 4xx, a 5xx or no answer', (probe) => {
+    // 404 included: a readiness endpoint that is not found is not a ready service.
+    for (const code of [0, 100, 199, 400, 401, 404, 500, 503]) {
+      expect(doctor.isObservabilityProbeHealthy(probe, code), `${probe} ${code}`).toBe(false);
+    }
+  });
+
+  it('accepts a 404 from the OTLP collector, which has no handler on /', () => {
+    expect(doctor.isObservabilityProbeHealthy('otlp', 404)).toBe(true);
+    for (const code of [200, 204, 301]) {
+      expect(doctor.isObservabilityProbeHealthy('otlp', code), `otlp ${code}`).toBe(true);
+    }
+  });
+
+  it('still rejects an OTLP collector that does not answer or fails', () => {
+    for (const code of [0, 400, 403, 500, 503]) {
+      expect(doctor.isObservabilityProbeHealthy('otlp', code), `otlp ${code}`).toBe(false);
+    }
+  });
+});
+
+describe('observabilityHealth', () => {
+  it('is not up while Tempo and Loki still answer 503 (the case in #1109)', () => {
+    const health = doctor.observabilityHealth({
+      grafana: 200,
+      tempo: 503,
+      loki: 503,
+      prometheus: 200,
+      otlp: 404,
+    });
+
+    expect(health).toEqual({ healthy: 3, answering: 5, up: false });
+    expect(doctor.observabilityLabel(health.healthy, 5)).toBe('partial (3/5)');
+  });
+
+  it('is up when every service is ready, the collector answering its 404', () => {
+    const health = doctor.observabilityHealth({
+      grafana: 200,
+      tempo: 200,
+      loki: 200,
+      prometheus: 200,
+      otlp: 404,
+    });
+
+    expect(health).toEqual({ healthy: 5, answering: 5, up: true });
+    expect(doctor.observabilityLabel(health.healthy, 5)).toBe('up');
+  });
+
+  it('is down when nothing answers', () => {
+    const health = doctor.observabilityHealth({
+      grafana: 0,
+      tempo: 0,
+      loki: 0,
+      prometheus: 0,
+      otlp: 0,
+    });
+
+    expect(health).toEqual({ healthy: 0, answering: 0, up: false });
+    expect(doctor.observabilityLabel(health.healthy, 5)).toBe('down');
+  });
+
+  it('is down yet still answering when every service returns 503, so the ports stay reported as held', () => {
+    const health = doctor.observabilityHealth({
+      grafana: 503,
+      tempo: 503,
+      loki: 503,
+      prometheus: 503,
+      otlp: 503,
+    });
+
+    expect(health).toEqual({ healthy: 0, answering: 5, up: false });
+    expect(doctor.observabilityLabel(health.healthy, 5)).toBe('down');
+  });
+
+  it('does not count an OTLP 404 as up when the rest of the stack is down', () => {
+    const health = doctor.observabilityHealth({
+      grafana: 0,
+      tempo: 0,
+      loki: 0,
+      prometheus: 0,
+      otlp: 404,
+    });
+
+    expect(health.up).toBe(false);
+    expect(doctor.observabilityLabel(health.healthy, 5)).toBe('partial (1/5)');
+  });
+});
+
+const READY_OPTIONS = { primary: '/workspaces/studiq', primaryReady: true, authOk: true };
+
+const LEGACY_STACK_NOTE =
+  'a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory';
+
+// The report's decision used to live in the call site, so only the probes were pinned: reverting
+// `up` to "any answer" or the label to the answering count left every test green (#1109 review).
+describe('observabilitySummary', () => {
+  it('says up only when every service serves', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 200, tempo: 200, loki: 200, prometheus: 200, otlp: 404 },
+      READY_OPTIONS,
+    );
+
+    expect(summary).toEqual({ up: true, label: 'up', notes: [] });
+  });
+
+  it('keeps the 3/5 boot window free of the legacy-stack note', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 200, tempo: 503, loki: 503, prometheus: 200, otlp: 404 },
+      READY_OPTIONS,
+    );
+
+    expect(summary).toEqual({
+      up: false,
+      label: 'partial (3/5)',
+      notes: [
+        'start it once from the primary checkout, never from a worktree',
+        'traces/logs are not readable by agents; do not substitute a local trace id',
+      ],
+    });
+  });
+
+  it('names a legacy stack only when it answers but serves nothing', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 503, tempo: 503, loki: 503, prometheus: 503, otlp: 503 },
+      READY_OPTIONS,
+    );
+
+    expect(summary.up).toBe(false);
+    expect(summary.label).toBe('down');
+    expect(summary.notes).toContain(LEGACY_STACK_NOTE);
+  });
+
+  it('does not name a legacy stack when nothing answers', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 0, tempo: 0, loki: 0, prometheus: 0, otlp: 0 },
+      READY_OPTIONS,
+    );
+
+    expect(summary.notes).not.toContain(LEGACY_STACK_NOTE);
   });
 });
 
