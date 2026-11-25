@@ -39,8 +39,8 @@ phase 7 on 2026-11-25 (D23) — one migration + one catalog constant + one surfa
 call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
-**Follow-up order:** [followup-order.md](followup-order.md) — defects first (#1494, #1484,
-#1482, #1478, #1492), then the plans, then the shell, then the `/app` decision, then onboarding.
+**Follow-up order:** [followup-order.md](followup-order.md) — defects first (#1494, #1502,
+#1484, #1482, #1478, #1492), then the plans, then the shell, then the `/app` decision, then onboarding.
 **Open follow-ups (owned):** **#1484** the public plan list ignores the
 entitlement flags and the TS catalog; **#1483** notify org admins when a new
 entitlement is grantable; **#1482** move the daily-stats triggers behind a
@@ -438,9 +438,9 @@ file — a hand edit only survives until the next regeneration.
   the seeds, so relying on `99_dev_grants.sql` alone would leave the default
   `arwdDxtm` (TRUNCATE bypasses RLS) in place there.
 - Seeds: `00_plans.sql` and `99_dev_grants.sql` renamed (the latter later
-  retired); `09_perms.sql` now seeds the 44-key catalog and derives the
+  retired); `09_perms.sql` seeded the 44-key catalog and derived the
   system-role grants from `category = 'content'`, exactly like the org-creation
-  trigger.
+  trigger (retired in #1502: the migration chain owns both).
 - `PERMISSIONS` (44 keys with metadata) ships beside the unchanged `Permission`
   (26) and `DEFAULT_ROLE_PERMISSIONS`; the readers (`FeatureResolver`,
   `SubscriptionPlanService`, the `feature-flag` and `plan-feature` admin
@@ -698,8 +698,9 @@ The table is in **landing order**, not the original plan's order: 2a-3 goes befo
 - `FeatureResolver`: org layer is profile → legacy rows (markers grant,
   `is_enabled = false` revokes) → seat (additive, admin-only strip) → personal →
   overrides → flags. `ctx.orgRoleId === null` resolves ∅ with no plan read.
-- `supabase/seeds/09_perms.sql` calls the function for every seeded organization
-  (the org-creation trigger already created their roles and profiles).
+- `supabase/seeds/09_perms.sql` called the function for every seeded organization
+  (the org-creation trigger already created their roles and profiles); #1502
+  retired that call, and a migration now performs the repair.
 - Tests: a table-driven resolver truth table (admin/teacher/member/custom,
   hub/launch, no role, seated non-admin), a new
   `__tests__/integration/entitlement-profile.test.ts` (trigger profiles, CHECK,

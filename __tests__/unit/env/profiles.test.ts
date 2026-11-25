@@ -106,11 +106,16 @@ describe('env profiles (phase 3)', () => {
     expect(() => profiles.buildCapabilities('api', ['studio'])).not.toThrow();
   });
 
-  it('accepts realtime and analytics atoms and removes them from -x', () => {
-    const caps = profiles.buildCapabilities('api', ['realtime', 'analytics']);
-    expect(caps.has('realtime')).toBe(true);
+  it('accepts the analytics atom and removes it from -x', () => {
+    const caps = profiles.buildCapabilities('api', ['analytics']);
     expect(caps.has('analytics')).toBe(true);
-    expect(profiles.excludesFor(caps)).toEqual(['studio', 'mail', 'functions', 'pooler']);
+    expect(profiles.excludesFor(caps)).toEqual([
+      'studio',
+      'mail',
+      'realtime',
+      'functions',
+      'pooler',
+    ]);
   });
 
   it('accepts the functions atom and removes functions from -x', () => {

@@ -80,7 +80,7 @@ Migrations are the only definition of the schema. Every table, enum, function, t
 ```
 supabase/
 ├── migrations/        # Timestamped DDL and data changes, applied in order
-├── seeds/             # Local seed data (plans, tenants, permissions, realtime publication)
+├── seeds/             # Local test data (tenants and demo content only)
 ├── templates/         # Auth e-mail templates
 └── config.toml        # Stack configuration
 ```
@@ -89,17 +89,31 @@ A schema change is a migration. `config.toml` keeps `[db.migrations] schema_path
 
 ## Seed Data
 
-Seed files are located in `supabase/seeds/` and are organized by domain. They
-run on `db reset` only — `db push` never applies them — so they carry data, never
-privileges: migrations own every grant and revoke, and
-`__tests__/integration/grant-parity.test.ts` fails if the grant contract drifts.
+Seed files are located in `supabase/seeds/` and hold **test data only**: fixture
+users, organizations, classes and content. A reset with `[db.seed] enabled = false`
+still gives a working app, because the permission and plan catalogues, every
+table and every grant belong to `supabase/migrations/`. Realtime is not started
+(`[realtime] enabled = false`), and no seed creates the `supabase_realtime`
+publication.
+A configuration row or a DDL statement in a seed is a second home for migration
+state — `db push` never runs seeds, so the two paths would disagree.
 
-| File              | Purpose                                                             |
-| ----------------- | ------------------------------------------------------------------- |
-| `00_plans.sql`    | Retired placeholder — the plan catalogue is migration-owned (#1494) |
-| `01_seed.sql`     | Auth users, organizations, content and tenants                      |
-| `09_perms.sql`    | RBAC permissions                                                    |
-| `99_realtime.sql` | Local realtime publication                                          |
+The seed set is `[db.seed] sql_paths = ['./seeds/*.sql']`. These files run on
+`db reset` only and never carry privileges: migrations own every grant and
+revoke, and `__tests__/integration/grant-parity.test.ts` fails if the grant
+contract drifts. `__tests__/unit/guards/seed-purity.test.ts` fails if any seeded
+file writes a configuration table (`permissions`, `subscription_plans`,
+`plan_entitlements`, `plan_limits`, `entitlement_catalog`, `entitlement_flags`,
+`limit_catalog`) or runs DDL (`create`, `alter`, `drop`, `grant`, `revoke`,
+`publication`).
+
+| File           | Purpose                                                             |
+| -------------- | ------------------------------------------------------------------- |
+| `00_plans.sql` | Retired placeholder — the plan catalogue is migration-owned (#1494) |
+| `01_seed.sql`  | Auth users, organizations, classes and content                      |
+
+The glob matches top-level files only. `supabase/seeds/demo/demo-en.sql` and
+`demo-pl.sql` hold optional demo content and do not run on reset.
 
 ## Table Domains
 
