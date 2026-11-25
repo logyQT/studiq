@@ -5521,8 +5521,9 @@ migration, no new table).
   errors; `lint` **1580** files 0 warnings; unit **323 files / 5055 passed, 1
   skipped**; `review:static` clean (5/5 rule tests); `knip` clean;
   `format:check` **2258** files; `dup:base` no new clones (**210** in the tree);
-  `pr:size` **330/400** (388 test + 151 doc lines excluded). No build/serve/reset
-  was run by this slice — the coordinator owns them.
+  `pr:size` **403/400** (572 test + 239 doc lines excluded) — the review fix
+  added 73 reviewable lines, so the PR carries `size:exception`. No
+  build/serve/reset was run by this slice — the coordinator owns them.
 - **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
   the compensation made a no-op (`if (profileToWrite === null) return;` →
   `return;`) → "restores the previous profile when the permission upsert fails"
