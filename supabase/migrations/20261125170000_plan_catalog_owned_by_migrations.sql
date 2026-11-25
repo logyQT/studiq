@@ -195,7 +195,8 @@ on conflict (key) do update set
   currency = excluded.currency,
   sort_order = excluded.sort_order,
   scope = excluded.scope,
-  audience = excluded.audience;
+  audience = excluded.audience,
+  updated_at = now();
 
 -- ==========================================================
 -- 5. Every plan outside the matrix is retired. Rows that point at a retired
@@ -205,12 +206,38 @@ on conflict (key) do update set
 --    silently deleted.
 -- ==========================================================
 update public.profiles p
-set personal_plan_key = 'base'
+set personal_plan_key = case p.account_type
+  when 'educator' then 'lite'
+  when 'manager' then 'solo'
+  else 'base'
+end
 where not exists (select 1 from plan_catalog_plans m where m.plan_key = p.personal_plan_key);
 
-update public.organizations o
-set plan = 'launch'
-where not exists (select 1 from plan_catalog_plans m where m.plan_key = o.plan);
+-- An organization on a retired plan moves to `launch` silently otherwise: a
+-- paying `school`/`premium` org would lose its limits with nothing in the
+-- `db push` output. Report the count and the keys instead of aborting — the
+-- seat-pool check below already refuses a paid licence.
+do $$
+declare
+  v_rows int;
+  v_keys text;
+begin
+  select string_agg(distinct o.plan, ', ' order by o.plan)
+    into v_keys
+  from public.organizations o
+  where not exists (select 1 from plan_catalog_plans m where m.plan_key = o.plan);
+
+  update public.organizations o
+  set plan = 'launch'
+  where not exists (select 1 from plan_catalog_plans m where m.plan_key = o.plan);
+  get diagnostics v_rows = row_count;
+
+  if v_rows > 0 then
+    raise notice
+      'plan catalogue: re-pointed % organization(s) from retired plan(s) [%] to launch — check their limits',
+      v_rows, v_keys;
+  end if;
+end $$;
 
 do $$
 declare
@@ -282,29 +309,32 @@ begin
       using errcode = '23514';
   end if;
 
-  -- … with the expected scope/audience pair.
+  -- … with the expected scope/audience pair and price. `price_monthly` is
+  -- pinned here so a digit typo (`69900 → 6990`) fails the migration instead
+  -- of shipping a wrong ladder to the Stripe bootstrap.
   select count(*) into v_bad
   from public.subscription_plans pl
   left join (values
-    ('base', 'personal', 'student'),
-    ('lite', 'personal', 'educator'),
-    ('launch', 'organization', null),
-    ('spark', 'personal', 'student'),
-    ('guide', 'personal', 'educator'),
-    ('team', 'organization', null),
-    ('ace', 'personal', 'student'),
-    ('creator', 'personal', 'educator'),
-    ('hub', 'organization', null),
-    ('pro', 'personal', 'student'),
-    ('master', 'personal', 'educator'),
-    ('campus', 'organization', null),
-    ('solo', 'personal', 'manager')
-  ) as expected(key, scope, audience) on expected.key = pl.key
+    ('base', 'personal', 'student', 0),
+    ('lite', 'personal', 'educator', 0),
+    ('launch', 'organization', null, 0),
+    ('spark', 'personal', 'student', 999),
+    ('guide', 'personal', 'educator', 1999),
+    ('team', 'organization', null, 9900),
+    ('ace', 'personal', 'student', 1999),
+    ('creator', 'personal', 'educator', 3999),
+    ('hub', 'organization', null, 29900),
+    ('pro', 'personal', 'student', 3999),
+    ('master', 'personal', 'educator', 7999),
+    ('campus', 'organization', null, 69900),
+    ('solo', 'personal', 'manager', 0)
+  ) as expected(key, scope, audience, price) on expected.key = pl.key
   where expected.key is null
      or pl.scope is distinct from expected.scope
-     or pl.audience is distinct from expected.audience;
+     or pl.audience is distinct from expected.audience
+     or pl.price_monthly is distinct from expected.price;
   if v_bad <> 0 then
-    raise exception 'guard: % plan rows have an unexpected key/scope/audience', v_bad
+    raise exception 'guard: % plan rows have an unexpected key/scope/audience/price', v_bad
       using errcode = '23514';
   end if;
 

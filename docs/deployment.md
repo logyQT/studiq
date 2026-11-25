@@ -277,7 +277,11 @@ Preconditions:
   (`20261125170000_plan_catalog_owned_by_migrations.sql`); the catalogue is
   migration-owned since #1494 and `supabase/seeds/00_plans.sql` no longer writes
   plan rows. After the migrations are applied, confirm the live ladder with this
-  read-only query — it returns the 9 paid plans only while their amounts match:
+  read-only query — it returns the 9 paid plans only while their amounts match.
+  **Pass condition: exactly 9 rows.** The migration inserts those 9 paid keys, so
+  fewer rows means the migration did not apply (or a price differs from the
+  ladder) — stop and fix the catalog before continuing; an empty result is not a
+  timing artefact:
 
   ```sql
   SELECT p.key, p.price_monthly

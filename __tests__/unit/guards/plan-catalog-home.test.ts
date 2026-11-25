@@ -83,7 +83,6 @@ const REMEDY =
 
 describe('the plan catalogue has one home (#1494)', () => {
   it('keeps the seed file config.toml references', () => {
-    expect(fs.existsSync(path.join(SEEDS_ROOT, '00_plans.sql'))).toBe(true);
     expect(sqlFiles(SEEDS_ROOT).map(relative)).toContain('supabase/seeds/00_plans.sql');
   });
 

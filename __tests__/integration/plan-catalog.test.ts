@@ -29,6 +29,8 @@ const MIGRATION_FILE = path.join(
 interface PlanMatrixEntry {
   scope: 'personal' | 'organization';
   audience: 'student' | 'educator' | 'manager' | null;
+  /** `price_monthly` in minor units; a typo here must not pass the guard. */
+  price: number;
   entitlements: string[];
   limits: Record<string, number>;
 }
@@ -37,6 +39,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   base: {
     scope: 'personal',
     audience: 'student',
+    price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 100,
@@ -52,6 +55,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   lite: {
     scope: 'personal',
     audience: 'educator',
+    price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 100,
@@ -67,6 +71,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   launch: {
     scope: 'organization',
     audience: null,
+    price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 100,
@@ -82,6 +87,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   spark: {
     scope: 'personal',
     audience: 'student',
+    price: 999,
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 500,
@@ -95,6 +101,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   guide: {
     scope: 'personal',
     audience: 'educator',
+    price: 1999,
     entitlements: ['flashcards', 'quiz', 'quiz.templates'],
     limits: {
       max_flashcards: 500,
@@ -110,6 +117,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   team: {
     scope: 'organization',
     audience: null,
+    price: 9900,
     entitlements: ['flashcards', 'quiz', 'quiz.templates'],
     limits: {
       max_flashcards: 500,
@@ -125,6 +133,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   ace: {
     scope: 'personal',
     audience: 'student',
+    price: 1999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'stats.insights'],
     limits: {
       max_flashcards: 2000,
@@ -138,6 +147,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   creator: {
     scope: 'personal',
     audience: 'educator',
+    price: 3999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: 2000,
@@ -153,6 +163,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   hub: {
     scope: 'organization',
     audience: null,
+    price: 29900,
     entitlements: ['ai.chat', 'branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: 2000,
@@ -168,6 +179,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   pro: {
     scope: 'personal',
     audience: 'student',
+    price: 3999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'stats.insights'],
     limits: {
       max_flashcards: -1,
@@ -181,6 +193,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   master: {
     scope: 'personal',
     audience: 'educator',
+    price: 7999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: -1,
@@ -196,6 +209,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   campus: {
     scope: 'organization',
     audience: null,
+    price: 69900,
     entitlements: ['ai.chat', 'branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: -1,
@@ -211,6 +225,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   solo: {
     scope: 'personal',
     audience: 'manager',
+    price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 100,
@@ -265,7 +280,9 @@ interface CatalogSnapshot {
   limits: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
 }
 
-async function readSnapshot(sql: postgres.Sql): Promise<CatalogSnapshot> {
+// `ISql` is what a pooled handle and a transaction handle share, so the same
+// reader works inside and outside `sql.begin`.
+async function readSnapshot(sql: postgres.ISql): Promise<CatalogSnapshot> {
   return {
     plans: await sql<
       CatalogSnapshot['plans']
@@ -281,7 +298,12 @@ async function readSnapshot(sql: postgres.Sql): Promise<CatalogSnapshot> {
 
 describe('plan catalogue is migration-owned (#1494)', () => {
   let service: SupabaseClient<Database>;
-  let planRows: Array<{ key: string; scope: string; audience: string | null }>;
+  let planRows: Array<{
+    key: string;
+    scope: string;
+    audience: string | null;
+    price_monthly: number | null;
+  }>;
   let entitlementRows: Array<{ plan_key: string; entitlement_key: string }>;
   let limitRows: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
   let flagKeys: string[];
@@ -291,7 +313,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, scope, audience')
+      .select('key, scope, audience, price_monthly')
       .order('key');
     if (plansError) throw new Error(`[plan-catalog] plan lookup failed: ${plansError.message}`);
     planRows = dbRows(plans);
@@ -340,16 +362,19 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     );
   }
 
-  it('is exactly the thirteen matrix plans, with the expected scope/audience', () => {
+  it('is exactly the thirteen matrix plans, with the expected scope/audience/price', () => {
     expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
       const row = planRows.find((plan) => plan.key === key);
       if (!row) throw new Error(`subscription_plans row missing for ${key}`);
 
-      expect({ scope: row.scope, audience: row.audience }, key).toEqual({
+      // `price` is pinned here because the closing guard covers it too: a
+      // digit typo (`69900 → 6990`) must fail one of the two, not slip through.
+      expect({ scope: row.scope, audience: row.audience, price: row.price_monthly }, key).toEqual({
         scope: expected.scope,
         audience: expected.audience,
+        price: expected.price,
       });
     }
   });
@@ -374,24 +399,64 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     expect(flagKeys).toEqual(expect.arrayContaining(EXPECTED_FLAGS));
   });
 
-  it('re-applying the migration twice leaves the same matrix', async () => {
+  it('replaying the migration twice deletes rows outside the matrix, in a rolled-back transaction', async () => {
     const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
     const before = await withDirect(readSnapshot);
 
-    await withDirect((sql) => sql.unsafe(migrationSql));
-    await withDirect((sql) => sql.unsafe(migrationSql));
+    // The replay runs inside one transaction that ends by throwing, so this
+    // test touches no shared row: the live database is compared with `before`
+    // below after the rollback. Running the file for real (the previous
+    // version) deleted every plan outside the matrix on each test run — which
+    // includes the org-pinned plans #1495 adds — and raced every other
+    // integration file that creates a plan or a seat pool.
+    const rollback = new Error('plan-catalog replay: roll back');
+    let duringRun: CatalogSnapshot | undefined;
+    let survivors: { plans: number; entitlements: number; limits: number } | undefined;
 
-    const after = await withDirect(readSnapshot);
-    expect(after).toEqual(before);
+    const replay = withDirect(async (sql) => {
+      await sql.begin(async (tx) => {
+        await tx`insert into public.subscription_plans
+            (key, name, price_monthly, currency, sort_order, scope, audience)
+          values ('zz_rogue_plan', 'Rogue replay plan', 0, 'PLN', 99, 'personal', 'student')`;
+        await tx`insert into public.plan_entitlements (plan_key, entitlement_key)
+          values ('zz_rogue_plan', 'quiz')`;
+        await tx`insert into public.plan_limits (plan_key, limit_key, limit_value)
+          values ('zz_rogue_plan', 'max_flashcards', 1)`;
 
-    // The exact sizes pin "declarative, not additive": a leftover row or a
-    // second application that appended would change the counts.
-    expect(after.plans).toHaveLength(Object.keys(MATRIX).length);
-    expect(after.entitlements).toHaveLength(
-      Object.values(MATRIX).reduce((total, entry) => total + entry.entitlements.length, 0),
-    );
-    expect(after.limits).toHaveLength(
-      Object.values(MATRIX).reduce((total, entry) => total + Object.keys(entry.limits).length, 0),
-    );
+        await tx.unsafe(migrationSql);
+        await tx.unsafe(migrationSql);
+
+        duringRun = await readSnapshot(tx);
+        const [rogue] = await tx<
+          Array<{ plans: number; entitlements: number; limits: number }>
+        >`select
+            (select count(*) from public.subscription_plans where key = 'zz_rogue_plan')::int as plans,
+            (select count(*) from public.plan_entitlements where plan_key = 'zz_rogue_plan')::int as entitlements,
+            (select count(*) from public.plan_limits where plan_key = 'zz_rogue_plan')::int as limits`;
+        survivors = rogue;
+
+        throw rollback;
+      });
+    });
+
+    // A different error must not be mistaken for the rollback signal.
+    await expect(replay).rejects.toBe(rollback);
+    if (!duringRun || !survivors) {
+      throw new Error('the replay transaction never reached its assertions');
+    }
+
+    // The rogue plan and both of its child rows are gone. `before`/`after`
+    // equality could not prove this: an additive-only file leaves a clean
+    // database unchanged, so it passed while proving nothing.
+    expect(survivors).toEqual({ plans: 0, entitlements: 0, limits: 0 });
+
+    // The thirteen-row matrix, 46 entitlement rows and 98 limit rows survive
+    // both applications.
+    expect(duringRun.plans).toHaveLength(13);
+    expect(duringRun.entitlements).toHaveLength(46);
+    expect(duringRun.limits).toHaveLength(98);
+
+    // The rollback is clean: the live database never saw any of it.
+    expect(await withDirect(readSnapshot)).toEqual(before);
   });
 });
