@@ -486,6 +486,13 @@ jobs:
           SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
           DB_URL=$(jq -r .env.DB_URL <<<"$status")
           MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
+          # The invitation-mail suites send to Mailpit over SMTP (#1032). The CLI
+          # reports that port only under `endpoints`; without it nothing is sent.
+          MAILPIT_SMTP_PORT=$(jq -r '.endpoints["mail.smtp"].port // empty' <<<"$status")
+          if [ -z "$MAILPIT_SMTP_PORT" ]; then
+            echo "::error::supabase stack status reports no mail.smtp port"
+            exit 1
+          fi
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -494,6 +501,7 @@ jobs:
             # default-group half of #1067; it is skipped without this URL.
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "MAILPIT_URL=$MAILPIT_URL"
+            echo "MAILPIT_SMTP_PORT=$MAILPIT_SMTP_PORT"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "APP_ENV=test"
             echo "PAYMENT_DRIVER=mock"

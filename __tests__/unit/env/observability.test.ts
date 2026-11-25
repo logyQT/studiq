@@ -13,6 +13,7 @@ interface StackEnv {
   publishableKey: string | null;
   secretKey: string | null;
   mailUrl: string | null;
+  mailSmtpPort: number | null;
   studioUrl: string | null;
 }
 
@@ -79,6 +80,7 @@ const stackEnv: StackEnv = {
   publishableKey: null,
   secretKey: null,
   mailUrl: null,
+  mailSmtpPort: null,
   studioUrl: null,
 };
 
