@@ -317,8 +317,9 @@ reviews:
     - path: '.github/workflows/**'
       instructions: |
         - `verify.yml` pins the Bun canary in `env.BUN_VERSION`, which must stay in
-          step with `scripts/check-bun-version.ts` (the linter is canary-only).
-          Flag a bump that touches one without the other.
+          step with `scripts/check-bun-version.ts` (stable 1.4.5 still lacks
+          `bun lint`, so the linter comes from a canary). Flag a bump that touches
+          one without the other.
         - `verify.yml` jobs start in parallel; `checks` is a reported result,
           not a gate. Do not add `needs: checks` to test/build jobs — gating
           delays every result by the lint/typecheck runtime. `cache-warm.yml`

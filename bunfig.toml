@@ -1,7 +1,7 @@
 # Bun-native toolchain.
 #
 # Linting and formatting are Bun built-ins (`bun lint`, `bun fmt`).
-# Requires Bun >= 1.4.4 — see `engines.bun` in package.json and
+# Requires Bun >= 1.4.5 — see `engines.bun` in package.json and
 # `scripts/check-bun-version.ts`.
 
 # Supply-chain gate, half one of two: Bun refuses to *resolve* a package

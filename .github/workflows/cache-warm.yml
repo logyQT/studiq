@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUN_VERSION: 1.4.4-canary.20261027.1
+  BUN_VERSION: 1.4.5-canary.20261125.1
 
 jobs:
   checks:
