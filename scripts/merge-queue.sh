@@ -51,16 +51,6 @@ say() { printf '%s\n' "$*"; log "$*"; }
 
 # The required contexts come from the branch's own rules, so this script cannot
 # drift from the ruleset. The fallback is what `main` requires today.
-required_contexts() {
-  local contexts
-  contexts=$(gh api "repos/{owner}/{repo}/rules/branches/${BASE_BRANCH:-main}" \
-    --jq '[.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context]' 2>/dev/null)
-  if [ -z "$contexts" ] || [ "$contexts" = "null" ]; then
-    contexts='["checks","unit","integration","e2e (chromium)","e2e (firefox)"]'
-  fi
-  printf '%s' "$contexts"
-}
-
 record() { # record <pr> <verdict> <detail>
   printf '{"pr":%s,"verdict":"%s","detail":%s,"at":"%s"}\n' \
     "$1" "$2" "$(printf '%s' "$3" | jq -R -s .)" "$(date -u +%FT%TZ)" >"$STATE_DIR/$1.json"
@@ -68,12 +58,17 @@ record() { # record <pr> <verdict> <detail>
 
 pr_field() { gh pr view "$1" --json "$2" --jq ".$2" 2>/dev/null; }
 
-required_green() {
-  gh pr checks "$1" --json name,state 2>/dev/null | jq -e --argjson req "$REQUIRED_JSON" '
-    # A job skipped by the scope job narrowing reports success to branch
-    # protection, so it satisfies a required context too — a docs-only PR has
-    # unit/integration SKIPPED, not SUCCESS, and would otherwise wait forever.
-    . as $all | all($req[]; . as $n | any($all[]; .name == $n and (.state == "SUCCESS" or .state == "SKIPPED")))' >/dev/null 2>&1
+# Whether every check has settled, and whether any of them failed. Name-matching
+# the required contexts is deliberately avoided: a scope-narrowed job reports
+# SKIPPED (a docs-only PR skips unit/integration) and GitHub still counts it as
+# satisfying the required context, so a name list has to re-encode that rule and
+# gets it wrong. "Nothing still running, nothing failed, and GitHub says the PR
+# is mergeable" is the same question asked of the authority instead.
+checks_settled() { # prints "<pending> <failed>"
+  gh pr checks "$1" --json state 2>/dev/null | jq -r '
+    [ .[] | select(.state == "IN_PROGRESS" or .state == "QUEUED" or .state == "PENDING" or .state == "WAITING" or .state == "EXPECTED") ] | length as $p
+    | [ .[] | select(.state == "FAILURE" or .state == "CANCELLED" or .state == "TIMED_OUT" or .state == "ERROR") ] | length as $f
+    | "\($p) \($f)"' 2>/dev/null || echo "0 0"
 }
 
 any_failed() {
@@ -93,8 +88,8 @@ wait_for_head() { # wait_for_head <pr> <old-sha>
 }
 
 merge_one() {
-  local pr=$1 start=$SECONDS state mergeable ms old
-  REQUIRED_JSON=$(required_contexts)
+  local pr=$1 start=$SECONDS state mergeable ms old pending failed
+  local settled="" merged=0
 
   state=$(pr_field "$pr" state)
   if [ "$state" = "MERGED" ]; then
@@ -111,16 +106,34 @@ merge_one() {
   while [ $((SECONDS - start)) -lt "$PR_TIMEOUT_SECONDS" ]; do
     mergeable=$(pr_field "$pr" mergeable)
     ms=$(pr_field "$pr" mergeStateStatus)
+    read -r pending failed <<<"$(checks_settled "$pr")"
+
+    if [ "$DRY_RUN" = "1" ]; then
+      # Report the state instead of waiting for it: a dry run must be usable
+      # against a PR whose checks are still running.
+      say "#$pr: state=$ms mergeable=$mergeable pending=${pending:-0} failed=${failed:-0} [dry run]"
+      record "$pr" DRY_RUN "state=$ms pending=${pending:-0} failed=${failed:-0}"
+      return 0
+    fi
+
+    if [ "${failed:-0}" -gt 0 ]; then
+      say "#$pr: a check failed - halting"
+      record "$pr" BLOCKED "check failure"
+      return 1
+    fi
 
     case "$ms" in
       CLEAN|HAS_HOOKS)
-        if required_green "$pr"; then
+        # CLEAN already means GitHub considers the required contexts satisfied
+        # and the head current. The extra wait makes the queue hold for the
+        # non-required legs too (qa-suite, pr-triage), which a merge would skip.
+        if [ "${pending:-0}" -eq 0 ]; then
           if [ "$DRY_RUN" = "1" ]; then
-            say "#$pr: green, would merge ($MERGE_METHOD) [dry run]"
+            say "#$pr: all checks settled and mergeable, would merge ($MERGE_METHOD) [dry run]"
             record "$pr" DRY_RUN "green"
             return 0
           fi
-          say "#$pr: required checks green, merging ($MERGE_METHOD)"
+          say "#$pr: all checks settled, merging ($MERGE_METHOD)"
           if gh pr merge "$pr" --"$MERGE_METHOD" --delete-branch >>"$LOG" 2>&1; then
             local sha
             sha=$(gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid[0:8]')
@@ -130,12 +143,7 @@ merge_one() {
           fi
           say "#$pr: merge command failed, retrying"
         else
-          if any_failed "$pr"; then
-            say "#$pr: a required check failed - halting"
-            record "$pr" BLOCKED "check failure"
-            return 1
-          fi
-          say "#$pr: waiting for required checks"
+          say "#$pr: mergeable but $pending check(s) still running, waiting"
         fi
         ;;
       BEHIND)
