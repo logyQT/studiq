@@ -223,7 +223,7 @@ describe('Assessment attempts: fresh-sample retakes and the budget (#1174)', () 
     expect(await errorOf(response)).toBe('NO_ATTEMPTS_LEFT');
   });
 
-  it('reopens the whole pool when the count is cleared (R7)', async () => {
+  it('refuses to change the count once the run is published (#1300)', async () => {
     mockUser(teacher.user);
     const cleared = await assignmentPut(
       createNextRequestWithParams(
@@ -238,16 +238,18 @@ describe('Assessment attempts: fresh-sample retakes and the budget (#1174)', () 
       ).request,
       { params: Promise.resolve({ id: assignmentId }) },
     );
-    expect(cleared.status, await cleared.clone().text()).toBe(200);
+    // Sampling rules are frozen at publish: reopening the pool on a live run would rewrite what
+    // later attempts are served. The draft path (an explicit null clears the count) is covered by
+    // the service unit tests.
+    expect(cleared.status, await cleared.clone().text()).toBe(409);
+    expect(await errorOf(cleared)).toBe('ASSESSMENT_LIVE');
 
-    // The composer's "Whole pool" is an explicit null, not an omission: an omitted key would leave
-    // the old count in place and the field could never be reopened.
     const { data: row } = await service
       .from('teacher_assignments')
       .select('attempt_item_count')
       .eq('id', assignmentId)
       .single();
-    expect(asJson<{ attempt_item_count: number | null }>(row).attempt_item_count).toBeNull();
+    expect(asJson<{ attempt_item_count: number | null }>(row).attempt_item_count).toBe(2);
   });
 });
 
@@ -454,6 +456,8 @@ describe('Assessment attempts: the same-item retake flag (#1174)', () => {
             // coincide.
             maxAttempts: 3,
             attemptItemCount: 1,
+            // Off by default (R6); sampling rules are frozen at publish, so it is chosen here.
+            allowSameItemRetake: true,
           }),
         },
         cookie(),
@@ -494,22 +498,6 @@ describe('Assessment attempts: the same-item retake flag (#1174)', () => {
       cookie(),
     );
     expect((await publishPost(publish.request, { params: publish.params })).status).toBe(200);
-
-    // The teacher turns the flag on for this assessment; it is off by default (R6).
-    const updated = await assignmentPut(
-      createNextRequestWithParams(
-        `http://localhost/api/v1/teacher/assignments/${assignmentId}`,
-        { id: assignmentId },
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ allowSameItemRetake: true }),
-        },
-        cookie(),
-      ).request,
-      { params: Promise.resolve({ id: assignmentId }) },
-    );
-    expect(updated.status, await updated.clone().text()).toBe(200);
   });
 
   afterAll(async () => {

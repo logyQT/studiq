@@ -220,6 +220,28 @@ function isLiveRun(run: { status?: string; start_time?: string | null }, now: Da
 }
 
 /**
+ * Whether an update changes one of the sampling rules a published run froze (#1300): the item
+ * count, the same-item retake flag and the unseen-only mode all decide what a later attempt is
+ * served. Re-sending the value a run already has is not a change, which is what the edit form does
+ * on every save, and an omitted key leaves the column alone.
+ */
+function changesSamplingRule(
+  current: {
+    unseen_only: boolean;
+    allow_same_item_retake: boolean;
+    attempt_item_count: number | null;
+  },
+  data: UpdateTeacherAssignmentInput,
+): boolean {
+  return (
+    (data.unseenOnly !== undefined && data.unseenOnly !== current.unseen_only) ||
+    (data.allowSameItemRetake !== undefined &&
+      data.allowSameItemRetake !== current.allow_same_item_retake) ||
+    (data.attemptItemCount !== undefined && data.attemptItemCount !== current.attempt_item_count)
+  );
+}
+
+/**
  * The two deadline edits a teacher may not make (R12/R20, #1191). A close at or before the window's
  * own start is not a window; and on a **live** run the new close must be in the future, because a
  * close at or before `now` ends the run — that is the explicit close, which records `closed_at`,
@@ -493,18 +515,23 @@ export class TeacherAssignmentService {
       if (refused) return refused;
     }
 
-    // The sampling mode is frozen at publish, like the item flags it changes (R8): flipping it on a
-    // live run would rewrite the samples of students who have not started yet. Re-sending the value
-    // the run already has — what the edit form does on every save — is not a change.
-    if (data.unseenOnly !== undefined) {
+    // Every sampling rule is frozen at publish, like the item flags (R8, #1300): changing the item
+    // count, the same-item retake flag or the unseen-only mode would rewrite what students who have
+    // not started yet are served. One read decides all three; re-sending a stored value is not a
+    // change. A scheduled run can be withdrawn to draft to change them, a live one cannot.
+    if (
+      data.unseenOnly !== undefined ||
+      data.allowSameItemRetake !== undefined ||
+      data.attemptItemCount !== undefined
+    ) {
       const { data: current, error: currentError } = await supabase
         .from('teacher_assignments')
-        .select('status, unseen_only')
+        .select('status, unseen_only, allow_same_item_retake, attempt_item_count')
         .eq('id', id)
         .maybeSingle();
       if (currentError) return toDbFailure(currentError);
       if (!current) return failure('NOT_FOUND');
-      if (current.status !== 'draft' && current.unseen_only !== data.unseenOnly) {
+      if (current.status !== 'draft' && changesSamplingRule(current, data)) {
         return failure('ASSESSMENT_LIVE');
       }
     }
