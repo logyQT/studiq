@@ -35,7 +35,7 @@
     "@studiq/server": "workspace:*",
     "@studiq/ui": "workspace:*",
     "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.119.0",
+    "@supabase/supabase-js": "^2.119.1",
     "@tanstack/react-query": "^5.108.0",
     "ai": "^7.0.176",
     "clsx": "^2.1.1",
