@@ -34,6 +34,10 @@ const doctor = await loadEnvModule<{
     answering: number;
     up: boolean;
   };
+  observabilitySummary(
+    codes: Record<Probe, number>,
+    options: { primary: string; primaryReady: boolean; authOk: boolean },
+  ): { up: boolean; label: string; notes: string[] };
 }>('commands/doctor.ts');
 
 const OBSERVABILITY_PORT_KEYS = [
@@ -249,6 +253,60 @@ describe('observabilityHealth', () => {
 
     expect(health.up).toBe(false);
     expect(doctor.observabilityLabel(health.healthy, 5)).toBe('partial (1/5)');
+  });
+});
+
+const READY_OPTIONS = { primary: '/workspaces/studiq', primaryReady: true, authOk: true };
+
+const LEGACY_STACK_NOTE =
+  'a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory';
+
+// The report's decision used to live in the call site, so only the probes were pinned: reverting
+// `up` to "any answer" or the label to the answering count left every test green (#1109 review).
+describe('observabilitySummary', () => {
+  it('says up only when every service serves', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 200, tempo: 200, loki: 200, prometheus: 200, otlp: 404 },
+      READY_OPTIONS,
+    );
+
+    expect(summary).toEqual({ up: true, label: 'up', notes: [] });
+  });
+
+  it('keeps the 3/5 boot window free of the legacy-stack note', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 200, tempo: 503, loki: 503, prometheus: 200, otlp: 404 },
+      READY_OPTIONS,
+    );
+
+    expect(summary).toEqual({
+      up: false,
+      label: 'partial (3/5)',
+      notes: [
+        'start it once from the primary checkout, never from a worktree',
+        'traces/logs are not readable by agents; do not substitute a local trace id',
+      ],
+    });
+  });
+
+  it('names a legacy stack only when it answers but serves nothing', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 503, tempo: 503, loki: 503, prometheus: 503, otlp: 503 },
+      READY_OPTIONS,
+    );
+
+    expect(summary.up).toBe(false);
+    expect(summary.label).toBe('down');
+    expect(summary.notes).toContain(LEGACY_STACK_NOTE);
+  });
+
+  it('does not name a legacy stack when nothing answers', () => {
+    const summary = doctor.observabilitySummary(
+      { grafana: 0, tempo: 0, loki: 0, prometheus: 0, otlp: 0 },
+      READY_OPTIONS,
+    );
+
+    expect(summary.notes).not.toContain(LEGACY_STACK_NOTE);
   });
 });
 
