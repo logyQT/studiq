@@ -8,6 +8,8 @@ const searchOf = (content: string) =>
     'search',
   ) ?? '';
 
+const accepts = (search: string) => QuestionListQuerySchema.safeParse({ search }).success;
+
 describe('problemQuestionHref (#654)', () => {
   it('opens the question’s bank searched for its whole text when it is short', () => {
     expect(problemQuestionHref({ bankId: 'bank-1', content: 'Ile to 2+2?' })).toBe(
@@ -24,7 +26,7 @@ describe('problemQuestionHref (#654)', () => {
   it.each([
     ['plain text', 'a'.repeat(250)],
     ['an emoji straddling the limit', `${'a'.repeat(99)}😀 dalej`],
-    ['nothing but emoji, one unit off the limit', `x${'😀'.repeat(80)}`],
+    ['nothing but emoji past the limit', '😀'.repeat(130)],
     ['a space at the limit', `${'a'.repeat(99)} dalej`],
     ['leading and trailing whitespace', `   ${'ż'.repeat(120)}   `],
   ])('cuts %s to a literal start of the text that the bank search accepts', (_label, content) => {
@@ -37,9 +39,15 @@ describe('problemQuestionHref (#654)', () => {
     expect(QuestionListQuerySchema.parse({ search }).search).toBe(search);
   });
 
-  it('keeps as much as the limit allows without splitting a character', () => {
-    expect(searchOf('a'.repeat(250))).toHaveLength(QUESTION_SEARCH_MAX_LENGTH);
-    expect(searchOf(`${'a'.repeat(98)}😀tail`)).toBe(`${'a'.repeat(98)}😀`);
-    expect(searchOf(`${'a'.repeat(99)}😀tail`)).toBe('a'.repeat(99));
+  it('keeps exactly as many characters as the limit counts, however wide each one is', () => {
+    expect(searchOf('a'.repeat(250))).toBe('a'.repeat(QUESTION_SEARCH_MAX_LENGTH));
+    expect(searchOf(`${'a'.repeat(99)}😀tail`)).toBe(`${'a'.repeat(99)}😀`);
+    expect(searchOf('😀'.repeat(150))).toBe('😀'.repeat(QUESTION_SEARCH_MAX_LENGTH));
+  });
+
+  // Guards the premise above: if the schema ever counted UTF-16 units, the cut would be too long.
+  it('has a limit the API counts in code points', () => {
+    expect(accepts('😀'.repeat(QUESTION_SEARCH_MAX_LENGTH))).toBe(true);
+    expect(accepts('a'.repeat(QUESTION_SEARCH_MAX_LENGTH + 1))).toBe(false);
   });
 });

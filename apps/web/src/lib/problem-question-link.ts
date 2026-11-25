@@ -2,17 +2,12 @@ import { QUESTION_SEARCH_MAX_LENGTH } from '@studiq/server/lib/question-search';
 import type { ProblematicQuestionStats } from '@studiq/server/models/stats.model';
 
 /**
- * The start of `text` that the bank search accepts. The limit counts UTF-16 units, so the
- * cut walks whole code points: half of an emoji would reach the URL as a replacement
- * character and match nothing.
+ * The start of `text` that the bank search accepts. The limit counts code points, as the
+ * schema's `max` does. Cutting by `slice` would count UTF-16 units and could leave half of
+ * an emoji, which reaches the URL as a replacement character and matches nothing.
  */
 function searchPrefix(text: string): string {
-  let prefix = '';
-  for (const character of text.trim()) {
-    if (prefix.length + character.length > QUESTION_SEARCH_MAX_LENGTH) break;
-    prefix += character;
-  }
-  return prefix.trim();
+  return Array.from(text.trim()).slice(0, QUESTION_SEARCH_MAX_LENGTH).join('').trim();
 }
 
 /** Where a problem-question alert leads: its bank, searched down to the question. */
