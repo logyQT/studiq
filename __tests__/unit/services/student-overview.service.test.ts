@@ -131,7 +131,7 @@ describe('StudentOverviewService.getOverview', () => {
           id: 'att-1',
           total_questions: 10,
           started_at: '2026-10-27T10:00:00Z',
-          config: { title: 'Fizyka' },
+          config: { topicIds: ['topic-1'] },
           // 4 of the 10 are answered; an empty selection and blank text do not count.
           draft_answers: {
             q1: { selected_answer_id: 'a', text_answer: null },
@@ -150,7 +150,7 @@ describe('StudentOverviewService.getOverview', () => {
 
     expect(result.success && result.data.resume.quiz).toEqual({
       attemptId: 'att-1',
-      title: 'Fizyka',
+      title: null,
       answered: 4,
       total: 10,
       startedAt: '2026-10-27T10:00:00Z',
@@ -264,6 +264,28 @@ describe('StudentOverviewService.getOverview', () => {
     const result = await s.getOverview(ctx, NOW);
 
     expect(result.success && result.data.activity[0]?.scorePct).toBe(50);
+  });
+
+  it('leaves the title null when a practice quiz config carries none (the UI renders neutral copy)', async () => {
+    const { service: s } = service({
+      completed: [
+        {
+          id: 'quiz-1',
+          score: 2,
+          total_questions: 5,
+          total_points: null,
+          completed_at: '2026-10-27T08:00:00Z',
+          is_assignment_attempt: false,
+          // A real GenerateQuizInput never carries `title`.
+          config: { topicIds: ['topic-1'] },
+          teacher_assignments: null,
+        },
+      ],
+    });
+
+    const result = await s.getOverview(ctx, NOW);
+
+    expect(result.success && result.data.activity[0]?.title).toBeNull();
   });
 
   it('leaves the percentage out when a practice quiz has no closed question', async () => {
