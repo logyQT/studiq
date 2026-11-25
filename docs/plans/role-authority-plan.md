@@ -18,20 +18,20 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                       | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | -------------------------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                    | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                    | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                    | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                    | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                    | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                              | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                              | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                    | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                         | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-24 |
-| 7     | delete, full QA, close                         | pending | —                                                        | —   | all 192 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                        | —   | all 192 + E2E             | 2026-11-19 |
+| Phase | What                                           | State   | PR                                                                    | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------- | --------------------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                 | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                 | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                 | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                 | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                 | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                           | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged  | #1406–#1409                                                           | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged  | #1410                                                                 | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                      | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d 2960d1b6 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
+| 7     | delete, full QA, close                         | pending | —                                                                     | —   | all 192 + E2E             |            |
+| 8     | extendability audit (release gate)             | pending | —                                                                     | —   | all 192 + E2E             | 2026-11-19 |
 
 **Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
@@ -46,9 +46,9 @@ API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: 6d (role editor: caller-scope awareness and the
-atomic entitlement-profile write; the `/me/plan` union badge)**, then 6e
-(Teacher assignment reads). 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
+mints the claim. **Next slice: 6e (Teacher assignment reads)**; **6d** (one role
+save, caller-scope awareness in the editor, the `/me/plan` union badge) is
+merged as `2960d1b6`. 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
 6c `14262016` (#1428) and **6b-1** `999c45ab` (#1429 — route rules,
 `resolveDashboardArea`, the landing) are merged; **6b-2** (`AreaGate`, nav-item
 gates, `/manage` classification, `checkout-org`, AUT-20) is merged as
@@ -5421,9 +5421,103 @@ table).
   green), and `/manage`'s counters back on the role name turned MGR-01's
   Wykładowcy **2 → 1** (**KILLED**); both reverted and re-verified green.
 
-**Still open in phase 6:** 6d role-editor behaviour (caller-scope awareness,
-atomic profile write) and the `/me/plan` union badge; 6e the Teacher
-assignment-read widening.
+**6d — one role save, caller-scope awareness and the `/me/plan` union badge**
+(merged as `2960d1b6`; no SQL, no migration, no new table).
+
+- **One request, profile first, compensated.** `SetRolePermissionsSchema` gains
+  `entitlementProfile: EntitlementProfileSchema.nullable().optional()` — the
+  existing enum reused, not a new one. `null` **and** omitted both mean "this
+  save does not manage the profile" (the system-role editor sends `null`); they
+  never mean "clear it", so a role keeps its profile unless the payload names a
+  different value. `OrgRoleController.setPermissions` keeps its single
+  `org.role.manage` gate and passes the field through in the same
+  `SetRolePermissionsInput`.
+- **The service, in order.** `OrgRoleService.setPermissions` validates the
+  profile with `isEntitlementProfile` (it is a direct entry point too) and
+  answers `UNPROCESSABLE_ENTITY` before it reads or writes anything. The role
+  read now selects `id, name, is_system, entitlement_profile,
+org_role_permissions(permission_key, scope)`; a requested profile equal to the
+  stored one is a no-op (no `org_roles` update). Every existing authorization —
+  complete payload, cross-org 404, self-edit D21, grant/removal coverage, the
+  last-`org.role.manage`-holder 409 — still runs **before any write**. The write
+  order is **profile first, then the target-first upsert + prune**.
+- **Compensation, not a transaction.** The two writes are not one database
+  transaction and the code/docblock do not claim one: when the profile write
+  succeeds and either permission write then fails, one scoped update
+  (`.eq('id').eq('organization_id')`) restores the stored profile and the
+  original DB failure is returned. A restore that itself fails is logged through
+  `@studiq/server/lib/log` and not retried — the next save rewrites both. The
+  D20 log record now also carries `role.is_system` and
+  `entitlement_profile.before/after`.
+- **The web save is one PUT.** `manage/roles/page.tsx#handleSavePermissions`
+  issues one `apiPut(/organization/roles/:id/permissions, { permissions,
+entitlementProfile })` (null for system roles), keeps
+  `invalidateAuthority(queryClient)` and shows one toast: the second PUT and the
+  half-saved role it could leave are gone.
+- **The two-plane grant rule, in the UI.** New
+  `apps/web/src/lib/role-grants.ts` — `grantableScopes`, `narrowestGrantable`,
+  `canGrant` — built on `scopeCovers`, `PERMISSIONS` and
+  `isPermissionCatalogKey` from `@studiq/authz` (R40; the rank table is never
+  copied). It returns the key's `allowedScopes` the caller's own scope covers,
+  and every allowed scope for an `org.admin` holder at organization scope — the
+  same exemption the server's `grantDenied` applies (D16/D21). The editor reads
+  the raw map with `usePermissions()` (`.data?.permissions`) while
+  `usePermission()` keeps answering `canBuild`. A checkbox or radio the caller
+  cannot grant is **disabled** with a `title`; a stored grant beyond the caller's
+  authority stays visible and non-editable (removal needs authority over the
+  held scope, and the server decides). No key is ever hidden: a hidden key's
+  absence from the complete payload would delete its grant (ADR §9's
+  completeness contract). A new grant starts at `narrowestGrantable`, falling
+  back to `allowedScopes[0]` only while the map is unresolved (then the server's
+  403 answers). An inline note under the dialog header states the rule in both
+  locales (`perms_authority_hint`, `perms_scope_denied`).
+- **The ordering the default rests on is pinned.**
+  `__tests__/unit/lib/org-roles.test.ts` now asserts every catalog key's
+  `allowedScopes` is ordered narrowest→widest (own < group < organization), so
+  `[0]` is a declared rule, not declaration luck (design §4.3).
+- **`PlanUnionBadge`.** New
+  `apps/web/src/components/billing/plan-union-badge.tsx`
+  (`{ plan: PlanInfo; plans?: PlanInfo[]; className?: string }`):
+  `sources.length <= 1` renders the catalogue name of `plan.key` (falling back to
+  `plan.name`); several sources render
+  `A (origin) + B (origin)` from the catalogue the client already holds, with
+  `origin_org` / `origin_seat` / `origin_personal` in `BillingPage` (pl:
+  „organizacja”, „licencja”, „plan osobisty”). An unknown layer key falls back to
+  the key, never drops the layer. It renders inside the existing
+  `Badge variant="secondary"` weight and is used by `/app|/edu/billing` (the
+  header description), `/manage/billing` (the plan badge) and `/manage/settings`
+  (the plan row, size preserved through `className`); `/pricing` (a catalogue
+  page) and `manage/seats`' per-pool labels are untouched.
+- **3b's rule stands and is now provably pinned.** The feature/limit lists under
+  the header are the **catalogue row's**
+  (`plans.find(p => p.key === plan.key)`), never `plan.features`/`plan.limits`:
+  the badge states provenance, not a merged feature list under one plan's name.
+  `__tests__/unit/app/billing-page.test.ts` carried that assertion since 3b (the
+  design's "no test" note was stale); the phase-6d mutation run proves it.
+  `__tests__/unit/app/plan-union-badge.test.ts` covers one layer, three layers
+  and an unknown key.
+- **Gates on this branch (final HEAD, measured).** `typecheck:all` (root 983,
+  web 875, server 220, authz 7, ui 65 files) and `typecheck:admin` (151) 0
+  errors; `lint` **1580** files 0 warnings; unit **323 files / 5045 passed, 1
+  skipped**; `review:static` clean (5/5 rule tests); `knip` clean;
+  `format:check` **2258** files; `dup:base` no new clones (**210** in the tree);
+  `pr:size` **328/400** (388 test + 0 doc lines excluded). No build/serve/reset
+  was run by this slice — the coordinator owns them.
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  the compensation made a no-op (`if (profileToWrite === null) return;` →
+  `return;`) → "restores the previous profile when the permission upsert fails"
+  **KILLED**; `grantableScopes` filtered by the key's first scope only → "offers
+  own and group for a content key to a group-scope caller" **KILLED**; the
+  `org.admin` exemption dropped → "lets an org.admin holder at organization
+  scope grant every allowed scope" **KILLED**; `CONTENT_SCOPES` swapped to
+  `group, own, organization` → "lists every key narrowest to widest"
+  **KILLED**; `shown.features` swapped for `plan.features` → "renders the
+  feature and limit lists from the catalogue row, not the effective union"
+  **KILLED**.
+
+**Still open in phase 6:** 6e the Teacher assignment-read widening. 6d closed
+the role editor's caller-scope awareness and the atomic profile write, and the
+`/me/plan` union badge.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
 optional argument: the default `true` is the common case and keeping it optional
