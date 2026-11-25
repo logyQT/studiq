@@ -30,17 +30,23 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 4     | seats and personal plans                       | merged | #1410                                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
 | 5     | enforcement closure                            | merged | #1411, #1414–#1416, #1421, #1424                                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
 | 6     | UI and cache                                   | merged | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e #1459 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
-| 7     | delete, full QA, close                         | merged | PR 1 #1475 (`7fa5663f`); PR 2 `docs/authority-7-close` (corpus evidence)     | —   | all 193 + E2E             | 2026-11-25 |
-| 8     | extendability audit (release gate)             | active | —                                                                            | —   | all 193 + E2E             | 2026-11-25 |
+| 7     | delete, full QA, close                         | merged | PR 1 #1475 (`7fa5663f`); PR 2 #1476 (`b08321d8`) — **closed by phase 8**     | —   | all 193 + E2E             | 2026-11-25 |
+| 8     | extendability audit (release gate)             | merged | #1486 (this PR)                                                              | —   | all 193 + E2E             | 2026-11-25 |
 
-**Next action:** **phase 7 PR 1 merged** as `7fa5663f` (#1475) — the legacy
-surface is gone and AI tokens are metered atomically; the review found and the
-fix closed an unbounded-quota defect (R50). **PR 2** (`docs/authority-7-close`)
-carries the full 193-case QA + E2E evidence and this close-out. **Phase 8**
-(`brief-8.md`) is **measured on `feat/authority-8`** — the simulation passed
-(one migration + one constant + one surface call, resolver diff 0) and the
-deliverable is [extendability.md](extendability.md); phase 7 closes when it
-lands (D23).
+**Next action:** **the programme is complete.** Phase 7 merged as `7fa5663f`
+(#1475) and `b08321d8` (#1476); phase 8's extendability audit passed and closed
+phase 7 on 2026-11-25 (D23) — one migration + one catalog constant + one surface
+call, resolver diff 0, both org vintages identical, removal clean, deploy-order
+matrix fail-closed with no crash. The checklists and the "when there are users"
+answers live in [extendability.md](extendability.md).
+**Open follow-ups (owned):** **#1484** the public plan list ignores the
+entitlement flags and the TS catalog; **#1483** notify org admins when a new
+entitlement is grantable; **#1482** move the daily-stats triggers behind a
+definer function and revoke user writes to `user_daily_activity` (the phase-7
+accepted residual); **#1478** the merge queue cannot land a docs-only PR;
+row 14 (per-user personal default permission set) still defers. A
+default-outside-any-plan layer is **proposed** as D37 and needs an ADR-0015
+amendment before anyone builds it.
 Phase 6 closed with **6e** (`6e92e52d`, #1459). **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
 (#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
@@ -5906,7 +5912,7 @@ the remaining gate.
 on this checkout's own stack with the app served and existing orgs/users. The
 deliverable is committed; the simulation is reverted. Specified in
 [role-authority-rollout.md](role-authority-rollout.md#8--extendability-audit-post-phase-7-release-gate);
-phase 7 is not closed until it passes (D23).
+**Phase 7 is closed as of 2026-11-25** — this audit passed (D23).
 
 **Acceptance: one migration + one catalog constant + one surface call, zero
 resolver changes.** Measured by adding the fictional `voice.notes`
