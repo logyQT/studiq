@@ -226,7 +226,7 @@ describe('StudentOverviewService.getOverview', () => {
           completed_at: '2026-10-27T10:00:00Z',
           is_assignment_attempt: true,
           config: null,
-          teacher_assignments: { title: 'Kartkówka', show_results: true },
+          teacher_assignments: { id: 'as-1', title: 'Kartkówka', show_results: true },
         },
       ],
     });
@@ -240,8 +240,17 @@ describe('StudentOverviewService.getOverview', () => {
       'quiz_completed',
     ]);
     expect(activity[0]).toMatchObject({ cardsStudied: 9, scorePct: null, attemptId: null });
-    expect(activity[1]).toMatchObject({ title: 'Kartkówka', scorePct: 70, attemptId: 'asg-1' });
+    expect(activity[1]).toMatchObject({
+      title: 'Kartkówka',
+      scorePct: 70,
+      attemptId: 'asg-1',
+      assignmentId: 'as-1',
+      resultsWithheld: false,
+    });
     expect(activity[2]).toMatchObject({ title: 'Quiz A', scorePct: 80 });
+    for (const own of [activity[0], activity[2]]) {
+      expect(own).toMatchObject({ assignmentId: null, resultsWithheld: false });
+    }
   });
 
   it('uses the closed questions as the denominator of a practice quiz, like the review page', async () => {
@@ -321,14 +330,30 @@ describe('StudentOverviewService.getOverview', () => {
           completed_at: '2026-10-27T10:00:00Z',
           is_assignment_attempt: true,
           config: null,
-          teacher_assignments: { title: 'Sprawdzian', show_results: false },
+          teacher_assignments: { id: 'as-2', title: 'Sprawdzian', show_results: false },
         },
       ],
     });
 
     const result = await s.getOverview(ctx, NOW);
 
-    expect(result.success && result.data.activity[0]?.scorePct).toBeNull();
+    expect(result.success && result.data.activity[0]).toMatchObject({
+      scorePct: null,
+      assignmentId: 'as-2',
+      resultsWithheld: true,
+    });
+  });
+
+  // #1142: the line can only link to an assignment whose id the embed returns.
+  it('asks for the assignment id along with its title and result setting', async () => {
+    const { service: s, attemptQueue } = service({});
+    const completed = requiredValue(attemptQueue[1], 'the completed-attempts query');
+
+    await s.getOverview(ctx, NOW);
+
+    expect(completed.select).toHaveBeenCalledWith(
+      expect.stringContaining('teacher_assignments(id, title, show_results)'),
+    );
   });
 
   // #1141: deleting an assignment nulls `quiz_attempts.assignment_id`; the durable
@@ -358,6 +383,8 @@ describe('StudentOverviewService.getOverview', () => {
         title: null,
         scorePct: null,
         attemptId: 'asg-gone',
+        assignmentId: null,
+        resultsWithheld: true,
       });
       // It is not a practice quiz, so its closed questions are never counted.
       expect(from).not.toHaveBeenCalledWith('quiz_attempt_questions');

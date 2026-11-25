@@ -2,12 +2,18 @@ import type { StudentActivityItem } from '@studiq/server/models/student-overview
 import { describe, expect, it } from 'vitest';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
-import { activityMessageKey } from '@/lib/recent-activity';
+import { activityHref, activityMessageKey } from '@/lib/recent-activity';
 
 // #1141: the "recent activity" line of a submitted assignment whose title is gone (the assignment
 // was deleted) must not quote "Untitled quiz"; it has wording of its own, in both locales.
 
-const base = { at: '2026-10-27T10:00:00Z', cardsStudied: null, attemptId: 'a-1' } as const;
+const base = {
+  at: '2026-10-27T10:00:00Z',
+  cardsStudied: null,
+  attemptId: 'a-1',
+  assignmentId: null,
+  resultsWithheld: false,
+} as const;
 
 function item(
   kind: StudentActivityItem['kind'],
@@ -48,5 +54,38 @@ describe('activityMessageKey', () => {
       expect(message).not.toContain('{title}');
     }
     expect(copy.activity_assignment_submitted_untitled).toContain('{score}');
+  });
+});
+
+const href = (
+  kind: StudentActivityItem['kind'],
+  over: Partial<StudentActivityItem> = {},
+): string | null => activityHref({ ...item(kind, 'Title', null), ...over });
+
+// #1142: where a line leads. The quiz review has no state for withheld results, so a
+// submitted assignment never goes there.
+describe('activityHref', () => {
+  it('leads a completed quiz to its own review', () => {
+    expect(href('quiz_completed')).toBe('/app/study/session/quiz/a-1/review');
+  });
+
+  it('leads a submitted assignment with visible results to the review of that attempt', () => {
+    expect(href('assignment_submitted', { assignmentId: 'as-1' })).toBe(
+      '/app/assignments/as-1/review?attemptId=a-1',
+    );
+  });
+
+  it('leads a submitted assignment with withheld results to the assignment page', () => {
+    expect(href('assignment_submitted', { assignmentId: 'as-1', resultsWithheld: true })).toBe(
+      '/app/assignments/as-1',
+    );
+  });
+
+  it('leads nowhere once the assignment is deleted', () => {
+    expect(href('assignment_submitted', { assignmentId: null, resultsWithheld: true })).toBeNull();
+  });
+
+  it('leads a flashcard session nowhere', () => {
+    expect(href('flashcards_studied', { attemptId: null })).toBeNull();
   });
 });

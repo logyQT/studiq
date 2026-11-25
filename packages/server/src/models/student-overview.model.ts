@@ -26,8 +26,12 @@ export interface StudentActivityItem {
   cardsStudied: number | null;
   /** 0-100; `null` when the teacher withholds the result of an assignment. */
   scorePct: number | null;
-  /** Where the line leads (the review page of an attempt), when there is one. */
+  /** The finished quiz or assignment attempt behind the line. */
   attemptId: string | null;
+  /** The assignment of a submitted attempt; `null` for anything else and once it is deleted. */
+  assignmentId: string | null;
+  /** The teacher shows no results for this assignment, so its review has nothing to offer. */
+  resultsWithheld: boolean;
 }
 
 /** Answer of `GET /api/v1/stats/student/overview` (the personalised part of the /app dashboard). */

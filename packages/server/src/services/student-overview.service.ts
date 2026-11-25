@@ -120,7 +120,7 @@ export class StudentOverviewService {
       supabase
         .from('quiz_attempts')
         .select(
-          'id, score, total_questions, total_points, completed_at, is_assignment_attempt, config, teacher_assignments(title, show_results)',
+          'id, score, total_questions, total_points, completed_at, is_assignment_attempt, config, teacher_assignments(id, title, show_results)',
         )
         .eq('user_id', ctx.userId)
         .not('completed_at', 'is', null)
@@ -180,6 +180,8 @@ export class StudentOverviewService {
         cardsStudied: s.cards_studied,
         scorePct: null,
         attemptId: null,
+        assignmentId: null,
+        resultsWithheld: false,
       })),
       ...completedRows.map((a): StudentActivityItem => {
         const isAssignment = a.is_assignment_attempt;
@@ -193,6 +195,8 @@ export class StudentOverviewService {
           cardsStudied: null,
           scorePct: hidden ? null : scorePercent(a, gradable.data.get(a.id)),
           attemptId: a.id,
+          assignmentId: isAssignment ? (a.teacher_assignments?.id ?? null) : null,
+          resultsWithheld: hidden,
         };
       }),
     ]
