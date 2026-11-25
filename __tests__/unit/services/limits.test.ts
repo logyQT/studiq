@@ -281,19 +281,19 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
       expect(mock.from).not.toHaveBeenCalledWith('user_daily_activity');
     });
 
-    it('returns a refusal as a typed result and logs it, never throwing', async () => {
+    it('reports a write past the ceiling as a typed result and logs it, never throwing', async () => {
       mockTokenLimit();
       mock.rpc.mockResolvedValue({
-        data: [{ accepted: false, input_total: 100, output_total: 0 }],
+        data: [{ accepted: false, input_total: 100, output_total: 4 }],
         error: null,
       });
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const reservation = await trackTokenUsage(freshCtx(), 4, 4);
 
-      expect(reservation).toEqual({ accepted: false, inputTotal: 100, outputTotal: 0 });
+      expect(reservation).toEqual({ accepted: false, inputTotal: 100, outputTotal: 4 });
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('AI token reservation refused at the daily ceiling'),
+        expect.stringContaining('AI token usage recorded past the daily ceiling'),
       );
       warnSpy.mockRestore();
     });

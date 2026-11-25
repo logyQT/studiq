@@ -12,7 +12,7 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 - **Features** resolve live: `organizations.plan` → `plan_entitlements` for the
   org layer, and `org_roles.entitlement_profile` for the role layer. There is no
-  per-role feature store: the legacy revoke table was dropped in phase 7 (D27).
+  per-role feature store (D27).
 - **Limits** are **never copied**. Every check reads the relevant plan's
   `plan_limits` row live.
 - There is **no** `org_limits` table (dropped in #229), no per-org limit
@@ -276,18 +276,25 @@ After a stream finishes, `trackTokenUsage` calls
 - derives the actor from `auth.uid()` **inside** the function, so a caller can
   only meter itself (raising `28000` when there is no actor);
 - is `security definer` with `set search_path = ''`, executable by
-  `authenticated` only;
-- enforces the ceiling in **one** statement: `insert … select … where` guards a
-  day's fresh row, and `on conflict … do update … where` guards the increment
-  against the totals the database has committed. Two concurrent reservations
-  therefore cannot both pass on the same snapshot; the stored total never
-  exceeds the limit. `p_limit = -1` is unlimited;
+  `authenticated` only, and `authenticated` may not `DELETE` from
+  `user_daily_activity` (a client-side delete would zero the counter without
+  touching the RPC or the gate);
+- records the increment in **one** statement — a single `insert … on conflict …
+do update` that always adds to the day's committed row. Two concurrent
+  reservations serialize on the row, so neither increment is lost (R29). The
+  write does **not** refuse past the ceiling: by then the stream has been
+  served, and a refused write would leave the stored total just below the limit,
+  so the pre-stream `getUsage` gate could never trip again. One stream may
+  overshoot the ceiling by its own token count — that is the quota's precision,
+  not a bug. `p_limit = -1` is unlimited;
 - returns `accepted`, `input_total`, `output_total`.
 
-A refusal (`accepted = false`) is typed state, logged and never an error: the
+`accepted` means "this write stayed within the ceiling" (`-1` reports `true`);
+it is informational. A `false` is typed state, logged and never an error: the
 stream has already been served, and the user-facing gate is the pre-stream
-`getUsage` check in `/api/v1/ai/chat`, which reads the same two columns. The
-service performs no read-modify-write and reads no activity row itself.
+`getUsage` check in `/api/v1/ai/chat`, which reads the same two columns — so the
+**next** request trips because the stored total is now truthful and `>= limit`.
+The service performs no read-modify-write and reads no activity row itself.
 
 Client caches can lag server enforcement: `useApiQuery` defaults to
 `staleTime: Infinity`, so the UI may keep showing an old count/quota until it
@@ -322,6 +329,6 @@ refetches. Resolution itself is immediate.
 - `__tests__/integration/org-features.test.ts` — role/seat resolution and the
   phase-7 dropped-surface invariant.
 - `__tests__/integration/reserve-ai-tokens.test.ts` — the shipped
-  `reserve_ai_tokens` with a real signed-in session: a concurrent burst (exactly
-  one accepted, stored total never above the ceiling), the single-call ceiling,
-  `-1` unlimited, and the null-actor raise.
+  `reserve_ai_tokens` with a real signed-in session: a concurrent burst (both
+  increments stored, exactly one reports the ceiling), the single-call
+  overshoot, `-1` unlimited, the null-actor raise, and the DELETE revoke.

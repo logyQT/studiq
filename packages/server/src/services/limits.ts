@@ -137,8 +137,8 @@ export async function getUsage(ctx: RequestContext, limitKey: LimitKey): Promise
 
 /**
  * The caller's daily token reservation, as `reserve_ai_tokens` returns it.
- * `accepted = false` is a domain answer (the ceiling would be passed), not an
- * error.
+ * `accepted` reports whether the recorded total stayed within the ceiling; it is
+ * informational, not a refusal — the increment is stored either way.
  */
 export interface TokenReservation {
   accepted: boolean;
@@ -147,18 +147,20 @@ export interface TokenReservation {
 }
 
 /**
- * Reserve the stream's tokens against the caller's daily ceiling.
+ * Record the stream's tokens against the caller's daily counter.
  *
- * One database statement does the check and the write (ADR-0015 R29):
- * `reserve_ai_tokens` derives the actor from `auth.uid()` and enforces the
- * ceiling in `insert … on conflict … do update … where`, so two concurrent
- * streams cannot both pass on the same snapshot.
+ * One database statement does the accounting (ADR-0015 R29): `reserve_ai_tokens`
+ * derives the actor from `auth.uid()` and adds to the day's row in a single
+ * `insert … on conflict … do update`, so two concurrent streams serialize on the
+ * row and no increment is lost.
  *
- * A refusal is returned, logged and **not** thrown: `onFinish` records usage
- * after the answer has streamed, and turning a refused post-stream reservation
- * into an error would break a response the user already received. The
- * user-facing gate is the pre-stream `getUsage` check in `/api/v1/ai/chat`,
- * which reads the same two columns this function writes.
+ * The write **always records**, including past the ceiling: `onFinish` runs after
+ * the answer has streamed, so a refused write would leave the stored total just
+ * below the limit and the pre-stream `getUsage` gate in `/api/v1/ai/chat` would
+ * never trip again. A reservation beyond the ceiling therefore returns
+ * `accepted: false` and is logged, and the honest total makes the *next* request
+ * fail the gate. One stream may overshoot the ceiling by its own token count —
+ * that is the quota's precision, not a bug.
  */
 export async function trackTokenUsage(
   ctx: RequestContext,
@@ -180,7 +182,9 @@ export async function trackTokenUsage(
   const row = data[0];
   if (!row) throw new AppError('INTERNAL_SERVER');
   if (!row.accepted) {
-    warn('limits: AI token reservation refused at the daily ceiling', {
+    // The increment is stored; this is the honest total tripping the next
+    // pre-stream gate, not a refusal.
+    warn('limits: AI token usage recorded past the daily ceiling', {
       limit,
       inputTokens,
       outputTokens,

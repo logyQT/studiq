@@ -65,9 +65,8 @@ type PlanLimitRow = { plan_key: string; limit_key: string; limit_value: number }
  * their own narrow purposes), and it owns `org_roles.entitlement_profile`,
  * `entitlement_flags`, `user_feature_overrides`, `org_seat_*`,
  * `organizations.plan` and `profiles.personal_plan_key` as resolution inputs.
- * The role layer is `profile − (nothing) + seat ∩ ceiling`: phase 7 dropped the
- * revoke store (D27, premarket), so there is no subtraction between the profile
- * and the seat any more.
+ * The role layer is `profile + seat ∩ ceiling`: phase 7 dropped the revoke store
+ * (D27, premarket), so nothing sits between the profile and the seat any more.
  *
  * Resolution order (§6.1):
  *

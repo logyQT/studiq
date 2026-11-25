@@ -5788,17 +5788,33 @@ Landed in this slice:
 - **Resolver/catalog deletes:** the `org_role_features` embed and
   `revokedRoleRows` left `entitlement.resolver.ts`; the field and comment left
   `packages/authz/src/entitlements.ts`. The role layer is now stated as
-  `profile − (nothing) + seat ∩ ceiling`, with a docblock recording that the
-  revoke store is gone (D27, premarket).
+  `profile + seat ∩ ceiling`, with a docblock recording that the revoke store is
+  gone (D27, premarket), so nothing sits between the two arms.
 - **Atomic token accounting** (`20261125130000_reserve_ai_tokens.sql`, R29/R41):
   `public.reserve_ai_tokens(p_day, p_input_tokens, p_output_tokens, p_limit)`
   derives the actor from `auth.uid()` inside, is `security definer` with
-  `set search_path = ''`, grants execute to `authenticated` only, and enforces
-  the ceiling in one self-guarding `insert … select … where … on conflict …
-do update … where` (`-1` unlimited). It returns `accepted`, `input_total`,
-  `output_total`. `limits.ts#trackTokenUsage` calls it; a refusal is a typed,
-  logged result (never a 500), and the pre-stream `getUsage` stays the
-  user-facing gate.
+  `set search_path = ''`, grants execute to `authenticated` only, and **always
+  records** the increment in one `insert … on conflict … do update` upsert
+  (`-1` unlimited). It returns `accepted`, `input_total`, `output_total`, where
+  `accepted` is informational — it reports whether the written total stayed
+  within `p_limit`. `limits.ts#trackTokenUsage` calls it and logs an
+  `accepted: false`; no path throws. The same migration also revokes `DELETE` on
+  `user_daily_activity` from `authenticated` (a signed-in user could zero the AI
+  counter through PostgREST without the RPC), pinned by the closing guard.
+  The brief's literal shape — `where` guards on both the insert and the
+  `do update` — made the ceiling **unenforceable**: the write runs after the
+  stream has been served, so a refused increment left the stored total just
+  below the ceiling and the pre-stream `getUsage` gate passed on every later
+  request (only the 20/min rate limiter applied). The coordinator therefore
+  moved enforcement back to that gate and kept the atomic accounting: the write
+  is truthful, the next request trips on `current >= limit`, and one stream may
+  overshoot by its own token count.
+  **Accepted risk** (owner: the follow-up that moves the stats triggers behind a
+  definer function): `authenticated` keeps `INSERT`/`UPDATE` on its own
+  `user_daily_activity` row because the review/quiz triggers run as the invoking
+  user, so a determined user can still narrow their own counter. Premarket,
+  self-only, no privilege escalation and no cross-user metering — recorded and
+  deferred, not fixed in phase 7.
 - **Fixtures/tests:** the per-role table RLS suite was recast as
   `__tests__/integration/entitlement-org-resolution-rls.test.ts` (live resolver
   cases kept, table cases deleted); `org-features` and `catalog-invariants`
@@ -5827,7 +5843,8 @@ the per-role store does not exist); **live** = none left (`docs/limits.md` keeps
 the markers only in the past-tense "left the catalog" sentence, and the
 resolver unit test's non-catalog fixture now uses fictional `test.*` keys);
 **stale** = none. `AUTHORITY_MODEL`, `legacyOnly`, `nextOnly`,
-`ADMIN_ONLY_*`, `ORG_SCOPED_*` remain at 0 (`FEATURES` has only unrelated
+`ADMIN_ONLY_*`, `ORG_SCOPED_*` remain at 0 in code (migration comments and
+plan/ADR prose retain the names) (`FEATURES` has only unrelated
 `FREE_FEATURES`/`HIGHLIGHTED_FEATURES` identifiers).
 
 The **object** sweep (R49, added by this PR) is separate and found one the

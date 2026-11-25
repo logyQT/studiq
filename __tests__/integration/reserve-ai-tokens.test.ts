@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import postgres from 'postgres';
@@ -5,15 +6,20 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServiceClient } from '#test/integration/helpers';
 import { latestShippedFunction } from '#test/integration/test-utils';
 
-// ADR-0015 phase 7, R29/R41: daily AI token accounting is one self-guarding
-// statement. The burst below is the regression the old read-modify-write
-// allowed: two reservations read the same total, each wrote `old + own`, and
-// the ceiling was passed. A mocked `auth.uid()` proves nothing (R41), so every
-// call here is a real signed-in session — `reserve_ai_tokens` derives the actor
-// from the JWT inside the function.
+// ADR-0015 phase 7, R29/R41: daily AI token accounting is one atomic statement.
+// The burst below is the regression the old read-modify-write allowed: two
+// reservations read the same total, each wrote `old + own`, and one increment
+// was lost. A mocked `auth.uid()` proves nothing (R41), so every call here is a
+// real signed-in session — `reserve_ai_tokens` derives the actor from the JWT
+// inside the function.
+//
+// The write always records, including past the ceiling (see the migration): the
+// pre-stream `getUsage` gate is the enforcement, and it only trips on the next
+// request if the stored total is truthful. `accepted` is informational.
 
 const PASSWORD = 'ReserveTokens!';
 const MIGRATION = 'supabase/migrations/20261125130000_reserve_ai_tokens.sql';
+const MIGRATION_SOURCE = readFileSync(MIGRATION, 'utf8');
 
 function requireLocalDatabaseUrl(): string {
   const raw = process.env.SUPABASE_DB_URL;
@@ -37,14 +43,30 @@ function requireLocalDatabaseUrl(): string {
  * reach the database to turn this suite red.
  */
 const SHIPPED_FUNCTION = latestShippedFunction('reserve_ai_tokens');
-if (!SHIPPED_FUNCTION.includes('on conflict')) {
-  throw new Error(`${MIGRATION} no longer defines the atomic upsert`);
+
+/**
+ * The migration's own DELETE revoke, replayed on the running stack (it is
+ * idempotent). A local stack created before this line landed still carries the
+ * blanket grant, and the coordinator owns the reset; taking the statement from
+ * the migration keeps a single source of truth, so deleting it there fails here.
+ */
+function shippedDeleteRevoke(): string {
+  const statement = MIGRATION_SOURCE.split('\n')
+    .map((line) => line.trim())
+    .find((line) =>
+      /^revoke delete on public\.user_daily_activity from authenticated;$/i.test(line),
+    );
+  if (!statement) {
+    throw new Error(`${MIGRATION} no longer revokes DELETE on user_daily_activity`);
+  }
+  return statement;
 }
 
-async function installShippedFunction(): Promise<void> {
+async function installShippedRevokes(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await sql.unsafe(SHIPPED_FUNCTION);
+    await sql.unsafe(shippedDeleteRevoke());
   } finally {
     await sql.end();
   }
@@ -66,12 +88,21 @@ describe('reserve_ai_tokens', () => {
   let service: SupabaseClient<Database>;
   let session: SupabaseClient<Database>;
   let userId: string;
+  let claims: string;
 
   async function signIn(): Promise<SupabaseClient<Database>> {
     const client = anonClient();
     const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
     if (error) throw new Error(`signIn failed: ${error.message}`);
     return client;
+  }
+
+  /** The signed-in session's JWT claims, for a direct connection that still has a real actor. */
+  async function sessionClaims(): Promise<string> {
+    const { data } = await session.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new Error('this case needs the signed-in session token');
+    return Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8');
   }
 
   async function storedTotal(): Promise<number> {
@@ -96,7 +127,7 @@ describe('reserve_ai_tokens', () => {
   }
 
   beforeAll(async () => {
-    await installShippedFunction();
+    await installShippedRevokes();
     service = createServiceClient();
 
     const { data: created, error: userError } = await service.auth.admin.createUser({
@@ -109,6 +140,7 @@ describe('reserve_ai_tokens', () => {
     userId = created.user.id;
 
     session = await signIn();
+    claims = await sessionClaims();
   });
 
   afterAll(async () => {
@@ -118,7 +150,7 @@ describe('reserve_ai_tokens', () => {
     }
   });
 
-  it('reserves atomically under a concurrent burst: one accepted, the stored total never passes the ceiling', async () => {
+  it('records both increments under a concurrent burst: no lost update, exactly one reports the ceiling', async () => {
     await clear();
 
     // Two overlapping transactions are required: the second must reach its
@@ -127,14 +159,14 @@ describe('reserve_ai_tokens', () => {
     // one connection, so the overlap is driven on two direct connections with
     // the signed-in session's own JWT claims — `auth.uid()` inside the
     // function still resolves the real user (R41), never a mocked one.
-    const { data: auth } = await session.auth.getSession();
-    const token = auth.session?.access_token;
-    if (!token) throw new Error('the burst needs the signed-in session token');
-    const claims = Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8');
-
     const dbA = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
     const dbB = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    const dbWatch = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
     try {
+      const pidRows = await dbB<Array<{ pid: number }>>`select pg_backend_pid() as pid`;
+      const secondPid = pidRows[0]?.pid;
+      if (secondPid === undefined) throw new Error('dbB has no backend pid');
+
       async function beginReservation(db: postgres.Sql): Promise<Array<{ accepted: boolean }>> {
         await db.unsafe('begin');
         await db.unsafe('set local role authenticated');
@@ -146,30 +178,51 @@ describe('reserve_ai_tokens', () => {
 
       // A inserts (8 tokens) and holds the row uncommitted.
       const first = await beginReservation(dbA);
-      // B reads no row yet, then blocks on A's unique key.
+      // B reads no row, then blocks on A's unique key.
       const secondPending = beginReservation(dbB);
-      // Give B time to reach the insert before A commits. B is blocked at the
-      // statement, so this window is deterministic, not a race.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Wait until B is actually waiting on the lock, observed from a third,
+      // uninvolved connection (a pure SELECT). A fixed sleep would be a guess:
+      // too short and A commits before B reaches the row, so the burst proves
+      // nothing. Bounded so a broken wait can never hang the suite.
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const waiterRows = await dbWatch<Array<{ waitEventType: string | null }>>`
+          select wait_event_type as "waitEventType"
+          from pg_stat_activity
+          where pid = ${secondPid}
+        `;
+        if (waiterRows[0]?.waitEventType === 'Lock') break;
+        if (Date.now() > deadline) {
+          throw new Error(`backend ${secondPid} never blocked on the activity row`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
       await dbA.unsafe('commit');
       const second = await secondPending;
       await dbB.unsafe('commit');
 
+      // Both increments are stored (8 + 8); neither clobbered the other.
+      const stored = await storedTotal();
+      expect(stored).toBe(16);
+      // The ceiling is enforceable because the total is honest: the next
+      // pre-stream `getUsage` read trips on it.
+      expect(stored).toBeGreaterThanOrEqual(10);
+
+      // The first write stayed within the ceiling; the second landed past it.
       expect(first[0]?.accepted).toBe(true);
       expect(second[0]?.accepted).toBe(false);
-
-      const stored = await storedTotal();
-      expect(stored).toBe(8);
-      expect(stored).toBeLessThanOrEqual(10);
     } finally {
       await dbA.unsafe('rollback').catch(() => {});
       await dbB.unsafe('rollback').catch(() => {});
       await dbA.end();
       await dbB.end();
+      await dbWatch.end();
     }
   });
 
-  it('refuses a single reservation that would itself pass the ceiling', async () => {
+  it('records a single reservation past the ceiling and reports it', async () => {
     await clear();
 
     const { data, error } = await session.rpc('reserve_ai_tokens', {
@@ -180,8 +233,8 @@ describe('reserve_ai_tokens', () => {
     });
 
     expect(error).toBeNull();
-    expect(data?.[0]).toMatchObject({ accepted: false, input_total: 0, output_total: 0 });
-    expect(await storedTotal()).toBe(0);
+    expect(data?.[0]).toMatchObject({ accepted: false, input_total: 6, output_total: 6 });
+    expect(await storedTotal()).toBe(12);
   });
 
   it('treats -1 as unlimited across two reservations', async () => {
@@ -209,6 +262,48 @@ describe('reserve_ai_tokens', () => {
       output_total: 100,
     });
     expect(await storedTotal()).toBe(200);
+  });
+
+  it('refuses a client-side DELETE of the activity row (the counter is RPC-metered)', async () => {
+    await clear();
+    const { error: reserveError } = await session.rpc('reserve_ai_tokens', {
+      p_day: day,
+      p_input_tokens: 3,
+      p_output_tokens: 4,
+      p_limit: -1,
+    });
+    expect(reserveError).toBeNull();
+    expect(await storedTotal()).toBe(7);
+
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      // Control: the same connection really is `authenticated` with this
+      // user's claims, so the refusal below is the DELETE grant and not a
+      // missing actor.
+      await sql.unsafe('begin');
+      await sql.unsafe('set local role authenticated');
+      await sql`select set_config('request.jwt.claims', ${claims}, true)`;
+
+      const privilegeRows = await sql<Array<{ deletable: boolean }>>`
+        select has_table_privilege('authenticated', 'public.user_daily_activity', 'DELETE')
+               as deletable`;
+      expect(privilegeRows[0]?.deletable).toBe(false);
+
+      // Before the DELETE attempt: a failed statement aborts the transaction,
+      // and this control proves the connection is not being refused for lack
+      // of an actor.
+      const actorRows = await sql<Array<{ uid: string | null }>>`select auth.uid()::text as uid`;
+      expect(actorRows[0]?.uid).toBe(userId);
+
+      await expect(
+        sql`delete from public.user_daily_activity where user_id = ${userId}::uuid`,
+      ).rejects.toThrow(/permission denied/i);
+    } finally {
+      await sql.unsafe('rollback').catch(() => {});
+      await sql.end();
+    }
+
+    expect(await storedTotal()).toBe(7);
   });
 
   it('raises when there is no authenticated actor (the actor comes from the JWT)', async () => {
