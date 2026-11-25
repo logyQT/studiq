@@ -431,8 +431,8 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 | `scripts/pr --draft`                    | Create a draft PR                                                                                  |
 | `scripts/pr --body-file <file>`         | Read the PR body from a file (`-` reads stdin)                                                     |
 
-`scripts/pr` runs `git push -u` each time, so the pre-push hooks also run each
-time. If the push fails, it creates no PR. Without a title or `--body-file`,
+`scripts/pr` runs `git push -u` each time. When there are new commits, the
+pre-push hooks check them. If the push fails, it creates no PR. Without a title or `--body-file`,
 `gh pr create --fill` takes the missing text from the commits. The script does
 not run on `main`, and it rejects an option that it does not know.
 

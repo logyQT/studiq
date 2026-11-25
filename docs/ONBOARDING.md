@@ -138,9 +138,9 @@ git commit -m "feat: add new feature"
 git push -u origin feat/my-feature
 ```
 
-`scripts/pr` pushes the current branch each time that you run it, so the
-pre-push hooks also run each time. If the push fails, the script creates no pull
-request. If the branch has an open pull request, the script prints its URL.
+`scripts/pr` pushes the current branch each time that you run it. When there are
+new commits, the pre-push hooks check them. If the push fails, the script creates
+no pull request. If the branch has an open pull request, the script prints its URL.
 
 #### Creating a pull request
 
