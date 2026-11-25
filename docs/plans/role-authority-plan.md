@@ -5815,8 +5815,8 @@ Landed in this slice:
   moved enforcement back to that gate and kept the atomic accounting: the write
   is truthful, the next request trips on `current >= limit`, and one stream may
   overshoot by its own token count.
-  **Accepted risk** (owner: the follow-up that moves the stats triggers behind a
-  definer function): `authenticated` keeps `INSERT`/`UPDATE` on its own
+  **Accepted risk** (owner: #1482 — move the stats triggers behind a definer
+  function): `authenticated` keeps `INSERT`/`UPDATE` on its own
   `user_daily_activity` row because the review/quiz triggers run as the invoking
   user, so a determined user can **reset** their own counter — a direct `UPDATE`,
   or a PostgREST upsert of the day's row (negative counts on the RPC used to
@@ -5918,13 +5918,13 @@ resolver changes.** Measured by adding the fictional `voice.notes`
   entry**, **one `requireEntitlement(ctx, 'voice.notes')`** on
   `GET /api/v1/stats/teacher/quizzes`
   (`packages/server/src/controllers/stats.controller.ts`), and the surface's own
-  disabled-state copy (`apps/web/src/app/(frontend)/edu/stats/quizzes/page.tsx`
-  - three `TeacherQuizStats` strings per locale).
-    `packages/server/src/services/entitlement.resolver.ts` diff: **0 lines**. The
-    first attempt gated `GET /api/v1/teacher/quizzes` and turned `AUT-19`,
-    `SEC-05` and `EDU-QZ-06` red — a free read shared by students and free
-    teachers is not a gateable surface; see "Retrofitting a gate onto a free read"
-    in [extendability.md](extendability.md).
+  disabled-state copy (three `TeacherQuizStats` strings per locale in
+  `apps/web/src/app/(frontend)/edu/stats/quizzes/page.tsx`).
+  `packages/server/src/services/entitlement.resolver.ts` diff: **0 lines**. The
+  first attempt gated `GET /api/v1/teacher/quizzes` and turned `AUT-19`,
+  `SEC-05` and `EDU-QZ-06` red — a free read shared by students and free
+  teachers is not a gateable surface; see "Retrofitting a gate onto a free read"
+  in [extendability.md](extendability.md).
 - **Payload delta, hub educator:** `["ai.chat","flashcards","quiz","quiz.templates","stats.insights","branding"]`
   → the same six in the same order plus `"voice.notes"` appended. Applying the
   DB rows with the old build serving changed nothing — the TS constant is what
@@ -5941,12 +5941,15 @@ resolver changes.** Measured by adding the fictional `voice.notes`
   `/me/plan`, `/flashcards`, `/questions/banks`, `/organization/groups` and
   `/notifications` at `200` — no 404, no 500. Order is FK-forced: plan rows →
   flag (its delete **cascades** plan rows and overrides) → catalog
-  (catalog-first is `23503`), with the TS constant in the same change. Re-entry
-  after the full retirement was data-only and immediate, no rebuild.
+  (catalog-first is `23503`), with the TS constant in the same change, so
+  `catalog-invariants` is never red in a committed state. Re-entry returned the
+  key immediately with no rebuild **because the served build still carried the
+  constant**; once the constant is gone, re-entry is add-step 12 (rebuild).
 - **Drift:** `catalog-invariants` red for a bogus TS key (2 assertions) and for a
-  bogus DB row (1), both reverted. **D36:** no CI regeneration/diff of
-  `database.ts` (schema types, not catalog rows; the pinned CLI cannot reproduce
-  the file byte-for-byte) — catalog drift is the invariant's job.
+  bogus DB row (1), both reverted. **D36** (ADR-0015 §15): no CI
+  regeneration/diff of `database.ts` (schema types, not catalog rows; the pinned
+  CLI cannot reproduce the file byte-for-byte) — catalog drift is the invariant's
+  job.
 - **Deploy order / split brain:** 12 cells measured on the served app
   (code-ahead, missing flag, flag off, missing plan row, DB-ahead catalog/flag/
   plan/override, quota FK, catalog-first retirement, a revoked catalog grant,
@@ -5957,14 +5960,46 @@ resolver changes.** Measured by adding the fictional `voice.notes`
   missing-flag fail-closed **KILLED**, a removed surface gate **KILLED**. The
   first run **SURVIVED** on the pre-existing unknown-plan-key assertion (profile
   `all` never lets the row reach the payload), so that guard was rewritten on the
-  personal-plan path where the filter is load-bearing.
+  personal-plan path where the filter is load-bearing. The three runs,
+  re-runnable as written:
+
+  ```bash
+  # catalog filter — the isEntitlementKey guard in the plan-row loop is deleted
+  bun run mutate -- --file packages/server/src/services/entitlement.resolver.ts \
+    --find "if (!isEntitlementKey(row.entitlement_key)) continue;" --replace "" \
+    --test __tests__/unit/services/entitlement.resolver.test.ts \
+    --name "ignores non-catalog keys in the personal plan rows (the catalog filter is load-bearing)"
+
+  # missing-flag fail-closed — a missing row must default off, not on
+  bun run mutate -- --file packages/server/src/services/entitlement.resolver.ts \
+    --find "if (flagMap.get(key) !== true) {" \
+    --replace "if (flagMap.get(key) === false) {" \
+    --test __tests__/unit/services/entitlement.resolver.test.ts \
+    --name "removes a surface key whose flag row is missing (fail closed, D8)"
+
+  # removed surface gate — the find string is the create arm's two lines (the pair
+  # is unique: QUIZ_CREATE appears once in the file), replaced by the second one
+  bun run mutate -- --file packages/server/src/controllers/quiz-teacher.controller.ts \
+    --find "    await requireEntitlement(ctx, 'quiz.templates');
+    if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');" \
+    --replace "    if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');" \
+    --test __tests__/unit/controllers/quiz-teacher.controller.test.ts \
+    --name "refuses every gated write with FORBIDDEN before the permission check and the parse"
+  ```
+
 - **Corpus:** the 37 at-risk cases from §4 plus `EDU-QZ-01/02/03/05/06` and the
   two cases that read the touched surface (`EDU-ST-02`, `EDU-ST-04`) — 44 spec
   files, **70 passed / 0 failed**, every tenant freshly seeded. The first
   attempt (gate on `GET /teacher/quizzes`) failed 3 of them (`AUT-19`, `SEC-05`,
   `EDU-QZ-06`); after moving the gate to the stats read, 0. A second run without
   re-seeding failed 7 state-dependent MGR/SEC cases (role/seat mutations), which
-  is the documented "one tenant per attempt" rule, not the app.
+  is the documented "one tenant per attempt" rule, not the app. Run as:
+
+  ```bash
+  bun run env:run -- bun scripts/qa-tenant.ts --all --run phase8
+  bun run env:run -- bun run test:qa <the 44 spec files> --workers=1
+  ```
+
 - **Checklists:** [extendability.md](extendability.md) carries the adding and
   retiring steps (code/data/both per line) and the "steps that are still code"
   table. The steps that remain code: the `ENTITLEMENTS` entry, the surface call

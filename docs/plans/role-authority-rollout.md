@@ -591,9 +591,9 @@ vintages and the full 188-case suite + E2E are green.
 >   → flag (its delete **cascades** the plan rows and overrides) → catalog
 >   (catalog-first is `23503`) with the TS constant in the same change.
 > - Drift: `catalog-invariants` goes red for a bogus TS key (2 assertions) and
->   for a bogus DB row (1), both reverted. **D36:** no CI regeneration/diff of
->   `database.ts` (schema types, not catalog rows; the pinned CLI cannot
->   reproduce the file byte-for-byte).
+>   for a bogus DB row (1), both reverted. **D36** (ADR-0015 §15): no CI
+>   regeneration/diff of `database.ts` (schema types, not catalog rows; the
+>   pinned CLI cannot reproduce the file byte-for-byte).
 > - The 37 at-risk cases and the EDU shard around the touched surface stayed
 >   green (see the phase-8 block of
 >   [role-authority-plan.md](role-authority-plan.md#phase-8--extendability-release-gate)).

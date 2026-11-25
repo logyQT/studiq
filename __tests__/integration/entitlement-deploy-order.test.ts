@@ -31,8 +31,8 @@ import {
  * every TS surface key has a flag row).
  */
 const UNKNOWN_KEY = 'test.deploy.unknown';
-/** A shipped seed account; `student3@dev.local` has no org of its own. */
-const USER_ID = '00000000-0000-4000-8001-000000000006';
+/** A shipped seed account with no org membership of its own: `student3@dev.local`. */
+const USER_ID = '00000000-0000-4000-8001-000000000007';
 
 const HUB_CEILING = [
   'ai.chat',
@@ -92,6 +92,10 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
   });
 
   it('ignores an unknown override key on a real row (cell F: DB ahead of code)', async () => {
+    // Own precondition: the hub ceiling cell above may not have run (a `-t` filter
+    // runs this test alone), and the assertion below is about the unknown row, not
+    // about which plan the seeded org happens to carry.
+    await setOrgPlan(orgId, 'hub');
     // `entitlement_flags` has no FK to the catalog, so this row can exist for a
     // key the TS catalog has never heard of — the shape an early deploy leaves.
     const { error: flagError } = await service
