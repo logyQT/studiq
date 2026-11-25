@@ -78,7 +78,7 @@ export function GroupPerformanceCard({
                 <BarChart data={withScores} margin={{ left: 0, right: 8, top: 8 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="groupName" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} unit="%" />
+                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={44} unit="%" />
                   <Tooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="avgScore" fill="var(--color-avgScore)" radius={[6, 6, 0, 0]} />
                 </BarChart>

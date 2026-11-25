@@ -1,5 +1,7 @@
 'use client';
 
+import type { ProblematicQuestionStats } from '@studiq/server/models/stats.model';
+import { ProblemQuestionLink } from '@/components/edu/problem-question-link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
 import { apiGet } from '@/lib/api';
 import { orderedQuestionTypeEntries } from '@/lib/stats';
@@ -12,12 +14,7 @@ interface TeacherStats {
   totalFlashcards: number;
   subject?: {
     byType: Record<string, number>;
-    problematicQuestions: Array<{
-      id: string;
-      content: string;
-      type: string;
-      correctRate: number;
-    }>;
+    problematicQuestions: ProblematicQuestionStats[];
   };
 }
 
@@ -104,9 +101,10 @@ export default function EduStatsPage() {
             {problematicQuestions.length > 0 ? (
               <div className="space-y-3">
                 {problematicQuestions.map((q) => (
-                  <div
+                  <ProblemQuestionLink
                     key={q.id}
-                    className="flex items-center justify-between p-3 rounded-lg border"
+                    question={q}
+                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/60"
                   >
                     <div>
                       <p className="font-medium text-sm">{q.content}</p>
@@ -115,7 +113,7 @@ export default function EduStatsPage() {
                     <span className="text-sm font-bold text-red-600">
                       {Math.round(q.correctRate * 100)}% {t('correct_suffix')}
                     </span>
-                  </div>
+                  </ProblemQuestionLink>
                 ))}
               </div>
             ) : (
