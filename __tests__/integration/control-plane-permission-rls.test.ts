@@ -185,18 +185,6 @@ describe('control-plane permission RLS (2b-4)', () => {
     return role.id;
   }
 
-  // Inert since phase 3c: `org_role_features` is revokes-only and no longer
-  // grants an entitlement. The row is kept so the cases below prove that even
-  // a hand-inserted grant confers no billing/assignment authority.
-  async function insertInertGrantRow(roleId: string, featureKey: string) {
-    const { error } = await service.from('org_role_features').insert({
-      org_role_id: roleId,
-      feature_key: featureKey,
-      is_enabled: true,
-    });
-    if (error) throw new Error(`feature grant failed: ${error.message}`);
-  }
-
   async function insertBillingOwner(data: {
     organizationId?: string;
     userId?: string;
@@ -284,8 +272,6 @@ describe('control-plane permission RLS (2b-4)', () => {
     readerRoleId = await customRole(orgId, `control-plane-reader-${tag}`, [
       ['assignment.read', 'organization'],
     ]);
-
-    await insertInertGrantRow(legacyBillingRoleId, 'branding');
 
     billingId = await createUser(`control-plane-billing-${tag}@dev.local`, 'billing', 'manager');
     legacyBillingId = await createUser(
@@ -701,9 +687,9 @@ describe('control-plane permission RLS (2b-4)', () => {
 
     it('lets an org-scope assignment.update holder — not an Admin — write a foreign run’s child rows', async () => {
       // The Admin case above cannot carry this proof: the Admin system role also
-      // satisfies the legacy `rls_caller_is_org_manager` marker, so a reverted
-      // child policy would stay green. `updater` holds `assignment.update` at
-      // organization scope on a custom role and no marker.
+      // satisfies the wider org authority, so a reverted child policy would
+      // stay green. `updater` holds `assignment.update` at organization scope
+      // on a custom role and nothing else.
       const questionInsert = await updater
         .from('assignment_questions')
         .insert({

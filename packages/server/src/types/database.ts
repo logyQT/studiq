@@ -1081,36 +1081,6 @@ export type Database = {
           },
         ];
       };
-      org_role_features: {
-        Row: {
-          feature_key: string;
-          id: string;
-          is_enabled: boolean;
-          org_role_id: string;
-        };
-        ComputedFields: never;
-        Insert: {
-          feature_key: string;
-          id?: string;
-          is_enabled?: boolean;
-          org_role_id: string;
-        };
-        Update: {
-          feature_key?: string;
-          id?: string;
-          is_enabled?: boolean;
-          org_role_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'org_role_features_org_role_id_fkey';
-            columns: ['org_role_id'];
-            isOneToOne: false;
-            referencedRelation: 'org_roles';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
       org_role_permissions: {
         Row: {
           id: string;
@@ -2831,15 +2801,10 @@ export type Database = {
         Args: { p_actor: string; p_group_id: string; p_permission: string };
         Returns: boolean;
       };
-      has_org_feature: {
-        Args: { p_actor: string; p_feature: string; p_organization_id: string };
-        Returns: boolean;
-      };
       has_permission: {
         Args: { p_actor: string; p_organization_id: string; p_permission: string };
         Returns: boolean;
       };
-      is_org_manager: { Args: { p_actor: string; p_organization_id: string }; Returns: boolean };
       migrate_org_role_permission_names: { Args: Record<PropertyKey, never>; Returns: undefined };
       org_report_recipient: { Args: { p_organization_id: string }; Returns: string };
       question_bank_counts: {
@@ -2847,6 +2812,14 @@ export type Database = {
         Returns: {
           bank_id: string;
           question_count: number;
+        }[];
+      };
+      reserve_ai_tokens: {
+        Args: { p_day: string; p_input_tokens: number; p_limit: number; p_output_tokens: number };
+        Returns: {
+          accepted: boolean;
+          input_total: number;
+          output_total: number;
         }[];
       };
       rls_audit: {
@@ -2874,15 +2847,10 @@ export type Database = {
         Args: { p_group_id: string; p_permission: string };
         Returns: boolean;
       };
-      rls_caller_has_org_feature: {
-        Args: { p_feature: string; p_organization_id: string };
-        Returns: boolean;
-      };
       rls_caller_has_permission: {
         Args: { p_organization_id: string; p_permission: string };
         Returns: boolean;
       };
-      rls_caller_is_org_manager: { Args: { p_organization_id: string }; Returns: boolean };
       rls_caller_is_sealed_item: { Args: { p_question_id: string }; Returns: boolean };
       rls_caller_may_assign_org_role: { Args: { p_role_id: string }; Returns: boolean };
       rls_caller_may_set_role_permission: {

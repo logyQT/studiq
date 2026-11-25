@@ -3,6 +3,7 @@ import { AppError } from '@studiq/server/lib/errors';
 import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
 import { entitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -134,38 +135,69 @@ export async function getUsage(ctx: RequestContext, limitKey: LimitKey): Promise
   return { current, limit, plan: resolved.plan.primary, resetsAt };
 }
 
+/**
+ * The caller's daily token reservation, as `reserve_ai_tokens` returns it.
+ * `accepted` reports whether the recorded total stayed within the ceiling; it is
+ * informational, not a refusal — the increment is stored either way.
+ */
+export interface TokenReservation {
+  accepted: boolean;
+  inputTotal: number;
+  outputTotal: number;
+}
+
+/**
+ * Record the stream's tokens against the caller's daily counter.
+ *
+ * One database statement does the accounting (ADR-0015 R29): `reserve_ai_tokens`
+ * derives the actor from `auth.uid()` and adds to the day's row in a single
+ * `insert … on conflict … do update`, so two concurrent streams serialize on the
+ * row and no increment is lost.
+ *
+ * The write **always records**, including past the ceiling: `onFinish` runs after
+ * the answer has streamed, so a refused write would leave the stored total just
+ * below the limit and the pre-stream `getUsage` gate in `/api/v1/ai/chat` would
+ * never trip again. A reservation beyond the ceiling therefore returns
+ * `accepted: false` and is logged, and the honest total makes the *next* request
+ * fail the gate. One stream may overshoot the ceiling by its own token count —
+ * that is the quota's precision, not a bug.
+ */
 export async function trackTokenUsage(
   ctx: RequestContext,
   inputTokens: number,
   outputTokens: number,
-): Promise<void> {
+): Promise<TokenReservation> {
+  const limit = await getEffectiveLimit(ctx, AI_TOKENS_LIMIT_KEY);
   const today = new Date().toISOString().slice(0, 10);
   const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from('user_daily_activity')
-    .select('ai_input_tokens, ai_output_tokens')
-    .eq('user_id', ctx.userId)
-    .eq('date', today)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('reserve_ai_tokens', {
+    p_day: today,
+    p_input_tokens: inputTokens,
+    p_output_tokens: outputTokens,
+    p_limit: limit,
+  });
+  if (error) mapSupabaseError(error);
 
-  if (existing) {
-    await supabase
-      .from('user_daily_activity')
-      .update({
-        ai_input_tokens: existing.ai_input_tokens + inputTokens,
-        ai_output_tokens: existing.ai_output_tokens + outputTokens,
-      })
-      .eq('user_id', ctx.userId)
-      .eq('date', today);
-  } else {
-    await supabase.from('user_daily_activity').insert({
-      user_id: ctx.userId,
-      date: today,
-      ai_input_tokens: inputTokens,
-      ai_output_tokens: outputTokens,
+  const row = data[0];
+  if (!row) throw new AppError('INTERNAL_SERVER');
+  if (!row.accepted) {
+    // The increment is stored; this is the honest total tripping the next
+    // pre-stream gate, not a refusal.
+    warn('limits: AI token usage recorded past the daily ceiling', {
+      limit,
+      inputTokens,
+      outputTokens,
+      inputTotal: row.input_total,
+      outputTotal: row.output_total,
     });
   }
+
+  return {
+    accepted: row.accepted,
+    inputTotal: row.input_total,
+    outputTotal: row.output_total,
+  };
 }
 
 /** The service-shaped facade over these helpers (`limitsResolver.checkLimit(...)`). */

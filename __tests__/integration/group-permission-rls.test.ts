@@ -16,10 +16,9 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
  *
  * The group routes now ask `group.*` for one group, so the tables must too:
  * before this migration the six write policies on `groups`/`group_members`
- * asked `has_org_feature(org, 'group.manage')`, which is org-wide and
- * entitlement-sourced. A teacher of one class could therefore write every class
- * in the org through PostgREST, and a role holding the permission could write
- * none.
+ * asked an org-wide legacy feature marker. A teacher of one class could
+ * therefore write every class in the org through PostgREST, and a role holding
+ * the permission could write none.
  *
  * Every write below is a real signed-in session through PostgREST — the path a
  * browser takes — not the service role.
