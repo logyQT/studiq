@@ -483,7 +483,9 @@ deployment still needs a shared counter for a hard quota.
 1. Create a project at [supabase.com](https://supabase.com)
 2. Link the checkout: `bunx supabase link --project-ref <ref>`
 3. Run migrations: `bunx supabase db push --remote --yes`
-4. Seed production data if needed
+4. Apply data changes through migrations; do not run `supabase/seeds/` in
+   production. It holds test fixtures only (#1502). Production data steps are
+   migrations (the plan catalogue) and `bun scripts/stripe-bootstrap.ts`.
 5. Configure auth settings:
    - Site URL
    - Redirect URLs

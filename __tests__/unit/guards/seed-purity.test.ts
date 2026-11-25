@@ -1,0 +1,225 @@
+/**
+ * Guard for #1502, extending #1494: `supabase/seeds/` holds test data only.
+ *
+ * A reset without the seeds must still give a working app, so app
+ * configuration and schema belong in `supabase/migrations/`. Two seed files
+ * broke that rule:
+ *
+ * - `09_perms.sql` re-inserted the closed `permissions` catalog (already
+ *   inserted by the migration chain) and re-ran `seed_system_role_permissions`
+ *   for every org;
+ * - `99_realtime.sql` dropped and re-created the `supabase_realtime`
+ *   publication and added tables to it, although the app has no realtime
+ *   client.
+ *
+ * #1494 closed the same hole for the plan catalogue: `00_plans.sql` DELETEd and
+ * re-inserted every `subscription_plans`, `plan_entitlements` and `plan_limits`
+ * row, so `db reset` and CI read the matrix from the seed while production
+ * (`db push`, which never runs seeds) had none.
+ *
+ * This is a source scan, not a behavioural test: it needs no database, and it
+ * fails in both directions — a config write or DDL reintroduced under
+ * `supabase/seeds/` is reported, and the seed directory / `00_plans.sql`
+ * disappearing (which would make the scan vacuous) is reported too. The matcher
+ * is exercised against synthetic sources below so the scan itself cannot
+ * silently stop matching.
+ *
+ * The scan covers the files `[db.seed] sql_paths = ['./seeds/*.sql']` runs:
+ * the top-level `*.sql` files only. `supabase/seeds/demo/*.sql` is demo content
+ * outside that glob, so its `CREATE TEMP TABLE` statements are not part of the
+ * seed set and are not scanned.
+ */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const SEEDS_ROOT = path.join(process.cwd(), 'supabase/seeds');
+const CONFIG_FILE = path.join(process.cwd(), 'supabase/config.toml');
+const SEED_GLOB = "sql_paths = ['./seeds/*.sql']";
+
+/** Configuration tables a seed must never write; the migration chain owns them. */
+const CONFIG_TABLES = [
+  'permissions',
+  'subscription_plans',
+  'plan_entitlements',
+  'plan_limits',
+  'entitlement_catalog',
+  'entitlement_flags',
+  'limit_catalog',
+] as const;
+
+/** `INSERT INTO` / `UPDATE` / `DELETE FROM` / `TRUNCATE` against a config table. */
+const TABLE_WRITE_PATTERN = new RegExp(
+  String.raw`\b(?:insert\s+into|update|delete\s+from|truncate(?:\s+table)?)\s+` +
+    String.raw`(?:public\.)?(?:${CONFIG_TABLES.join('|')})\b`,
+  'gi',
+);
+
+/** DDL a seed must never run: the migration chain owns schema and grants. */
+const DDL_PATTERN = /\b(?:create|alter|drop|grant|revoke|publication)\b/gi;
+
+type SeedFinding = { file: string; line: number; statement: string };
+
+function relative(file: string): string {
+  return path.relative(process.cwd(), file).split(path.sep).join('/');
+}
+
+/** Top-level `*.sql` files, the set `[db.seed] sql_paths = ['./seeds/*.sql']` runs. */
+function seedFiles(): string[] {
+  return fs
+    .readdirSync(SEEDS_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
+    .map((entry) => path.join(SEEDS_ROOT, entry.name));
+}
+
+/** Recursive `*.sql` files, used only to prove the seed directory is populated. */
+function allSqlFiles(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...allSqlFiles(target));
+      continue;
+    }
+    if (entry.name.endsWith('.sql')) files.push(target);
+  }
+  return files;
+}
+
+/** Replace every character except a newline, so line numbers survive the strip. */
+function blank(text: string): string {
+  return text.replaceAll(/[^\n]/g, ' ');
+}
+
+/** Remove SQL comments and string literals. */
+function codeOnly(source: string): string {
+  return source
+    .replaceAll(/\/\*[\s\S]*?\*\//g, blank)
+    .replaceAll(/--[^\n]*/g, '')
+    .replaceAll(/'(?:''|[^'])*'/g, blank)
+    .replaceAll(/\$(\w*)\$[\s\S]*?\$\1\$/g, blank);
+}
+
+function statementAt(source: string, index: number): string {
+  const start = source.lastIndexOf('\n', index) + 1;
+  const end = source.indexOf('\n', index);
+  return source
+    .slice(start, end === -1 ? undefined : end)
+    .trim()
+    .replaceAll(/\s+/g, ' ');
+}
+
+/** Every config-table write and DDL statement in one SQL source, with file and line. */
+function findingsInSource(file: string, source: string): SeedFinding[] {
+  // Identifiers are quoted in some seed files (`"public"."organizations"`), so
+  // the scan normalizes the quotes instead of trying to match both spellings
+  // with one pattern.
+  const normalized = codeOnly(source).replaceAll('"', '');
+  const findings = new Map<string, SeedFinding>();
+  for (const pattern of [TABLE_WRITE_PATTERN, DDL_PATTERN]) {
+    for (const match of normalized.matchAll(pattern)) {
+      const line = normalized.slice(0, match.index).split('\n').length;
+      const statement = statementAt(normalized, match.index);
+      // Two keywords on one statement (`create publication …`) are one finding.
+      findings.set(`${line}:${statement}`, { file, line, statement });
+    }
+  }
+  return [...findings.values()].toSorted((a, b) => a.line - b.line);
+}
+
+function seedFindings(): SeedFinding[] {
+  return seedFiles().flatMap((file) =>
+    findingsInSource(relative(file), fs.readFileSync(file, 'utf8')),
+  );
+}
+
+const REMEDY =
+  'seeds hold test data only: put configuration tables and DDL in supabase/migrations/ ' +
+  '(see 20261125170000_plan_catalog_owned_by_migrations.sql), never in supabase/seeds/';
+
+describe('supabase/seeds holds test data only (#1502)', () => {
+  it('scans the files the seed glob runs', () => {
+    const config = fs.readFileSync(CONFIG_FILE, 'utf8');
+    expect(config).toContain(SEED_GLOB);
+
+    const files = seedFiles().map(relative);
+    expect(files).toContain('supabase/seeds/00_plans.sql');
+    expect(files).toContain('supabase/seeds/01_seed.sql');
+  });
+
+  it('scans a non-empty set of seed files', () => {
+    // A missing or empty directory would make the main assertion pass for the
+    // wrong reason; the seed directory carries the demo seeds too.
+    expect(allSqlFiles(SEEDS_ROOT).length).toBeGreaterThan(3);
+  });
+
+  it('no seed writes a config table or runs DDL', () => {
+    const findings = seedFindings().map(
+      (finding) => `${finding.file}:${finding.line} runs ${finding.statement} — ${REMEDY}`,
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
+describe('findingsInSource()', () => {
+  it('reports a write against every config table', () => {
+    const source = CONFIG_TABLES.map(
+      (table) => `insert into public.${table} (key) values ('x');`,
+    ).join('\n');
+
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+  });
+
+  it('reports every write shape and quoted identifiers', () => {
+    const source = [
+      'INSERT INTO public.permissions (key) VALUES ($$base$$);',
+      'insert into "public"."plan_entitlements" (plan_key) values ($$base$$);',
+      'UPDATE subscription_plans SET is_active = false;',
+      'delete from public.plan_limits where plan_key = $$base$$;',
+      'TRUNCATE TABLE public.entitlement_flags;',
+    ].join('\n');
+
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+  });
+
+  it('reports every DDL keyword', () => {
+    const source = [
+      'CREATE TABLE public.x (id int);',
+      'alter table public.permissions add column x int;',
+      'DROP TABLE public.x;',
+      'grant select on public.x to anon;',
+      'revoke all on public.x from anon;',
+      'create publication supabase_realtime;',
+      'alter publication supabase_realtime add table public.x;',
+    ].join('\n');
+
+    expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+  });
+
+  it('reports the line and statement of a write on a later line', () => {
+    const source = 'select 1;\n\n  delete from public.plan_limits;\n';
+    expect(findingsInSource('seeds/x.sql', source)).toEqual([
+      { file: 'seeds/x.sql', line: 3, statement: 'delete from public.plan_limits;' },
+    ]);
+  });
+
+  it('does not report reads, other tables, or text in a comment or a string', () => {
+    const source = [
+      '-- CREATE PUBLICATION belongs in a migration, never here',
+      '-- DELETE FROM public.permissions is forbidden too',
+      '/* DROP TABLE public.plan_limits; */',
+      'select * from public.subscription_plans;',
+      'select count(*) from plan_limits;',
+      "insert into public.organizations (id, name) values ($$org$$, 'Create and drop');",
+      "insert into public.topics (name) values ('grant revoked');",
+    ].join('\n');
+    expect(findingsInSource('seeds/x.sql', source)).toEqual([]);
+  });
+});

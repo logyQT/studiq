@@ -9,6 +9,6 @@
 -- list is deleted on the next reset, and a row the migration lists must not be
 -- duplicated here).
 --
--- `__tests__/unit/guards/plan-catalog-home.test.ts` fails if anything under
--- `supabase/seeds/` writes these tables again.
+-- `__tests__/unit/guards/seed-purity.test.ts` fails if anything under
+-- `supabase/seeds/` writes a configuration table or runs DDL.
 -- ==========================================================

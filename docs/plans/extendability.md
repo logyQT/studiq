@@ -200,9 +200,11 @@ ADR-0015 amendment (a numbered decision), not a rule smuggled into §3.
 - `__tests__/integration/plan-catalog.test.ts` pins the thirteen-plan matrix
   (scope/audience, each plan's entitlement set and limits) and re-applies the
   owning migration twice to prove it is declarative and idempotent.
-  `__tests__/unit/guards/plan-catalog-home.test.ts` fails if any file under
-  `supabase/seeds/` writes `subscription_plans`, `plan_entitlements`,
-  `plan_limits` or `entitlement_flags` — the second home cannot come back.
+  `__tests__/unit/guards/seed-purity.test.ts` fails if any file under
+  `supabase/seeds/` writes a configuration table (`permissions`,
+  `subscription_plans`, `plan_entitlements`, `plan_limits`,
+  `entitlement_catalog`, `entitlement_flags`, `limit_catalog`) or runs DDL —
+  the second home cannot come back.
 - `packages/server/src/types/database.ts` is **not** regenerated or diffed in CI
   (D36, ADR-0015 §15). It describes the schema, not catalog rows — a new key or
   plan row changes no type, so a diff gate would catch nothing this checklist
