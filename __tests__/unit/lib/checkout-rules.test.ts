@@ -1,6 +1,7 @@
 import { AccountType } from '@studiq/authz';
 import {
   isOrganizationPlanFamily,
+  isPlanForAccountType,
   resolveApplicablePlan,
   resolveCheckoutOwner,
   resolvePurchasablePlan,
@@ -45,6 +46,27 @@ const educatorPlan: CatalogPlan = { ...studentPlan, key: 'guide', audience: 'edu
 function planPort(plan: CatalogPlan | null) {
   return { getPlan: vi.fn().mockResolvedValue(success(plan)) };
 }
+
+describe('isPlanForAccountType', () => {
+  it.each([
+    ['a student plan for a student', studentPlan, AccountType.STUDENT, true],
+    ['an educator plan for an educator', educatorPlan, AccountType.EDUCATOR, true],
+    ['a manager personal plan for a manager', soloPlan, AccountType.MANAGER, true],
+    ['an educator plan for a student', educatorPlan, AccountType.STUDENT, false],
+    ['a student plan for an educator', studentPlan, AccountType.EDUCATOR, false],
+    ['a student plan for a manager', studentPlan, AccountType.MANAGER, false],
+    ['a personal plan without an account type', studentPlan, undefined, false],
+    ['a personal plan with an unknown account type', studentPlan, 'admin', false],
+    // Neither side may match by being empty or by repeating an unknown value.
+    ['no audience and no account type', { scope: 'personal' }, undefined, false],
+    ['a null audience and a null account type', { ...studentPlan, audience: null }, null, false],
+    ['an unknown audience repeated as the type', { ...studentPlan, audience: 'x' }, 'x', false],
+    ['an organization plan for a student', orgPlan, AccountType.STUDENT, true],
+    ['an organization plan without an account type', orgPlan, undefined, true],
+  ])('%s', (_label, plan, accountType, expected) => {
+    expect(isPlanForAccountType(plan, accountType)).toBe(expected);
+  });
+});
 
 describe('resolveApplicablePlan', () => {
   it('accepts a free plan of the caller audience (lifecycle, not purchase)', async () => {

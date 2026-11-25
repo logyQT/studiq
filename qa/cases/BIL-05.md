@@ -40,7 +40,11 @@ platform row or foreign tenant is read or written.
 Opening `/checkout?plan_id=campus` as this tenant's student shows the
 „Podsumowanie zamówienia” with „StudiQ Campus” and the price, but instead of the card
 form a blocking alert („Nie wiemy, dla której organizacji kupujesz plan”) with only
-„Wróć do planów”. Posting the completed checkout for `campus` (organization plan) or
+„Wróć do planów”. Opening `/checkout?plan_id=lite` shows the Lite summary and, instead of
+the card form, „Płatność niedostępna” — „Tego planu nie można kupić z tego konta. Wróć
+do planów i wybierz inny.” (#813; the page asks the same `isPlanForAccountType` rule as
+the server). The student's own `/checkout?plan_id=spark` keeps the card form.
+Posting the completed checkout for `campus` (organization plan) or
 `lite` (educator-audience personal plan) answers `403 FORBIDDEN` and leaves both the
 personal plan and the payment history untouched; the same student's own `spark`
 purchase still goes through. The concern from the case text does not reproduce — the

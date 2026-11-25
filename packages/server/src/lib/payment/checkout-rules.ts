@@ -40,6 +40,23 @@ export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'scope'>): bool
 }
 
 /**
+ * Whether an account of this type may take the plan at all. A personal plan is
+ * only for the account type its `audience` names, so a caller without a valid
+ * type gets none. Organization plans have no audience check: who may buy one is
+ * decided per organization by {@link resolveCheckoutOwner}.
+ *
+ * `/checkout` asks the same question before it renders a payment form, with the
+ * untyped `account_type` claim, hence `unknown`.
+ */
+export function isPlanForAccountType(
+  plan: { scope: string; audience?: string | null },
+  accountType: unknown,
+): boolean {
+  if (plan.scope !== 'personal') return true;
+  return Object.values(AccountType).some((type) => type === accountType && type === plan.audience);
+}
+
+/**
  * A plan may be *applied* when it exists, is active and matches the buyer's
  * audience. Organization plans carry no audience and have no audience check;
  * a personal plan whose `audience` names another persona is refused. Free
@@ -61,9 +78,7 @@ export async function resolveApplicablePlan(
   const plan = result.data;
   if (!plan?.isActive) return failure('BAD_REQUEST');
 
-  if (plan.scope === 'personal' && plan.audience !== accountType) {
-    return failure('FORBIDDEN');
-  }
+  if (!isPlanForAccountType(plan, accountType)) return failure('FORBIDDEN');
 
   return success({ plan, isOrgPlan: isOrganizationPlanFamily(plan) });
 }

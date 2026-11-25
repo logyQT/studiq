@@ -1,5 +1,6 @@
 'use client';
 
+import { isPlanForAccountType } from '@studiq/server/lib/payment/checkout-rules';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Alert,
@@ -199,7 +200,13 @@ export function CheckoutMockForm() {
     retry?: () => void;
   } | null = null;
 
-  if (isOrgPlan && !user) {
+  if (!isPlanForAccountType(plan, user?.app_metadata.account_type)) {
+    // The server refuses this purchase on submit, so do not offer the form (#813).
+    blockedState = {
+      title: ct('checkout_unavailable_title'),
+      description: ct('checkout_unavailable_description'),
+    };
+  } else if (isOrgPlan && !user) {
     blockedState = {
       title: ct('org_unavailable_title'),
       description: ct('org_unavailable_desc'),
