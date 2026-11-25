@@ -123,6 +123,45 @@ worktree_lock_reason() {
   return 0
 }
 
+# Run a package script in a worktree, free of the caller's context: an inherited
+# GIT_*, SUPABASE_STACK or SUPABASE_SHARED would aim it at another environment.
+# stdin is closed so that nothing can sit waiting at a prompt.
+run_in_worktree() {
+  local worktree="$1"
+  shift
+  (
+    cd "$worktree" || exit 1
+    unset ${!GIT_@} SUPABASE_STACK SUPABASE_SHARED
+    bun run "$@" </dev/null 2>&1
+  )
+}
+
+# A web server outlives the worktree it runs in and keeps its port, so the
+# environment is stopped while the checkout still exists. Best-effort: a failure
+# here is reported and never blocks the removal.
+stop_worktree_env() {
+  local worktree="$1" all_output output
+  # Without the env tool, or with no state it has written, there is nothing to ask.
+  [ -f "$worktree/scripts/env/cli.ts" ] && [ -d "$worktree/.dev" ] || return 0
+
+  if all_output=$(run_in_worktree "$worktree" env:down --all --yes); then
+    info "Stopped the worktree's web server and Supabase stack (data kept)"
+    return 0
+  fi
+  # `--all` refuses a shared stack before it touches the web server; plain
+  # `down` still stops that.
+  if output=$(run_in_worktree "$worktree" env:down); then
+    warn "'bun run env:down --all --yes' failed; ran 'bun run env:down' instead, so a Supabase stack may still be running:"
+    printf '%s\n' "$all_output" | tail -n 5 | sed 's/^/    /'
+    return 0
+  fi
+  warn "Could not stop the environment in $worktree; removing it anyway. A web server may still hold its port."
+  echo "  bun run env:down --all --yes:"
+  printf '%s\n' "$all_output" | tail -n 5 | sed 's/^/    /'
+  echo "  bun run env:down:"
+  printf '%s\n' "$output" | tail -n 5 | sed 's/^/    /'
+}
+
 # The primary checkout is a stable anchor for cleanup commands, even when
 # this script runs from inside a linked worktree.
 PRIMARY_ROOT="$(primary_checkout_path)"
@@ -182,6 +221,8 @@ case "${1:-}" in
     echo "staged changes and untracked files. Git-ignored files (.env.local,"
     echo "node_modules, .next) are not inspected and are removed with the worktree;"
     echo "--force is the only way past the refusal."
+    echo "Before removing, it runs 'env:down --all --yes' in a worktree that has"
+    echo "used the env tool (falling back to 'env:down'); a failure only warns."
     exit 0
     ;;
   "") fail "Missing branch name. Usage: scripts/spin <branch-name>" ;;
@@ -284,6 +325,8 @@ $(printf '%s\n' "$dirty_paths" | head -n 20 | sed 's/^/    /')
     scripts/spin $BRANCH --clean --force"
         fi
       fi
+
+      stop_worktree_env "$REGISTERED_PATH"
 
       # Two force flags: this is for the provenance lock, not for bypassing the
       # dirty check above (which `worktree remove` would otherwise satisfy).

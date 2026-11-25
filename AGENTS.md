@@ -458,6 +458,8 @@ scripts/pr
 scripts/spin feat/quiz-ui --clean
 ```
 
+**Stop a worktree's environment before removing the worktree.** A running web server outlives the directory and keeps its port. `scripts/spin <branch> --clean` does this itself; before `git worktree remove` or any other removal, run `bun run env:down --all --yes` inside the worktree (plain `bun run env:down` when it uses a shared stack). A named stack needs its own `--stack <name>` run.
+
 Each worktree gets its own branch and working directory. Agents must not run `next dev` (`env:dev` is human-only and OOMs under agents); to check the app in a browser, use `bun run env:build` + `bun run env:serve` (or `bun run env:ensure --profile web`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created directly in the repo's parent directory, one per branch with `/` flattened to `-`: `feat/quiz-ui` → `../feat-quiz-ui`. `SPIN_WORKTREE_ROOT=<absolute dir>` relocates that root (e.g. `/tmp/builds/feat-quiz-ui`), for a harness or operator that keeps checkouts elsewhere.
 
 ### Running a single test
