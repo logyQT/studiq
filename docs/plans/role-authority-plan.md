@@ -144,6 +144,7 @@ slices plus 2b-9's guard make phase 2 done.
 | R48 | A label that gains provenance is a QA-corpus change, not a component change: grep the literal label across `__tests__/qa` and `qa/cases`, and keep the badge on its generic `data-slot` while adding `data-plan-union` — a single-element text matcher on the surrounding card keeps resolving the status badge through `:not([data-plan-union])`, and the component's own test only proves the string it builds.                                    | 6d: `PlanUnionBadge` named every `/me/plan` layer, so five specs pinning „StudiQ Launch”/„StudiQ Hub” on `/manage/billing` and `/manage/settings`, BIL-01's card description and six case texts went stale while the component test stayed green; overriding `data-slot="badge"` turned the generic billing badge locator into 0 elements, and restoring it made the two status-badge text matchers resolve the union badge until they excluded it with `:not([data-plan-union])`                                             |
 
 | R49 | A deletion sweep greps the object it deletes, not only the retired marker keys: the `org.manage` gate stayed clean while a live tracker still listed the dropped table as a per-role store, because no sweep named `org_role_features`. Grep every dropped table/function name and classify each hit as live/history, or a doc keeps advertising a store the migration removed. | phase 7: `docs/ROADMAP.md` still advertised a per-role (`org_role_features`) flag store after the migration dropped it; the implementer's grep gate covered only `org.manage` |
+| R50 | A refusing write cannot inform a later read: if the guard discards the refused increment, a check-then-act gate that reads the counter never trips, so the quota is unbounded. Record the attempt (and let the gate be the only refuser), or clamp the stored value to the limit in the same statement — never leave the counter below the ceiling that justified the refusal. | phase 7 review: `reserve_ai_tokens` returned `accepted = false` and wrote nothing, so at `current = limit − ε` every later request passed the pre-stream gate indefinitely; the write now always records and the gate trips on the next request |
 
 ## 4. Decisions
 
@@ -5866,6 +5867,15 @@ the close gate).
   (`org_role_features`). A deletion is proven by grepping the deleted name;
   marker names only find the code that used them.
   Rule: R49.
+
+- The first `reserve_ai_tokens` guarded the write itself: a reservation past the
+  ceiling was refused and wrote **nothing**. Because the only enforcement is the
+  pre-stream `usage.current >= usage.limit`, and `current` then stayed below the
+  limit, every later request passed the gate — the quota became unbounded (only
+  rate limiting applied). The tests even pinned the hole (`stored = 8` against a
+  limit of 10). A refusal that discards the attempt cannot inform a later read:
+  the counter has to record what happened, and the gate has to be the refuser.
+  Rule: R50.
 
 ### Phase 8 — extendability (release gate)
 
