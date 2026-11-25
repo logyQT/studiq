@@ -238,6 +238,8 @@ with reviewers), and should be documented here. Never echo it.
 ## Pinned versions
 
 - Bun: `BUN_VERSION` in `verify.yml`, `cache-warm.yml` and `pr-triage.yml`.
+  It is a **canary** (`1.4.5-canary.*`): stable Bun 1.4.5 ships `bun fmt` and
+  `bun check` but not `bun lint`, which the repo's lint gate needs.
   Keeping these in step with the version pinned in `scripts/check-bun-version.ts`
   is **manual**: that script only enforces the local minimum and does not read
   workflow files.
