@@ -54,11 +54,11 @@ export function canGrant(caller: CallerScopeMap, key: string, scope: CatalogScop
 }
 
 /**
- * The scope a new grant starts at: the narrowest one the caller may grant
- * (ADR-0015 §4.1's narrowest-first rule), falling back to the catalog's first
- * scope only while the authority map is unresolved — the server's own 403 then
- * answers. The editor's grant path goes through this, so the default cannot
- * drift from `narrowestGrantable`.
+ * The scope the editor starts a new grant at: the narrowest one the caller may
+ * grant (ADR-0015 §4.1's narrowest-first rule), falling back to the catalog's
+ * first scope only while the authority map is unresolved — the server's own 403
+ * then answers. The grant path goes through this, so the default cannot drift
+ * from `narrowestGrantable`.
  */
 export function startScopeFor(caller: CallerScopeMap, key: PermissionCatalogKey): CatalogScope {
   return narrowestGrantable(caller, key) ?? PERMISSIONS[key].allowedScopes[0];
