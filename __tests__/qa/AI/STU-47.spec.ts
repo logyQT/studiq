@@ -25,10 +25,9 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   it answers „Jakie pojęcie mam Ci wyjaśnić?” and sends nothing to the model.
  *   The model is only asked when the user types and sends the question, and by
  *   then that canned exchange is part of the history it receives.
- * - The thinking trace is a „Thought” toggle whose label is hardcoded English
- *   (`ThoughtMessage` in `chat-message.tsx`); the case expects „Pokaż myślenie”,
- *   the label `ThinkingBlock` would use. The spec accepts either, so it neither
- *   freezes the English label nor fails when the label is localized.
+ * - The thinking trace is a toggle labelled „Pokaż myślenie”, as the case expects
+ *   (`AiChatPage.thinking_title`, rendered by `ThoughtMessage` in
+ *   `chat-message.tsx`).
  */
 
 const CASE = 'STU-47';
@@ -85,7 +84,7 @@ test.describe('@case:STU-47 @area:STU @prio:P2 AI chat basic conversation', () =
 
     // The thinking trace is folded away until the user opens it.
     await expect(page.getByText('Użytkownik pyta o fotosyntezę.')).toBeHidden();
-    await page.getByRole('button', { name: /^(Thought|Pokaż myślenie)$/ }).click();
+    await page.getByRole('button', { name: 'Pokaż myślenie', exact: true }).click();
     await expect(page.getByText('Użytkownik pyta o fotosyntezę.')).toBeVisible();
 
     // Reported by the fixture's usage chunk and counted by the route, which then

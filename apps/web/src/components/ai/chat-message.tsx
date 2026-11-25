@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
+import { AlertCircle, FileText, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { memo, useState } from 'react';
 import type { FlashcardData } from '@/components/ai/generated-cards';
 import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
@@ -86,7 +87,6 @@ export const ChatMessage = memo(
 
     const isStreaming = message.status === 'streaming';
     const isError = message.status === 'error';
-    const isSending = message.status === 'sending';
     const isThinking = message.status === 'thinking';
 
     const hasThinkingTraces = message.thinkingTraces.length > 0;
@@ -112,12 +112,7 @@ export const ChatMessage = memo(
             </div>
           )}
 
-          {isSending && !message.content ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span className="text-xs italic">Thinking...</span>
-            </div>
-          ) : isUser ? (
+          {isUser ? (
             <div className="whitespace-pre-wrap break-words">{message.content}</div>
           ) : isStreaming ? (
             <div className="whitespace-pre-wrap break-words">
@@ -193,10 +188,10 @@ export const ChatMessage = memo(
 );
 
 function ThoughtMessage({ message }: { message: ChatMessageType }) {
+  const t = useTranslations('AiChatPage');
   const [open, setOpen] = useState(false);
-  const isThinking = message.status === 'thinking';
 
-  if (!message.content && !isThinking) return null;
+  if (!message.content) return null;
 
   return (
     <div className="flex justify-start">
@@ -206,30 +201,11 @@ function ThoughtMessage({ message }: { message: ChatMessageType }) {
           open={open}
           onToggle={() => setOpen(!open)}
           icon={<Sparkles className="h-3 w-3 shrink-0" />}
-          label={isThinking ? 'Thinking...' : 'Thought'}
-          badge={
-            isThinking ? (
-              <span className="flex gap-0.5">
-                <span
-                  className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-                  style={{ animationDelay: '0ms' }}
-                />
-                <span
-                  className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-                  style={{ animationDelay: '150ms' }}
-                />
-                <span
-                  className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-                  style={{ animationDelay: '300ms' }}
-                />
-              </span>
-            ) : undefined
-          }
+          label={t('thinking_title')}
         />
-        {open && message.content && (
+        {open && (
           <div className="whitespace-pre-wrap px-3 pb-2 text-muted-foreground/80">
             {message.content}
-            {isThinking && <span className="animate-pulse">▌</span>}
           </div>
         )}
       </div>
