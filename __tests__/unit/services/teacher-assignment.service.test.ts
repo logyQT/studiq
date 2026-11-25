@@ -3818,15 +3818,21 @@ describe('TeacherAssignmentService', () => {
         attemptHistoryState.served = served;
         attemptHistoryState.seen = served;
 
-        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+        // Left: one mcq and four open items, so the mcq share of the two seats is 0.4 and the
+        // leftover seat is stochastic. Forty attempts observe that share instead of asserting which
+        // way one seat fell: the minority item must reach some students, never all of them.
+        let withMcq = 0;
+        for (let attempt = 0; attempt < 40; attempt += 1) {
           const ids = await retakeIds({ attempt_item_count: 2 });
           expect(
             ids.filter((id) => served.has(id)),
             'a fresh sample is disjoint',
           ).toEqual([]);
-          // Left: one mcq and four open items, so the share of the mcq item is 0.4 of 2.
-          expect(ids.map(typeOfId).toSorted()).toEqual(['open', 'open']);
+          expect(ids).toHaveLength(2);
+          if (ids.some((id) => typeOfId(id) === 'mcq')) withMcq += 1;
         }
+        expect(withMcq, 'the eligible pool’s minority item is reachable').toBeGreaterThan(0);
+        expect(withMcq, 'a 4 + 4 pool would serve it every time').toBeLessThan(40);
       });
 
       it('serves the whole pool, unchanged, when no count is set', async () => {

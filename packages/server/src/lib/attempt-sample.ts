@@ -155,25 +155,49 @@ const UNKNOWN_TYPE = 'unknown';
 
 /**
  * How many items each type contributes to a draw of `count` from a pool (#1295): proportional to
- * the pool's mix by the largest-remainder method, so the draw matches the pool within one item per
- * type. Only a type with a fractional share can take a remainder seat, and a tie between equal
- * remainders is broken by `rng`, never by position: otherwise the first-listed type would be the
- * one every student gets more of. A quota never exceeds its type's size: a share is
- * `size * count / total` with `count < total`, so it is below `size`, and a type only takes a seat
- * when its share is fractional.
+ * the pool's mix, so the draw matches the pool within one item per type.
+ *
+ * Every type gets its whole share; the seats left over are drawn **stochastically**, without
+ * replacement, each type's chance proportional to the fraction it fell short by. A deterministic
+ * largest-remainder seat went to the same type for every student, so a type that never had the
+ * largest remainder was never served to anyone: `4 mcq + 1 open` with count 2 always drew two mcq,
+ * and `40 open + 2 mcq` with count 10 always drew ten open, leaving the graded item unreachable.
+ * Weighting by the remainder — rather than choosing uniformly — keeps the expected quota equal to
+ * the type's share, so the mix stays proportional within one item per type, while a class's
+ * attempts collectively cover every type.
+ *
+ * Only a fractional type can take a leftover seat, and a quota never exceeds its type's size: a
+ * share is `size * count / total < size` because `count < total`, so a fractional type's floor
+ * leaves room for its one extra seat.
  */
 function stratifiedQuotas(sizes: readonly number[], count: number, rng: Rng): number[] {
   const total = sizes.reduce((sum, size) => sum + size, 0);
   const shares = sizes.map((size) => (size * count) / total);
   const quotas = shares.map((share) => Math.floor(share));
-  const seats = count - quotas.reduce((sum, quota) => sum + quota, 0);
+  let seats = count - quotas.reduce((sum, quota) => sum + quota, 0);
 
-  const byRemainder = shares
-    .map((share, index) => ({ index, remainder: share - Math.floor(share), tie: rng() }))
-    .filter((entry) => entry.remainder > 0)
-    .toSorted((a, b) => b.remainder - a.remainder || a.tie - b.tie);
-  const seated = new Set(byRemainder.slice(0, seats).map((entry) => entry.index));
-  return quotas.map((quota, index) => quota + (seated.has(index) ? 1 : 0));
+  const remaining = shares
+    .map((share, index) => ({ index, weight: share - Math.floor(share) }))
+    .filter((entry) => entry.weight > 0);
+
+  while (seats > 0 && remaining.length > 0) {
+    const totalWeight = remaining.reduce((sum, entry) => sum + entry.weight, 0);
+    let ticket = rng() * totalWeight;
+    let pick = remaining.length - 1;
+    for (const [index, entry] of remaining.entries()) {
+      ticket -= entry.weight;
+      if (ticket < 0) {
+        pick = index;
+        break;
+      }
+    }
+    const chosen = remaining.splice(pick, 1)[0];
+    if (!chosen) break;
+    quotas[chosen.index] = (quotas[chosen.index] ?? 0) + 1;
+    seats -= 1;
+  }
+
+  return quotas;
 }
 
 /**
@@ -182,9 +206,11 @@ function stratifiedQuotas(sizes: readonly number[], count: number, rng: Rng): nu
  * A subset is stratified by item type (#1295): two students in one class must not get ten open
  * items and ten true/false items respectively, because open items are ungraded today and the two
  * sheets would not measure the same thing. Each type contributes in proportion to its share of
- * `pool` (largest remainder, ties broken at random), the items inside a type are drawn uniformly
- * (Fisher–Yates), and the result is shuffled so its order does not reveal the types. An item whose
- * type is unknown (`typeOf` returns nothing) forms a bucket of its own.
+ * `pool`: its whole share is guaranteed and the leftover seats are allocated stochastically, by
+ * fractional remainder, so a small type is served to some students rather than to none. The items
+ * inside a type are drawn uniformly (Fisher–Yates), and the result is shuffled so its order does
+ * not reveal the types. An item whose type is unknown (`typeOf` returns nothing) forms a bucket of
+ * its own.
  *
  * `pool` is whatever the caller already narrowed to: for a retake that is the items still eligible,
  * so the mix follows what is left rather than the original bound pool.
