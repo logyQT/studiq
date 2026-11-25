@@ -509,8 +509,8 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 - Delete `FEATURES`, `ADMIN_ONLY_FEATURES`, `ORG_SCOPED_FEATURES`,
   `org_role_features`, `has_org_feature`, the old resolvers, the dead keys and
   headers, and the `assignment.*` decision (mapped or deleted).
-- Atomic token accounting (`reserve_ai_tokens`) with a DB check; no
-  read-modify-write.
+- Atomic token accounting (`reserve_ai_tokens`) with a DB-recorded increment;
+  the pre-stream `getUsage` gate is the enforcement.
 - Rewrite `docs/limits.md`; close every difficulty entry in the ledger.
 - Full QA (188) + E2E on a disposable stack; grep gate for `AUTHORITY_MODEL`,
   `legacyOnly`, `nextOnly`, `shadow`, `org_role_features`, `has_org_feature`,

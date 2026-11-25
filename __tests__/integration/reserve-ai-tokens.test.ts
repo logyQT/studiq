@@ -167,12 +167,15 @@ describe('reserve_ai_tokens', () => {
       const secondPid = pidRows[0]?.pid;
       if (secondPid === undefined) throw new Error('dbB has no backend pid');
 
-      async function beginReservation(db: postgres.Sql): Promise<Array<{ accepted: boolean }>> {
+      async function beginReservation(
+        db: postgres.Sql,
+      ): Promise<Array<{ accepted: boolean; input_total: number; output_total: number }>> {
         await db.unsafe('begin');
         await db.unsafe('set local role authenticated');
         await db`select set_config('request.jwt.claims', ${claims}, true)`;
-        return db<Array<{ accepted: boolean }>>`
-          select accepted from public.reserve_ai_tokens(${day}::date, 4, 4, 10)
+        return db<Array<{ accepted: boolean; input_total: number; output_total: number }>>`
+          select accepted, input_total, output_total
+          from public.reserve_ai_tokens(${day}::date, 4, 4, 10)
         `;
       }
 
@@ -204,15 +207,12 @@ describe('reserve_ai_tokens', () => {
       await dbB.unsafe('commit');
 
       // Both increments are stored (8 + 8); neither clobbered the other.
-      const stored = await storedTotal();
-      expect(stored).toBe(16);
-      // The ceiling is enforceable because the total is honest: the next
-      // pre-stream `getUsage` read trips on it.
-      expect(stored).toBeGreaterThanOrEqual(10);
+      expect(await storedTotal()).toBe(16);
 
-      // The first write stayed within the ceiling; the second landed past it.
-      expect(first[0]?.accepted).toBe(true);
-      expect(second[0]?.accepted).toBe(false);
+      // Each call returned the totals it actually wrote: the first saw only its
+      // own row, the second the committed 8 plus its own 8.
+      expect(first[0]).toMatchObject({ accepted: true, input_total: 4, output_total: 4 });
+      expect(second[0]).toMatchObject({ accepted: false, input_total: 8, output_total: 8 });
     } finally {
       await dbA.unsafe('rollback').catch(() => {});
       await dbB.unsafe('rollback').catch(() => {});
@@ -262,6 +262,32 @@ describe('reserve_ai_tokens', () => {
       output_total: 100,
     });
     expect(await storedTotal()).toBe(200);
+  });
+
+  it('never subtracts: negative counts leave the stored total unchanged', async () => {
+    await clear();
+
+    const seeded = await session.rpc('reserve_ai_tokens', {
+      p_day: day,
+      p_input_tokens: 5,
+      p_output_tokens: 5,
+      p_limit: -1,
+    });
+    expect(seeded.error).toBeNull();
+    expect(await storedTotal()).toBe(10);
+
+    // The reported attack: a signed-in caller posts negative counts with the
+    // unlimited limit, which used to decrement its own counter through the RPC.
+    const attack = await session.rpc('reserve_ai_tokens', {
+      p_day: day,
+      p_input_tokens: -1_000_000,
+      p_output_tokens: -1_000_000,
+      p_limit: -1,
+    });
+
+    expect(attack.error).toBeNull();
+    expect(attack.data?.[0]).toMatchObject({ input_total: 5, output_total: 5 });
+    expect(await storedTotal()).toBe(10);
   });
 
   it('refuses a client-side DELETE of the activity row (the counter is RPC-metered)', async () => {

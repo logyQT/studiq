@@ -43,13 +43,21 @@ begin
 
   -- Always records: a concurrent reservation blocks on the row and then adds to
   -- the committed totals, so the returned totals are the real, post-write state.
+  -- Counts are clamped at zero: a caller-supplied negative would subtract from
+  -- the counter and erase the meter that the next `getUsage` reads.
   insert into public.user_daily_activity as activity
     (user_id, date, ai_input_tokens, ai_output_tokens)
-  select v_actor, p_day, p_input_tokens, p_output_tokens
+  select v_actor, p_day, greatest(p_input_tokens, 0), greatest(p_output_tokens, 0)
   on conflict (user_id, date) do update
     set ai_input_tokens = activity.ai_input_tokens + excluded.ai_input_tokens,
         ai_output_tokens = activity.ai_output_tokens + excluded.ai_output_tokens
   returning activity.ai_input_tokens, activity.ai_output_tokens into input_total, output_total;
+
+  -- A `returning … into` that matches no row leaves the totals NULL and the
+  -- caller would meter nothing while reporting success.
+  if not found then
+    raise exception 'reserve_ai_tokens wrote no row' using errcode = 'P0001';
+  end if;
 
   -- Informational only: the increment above is already stored either way.
   accepted := p_limit = -1 or input_total + output_total <= p_limit;
@@ -125,6 +133,15 @@ begin
   if has_table_privilege('authenticated', 'public.user_daily_activity', 'DELETE') then
     raise exception 'authenticated must not delete user_daily_activity';
   end if;
+  -- INSERT/UPDATE stay for the review/quiz stats triggers, which run as the
+  -- invoking user; removing them without moving those triggers breaks the
+  -- stats surfaces.
+  if not has_table_privilege('authenticated', 'public.user_daily_activity', 'INSERT') then
+    raise exception 'authenticated lost the INSERT the stats triggers need';
+  end if;
+  if not has_table_privilege('authenticated', 'public.user_daily_activity', 'UPDATE') then
+    raise exception 'authenticated lost the UPDATE the stats triggers need';
+  end if;
 
   v_body := lower(v_proc.prosrc);
   -- The actor is derived inside; no user-id parameter can meter someone else.
@@ -136,6 +153,14 @@ begin
   end if;
   if position('user_daily_activity' in v_body) = 0 then
     raise exception 'reserve_ai_tokens does not write user_daily_activity';
+  end if;
+  -- Negative caller counts must never reach the counter: `greatest(…, 0)` is
+  -- what stops a caller from subtracting from its own meter.
+  if position('greatest(p_input_tokens, 0)' in v_body) = 0 then
+    raise exception 'reserve_ai_tokens does not clamp p_input_tokens at zero';
+  end if;
+  if position('greatest(p_output_tokens, 0)' in v_body) = 0 then
+    raise exception 'reserve_ai_tokens does not clamp p_output_tokens at zero';
   end if;
 
   -- `accepted` must be computed from the totals the write returned, not
