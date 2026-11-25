@@ -430,6 +430,19 @@ it has a surface.
 > permanently deleted. Re-adding it is data (catalog + flag + plan/seed rows),
 > not a resolver change.
 >
+> **Checklists:** [extendability.md](../plans/extendability.md) — adding and
+> retiring a key, every step naming its file/table and whether it is code, data
+> or both, plus the steps that are still code and their owners.
+
+> **2026-11-25 (phase 8, D23).** The release gate passed on a live app: the
+> fictional `voice.notes` shipped as **one migration, one `ENTITLEMENTS` entry
+> and one `requireEntitlement` call**, with a **zero-line resolver diff**. A
+> pre-existing org and a fresh org resolved it identically once on a plan that
+> carries it, a plan change backfilled it with no prune job, and removing it
+> narrowed the ceiling with no 404/500 anywhere. Evidence and the two checklists
+> are in [extendability.md](../plans/extendability.md). CI deliberately does not
+> regenerate or diff `database.ts` (D36, §15).
+>
 > **2026-11-23 (phase 5d, register row 12).** `quiz.builder` → `quiz.templates`
 > and `advanced.stats` → `stats.insights`, renamed in place in
 > `ENTITLEMENTS` (declaration order unchanged) with identical metadata, plus
@@ -1643,6 +1656,16 @@ interpretation.
 > same manager already authored. The product intent for a manager is "may edit,
 > may not create personal decks", which row 14 expresses per user rather than by
 > persona.
+
+> **2026-11-25 (D36).** CI does not regenerate or diff
+> `packages/server/src/types/database.ts`. It types the schema, not catalog rows:
+> a new entitlement key or plan row changes no type, so a diff gate would catch
+> nothing the extendability checklist adds. It would also need the pinned CLI and
+> a database in CI, and the pinned CLI cannot reproduce the committed file
+> byte-for-byte, so a strict diff would be red on `main` for reasons unrelated to
+> the PR. Catalog drift stays `catalog-invariants`' job, in both directions;
+> schema changes keep the manual pinned-CLI regeneration, reviewed by the
+> integrator. (Phase 8, `feat/authority-8`.)
 
 ---
 
