@@ -1,15 +1,16 @@
 'use client';
 
-import { Button, Input } from '@studiq/ui';
+import { Button, Checkbox, Input } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Check, ExternalLink, Layers, Loader2, Pencil } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { GeneratedCards, type FlashcardData } from '@/components/ai/generated-cards';
+import { planTopicGroups, saveCards } from '@/lib/ai-chat-flashcard-topics';
 import { apiPost } from '@/lib/api';
-import { flashcardKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 /** Deck the generated cards are saved into, when the chat was opened from a deck. */
 export interface DeckTarget {
@@ -45,8 +46,18 @@ export function FlashcardBlock({
   const [name, setName] = useState(deckName?.trim() || t('flashcard_deck_name'));
   const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
 
+  const [keepTopics, setKeepTopics] = useState(true);
+  const keepTopicsId = useId();
+  /** What a save that failed partway already wrote; the retry continues from it. */
+  const progress = useRef<{ deckId?: string; saved: Set<number> }>({ saved: new Set() });
+  const [partlySaved, setPartlySaved] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
+
   const visibleCards = flashcards.filter((_, i) => !removedIndices.has(i));
   const removedCount = removedIndices.size;
+  const topicNames = planTopicGroups(flashcards, removedIndices, []).flatMap(
+    (group) => group.name ?? [],
+  );
 
   const toggleRemove = (index: number) => {
     setRemovedIndices((prev) => {
@@ -63,32 +74,49 @@ export function FlashcardBlock({
   const handleSave = async () => {
     if (visibleCards.length === 0) return;
     setSaving(true);
+    const { saved } = progress.current;
     try {
-      let deckId = targetDeck?.id;
-      const createdNewDeck = !deckId;
+      let deckId = targetDeck?.id ?? progress.current.deckId;
       if (!deckId) {
         const deck = await apiPost<{ id: string }>('/api/v1/flashcards/decks', { name });
         deckId = deck.id;
         if (!deckId) throw new Error('No deck ID returned');
       }
 
-      await apiPost<unknown>('/api/v1/flashcards/batch/create', {
-        cards: visibleCards.map((c) => ({ front: c.front, back: c.back })),
+      const { topicCount, topicsFailed } = await saveCards({
         deckId,
+        cards: flashcards,
+        skipped: new Set([...removedIndices, ...saved]),
+        keepTopics,
+        onSaved: (indices) => {
+          // Only a deck that holds cards is reused: after an earlier failure the
+          // next attempt creates its own, under whatever the name field says then.
+          progress.current.deckId = deckId;
+          for (const index of indices) saved.add(index);
+        },
       });
 
+      setSavedCount(saved.size);
       setSavedDeckId(deckId);
-      // Deck and card lists are cached with `staleTime: Infinity`; without this
-      // the deck the user returns to keeps showing the old card count.
-      void queryClient.invalidateQueries({ queryKey: flashcardKeys.all });
-      toast.success(
-        createdNewDeck
-          ? t('flashcard_deck_created', { count: visibleCards.length })
-          : t('flashcard_saved', { count: visibleCards.length }),
-      );
+      if (topicsFailed) {
+        toast.warning(t('flashcard_topics_failed'));
+      } else if (topicCount > 0) {
+        toast.success(t('flashcard_saved_with_topics', { count: saved.size, topics: topicCount }));
+      } else {
+        toast.success(
+          targetDeck
+            ? t('flashcard_saved', { count: saved.size })
+            : t('flashcard_deck_created', { count: saved.size }),
+        );
+      }
     } catch {
+      setPartlySaved(saved.size > 0);
       toast.error(t('flashcard_save_failed'));
     } finally {
+      // Deck, card and topic lists are cached with `staleTime: Infinity`, and a
+      // failed save may still have written some of them.
+      void queryClient.invalidateQueries({ queryKey: flashcardKeys.all });
+      void queryClient.invalidateQueries({ queryKey: topicKeys.all });
       setSaving(false);
     }
   };
@@ -117,7 +145,7 @@ export function FlashcardBlock({
       <div className="mt-2 space-y-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3">
         <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
           <Check className="h-4 w-4 shrink-0" />
-          <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
+          <span>{t('flashcard_saved', { count: savedCount })}</span>
         </div>
         <a
           href={`${deckBasePath}/flashcards/${savedDeckId}`}
@@ -155,25 +183,46 @@ export function FlashcardBlock({
         }
         removed={removedIndices}
         tools={
-          !readOnly &&
-          (targetDeck ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Layers className="h-3 w-3 shrink-0 text-muted-foreground/60" />
-              <span className="truncate">
-                {t('flashcard_saving_to_deck', { deck: targetDeck.name })}
-              </span>
+          !readOnly && (
+            <div className="space-y-2">
+              {targetDeck ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Layers className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                  <span className="truncate">
+                    {t('flashcard_saving_to_deck', { deck: targetDeck.name })}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Pencil className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={partlySaved}
+                    className="h-7 text-xs"
+                    placeholder={t('flashcard_deck_name')}
+                  />
+                </div>
+              )}
+              {topicNames.length > 0 && (
+                <div className="flex items-start gap-2 text-xs">
+                  <Checkbox
+                    id={keepTopicsId}
+                    checked={keepTopics}
+                    onCheckedChange={(checked) => setKeepTopics(checked === true)}
+                    disabled={saving}
+                    className="mt-px"
+                  />
+                  <div className="min-w-0">
+                    <label htmlFor={keepTopicsId} className="font-medium">
+                      {t('flashcard_keep_topics', { count: topicNames.length })}
+                    </label>
+                    <p className="wrap-break-word text-muted-foreground">{topicNames.join(', ')}</p>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Pencil className="h-3 w-3 shrink-0 text-muted-foreground/60" />
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-7 text-xs"
-                placeholder={t('flashcard_deck_name')}
-              />
-            </div>
-          ))
+          )
         }
         onToggleCard={toggleRemove}
         toggleLabels={{ remove: t('remove_card'), keep: t('keep_card') }}
