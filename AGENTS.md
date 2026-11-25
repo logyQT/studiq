@@ -801,6 +801,14 @@ UI dashboards: `/manage`, `/edu`, `/app` are **auth-only** — a link is navigat
 
 ---
 
+## Writing Style
+
+Write all prose, comments, and replies in ASD-STE100 Simplified Technical English: use active voice, simple present tense, one word per meaning, and short literal sentences with no metaphors or filler.
+
+This rule applies to issues, PR bodies, review comments, commit bodies, docs, and agent replies. UI strings follow the i18n rules and the product voice.
+
+---
+
 ## Tautology Is Harmful
 
 A tautology is anything that restates something already true instead of adding information: a comment that repeats the code, a label that repeats the value, a test that asserts itself, a component that re-wraps a component. **If deleting it loses no information, delete it.** Tautologies are not neutral filler — they inflate diffs, rot into lies, and bury the real signal in review.
