@@ -665,7 +665,7 @@ function PermissionRow({
   onGrant: (granted: boolean) => void;
   onScope: (scope: CatalogScope) => void;
 }) {
-  const { grantable, locked, canEditCurrent, toggleDisabled } = rowAuthority(
+  const { grantable, locked, canEditCurrent, toggleDisabled, authorityDenied } = rowAuthority(
     callerScopes,
     permissionKey,
     scope,
@@ -677,7 +677,7 @@ function PermissionRow({
     <div className="flex items-center justify-between gap-4 text-sm" data-perm-row={permissionKey}>
       <label
         className="flex flex-1 items-center gap-2 font-medium"
-        title={!toggleDisabled ? deniedTitle : undefined}
+        title={authorityDenied ? deniedTitle : undefined}
       >
         <input
           type="checkbox"
@@ -694,13 +694,15 @@ function PermissionRow({
         {PERMISSIONS[permissionKey].allowedScopes.map((candidate) => {
           const allowedByCaller = grantable === null || grantable.includes(candidate);
           const radioDisabled = locked || !granted || !canEditCurrent || !allowedByCaller;
-          const authorityDenied = !locked && granted && (!canEditCurrent || !allowedByCaller);
+          // The row's denial already answers a stored grant the caller does not
+          // cover; a narrower authority only adds the candidate it cannot reach.
+          const radioDenied = authorityDenied || (!locked && granted && !allowedByCaller);
 
           return (
             <label
               key={candidate}
               className={`flex items-center gap-1.5 ${radioDisabled ? 'opacity-50' : 'cursor-pointer'}`}
-              title={authorityDenied ? deniedTitle : undefined}
+              title={radioDenied ? deniedTitle : undefined}
             >
               <input
                 type="radio"

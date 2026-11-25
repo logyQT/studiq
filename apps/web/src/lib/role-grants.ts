@@ -74,6 +74,12 @@ export interface RowAuthority {
   canEditCurrent: boolean;
   /** Whether the grant checkbox can be toggled at all. */
   toggleDisabled: boolean;
+  /**
+   * Whether the caller's own authority is why the row is refused, so the denial
+   * can be explained: a locked row is refused by the catalog (D16), not by the
+   * caller's scopes, and says nothing.
+   */
+  authorityDenied: boolean;
 }
 
 /**
@@ -89,11 +95,23 @@ export function rowAuthority(
 ): RowAuthority {
   const locked = !PERMISSIONS[key].assignable;
   if (caller === undefined) {
-    return { grantable: null, locked, canEditCurrent: true, toggleDisabled: locked };
+    return {
+      grantable: null,
+      locked,
+      canEditCurrent: true,
+      toggleDisabled: locked,
+      authorityDenied: false,
+    };
   }
 
   const grantable = grantableScopes(caller, key);
   const canEditCurrent = scope === null || grantable.includes(scope);
   const canToggle = scope !== null ? grantable.includes(scope) : grantable.length > 0;
-  return { grantable, locked, canEditCurrent, toggleDisabled: locked || !canToggle };
+  return {
+    grantable,
+    locked,
+    canEditCurrent,
+    toggleDisabled: locked || !canToggle,
+    authorityDenied: !locked && !canToggle,
+  };
 }

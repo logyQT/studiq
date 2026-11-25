@@ -42,9 +42,10 @@ const APPLIED_REFRESH_MS = 2_500;
  * model is re-fetched after a mutation, and the plan itself only changes when
  * the webhook arrives.
  *
- * This card deliberately renders **no Badge**: the billing QA specs assert badge
- * counts on the surrounding plan card, where the plan union badge is marked
- * `data-plan-union` and a status badge is the generic `data-slot="badge"`.
+ * This card deliberately renders **no Badge**: the billing QA specs resolve the
+ * status badge with a single-element text matcher on the surrounding plan card,
+ * where the plan union badge is marked `data-plan-union` and the status badge is
+ * the generic `data-slot="badge"` without it.
  */
 export function BillingSubscriptionCard({
   subscription,

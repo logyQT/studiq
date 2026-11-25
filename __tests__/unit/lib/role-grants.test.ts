@@ -103,6 +103,23 @@ describe('rowAuthority', () => {
     });
   });
 
+  it('names the caller authority as the denial, never the lock', () => {
+    // The tooltip states "you do not hold this permission at this scope", so a
+    // locked (ownership) row must not carry it, and an offered row must not
+    // either — only a row the caller's own scopes refuse does.
+    expect(rowAuthority({}, 'deck.read', null)).toMatchObject({ authorityDenied: true });
+    expect(rowAuthority({ 'deck.read': 'own' }, 'deck.read', 'organization')).toMatchObject({
+      authorityDenied: true,
+    });
+    expect(rowAuthority({ 'deck.read': 'organization' }, 'deck.read', null)).toMatchObject({
+      authorityDenied: false,
+    });
+    expect(rowAuthority({ 'org.admin': 'organization' }, 'org.admin', null)).toMatchObject({
+      locked: true,
+      authorityDenied: false,
+    });
+  });
+
   it('locks ownership and leaves an unresolved map to the server', () => {
     expect(rowAuthority({ 'org.admin': 'organization' }, 'org.admin', null)).toMatchObject({
       locked: true,
@@ -113,6 +130,7 @@ describe('rowAuthority', () => {
       locked: false,
       canEditCurrent: true,
       toggleDisabled: false,
+      authorityDenied: false,
     });
   });
 });
