@@ -52,6 +52,8 @@ export interface StackEnv {
   publishableKey: string | null;
   secretKey: string | null;
   mailUrl: string | null;
+  /** Mailpit's SMTP port; the CLI reports it only under `endpoints`. */
+  mailSmtpPort: number | null;
   studioUrl: string | null;
 }
 
@@ -209,6 +211,7 @@ function parseEnv(parsed: JsonObject): StackEnv {
     publishableKey: asString(env.PUBLISHABLE_KEY),
     secretKey: asString(env.SECRET_KEY),
     mailUrl: asString(env.MAILPIT_URL),
+    mailSmtpPort: endpointPort(asObject(parsed.endpoints) ?? {}, 'mail.smtp') || null,
     studioUrl: asString(env.STUDIO_URL),
   };
 }
