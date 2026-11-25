@@ -308,6 +308,7 @@ describe('StatsService', () => {
           started_at: '2024-01-01',
           config: {},
           assignment_id: null,
+          is_assignment_attempt: false,
         },
         {
           id: 'a-2',
@@ -316,6 +317,7 @@ describe('StatsService', () => {
           started_at: '2024-01-02',
           config: {},
           assignment_id: null,
+          is_assignment_attempt: false,
         },
       ];
       const practice = [
@@ -487,6 +489,7 @@ describe('StatsService', () => {
           started_at: '2024-01-01',
           config: {},
           assignment_id: 'assignment-1',
+          is_assignment_attempt: true,
         },
       ]);
 
@@ -523,6 +526,7 @@ describe('StatsService', () => {
           started_at: '2024-01-01',
           config: {},
           assignment_id: null,
+          is_assignment_attempt: false,
         },
         {
           score: 3,
@@ -531,6 +535,7 @@ describe('StatsService', () => {
           started_at: '2024-01-02',
           config: {},
           assignment_id: 'assignment-visible',
+          is_assignment_attempt: true,
         },
         {
           score: 4,
@@ -539,6 +544,7 @@ describe('StatsService', () => {
           started_at: '2024-01-03',
           config: {},
           assignment_id: 'assignment-hidden',
+          is_assignment_attempt: true,
         },
       ]);
       const assignmentsBuilder = qb([
@@ -573,9 +579,176 @@ describe('StatsService', () => {
       expect(expectSuccess(result).totalQuizzes).toBe(3);
     });
 
+    it('does not turn a deleted assignment attempt into a practice quiz (#1141)', async () => {
+      const attemptsBuilder = qb([
+        {
+          id: 'a-orphan',
+          score: 7,
+          total_questions: 5,
+          total_points: 10,
+          started_at: '2024-01-01',
+          config: {},
+          // What the database holds once the assignment is gone: the FK is
+          // nulled, the durable marker is not.
+          assignment_id: null,
+          is_assignment_attempt: true,
+        },
+        {
+          id: 'a-practice',
+          score: 8,
+          total_questions: 10,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: null,
+          is_assignment_attempt: false,
+        },
+      ]);
+      const gradableBuilder = qb(gradableRows('a-practice', 10));
+
+      mock.from
+        .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(gradableBuilder) // quiz_attempt_questions
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(attemptsBuilder.select).toHaveBeenCalledWith(
+        expect.stringContaining('is_assignment_attempt'),
+      );
+      // The orphan is never sent to the practice denominator lookup.
+      expect(gradableBuilder.in).toHaveBeenCalledWith('attempt_id', ['a-practice']);
+      // It is still a taken quiz (a count is not a result), but its score does
+      // not enter any aggregate: only the practice attempt's 8/10 remains.
+      expect(expectSuccess(result).totalQuizzes).toBe(2);
+      expect(expectSuccess(result).avgScore).toBe(80);
+      expect(expectSuccess(result).bestScore).toBe(80);
+      expect(expectSuccess(result).attemptsOverTime).toEqual([
+        { date: '2024-01-02', score: 8, total: 10, percentage: 80 },
+      ]);
+    });
+
+    it('reports no result for a deleted assignment attempt on its own (#1141)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          qb([
+            {
+              id: 'a-orphan',
+              score: 7,
+              total_questions: 5,
+              total_points: 10,
+              started_at: '2024-01-01',
+              config: {},
+              assignment_id: null,
+              is_assignment_attempt: true,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).totalQuizzes).toBe(1);
+      // No `show_results` survives the deleted assignment, so the score fails
+      // closed rather than being re-derived as a practice percentage.
+      expect(expectSuccess(result).avgScore).toBeNull();
+      expect(expectSuccess(result).bestScore).toBeNull();
+      expect(expectSuccess(result).attemptsOverTime).toEqual([]);
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
+    });
+
+    it('scores a legitimate 7 of 10 assignment attempt as 70 (#1141)', async () => {
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 7,
+          total_questions: 5,
+          total_points: 10,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: 'assignment-1',
+          is_assignment_attempt: true,
+        },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }])) // teacher_assignments
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(expectSuccess(result).avgScore).toBe(70);
+      expect(expectSuccess(result).bestScore).toBe(70);
+      expect(expectSuccess(result).attemptsOverTime).toEqual([
+        { date: '2024-01-01', score: 7, total: 10, percentage: 70 },
+      ]);
+      // Assignment attempts stay teacher-graded: no closed-question lookup.
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
+    });
+
+    it('clamps a percentage above 100 instead of rendering 140 (#1141)', async () => {
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 7,
+          total_questions: 5,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+          is_assignment_attempt: false,
+        },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(qb(gradableRows('a-1', 5))) // quiz_attempt_questions
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      // 7 correct answers over a 5-question denominator is a bad pair, not 140 %.
+      expect(expectSuccess(result).avgScore).toBe(100);
+      expect(expectSuccess(result).bestScore).toBe(100);
+      expect(expectSuccess(result).attemptsOverTime[0]).toEqual({
+        date: '2024-01-01',
+        score: 7,
+        total: 5,
+        percentage: 100,
+      });
+    });
+
     it('fails closed when the hidden-assignment lookup fails (#374)', async () => {
       mock.from
-        .mockReturnValueOnce(qb([{ score: 3, total_questions: 4, assignment_id: 'assignment-1' }]))
+        .mockReturnValueOnce(
+          qb([
+            {
+              score: 3,
+              total_questions: 4,
+              assignment_id: 'assignment-1',
+              is_assignment_attempt: true,
+            },
+          ]),
+        )
         .mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.getStudentStats(ctx);

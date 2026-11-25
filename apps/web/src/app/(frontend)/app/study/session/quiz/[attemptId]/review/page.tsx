@@ -29,6 +29,8 @@ interface AttemptDetails {
   total_points: number | null;
   /** Non-null only for assignment attempts, whose open answers a teacher grades. */
   assignment_id: string | null;
+  /** Durable marker: stays true after the assignment is deleted and nulls `assignment_id`. */
+  is_assignment_attempt: boolean;
   config: {
     questionTypes?: string[];
     questionCount?: number;
@@ -68,7 +70,9 @@ export default function QuizReviewPage() {
   if (!attempt)
     return <EntityNotFound titleKey="attempt_not_found" descriptionKey="attempt_not_found_desc" />;
 
-  const isAssignment = attempt.assignment_id !== null;
+  // The durable marker, not `assignment_id`: deleting the assignment nulls the
+  // FK, and an orphaned attempt must not render as a practice quiz (#1141, #657).
+  const isAssignment = attempt.is_assignment_attempt;
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
