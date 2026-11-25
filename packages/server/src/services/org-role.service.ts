@@ -386,9 +386,11 @@ export class OrgRoleService {
    * authority change that asked for it, while rows without a new profile at least
    * keep the previous surface. The two writes are not one database transaction:
    * when a permission write fails after the profile write, the previous profile is
-   * restored with one scoped update and the original failure is returned. A restore
-   * that itself fails is logged, not retried — the role keeps the new profile and
-   * the next save rewrites both.
+   * restored with one scoped update and the original failure is returned. That
+   * restore is a compare-and-swap on the value this save wrote, so a concurrent
+   * save's newer profile is deliberately not overwritten. A restore that itself
+   * fails is logged, not retried — the role keeps the new profile and the next save
+   * rewrites both.
    */
   async setPermissions(
     ctx: RequestContext,
@@ -526,8 +528,10 @@ export class OrgRoleService {
     }
 
     // The compensation path for the profile write above. One scoped update puts
-    // the stored value back; a failure here is logged and the original (more
-    // important) failure is still the answer, because a retried save rewrites both.
+    // the stored value back, but only while the column still holds what this save
+    // wrote: a concurrent save's newer profile is deliberately not overwritten.
+    // A failure here is logged and the original (more important) failure is still
+    // the answer, because a retried save rewrites both.
     const restoreProfile = async (): Promise<void> => {
       if (profileToWrite === null) return;
 
@@ -535,7 +539,8 @@ export class OrgRoleService {
         .from('org_roles')
         .update({ entitlement_profile: storedProfile })
         .eq('id', id)
-        .eq('organization_id', activeOrgId);
+        .eq('organization_id', activeOrgId)
+        .eq('entitlement_profile', profileToWrite);
 
       if (restoreError) {
         logError('org role entitlement profile restore failed', {

@@ -75,3 +75,9 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
   dotyczy brandingu, nie całego edytora organizacji.
 - Zgodność z oczekiwanym rezultatem: pełna (UI blokuje, API odrzuca 403, brak zmiany
   koloru/logo).
+
+> **2026-11-25 (6d).** The „Subskrypcja” badge now names every layer of
+> `/me/plan`'s union, so it reads „StudiQ Launch (organizacja) + StudiQ Solo (plan
+> osobisty)” before the upgrade and „StudiQ Hub (organizacja) + StudiQ Solo (plan
+> osobisty)” after it — the personal `solo` layer is part of a manager's plan.
+> The spec asserts the org layer as a substring of `[data-plan-union]`.

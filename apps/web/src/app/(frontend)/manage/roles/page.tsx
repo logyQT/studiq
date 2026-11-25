@@ -51,7 +51,7 @@ import { usePermission } from '@/hooks/use-permission';
 import { usePermissions } from '@/hooks/use-permissions';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { invalidateAuthority } from '@/lib/query-cache';
-import { type CallerScopeMap, grantableScopes, narrowestGrantable } from '@/lib/role-grants';
+import { type CallerScopeMap, rowAuthority, startScopeFor } from '@/lib/role-grants';
 import { isArrayOf } from '@/lib/unknown-value';
 
 /** The closed catalog, grouped by key family: content families, then groups, then org. */
@@ -564,9 +564,7 @@ function PermissionEditorBody({
     // A granted key starts at the narrowest scope the caller may grant
     // (ADR-0015 §4.1); an unresolved authority map falls back to the catalog's
     // first scope, and the server's own 403 is then the answer.
-    const next = granted
-      ? (narrowestGrantable(callerScopes ?? {}, key) ?? PERMISSIONS[key].allowedScopes[0])
-      : null;
+    const next = granted ? startScopeFor(callerScopes ?? {}, key) : null;
     setScopes((current) => ({ ...current, [key]: next }));
   }
 
@@ -592,13 +590,7 @@ function PermissionEditorBody({
                   key={key}
                   permissionKey={key}
                   scope={scopes[key] ?? null}
-                  // Ownership is not grantable through the editor (D16): a held
-                  // `org.admin` stays a no-op, an absent one stays revoked.
-                  locked={!PERMISSIONS[key].assignable}
-                  // `null` means the authority map has not resolved yet: every
-                  // scope stays offered and the server decides (fail-open only
-                  // on the affordance, never on the write).
-                  grantable={callerScopes === undefined ? null : grantableScopes(callerScopes, key)}
+                  callerScopes={callerScopes}
                   t={t}
                   onGrant={(granted) => grant(key, granted)}
                   onScope={(scope) => setScope(key, scope)}
@@ -660,35 +652,32 @@ function PermissionEditorBody({
 function PermissionRow({
   permissionKey,
   scope,
-  locked,
-  grantable,
+  callerScopes,
   t,
   onGrant,
   onScope,
 }: {
   permissionKey: PermissionCatalogKey;
   scope: CatalogScope | null;
-  locked: boolean;
-  /** The scopes the caller may grant, or `null` while their map is unresolved. */
-  grantable: readonly CatalogScope[] | null;
+  /** The raw authority map, or `undefined` while `/me/permissions` is unresolved. */
+  callerScopes: CallerScopeMap | undefined;
   t: RolesTranslator;
   onGrant: (granted: boolean) => void;
   onScope: (scope: CatalogScope) => void;
 }) {
+  const { grantable, locked, canEditCurrent, toggleDisabled } = rowAuthority(
+    callerScopes,
+    permissionKey,
+    scope,
+  );
   const granted = scope !== null;
-  // A stored grant may be removed only with authority over the scope it holds;
-  // that is the same coverage check the server runs on the removal (ADR §4.4).
-  const canEditCurrent = grantable === null || scope === null || grantable.includes(scope);
-  const canToggle =
-    grantable === null || (scope !== null ? grantable.includes(scope) : grantable.length > 0);
-  const toggleDisabled = locked || !canToggle;
   const deniedTitle = t('perms_scope_denied');
 
   return (
     <div className="flex items-center justify-between gap-4 text-sm" data-perm-row={permissionKey}>
       <label
         className="flex flex-1 items-center gap-2 font-medium"
-        title={!locked && !canToggle ? deniedTitle : undefined}
+        title={!toggleDisabled ? deniedTitle : undefined}
       >
         <input
           type="checkbox"

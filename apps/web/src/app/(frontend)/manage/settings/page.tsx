@@ -255,7 +255,12 @@ export default function SettingsPage() {
             {planLoading || plansLoading ? (
               <Skeleton className="h-6 w-24" />
             ) : myPlan ? (
-              <PlanUnionBadge plan={myPlan} plans={plans} className="text-sm px-3 py-1" />
+              <PlanUnionBadge
+                plan={myPlan}
+                plans={plans}
+                variant="default"
+                className="text-sm px-3 py-1"
+              />
             ) : null}
             <span className="text-sm text-muted-foreground">{t('managed_by_admins')}</span>
           </div>

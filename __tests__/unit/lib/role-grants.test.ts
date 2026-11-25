@@ -4,6 +4,8 @@ import {
   canGrant,
   grantableScopes,
   narrowestGrantable,
+  rowAuthority,
+  startScopeFor,
 } from '@/lib/role-grants';
 
 /**
@@ -58,6 +60,60 @@ describe('grantableScopes', () => {
     const caller: CallerScopeMap = { 'org.admin': 'group' };
 
     expect(grantableScopes(caller, 'org.member.manage')).toEqual([]);
+  });
+
+  it('offers nothing for the non-assignable ownership key', () => {
+    // D16: `org.admin` is never assignable, not even to an org.admin holder —
+    // the server answers 422, so the editor must not offer the row either.
+    expect(grantableScopes({ 'org.admin': 'organization' }, 'org.admin')).toEqual([]);
+    expect(grantableScopes({}, 'org.admin')).toEqual([]);
+  });
+});
+
+describe('startScopeFor', () => {
+  it('starts a new grant at the narrowest grantable scope, not the widest', () => {
+    // `group.invite` declares `group | organization`, so the narrowest grantable
+    // is `group`; a content key starts at `own` even for an organization holder.
+    expect(startScopeFor({ 'group.invite': 'group' }, 'group.invite')).toBe('group');
+    expect(startScopeFor({ 'deck.read': 'organization' }, 'deck.read')).toBe('own');
+  });
+
+  it('falls back to the catalog order only when the caller may grant none', () => {
+    expect(startScopeFor({}, 'deck.read')).toBe('own');
+  });
+});
+
+describe('rowAuthority', () => {
+  it('disables a key the caller cannot grant', () => {
+    const caller: CallerScopeMap = { 'deck.read': 'organization' };
+
+    expect(rowAuthority(caller, 'org.member.manage', null)).toMatchObject({
+      grantable: [],
+      toggleDisabled: true,
+    });
+    expect(rowAuthority(caller, 'deck.read', null)).toMatchObject({ toggleDisabled: false });
+  });
+
+  it('keeps a stored grant beyond the caller authority visible but non-editable', () => {
+    const caller: CallerScopeMap = { 'deck.read': 'own' };
+
+    expect(rowAuthority(caller, 'deck.read', 'organization')).toMatchObject({
+      canEditCurrent: false,
+      toggleDisabled: true,
+    });
+  });
+
+  it('locks ownership and leaves an unresolved map to the server', () => {
+    expect(rowAuthority({ 'org.admin': 'organization' }, 'org.admin', null)).toMatchObject({
+      locked: true,
+      toggleDisabled: true,
+    });
+    expect(rowAuthority(undefined, 'org.member.manage', null)).toEqual({
+      grantable: null,
+      locked: false,
+      canEditCurrent: true,
+      toggleDisabled: false,
+    });
   });
 });
 

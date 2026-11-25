@@ -13,9 +13,9 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-const { log } = vi.hoisted(() => ({ log: vi.fn() }));
+const { log, logError } = vi.hoisted(() => ({ log: vi.fn(), logError: vi.fn() }));
 
-vi.mock('@studiq/server/lib/log', () => ({ log, warn: vi.fn(), error: vi.fn() }));
+vi.mock('@studiq/server/lib/log', () => ({ log, warn: vi.fn(), error: logError }));
 
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
@@ -943,11 +943,43 @@ describe('OrgRoleService', () => {
       if (result.success) throw new Error('unreachable');
       expect(result.error).toBe('INTERNAL_SERVER');
       expect(profileQb.update).toHaveBeenCalledWith({ entitlement_profile: 'learner' });
-      // The compensation writes the stored value back, scoped to the same role+org.
+      // The compensation writes the stored value back, scoped to the same role+org
+      // and conditioned on the value this save installed (compare-and-swap).
       expect(restoreQb.update).toHaveBeenCalledWith({ entitlement_profile: 'all' });
       expect(restoreQb.eq).toHaveBeenCalledWith('id', 'r-1');
       expect(restoreQb.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(restoreQb.eq).toHaveBeenCalledWith('entitlement_profile', 'learner');
       expect(callOrder(upsertQb.upsert)).toBeLessThan(callOrder(restoreQb.update));
+    });
+
+    it('returns the permission failure when the profile restore also fails', async () => {
+      mockRoleLookup(roleRow([], 'all'));
+      const profileQb = qb(undefined);
+      // 23503 maps to BAD_REQUEST, so the assertion can tell the upsert's code
+      // from the restore's (which would be INTERNAL_SERVER if it were returned).
+      const upsertQb = qb(null, { code: '23503', message: 'permission_key_fkey' });
+      const restoreQb = qb(null, { message: 'restore failed' });
+      mock.from
+        .mockReturnValueOnce(profileQb)
+        .mockReturnValueOnce(upsertQb)
+        .mockReturnValueOnce(restoreQb);
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        ...catalogPayload({ 'flashcard.read': 'own' }),
+        entitlementProfile: 'learner',
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('BAD_REQUEST');
+      expect(logError).toHaveBeenCalledWith(
+        'org role entitlement profile restore failed',
+        expect.objectContaining({
+          'role.id': 'r-1',
+          'profile.wanted': 'learner',
+          'profile.stored': 'all',
+        }),
+      );
     });
 
     it('restores the previous profile when the prune fails', async () => {
@@ -1101,6 +1133,30 @@ describe('OrgRoleService', () => {
       expect(result.error).toBe('FORBIDDEN');
       // Nothing was written.
       expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not write the profile when a permission change is denied', async () => {
+      const roleQb = mockRoleLookup(roleRow([], 'none'));
+      // Stubbed so a profile write moved above the grant loop fails on the
+      // assertions below, not on an unstubbed client call.
+      const profileQb = qb(undefined);
+      mock.from.mockReturnValueOnce(profileQb);
+      const scopes = nonOwnerScopes();
+      delete scopes['org.member.manage'];
+
+      const result = await service.setPermissions({ ...permCtx, permissionScopes: scopes }, 'r-1', {
+        ...catalogPayload({ 'org.member.manage': 'organization' }),
+        entitlementProfile: 'learner',
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('FORBIDDEN');
+      // Authorization precedes the profile write: the role was read, nothing was
+      // written — neither the profile nor a permission row.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(roleQb.update).not.toHaveBeenCalled();
+      expect(profileQb.update).not.toHaveBeenCalled();
     });
 
     it('refuses to remove a grant the caller holds at a narrower scope', async () => {

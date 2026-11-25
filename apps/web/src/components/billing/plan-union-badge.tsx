@@ -40,14 +40,26 @@ interface PlanUnionBadgeProps {
   /** The active catalogue; a missing row falls back to the key. */
   plans?: PlanInfo[];
   className?: string;
+  /** `/manage/settings` keeps its pre-6d emphasis; every other surface is secondary. */
+  variant?: 'default' | 'secondary';
 }
 
-/** The "your plan" badge for `/app|/edu/billing`, `/manage/billing` and `/manage/settings`. */
-export function PlanUnionBadge({ plan, plans, className }: PlanUnionBadgeProps) {
+/**
+ * The "your plan" badge for `/app|/edu/billing`, `/manage/billing` and
+ * `/manage/settings`. It keeps Badge's generic `data-slot` mark so a badge
+ * count on the surrounding card still sees it, and adds `data-plan-union` for
+ * locators that need this badge specifically.
+ */
+export function PlanUnionBadge({
+  plan,
+  plans,
+  className,
+  variant = 'secondary',
+}: PlanUnionBadgeProps) {
   const t = useTranslations('BillingPage');
 
   return (
-    <Badge variant="secondary" className={className} data-slot="plan-union-badge">
+    <Badge variant={variant} className={className} data-plan-union="true">
       {planUnionLabel(plan, plans, (origin) => t(`origin_${origin}`))}
     </Badge>
   );

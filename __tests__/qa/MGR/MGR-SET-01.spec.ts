@@ -157,12 +157,14 @@ test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
     const plans = await getData<PlanInfo[]>(page, PLANS_API);
     const launchPlan = plans.find((candidate) => candidate.key === 'launch');
     if (!launchPlan) throw new Error('plan catalogue has no launch plan');
+    // The badge names every layer of the union; this manager's personal `solo`
+    // layer follows the org plan, so the org layer is asserted as a substring.
     await expect(
       page
         .locator('[data-slot="card"]')
         .filter({ has: page.getByText('Subskrypcja', { exact: true }) })
-        .getByText(launchPlan.name, { exact: true }),
-    ).toBeVisible();
+        .locator('[data-plan-union]'),
+    ).toContainText(launchPlan.name);
 
     // The UI state comes from the same session's entitlement data, not a pin.
     const entitlements = await getData<EntitlementSet>(page, '/api/v1/me/entitlements');

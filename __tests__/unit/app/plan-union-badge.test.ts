@@ -32,17 +32,35 @@ function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key'>): PlanInfo {
   };
 }
 
-function render(badge: PlanInfo, catalogue: PlanInfo[] | undefined): string {
+function render(
+  badge: PlanInfo,
+  catalogue: PlanInfo[] | undefined,
+  variant?: 'default' | 'secondary',
+): string {
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
       { locale: 'pl', messages: pl, timeZone: 'UTC' },
-      createElement(PlanUnionBadge, { plan: badge, plans: catalogue }),
+      createElement(PlanUnionBadge, { plan: badge, plans: catalogue, variant }),
     ),
   );
 }
 
 describe('PlanUnionBadge', () => {
+  it('keeps the generic badge mark and adds its own locator', () => {
+    const markup = render(plan({ key: 'hub', name: 'Hub' }), [plan({ key: 'hub', name: 'Hub' })]);
+
+    expect(markup).toContain('data-slot="badge"');
+    expect(markup).toContain('data-plan-union="true"');
+  });
+
+  it('keeps the surface variant, secondary by default', () => {
+    const catalogue = [plan({ key: 'hub', name: 'Hub' })];
+
+    expect(render(plan({ key: 'hub' }), catalogue)).toContain('bg-secondary');
+    expect(render(plan({ key: 'hub' }), catalogue, 'default')).toContain('bg-primary');
+  });
+
   it('names a single-layer plan by its catalogue row', () => {
     const catalogue = [plan({ key: 'hub', name: 'Hub' })];
 

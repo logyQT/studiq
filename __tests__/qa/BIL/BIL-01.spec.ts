@@ -173,7 +173,11 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     await expect(card.locator('[data-slot="card-title"]')).toHaveText(BILLING_COPY.currentPlan);
     // The page renders the plan the API resolved for this user, not a pinned name.
     await expect(card.locator('[data-slot="card-description"]')).toHaveText(plan.name);
-    await expect(card.locator('[data-slot="badge"]')).toHaveText(BILLING_COPY.freeBadge);
+    // The plan union is a badge of its own inside the card description, so the
+    // status badge is the generic one without `data-plan-union`.
+    await expect(card.locator('[data-slot="badge"]:not([data-plan-union])')).toHaveText(
+      BILLING_COPY.freeBadge,
+    );
 
     // --- Features: Fiszki, Testy ---------------------------------------------
     expect(plan.features, 'the Base feature set').toEqual(
