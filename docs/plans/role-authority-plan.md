@@ -39,6 +39,8 @@ phase 7 on 2026-11-25 (D23) — one migration + one catalog constant + one surfa
 call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
+**Follow-up order:** [followup-order.md](followup-order.md) — defects first (#1494, #1484,
+#1482, #1478, #1492), then the plans, then the shell, then the `/app` decision, then onboarding.
 **Open follow-ups (owned):** **#1484** the public plan list ignores the
 entitlement flags and the TS catalog; **#1483** notify org admins when a new
 entitlement is grantable; **#1482** move the daily-stats triggers behind a
