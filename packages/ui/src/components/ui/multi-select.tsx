@@ -25,6 +25,8 @@ type MultiSelectProps = {
   placeholder?: string;
   emptyText?: string;
   className?: string;
+  /** Names the trigger: a `combobox` takes no name from the chips or placeholder inside it. */
+  'aria-label'?: string;
 };
 
 export function MultiSelect({
@@ -34,6 +36,7 @@ export function MultiSelect({
   placeholder,
   emptyText,
   className,
+  'aria-label': ariaLabel,
 }: MultiSelectProps) {
   const t = useTranslations('MultiSelectComponent');
   const [open, setOpen] = useState(false);
@@ -61,6 +64,7 @@ export function MultiSelect({
         <Button
           variant="outline"
           role="combobox"
+          aria-label={ariaLabel}
           aria-expanded={open}
           aria-controls={listboxId}
           className={cn('h-auto min-h-10 w-full justify-between', className)}

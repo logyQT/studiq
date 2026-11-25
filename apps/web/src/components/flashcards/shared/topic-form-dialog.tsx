@@ -11,12 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-  Label,
-  MultiSelect,
-  RadioGroup,
-  RadioGroupItem,
 } from '@studiq/ui';
 import type { useTranslations } from 'next-intl';
+import { useId } from 'react';
+import { SharingFields } from '@/components/flashcards/shared/sharing-fields';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 
 interface GroupOption {
@@ -52,6 +50,7 @@ export function TopicFormDialog({
   groups,
 }: TopicFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
+  const id = useId();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,8 +81,11 @@ export function TopicFormDialog({
                 </svg>
               </div>
               <div className="flex-1">
-                <label className="sr-only">{t('topic_name_label')}</label>
+                <label htmlFor={`${id}-name`} className="sr-only">
+                  {t('topic_name_label')}
+                </label>
                 <Input
+                  id={`${id}-name`}
                   value={formData.name}
                   onChange={(e) => onFormDataChange({ ...formData, name: e.target.value })}
                   placeholder={t('topic_name_placeholder')}
@@ -93,40 +95,19 @@ export function TopicFormDialog({
             </div>
           </Card>
           {groups && (
-            <div className="mt-4 space-y-3">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">{t('visibility_label')}</Label>
-                <RadioGroup
-                  value={formData.visibility ?? 'personal'}
-                  onValueChange={(v: 'personal' | 'group') =>
-                    onFormDataChange({ ...formData, visibility: v })
-                  }
-                  className="flex gap-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="personal" id="topic-visibility-personal" />
-                    <Label htmlFor="topic-visibility-personal" className="text-sm cursor-pointer">
-                      {t('visibility_personal')}
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="group" id="topic-visibility-group" />
-                    <Label htmlFor="topic-visibility-group" className="text-sm cursor-pointer">
-                      {t('visibility_group')}
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-              {formData.visibility === 'group' && (
-                <MultiSelect
-                  options={groups.map((g) => ({ label: g.name, value: g.id }))}
-                  selected={formData.groupIds ?? []}
-                  onChange={(ids) => onFormDataChange({ ...formData, groupIds: ids })}
-                  placeholder={t('groups_placeholder')}
-                  emptyText={t('groups_empty')}
-                />
-              )}
-            </div>
+            <SharingFields
+              idPrefix="topic-visibility"
+              visibility={formData.visibility ?? 'personal'}
+              onVisibilityChange={(visibility) => onFormDataChange({ ...formData, visibility })}
+              groups={groups}
+              groupIds={formData.groupIds ?? []}
+              onGroupIdsChange={(groupIds) => onFormDataChange({ ...formData, groupIds })}
+              visibilityLabel={t('visibility_label')}
+              personalLabel={t('visibility_personal')}
+              groupLabel={t('visibility_group')}
+              groupsPlaceholder={t('groups_placeholder')}
+              groupsEmptyText={t('groups_empty')}
+            />
           )}
         </div>
         <DialogFooter>
