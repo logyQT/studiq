@@ -185,6 +185,7 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D32 | `subscription_plans.scope`/`audience` replace `for_account_type` (dropped in the same migration); `solo` is the free manager personal plan; manager profiles holding an organization-scope plan are backfilled to `solo`; `org_seat_pools.plan_key` FKs the plan table — landed in 4a (`feat/authority-4a`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | D33 | A seat is a licence of a personal plan validated from live catalog data: `addPool` requires an active `scope='personal'` plan whose keys are all `seatEligible` in `entitlement_catalog` (422 on `planKey`); `assignSeat` requires the target's `profiles.account_type` to equal the plan `audience` (BAD_REQUEST); `PLAN_TIER_MAP`/`ROLE_TIER_MAP` deleted — landed in 4a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | D34 | Plan composition keys on plan scope, not the caller's persona: inside a verified org an organization-scope personal plan never applies; `getMyPlan` = seat plan, else org plan with `org.billing.manage`, else personal; `resolveApplicablePlan` audience-checks personal plans only and answers FORBIDDEN for an org plan with no org id; `/subscription-plans` filters are `scope`/`audience` — landed in 4a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D36 | **CI does not regenerate or diff `database.ts`.** `packages/server/src/types/database.ts` types the schema, not catalog rows: a new entitlement key or plan row changes no type, so a diff gate would catch nothing the extendability checklist adds. It would also need the pinned CLI and a database in CI, and the phase-1a review recorded that the pinned CLI cannot reproduce the committed file byte-for-byte — a strict diff is red on `main` for unrelated reasons. Catalog drift is covered by `catalog-invariants` in both directions; schema changes keep the manual pinned-CLI regeneration, reviewed by the integrator. (Phase 8.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -5898,6 +5899,62 @@ the remaining gate.
 
 ### Phase 8 — extendability (release gate)
 
-_Not started._ Specified in
+**Measured 2026-11-25 on `feat/authority-8` (`b08321d8` + the simulation diff)**,
+on this checkout's own stack with the app served and existing orgs/users. The
+deliverable is committed; the simulation is reverted. Specified in
 [role-authority-rollout.md](role-authority-rollout.md#8--extendability-audit-post-phase-7-release-gate);
 phase 7 is not closed until it passes (D23).
+
+**Acceptance: one migration + one catalog constant + one surface call, zero
+resolver changes.** Measured by adding the fictional `voice.notes`
+(`surface`/`personal`/`seatEligible`/`personalPortable`) to `hub`, `campus` and
+`master`:
+
+- **one migration** (`2026112514…_voice_notes_simulation.sql`: catalog row, flag
+  row, three plan rows; no grant, policy or type change), **one `ENTITLEMENTS`
+  entry**, **one `requireEntitlement(ctx, 'voice.notes')`** on
+  `GET /api/v1/stats/teacher/quizzes`
+  (`packages/server/src/controllers/stats.controller.ts`), and the surface's own
+  disabled-state copy (`apps/web/src/app/(frontend)/edu/stats/quizzes/page.tsx`
+  - three `TeacherQuizStats` strings per locale).
+    `packages/server/src/services/entitlement.resolver.ts` diff: **0 lines**. The
+    first attempt gated `GET /api/v1/teacher/quizzes` and turned `AUT-19`,
+    `SEC-05` and `EDU-QZ-06` red — a free read shared by students and free
+    teachers is not a gateable surface; see "Retrofitting a gate onto a free read"
+    in [extendability.md](extendability.md).
+- **Payload delta, hub educator:** `["ai.chat","flashcards","quiz","quiz.templates","stats.insights","branding"]`
+  → the same six in the same order plus `"voice.notes"` appended. Applying the
+  DB rows with the old build serving changed nothing — the TS constant is what
+  makes a DB row resolvable, so the redeploy is part of the cost — and the rebuild
+  added the key.
+- **Both vintages:** an org created before the key (then the key applied) and an
+  org created after it resolved the same payload once on `hub`; `launch → hub` on
+  an existing org backfilled the key with no prune job (`change_org_plan` moves
+  the plan only). A `team` org (has `quiz.templates`, not `voice.notes`) turned
+  the surface into `403` and the page into the plan card; the same org with a
+  personal `master` carried it via `personalPortable`.
+- **Retirement:** removing the `hub` plan row dropped the key, made the surface
+  `403`, hid it in the UI, and left `/me/entitlements`, `/me/permissions`,
+  `/me/plan`, `/flashcards`, `/questions/banks`, `/organization/groups` and
+  `/notifications` at `200` — no 404, no 500. Order is FK-forced: plan rows →
+  flag (its delete **cascades** plan rows and overrides) → catalog
+  (catalog-first is `23503`), with the TS constant in the same change. Re-entry
+  after the full retirement was data-only and immediate, no rebuild.
+- **Drift:** `catalog-invariants` red for a bogus TS key (2 assertions) and for a
+  bogus DB row (1), both reverted. **D36:** no CI regeneration/diff of
+  `database.ts` (schema types, not catalog rows; the pinned CLI cannot reproduce
+  the file byte-for-byte) — catalog drift is the invariant's job.
+- **Corpus:** the 37 at-risk cases from §4 plus `EDU-QZ-01/02/03/05/06` and the
+  two cases that read the touched surface (`EDU-ST-02`, `EDU-ST-04`) — 44 spec
+  files, **70 passed / 0 failed**, every tenant freshly seeded. The first
+  attempt (gate on `GET /teacher/quizzes`) failed 3 of them (`AUT-19`, `SEC-05`,
+  `EDU-QZ-06`); after moving the gate to the stats read, 0. A second run without
+  re-seeding failed 7 state-dependent MGR/SEC cases (role/seat mutations), which
+  is the documented "one tenant per attempt" rule, not the app.
+- **Checklists:** [extendability.md](extendability.md) carries the adding and
+  retiring steps (code/data/both per line) and the "steps that are still code"
+  table. The steps that remain code: the `ENTITLEMENTS` entry, the surface call
+  and its UI copy, the dev-only plan rows in `supabase/seeds/00_plans.sql`
+  (the seed `DELETE`s `plan_entitlements` and re-inserts a hard-coded list, so a
+  `db reset` drops a migration-added plan row; production `db push` is
+  unaffected), and removing the TS constant with the catalog row at retirement.

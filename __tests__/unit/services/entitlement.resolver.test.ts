@@ -230,6 +230,47 @@ describe('EntitlementResolver', () => {
       expect(entitlements).toEqual(['flashcards', 'quiz']);
     });
 
+    it('ignores a non-catalog key in user_feature_overrides (DB ahead of code)', async () => {
+      // Phase 8 matrix cell F: a row for a key the TypeScript catalog does not
+      // know is inert, in both directions, and never reaches `ENTITLEMENTS[key]`.
+      mockTables({
+        personalPlanKey: 'base',
+        overrides: [
+          { feature_key: 'test.dbonly', is_enabled: true },
+          { feature_key: 'test.dbonly.revoked', is_enabled: false },
+        ],
+      });
+
+      const { entitlements, sources } = await resolver.resolveEntitlements(baseCtx);
+      expect(entitlements).toEqual(['flashcards', 'quiz']);
+      expect(sources.overrides).toEqual([]);
+      expect(sources.revokedOverrides).toEqual([]);
+    });
+
+    it('picks up a plan row added between resolutions (no restart, no prune job)', async () => {
+      // Phase 8 matrix cell D: the org layer is derived per request, so a plan
+      // that gains a key serves it on the next resolution with no backfill row
+      // and no cache flush. A fresh ctx per resolution is what a new request is.
+      const adminCtx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
+      mockTables({ roleProfile: 'all', orgPlan: 'launch' });
+      expect((await resolver.resolveEntitlements(adminCtx)).entitlements).toEqual([
+        'flashcards',
+        'quiz',
+      ]);
+
+      mockTables({
+        roleProfile: 'all',
+        orgPlan: 'launch',
+        planEntitlements: { launch: ['flashcards', 'quiz', 'quiz.templates'] },
+      });
+      const after = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
+      expect((await resolver.resolveEntitlements(after)).entitlements).toEqual([
+        'flashcards',
+        'quiz',
+        'quiz.templates',
+      ]);
+    });
+
     it('does not add non-portable personal keys inside an org (whitelist, D3)', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
       mockTables({ roleProfile: 'none', orgPlan: 'launch', personalPlanKey: 'base' });
