@@ -206,6 +206,15 @@ decision), not a rule smuggled into §3.
   file byte-for-byte, so a strict diff would be red on `main` for reasons
   unrelated to the PR. Schema changes keep the existing manual regeneration
   step, reviewed by the integrator.
+- The decidable matrix cells are covered where they can be run safely:
+  **unit** — unknown keys in plan rows (personal path, load-bearing), unknown
+  keys in `user_feature_overrides`, a missing flag row failing closed, and a
+  plan row added between resolutions (backfill); **integration** —
+  `__tests__/integration/entitlement-deploy-order.test.ts` (the plan-change
+  backfill and an unknown override key against a real org/user). The catalog-row
+  cells stay unit-only on purpose: `catalog-invariants` reads
+  `entitlement_catalog` and runs in a parallel file, so a temporary row would be
+  a cross-file race.
 
 ## Deploy-order and split-brain matrix
 
@@ -214,6 +223,18 @@ DB cells are row inserts/deletes, the app was never restarted. "Gate" below is
 `GET /api/v1/stats/teacher/quizzes` (the surface) and "payload" is
 `/api/v1/me/entitlements` for the hub-org educator. `FORBIDDEN` is `403` with
 the JSON envelope and `x-error-code: FORBIDDEN`.
+
+**The rules the cells prove** — put them in the PR description:
+
+1. **Adding a key: data may land before or after the code, and either order is
+   safe.** Before the data lands the key is simply not granted (cells A, B, C);
+   before the _code_ lands it is inert (cells E–G). Safe order: data first, then
+   the build — the key is absent, never broken, in between.
+2. **Removing a key: plan rows → flag → catalog row**; the FK refuses a
+   catalog-first delete (cell I), and that refusal is the guard. The flag delete
+   cascades (see "Retiring an entitlement").
+3. **Data ahead of code is inert**: an unknown catalog/flag/plan/override row is
+   ignored by every reader (cells E–G), not an error and not a crash.
 
 | Cell | Setup                                                                           | Request                          | Status | Payload / behaviour                                                                                                                                                                                                                                                                                                                                                | Verdict                        |
 | ---- | ------------------------------------------------------------------------------- | -------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
@@ -230,16 +251,23 @@ the JSON envelope and `x-error-code: FORBIDDEN`.
 | K    | UI for A/B/C/D (Playwright on `/edu/stats/quizzes`)                             | page                             | `200`  | plan card replaces the table, "Zobacz plany" present, no error toast, no page error; the gated read is not requested. A direct API call is `403`, never `404`. After the plan row returns (D), the page renders the table without reload                                                                                                                           | pass                           |
 | L    | Anonymous pricing, with and without the key                                     | `GET /subscription-plans` (anon) | `200`  | plans 13 both ways; `voice.notes` appears additively on `hub`/`master`/`campus`; no anon `403`; after removal the entry is gone                                                                                                                                                                                                                                    | pass                           |
 
-Mutation proofs (`bun run mutate`, tree clean):
+Mutation proofs (`bun run mutate`, tree clean). All three end **KILLED**:
 
-- delete the `isEntitlementKey` filter on `plan_entitlements` rows → the
-  unknown-key plan-row test **KILLED** (the unknown key reaches
-  `ENTITLEMENTS[key]` and the resolution throws — cell E's crash if the filter
-  ever goes);
-- make a missing flag row default to enabled (`!== true` → `=== false`) → the
-  fail-closed test **KILLED**;
-- remove a `requireEntitlement` gate from an existing surface → the controller's
-  gated-write test **KILLED**.
+- delete the `isEntitlementKey` filter on `plan_entitlements` rows → **KILLED**
+  (`TypeError: Cannot read properties of undefined (reading 'category')`).
+  Finding: the mutation first **SURVIVED** against the pre-existing
+  "ignores non-catalog keys in plan rows" assertion, because with profile `all`
+  the resolver iterates the catalog and only checks ceiling membership — that
+  assertion could not distinguish a removed filter. The guard was rewritten on
+  the personal-plan path (outside an org the personal layer adds every row, and
+  the flag pass dereferences `ENTITLEMENTS[key]`, which is exactly cell E's
+  crash); the profile-`all` case stays as a separate test that states what it
+  pins.
+- make a missing flag row default to enabled (`!== true` → `=== false`) →
+  **KILLED** (`expected ['ai.chat','flashcards',…] to deeply equal ['ai.chat','flashcards','quiz']`).
+- remove a `requireEntitlement` gate from an existing surface
+  (`quiz-teacher.create`) → **KILLED** (`promise resolved … instead of
+rejecting`; the controller's gated-write test was the fail-safe).
 
 ## Measured evidence (2026-11-25)
 

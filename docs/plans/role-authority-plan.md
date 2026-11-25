@@ -18,26 +18,29 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                                           | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | ---------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                        | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                        | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                        | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                        | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                        | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                  | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                  | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | merged  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e #1459 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
-| 7     | delete, full QA, close                         | merged  | PR 1 #1475 (`7fa5663f`); PR 2 `docs/authority-7-close` (corpus evidence)     | —   | all 193 + E2E             | 2026-11-25 |
-| 8     | extendability audit (release gate)             | pending | —                                                                            | —   | all 193 + E2E             | 2026-11-19 |
+| Phase | What                                           | State  | PR                                                                           | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------ | ---------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged | #1162                                                                        | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged | #1387                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged | #1388                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged | #1389                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged | #1390                                                                        | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged | #1397–#1404                                                                  | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged | #1406–#1409                                                                  | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged | #1410                                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged | #1411, #1414–#1416, #1421, #1424                                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | merged | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e #1459 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
+| 7     | delete, full QA, close                         | merged | PR 1 #1475 (`7fa5663f`); PR 2 `docs/authority-7-close` (corpus evidence)     | —   | all 193 + E2E             | 2026-11-25 |
+| 8     | extendability audit (release gate)             | active | —                                                                            | —   | all 193 + E2E             | 2026-11-25 |
 
 **Next action:** **phase 7 PR 1 merged** as `7fa5663f` (#1475) — the legacy
 surface is gone and AI tokens are metered atomically; the review found and the
 fix closed an unbounded-quota defect (R50). **PR 2** (`docs/authority-7-close`)
 carries the full 193-case QA + E2E evidence and this close-out. **Phase 8**
-(`brief-8.md`) is next; phase 7 closes only when it passes (D23).
+(`brief-8.md`) is **measured on `feat/authority-8`** — the simulation passed
+(one migration + one constant + one surface call, resolver diff 0) and the
+deliverable is [extendability.md](extendability.md); phase 7 closes when it
+lands (D23).
 Phase 6 closed with **6e** (`6e92e52d`, #1459). **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
 (#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
@@ -5944,6 +5947,17 @@ resolver changes.** Measured by adding the fictional `voice.notes`
   bogus DB row (1), both reverted. **D36:** no CI regeneration/diff of
   `database.ts` (schema types, not catalog rows; the pinned CLI cannot reproduce
   the file byte-for-byte) — catalog drift is the invariant's job.
+- **Deploy order / split brain:** 12 cells measured on the served app
+  (code-ahead, missing flag, flag off, missing plan row, DB-ahead catalog/flag/
+  plan/override, quota FK, catalog-first retirement, a revoked catalog grant,
+  the UI and anonymous pricing). All pass: an absent key is a `403` and an
+  absent payload entry, never a `500`; an unknown DB row is inert; pricing stays
+  an anonymous `200`. Table in [extendability.md](extendability.md).
+- **Mutation proofs** (`bun run mutate`, clean tree): catalog filter **KILLED**,
+  missing-flag fail-closed **KILLED**, a removed surface gate **KILLED**. The
+  first run **SURVIVED** on the pre-existing unknown-plan-key assertion (profile
+  `all` never lets the row reach the payload), so that guard was rewritten on the
+  personal-plan path where the filter is load-bearing.
 - **Corpus:** the 37 at-risk cases from §4 plus `EDU-QZ-01/02/03/05/06` and the
   two cases that read the touched surface (`EDU-ST-02`, `EDU-ST-04`) — 44 spec
   files, **70 passed / 0 failed**, every tenant freshly seeded. The first
