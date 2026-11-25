@@ -557,6 +557,130 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     });
   });
 
+  describe('the assignment list at group scope (ADR-0015 phase 6e)', () => {
+    // The seeded Teacher reads `assignment.read` at `group`. The list is the one read
+    // a teacher needs ("what runs exist for my classes"), so it is widened to the runs
+    // targeting a class they *teach* — while the detail stays the author's (it carries
+    // answer keys). Both halves are proved here against the real route.
+    let groupReader: TestUserFixture;
+    let colleague: TestUserFixture;
+    let groupReaderSession: Session;
+    let taughtGroupId: string;
+    let memberOnlyGroupId: string;
+    let taughtRunId: string;
+    let memberOnlyRunId: string;
+
+    beforeAll(async () => {
+      groupReader = await memberUser('educator', teacherRoleId);
+      colleague = await memberUser('educator', teacherRoleId);
+
+      const { data: groups, error: groupError } = await service
+        .from('groups')
+        .insert([
+          { organization_id: orgId, name: `6e taught ${tag}`, is_default: false },
+          { organization_id: orgId, name: `6e member ${tag}`, is_default: false },
+        ])
+        .select('id, name');
+      if (groupError) throw new Error(`[setup] 6e groups: ${groupError.message}`);
+      const [taught, memberOnly] = groups;
+      if (!taught || !memberOnly) throw new Error('[setup] 6e groups: expected two rows');
+      taughtGroupId = taught.id;
+      memberOnlyGroupId = memberOnly.id;
+
+      // The reader teaches one class and is a plain `member` of the other — plain
+      // membership is the audience, not the staff, so the second must not widen (§4.3).
+      await seedGroupMembership({
+        groupId: taughtGroupId,
+        userId: groupReader.id,
+        role: 'teacher',
+      });
+      await seedGroupMembership({
+        groupId: memberOnlyGroupId,
+        userId: groupReader.id,
+        role: 'member',
+      });
+
+      const { data: taughtRun, error: taughtRunError } = await service
+        .from('teacher_assignments')
+        .insert({
+          organization_id: orgId,
+          created_by: colleague.id,
+          title: `6e taught run ${tag}`,
+        })
+        .select('id')
+        .single();
+      if (taughtRunError) throw new Error(`[setup] 6e taught run: ${taughtRunError.message}`);
+      taughtRunId = taughtRun.id;
+
+      const { data: memberOnlyRun, error: memberOnlyRunError } = await service
+        .from('teacher_assignments')
+        .insert({
+          organization_id: orgId,
+          created_by: colleague.id,
+          title: `6e member-only run ${tag}`,
+        })
+        .select('id')
+        .single();
+      if (memberOnlyRunError) {
+        throw new Error(`[setup] 6e member-only run: ${memberOnlyRunError.message}`);
+      }
+      memberOnlyRunId = memberOnlyRun.id;
+
+      const { error: targetError } = await service.from('assignment_targets').insert([
+        { assignment_id: taughtRunId, group_id: taughtGroupId },
+        { assignment_id: memberOnlyRunId, group_id: memberOnlyGroupId },
+      ]);
+      if (targetError) throw new Error(`[setup] 6e targets: ${targetError.message}`);
+
+      groupReaderSession = await signIn(groupReader.email);
+    });
+
+    it('lists a colleague’s run targeted at a taught class and not one targeted at a class the caller only belongs to', async () => {
+      const res = await call<{ data: Array<{ id: string; created_by: string }> }>(
+        groupReaderSession,
+        listAssignments,
+        '/api/v1/teacher/assignments',
+        undefined,
+        orgId,
+      );
+
+      expect(res.status).toBe(200);
+      const ids = res.body.data.map((row) => row.id);
+      expect(ids, 'the run for the class the caller teaches').toContain(taughtRunId);
+      expect(ids, 'a class the caller is only a member of does not widen the list').not.toContain(
+        memberOnlyRunId,
+      );
+    });
+
+    it('still refuses a Member the list (no assignment.* key)', async () => {
+      const res = await call(
+        memberSession,
+        listAssignments,
+        '/api/v1/teacher/assignments',
+        undefined,
+        orgId,
+      );
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ success: false, error: 'FORBIDDEN' });
+    });
+
+    it('refuses the colleague’s run detail — the list is wider, the composer is not (R23)', async () => {
+      // 403, not 404: RLS admits the row to a member of the targeted class, and the
+      // service is the narrower gate. The detail carries the answer key, so this
+      // asymmetry is deliberate until phase 7 gives a colleague's run a read-only view.
+      const res = await callWithParams(
+        groupReaderSession,
+        getAssignment,
+        `/api/v1/teacher/assignments/${taughtRunId}`,
+        undefined,
+        orgId,
+        { id: taughtRunId },
+      );
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ success: false, error: 'FORBIDDEN' });
+    });
+  });
+
   describe('stats (stats.read)', () => {
     it('a custom role holding only stats.read reads the teacher stats (200)', async () => {
       const res = await call(statsSession, teacherStats, '/api/v1/stats/teacher', undefined, orgId);

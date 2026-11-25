@@ -238,8 +238,22 @@ const ctx: RequestContext = {
   activeOrgId: orgId,
   orgRoleId: 'role-id',
   groupIds: [],
+  groupRoles: {},
   permissionScopes: {},
 };
+
+/** A caller whose role holds `assignment.read` at `group` (the seeded Teacher, D29). */
+function withGroupScope(
+  groupRoles: RequestContext['groupRoles'],
+  groupIds: string[] = Object.keys(groupRoles),
+): RequestContext {
+  return {
+    ...ctx,
+    groupIds,
+    groupRoles,
+    permissionScopes: { 'assignment.read': 'group', 'assignment.update': 'own' },
+  };
+}
 
 function withOrgScope(): RequestContext {
   return {
@@ -517,6 +531,75 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual(listRows);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+    });
+
+    it('widens a group-scope read to the runs authored or targeting a taught class', async () => {
+      const runs = chain([...listRows, { id: 'a-targeted', created_by: 'colleague' }]);
+      const targets = chain([{ assignment_id: 'a-targeted' }]);
+      mock.from.mockReturnValueOnce(runs).mockReturnValueOnce(targets);
+
+      const result = await service.list(withGroupScope({ 'g-taught': 'teacher' }));
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toHaveLength(2);
+      // The taught class's runs are resolved from the target table, then folded
+      // into the author-OR-targeted arm of the run query.
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).toContain('assignment_targets');
+      expect(tables).toContain('teacher_assignments');
+      expect(targets.in).toHaveBeenCalledWith('group_id', ['g-taught']);
+      expect(runs.eq).toHaveBeenCalledWith('organization_id', orgId);
+      expect(runs.or).toHaveBeenCalledWith(`created_by.eq.${userId},id.in.(a-targeted)`);
+      // The org conjunct stays: the group arm lives inside the active org.
+      expect(runs.eq).not.toHaveBeenCalledWith('created_by', userId);
+    });
+
+    it('falls back to the author filter when the caller teaches no class', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list(withGroupScope({}, []));
+
+      expect(result.success).toBe(true);
+      // Nothing taught: no target query, no `id.in.()` arm, just their own runs.
+      expect(mock.from.mock.calls.map(([table]: [string]) => table)).toEqual([
+        'teacher_assignments',
+      ]);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(listChain.or).not.toHaveBeenCalled();
+    });
+
+    it('keeps an own-scope caller on the author filter even when they teach a class', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list({
+        ...ctx,
+        groupIds: ['g-taught'],
+        groupRoles: { 'g-taught': 'teacher' },
+        permissionScopes: { 'assignment.read': 'own' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mock.from.mock.calls.map(([table]: [string]) => table)).toEqual([
+        'teacher_assignments',
+      ]);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(listChain.or).not.toHaveBeenCalled();
+    });
+
+    it('does not widen to a class the caller is merely a member of', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      // `ctx.groupIds` contains the class — the membership is real — but the
+      // caller is its `member`, not its teacher (ADR-0015 §4.3).
+      const result = await service.list(withGroupScope({ 'g-member': 'member' }, ['g-member']));
+
+      expect(result.success).toBe(true);
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_targets');
+      expect(listChain.or).not.toHaveBeenCalled();
       expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
     });
 

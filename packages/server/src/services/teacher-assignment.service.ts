@@ -397,6 +397,18 @@ export class TeacherAssignmentService {
     return success(full);
   }
 
+  /**
+   * The composer/detail payload, deliberately narrower than `list` and than the
+   * data plane (R23): the RLS SELECT ("Visible teacher assignments") admits any
+   * member of a targeted class, while this path admits the author or an
+   * `assignment.read` holder at `organization` scope. The reason is the key — a
+   * draft is the live composer and a published run serves its frozen snapshot,
+   * both through `withAnswerKey`, and the seal's author exemption (D-5e1) is
+   * scoped to the author, so widening this would hand a co-teacher of the class
+   * a colleague's answer key. The asymmetry is recorded, not left as two unnamed
+   * answers; its owner is phase 7 (e.g. a read-only header for a colleague's
+   * run).
+   */
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
@@ -474,6 +486,21 @@ export class TeacherAssignmentService {
     });
   }
 
+  /**
+   * The runs the caller may read (ADR-0015 D29, phase 6e):
+   *
+   * - `organization` → every run of the active org;
+   * - `group` → that org's runs the caller authored **or** that target a class
+   *   they teach. "Teaches" is `ctx.groupRoles[groupId] === 'teacher'` (§4.3, the
+   *   rule 2b-2 installed), never plain `ctx.groupIds` membership: a `member` of
+   *   the class is its audience, so membership would show a learner every run
+   *   aimed at their own class;
+   * - anything else (`own`, or no active org) → the caller's own runs.
+   *
+   * `select('*')` is safe to widen here: `teacher_assignments` carries the title,
+   * status, window and counters and no answer key — the key lives on the item
+   * rows and their frozen snapshots, which no list read touches.
+   */
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
@@ -486,6 +513,17 @@ export class TeacherAssignmentService {
 
     if (scope === 'organization' && ctx.activeOrgId) {
       query = query.eq('organization_id', ctx.activeOrgId);
+    } else if (scope === 'group' && ctx.activeOrgId) {
+      const targeted = await this.targetedRunIds(supabase, ctx);
+      if (isFailure(targeted)) return targeted;
+
+      query = query.eq('organization_id', ctx.activeOrgId);
+      // An empty `id.in.()` is a PostgREST 400, so the arm is only added when the
+      // caller teaches a class with runs.
+      query =
+        targeted.data.length > 0
+          ? query.or(`created_by.eq.${ctx.userId},id.in.(${targeted.data.join(',')})`)
+          : query.eq('created_by', ctx.userId);
     } else {
       query = query.eq('created_by', ctx.userId);
     }
@@ -493,6 +531,34 @@ export class TeacherAssignmentService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
     return success(dbRows(data));
+  }
+
+  /**
+   * The ids of the runs targeted at a class the caller teaches (§4.3). The
+   * caller's class list travels in the request URL, so it is read in
+   * `TARGET_CHUNK` batches rather than one `.in()`.
+   */
+  private async targetedRunIds(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<string[]>> {
+    const taught = Object.entries(ctx.groupRoles).flatMap(([groupId, role]) =>
+      role === 'teacher' ? [groupId] : [],
+    );
+    if (taught.length === 0) return success([]);
+
+    const ids = new Set<string>();
+    for (let i = 0; i < taught.length; i += TARGET_CHUNK) {
+      const { data, error } = await supabase
+        .from('assignment_targets')
+        .select('assignment_id')
+        .in('group_id', taught.slice(i, i + TARGET_CHUNK));
+      if (error) return toDbFailure(error);
+      for (const row of dbRows(data)) {
+        if (row.assignment_id) ids.add(row.assignment_id);
+      }
+    }
+    return success([...ids]);
   }
 
   async update(
