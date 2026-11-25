@@ -2,7 +2,7 @@
 
 > Target: Nov/Dec 2026 | Pre-market startup — no backward compat layers
 >
-> Last verified against `main`: 2026-10-27.
+> Last verified against `main`: 2026-10-27. Rows then marked 🏗️ or 📋 were re-checked against issues and code on 2026-11-25 (`73bd26de`).
 
 ## Scope
 
@@ -19,17 +19,17 @@ StudiQ is delivered as a course project. **The scope is this roadmap and nothing
 
 ## Status at a glance
 
-| Phase | Topic                         | Status                                                                                             |
-| ----- | ----------------------------- | -------------------------------------------------------------------------------------------------- |
-| 0     | Foundation                    | ✅                                                                                                 |
-| 1     | Org hierarchy — groups        | ✅                                                                                                 |
-| 2     | Resource sharing & visibility | ✅                                                                                                 |
-| 3     | Teacher tools                 | 🏗️ quiz builder + assignments done; question-bank polish, documents, dashboard open                |
-| 4     | AI integration                | 🏗️ agent + security done; 4B extensions open                                                       |
-| 5     | Student experience            | 🏗️ stats and SRS basics done; dashboard, goals, extra stats open                                   |
-| 6     | Subscription gating           | 🏗️ gating + seats + Stripe driver done; production is Stripe-only, mock is the dev/test/QA default |
-| 7     | Admin dashboard & analytics   | 🏗️ admin panel done; global stats open                                                             |
-| 8     | Polish & launch               | 🏗️ branding, onboarding checklists, SEO done; notifications, shortcuts, empty states open          |
+| Phase | Topic                         | Status                                                                                                     |
+| ----- | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 0     | Foundation                    | ✅                                                                                                         |
+| 1     | Org hierarchy — groups        | ✅                                                                                                         |
+| 2     | Resource sharing & visibility | ✅                                                                                                         |
+| 3     | Teacher tools                 | 🏗️ quiz builder + assignments done; question-bank import and teacher dashboard partly done; documents open |
+| 4     | AI integration                | 🏗️ agent + security done; 4B extensions open                                                               |
+| 5     | Student experience            | 🏗️ stats, SRS basics and dashboard done; daily goal and extra stats partly done                            |
+| 6     | Subscription gating           | 🏗️ gating + seats + Stripe driver done; production is Stripe-only, mock is the dev/test/QA default         |
+| 7     | Admin dashboard & analytics   | ✅                                                                                                         |
+| 8     | Polish & launch               | 🏗️ branding, SEO, notifications, empty states done; manager checklist and shortcuts partly open            |
 
 Terminology: the roadmap was written when organizations were called universities. The code now uses **organizations** (`organizations`, `org_members`, `org_roles`), **groups** and **plans / features / limits**; the old `university_*` names no longer exist.
 
@@ -37,19 +37,19 @@ Terminology: the roadmap was written when organizations were called universities
 
 ## Phase 0: Foundation ✅
 
-| Item                                                               | Status | Notes                                                                                                                                                 |
-| ------------------------------------------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Next.js 16 App Router + Bun monorepo                               | ✅     | `apps/web` (:3000), `apps/admin` (:4000), `packages/server`, `packages/authz`, `packages/ui`                                                          |
-| 4-layer pattern (Route → Controller → Model → Service)             | ✅     | Enforced via `AGENTS.md`; `ControllerResponse`, `withAuth`, `AppError` mapping                                                                        |
-| Auth: e-mail / password (Supabase)                                 | ✅     | Register, login, password reset / update, soft-deleted accounts with a 30-day grace period (admin)                                                    |
-| Invitations                                                        | ✅     | Token links with role selection, preview and accept, copyable link; e-mail delivery is tracked in [#604](https://github.com/logyQT/studiq/issues/604) |
-| Account types                                                      | ✅     | `STUDENT`, `EDUCATOR`, `MANAGER` plus org roles with per-role permissions                                                                             |
-| RBAC                                                               | ✅     | `org_roles`, `org_role_permissions`, scopes `own / group / organization / any`, `can()` on the client                                                 |
-| RLS                                                                | ✅     | Enabled on every public table                                                                                                                         |
-| i18n                                                               | ✅     | `next-intl`, `pl` + `en`, namespace per component                                                                                                     |
-| Flashcards, decks, topics, practice (SM-2), study sessions, search | ✅     | Plus CSV import / export, media upload, cram mode, suspend / restore                                                                                  |
-| Questions, question banks, quizzes, attempts, review               | ✅     | MCQ, true/false, open                                                                                                                                 |
-| Observability                                                      | ✅     | OpenTelemetry → Collector → Tempo / Prometheus / Loki, Grafana dashboards, `error_logs`                                                               |
+| Item                                                               | Status | Notes                                                                                                                                              |
+| ------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Next.js 16 App Router + Bun monorepo                               | ✅     | `apps/web` (:3000), `apps/admin` (:4000), `packages/server`, `packages/authz`, `packages/ui`                                                       |
+| 4-layer pattern (Route → Controller → Model → Service)             | ✅     | Enforced via `AGENTS.md`; `ControllerResponse`, `withAuth`, `AppError` mapping                                                                     |
+| Auth: e-mail / password (Supabase)                                 | ✅     | Register, login, password reset / update, soft-deleted accounts with a 30-day grace period (admin)                                                 |
+| Invitations                                                        | ✅     | Token links with role selection, preview and accept, copyable link; e-mail delivery shipped in [#604](https://github.com/logyQT/studiq/issues/604) |
+| Account types                                                      | ✅     | `STUDENT`, `EDUCATOR`, `MANAGER` plus org roles with per-role permissions                                                                          |
+| RBAC                                                               | ✅     | `org_roles`, `org_role_permissions`, scopes `own / group / organization / any`, `can()` on the client                                              |
+| RLS                                                                | ✅     | Enabled on every public table                                                                                                                      |
+| i18n                                                               | ✅     | `next-intl`, `pl` + `en`, namespace per component                                                                                                  |
+| Flashcards, decks, topics, practice (SM-2), study sessions, search | ✅     | Plus CSV import / export, media upload, cram mode, suspend / restore                                                                               |
+| Questions, question banks, quizzes, attempts, review               | ✅     | MCQ, true/false, open                                                                                                                              |
+| Observability                                                      | ✅     | OpenTelemetry → Collector → Tempo / Prometheus / Loki, Grafana dashboards, `error_logs`                                                            |
 
 ---
 
@@ -66,13 +66,13 @@ Terminology: the roadmap was written when organizations were called universities
 
 Implemented with a `visibility` column (`personal | group`) plus junction tables instead of a single `group_id`, so one resource can be shared with several groups.
 
-| Item                                           | Status | Notes                                                                                                                 |
-| ---------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
-| Visibility on decks, topics, question banks    | ✅     | `deck_groups`, `topic_groups`, `bank_groups`                                                                          |
-| Share to groups in create / edit forms         | ✅     | Group multi-select                                                                                                    |
-| Copy a resource                                | ✅     | `POST /api/v1/flashcards/[id]/copy`                                                                                   |
-| Read-only view of shared banks for non-authors | 📋     | [#152](https://github.com/logyQT/studiq/issues/152), fix in review: [#648](https://github.com/logyQT/studiq/pull/648) |
-| `resource_permissions` per-user grants         | 💤     | Dropped in phase 0b of the role-authority programme (ADR-0015); group sharing covers the use case                     |
+| Item                                           | Status | Notes                                                                                                             |
+| ---------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| Visibility on decks, topics, question banks    | ✅     | `deck_groups`, `topic_groups`, `bank_groups`                                                                      |
+| Share to groups in create / edit forms         | ✅     | Group multi-select                                                                                                |
+| Copy a resource                                | ✅     | `POST /api/v1/flashcards/[id]/copy`                                                                               |
+| Read-only view of shared banks for non-authors | ✅     | [#152](https://github.com/logyQT/studiq/issues/152), shipped in [#648](https://github.com/logyQT/studiq/pull/648) |
+| `resource_permissions` per-user grants         | 💤     | Dropped in phase 0b of the role-authority programme (ADR-0015); group sharing covers the use case                 |
 
 ---
 
@@ -88,12 +88,12 @@ Implemented with a `visibility` column (`personal | group`) plus junction tables
 
 ### Subphase 3B: Question Bank Polish 🏗️
 
-| Item                            | Status | Notes                                                                                   |
-| ------------------------------- | ------ | --------------------------------------------------------------------------------------- |
-| Bulk actions                    | ✅     | `/api/v1/questions/banks/batch/[action]`                                                |
-| Tags                            | ✅     | Topics play this role (`question_topic_assignments`); no separate tag table by decision |
-| Server-side pagination + search | 📋     | [#651](https://github.com/logyQT/studiq/issues/651)                                     |
-| CSV / JSON import and export    | 📋     | [#652](https://github.com/logyQT/studiq/issues/652)                                     |
+| Item                            | Status | Notes                                                                                                                                                                                                                           |
+| ------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bulk actions                    | ✅     | `/api/v1/questions/banks/batch/[action]`                                                                                                                                                                                        |
+| Tags                            | ✅     | Topics play this role (`question_topic_assignments`); no separate tag table by decision                                                                                                                                         |
+| Server-side pagination + search | ✅     | [#651](https://github.com/logyQT/studiq/issues/651)                                                                                                                                                                             |
+| CSV / JSON import and export    | 🏗️     | [#652](https://github.com/logyQT/studiq/issues/652): export and import ship on the bank screen. Missing: a single-transaction import; today separate writes are undone by a delete that can fail and keeps newly created topics |
 
 ### Subphase 3C: Documents 📋
 
@@ -101,12 +101,12 @@ Implemented with a `visibility` column (`personal | group`) plus junction tables
 | --------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Documents library (upload, list, share) | 📋     | [#653](https://github.com/logyQT/studiq/issues/653); `documents` re-enters as catalog + flag + plan rows when its surface ships (D22) |
 
-### Subphase 3D: Teacher Dashboard 📋
+### Subphase 3D: Teacher Dashboard 🏗️
 
-| Item                                                        | Status | Notes                                                                                   |
-| ----------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
-| Activity feed, student performance, problem-question alerts | 📋     | [#654](https://github.com/logyQT/studiq/issues/654); `recharts` is already a dependency |
-| Teacher statistics pages                                    | ✅     | `/edu/statistics`, `/edu/stats/*`, `/edu/flashcards/stats`                              |
+| Item                                                        | Status | Notes                                                                                                                                                        |
+| ----------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Activity feed, student performance, problem-question alerts | 🏗️     | [#654](https://github.com/logyQT/studiq/issues/654): all three are on `/edu`. Missing: alerts do not link to the question, on `/edu` or `/edu/stats/results` |
+| Teacher statistics pages                                    | ✅     | `/edu/statistics`, `/edu/stats/*`, `/edu/flashcards/stats`                                                                                                   |
 
 ---
 
@@ -150,28 +150,28 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 
 ## Phase 5: Student Experience 🏗️
 
-### Subphase 5A: Dashboard 📋
+### Subphase 5A: Dashboard ✅
 
 | Item                                                                                  | Status | Notes                                               |
 | ------------------------------------------------------------------------------------- | ------ | --------------------------------------------------- |
 | Stat cards and quick actions on `/app`                                                | ✅     |                                                     |
-| Continue where you left off, due-cards summary, upcoming assignments, recent activity | 📋     | [#655](https://github.com/logyQT/studiq/issues/655) |
+| Continue where you left off, due-cards summary, upcoming assignments, recent activity | ✅     | [#655](https://github.com/logyQT/studiq/issues/655) |
 
 ### Subphase 5B: SRS Enhancements 🏗️
 
-| Item             | Status | Notes                                                                                                             |
-| ---------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
-| Leech detection  | ✅     |                                                                                                                   |
-| Fuzz factor      | ✅     |                                                                                                                   |
-| Load balancing   | ✅     | Reviews are moved to the least-loaded day (`pickLoadBalancedDate`, `flashcard-practice.service.ts`)               |
-| Daily study goal | 📋     | [#656](https://github.com/logyQT/studiq/issues/656), in review: [#672](https://github.com/logyQT/studiq/pull/672) |
+| Item             | Status | Notes                                                                                                                                                                                                                                    |
+| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Leech detection  | ✅     |                                                                                                                                                                                                                                          |
+| Fuzz factor      | ✅     |                                                                                                                                                                                                                                          |
+| Load balancing   | ✅     | Reviews are moved to the least-loaded day (`pickLoadBalancedDate`, `flashcard-practice.service.ts`)                                                                                                                                      |
+| Daily study goal | 🏗️     | [#656](https://github.com/logyQT/studiq/issues/656): setting the goal and its progress shipped in [#672](https://github.com/logyQT/studiq/pull/672). Missing: the chart’s goal line disappears when the goal is above the Y-axis maximum |
 
 ### Subphase 5C: Stats 🏗️
 
-| Item                                                                     | Status | Notes                                               |
-| ------------------------------------------------------------------------ | ------ | --------------------------------------------------- |
-| Overview, daily activity chart, state breakdown, weak points, quiz stats | ✅     | `/app/stats/*`                                      |
-| Study time, subject mastery, retention curve                             | 📋     | [#657](https://github.com/logyQT/studiq/issues/657) |
+| Item                                                                     | Status | Notes                                                                                                                                                           |
+| ------------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview, daily activity chart, state breakdown, weak points, quiz stats | ✅     | `/app/stats/*`                                                                                                                                                  |
+| Study time, subject mastery, retention curve                             | 🏗️     | [#657](https://github.com/logyQT/studiq/issues/657): all three shipped. Missing: a period selector for the retention curve and topic mastery (fixed at 30 days) |
 
 ---
 
@@ -187,12 +187,12 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 
 ---
 
-## Phase 7: Admin Dashboard & Analytics 🏗️
+## Phase 7: Admin Dashboard & Analytics ✅
 
 | Item                             | Status | Notes                                                                                                       |
 | -------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
 | Admin app (`apps/admin`)         | ✅     | Organizations, plans, feature flags, user overrides, users with role change, soft delete, restore and purge |
-| 7A Global stats + daily activity | 📋     | [#663](https://github.com/logyQT/studiq/issues/663)                                                         |
+| 7A Global stats + daily activity | ✅     | [#663](https://github.com/logyQT/studiq/issues/663)                                                         |
 | 7B User management               | ✅     | Covered by the users page                                                                                   |
 | 7C Request logs and performance  | ✅     | Superseded by the Grafana / Prometheus / Loki / Tempo stack; no `request_logs` table                        |
 
@@ -200,12 +200,12 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 
 ## Phase 8: Polish & Launch 🏗️
 
-| Item            | Status | Notes                                                                                                                                                                                                           |
-| --------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8A Org branding | ✅     | Logo upload, brand colour, gated by the `branding` feature                                                                                                                                                      |
-| 8B Onboarding   | 🏗️     | Setup wizard and role checklists done; empty states + first-visit hints [#666](https://github.com/logyQT/studiq/issues/666)                                                                                     |
-| 8C SEO & meta   | ✅     | Root metadata, Open Graph image, manifest, sitemap, robots, per-page titles                                                                                                                                     |
-| 8D UX polish    | 🏗️     | Loading skeletons, invitation preview + role confirmation done; notification center [#664](https://github.com/logyQT/studiq/issues/664), keyboard shortcuts [#665](https://github.com/logyQT/studiq/issues/665) |
+| Item            | Status | Notes                                                                                                                                                                                                                                                                                                               |
+| --------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8A Org branding | ✅     | Logo upload, brand colour, gated by the `branding` feature                                                                                                                                                                                                                                                          |
+| 8B Onboarding   | 🏗️     | Setup wizard, student and teacher checklists, empty states + first-visit hints ([#666](https://github.com/logyQT/studiq/issues/666)) done. Missing: the manager checklist ([#1328](https://github.com/logyQT/studiq/issues/1328))                                                                                   |
+| 8C SEO & meta   | ✅     | Root metadata, Open Graph image, manifest, sitemap, robots, per-page titles                                                                                                                                                                                                                                         |
+| 8D UX polish    | 🏗️     | Loading skeletons, invitation preview + role confirmation, notification center ([#664](https://github.com/logyQT/studiq/issues/664)) done. Keyboard shortcuts ([#665](https://github.com/logyQT/studiq/issues/665)) ship; missing: a user-menu entry, and `Ctrl/⌘+B`, `n` and Enter-to-flip in the shortcuts dialog |
 
 ---
 
