@@ -1,90 +1,79 @@
 #!/usr/bin/env bash
-# Create a pull request from the current branch using GitHub CLI.
+# Push the current branch and open a pull request for it. It is safe to run again:
+# when the branch has an open pull request, the script prints its URL.
 #
 # Usage:
-#   scripts/pr                        # create PR with auto-generated title/body
-#   scripts/pr "fix: resolve login bug"  # create PR with custom title
-#   scripts/pr --base feat/parent     # target a base branch other than main
-#   scripts/pr --draft                # create as draft PR
-#   scripts/pr --list                 # list open PRs for this repo
-#   scripts/pr --view                 # open the PR page in browser
+#   scripts/pr                            # title and body from the commits (gh --fill)
+#   scripts/pr "fix: resolve login bug"   # set the title
+#   scripts/pr --body-file <file>         # read the body from a file ("-" is stdin)
+#   scripts/pr --base feat/parent         # use a base branch other than main
+#   scripts/pr --draft                    # open a draft
 #
 # Requires: gh (GitHub CLI, authenticated)
 
 set -euo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+fail() { printf '✘ %s\n' "$*" >&2; exit 1; }
 
-info()  { printf "${GREEN}✔${NC} %s\n" "$*"; }
-warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
-fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
+usage() {
+  cat <<'EOF'
+Usage: scripts/pr [title] [--base <branch>] [--body-file <file>] [--draft]
+
+  [title]             PR title (default: gh --fill takes it from the commits)
+  --base <branch>     Branch to merge into (default: main)
+  --body-file <file>  Read the PR body from a file, or from stdin with "-"
+                      (default: gh --fill takes it from the commits)
+  --draft, -d         Create as draft PR
+
+The script pushes the current branch to origin before it creates the PR.
+EOF
+}
+
+BASE_BRANCH="main"
+BODY_FILE=""
+TITLE=""
+DRAFT=false
+
+# Parse before anything else, so a wrong command stops with no side effect.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --draft|-d) DRAFT=true; shift ;;
+    --base)
+      [ -n "${2:-}" ] || fail "--base requires a branch name"
+      BASE_BRANCH="$2"; shift 2 ;;
+    --body-file)
+      [ -n "${2:-}" ] || fail "--body-file requires a file, or - for stdin"
+      BODY_FILE="$2"; shift 2 ;;
+    --help|-h) usage; exit 0 ;;
+    # Without this arm, a mistyped or removed flag would become the PR title.
+    -*) fail "Unknown option '$1'. Run scripts/pr --help." ;;
+    *)
+      [ -z "$TITLE" ] || fail "Give one title only. Quote a title that contains spaces."
+      TITLE="$1"; shift ;;
+  esac
+done
 
 # ── Preflight checks ───────────────────────────────────────────
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI (gh) not installed. Install: https://cli.github.com/"
 gh auth status >/dev/null 2>&1 || fail "Not authenticated. Run: gh auth login"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
-cd "$REPO_ROOT"
-
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+git rev-parse --show-toplevel >/dev/null 2>&1 || fail "Not inside a git repository"
+CURRENT_BRANCH=$(git branch --show-current)
 [ -n "$CURRENT_BRANCH" ] || fail "Not on a branch (detached HEAD)"
-[ "$CURRENT_BRANCH" != "main" ] || warn "Creating PR from main — probably not what you want"
-
-BASE_BRANCH="main"
-
-# ── Parse flags ────────────────────────────────────────────────
-DRAFT=false
-ACTION="create"
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --draft|-d) DRAFT=true; shift ;;
-    --base)
-      [ $# -ge 2 ] || fail "--base requires a branch name"
-      BASE_BRANCH="$2"; shift 2 ;;
-    --list|-l)  ACTION="list"; shift ;;
-    --view|-v)  ACTION="view"; shift ;;
-    --help|-h)
-      echo "Usage: scripts/pr [title] [--base <branch>] [--draft] [--list] [--view]"
-      echo ""
-      echo "  [title]      PR title (auto-generated from commits if omitted)"
-      echo "  --base <branch>  Branch to merge into (default: main)"
-      echo "  --draft, -d  Create as draft PR"
-      echo "  --list, -l   List open PRs for this repo"
-      echo "  --view, -v   Open PR page in browser"
-      echo ""
-      echo "Branch must be pushed to origin before creating PR."
-      exit 0
-      ;;
-    *) TITLE="$1"; shift ;;
-  esac
-done
-
-# ── List mode ──────────────────────────────────────────────────
-if [ "$ACTION" = "list" ]; then
-  echo ""
-  gh pr list --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" 2>/dev/null \
-    || gh pr list
-  exit 0
+# The push below would publish local commits straight to these branches.
+if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
+  fail "You are on '$CURRENT_BRANCH'. Switch to the branch of the pull request."
 fi
 
-# ── View mode ──────────────────────────────────────────────────
-if [ "$ACTION" = "view" ]; then
-  PR_URL=$(gh pr view "$CURRENT_BRANCH" --json url -q .url 2>/dev/null) \
-    || fail "No PR found for branch '$CURRENT_BRANCH'"
-  echo "$PR_URL"
-  exit 0
+# No `cd`: a relative --body-file path is relative to where the caller runs this.
+if [ -n "$BODY_FILE" ] && [ "$BODY_FILE" != "-" ]; then
+  [ -f "$BODY_FILE" ] && [ -r "$BODY_FILE" ] || fail "Cannot read body file '$BODY_FILE'"
 fi
 
 # ── Resolve the base ───────────────────────────────────────────
 # gh resolves --base against the base repository, never your local refs, so a
-# local-only branch cannot be a PR base. Fetch first, then compare against
-# origin/<base> — the ref GitHub will use.
-[ -n "$BASE_BRANCH" ] || fail "--base requires a branch name"
+# local-only branch cannot be a PR base. Fetch first, then look at
+# origin/<base>, the ref GitHub will use.
 git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
 if ! git rev-parse --verify --quiet "refs/remotes/origin/$BASE_BRANCH^{commit}" >/dev/null; then
   fail "Base branch '$BASE_BRANCH' is not on origin, so it cannot be a PR base.
@@ -93,96 +82,26 @@ if ! git rev-parse --verify --quiet "refs/remotes/origin/$BASE_BRANCH^{commit}" 
   origin/<branch> ref will not do."
 fi
 
-BASE_MERGE_REF="origin/$BASE_BRANCH"
+# ── Push ───────────────────────────────────────────────────────
+# Every time: a branch that is already on origin can still be behind this checkout.
+# Hook and git output goes to stderr, so stdout carries only the PR URL.
+git push -u origin "$CURRENT_BRANCH" >&2 \
+  || fail "Could not push '$CURRENT_BRANCH'. No pull request was created."
 
-# ── Ensure branch is pushed ────────────────────────────────────
-if ! git ls-remote --exit-code origin "$CURRENT_BRANCH" >/dev/null 2>&1; then
-  warn "Branch not pushed yet — pushing now"
-  git push -u origin "$CURRENT_BRANCH" 2>/dev/null \
-    || fail "Could not push branch. Check remote access."
-  info "Pushed '$CURRENT_BRANCH' to origin"
-fi
-
-# ── Check for existing PR ──────────────────────────────────────
-EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --json number -q '.[0].number' 2>/dev/null || echo "")
-if [ -n "$EXISTING_PR" ]; then
-  PR_URL=$(gh pr view "$EXISTING_PR" --json url -q .url 2>/dev/null)
-  warn "PR #$EXISTING_PR already exists for this branch"
-  echo "  $PR_URL"
+# ── Existing pull request ──────────────────────────────────────
+EXISTING_URL=$(gh pr list --head "$CURRENT_BRANCH" --state open --json url -q '.[0].url // empty') \
+  || fail "Could not check for an existing pull request"
+if [ -n "$EXISTING_URL" ]; then
+  printf 'This branch has an open pull request. It is not changed.\n' >&2
+  printf '%s\n' "$EXISTING_URL"
   exit 0
 fi
 
-# ── Generate title from commits if not provided ────────────────
-if [ -z "${TITLE:-}" ]; then
-  # Get commit messages since diverging from base
-  MERGE_BASE=$(git merge-base "$BASE_MERGE_REF" "$CURRENT_BRANCH" 2>/dev/null || echo "")
-  if [ -n "$MERGE_BASE" ]; then
-    TITLE=$(git log --pretty=format:"%s" "$MERGE_BASE..$CURRENT_BRANCH" | head -1)
-  fi
-  [ -n "$TITLE" ] || TITLE="chore: update from $CURRENT_BRANCH"
-fi
+# ── Create ─────────────────────────────────────────────────────
+# --fill supplies the title and body; an explicit --title or --body-file wins.
+ARGS=(--base "$BASE_BRANCH" --head "$CURRENT_BRANCH" --fill)
+[ -z "$TITLE" ] || ARGS+=(--title "$TITLE")
+[ -z "$BODY_FILE" ] || ARGS+=(--body-file "$BODY_FILE")
+[ "$DRAFT" = false ] || ARGS+=(--draft)
 
-# ── Generate body from commit list ─────────────────────────────
-MERGE_BASE=$(git merge-base "$BASE_MERGE_REF" "$CURRENT_BRANCH" 2>/dev/null || echo "")
-if [ -n "$MERGE_BASE" ]; then
-  BODY=$(git log --pretty=format:"- %s (%h)" "$MERGE_BASE..$CURRENT_BRANCH")
-else
-  BODY=$(git log --pretty=format:"- %s (%h)" -5)
-fi
-
-# ── Triage: size label ─────────────────────────────────────────
-# Same script as .github/workflows/pr-triage.yml so the label matches what the
-# workflow would apply.
-SIZE_LABEL=""
-LIMIT_LINES="${PR_SIZE_LIMIT:-400}"
-
-TRIAGE_BASE="$BASE_MERGE_REF"
-
-if command -v jq >/dev/null 2>&1 \
-  && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --limit "$LIMIT_LINES" --json 2>/dev/null); then
-  SIZE_LABEL=$(jq -r '.label.name' <<<"$TRIAGE_JSON")
-  SIZE_COLOR=$(jq -r '.label.color' <<<"$TRIAGE_JSON")
-  SIZE_DESCRIPTION=$(jq -r '.label.description' <<<"$TRIAGE_JSON")
-  TOTAL_LINES=$(jq -r '.total' <<<"$TRIAGE_JSON")
-  LIMIT_LINES=$(jq -r '.limit' <<<"$TRIAGE_JSON")
-  printf "  ${CYAN}Size:${NC}   %s/%s reviewable lines (%s)\n" \
-    "$TOTAL_LINES" "$LIMIT_LINES" "$SIZE_LABEL"
-else
-  warn "Could not compute PR size; skipping the size label"
-fi
-
-ensure_label() {
-  gh label create "$1" --color "$2" --description "$3" --force >/dev/null 2>&1 || true
-}
-
-if [ -n "$SIZE_LABEL" ]; then
-  ensure_label "$SIZE_LABEL" "$SIZE_COLOR" "$SIZE_DESCRIPTION"
-fi
-
-# ── Create PR ──────────────────────────────────────────────────
-DRAFT_FLAG=""
-$DRAFT && DRAFT_FLAG="--draft"
-
-echo ""
-printf "  ${CYAN}Base:${NC}   %s\n" "$BASE_BRANCH"
-printf "  ${CYAN}Head:${NC}   %s\n" "$CURRENT_BRANCH"
-printf "  ${CYAN}Title:${NC}  %s\n" "$TITLE"
-echo ""
-
-PR_URL=$(gh pr create \
-  --base "$BASE_BRANCH" \
-  --head "$CURRENT_BRANCH" \
-  --title "$TITLE" \
-  --body "$BODY" \
-  $DRAFT_FLAG \
-  2>&1) || fail "Failed to create PR: $PR_URL"
-
-info "PR created: $PR_URL"
-
-# Best-effort: the label is informational, so a permission failure must not
-# make a successfully created PR look like a failed command.
-if [ -n "$SIZE_LABEL" ]; then
-  gh pr edit "$PR_URL" --add-label "$SIZE_LABEL" \
-    || warn "Could not add $SIZE_LABEL to the PR"
-fi
-echo ""
+gh pr create "${ARGS[@]}"
