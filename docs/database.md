@@ -94,12 +94,12 @@ run on `db reset` only — `db push` never applies them — so they carry data, 
 privileges: migrations own every grant and revoke, and
 `__tests__/integration/grant-parity.test.ts` fails if the grant contract drifts.
 
-| File              | Purpose                                            |
-| ----------------- | -------------------------------------------------- |
-| `00_plans.sql`    | Plan catalog, features, limits, default free plans |
-| `01_seed.sql`     | Auth users, organizations, content and tenants     |
-| `09_perms.sql`    | RBAC permissions                                   |
-| `99_realtime.sql` | Local realtime publication                         |
+| File              | Purpose                                                             |
+| ----------------- | ------------------------------------------------------------------- |
+| `00_plans.sql`    | Retired placeholder — the plan catalogue is migration-owned (#1494) |
+| `01_seed.sql`     | Auth users, organizations, content and tenants                      |
+| `09_perms.sql`    | RBAC permissions                                                    |
+| `99_realtime.sql` | Local realtime publication                                          |
 
 ## Table Domains
 

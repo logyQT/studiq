@@ -273,29 +273,33 @@ Preconditions:
 - This release's migrations are applied to the production database **before**
   `--live` (it writes `stripe_prices`, which those migrations create). Deploying
   schema is separate from deploying the app binary.
-- The production `subscription_plans` rows carry the approved ladder. The seed
-  (`supabase/seeds/00_plans.sql`) is for a **new, empty** project only: it
-  deletes and re-inserts the catalog and will hit FKs once accounts exist. For
-  an existing catalog, run this UPDATE and confirm it returns exactly 9 rows:
+- The approved ladder is applied by the plan-catalogue migration
+  (`20261125170000_plan_catalog_owned_by_migrations.sql`); the catalogue is
+  migration-owned since #1494 and `supabase/seeds/00_plans.sql` no longer writes
+  plan rows. After the migrations are applied, confirm the live ladder with this
+  read-only query — it returns the 9 paid plans only while their amounts match.
+  **Pass condition: exactly 9 rows.** The migration inserts those 9 paid keys, so
+  fewer rows means the migration did not apply (or a price differs from the
+  ladder) — stop and fix the catalog before continuing; an empty result is not a
+  timing artefact:
 
   ```sql
-  UPDATE public.subscription_plans AS p
-  SET price_monthly = v.amount, updated_at = now()
-  FROM (VALUES
+  SELECT p.key, p.price_monthly
+  FROM public.subscription_plans AS p
+  JOIN (VALUES
     ('spark', 999), ('ace', 1999), ('pro', 3999),
     ('guide', 1999), ('creator', 3999), ('master', 7999),
     ('team', 9900), ('hub', 29900), ('campus', 69900)
-  ) AS v(key, amount)
-  WHERE p.key = v.key
-  RETURNING p.key, p.price_monthly;
+  ) AS v(key, amount) ON v.key = p.key AND p.price_monthly = v.amount
+  ORDER BY p.sort_order;
   ```
 
 Steps:
 
 0. Apply this release's migrations to the production database (for a Supabase
-   project: `bunx supabase db push --remote --yes`), then run the catalog UPDATE
-   above in the same window. Do not leave the catalog and the live Prices
-   mismatched between steps.
+   project: `bunx supabase db push --remote --yes`), then run the read-only
+   catalog query above in the same window. Do not leave the catalog and the live
+   Prices mismatched between steps.
 1. `bun scripts/stripe-bootstrap.ts --check` in the production secret environment
    (read-only: it reads `subscription_plans` and makes no Stripe calls). Confirm
    the 9 amounts and the tax-code line. Any additional active paid plan (a

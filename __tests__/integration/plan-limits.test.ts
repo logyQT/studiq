@@ -6,7 +6,9 @@ import {
   createServiceClient,
 } from '#test/integration/helpers';
 
-// Regression tests for the plan-limit config fixes in supabase/seeds/00_plans.sql
+// Regression tests for the plan-limit config fixes in
+// 20261125170000_plan_catalog_owned_by_migrations.sql (the catalogue's single
+// home since #1494; it was `supabase/seeds/00_plans.sql` before that).
 //
 // O1/D2: new orgs got max_groups = 1 (launch plan default) → org owners could not
 //        create a second group (429 USAGE_LIMIT_EXCEEDED). Raised to 3.

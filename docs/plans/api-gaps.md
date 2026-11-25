@@ -37,7 +37,8 @@ ticket for the fix.
   create only 1 group total (`max_groups` comes from the org's `plan` → `plan_limits`,
   derived live since the per-org override table was removed in #229).
 - Fix: raised `launch` `max_groups` to 3 (between `lite`=1 and `guide`=5) in
-  `supabase/seeds/00_plans.sql` (plan templates are seed-managed config).
+  `supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` (the plan
+  catalogue is migration-owned; `supabase/seeds/00_plans.sql` seeds no plan data).
   `regression: plan-limits.test.ts` creates 2 extra groups (3 total) through the real API.
 
 ## Gaps (no route exists) → DB fallback in helper
