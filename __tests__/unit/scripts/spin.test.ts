@@ -175,7 +175,8 @@ git worktree list --porcelain | grep -qxF "worktree $(pwd -P)" && registered=yes
 inherited=$(env | cut -d= -f1 | grep -E '^(GIT_|SUPABASE_(STACK|SHARED)$)' | tr '\\n' ' ')
 printf '%s|%s|%s|%s\\n' "$(pwd -P)" "$*" "$registered" "$inherited" >> "$BUN_LOG"
 case ",$BUN_FAIL," in
-*",$*,"*) echo "boom from $*" >&2; exit 3 ;;
+  *",$*,"*) echo "boom from $*" >&2; exit 3 ;;
+  *) echo "output of $*" ;;
 esac
 `,
       { mode: 0o755 },
@@ -721,6 +722,8 @@ esac
         [physical, DOWN, 'yes', ''],
       ]);
       expect(result.stdout).toContain(`boom from ${DOWN_ALL}`);
+      // Exit 0 from plain `down` does not prove the server stopped; its output does.
+      expect(result.stdout).toContain(`output of ${DOWN}\n`);
       expect(result.stdout).not.toContain('Could not stop the environment');
       expect(existsSync(worktree)).toBe(false);
     });

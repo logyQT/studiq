@@ -153,6 +153,10 @@ stop_worktree_env() {
   if output=$(run_in_worktree "$worktree" env:down); then
     warn "'bun run env:down --all --yes' failed; ran 'bun run env:down' instead, so a Supabase stack may still be running:"
     printf '%s\n' "$all_output" | tail -n 5 | sed 's/^/    /'
+    # Plain `down` exits 0 over a live stack even when the web server survived,
+    # and only its output says so.
+    echo "  bun run env:down:"
+    printf '%s\n' "$output" | tail -n 5 | sed 's/^/    /'
     return 0
   fi
   warn "Could not stop the environment in $worktree; removing it anyway. A web server may still hold its port."
