@@ -216,7 +216,11 @@ describe('EntitlementResolver', () => {
       ]);
     });
 
-    it('ignores non-catalog keys in plan rows', async () => {
+    it('the all profile intersects the catalog with the plan ceiling, unknown rows included or not', async () => {
+      // `applyProfile` iterates ENTITLEMENT_KEYS and checks membership in the
+      // ceiling, so an unknown plan row cannot reach the payload through the
+      // profile arm. (The 2026-11-25 mutation proved this assertion is *not*
+      // the guard for the plan-row filter: it passes with the filter removed.)
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
       mockTables({
         roleProfile: 'all',
@@ -227,6 +231,22 @@ describe('EntitlementResolver', () => {
       });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
+      expect(entitlements).toEqual(['flashcards', 'quiz']);
+    });
+
+    it('ignores non-catalog keys in the personal plan rows (the catalog filter is load-bearing)', async () => {
+      // Outside an org the personal layer adds every key of the plan row and the
+      // flag pass dereferences `ENTITLEMENTS[key]` — so an unknown row would
+      // throw without the `isEntitlementKey` filter on `plan_entitlements`.
+      // Phase 8, matrix cell E: DB ahead of code must be inert, not a crash.
+      mockTables({
+        personalPlanKey: 'base',
+        planEntitlements: {
+          base: ['flashcards', 'quiz', 'test.fictional', 'test.other', 'test.legacy'],
+        },
+      });
+
+      const { entitlements } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toEqual(['flashcards', 'quiz']);
     });
 
