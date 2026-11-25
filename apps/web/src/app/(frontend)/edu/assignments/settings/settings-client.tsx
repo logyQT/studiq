@@ -4,51 +4,20 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Label, Switch } from 
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { AssignmentPage } from '@/components/edu/assignment-page';
-
-interface PrintSettings {
-  showNameField: boolean;
-  showClassField: boolean;
-  showDateField: boolean;
-  showPoints: boolean;
-  includeAnswerKey: boolean;
-}
-
-const STORAGE_KEY = 'assignment-print-settings';
-
-const defaultSettings: PrintSettings = {
-  showNameField: true,
-  showClassField: true,
-  showDateField: true,
-  showPoints: true,
-  includeAnswerKey: true,
-};
-
-function loadSettings(): PrintSettings {
-  if (typeof window === 'undefined') return defaultSettings;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed: unknown = JSON.parse(saved);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return { ...defaultSettings, ...parsed };
-      }
-    }
-  } catch {}
-  return defaultSettings;
-}
+import { type PrintSettings, usePrintSettings } from '@/hooks/use-print-settings';
 
 export default function AssignmentSettingsClient() {
   const t = useTranslations('EduAssignmentSettingsPage');
-  const [settings, setSettings] = useState<PrintSettings>(loadSettings);
+  const { settings, updateSetting, saveSettings } = usePrintSettings();
   const [saved, setSaved] = useState(false);
 
   const update = (key: keyof PrintSettings) => (value: boolean) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+    updateSetting(key, value);
     setSaved(false);
   };
 
   const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    saveSettings();
     setSaved(true);
   };
 
