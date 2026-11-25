@@ -29,15 +29,15 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 | `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                    |
 | `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                     |
 | `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                     |
-| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `solo` tier — D2). An organization purchase never writes it (#228).             |
-| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                                       |
+| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; managers default to the free `solo` tier — D2). An organization purchase never writes it (#228).        |
+| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                  |
 | `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. |
 | `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                               |
 | `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                        |
 
-The `base` / `launch` defaults come from the seed
-(`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
-original table migrations.
+The `base` / `launch` defaults come from the plan-catalogue migration
+(`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` →
+`ALTER TABLE … SET DEFAULT`), not from the original table migrations.
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
@@ -306,8 +306,10 @@ refetches. Resolution itself is immediate.
 
 ## Where to change plan data
 
-- **Templates** — `supabase/seeds/00_plans.sql`. `bun run env:reset-db --yes` rewrites
-  `plan_entitlements` / `plan_limits`, discarding runtime edits.
+- **Templates** — `supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql`
+  (the catalogue's single home since #1494; the seed no longer writes plan rows).
+  `bun run env:reset-db --yes` re-applies the matrix from the migrations,
+  discarding runtime edits.
 - **Runtime** — admin app: `GET/POST /api/v1/plan-limits`,
   `PUT/DELETE /api/v1/plan-limits/[id]` (id, not plan key). For
   `plan-features` the routes are `GET/POST /api/v1/plan-features` and

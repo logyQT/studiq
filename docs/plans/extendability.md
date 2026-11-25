@@ -34,26 +34,35 @@ simulation was **zero lines**.
 Do it in the same PR as the surface — a key with no surface is a gate nobody
 reads, and the catalog is open (D22): ship it when its surface does.
 
-| #   | Step                                                                                                                                                                                        | Where                                                        | Layer          |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------- |
-| 1   | Fix the metadata: `category` (`baseline`/`surface`), `scope`, `seatEligible`, `personalPortable`, `quota`. `baseline` is never gated; a personal key inside an org needs `personalPortable` | decision, then the two catalogs                              | —              |
-| 2   | Append the key to `ENTITLEMENTS` (never reorder: declaration order is `/me/entitlements` order)                                                                                             | `packages/authz/src/entitlements.ts`                         | code           |
-| 3   | One `entitlement_catalog` row with the same metadata                                                                                                                                        | migration                                                    | data           |
-| 4   | One **enabled** `entitlement_flags` row — a missing row fails the resolver closed                                                                                                           | migration                                                    | data           |
-| 5   | `plan_entitlements` rows for the plans that should carry it                                                                                                                                 | migration, **and** `supabase/seeds/00_plans.sql` (see below) | data           |
-| 6   | Grants and policies: **none**. `authenticated` already has table-level `SELECT` and the catalog policies are `using (true)`; a new row is readable like the existing ones                   | —                                                            | —              |
-| 7   | One `requireEntitlement(ctx, key)` on the surface, first statement before the permission check and the parse                                                                                | the surface's controller                                     | code           |
-| 8   | The surface's disabled state: `useEntitlement()(key)` plus copy, only if the page needs one. The generic `ErrorState` is not a product denial                                               | the page + `apps/web/src/i18n/messages/{pl,en}.json`         | code           |
-| 9   | Admin panel: nothing. `/feature-flags` reads `entitlement_flags` live; the row appears on reload                                                                                            | —                                                            | data           |
-| 10  | Tenant/QA fixture: seed the case on a plan that carries the key (`bun scripts/qa-tenant.ts <CASE> --plan <plan>`)                                                                           | `qa/.tenants/**` (generated)                                 | data (fixture) |
-| 11  | Tests: `catalog-invariants` already pins TS `ENTITLEMENTS` to `entitlement_catalog` and every surface key to a flag row; nothing new to write                                               | `__tests__/integration/catalog-invariants.test.ts`           | —              |
-| 12  | Deploy: apply the migration to the running database (`supabase migration up` / `db push`), then **rebuild and restart the app** — the TS constant is baked into the build                   | deploy                                                       | both           |
+| #   | Step                                                                                                                                                                                        | Where                                                             | Layer          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------- |
+| 1   | Fix the metadata: `category` (`baseline`/`surface`), `scope`, `seatEligible`, `personalPortable`, `quota`. `baseline` is never gated; a personal key inside an org needs `personalPortable` | decision, then the two catalogs                                   | —              |
+| 2   | Append the key to `ENTITLEMENTS` (never reorder: declaration order is `/me/entitlements` order)                                                                                             | `packages/authz/src/entitlements.ts`                              | code           |
+| 3   | One `entitlement_catalog` row with the same metadata                                                                                                                                        | migration                                                         | data           |
+| 4   | One **enabled** `entitlement_flags` row — a missing row fails the resolver closed                                                                                                           | migration                                                         | data           |
+| 5   | `plan_entitlements` rows for the plans that should carry it                                                                                                                                 | migration — the seed no longer owns plan rows (#1494)             | data           |
+| 6   | Grants and policies: **none**. `authenticated` already has table-level `SELECT` and the catalog policies are `using (true)`; a new row is readable like the existing ones                   | —                                                                 | —              |
+| 7   | One `requireEntitlement(ctx, key)` on the surface, first statement before the permission check and the parse                                                                                | the surface's controller                                          | code           |
+| 8   | The surface's disabled state: `useEntitlement()(key)` plus copy, only if the page needs one. The generic `ErrorState` is not a product denial                                               | the page + `apps/web/src/i18n/messages/{pl,en}.json`              | code           |
+| 9   | Admin panel: nothing. `/feature-flags` reads `entitlement_flags` live; the row appears on reload                                                                                            | —                                                                 | data           |
+| 10  | Tenant/QA fixture: seed the case on a plan that carries the key (`bun scripts/qa-tenant.ts <CASE> --plan <plan>`)                                                                           | `qa/.tenants/**` (generated)                                      | data (fixture) |
+| 11  | Tests: `catalog-invariants` already pins TS `ENTITLEMENTS` to `entitlement_catalog` and every surface key to a flag row; `plan-catalog` pins the plan matrix, so mirror step 5's row there  | `__tests__/integration/{catalog-invariants,plan-catalog}.test.ts` | —              |
+| 12  | Deploy: apply the migration to the running database (`supabase migration up` / `db push`), then **rebuild and restart the app** — the TS constant is baked into the build                   | deploy                                                            | both           |
 
 Measured cost for the whole simulation: **one migration + one catalog constant +
 one surface call**, plus the surface's own UI copy. Resolver change: **none**.
 The migration applied to the live database with no restart; `/me/entitlements`
 gained the key after the app rebuild only, because the DB row alone is inert
 until the TS catalog knows the key (step 12 is not optional).
+
+The plan catalogue is migration-owned code (#1494): the thirteen plans, their
+entitlement sets, their limits and the flag rows live only in
+`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql`, and
+`supabase/seeds/00_plans.sql` writes no plan data. A new key's plan rows go into
+that migration's declarative matrix; `__tests__/integration/plan-catalog.test.ts`
+mirrors the matrix literally, so it fails until the test is updated in the same
+PR. An admin-panel price/key/entitlement edit is a dev-only experiment that the
+next migration re-asserts.
 
 ### Retrofitting a gate onto a free read is a breaking change
 
@@ -69,29 +78,6 @@ one line and every case stayed green.
 Rule: choose a surface whose existing contract the key's plan set already covers.
 Gating a free read shared across personas means re-baselining every consumer and
 its QA cases in the same PR — a product decision, not an entitlement one.
-
-### The second data home: the dev seed
-
-`supabase/seeds/00_plans.sql` **deletes** every `plan_entitlements` row and
-re-inserts a hard-coded plan list, so a migration-added plan row does not survive
-`supabase db reset`. This is dev-only: production applies migrations (`db push`)
-and never runs the seeds. Until the seed derives its plan rows from one list,
-add the row in both places — it is data for data, not a code change forced by a
-data change. Owner: the integrator/ops who own `supabase/seeds/**`.
-
-Measured on a fresh reset (the two replay shapes):
-
-- migration + **seed edit** → catalog 1, flag 1, **plan rows 3**; the migration's
-  closing guard passes;
-- migration + **no seed edit** → catalog 1, flag 1, **plan rows 0** — the key
-  reaches nobody, and nothing fails, so the loss is silent.
-
-A corollary the first draft got wrong: a migration that inserts plan rows must
-be **conditional on the plan existing** and must assert "one row per plan that
-exists at this point", not a hard-coded count. On a fresh reset the migration
-runs _before_ the seed creates `subscription_plans`, so an unconditional insert
-is a foreign-key error and an unconditional `count = 3` guard fails the whole
-reset. That is a real trap in the current shape, not a simulation artefact.
 
 ## Retiring an entitlement
 
@@ -135,7 +121,6 @@ rebuild while the constant is out of the served build.
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | The `ENTITLEMENTS` entry                       | the resolver drops any `plan_entitlements`/`catalog` key `isEntitlementKey` does not know. Measured: with the DB rows applied and the old build serving, `/me/entitlements` was unchanged; after the rebuild it gained the key. | the surface's PR |
 | The surface call and its UI/denial copy        | the surface itself is code. Nothing in the entitlement layer needs touching                                                                                                                                                     | the surface's PR |
-| The plan rows in `supabase/seeds/00_plans.sql` | dev-only second data home (see above) — data for data, not code for data                                                                                                                                                        | integrator/ops   |
 | Retiring: the TS constant with the catalog row | keeping them apart makes `catalog-invariants` red in one direction or the other                                                                                                                                                 | the retiring PR  |
 
 Nothing else. In particular the resolver, the controller layer, `/me/entitlements`,
@@ -196,7 +181,7 @@ user's). The only materialised per-user exception is `user_feature_overrides`.
 | Per-key per-role grants                                               | **Do not reintroduce a per-role key store.** Phase 7 deleted `org_role_features` for exactly this reason: every catalog addition would become an O(orgs × roles) write (522 role rows at measurement, and it grows with every seeded tenant) and break replay. If product ever wants per-role keys, model them as a **materialised exception** (like `user_feature_overrides`): explicit, enumerable, replayable — never the default path.                                                                                                | An exception store needs a writer, an audit trail and a prune story; that is a phase of its own.                                     | decided (D19/D27, restated)                                                                                  |
 | Retiring at scale                                                     | Plan rows → flag → catalog row (matrix cell I's FK is the guard). Removing a default from a plan touches **no user**. Before the catalog row goes, enumerate `user_feature_overrides` rows for the key and decide per row (grant gone, revoke gone).                                                                                                                                                                                                                                                                                      | An override for a retired key that is not enumerated cascades away with the flag row — silent, so enumerate first.                   | decided (extends the retiring checklist)                                                                     |
 | Rollout observability                                                 | Count inputs, never scan users: `plan_entitlements` rows for the key (plans carrying), the enabled flag row, `org_roles` grouped by `entitlement_profile` for orgs on those plans, `profiles.personal_plan_key` for personal plans, `org_seat_pools.plan_key` for seats. "Complete" = every org/user whose plan carries the key resolves it, asserted by a join on those inputs.                                                                                                                                                          | It proves reachability, not that a surface used it; product telemetry owns that.                                                     | `logyQT` (operator) — follow-up, no issue filed                                                              |
-| Migration safety for the user era                                     | `on conflict … do nothing`, O(plans), never `INSERT … SELECT` over `profiles`/`org_members`. A change that genuinely needs entities is a separate, **resumable** job with a marker (batch, idempotent, observable), not inline in a migration. Remember migrations run **before** the dev seed, which deletes `plan_entitlements`.                                                                                                                                                                                                        | A resumable job is real infrastructure; that is the point — it only appears when a per-entity change is genuinely needed.            | **proposed** — `logyQT` (operator); no ADR decision recorded (D37 is only proposed)                          |
+| Migration safety for the user era                                     | `on conflict … do nothing`, O(plans), never `INSERT … SELECT` over `profiles`/`org_members`. A change that genuinely needs entities is a separate, **resumable** job with a marker (batch, idempotent, observable), not inline in a migration. The plan catalogue is migration-owned (#1494), so a new key's plan rows belong in the same declarative matrix.                                                                                                                                                                             | A resumable job is real infrastructure; that is the point — it only appears when a per-entity change is genuinely needed.            | **proposed** — `logyQT` (operator); no ADR decision recorded (D37 is only proposed)                          |
 
 **Not in scope for phase 8:** the admin "new feature available" notification and
 its seen-marker store (#1483); the default-outside-any-plan layer
@@ -212,6 +197,12 @@ ADR-0015 amendment (a numbered decision), not a rule smuggled into §3.
   when TypeScript and the database disagree. Proven 2026-11-25 by a bogus TS key
   (`voice.bogus`, 2 assertions red) and a bogus DB row (1 assertion red), each
   reverted immediately.
+- `__tests__/integration/plan-catalog.test.ts` pins the thirteen-plan matrix
+  (scope/audience, each plan's entitlement set and limits) and re-applies the
+  owning migration twice to prove it is declarative and idempotent.
+  `__tests__/unit/guards/plan-catalog-home.test.ts` fails if any file under
+  `supabase/seeds/` writes `subscription_plans`, `plan_entitlements`,
+  `plan_limits` or `entitlement_flags` — the second home cannot come back.
 - `packages/server/src/types/database.ts` is **not** regenerated or diffed in CI
   (D36, ADR-0015 §15). It describes the schema, not catalog rows — a new key or
   plan row changes no type, so a diff gate would catch nothing this checklist
