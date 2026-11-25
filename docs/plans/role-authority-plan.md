@@ -30,12 +30,14 @@ States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 | 4     | seats and personal plans                       | merged  | #1410                                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
 | 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
 | 6     | UI and cache                                   | merged  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e #1459 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
-| 7     | delete, full QA, close                         | active  | PR 1 `feat/authority-7` (not pushed)                                         | —   | all 193 + E2E             | 2026-11-25 |
+| 7     | delete, full QA, close                         | merged  | PR 1 #1475 (`7fa5663f`); PR 2 `docs/authority-7-close` (corpus evidence)     | —   | all 193 + E2E             | 2026-11-25 |
 | 8     | extendability audit (release gate)             | pending | —                                                                            | —   | all 193 + E2E             | 2026-11-19 |
 
-**Next action:** **phase 7 PR 1 is on `feat/authority-7`** (legacy surface
-deletion, atomic `reserve_ai_tokens`, docs, grep classification); the full QA
-and E2E corpus plus the phase-8 extendability audit remain coordinator-owned.
+**Next action:** **phase 7 PR 1 merged** as `7fa5663f` (#1475) — the legacy
+surface is gone and AI tokens are metered atomically; the review found and the
+fix closed an unbounded-quota defect (R50). **PR 2** (`docs/authority-7-close`)
+carries the full 193-case QA + E2E evidence and this close-out. **Phase 8**
+(`brief-8.md`) is next; phase 7 closes only when it passes (D23).
 Phase 6 closed with **6e** (`6e92e52d`, #1459). **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
 (#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
@@ -5857,9 +5859,24 @@ a store this migration drops. Corrected in the same PR. The other non-migration
 hits (`catalog-invariants`, `org-features`) are deliberate absence assertions;
 the rest is historical prose.
 
-**Still open in phase 7 (coordinator-owned):** the full 193-case QA corpus + E2E
-on a clean reset, served evidence, and the phase-8 extendability audit (D23 is
-the close gate).
+**Full corpus on the disposable stack** (`7fa5663f`, fresh cold stack, seeded
+once, one process): **QA 261 passed / 8 skipped / 19 failed, E2E 142 passed,
+0 failed**. All 19 failures are the two documented local-environment gaps, not
+code:
+
+- **11 AI cases** (`STU-47` ×2, `STU-48` ×9): `ECONNREFUSED 127.0.0.1:4321` —
+  the QA AI specs drive `scripts/fake-llm`, which was not started. Proven green
+  by CI's `ai-suite` on this same tree.
+- **8 auth/invite cases** (`AUT-01`, `AUT-02` ×2, `AUT-06`, `AUT-12`, `AUT-13`,
+  `ONB-08`): `no e-mail matching /auth/callback?…` — the documented stack-mode
+  template gap (AGENTS.md; CI injects the branded templates). Proven green by
+  the `qa-suite (aut-nfr-onb-pub-lim)` shard on this same tree.
+
+No case failed for a reason attributable to the change (the changed cases —
+`MGR-SET-02`, `MGR-ROL-03` — passed 5/5 on the served build beforehand).
+
+**Phase 7 closes only when phase 8 passes** (D23); the extendability audit is
+the remaining gate.
 
 ### Difficulty log — phase 7
 

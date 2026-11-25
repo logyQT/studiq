@@ -506,6 +506,14 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 
 ### 7 — delete and close
 
+**Shipped 2026-11-25** in #1475 (`7fa5663f`) plus the `docs/authority-7-close`
+PR. The corpus evidence (all cases + E2E on a disposable stack) and the grep
+classification are recorded in the phase-7 block of
+[role-authority-plan.md](role-authority-plan.md#phase-7--delete-and-close).
+Note the correction found in review: the first `reserve_ai_tokens` refused the
+write, which made the ceiling unenforceable; the write now always records and
+the pre-stream gate is the refuser (R50).
+
 - Delete `FEATURES`, `ADMIN_ONLY_FEATURES`, `ORG_SCOPED_FEATURES`,
   `org_role_features`, `has_org_feature`, the old resolvers, the dead keys and
   headers, and the `assignment.*` decision (mapped or deleted).
