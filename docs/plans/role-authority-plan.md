@@ -143,6 +143,8 @@ slices plus 2b-9's guard make phase 2 done.
 | R47 | One predicate cannot answer "where is home" and "may this caller use this area": the two questions name different key sets when an area's home is typified by its management keys while its pages are usable through content reads, so name each predicate, state its question, and derive the admission set from the catalog.                                                                                                                       | 6b-2: reusing `resolveDashboardArea` for the gate would deny `/edu` to every Member — the landing names the three class-management keys that make `/edu` someone's _home_, while the area's pages are readable through content `.read` keys a Member holds, and the API answers `200` the moment the gate admits them                                                                                                                                                                                                         |
 | R48 | A label that gains provenance is a QA-corpus change, not a component change: grep the literal label across `__tests__/qa` and `qa/cases`, and keep the badge on its generic `data-slot` while adding `data-plan-union` — a single-element text matcher on the surrounding card keeps resolving the status badge through `:not([data-plan-union])`, and the component's own test only proves the string it builds.                                    | 6d: `PlanUnionBadge` named every `/me/plan` layer, so five specs pinning „StudiQ Launch”/„StudiQ Hub” on `/manage/billing` and `/manage/settings`, BIL-01's card description and six case texts went stale while the component test stayed green; overriding `data-slot="badge"` turned the generic billing badge locator into 0 elements, and restoring it made the two status-badge text matchers resolve the union badge until they excluded it with `:not([data-plan-union])`                                             |
 
+| R49 | A deletion sweep greps the object it deletes, not only the retired marker keys: the `org.manage` gate stayed clean while a live tracker still listed the dropped table as a per-role store, because no sweep named `org_role_features`. Grep every dropped table/function name and classify each hit as live/history, or a doc keeps advertising a store the migration removed. | phase 7: `docs/ROADMAP.md` still advertised a per-role (`org_role_features`) flag store after the migration dropped it; the implementer's grep gate covered only `org.manage` |
+
 ## 4. Decisions
 
 All settled 2026-11-13; the full wording is ADR-0015 §15.
@@ -5817,8 +5819,8 @@ Measured inventory at HEAD `6e92e52d` (live stack `514f452e`), then after:
 | TS files naming `org_role_features` (excl. `types/database.ts`) | resolver, authz, 11 tests, mock helper               | 2 absence assertions only           |
 | `reserve_ai_tokens`                                             | absent                                               | present; generated types include it |
 
-Grep gate (`org.manage`): 32 files — 16 migrations, 7 plan, 3 ADR, 1
-`docs/limits.md`, 1 audit, 3 `qa/cases`, 1 integration test.
+Grep gate (`org.manage`): 32 files — 16 migrations, 7 `docs/plans`, 3 ADR,
+1 `docs/limits.md`, 1 `docs/audits`, 3 `qa/cases`, 1 integration test.
 Classification: **history** = migrations, plan/ADR/audit prose, `qa/cases`
 MGR-ROL-01/02 (both say the old gates were replaced) and MGR-SEAT-02 (now says
 the per-role store does not exist); **live** = none left (`docs/limits.md` keeps
@@ -5828,12 +5830,25 @@ resolver unit test's non-catalog fixture now uses fictional `test.*` keys);
 `ADMIN_ONLY_*`, `ORG_SCOPED_*` remain at 0 (`FEATURES` has only unrelated
 `FREE_FEATURES`/`HIGHLIGHTED_FEATURES` identifiers).
 
+The **object** sweep (R49, added by this PR) is separate and found one the
+marker gate could not: `docs/ROADMAP.md` still listed per-role
+(`org_role_features`) under the shipped flag surface, so the tracker advertised
+a store this migration drops. Corrected in the same PR. The other non-migration
+hits (`catalog-invariants`, `org-features`) are deliberate absence assertions;
+the rest is historical prose.
+
 **Still open in phase 7 (coordinator-owned):** the full 193-case QA corpus + E2E
 on a clean reset, served evidence, and the phase-8 extendability audit (D23 is
-the close gate). **Difficulty log:** none — no new rule was earned. The slice
-reuses R26 (a guard pins both sides), R29 (check and write in one statement),
-R41 (a JWT-derived actor needs a real session) and R2/R14 (regenerate, never
-hand-edit); there is no new §3 row.
+the close gate).
+
+### Difficulty log — phase 7
+
+- The `org.manage` marker sweep was clean at every head, and the table still
+  appeared in a shipped tracker: the gate was written around the _names in
+  code_ (`org.manage`, `has_org_feature`) rather than the object being deleted
+  (`org_role_features`). A deletion is proven by grepping the deleted name;
+  marker names only find the code that used them.
+  Rule: R49.
 
 ### Phase 8 — extendability (release gate)
 
