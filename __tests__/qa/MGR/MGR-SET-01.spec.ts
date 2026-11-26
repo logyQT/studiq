@@ -21,8 +21,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * settings, flags, plans or platform rows) — the plan catalogue is only read.
  *
  * Walk observation (shared app, pl): `/manage/settings` matches the case exactly.
- * The „Logo” section renders the lock card „Własny branding — Ulepsz plan, aby
- * uzyskać dostęp do własnego brandingu” with a „Zobacz plany” button; the upload
+ * The „Logo” section renders the lock card „Własny branding — Własny branding nie
+ * jest częścią obecnych planów” with a „Zobacz plany” button; the upload
  * control, the „Kolor marki” picker and the file input are not rendered at all.
  * „Zobacz plany” goes to the organization ladder of `/pricing`
  * (`/pricing?audience=organization`), which now lists Launch / Hub / Campus as
@@ -53,7 +53,7 @@ const COPY = {
   profileCard: 'Profil uczelni',
   logoLabel: 'Logo',
   lockedTitle: 'Własny branding',
-  lockedDescription: 'Ulepsz plan, aby uzyskać dostęp do własnego brandingu',
+  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
   lockedCta: 'Zobacz plany',
   uploadLogo: 'Wgraj logo',
   noLogo: 'Brak logo',

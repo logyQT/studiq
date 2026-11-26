@@ -19,8 +19,9 @@ AI włączone; skonfigurowany LLM_API_KEY. Bez klucza oznacz N/D.
   `bun run mock:llm` with the `LLM_*` values of `docs/ai/fake-inference-server.md` in
   root `.env.local`.
 - Tenant: `bun scripts/qa-tenant.ts STU-47 --fresh` (`__tests__/qa/profiles/STU-47.json`
-  → `content` on the `hub` plan, a finite daily AI budget of 200 000 tokens). The spec
-  signs in as the tenant's `users.student`.
+  → `content` on the `hub` plan with `personalPlan: "spark"`: the organization plan is
+  capacity only, so the student's personal Plus plan carries `ai.chat` and its finite
+  daily budget of 100 000 tokens). The spec signs in as the tenant's `users.student`.
 - The model's answers are the fixtures `scripts/fake-llm/cases/STU-47.*.json`.
 - UI notes (walk 2026-11-15): the counter reads „X/Y tokenów AI wykorzystanych
   dzisiaj" (tokens, not requests); „Wyjaśnij pojęcie" on the greeting is a canned

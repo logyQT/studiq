@@ -22,8 +22,9 @@ Zalogowany manager@dev.local.
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Menu
 managera jest budowane dla aktywnej organizacji menedżera, więc przypadek potrzebuje
 tenanta `content` na planie **Hub** — `__tests__/qa/profiles/MGR-02.json` deklaruje
-`{ "profile": "content", "plan": "hub" }`, więc seeder applying `change_org_plan`
-stawia organizację na Hub, a Hub niesie entitlement `ai.chat`:
+`{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "manager" }`, więc seeder
+applying `change_org_plan` stawia organizację na Hub, a plan osobisty managera (Plus)
+niesie `ai.chat` do organizacji:
 
 ```bash
 bun scripts/qa-tenant.ts MGR-02 --fresh
@@ -55,8 +56,9 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   Link został usunięty w #134/#433, bo nie ma strony AI dla managera (powierzchnia UI/nav
   managera to ADR-0015 faza 6). API AI nie jest już bramkowane typem konta: od fazy 5a
   `POST /api/v1/ai/chat` i `GET /api/v1/ai/usage` wymagają entitlementu `ai.chat`
-  (ADR-0015 §7), a ten tenant jest na planie Hub, więc manager **może** wywołać API —
-  w menu nie ma wpisu, bo nie istnieje strona `/manage/ai`.
+  (ADR-0015 §7). Plan organizacji jest od #1493 wyłącznie pojemnościowy, więc `ai.chat`
+  wnosi plan osobisty managera (Plus), a nie Hub; w menu nie ma wpisu, bo nie istnieje
+  strona `/manage/ai`.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)
 
@@ -72,17 +74,17 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   `36689a6d`, „add /edu/ai route and drop dead /manage/ai nav link”), bo nie ma strony
   AI dla managera. Od fazy 5a (ADR-0015) API AI nie bramkuje już typu konta —
   `POST /api/v1/ai/chat` i `GET /api/v1/ai/usage` wymagają entitlementu `ai.chat`;
-  ten tenant ma organizację na planie `hub`, który `ai.chat` niesie, więc manager
-  może z API korzystać. Lista sekcji w „Expected result” opisuje stan sprzed naprawy
-  (sam objaw defektu), a nie zachowanie zamierzone.
+  od #1493 organizacja na planie `hub` jest wyłącznie pojemnościowa, więc `ai.chat`
+  wnosi plan osobisty managera (`spark`, Plus). Lista sekcji w „Expected result”
+  opisuje stan sprzed naprawy (sam objaw defektu), a nie zachowanie zamierzone.
 - Wejście bezpośrednio na `/manage/ai` (spoza menu) zwraca **HTTP 404** i renderuje
   własną stronę 404 panelu managera: nagłówki „404” i „Nie znaleziono strony”, link
   „Wróć do panelu” → `/manage` oraz skróty „Przejdź do:” → `/manage`, `/manage/members`,
   `/manage/invites`, `/manage/settings`.
 - Strona managera (`GET /api/v1/me/entitlements`) zawiera `ai.chat` w `data.entitlements`
-  (organizacja na Hub, rola `admin` z profilem `all`).
+  (plan osobisty `spark`, Plus; rola `admin` z profilem `all`).
 - `GET /api/v1/ai/usage` sesją menedżera zwraca **200** z `data.plan = "hub"` i
-  `data.limit = 200000` — licznik AI managera na Hub.
+  `data.limit = 100000` — dzienny limit Plus z planu osobistego managera.
 - `POST /api/v1/ai/chat` z pustym ciałem `{}` sesją menedżera zwraca **400**
   `{"success":false,"error":"BAD_REQUEST"}` (nagłówek `x-error-code: BAD_REQUEST`) —
   bramka entitlementu przepuściła managera, odpowiedziała walidacja handlera;

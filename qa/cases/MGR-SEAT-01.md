@@ -7,6 +7,14 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Seats are frozen at the UI: `/manage/seats` keeps the pools and assignments tables and every
+`GET`, and hides the purchase, assign and release entries. The organization ladder is capacity
+only, so a sold seat has no feature to add and organization licences arrive in #1511. The
+purchase is driven through the product API, the same `POST` the retired dialog sent; a fresh
+organization still starts without pools, so the pool the case reads back is the one it bought.
+
 ## Prerequisite (verbatim)
 
 M1.
@@ -44,13 +52,17 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
 
 ## Steps
 
-1. Kliknij „Kup miejsca”, wybierz plan i ilość 3, kliknij „Kup”.
-2. Spróbuj ilości 0 oraz ujemnej.
+1. Sprawdź, że strona pokazuje obie tabele i nie ma przycisków zakupu ani przydziału.
+2. Wykonaj zakup przez API produktu: `POST /api/v1/organization/seats/pools`
+   `{"planKey":"ace","quantity":3}`.
+3. Spróbuj ilości 0 oraz ujemnej tym samym żądaniem.
 
 ## Expected result
 
-- Toast „Miejsca dodane do puli”; pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne.
-- Przycisk „Kup” jest nieaktywny bez planu lub przy ilości < 1.
+- Strona renderuje „Pule miejsc” i „Przydziały”; przycisków „Kup miejsca”,
+  „Przydziel miejsce” i „Zwolnij miejsce” nie ma.
+- `POST` zwraca **201**, a pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne.
+- `POST` z ilością 0 lub ujemną zwraca **422** `UNPROCESSABLE_ENTITY` i nie tworzy puli.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)
 
@@ -58,21 +70,15 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   (kolumny Plan / Wykupione / Przydzielone / Dostępne) oraz „Przydziały”. Świeża
   organizacja pokazuje „Brak skonfigurowanych pul miejsc” i „Nie przydzielono jeszcze
   żadnych miejsc”.
-- „Kup miejsca” otwiera okno „Kup licencje na miejsca” z listą planów („Wybierz plan”:
-  pule można kupić dla planów osobistych z katalogu, aktywnych i `seatEligible` —
-  StudiQ Free / Plus / Pro / Max; plan organizacji „StudiQ Campus” nie jest
-  oferowany, a „StudiQ Free” tak), polem
-  „Ilość” (domyślnie `1`) oraz przyciskami „Anuluj” / „Kup”. Bez wybranego planu „Kup”
-  jest nieaktywny; przy ilości 0 lub ujemnej również jest nieaktywny i pod polem
-  pojawia się komunikat „Podaj liczbę całkowitą miejsc (co najmniej 1).”. Ilość `1`
-  ponownie aktywuje przycisk.
-- Krok 1 — wybór „StudiQ Pro” i ilości `3`, następnie „Kup” wysyła
-  `POST /api/v1/organization/seats/pools` `{"planKey":"ace","quantity":3}` → **201**
-  `{"success":true,...}`, zamyka okno i pokazuje toast **„Miejsca dodane do puli”**.
-  W tabeli pojawia się wiersz „StudiQ Pro” z wartościami **3 / 0 / 3**. Wartości są
-  liczone po stronie serwera (`total` / `assigned`), a „Dostępne” to `total - assigned`.
-- Krok 2 — dla ilości `0` i `-2` strona nie wysyła żadnego żądania (przycisk jest
-  wyłączony); ten sam limit egzekwuje API: `POST` z `quantity: 0` lub `quantity: -2`
-  → **422** `{"success":false,"error":"UNPROCESSABLE_ENTITY"}` i pula pozostaje 3 / 0.
+- Od #1493 strona nie ma przycisków „Kup miejsca” ani „Przydziel miejsce”, a wiersze
+  „Przydziałów” nie mają akcji „Zwolnij miejsce”. Widoczna jest notka „Sprzedaż miejsc
+  jest wstrzymana do czasu wprowadzenia licencji organizacji.”. Obie tabele i wszystkie
+  `GET` działają.
+- Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"ace","quantity":3}` →
+  **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz „StudiQ Pro”
+  z wartościami **3 / 0 / 3**. Wartości są liczone po stronie serwera (`total` /
+  `assigned`), a „Dostępne” to `total - assigned`.
+- Krok 3 — `POST` z `quantity: 0` lub `quantity: -2` → **422**
+  `{"success":false,"error":"UNPROCESSABLE_ENTITY"}` i pula pozostaje 3 / 0.
 - Po odświeżeniu strony pula nadal ma 3 / 0 / 3 — stan jest trzymany w bazie, nie tylko
   w komponencie.

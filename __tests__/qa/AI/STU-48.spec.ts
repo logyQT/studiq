@@ -12,7 +12,9 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * wrong. Fixtures: `scripts/fake-llm/cases/STU-48.*.json`.
  *
  * Tenant: `bun scripts/qa-tenant.ts STU-48 --fresh` (`content` profile on the
- * `hub` plan, a finite daily AI budget). The spec signs in as `users.student`.
+ * `hub` plan with `personalPlan: "spark"`, so the student's personal Plus plan
+ * carries `ai.chat` and its finite daily budget). The spec signs in as
+ * `users.student`.
  *
  * Reconciliation (walk on the app, 2026-11-15):
  * - The case expects the statuses „Analizuję tematy… / Generuję fiszki… /
@@ -60,7 +62,7 @@ async function deckNames(page: Page): Promise<string[]> {
   return decksSchema.parse(await response.json()).data.items.map((deck) => deck.name);
 }
 
-/** The tokens used today, read from the badge's label („N/200000 tokenów AI …”). */
+/** The tokens used today, read from the badge's label („N/100000 tokenów AI …”). */
 async function usedTokens(page: Page): Promise<number> {
   const label = await page
     .getByLabel(/tokenów AI wykorzystanych dzisiaj/)

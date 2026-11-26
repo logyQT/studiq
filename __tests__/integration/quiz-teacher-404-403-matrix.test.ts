@@ -22,8 +22,10 @@ import { PUT as putQuiz } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/rout
  * (the same shape as `org-control-permission-api.test.ts`); the unit suite pins the same rows
  * for the read path (`getById`).
  *
- * The org plan is `team`, which carries the `quiz.templates` entitlement, so the 403/404 rows
- * below are the permission derivation and not the entitlement gate that runs first on writes.
+ * The org plan is `hub`, which is capacity only since #1493, so the author's
+ * personal `spark` plan carries `quiz.templates` into the org; the 403/404 rows
+ * below are the permission derivation and not the entitlement gate that runs
+ * first on writes.
  */
 
 const PASSWORD = 'QuizMatrix1!';

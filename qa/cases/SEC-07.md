@@ -70,8 +70,8 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 - Nauczyciel (plan osobisty `base` w tej samej organizacji `launch`) dostaje dokładnie ten
   sam 403 (i `/me/entitlements` bez `ai.chat`) — odmowa nie jest specyficzna dla managera.
 - Student tej samej organizacji, ale z planem osobistym `ace`, dostaje `ai.chat` w
-  `/me/entitlements`, `GET /api/v1/ai/usage` → 200 z `limit = 200000` (i `plan = 'launch'` —
-  effective primary to plan organizacji; limit to user-scope `max(org 0, personal 200000)`),
+  `/me/entitlements`, `GET /api/v1/ai/usage` → 200 z `limit = 250000` (i `plan = 'launch'` —
+  effective primary to plan organizacji; limit to user-scope `max(org 0, personal 250000)`),
   a `POST /api/v1/ai/chat` z `{}` → 400 BAD_REQUEST: bramka entitlementu go przepuściła, więc
   odpowiedziała walidacja handlera. To ten punkt kontrolny pokazuje, że granica jest planowa,
   nie osobową.

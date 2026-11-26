@@ -32,8 +32,8 @@ import {
  * Acceptance points:
  * 1. `/manage/seats` renders both tables and no purchase, assign or release
  *    control (the B2 freeze).
- * 2. The assignment appears in „Przydziały”, the pool moves from 2/0/2 to
- *    2/1/1, and the other pools are untouched.
+ * 2. The assignment appears in „Przydziały”, the Max pool (`pro`, 2 seats) moves
+ *    from 2/0/2 to 2/1/1, and the other pools keep their counters.
  * 3. The seated member's `/me/plan` is the seat plan `pro`; the user-scope
  *    limits resolve `max(org, seat, personal)`, so `max_flashcards` is 25000 and
  *    `max_ai_tokens_per_day` is 500000. The org ceiling adds no paid key, so the
@@ -267,8 +267,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await page.reload();
     const assignmentTable = page.locator('table').nth(1);
     await expect(assignmentTable.locator('tbody tr')).toHaveCount(1);
+    // The row shows the member's full name when the profile carries one, else the e-mail.
     await expect(assignmentTable.locator('tbody tr').first()).toContainText(
-      tenantUser(tenant, 'student').email,
+      assignments[0]?.userFullName || tenantUser(tenant, 'student').email,
     );
     await expect(assignmentTable.locator('tbody tr').first()).toContainText(pro.name);
     await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);

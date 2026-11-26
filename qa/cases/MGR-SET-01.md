@@ -63,7 +63,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   karty: „Profil uczelni” (Nazwa + „Tylko do odczytu”, Utworzono, Logo) i „Subskrypcja”
   (badge „StudiQ Launch”, „Zarządzane przez administratorów systemowych”).
 - Krok 1 — w sekcji „Logo” zamiast uploadu renderuje się karta z ikoną zamka:
-  **„Własny branding”** / **„Ulepsz plan, aby uzyskać dostęp do własnego brandingu”** oraz
+  **„Własny branding”** / **„Własny branding nie jest częścią obecnych planów.”** oraz
   przycisk **„Zobacz plany”**. Nie ma przycisku „Wgraj logo”, napisu „Brak logo”, etykiety
   „Kolor marki”, żadnego `input[type=file]` ani `input[type=color]`. Profil organizacji
   (nazwa, data utworzenia) pozostaje widoczny — blokada dotyczy tylko brandingu.

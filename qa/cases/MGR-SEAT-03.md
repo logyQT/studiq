@@ -7,17 +7,28 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Seats are frozen at the UI: `/manage/seats` keeps the pools and assignments tables and every
+`GET`, and hides the purchase, assign and release entries. The release is therefore driven
+through the product API (`DELETE /api/v1/organization/seats/assignments/<id>`), and the page is
+reloaded to read the persisted counters. The case's subject — the member falls back to their
+personal plan and the pool's available counter grows — is unchanged.
+
 ## Prerequisite (verbatim)
 
 Istniejący przydział.
 
 ## Steps
 
-1. Zwolnij miejsce przyciskiem przy przydziale.
+1. Zwolnij miejsce przez API produktu: `DELETE /api/v1/organization/seats/assignments/<id>`.
+2. Odśwież `/manage/seats` i sprawdź liczniki puli.
 
 ## Expected result
 
-- Toast „Miejsce zwolnione pomyślnie”; członek wraca do planu bazowego; licznik dostępnych rośnie.
+- Wpis znika z „Przydziałów”; w puli „Przydzielone” maleje o 1, „Dostępne” rośnie o 1.
+- Członek wraca do planu bazowego (swojego planu osobistego); drugi przydział zostaje.
+- Strona nie ma przycisków „Kup miejsca”, „Przydziel miejsce” ani „Zwolnij miejsce”.
 
 ## Seed (QA-suite tenant)
 
@@ -44,8 +55,8 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
   `audience` od #1193) i dwa `POST /api/v1/organization/seats/assignments`. Setup jest
   idempotentny: powtórzony przebieg w tym samym tenancie czyści własne przydziały i
   ustawia pulę z powrotem na 2 miejsca.
-- Kroki 1 wykonuje UI: przycisk „Zwolnij miejsce” (`aria-label`) w wierszu przydziału na
-  `/manage/seats`, locale `pl`.
+- Kroki 1–2 wykonuje API: `DELETE /api/v1/organization/seats/assignments/<id>` usuwa przydział,
+  a odświeżona strona `/manage/seats` (locale `pl`) pokazuje nowe liczniki.
 - Weryfikacja „członek wraca do planu bazowego”: `GET /api/v1/me/plan` członka przed
   zwolnieniem zwraca plan miejsca (`pro`), a po zwolnieniu jego plan osobisty (`base`) —
   ten sam, który zwraca `GET /api/v1/me/personal-plan`.

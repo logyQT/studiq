@@ -241,7 +241,7 @@ type ProfileEntry =
     } & ProfileShape);
 
 const USAGE =
-  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--personal-plan <key>] [--personal-role manager|teacher|student] [--personal-role manager|teacher|student] [--fresh] [--run <suffix>] [--attempts 3] [--repeats 1] [--dedicated] [--json] [--reset]';
+  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--personal-plan <key>] [--personal-role manager|teacher|student] [--fresh] [--run <suffix>] [--attempts 3] [--repeats 1] [--dedicated] [--json] [--reset]';
 
 /**
  * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
@@ -550,11 +550,21 @@ async function seedTwoOrg(
       : {}),
   };
 
+  // `personalRole` names the role, not the tenant key: a two-org tenant spells
+  // its keys `studentA` / `teacherA`, so a direct key match would silently pick
+  // no one. `student` is the primary student in org A.
+  const personalRoleKeys: Record<'manager' | 'teacher' | 'student', string[]> = {
+    manager: ['manager'],
+    teacher: ['teacherA'],
+    student: ['studentA'],
+  };
+  const personalTargets = personalRole ? personalRoleKeys[personalRole] : Object.keys(tenantUsers);
+
   await applyPersonalPlan(
     db,
     caseId,
     Object.entries(tenantUsers)
-      .filter(([key]) => !personalRole || key === personalRole)
+      .filter(([key]) => personalTargets.includes(key))
       .map(([, user]) => user.id),
     personalPlan,
   );
@@ -1099,7 +1109,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       shapeUsers[shape.solo.key] = { id: solo.id, email: solo.email, password: solo.password };
     }
 
-    writeTenant({
+    await writeTenant({
       case: caseId,
       profile,
       runSuffix: runSuffix || null,
