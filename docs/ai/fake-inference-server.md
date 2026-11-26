@@ -206,12 +206,12 @@ visible: the unit test pins the first, `STU-48` pins the second (its nested call
 
 ### What building the suite showed about the product
 
-Each is pinned or documented in the specs, and none is changed here (#1212 has since been
-fixed). Issues #1210–#1214 track the first five; the rest have no issue yet.
+Each is pinned or documented in the specs, and none is changed here (#1210 and #1212 have
+since been fixed). Issues #1211, #1213 and #1214 track the rest; the others have no issue yet.
 
 | Finding                                                                                                                                                                                                                  | Where                                                |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| ~~The thinking trace is a „Thought" toggle with a **hardcoded English** label~~ — **fixed, part of #1210**: it uses `thinking_title`; the other labels #1210 covers are listed below                                     | `chat-message.tsx` `ThoughtMessage`                  |
+| The model's reasoning is never sent to the client (#1210): the chat shows no reasoning toggle, so prompt text cannot reach the user through a reasoning trace                                                            | `apps/web/src/app/(backend)/api/v1/ai/chat/route.ts` |
 | `AiChatPage.status_thinking` / `status_generating` / `status_organizing` exist but nothing renders them; the case expects them — **#1211**                                                                               | `AiChatPage` messages                                |
 | ~~The saved deck is named by the tool („Generated Flashcards", untranslated)~~ — **fixed, #1212**: neither tool names it now and the name field applies the localized default                                            | `generate-flashcards.tool.ts`, `flashcard-block.tsx` |
 | A streamed turn requests no usage from the provider, so a fully streamed answer can meter 0 tokens (#1213); the nested `fetch_material` call is never metered at all and is not covered by that issue                    | `packages/server/src/ai/model.ts`, `use-ai-chat.ts`  |

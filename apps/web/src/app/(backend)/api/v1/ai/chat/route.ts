@@ -198,6 +198,8 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // The model's reasoning stays server-side: showing it leaks prompt text and
+    // turns the chat into a chain-of-thought viewer instead of a study tool.
+    return result.toUIMessageStreamResponse({ sendReasoning: false });
   });
 }

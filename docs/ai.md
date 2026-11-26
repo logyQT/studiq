@@ -48,7 +48,7 @@ Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispa
 | `src/server/services/agent-trace.service.ts` | In-memory + SQLite trace storage                                     |
 | `src/lib/conversation-context.ts`            | `AsyncLocalStorage` for conversation ID                              |
 | `src/hooks/use-ai-chat.ts`                   | Client hook — SSE parsing, message state                             |
-| `src/components/ai/*.tsx`                    | UI: ChatScreen, FlashcardBlock, ThinkingBlock, QuestionBlock         |
+| `src/components/ai/*.tsx`                    | UI: ChatScreen, FlashcardBlock, QuestionBlock                        |
 
 ---
 
