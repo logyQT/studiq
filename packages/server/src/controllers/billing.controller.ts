@@ -8,6 +8,7 @@ import { isFailure } from '@studiq/server/lib/service-result';
 import {
   BillingScopeQuerySchema,
   CancelSubscriptionSchema,
+  ChangePlanPreviewSchema,
   ChangePlanSchema,
   ReconcileCheckoutSchema,
 } from '@studiq/server/models/billing.model';
@@ -61,6 +62,27 @@ export class BillingController {
     }
 
     const result = await this.billing.changePlan(
+      ctx,
+      parsed.data.planKey,
+      parsed.data.scope === 'personal',
+    );
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
+  /**
+   * The read-only amount/date preview the confirmation dialog shows before the
+   * user confirms. It has the same body rules as `changePlan` and changes
+   * nothing.
+   */
+  async previewChange(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    const parsed = ChangePlanPreviewSchema.safeParse(body);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.billing.previewChange(
       ctx,
       parsed.data.planKey,
       parsed.data.scope === 'personal',

@@ -734,6 +734,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
         targetPlanKey: to.key,
         targetPriceId: to.priceId,
         direction: 'upgrade',
+        pendingPlanKey: null,
         idempotencyKey: `lifecycle-upgrade-${tag}-${Date.now()}`,
       });
       expect(result.success, JSON.stringify(result)).toBe(true);
@@ -783,6 +784,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
         targetPlanKey: to.key,
         targetPriceId: to.priceId,
         direction: 'downgrade',
+        pendingPlanKey: null,
         idempotencyKey: `lifecycle-downgrade-${tag}-${Date.now()}`,
       });
       expect(result.success, JSON.stringify(result)).toBe(true);

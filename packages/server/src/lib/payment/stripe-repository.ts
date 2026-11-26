@@ -47,6 +47,8 @@ export interface ActiveSubscription {
   status: string;
   planKey: string;
   currentPeriodEnd: string | null;
+  /** The subscription is scheduled to cancel at `currentPeriodEnd`. */
+  cancelAtPeriodEnd: boolean;
   /** Display-only marker for a scheduled phase or an upgrade awaiting payment. */
   pendingPlanKey: string | null;
 }
@@ -123,6 +125,9 @@ export interface StripeBillingRepository {
 }
 
 const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due'];
+
+const ACTIVE_SUBSCRIPTION_COLUMNS =
+  'stripe_subscription_id, status, plan_key, current_period_end, cancel_at_period_end, pending_plan_key';
 
 function mapPrice(row: {
   plan_key: string;
@@ -329,7 +334,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     const supabase = this.createAdminClient();
     const base = supabase
       .from('billing_subscriptions')
-      .select('stripe_subscription_id, status, plan_key, current_period_end, pending_plan_key')
+      .select(ACTIVE_SUBSCRIPTION_COLUMNS)
       .eq('livemode', livemode)
       .in('status', ACTIVE_SUBSCRIPTION_STATUSES);
 
@@ -347,6 +352,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
       status: data.status,
       planKey: data.plan_key,
       currentPeriodEnd: data.current_period_end,
+      cancelAtPeriodEnd: data.cancel_at_period_end,
       pendingPlanKey: data.pending_plan_key,
     });
   }

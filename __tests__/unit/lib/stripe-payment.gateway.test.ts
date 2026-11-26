@@ -34,6 +34,7 @@ function createClient() {
       },
     },
     prices: { retrieve: vi.fn() },
+    invoices: { createPreview: vi.fn() },
     subscriptions: { retrieve: vi.fn(), update: vi.fn() },
     subscriptionSchedules: {
       create: vi.fn(),
@@ -111,6 +112,7 @@ function subscriptionFixture(overrides: Record<string, unknown> = {}) {
   return asJson<Stripe.Subscription>({
     id: 'sub_1',
     customer: 'cus_1',
+    currency: 'pln',
     schedule: null,
     items: {
       data: [
@@ -139,6 +141,38 @@ function sessionFixture(overrides: Record<string, unknown> = {}) {
       studiq_owner_type: 'user',
       studiq_user_id: 'u-1',
       studiq_org_id: '',
+    },
+    ...overrides,
+  });
+}
+
+function previewInvoice(overrides: Record<string, unknown> = {}) {
+  return asJson<Stripe.Invoice>({
+    id: 'upcoming_in_1',
+    object: 'invoice',
+    currency: 'pln',
+    amount_due: 3999,
+    period_start: 1_800_000_000,
+    period_end: 1_802_592_000,
+    lines: {
+      data: [
+        {
+          id: 'il_credit',
+          pricing: {
+            type: 'price_details',
+            price_details: { price: 'price_spark', product: 'prod_1' },
+          },
+          period: { start: 1_791_000_000, end: 1_800_000_000 },
+        },
+        {
+          id: 'il_target',
+          pricing: {
+            type: 'price_details',
+            price_details: { price: 'price_ace', product: 'prod_1' },
+          },
+          period: { start: 1_800_000_000, end: 1_802_592_000 },
+        },
+      ],
     },
     ...overrides,
   });
@@ -719,6 +753,8 @@ describe('StripePaymentGateway', () => {
       targetPlanKey: 'pro',
       targetPriceId: 'price_pro',
       direction: 'upgrade' as const,
+      resume: false,
+      pendingPlanKey: null,
       idempotencyKey: 'change-key',
     };
 
@@ -736,6 +772,7 @@ describe('StripePaymentGateway', () => {
           billing_cycle_anchor: { type: 'now' },
           proration_behavior: 'always_invoice',
           payment_behavior: 'pending_if_incomplete',
+          cancel_at_period_end: false,
           expand: ['latest_invoice'],
         },
         { idempotencyKey: 'change-key' },
@@ -961,6 +998,48 @@ describe('StripePaymentGateway', () => {
       expect(client.subscriptions.update).not.toHaveBeenCalled();
     });
 
+    it('clears a scheduled cancellation in the upgrade update', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ cancel_at_period_end: true }),
+      );
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      await gateway.changePlan({ ...changePlanInput, resume: true });
+
+      expect(client.subscriptions.update).toHaveBeenCalledWith(
+        'sub_1',
+        expect.objectContaining({ cancel_at_period_end: false }),
+        { idempotencyKey: 'change-key' },
+      );
+    });
+
+    it('clears a scheduled cancellation before scheduling a downgrade', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ cancel_at_period_end: true }),
+      );
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
+      );
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1', status: 'active' }),
+      );
+      vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
+      );
+
+      await gateway.changePlan({ ...changePlanInput, direction: 'downgrade', resume: true });
+
+      expect(client.subscriptions.update).toHaveBeenCalledWith('sub_1', {
+        cancel_at_period_end: false,
+      });
+      expect(
+        firstRecorded(vi.mocked(client.subscriptions.update).mock.invocationCallOrder),
+      ).toBeLessThan(
+        firstRecorded(vi.mocked(client.subscriptionSchedules.create).mock.invocationCallOrder),
+      );
+    });
+
     it('schedules a downgrade at the current period end', async () => {
       vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
@@ -1120,6 +1199,196 @@ describe('StripePaymentGateway', () => {
         success: false,
         error: 'NOT_FOUND',
       });
+    });
+  });
+
+  describe('previewChange', () => {
+    const previewInput = {
+      owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
+      customerId: 'cus_1',
+      subscriptionId: 'sub_1',
+      currentPlanKey: 'spark',
+      targetPlanKey: 'ace',
+      targetPriceId: 'price_ace',
+      direction: 'upgrade' as const,
+      resume: false,
+      pendingPlanKey: null,
+    };
+
+    it('previews an upgrade with Stripe’s amount and the target period start', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.invoices.createPreview).mockResolvedValueOnce(previewInvoice());
+
+      const result = await gateway.previewChange(previewInput);
+
+      expect(result).toEqual(
+        success({
+          direction: 'upgrade',
+          currentPlanKey: 'spark',
+          targetPlanKey: 'ace',
+          amountDue: 3999,
+          currency: 'PLN',
+          effectiveAt: '2027-01-15T08:00:00.000Z',
+          resumesAtPeriodEnd: false,
+          replacesPendingPlanKey: null,
+          blockedBySchedule: false,
+        }),
+      );
+      expect(client.invoices.createPreview).toHaveBeenCalledWith({
+        customer: 'cus_1',
+        subscription: 'sub_1',
+        subscription_details: {
+          items: [{ id: 'si_1', price: 'price_ace' }],
+          proration_behavior: 'always_invoice',
+          billing_cycle_anchor: { type: 'now' },
+          cancel_at_period_end: false,
+        },
+      });
+      // Read-only: no provider mutation and no schedule.
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+      expect(client.subscriptionSchedules.create).not.toHaveBeenCalled();
+    });
+
+    it('previews a scheduled-downgrade subscription without the cancellation flag', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sub_sched_1' }),
+      );
+      vi.mocked(client.invoices.createPreview).mockResolvedValueOnce(previewInvoice());
+
+      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'spark' });
+
+      expect(result).toEqual(
+        success({
+          direction: 'upgrade',
+          currentPlanKey: 'spark',
+          targetPlanKey: 'ace',
+          amountDue: 3999,
+          currency: 'PLN',
+          effectiveAt: '2027-01-15T08:00:00.000Z',
+          resumesAtPeriodEnd: false,
+          replacesPendingPlanKey: 'spark',
+          blockedBySchedule: false,
+        }),
+      );
+      expect(client.invoices.createPreview).toHaveBeenCalledWith({
+        customer: 'cus_1',
+        subscription: 'sub_1',
+        subscription_details: {
+          items: [{ id: 'si_1', price: 'price_ace' }],
+          proration_behavior: 'always_invoice',
+          billing_cycle_anchor: { type: 'now' },
+        },
+      });
+    });
+
+    it('reports a schedule refusal as a typed block instead of a dead end', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sub_sched_1' }),
+      );
+      vi.mocked(client.invoices.createPreview).mockRejectedValueOnce({
+        type: 'StripeInvalidRequestError',
+        message:
+          'The subscription is managed by the subscription schedule `sub_sched_1`, and updating any cancelation behavior is not allowed.',
+      });
+
+      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'spark' });
+
+      expect(result).toEqual(
+        success({
+          direction: 'upgrade',
+          currentPlanKey: 'spark',
+          targetPlanKey: 'ace',
+          amountDue: 0,
+          currency: 'PLN',
+          effectiveAt: '2027-02-14T08:00:00.000Z',
+          resumesAtPeriodEnd: false,
+          replacesPendingPlanKey: 'spark',
+          blockedBySchedule: true,
+        }),
+      );
+    });
+
+    it('previews a downgrade at the current period end without a Stripe invoice call', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+
+      const result = await gateway.previewChange({
+        ...previewInput,
+        direction: 'downgrade',
+      });
+
+      expect(result).toEqual(
+        success({
+          direction: 'downgrade',
+          currentPlanKey: 'spark',
+          targetPlanKey: 'ace',
+          amountDue: 0,
+          currency: 'PLN',
+          effectiveAt: '2027-02-14T08:00:00.000Z',
+          resumesAtPeriodEnd: false,
+          replacesPendingPlanKey: null,
+          blockedBySchedule: false,
+        }),
+      );
+      expect(client.invoices.createPreview).not.toHaveBeenCalled();
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('marks a preview that resumes a scheduled cancellation', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ cancel_at_period_end: true }),
+      );
+      vi.mocked(client.invoices.createPreview).mockResolvedValueOnce(previewInvoice());
+
+      const result = await gateway.previewChange({ ...previewInput, resume: true });
+
+      expect(result).toMatchObject({ success: true, data: { resumesAtPeriodEnd: true } });
+      expect(client.invoices.createPreview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subscription_details: {
+            items: [{ id: 'si_1', price: 'price_ace' }],
+            proration_behavior: 'always_invoice',
+            billing_cycle_anchor: { type: 'now' },
+            cancel_at_period_end: false,
+          },
+        }),
+      );
+    });
+
+    it('fails closed when the preview has no line for the target price', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.invoices.createPreview).mockResolvedValueOnce(
+        previewInvoice({ lines: { data: [] } }),
+      );
+
+      await expect(gateway.previewChange(previewInput)).resolves.toEqual({
+        success: false,
+        error: 'SERVICE_UNAVAILABLE',
+      });
+    });
+
+    it('maps a Stripe preview failure instead of returning an estimate', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.invoices.createPreview).mockRejectedValueOnce({
+        type: 'StripeInvalidRequestError',
+        message: 'This subscription cannot be previewed.',
+      });
+
+      await expect(gateway.previewChange(previewInput)).resolves.toEqual({
+        success: false,
+        error: 'BAD_REQUEST',
+      });
+    });
+
+    it('refuses a subscription that belongs to another customer', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ customer: 'cus_other' }),
+      );
+
+      await expect(gateway.previewChange(previewInput)).resolves.toEqual({
+        success: false,
+        error: 'FORBIDDEN',
+      });
+      expect(client.invoices.createPreview).not.toHaveBeenCalled();
     });
   });
 

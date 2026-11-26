@@ -19,7 +19,9 @@ import {
 } from '@studiq/server/lib/payment/checkout-timing';
 import type {
   BillingLocale,
+  ChangePlanPreview,
   ChangePlanResult,
+  ChangePlanSelection,
   CheckoutSessionResult,
   PaymentDriver,
   PaymentGateway,
@@ -438,6 +440,69 @@ export class BillingService {
     targetPlanKey: string,
     personal = false,
   ): Promise<ServiceResult<ChangePlanResult>> {
+    const resolved = await this.resolvePlanChange(ctx, targetPlanKey, personal);
+    if (isFailure(resolved)) return resolved;
+    const { selection, subscription } = resolved.data;
+
+    const result = await this.gateway.changePlan({
+      ...selection,
+      idempotencyKey: changePlanIdempotencyKey(
+        subscription.stripeSubscriptionId,
+        selection.targetPlanKey,
+        selection.targetPriceId,
+        subscription.currentPeriodEnd,
+      ),
+    });
+    if (isFailure(result)) return result;
+
+    // `pending_plan_key` is a display marker for a scheduled phase or an
+    // upgrade invoice awaiting authentication. The plan key itself still
+    // changes only when the webhook applies the new price.
+    const pendingForNextPeriod =
+      result.data.status === 'scheduled' || result.data.status === 'pending_payment';
+    const marker = await this.repository.setPendingPlan(
+      subscription.stripeSubscriptionId,
+      pendingForNextPeriod ? selection.targetPlanKey : null,
+    );
+    if (isFailure(marker)) {
+      // The provider change already succeeded; a failed marker must not invite
+      // a retry that would create a second schedule.
+      logWarn('billing.pending_plan_marker_failed', {
+        subscriptionId: subscription.stripeSubscriptionId,
+        planKey: selection.targetPlanKey,
+      });
+    }
+
+    return success(result.data);
+  }
+
+  /**
+   * The read-only amount/date preview for the same change. It resolves the
+   * request exactly like `changePlan` but performs no mirror write and no
+   * provider mutation; a provider that cannot preview is a failure, never an
+   * estimated amount.
+   */
+  async previewChange(
+    ctx: RequestContext,
+    targetPlanKey: string,
+    personal = false,
+  ): Promise<ServiceResult<ChangePlanPreview>> {
+    const resolved = await this.resolvePlanChange(ctx, targetPlanKey, personal);
+    if (isFailure(resolved)) return resolved;
+
+    return this.gateway.previewChange(resolved.data.selection);
+  }
+
+  /**
+   * The owner, subscription, catalog rows, direction, customer and mapped
+   * target price one plan change needs. Preview and change both call this
+   * function, so a preview can never describe a different change.
+   */
+  private async resolvePlanChange(
+    ctx: RequestContext,
+    targetPlanKey: string,
+    personal: boolean,
+  ): Promise<ServiceResult<{ selection: ChangePlanSelection; subscription: ActiveSubscription }>> {
     const prepared = await this.prepareProviderAction(ctx, personal);
     if (isFailure(prepared)) return prepared;
     const owner = prepared.data;
@@ -509,42 +574,20 @@ export class BillingService {
       return failure('SERVICE_UNAVAILABLE');
     }
 
-    const result = await this.gateway.changePlan({
-      owner,
-      customerId: customer.data.stripeCustomerId,
-      subscriptionId: active.stripeSubscriptionId,
-      currentPlanKey: active.planKey,
-      targetPlanKey: target.key,
-      targetPriceId: listed.data!.stripePriceId,
-      direction,
-      idempotencyKey: changePlanIdempotencyKey(
-        active.stripeSubscriptionId,
-        target.key,
-        listed.data!.stripePriceId,
-        active.currentPeriodEnd,
-      ),
-    });
-    if (isFailure(result)) return result;
-
-    // `pending_plan_key` is a display marker for a scheduled phase or an
-    // upgrade invoice awaiting authentication. The plan key itself still
-    // changes only when the webhook applies the new price.
-    const pendingForNextPeriod =
-      result.data.status === 'scheduled' || result.data.status === 'pending_payment';
-    const marker = await this.repository.setPendingPlan(
-      active.stripeSubscriptionId,
-      pendingForNextPeriod ? target.key : null,
-    );
-    if (isFailure(marker)) {
-      // The provider change already succeeded; a failed marker must not invite
-      // a retry that would create a second schedule.
-      logWarn('billing.pending_plan_marker_failed', {
+    return success({
+      selection: {
+        owner,
+        customerId: customer.data.stripeCustomerId,
         subscriptionId: active.stripeSubscriptionId,
-        planKey: target.key,
-      });
-    }
-
-    return success(result.data);
+        currentPlanKey: active.planKey,
+        targetPlanKey: target.key,
+        targetPriceId: listed.data!.stripePriceId,
+        direction,
+        resume: active.cancelAtPeriodEnd,
+        pendingPlanKey: active.pendingPlanKey,
+      },
+      subscription: active,
+    });
   }
 
   /**

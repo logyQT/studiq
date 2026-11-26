@@ -424,8 +424,9 @@ set the variable and restart/redeploy to apply it.
 
 **Rate limits.** Checkout creation, change-plan, cancel and
 release-scheduled-plan each have their own per-process, per-user bucket
-(10/min each, so 40/min combined); reconcile has 20/min. A scaled-out
-deployment still needs a shared counter for a hard quota.
+(10/min each); the change-plan preview and reconcile have 20/min each, so the
+billing surface allows 80/min combined. A scaled-out deployment still needs a
+shared counter for a hard quota.
 
 **Alert on** (Loki/Grafana; records carry `trace_id` when OTel is enabled):
 
@@ -513,6 +514,7 @@ or amount.
 | `POST` | `/api/v1/stripe/create-checkout-session` | `{ planKey, orgId?, locale? }` | Returns `{ url }`: hosted Stripe Checkout, or the local mock form. `orgId` is required for organization plans, must be a uuid, and the caller must hold `org.billing.manage` in it |
 | `GET`  | `/api/v1/stripe/portal?locale=pl\|en`    | —                              | Returns `{ url }` for the hosted Billing Portal; `404` when the owner has no Stripe customer mapping                                                                               |
 | `POST` | `/api/v1/billing/change-plan`            | `{ planKey }`                  | Upgrade applies now (anchor reset + unused-time credit); downgrade schedules at the period boundary. No entitlement write                                                          |
+| `POST` | `/api/v1/billing/change-plan/preview`    | `{ planKey }`                  | Read-only amount due today and effective date for the same change. No mirror write and no provider mutation; a scheduled change is reported as replaced                            |
 | `POST` | `/api/v1/billing/cancel`                 | `{ cancel: boolean }`          | `true` = cancel at period end, `false` = reactivate. No entitlement write                                                                                                          |
 | `POST` | `/api/v1/billing/release-scheduled-plan` | —                              | “Keep current plan”: releases a scheduled downgrade and clears the display marker. No entitlement write; returns `{ released: false }` when no schedule exists                     |
 | `POST` | `/api/v1/billing/reconcile`              | `{ sessionId }`                | Success-page reconcile: verifies session ownership, reuses the idempotent activation path, activate-only                                                                           |

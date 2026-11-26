@@ -18,9 +18,17 @@ import {
   noActionsMessageKey,
   periodRow,
   planChangeFeedback,
+  previewPlanChange,
+  scheduledCancellationDate,
+  submitCancellation,
+  withCancellationOverride,
 } from '@/lib/billing-subscription';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import {
+  PlanChangeDialog,
+  type PlanChangePreviewState,
+} from '@/components/billing/plan-change-dialog';
 
 interface BillingSubscriptionCardProps {
   subscription: BillingSubscriptionView | undefined;
@@ -65,6 +73,11 @@ export function BillingSubscriptionCard({
   const locale = useLocale();
   const [busy, setBusy] = useState<string | null>(null);
   const [pendingInvoiceUrl, setPendingInvoiceUrl] = useState<string | null>(null);
+  const [pendingPlanKey, setPendingPlanKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PlanChangePreviewState | null>(null);
+  const [applying, setApplying] = useState(false);
+  /** Stripe's cancel flag before the webhook writes the mirror. */
+  const [cancellationOverride, setCancellationOverride] = useState<boolean | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(
@@ -73,6 +86,14 @@ export function BillingSubscriptionCard({
     },
     [],
   );
+
+  // The override exists only to cover the webhook lag: once a refetched view
+  // agrees with it, the server is authoritative again.
+  useEffect(() => {
+    if (cancellationOverride !== null && subscription?.cancelAtPeriodEnd === cancellationOverride) {
+      setCancellationOverride(null);
+    }
+  }, [cancellationOverride, subscription?.cancelAtPeriodEnd]);
 
   if (isError) {
     return (
@@ -100,15 +121,39 @@ export function BillingSubscriptionCard({
     );
   }
 
-  const statusKey = billingStatusKey(subscription.status);
-  const statusLabel = statusKey ? t(statusKey) : subscription.status;
-  const period = periodRow(subscription);
+  const view = withCancellationOverride(subscription, cancellationOverride);
+  const statusKey = billingStatusKey(view.status);
+  const statusLabel = statusKey ? t(statusKey) : view.status;
+  const period = periodRow(view);
+  const cancellationDate = scheduledCancellationDate(view);
   const planName = (key: string) => plans?.find((plan) => plan.key === key)?.name ?? key;
-  const actions = hasProviderActions(subscription);
-  const alternatives = alternativePlans(plans, subscription, accountType);
+  const catalogueName = (key: string | null | undefined) =>
+    key ? (plans?.find((plan) => plan.key === key)?.name ?? null) : null;
+  const currentPlanName =
+    catalogueName(view.billedPlanKey) ??
+    view.billedPlanName ??
+    catalogueName(view.planKey) ??
+    view.planName ??
+    view.billedPlanKey ??
+    view.planKey;
+  const targetPlanKey =
+    preview?.status === 'ready' ? preview.preview.targetPlanKey : pendingPlanKey;
+  const targetPlanName = targetPlanKey ? planName(targetPlanKey) : '';
+  const replacedPlanKey =
+    preview?.status === 'ready'
+      ? (preview.preview.replacesPendingPlanKey ?? view.pendingPlanKey)
+      : view.pendingPlanKey;
+  const replacedPlanName = replacedPlanKey ? planName(replacedPlanKey) : '';
+  const actions = hasProviderActions(view);
+  const alternatives = alternativePlans(plans, view, accountType);
 
   const fmt = (value: number, currency: string) =>
     new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value / 100);
+
+  function scheduleRefresh() {
+    if (refreshTimer.current !== undefined) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(onChanged, APPLIED_REFRESH_MS);
+  }
 
   async function openPortal() {
     setBusy('portal');
@@ -128,13 +173,19 @@ export function BillingSubscriptionCard({
   }
 
   async function toggleCancellation() {
-    const cancel = !subscription?.cancelAtPeriodEnd;
+    const cancel = !view.cancelAtPeriodEnd;
     setBusy('cancel');
     try {
-      const request = billingCardRequest({ type: 'cancel', cancel }, personal);
-      const result = await apiPost<{ cancelAtPeriodEnd: boolean }>(request.url, request.body);
+      const result = await submitCancellation({
+        cancel,
+        personal,
+        effects: {
+          onCancelAtPeriodEnd: setCancellationOverride,
+          onChanged,
+          scheduleRefresh,
+        },
+      });
       toast.success(result.cancelAtPeriodEnd ? t('cancel_success') : t('resume_success'));
-      onChanged();
     } catch {
       toast.error(t('cancel_failed'));
     } finally {
@@ -154,6 +205,8 @@ export function BillingSubscriptionCard({
         // payment). Refresh anyway: the webhook may already have cleared it.
         toast.info(t('keep_current_plan_none'));
       }
+      setPendingPlanKey(null);
+      setPreview(null);
       onChanged();
     } catch {
       toast.error(t('keep_current_plan_failed'));
@@ -162,10 +215,38 @@ export function BillingSubscriptionCard({
     }
   }
 
-  async function changePlan(planKey: string) {
-    setBusy(planKey);
+  async function openPlanChange(planKey: string) {
+    setPendingPlanKey(planKey);
+    setPreview({ status: 'loading' });
     try {
-      const request = billingCardRequest({ type: 'change', planKey }, personal);
+      setPreview({ status: 'ready', preview: await previewPlanChange(planKey, personal) });
+    } catch {
+      setPreview({ status: 'error' });
+    }
+  }
+
+  function closePlanChange(open: boolean) {
+    if (open || applying) return;
+    setPendingPlanKey(null);
+    setPreview(null);
+  }
+
+  async function confirmPlanChange() {
+    if (!pendingPlanKey || preview?.status !== 'ready' || preview.preview.blockedBySchedule) return;
+
+    // Never charge a plan the preview did not describe: a stale dialog must
+    // refresh instead of confirming a different target.
+    if (preview.preview.targetPlanKey !== pendingPlanKey) {
+      await openPlanChange(pendingPlanKey);
+      return;
+    }
+
+    setApplying(true);
+    try {
+      const request = billingCardRequest(
+        { type: 'change', planKey: preview.preview.targetPlanKey },
+        personal,
+      );
       const result = await apiPost<ChangePlanResult>(request.url, request.body);
       const feedback = planChangeFeedback(result);
 
@@ -173,17 +254,19 @@ export function BillingSubscriptionCard({
       if (feedback.tone === 'success') toast.success(t(feedback.messageKey));
       else toast.info(t(feedback.messageKey));
 
+      setPendingPlanKey(null);
+      setPreview(null);
       onChanged();
       if (result.status === 'applied') {
         // The entitlement moves on `customer.subscription.updated`, which may
         // arrive just after the Stripe call; refresh once more so the plan card
         // does not keep contradicting the subscription card.
-        refreshTimer.current = setTimeout(onChanged, APPLIED_REFRESH_MS);
+        scheduleRefresh();
       }
     } catch {
       toast.error(t('change_plan_failed'));
     } finally {
-      setBusy(null);
+      setApplying(false);
     }
   }
 
@@ -193,26 +276,39 @@ export function BillingSubscriptionCard({
         <CardTitle>{t('plan_change_title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {currentPlanName && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{t('current_plan_label')}</span>
+            <span className="font-medium">{currentPlanName}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">{t('status_label')}</span>
           <span className="font-medium">{statusLabel}</span>
         </div>
 
-        {period && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{t(period.labelKey)}</span>
-            <span className="font-medium">
-              {t(period.messageKey, { date: formatDate(period.date, locale) })}
-            </span>
-          </div>
+        {cancellationDate ? (
+          <p className="text-sm font-medium text-destructive">
+            {t('scheduled_cancellation', { date: formatDate(cancellationDate, locale) })}
+          </p>
+        ) : (
+          period && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{t(period.labelKey)}</span>
+              <span className="font-medium">
+                {t(period.messageKey, { date: formatDate(period.date, locale) })}
+              </span>
+            </div>
+          )
         )}
 
-        {subscription.pendingPlanKey && (
+        {view.pendingPlanKey && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              {t('pending_change', { plan: planName(subscription.pendingPlanKey) })}
+              {t('pending_change', { plan: planName(view.pendingPlanKey) })}
             </p>
-            {subscription.canChangePlan && (
+            {view.canChangePlan && (
               <Button
                 variant="outline"
                 size="sm"
@@ -242,9 +338,9 @@ export function BillingSubscriptionCard({
           </a>
         )}
 
-        {invoiceHref(subscription.hostedInvoiceUrl) && (
+        {invoiceHref(view.hostedInvoiceUrl) && (
           <a
-            href={invoiceHref(subscription.hostedInvoiceUrl) ?? undefined}
+            href={invoiceHref(view.hostedInvoiceUrl) ?? undefined}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
@@ -255,13 +351,13 @@ export function BillingSubscriptionCard({
         )}
 
         {!actions && (
-          <p className="text-sm text-muted-foreground">{t(noActionsMessageKey(subscription))}</p>
+          <p className="text-sm text-muted-foreground">{t(noActionsMessageKey(view))}</p>
         )}
 
         {actions && <Separator />}
 
         <div className="flex flex-wrap gap-2">
-          {subscription.canManagePortal && (
+          {view.canManagePortal && (
             <Button variant="outline" onClick={openPortal} disabled={busy !== null}>
               {busy === 'portal' ? (
                 <Loader2 className="size-4 mr-2 animate-spin" />
@@ -272,28 +368,28 @@ export function BillingSubscriptionCard({
             </Button>
           )}
 
-          {subscription.canCancel && (
+          {view.canCancel && (
             <Button
               variant="outline"
               onClick={toggleCancellation}
               disabled={busy !== null}
               aria-label={
-                subscription.cancelAtPeriodEnd ? t('resume_subscription') : t('cancel_subscription')
+                view.cancelAtPeriodEnd ? t('resume_subscription') : t('cancel_subscription')
               }
             >
               {busy === 'cancel' ? (
                 <Loader2 className="size-4 mr-2 animate-spin" />
-              ) : subscription.cancelAtPeriodEnd ? (
+              ) : view.cancelAtPeriodEnd ? (
                 <RefreshCw className="size-4 mr-2" />
               ) : (
                 <XCircle className="size-4 mr-2" />
               )}
-              {subscription.cancelAtPeriodEnd ? t('resume_subscription') : t('cancel_subscription')}
+              {view.cancelAtPeriodEnd ? t('resume_subscription') : t('cancel_subscription')}
             </Button>
           )}
         </div>
 
-        {subscription.canChangePlan && alternatives.length > 0 && (
+        {view.canChangePlan && alternatives.length > 0 && (
           <>
             <Separator />
             <div className="space-y-2">
@@ -305,9 +401,8 @@ export function BillingSubscriptionCard({
                     variant="secondary"
                     size="sm"
                     disabled={busy !== null}
-                    onClick={() => changePlan(plan.key)}
+                    onClick={() => openPlanChange(plan.key)}
                   >
-                    {busy === plan.key && <Loader2 className="size-3.5 mr-2 animate-spin" />}
                     {plan.name} · {fmt(plan.priceMonthly, plan.currency)}
                   </Button>
                 ))}
@@ -316,6 +411,21 @@ export function BillingSubscriptionCard({
           </>
         )}
       </CardContent>
+
+      <PlanChangeDialog
+        open={pendingPlanKey !== null}
+        state={preview}
+        currentPlanName={currentPlanName ?? ''}
+        targetPlanName={targetPlanName}
+        replacedPlanName={replacedPlanName}
+        applying={applying}
+        onOpenChange={closePlanChange}
+        onConfirm={confirmPlanChange}
+        onRetry={() => {
+          if (pendingPlanKey) void openPlanChange(pendingPlanKey);
+        }}
+        onKeepCurrentPlan={keepCurrentPlan}
+      />
     </Card>
   );
 }

@@ -1,6 +1,8 @@
 import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
+import type { RateLimitResult } from '@studiq/server/lib/rate-limiter';
+import { rateLimitResponse } from '@studiq/server/lib/rate-limit-response';
 import { withAuth, type WithAuthOptions } from '@studiq/server/lib/with-auth';
 import type { NextRequest, NextResponse } from 'next/server';
 
@@ -27,6 +29,11 @@ export interface RouteOptions extends WithAuthOptions {
    * pre-empt the controller's own answer (a `DELETE` refused with 403).
    */
   readsBody?: boolean;
+  /**
+   * A per-user burst guard. It runs after authentication and before the body
+   * is read, so a limited caller never pays for a JSON parse.
+   */
+  rateLimit?: { check(key: string): RateLimitResult };
 }
 
 /**
@@ -50,10 +57,14 @@ async function respond<Body extends unknown[]>(
   read: (json: unknown) => [...Body],
   call: RouteController<Body>,
   options?: WithAuthOptions,
+  rateLimit?: { check(key: string): RateLimitResult },
 ): Promise<NextResponse | Response> {
   return withAuth(
     req,
     async (ctx) => {
+      const limit = rateLimit?.check(ctx.userId);
+      if (limit && !limit.allowed) return rateLimitResponse(limit);
+
       const json: unknown = readsBody ? await req.json() : undefined;
       return toNextResponse(await call(ctx, ...read(json)));
     },
@@ -74,6 +85,7 @@ export function authedRoute<Body extends unknown[] = []>(
       (json) => read({ params: undefined, json }),
       call,
       route,
+      route.rateLimit,
     );
 }
 
@@ -95,6 +107,13 @@ export function authedRouteWithParams<
     context: { params: Promise<Params> },
   ): Promise<NextResponse | Response> => {
     const params = await context.params;
-    return respond(req, route.readsBody ?? false, (json) => read({ params, json }), call, route);
+    return respond(
+      req,
+      route.readsBody ?? false,
+      (json) => read({ params, json }),
+      call,
+      route,
+      route.rateLimit,
+    );
   };
 }
