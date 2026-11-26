@@ -304,7 +304,10 @@ describe('user_daily_activity regrade under RLS (#1082)', () => {
   // The trigger is SECURITY DEFINER so that this write — a teacher's regrade of a
   // student's attempt — lands on the student's activity row. With INVOKER rights
   // the activity UPDATE matches 0 rows and the delta is lost silently, which is
-  // exactly what the service-role regrade case above cannot see.
+  // exactly what the service-role regrade case above cannot see. It also pins
+  // the completion booking after #1482: `authenticated` holds no INSERT on
+  // `user_daily_activity`, so a booked row proves the trigger still writes as
+  // its owner.
   it('applies the delta when a teacher regrades a student attempt through RLS', async () => {
     // Referencing the teacher-authored assignment stamps the attempt with the
     // teacher's org (quiz_attempts_stamp_organization), which the 5e-1 staff
