@@ -54,7 +54,7 @@ bun scripts/qa-tenant.ts PUB-03           # seed od zera (deterministyczny)
 - Jeden przełącznik z dwiema opcjami (grupa radio, nie kafelki typów kont). Nie ma osobnych
   podstron /pricing/student, /pricing/edu ani /pricing/org.
 - „Dla siebie” pokazuje jedną sekcję „Dla osób indywidualnych” z jednym porównaniem planów:
-  Free, Plus, Pro, Max (klucze `base`, `spark`, `ace`, `pro`). Nie ma podziału na uczniów
+  Free, Plus, Pro, Max (klucze `free`, `plus`, `pro`, `max`). Nie ma podziału na uczniów
   i edukatorów ani drugiej tabeli porównawczej.
 - „Dla organizacji” pokazuje sekcję „Dla organizacji” z planami Launch, Hub, Campus
   (katalog pobierany przez `?scope=organization` — adres przełącznika to

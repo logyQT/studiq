@@ -10,7 +10,7 @@
 ## Amendment (2026-11-26, B2 #1493)
 
 Hub is capacity only; the members' `ai.chat` comes from their personal Plus plan
-(`personalPlan: "spark"`). `branding` is no longer asserted: no organization plan carries it.
+(`personalPlan: "plus"`). `branding` is no longer asserted: no organization plan carries it.
 
 ## Prerequisite (verbatim)
 

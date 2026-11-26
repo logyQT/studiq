@@ -10,7 +10,7 @@
 ## Amendment (2026-11-26, B2 #1493)
 
 Hub is capacity only. The manager's `ai.chat` comes from their personal Plus plan
-(`personalPlan: "spark"`), so `/me/entitlements` still contains it and `/ai/usage` reports the Plus
+(`personalPlan: "plus"`), so `/me/entitlements` still contains it and `/ai/usage` reports the Plus
 quota (100 000) with `plan: 'hub'` as the effective primary.
 
 ## Prerequisite (verbatim)
@@ -22,7 +22,7 @@ Zalogowany manager@dev.local.
 Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Menu
 managera jest budowane dla aktywnej organizacji menedżera, więc przypadek potrzebuje
 tenanta `content` na planie **Hub** — `__tests__/qa/profiles/MGR-02.json` deklaruje
-`{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "manager" }`, więc seeder
+`{ "profile": "content", "plan": "hub", "personalPlan": "plus", "personalRole": "manager" }`, więc seeder
 applying `change_org_plan` stawia organizację na Hub, a plan osobisty managera (Plus)
 niesie `ai.chat` do organizacji:
 
@@ -75,14 +75,14 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   AI dla managera. Od fazy 5a (ADR-0015) API AI nie bramkuje już typu konta —
   `POST /api/v1/ai/chat` i `GET /api/v1/ai/usage` wymagają entitlementu `ai.chat`;
   od #1493 organizacja na planie `hub` jest wyłącznie pojemnościowa, więc `ai.chat`
-  wnosi plan osobisty managera (`spark`, Plus). Lista sekcji w „Expected result”
+  wnosi plan osobisty managera (`plus`, Plus). Lista sekcji w „Expected result”
   opisuje stan sprzed naprawy (sam objaw defektu), a nie zachowanie zamierzone.
 - Wejście bezpośrednio na `/manage/ai` (spoza menu) zwraca **HTTP 404** i renderuje
   własną stronę 404 panelu managera: nagłówki „404” i „Nie znaleziono strony”, link
   „Wróć do panelu” → `/manage` oraz skróty „Przejdź do:” → `/manage`, `/manage/members`,
   `/manage/invites`, `/manage/settings`.
 - Strona managera (`GET /api/v1/me/entitlements`) zawiera `ai.chat` w `data.entitlements`
-  (plan osobisty `spark`, Plus; rola `admin` z profilem `all`).
+  (plan osobisty `plus`, Plus; rola `admin` z profilem `all`).
 - `GET /api/v1/ai/usage` sesją menedżera zwraca **200** z `data.plan = "hub"` i
   `data.limit = 100000` — dzienny limit Plus z planu osobistego managera.
 - `POST /api/v1/ai/chat` z pustym ciałem `{}` sesją menedżera zwraca **400**

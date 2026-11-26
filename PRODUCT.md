@@ -34,10 +34,14 @@ not come back until they are measured.
 
 Two ladders, each self-serve through Stripe from `/pricing`:
 
-| Ladder      | Account type                     | Free tier | Paid tiers                                |
-| ----------- | -------------------------------- | --------- | ----------------------------------------- |
-| Individual  | `STUDENT`, `EDUCATOR`, `MANAGER` | `base`    | `spark` 19.99 · `ace` 39.99 · `pro` 79.99 |
-| Institution | `MANAGER`                        | `launch`  | `hub` 299 · `campus` 699                  |
+| Ladder      | Account type          | Free tier | Paid tiers                               |
+| ----------- | --------------------- | --------- | ---------------------------------------- |
+| Individual  | `STUDENT`, `EDUCATOR` | `free`    | `plus` 19.99 · `pro` 39.99 · `max` 79.99 |
+| Institution | `MANAGER`             | `launch`  | `hub` 299 · `campus` 699                 |
+
+A manager is an organization buyer and holds no personal plan (ADR-0007): the
+individual ladder is not theirs to purchase, and they buy an institution plan
+only for an organization where they may manage billing.
 
 All prices in PLN per month, from `subscription_plans`. Never hardcode them: the landing
 reads `/api/v1/subscription-plans` and formats through `formatPlanPrice`.

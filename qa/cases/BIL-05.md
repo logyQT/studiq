@@ -21,7 +21,7 @@ bun scripts/qa-tenant.ts BIL-05 --fresh
 ```
 
 `__tests__/qa/profiles/BIL-05.json` declares `bare`/`student`: one **student under test**
-(`users.student`), no organization, no group, and the default free `base` personal
+(`users.student`), no organization, no group, and the default free `free` personal
 plan that the `handle_new_user` trigger writes. Every id derives from
 `tenantKey('qa/cases/BIL-05.md', 'BIL-05#<run>', 'qa-shared')` + `tenantId`; the
 `--fresh` suffix makes each independent run a new student who has never bought a
@@ -32,7 +32,7 @@ The case's step targets the organization plan `campus`; `hub` is the second
 organization control. The plan catalogue
 (`subscription_plans`, `plan_limits`) is shared and read-only — the spec reads it
 through the public API and never changes it. A rejected purchase writes nothing; the
-positive control (the student's own `spark` plan) writes only this tenant's
+positive control (the student's own `plus` plan) writes only this tenant's
 `profiles.personal_plan_key` and its `payments` row. No admin setting, feature flag,
 platform row or foreign tenant is read or written.
 
@@ -43,7 +43,7 @@ Opening `/checkout?plan_id=campus` as this tenant's student shows the
 form a blocking alert („Nie wiemy, dla której organizacji kupujesz plan”) with only
 „Wróć do planów”. Posting the completed checkout for `campus` or `hub` (organization
 plans) answers `403 FORBIDDEN` and leaves both the personal plan and the payment
-history untouched; the same student's own `spark` purchase still goes through. The
+history untouched; the same student's own `plus` purchase still goes through. The
 concern from the case text does not reproduce — the intended rejection is in place.
 The refusal is the **organization** rule: `resolveCheckoutOwner` answers FORBIDDEN
 when there is no `orgId` or when the caller holds no `org.billing.manage` in that

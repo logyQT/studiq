@@ -14,7 +14,7 @@ hides the purchase, assign and release controls. The API routes stay as the data
 so this case drives the assignment through them. Because the organization ceiling is baseline
 only, a seat raises the member's effective plan and user-scope **limits** but adds no paid
 entitlement; the portable surfaces come from the member's personal Plus plan
-(`personalPlan: "spark"`).
+(`personalPlan: "plus"`).
 
 ## Prerequisite (verbatim)
 
@@ -43,7 +43,7 @@ seeded tenant instead:
   plus a per-run suffix (`QA_RUN_SUFFIX`, otherwise fresh). Every org/user/role id is
   `tenantId(key, entity)`; the e-mails are `qa+<shorthash>+<role>@test.local`.
 - **Profile**: `__tests__/qa/profiles/MGR-SEAT-02.json` declares
-  `{"profile": "content", "plan": "hub", "personalPlan": "spark"}` — the tenant's
+  `{"profile": "content", "plan": "hub", "personalPlan": "plus"}` — the tenant's
   organization sits on the capacity-only **hub** plan and every seeded member's
   personal **Plus** plan carries the portable keys (`ai.chat`, `quiz.templates`)
   into the org — plus an explicit `members` roster:
@@ -63,7 +63,7 @@ seeded tenant instead:
 ## Steps
 
 1. Wywołaj `POST /api/v1/organization/seats/assignments` z `userId` studenta i `poolId`
-   puli `pro` (plan osobisty bez `audience`).
+   puli `max` (plan osobisty bez `audience`).
 2. Sprawdź funkcje/limity członka po zalogowaniu.
 
 ## Expected result
@@ -73,7 +73,7 @@ seeded tenant instead:
   no paid key, so the assignment changes **limits, not features**. The seated member's
   `/api/v1/me/entitlements` is the personal Plus plan's portable keys plus the two
   baseline keys (`ai.chat, flashcards, quiz, quiz.templates`) before and after the seat.
-  `/api/v1/me/plan` → `key: 'pro'` with `limits.max_flashcards === 25000` and
+  `/api/v1/me/plan` → `key: 'max'` with `limits.max_flashcards === 25000` and
   `limits.max_ai_tokens_per_day === 500000` (the user-scope limit is
   `max(org, seat, personal)`, D28/D30). `/api/v1/ai/usage` → `limit: 500000`,
   `plan: 'hub'` (the effective primary stays the org plan, D30).
@@ -109,7 +109,7 @@ seeded tenant instead:
   counters. The seated member disappears from the member picker.
 - On the member's next login under hub: `GET /api/v1/me/entitlements` grows by exactly
   `stats.insights` (seat ∩ hub ceiling; the pre-4b launch-org walk observed no growth —
-  superseded), `GET /api/v1/me/plan` returns `pro` with
+  superseded), `GET /api/v1/me/plan` returns `max` with
   `max_ai_tokens_per_day = 500000`, and `GET /api/v1/ai/usage` reports
   `limit: 500000, plan: 'hub'`. The unseated `student2` keeps
   `limit: 200000` and no `stats.insights`. Org-scoped entitlements are never _added_

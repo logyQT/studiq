@@ -21,7 +21,7 @@ M1, WSB Merito (Launch).
 ## Expected result
 
 - Administrator organizacji tworzy i edytuje rolę na planie Launch — bez blokady
-  planu i bez prośby o ulepszenie. Bramką zapisu jest uprawnienie
+  planu i bez maxśby o ulepszenie. Bramką zapisu jest uprawnienie
   `org.role.manage`, a rola systemowa `admin` ma je na każdym planie.
 - Członek bez `org.role.manage` nie widzi edytora, a bezpośredni zapis
   (`POST`/`PUT`/`DELETE /api/v1/organization/roles…`) zwraca **403**
@@ -117,7 +117,7 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
 ## Historia przypadku
 
 Wydanie v1.3 opisywało Launch jako plan bez `role.builder`, a krok 1 kończył się
-403 i prośbą o zanotowanie, czy UI ostrzega o planie. Naprawa #259 dodała kartę
+403 i maxśbą o zanotowanie, czy UI ostrzega o planie. Naprawa #259 dodała kartę
 blokady planu. Faza 2a-2 (ADR-0015 §4.4) zastąpiła bramkę planu uprawnieniem
 `org.role.manage`, więc oczekiwany rezultat został przepisany na kontrakt
 uprawnienia: administrator na Launch zapisuje, członek bez klucza nie.

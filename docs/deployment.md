@@ -288,7 +288,7 @@ Preconditions:
   SELECT p.key, p.price_monthly
   FROM public.subscription_plans AS p
   JOIN (VALUES
-    ('spark', 1999), ('ace', 3999), ('pro', 7999),
+    ('plus', 1999), ('pro', 3999), ('max', 7999),
     ('hub', 29900), ('campus', 69900)
   ) AS v(key, amount) ON v.key = p.key AND p.price_monthly = v.amount
   ORDER BY p.sort_order;
@@ -524,11 +524,11 @@ or amount.
 ```jsonc
 {
   "provider": "mock | stripe",
-  "planKey": "spark", // effective entitlement (/me/plan); may be a seat plan
+  "planKey": "plus", // effective entitlement (/me/plan); may be a seat plan
   "planName": "StudiQ Plus",
-  "billedPlanKey": "spark", // what Stripe actually bills
+  "billedPlanKey": "plus", // what Stripe actually bills
   "billedPlanName": "StudiQ Plus",
-  "entitlementAppliedPlanKey": "spark", // written by the fenced webhook; null until it runs
+  "entitlementAppliedPlanKey": "plus", // written by the fenced webhook; null until it runs
   "status": "active | trialing | past_due | unpaid | canceled | incomplete | incomplete_expired | paused | free | none",
   "currentPeriodEnd": "2026-12-01T00:00:00.000Z",
   "cancelAtPeriodEnd": false,

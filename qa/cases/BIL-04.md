@@ -108,7 +108,7 @@ Confirmed end to end on this case's tenant:
 
   > **2026-11-25 (6d; label updated by #1193).** The subscription badge now names
   > every layer of `/me/plan`'s union, so after the purchase it reads „StudiQ Hub
-  > (organizacja) + StudiQ Free (plan osobisty)” — the personal `base` layer is part
+  > (organizacja) + StudiQ Free (plan osobisty)” — the personal `free` layer is part
   > of a manager's plan. The spec asserts „StudiQ Hub” as a substring of
   > `[data-plan-union]`; the purchase, the payment row and the unlocked branding
   > controls are unchanged.

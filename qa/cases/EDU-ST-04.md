@@ -19,7 +19,7 @@ accounts):
 
 - key: `tenantKey('qa/cases/EDU-ST-04.md', 'EDU-ST-04#<run suffix>', 'qa-shared')`
 - `__tests__/qa/profiles/EDU-ST-04.json` declares
-  `{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "teacher" }`:
+  `{ "profile": "content", "plan": "hub", "personalPlan": "plus", "personalRole": "teacher" }`:
   one organization (`qa-edu-st-04-<suffix>`) with the default group `G1`, its manager,
   an `educator` teacher and a `student`.
 - The tenant's own organization sits on the **hub** plan (applied through the seeder's

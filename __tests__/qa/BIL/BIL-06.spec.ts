@@ -121,10 +121,7 @@ async function personalPlanKey(request: APIRequestContext): Promise<string> {
 }
 
 /** A manager holds no personal plan (ADR-0007): the read answers NOT_FOUND. */
-async function expectNoPersonalPlan(
-  request: APIRequestContext,
-  message: string,
-): Promise<void> {
+async function expectNoPersonalPlan(request: APIRequestContext, message: string): Promise<void> {
   const response = await request.get('/api/v1/me/personal-plan');
   expect(response.status(), message).toBe(404);
 }

@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-Student na darmowym planie (organizacja `launch`, plan osobisty `base`) — bez entitlementu
+Student na darmowym planie (organizacja `launch`, plan osobisty `free`) — bez entitlementu
 `stats.insights`.
 
 ## Seed (QA-suite)
@@ -20,9 +20,9 @@ Student na darmowym planie (organizacja `launch`, plan osobisty `base`) — bez 
   `bun scripts/qa-tenant.ts STU-54 --fresh` — one fresh run suffix per independent run. All
   ids come from `tenantKey('qa/cases/STU-54.md', 'STU-54#<run>', 'qa-shared')` +
   `tenantId(key, entity)`; the spec reads them through `loadTenant('STU-54')`.
-- Account: the tenant's `users.student` (org role `member`, personal plan `base`), logged in
+- Account: the tenant's `users.student` (org role `member`, personal plan `free`), logged in
   with the tenant org as the active org (`loginAs(page, tenant, 'student', { locale: 'pl' })`).
-  Neither `launch` nor `base` carries `stats.insights`, so `GET /api/v1/me/entitlements` does not
+  Neither `launch` nor `free` carries `stats.insights`, so `GET /api/v1/me/entitlements` does not
   list it.
 - Organization: `qa-stu-54-<suffix>` with a manager, a teacher and a student, plus the default
   group `G1`. Nothing shared is read or written: no admin setting, feature flag, plan,
@@ -30,7 +30,7 @@ Student na darmowym planie (organizacja `launch`, plan osobisty `base`) — bez 
 
 ## Steps
 
-1. Otwórz /app/stats/activity jako student na planie base.
+1. Otwórz /app/stats/activity jako student na planie free.
 2. Wywołaj `GET /api/v1/stats/weak-points` i `GET /api/v1/stats/student/insights?days=30`
    przez API.
 3. Otwórz /app/stats/content oraz /app/stats/results.

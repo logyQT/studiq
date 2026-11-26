@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"` in the profile), not the org plan.
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"` in the profile), not the org plan.
 
 ## Prerequisite (verbatim)
 
@@ -27,7 +27,7 @@ TC.
   never used.
 - Organization: `qa-edu-qz-01-<suffix>` with a manager, an educator and a student, plus the
   default group `G1`. The tenant org sits on the **hub** plan
-  (`{ "profile": "content", "plan": "hub", "personalPlan": "spark" }` in
+  (`{ "profile": "content", "plan": "hub", "personalPlan": "plus" }` in
   `__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's `--plan`). Hub is
   capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
   (phase 5d) comes from the personal Plus plan, which every seeded account carries: the

@@ -51,14 +51,14 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 - Ceny zgodne z konfiguracją: Free 0 zł (w miejscu ceny słowo „Darmowy”), Plus 19,99 zł,
   Pro 39,99 zł, Max 79,99 zł /miesiąc (wartości z groszy: 1999 → 19,99).
 - Plany są wierszami listy (nazwa, opis, cena, przycisk), a nie kartami. Nazwa każdego planu
-  jest nagłówkiem i ma kotwicę `#<klucz>` (np. `#ace`).
+  jest nagłówkiem i ma kotwicę `#<klucz>` (np. `#pro`).
 - Brak sesji: Free ma „Zacznij za darmo”, płatne plany indywidualne mają „Załóż konto”,
   Campus w sekcji organizacji ma „Porozmawiajmy” i prowadzi do /contact. Zalecany plan ma
   zielony przycisk akcji, pozostałe obrysowany.
 - Zalogowany czytelnik dostaje akcję zakupu przy każdym płatnym planie indywidualnym: jedna
   drabinka obsługuje każdą personę (#1193). Plan organizacji nadal wymaga organizacji, w której
   czytelnik może rozliczać plan.
-- Wyróżnienie „Zalecany” ma dokładnie jeden plan w sekcji: Pro (`ace`).
+- Wyróżnienie „Zalecany” ma dokładnie jeden plan w sekcji: Pro (`pro`).
 - Tabela pod sekcją zawiera tylko różnice między planami; nad nią jedna linia
   „Wszystkie plany obejmują: …”. Brak limitu to „—”, a liczby są grupowane (np. 25 000).
   Drabinka indywidualna nie ma wartości -1 i nie zawiera limitów organizacyjnych

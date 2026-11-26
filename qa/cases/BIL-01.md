@@ -36,7 +36,7 @@ bun scripts/qa-tenant.ts BIL-01 --fresh   # new org + users per independent run
   (still deterministic) ids via `tenantId(key, entity)`.
 - **User**: the tenant's `student` (password `Seed4Test!`), seeded as an org `member`
   without a seat assignment, so `/api/v1/me/plan` resolves their **personal** plan —
-  `profiles.personal_plan_key`, default `base` (#270/#181). That is the "plan Free"
+  `profiles.personal_plan_key`, default `free` (#270/#181). That is the "plan Free"
   of the prerequisite; `--plan` is not needed.
 - **Profile**: `content` (the default, so `__tests__/qa/profiles/BIL-01.json` needs no
   entry).
@@ -62,6 +62,6 @@ bun scripts/qa-tenant.ts BIL-01 --fresh   # new org + users per independent run
 
 > **2026-11-25 (6d).** The „Aktualny plan” card's description now names every
 > layer of `/me/plan`'s union, so this student in an org reads „StudiQ Launch
-> (organizacja) + StudiQ Free (plan osobisty)” — the personal `base` layer
+> (organizacja) + StudiQ Free (plan osobisty)” — the personal `free` layer
 > is part of the caller's plan. The spec asserts „StudiQ Free” as a substring;
 > the „Darmowy” badge, features and limits above are unchanged.

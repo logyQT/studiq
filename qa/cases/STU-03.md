@@ -22,7 +22,7 @@ the legacy `student1@dev.local` / `pass` account):
   the case logs in as;
 - the organization keeps its default `launch` plan, whose member role grants
   `flashcards` and `quiz` but **not** `ai.chat` — the entitlement behind
-  „Asystent Q”, and the reason the item is absent for the case's Base-plan S1.
+  „Asystent Q”, and the reason the item is absent for the case's Free-plan S1.
   `/api/v1/me/entitlements` is asserted, so the gate is tested, not the copy.
 
 Every org/user/group id is `tenantId(key, entity)`; each independent run folds a
@@ -36,6 +36,6 @@ fresh suffix into the key, and nothing global is written.
 ## Expected result
 
 - Sekcje: Główne (Przegląd; „Asystent Q” tylko jeśli plan ma funkcję ai.chat), Nauka (Ucz się, Wkuwaj, Sprawdź się, Na żywo), Treści (Fiszki, Tematy, Pytania, Kartkówki, Zgłoszenia), Statystyki (Treści, Wyniki, Aktywność).
-- Dla S1 (plan Base) pozycja „Asystent Q” NIE jest widoczna.
+- Dla S1 (plan Free) pozycja „Asystent Q” NIE jest widoczna.
 - Aktywna pozycja jest wyróżniona (również dla podstron, np. /app/flashcards/<id> podświetla „Fiszki”).
 - Zwinięty pasek pokazuje same ikony z podpowiedziami.

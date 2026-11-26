@@ -15,7 +15,7 @@ Grupa z EDU-GRP-01.
 
 ### EDU-GRP-01 — Lista i tworzenie grup
 
-_Warunek wstępny: T1 (rola organizacyjna `teacher` – `group.manage`; plan osobisty `base`)._
+_Warunek wstępny: T1 (rola organizacyjna `teacher` – `group.manage`; plan osobisty `free`)._
 
 1. Otwórz /edu/groups.
 2. Kliknij „Nowa grupa”, nazwa „Grupa testowa”, opis; zapisz.

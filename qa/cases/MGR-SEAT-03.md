@@ -51,14 +51,14 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 - Świeża organizacja nie ma **żadnych puli miejsc** (`plan_seat_allocations` zostało
   usunięte migracją `20260915000003`), więc warunek „istniejący przydział” spec buduje
   przez API produktu — te same żądania, które wysyła okno „Przydziel miejsce”:
-  `POST /api/v1/organization/seats/pools` (`pro`, 2 miejsca — plan osobisty bez
+  `POST /api/v1/organization/seats/pools` (`max`, 2 miejsca — plan osobisty bez
   `audience` od #1193) i dwa `POST /api/v1/organization/seats/assignments`. Setup jest
   idempotentny: powtórzony przebieg w tym samym tenancie czyści własne przydziały i
   ustawia pulę z powrotem na 2 miejsca.
 - Kroki 1–2 wykonuje API: `DELETE /api/v1/organization/seats/assignments/<id>` usuwa przydział,
   a odświeżona strona `/manage/seats` (locale `pl`) pokazuje nowe liczniki.
 - Weryfikacja „członek wraca do planu bazowego”: `GET /api/v1/me/plan` członka przed
-  zwolnieniem zwraca plan miejsca (`pro`), a po zwolnieniu jego plan osobisty (`base`) —
+  zwolnieniem zwraca plan miejsca (`max`), a po zwolnieniu jego plan osobisty (`free`) —
   ten sam, który zwraca `GET /api/v1/me/personal-plan`.
 - Spec: `__tests__/qa/MGR/MGR-SEAT-03.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
@@ -82,15 +82,15 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
   `available <= max(1, 20% total)`.
 - Zwolnienie miejsca nie usuwa puli ani nie zmienia jej „Wykupione”; drugi przydział w
   tej samej puli zostaje.
-- Po zwolnieniu `GET /api/v1/me/plan` zwalnianego członka zwraca `base` (jego plan
-  osobisty), a limity wracają do wartości planu bazowego; wcześniej (z przydziałem `pro`)
-  zwracał `pro` z limitami Max (np. `max_flashcards: 25000`).
+- Po zwolnieniu `GET /api/v1/me/plan` zwalnianego członka zwraca `free` (jego plan
+  osobisty), a limity wracają do wartości planu bazowego; wcześniej (z przydziałem `max`)
+  zwracał `max` z limitami Max (np. `max_flashcards: 25000`).
 
 ## Observed 2026-11-20 (2b-3) — the roster is now declared
 
 The `content` profile's default educator is a real Teacher since 2b-3 (the roster read in
 D25 needs an org role that carries `group.manage`/`group.invite`), but this case needs both
-seeded people on the org **Member** role: at the time a `pro` seat assignment validated the plan `audience` against the
+seeded people on the org **Member** role: at the time a `max` seat assignment validated the plan `audience` against the
 account's persona (D33; retired by #1193) and refused an educator or manager account,
 and the spec asserts `accountType === 'student'` (and `orgRoleName === 'member'`) for
 `users.student` and `users.teacher` before it buys the pool. The spec now fails on the
@@ -104,12 +104,12 @@ untouched.
 ## Observed 2026-11-22 (3d) — the second seat holder is a student
 
 D29 moves the Teacher role's content reads to `group`, retiring the 2b-3 workaround (the
-`content` profile's educator is an org Teacher again). At that time a `pro` seat was
+`content` profile's educator is an org Teacher again). At that time a `max` seat was
 persona-aware and refused an educator account for a student-audience pool (retired by
 #1193), so the seat case keeps its
 two seated people with the **student** persona and no longer borrows the educator as the
 control: the case's profile declares `users.student2` (account type `student`, org
-`member`) beside `users.student`, and the spec assigns/releases both `pro` seats with that
+`member`) beside `users.student`, and the spec assigns/releases both `max` seats with that
 pair. The roster read (D25) and the plan `audience` are what the `student2` account is
 for — the case's own subject (release the seat, the counter moves, the member falls back
 to their personal plan) is unchanged.
@@ -121,4 +121,4 @@ filtered pools by the member's `accountType` against the pool plan's `audience` 
 endpoint returns `accountType`), and the purchase picker lists the catalogue's personal
 seat-eligible plans. **#1193 retires the persona filter**: the picker offers every pool of
 the org, and `assignSeat` accepts any member. No behaviour change for this case's subject:
-it buys `pro` for two student-persona members and releases one seat.
+it buys `max` for two student-persona members and releases one seat.
