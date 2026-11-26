@@ -436,7 +436,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 900,
         scope: 'personal',
-        audience: 'student',
+        audience: null,
       },
       {
         key: secondStudentPlanKey,
@@ -445,7 +445,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 901,
         scope: 'personal',
-        audience: 'student',
+        audience: null,
       },
       {
         key: orgPlanKey,
