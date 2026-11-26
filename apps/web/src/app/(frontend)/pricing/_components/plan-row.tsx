@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { formatPlanPrice } from '@/lib/landing-pricing';
-import { canBuyPlan, ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
 import { cn } from '@/lib/utils';
 
 interface PlanRowProps {
@@ -29,7 +29,6 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const isFree = plan.priceMonthly === 0;
   /** Sales-led tier: it is priced per institution, not per seat. */
   const contactOnly = plan.key === 'campus';
-  const buyable = canBuyPlan(plan);
   const descKey = `plan_${plan.key}_desc`;
   const noteKey = `plan_${plan.key}_note`;
   const ctaKey = ctaMessageKey(plan);
@@ -91,7 +90,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
            * An organization plan still needs an org the caller may bill; the
            * server decides and the button reports its refusal.
            */
-          isFree || !buyable ? null : (
+          isFree ? null : (
             <CheckoutButton
               planKey={plan.key}
               orgId={plan.scope === 'organization' ? orgId : undefined}

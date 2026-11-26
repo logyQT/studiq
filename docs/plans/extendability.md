@@ -139,13 +139,13 @@ A new entitlement key that should reach **everyone** already entitled costs
 catalog rows, not entity rows. Resolution is a per-request composition
 (`entitlement.resolver.ts`), so the write set is:
 
-| Table                 | Rows per new default  | Multiplier                                                                             |
-| --------------------- | --------------------- | -------------------------------------------------------------------------------------- |
-| `entitlement_catalog` | 1                     | —                                                                                      |
-| `entitlement_flags`   | 1                     | surface keys only (baseline keys are never gated, D9)                                  |
-| `plan_entitlements`   | one per carrying plan | 6 today (`stats.insights` is on ace, creator, hub, pro, master, campus at measurement) |
-| `limit_catalog`       | 0–1                   | only a key with a **new** quota limit                                                  |
-| `plan_limits`         | one per carrying plan | only that new limit key                                                                |
+| Table                 | Rows per new default  | Multiplier                                             |
+| --------------------- | --------------------- | ------------------------------------------------------ |
+| `entitlement_catalog` | 1                     | —                                                      |
+| `entitlement_flags`   | 1                     | surface keys only (baseline keys are never gated, D9)  |
+| `plan_entitlements`   | one per carrying plan | 4 today (`stats.insights` is on ace, pro, hub, campus) |
+| `limit_catalog`       | 0–1                   | only a key with a **new** quota limit                  |
+| `plan_limits`         | one per carrying plan | only that new limit key                                |
 
 **Zero** rows in `profiles`, `org_members`, `org_roles`,
 `org_roles`-adjacent stores or `org_seat_assignments`. The row populations those

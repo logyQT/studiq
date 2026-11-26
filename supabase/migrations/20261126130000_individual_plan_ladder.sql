@@ -18,20 +18,15 @@
 -- ==========================================================
 
 -- ==========================================================
--- 1. `audience` becomes nullable for personal plans.
+-- 1. Drop the old pair CHECK.
 --
--- The old pair CHECK required an audience on every personal plan, which was
--- true only while a persona keyed the ladder. `audience IN (...)` stays: no
--- plan uses a non-null audience after this file, and an organization plan
--- still carries none.
+-- The old CHECK required an audience on every personal plan, which was true
+-- only while a persona keyed the ladder. It must go before the matrix upsert
+-- writes `audience = NULL`. The replacement (no plan carries an audience) is
+-- added after the catalogue update below, when every surviving row is NULL.
 -- ==========================================================
 alter table public.subscription_plans
   drop constraint if exists subscription_plans_scope_audience_pair_check;
-alter table public.subscription_plans
-  add constraint subscription_plans_scope_audience_pair_check check (
-    (scope = 'organization' and audience is null)
-    or scope = 'personal'
-  );
 
 alter table public.profiles alter column personal_plan_key set default 'base';
 alter table public.organizations alter column plan set default 'launch';
@@ -201,6 +196,12 @@ end $$;
 delete from public.subscription_plans pl
 where not exists (select 1 from plan_catalog_plans m where m.plan_key = pl.key);
 
+-- No plan carries an audience (#1193). Every surviving row is now NULL. The
+-- column stays (no schema churn for readers), and the CHECK rejects any
+-- non-null value from here on.
+alter table public.subscription_plans
+  add constraint subscription_plans_scope_audience_pair_check check (audience is null);
+
 -- ==========================================================
 -- 5. Declarative children: remove rows the matrix does not list, then insert
 --    the matrix. (The plan delete above already cascaded the retired plans'
@@ -282,6 +283,8 @@ declare
   v_keys text[];
   v_limits jsonb;
   v_fn text;
+  v_assign int;
+  v_key text;
 begin
   -- Exactly the eight catalogue plans …
   select count(*) into v_plan_count from public.subscription_plans;
@@ -311,6 +314,16 @@ begin
      or pl.price_monthly is distinct from expected.price;
   if v_bad <> 0 then
     raise exception 'guard: % plan rows have an unexpected key/scope/audience/price', v_bad
+      using errcode = '23514';
+  end if;
+
+  -- No plan carries an audience (#1193). The CHECK enforces this on every
+  -- write; this guard states the invariant against the live rows as well.
+  select count(*) into v_bad
+  from public.subscription_plans
+  where audience is not null;
+  if v_bad <> 0 then
+    raise exception 'guard: % plan rows carry an audience', v_bad
       using errcode = '23514';
   end if;
 
@@ -405,12 +418,26 @@ begin
       using errcode = '23514';
   end if;
 
-  -- Every new account starts on `base`, whatever the persona.
+  -- Every new account starts on `base`, whatever the persona. The function
+  -- must assign the plan key exactly once, to base: a per-persona branch would
+  -- either add a second assignment or replace this one.
   select pg_get_functiondef('public.handle_new_user()'::regprocedure) into v_fn;
-  if v_fn is null or position('''base''' in v_fn) = 0 then
-    raise exception 'guard: handle_new_user() does not mint base'
+  v_assign := (length(v_fn) - length(replace(v_fn, 'plan_key_val :=', '')))
+    / length('plan_key_val :=');
+  if v_fn is null
+     or position('plan_key_val := ''base''' in v_fn) = 0
+     or v_assign <> 1 then
+    raise exception 'guard: handle_new_user() does not mint base for every persona'
       using errcode = '42883';
   end if;
+
+  -- No retired plan key survives in the function.
+  foreach v_key in array array['solo', 'lite', 'guide', 'creator', 'master'] loop
+    if position('''' || v_key || '''' in v_fn) > 0 then
+      raise exception 'guard: handle_new_user() names retired plan key %', v_key
+        using errcode = '42883';
+    end if;
+  end loop;
 end $$;
 
 drop table if exists plan_catalog_plans;

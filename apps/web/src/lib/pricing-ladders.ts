@@ -62,18 +62,6 @@ export function getPlanLadders(plans: readonly PlanInfo[]): PlanLadders {
   };
 }
 
-/**
- * Whether a signed-in reader may buy this plan. Since #1193 every signed-in
- * reader may buy any active personal plan: the one individual ladder serves
- * every persona, and the server no longer refuses a personal plan by audience
- * (`checkout-rules.ts`). Organization plans stay buyable only for a caller who
- * may bill the target org, which the server checks; the page still offers the
- * action and the server answers.
- */
-export function canBuyPlan(plan: Pick<PlanInfo, 'scope'>): boolean {
-  return plan.scope === 'personal' || plan.scope === 'organization';
-}
-
 /** `StudiQ Ace` → `Ace`: the page says StudiQ already, the tier is the column. */
 export function shortPlanName(name: string): string {
   return name.replace(/^StudiQ\s+/i, '').trim();
@@ -139,7 +127,7 @@ function capacityToken(value: number | undefined): string {
 
 /**
  * Limits to tabulate: the keys the ladder can show at all, minus the ones that
- * are identical on every plan. Seats and groups are dropped from a student
+ * are identical on every plan. Seats and groups are dropped from a personal
  * ladder by `getVisibleLimitKeys`, and the comparison is made on the printed
  * value, so two plans whose caps both read `—` do not make a row either.
  */

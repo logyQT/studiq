@@ -95,7 +95,6 @@
     "col_key": "Key",
     "col_name": "Name",
     "col_scope": "Scope",
-    "col_audience": "Audience",
     "col_monthly": "Monthly",
     "col_yearly": "Yearly",
     "col_active": "Active",
@@ -114,10 +113,6 @@
     "limit_value": "Value",
     "scope_personal": "Personal",
     "scope_organization": "Organization",
-    "audience_none": "—",
-    "audience_student": "Student",
-    "audience_educator": "Educator",
-    "audience_manager": "Manager",
     "price_unit_hint": "In grosze (100 = 1.00 zł)"
   },
   "Users": {

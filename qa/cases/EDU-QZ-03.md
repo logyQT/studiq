@@ -18,8 +18,9 @@ Quiz z ≥ 3 pytaniami.
   per independent run. All ids come from
   `tenantKey('qa/cases/EDU-QZ-03.md', 'EDU-QZ-03#<run>', 'qa-shared')` +
   `tenantId(key, entity)`.
-- Accounts: the tenant's `users.teacher` is the educator editing the quiz (the
-  legacy plan-Lite `teacher1@dev.local` / `T1`, which the case implicitly assumes).
+- Accounts: the tenant's `users.teacher` is the educator editing the quiz — the
+  legacy seed's `teacher1@dev.local` / `T1`, which the case implicitly assumes;
+  that account is on the free `base` personal plan today.
   No legacy/manual account or `pass` is used.
 - Organization: `qa-edu-qz-03-<suffix>` with a manager (admin), the teacher and the
   student, plus the default group `G1`. The tenant's active org is the tenant org, put on the

@@ -789,11 +789,11 @@ describe('SubscriptionPlanService', () => {
       );
     });
 
-    it('writes scope/audience from the input', async () => {
+    it('writes scope and the null audience from the input', async () => {
       const b = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b);
 
-      await service.create({ key: 'hub', name: 'Hub', scope: 'organization', audience: null });
+      await service.create({ key: 'hub', name: 'Hub', scope: 'organization' });
 
       expect(b.insert).toHaveBeenCalledWith(
         expect.objectContaining({ scope: 'organization', audience: null }),
@@ -802,10 +802,10 @@ describe('SubscriptionPlanService', () => {
       const b2 = qb({ id: 'p-2' });
       mock.from.mockReturnValueOnce(b2);
 
-      await service.create({ key: 'solo', name: 'Solo', scope: 'personal', audience: 'manager' });
+      await service.create({ key: 'pro', name: 'Pro', scope: 'personal', audience: null });
 
       expect(b2.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ scope: 'personal', audience: 'manager' }),
+        expect.objectContaining({ scope: 'personal', audience: null }),
       );
     });
   });

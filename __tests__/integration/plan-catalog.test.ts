@@ -302,6 +302,52 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     }
   });
 
+  it('the replay guard rejects a manager branch in handle_new_user', async () => {
+    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
+    const managerBranch = `  if acct_type = 'manager' then
+    plan_key_val := 'solo';
+  else
+    plan_key_val := 'base';
+  end if;`;
+    const broken = migrationSql.replace("  plan_key_val := 'base';", managerBranch);
+    expect(broken, 'this test needs the base assignment in the migration').not.toBe(migrationSql);
+
+    const rollback = new Error('guard replay: roll back');
+    const outcome = await withDirect(async (sql) => {
+      try {
+        await sql.begin(async (tx) => {
+          await tx.unsafe(broken);
+          throw rollback;
+        });
+      } catch (error) {
+        if (error === rollback) return 'ROLLED_BACK';
+        if (error && typeof error === 'object' && 'code' in error) return String(error.code);
+        return String(error);
+      }
+      return 'NO_ERROR';
+    });
+
+    // `42883` is the guard's exception; `ROLLED_BACK` would mean it let the
+    // manager branch through.
+    expect(outcome).toBe('42883');
+  });
+
+  it('rejects a plan that carries an audience at the database (#1193)', async () => {
+    const rejection = await withDirect(async (sql) => {
+      try {
+        await sql`insert into public.subscription_plans
+            (key, name, price_monthly, currency, sort_order, scope, audience)
+          values ('zz_audience_plan', 'Audience plan', 0, 'PLN', 99, 'personal', 'student')`;
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error) return String(error.code);
+        return null;
+      }
+      return null;
+    });
+
+    expect(rejection).toBe('23514');
+  });
+
   it('each plan carries exactly its matrix entitlement set, and none is empty', () => {
     for (const [key, expected] of Object.entries(MATRIX)) {
       const keys = entitlementsFor(key);

@@ -45,7 +45,6 @@ type SubscriptionPlan = {
   isActive: boolean;
   sortOrder: number;
   scope: string;
-  audience: string | null;
 };
 
 type FormData = {
@@ -215,7 +214,6 @@ export default function SubscriptionPlansPage() {
                   <TableHead>{t('col_key')}</TableHead>
                   <TableHead>{t('col_name')}</TableHead>
                   <TableHead>{t('col_scope')}</TableHead>
-                  <TableHead>{t('col_audience')}</TableHead>
                   <TableHead>{t('col_monthly')}</TableHead>
                   <TableHead>{t('col_yearly')}</TableHead>
                   <TableHead>{t('col_active')}</TableHead>
@@ -245,9 +243,6 @@ export default function SubscriptionPlansPage() {
                       <TableCell className="text-muted-foreground">
                         {t(`scope_${plan.scope}`)}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {plan.audience ? t(`audience_${plan.audience}`) : t('audience_none')}
-                      </TableCell>
                       <TableCell>{formatPrice(plan.priceMonthly)}</TableCell>
                       <TableCell>{formatPrice(plan.priceYearly)}</TableCell>
                       <TableCell>
@@ -270,7 +265,7 @@ export default function SubscriptionPlansPage() {
                     </TableRow>
                     {expandedKey === plan.key && (
                       <TableRow key={`${plan.id}-detail`}>
-                        <TableCell colSpan={9} className="bg-muted/30 px-12 py-3">
+                        <TableCell colSpan={8} className="bg-muted/30 px-12 py-3">
                           <PlanDetails planKey={plan.key} />
                         </TableCell>
                       </TableRow>
@@ -279,7 +274,7 @@ export default function SubscriptionPlansPage() {
                 ))}
                 {plans.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>

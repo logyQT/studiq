@@ -181,8 +181,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key") VALUES
   ('00000000-0000-4000-8001-000000000002', 'manager@dev.local',  'M1',        'launch'),
   ('00000000-0000-4000-8001-000000000008', 'manager2@dev.local', 'M2',        'launch'),
-  ('00000000-0000-4000-8001-000000000003', 'teacher1@dev.local', 'T1',        'lite'),
-  ('00000000-0000-4000-8001-000000000004', 'teacher2@dev.local', 'T2',        'lite'),
+  ('00000000-0000-4000-8001-000000000003', 'teacher1@dev.local', 'T1',        'base'),
+  ('00000000-0000-4000-8001-000000000004', 'teacher2@dev.local', 'T2',        'base'),
   ('00000000-0000-4000-8001-000000000005', 'student1@dev.local', 'S1',        'base'),
   ('00000000-0000-4000-8001-000000000006', 'student2@dev.local', 'S2',        'base'),
   ('00000000-0000-4000-8001-000000000007', 'student3@dev.local', 'S3',        'base'),

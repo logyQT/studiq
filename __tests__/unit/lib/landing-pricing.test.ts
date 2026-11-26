@@ -35,7 +35,7 @@ const organization = [
 ];
 
 describe('pickLandingPlans', () => {
-  it('picks the free personal plan, Plus as Premium and the cheapest paid org plan', () => {
+  it('picks the free personal plan, Plus as the paid tier and the cheapest paid org plan', () => {
     const picked = pickLandingPlans(personal, organization);
 
     expect(picked.free?.key).toBe('base');
@@ -96,6 +96,16 @@ describe('landing pricing messages', () => {
     'pricing_university_feature_analytics',
     'pricing_university_feature_support',
   ] as const;
+
+  it.each([
+    ['pl', pl],
+    ['en', en],
+  ])('names the paid landing column Plus in %s', (_locale, messages) => {
+    const landing = messages.LandingPage as Record<string, string>;
+
+    expect(landing.pricing_premium_name).toBe('Plus');
+    expect(landing.pricing_premium_cta).toContain('Plus');
+  });
 
   it.each([
     ['pl', pl],

@@ -50,8 +50,9 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
    * address without clicking the switch.
    */
   const audience = audienceFromParam(searchParams.get('audience'));
+  const organization = audience === 'organization';
 
-  // One request: the catalogue is a flat list and `sort_order` spans all three
+  // One request: the catalogue is a flat list and `sort_order` spans both
   // ladders, so the page splits it rather than asking per audience.
   const catalogue = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active'],
@@ -67,21 +68,25 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
   const catalogueUnavailable = catalogue.isError && !plans;
   const isLoading = !plans && !catalogueUnavailable;
 
-  // Managers are the org's billing contact: their current plan is the active
-  // organization's plan, the same `/me/plan` query `/manage/billing` uses (#228).
-  // Students/educators keep reading their own personal plan (#181).
-  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  /*
+   * The badge follows the ladder on screen. The individual ladder has one plan
+   * for every persona, so it always reads the reader's own plan; the
+   * organization ladder badges a manager from `/me/plan`, the same query
+   * `/manage/billing` uses (#228). The key names the endpoint, so the two
+   * answers cannot share a cache entry.
+   * `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+   */
   const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : null;
   const isManager = accountType === 'manager';
+  const currentPlanKey = organization && isManager ? 'plan' : 'personal-plan';
   const { data: currentPlan } = useApiQuery<PlanInfo>({
-    queryKey: ['me', isManager ? 'plan' : 'personal-plan'],
-    url: isManager ? '/api/v1/me/plan' : '/api/v1/me/personal-plan',
+    queryKey: ['me', currentPlanKey],
+    url: `/api/v1/me/${currentPlanKey}`,
     enabled: !!user,
   });
 
   const ladders = getPlanLadders(plans ?? []);
-  const organization = audience === 'organization';
 
   const sections: Array<{
     kind: PricingLadderKind;

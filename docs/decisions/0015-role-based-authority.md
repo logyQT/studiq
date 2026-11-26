@@ -1678,6 +1678,12 @@ interpretation.
 > mints `base` for every persona, managers included. Authority is still the
 > permission and entitlement layer, never the persona. The organization ladder
 > keeps its scope/audience shape.
+>
+> This retires D33's seat persona check: `assignSeat` no longer compares the
+> target's `profiles.account_type` to the pool plan's `audience`, because a
+> personal plan carries no audience. A seat pool is offered to any member of
+> the organization; `addPool` still requires an active `scope='personal'` plan
+> whose keys are all `seatEligible`.
 
 ---
 

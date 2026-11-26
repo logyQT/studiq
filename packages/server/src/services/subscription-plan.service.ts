@@ -401,7 +401,7 @@ export class SubscriptionPlanService {
         is_active: input.isActive,
         currency: input.currency,
         scope: input.scope,
-        audience: input.audience ?? null,
+        audience: null,
       })
       .select()
       .single();

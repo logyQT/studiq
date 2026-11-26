@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 import {
-  canBuyPlan,
   ctaMessageKey,
   formatLimitValue,
   getPlanLadders,
@@ -113,20 +112,6 @@ describe('isRecommendedPlan', () => {
         recommended,
       ]);
     }
-  });
-});
-
-describe('canBuyPlan', () => {
-  it('lets a signed-in reader buy any personal plan on the one individual ladder', () => {
-    for (const key of ['base', 'spark', 'ace', 'pro']) {
-      const row = catalogue.find((candidate) => candidate.key === key);
-      if (!row) throw new Error(`catalogue is missing ${key}`);
-      expect(canBuyPlan(row), key).toBe(true);
-    }
-  });
-
-  it('lets a manager buy an organization plan; the server checks the org authority', () => {
-    expect(canBuyPlan(plan('hub', 'organization', 7, { priceMonthly: 29900 }))).toBe(true);
   });
 });
 

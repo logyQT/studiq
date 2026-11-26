@@ -1,6 +1,6 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 
-/** The personal plan the landing page presents as "Premium" (the page's recommended tier). */
+/** The personal plan the landing page presents as "Plus" (the page's recommended tier). */
 const LANDING_PREMIUM_KEY = 'spark';
 
 export type LandingPricing = {
