@@ -5,18 +5,13 @@ import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { formatPlanPrice } from '@/lib/landing-pricing';
-import { canBuyPlan, ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
 import { cn } from '@/lib/utils';
 
 interface PlanRowProps {
   plan: PlanInfo;
   isCurrent: boolean;
   signedIn: boolean;
-  /**
-   * The reader's account family (`app_metadata.account_type`, narrowed). A paid
-   * plan of another family is readable but not buyable here (#1274).
-   */
-  accountType: string | null;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
 }
@@ -26,7 +21,7 @@ interface PlanRowProps {
  * not a card. The comparison tables are the feature surface, so no bullet list
  * repeats them here.
  */
-export function PlanRow({ plan, isCurrent, signedIn, accountType, orgId }: PlanRowProps) {
+export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const t = useTranslations('PricingPage');
   const locale = useLocale();
 
@@ -34,8 +29,6 @@ export function PlanRow({ plan, isCurrent, signedIn, accountType, orgId }: PlanR
   const isFree = plan.priceMonthly === 0;
   /** Sales-led tier: it is priced per institution, not per seat. */
   const contactOnly = plan.key === 'campus';
-  /** Another family's paid plan: readable here, refused by the server if bought. */
-  const buyable = canBuyPlan(plan, accountType);
   const descKey = `plan_${plan.key}_desc`;
   const noteKey = `plan_${plan.key}_note`;
   const ctaKey = ctaMessageKey(plan);
@@ -93,12 +86,11 @@ export function PlanRow({ plan, isCurrent, signedIn, accountType, orgId }: PlanR
           </CtaButton>
         ) : signedIn ? (
           /*
-           * Only a plan the reader's own family can buy gets a purchase action.
-           * Another family's plan is a `FORBIDDEN` on the server (`checkout-rules.ts`),
-           * so an enabled button would end in a payment-failure toast (#1274); the
-           * row keeps the name, the note and the price and offers no action.
+           * Every signed-in reader may buy any active personal plan since #1193.
+           * An organization plan still needs an org the caller may bill; the
+           * server decides and the button reports its refusal.
            */
-          isFree || !buyable ? null : (
+          isFree ? null : (
             <CheckoutButton
               planKey={plan.key}
               orgId={plan.scope === 'organization' ? orgId : undefined}

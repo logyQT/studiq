@@ -274,21 +274,19 @@ Preconditions:
   `--live` (it writes `stripe_prices`, which those migrations create). Deploying
   schema is separate from deploying the app binary.
 - The approved ladder is applied by the plan-catalogue migration
-  (`20261125170000_plan_catalog_owned_by_migrations.sql`); the catalogue is
-  migration-owned since #1494 and `supabase/seeds/00_plans.sql` no longer writes
-  plan rows. After the migrations are applied, confirm the live ladder with this
-  read-only query — it returns the 9 paid plans only while their amounts match.
-  **Pass condition: exactly 9 rows.** The migration inserts those 9 paid keys, so
-  fewer rows means the migration did not apply (or a price differs from the
-  ladder) — stop and fix the catalog before continuing; an empty result is not a
-  timing artefact:
+  (`20261126130000_individual_plan_ladder.sql`); the catalogue is migration-owned
+  since #1494 and `supabase/seeds/00_plans.sql` no longer writes plan rows. After
+  the migrations are applied, confirm the live ladder with this read-only query —
+  it returns the 6 paid plans only while their amounts match. **Pass condition:
+  exactly 6 rows.** The migration inserts those 6 paid keys, so fewer rows means
+  the migration did not apply (or a price differs from the ladder) — stop and fix
+  the catalog before continuing; an empty result is not a timing artefact:
 
   ```sql
   SELECT p.key, p.price_monthly
   FROM public.subscription_plans AS p
   JOIN (VALUES
-    ('spark', 999), ('ace', 1999), ('pro', 3999),
-    ('guide', 1999), ('creator', 3999), ('master', 7999),
+    ('spark', 1999), ('ace', 3999), ('pro', 7999),
     ('team', 9900), ('hub', 29900), ('campus', 69900)
   ) AS v(key, amount) ON v.key = p.key AND p.price_monthly = v.amount
   ORDER BY p.sort_order;
@@ -302,7 +300,7 @@ Steps:
    Prices mismatched between steps.
 1. `bun scripts/stripe-bootstrap.ts --check` in the production secret environment
    (read-only: it reads `subscription_plans` and makes no Stripe calls). Confirm
-   the 9 amounts and the tax-code line. Any additional active paid plan (a
+   the 6 amounts and the tax-code line. Any additional active paid plan (a
    legacy catalog row) must be deactivated first.
 2. `bun scripts/stripe-bootstrap.ts --live`. It requires `--live`, a live
    `rk_live_`/`sk_live_` key, `APP_ENV=production`, an `https://` non-localhost
@@ -311,10 +309,10 @@ Steps:
    tax-inclusive Prices and the portal configuration, and prints
    `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…`.
 3. Verify before deploying:
-   - 9 active `stripe_prices` rows with `livemode = true` whose amounts match the
+   - 6 active `stripe_prices` rows with `livemode = true` whose amounts match the
      catalog;
    - every StudiQ Product (`metadata.studiq_plan_key`) carries the tax code;
-   - every Price referenced by those 9 rows has `tax_behavior = 'inclusive'`;
+   - every Price referenced by those 6 rows has `tax_behavior = 'inclusive'`;
    - the printed portal configuration is active, `livemode`, and belongs to this
      account.
 4. Create the live Dashboard webhook endpoint
@@ -525,15 +523,15 @@ or amount.
 {
   "provider": "mock | stripe",
   "planKey": "spark", // effective entitlement (/me/plan); may be a seat plan
-  "planName": "StudiQ Spark",
+  "planName": "StudiQ Plus",
   "billedPlanKey": "spark", // what Stripe actually bills
-  "billedPlanName": "StudiQ Spark",
+  "billedPlanName": "StudiQ Plus",
   "entitlementAppliedPlanKey": "spark", // written by the fenced webhook; null until it runs
   "status": "active | trialing | past_due | unpaid | canceled | incomplete | incomplete_expired | paused | free | none",
   "currentPeriodEnd": "2026-12-01T00:00:00.000Z",
   "cancelAtPeriodEnd": false,
   "pendingPlanKey": null, // display-only marker for a scheduled downgrade
-  "priceMonthly": 999, // minor units
+  "priceMonthly": 1999, // minor units
   "currency": "PLN",
   "canManagePortal": true,
   "canChangePlan": true,

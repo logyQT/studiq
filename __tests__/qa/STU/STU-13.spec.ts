@@ -189,7 +189,8 @@ test.describe('STU-13 @area:STU @prio:P3 live study page', () => {
     // answers the educator's own plan, never a student's.
     const plan = await page.request.get('/api/v1/me/personal-plan');
     expect(plan.status(), 'GET /api/v1/me/personal-plan as an educator').toBe(200);
-    const body = await json<{ data: { audience: string } }>(plan);
-    expect(body.data.audience, 'the personal layer answers the caller’s own plan').toBe('educator');
+    const body = await json<{ data: { key: string; audience: string | null } }>(plan);
+    expect(body.data.key, 'the personal layer answers the caller’s own plan').toBe('base');
+    expect(body.data.audience, 'the personal plan carries no audience').toBeNull();
   });
 });

@@ -12,20 +12,20 @@ export const SORTED_LIMIT_KEYS = [
 ];
 
 /**
- * Limits that only make sense for educators/organizations (seats and groups).
- * They are never enforced for a student's personal plan, so the student plan
- * comparison must not show them (the free plan would read as "unlimited").
+ * Limits that only make sense for organizations (seats and groups). No
+ * personal plan carries them since #1193, so a personal comparison must not
+ * show them even if a stray row appears.
  */
 const ORG_ONLY_LIMIT_KEYS: readonly string[] = ['max_students', 'max_groups'];
 
-/** Limit keys to render as comparison rows for the given audience. */
+/** Limit keys to render as comparison rows for the given plan scope. */
 export function getVisibleLimitKeys(
   plans: ReadonlyArray<{ limits: Record<string, number> }> | undefined,
-  accountType: string,
+  scope: 'personal' | 'organization',
 ): string[] {
   return SORTED_LIMIT_KEYS.filter(
     (lk) =>
-      !(accountType === 'student' && ORG_ONLY_LIMIT_KEYS.includes(lk)) &&
+      !(scope === 'personal' && ORG_ONLY_LIMIT_KEYS.includes(lk)) &&
       plans?.some((p) => lk in p.limits),
   );
 }

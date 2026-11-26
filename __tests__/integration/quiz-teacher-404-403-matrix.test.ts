@@ -22,7 +22,7 @@ import { PUT as putQuiz } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/rout
  * (the same shape as `org-control-permission-api.test.ts`); the unit suite pins the same rows
  * for the read path (`getById`).
  *
- * The org plan is `guide`, which carries the `quiz.templates` entitlement, so the 403/404 rows
+ * The org plan is `team`, which carries the `quiz.templates` entitlement, so the 403/404 rows
  * below are the permission derivation and not the entitlement gate that runs first on writes.
  */
 
@@ -103,9 +103,9 @@ describe('quiz-teacher 403/404 matrix (ADR-0015 §7.1, D-5e2)', () => {
   beforeAll(async () => {
     const org = await seedOrganization(`quiz-matrix-${tag}`);
     orgId = org.org.id;
-    // `guide` carries `quiz.templates`, so the write's entitlement gate passes and the status
+    // `team` carries `quiz.templates`, so the write's entitlement gate passes and the status
     // below is the permission derivation, not the plan gate.
-    await setOrgPlan(orgId, 'guide');
+    await setOrgPlan(orgId, 'team');
 
     const foreignOrg = await seedOrganization(`quiz-matrix-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;

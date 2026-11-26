@@ -17,7 +17,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * tenant model it is this case's own `content` tenant: the manager (org `admin`)
  * plus two org members, `users.student` (the member under test) and
  * `users.student2` (the untouched control). A fresh organization has **no** seat
- * pools — `plan_seat_allocations` was dropped — so the spec buys one student-audience
+ * pools — `plan_seat_allocations` was dropped — so the spec buys one personal-plan
  * pool (`pro`, 2 seats) and assigns both members through the product's own API,
  * the same requests the „Przydziel miejsce” dialog makes, and then exercises the
  * release button in the UI. That setup is idempotent, so a repeated run in the
@@ -30,7 +30,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
 
 const CASE = 'MGR-SEAT-03';
 
-/** Purchasable student-audience seat plan; both seated members hold the org `member` role. */
+/** Purchasable personal-plan seat; both seated members hold the org `member` role. */
 const SEAT_PLAN_KEY = 'pro';
 const POOL_SEATS = 2;
 
@@ -180,9 +180,9 @@ test('releasing a seat shows the toast, frees the pool counter and returns the m
     throw new Error(`the plan catalog does not list "${SEAT_PLAN_KEY}"`);
   }
 
-  // Both people must be student-persona org members for a `pro` seat: assignment
-  // validates the plan `audience` against `profiles.account_type` (D33), so an
-  // educator or manager account would be refused for this pool.
+  // Both people are student-persona org members with the `member` role. Since
+  // #1193 a personal plan carries no audience, so assignment accepts any member;
+  // the persona is asserted here as the fixture's own shape.
   const orgMembers = await call<OrgMember[]>(page, '/api/v1/organization/members');
   for (const account of [student, control]) {
     const member = orgMembers.find((candidate) => candidate.id === account.id);

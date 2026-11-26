@@ -237,7 +237,7 @@ test('rejects branding writes and keeps the stored values once the feature is go
 
   // The rest of the page is not blanked: the profile and the current plan show.
   await expect(settings.getByText(orgName, { exact: true })).toBeVisible();
-  // The badge names every layer; the personal `solo` layer is part of a manager's
+  // The badge names every layer; the personal `base` layer is part of a manager's
   // plan, so the org plan is asserted as a substring.
   await expect(settings.locator('[data-plan-union]')).toContainText(COPY.launchPlan);
 

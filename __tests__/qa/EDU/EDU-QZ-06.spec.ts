@@ -4,7 +4,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-QZ-06 — the saved-quiz library is gated on `quiz.templates` (ADR-0015 §7,
- * phase 5d): a teacher whose org is on the free `launch` plan (personal `lite`)
+ * phase 5d): a teacher whose org is on the free `launch` plan (personal `base`)
  * gets the plan card instead of the list/form and a 403 on every library write,
  * while the one-off assignment path and the quiz reads stay open.
  *
@@ -128,7 +128,7 @@ test.describe('@case:EDU-QZ-06 @area:EDU @prio:P2 free teacher gets the plan car
     const entitlements = await getData<{ entitlements: string[] }>(page, '/api/v1/me/entitlements');
     expect(
       entitlements.entitlements,
-      'launch org + lite personal plan resolve no quiz.templates',
+      'launch org + base personal plan resolve no quiz.templates',
     ).not.toContain('quiz.templates');
 
     // --- Step 1: the list shows the plan card, no "Nowy quiz" ----------------

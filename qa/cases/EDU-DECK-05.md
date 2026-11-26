@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-AI włączone dla T1 (plan Creator/Master lub override ai.chat).
+AI włączone dla T1 (płatny plan osobisty Plus/Pro/Max lub override ai.chat).
 
 ## Steps
 

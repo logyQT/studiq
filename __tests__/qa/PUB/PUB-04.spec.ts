@@ -4,15 +4,16 @@ import { expect, test, type Page } from '@playwright/test';
 import { createTranslator } from 'next-intl';
 
 /**
- * PUB-04 — Strona „Cennik” (/pricing) – plany dla uczniów i studentów.
+ * PUB-04 — Strona „Cennik” (/pricing) – plany dla osoby indywidualnej.
  *
  * Mapping note (the redesign, `feat/pricing-design-system`): the case was written
  * for `/pricing/student`, a page of plan cards. That route is gone; the individual
- * audience of `/pricing` now prints the student ladder as a price list (one `<li>`
- * per plan with its `h3#<key>` handle), one differences-only comparison table below
- * it, and the FAQ. The case ID and its acceptance intent — every configured student
- * plan, its price, its limits and its CTA, with „Zalecany” on one plan —
- * are unchanged.
+ * audience of `/pricing` now prints one individual ladder as a price list (one
+ * `<li>` per plan with its `h3#<key>` handle), one differences-only comparison
+ * table below it, and the FAQ. #1193 removed the student/educator split: the
+ * ladder is Free / Plus / Pro / Max for every persona. The case ID and its
+ * acceptance intent — every configured personal plan, its price, its limits and
+ * its CTA, with „Zalecany” on one plan — are unchanged.
  *
  * Prerequisite "Brak sesji": the pricing page is public, so the spec runs with an
  * empty storage state and never signs in. PUB-04's isolated tenant
@@ -46,11 +47,11 @@ interface PlanInfo {
   audience: string | null;
 }
 
-/** The student ladder the public pricing page documents (`base` … `pro`). */
-const STUDENT_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
+/** The individual ladder the public pricing page documents (`base` … `pro`). */
+const INDIVIDUAL_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
-/** The student plan the page recommends to this ladder. */
-const RECOMMENDED_PLAN = 'ace';
+/** The personal plan the page recommends to this ladder. */
+const RECOMMENDED_PLAN = 'spark';
 
 /** The individual FAQ, in the order the page asks it. */
 const FAQ_PAIRS = [
@@ -79,7 +80,7 @@ const SORTED_LIMIT_KEYS = [
 /** Seat/group limits never apply to a student's personal plan. */
 const ORG_ONLY_LIMIT_KEYS: readonly string[] = ['max_students', 'max_groups'];
 
-/** `StudiQ Ace` → `Ace`: the page names the tier in its own column. */
+/** `StudiQ Plus` → `Plus`: the page names the tier in its own column. */
 function shortPlanName(name: string): string {
   return name.replace(/^StudiQ\s+/i, '').trim();
 }
@@ -99,7 +100,7 @@ function limitLabel(key: string): string {
   return copy(messageKey);
 }
 
-/** "9,99 zł" → 9.99 (the price is stored in grosze and must be divided by 100). */
+/** "19,99 zł" → 19.99 (the price is stored in grosze and must be divided by 100). */
 function moneyValue(amount: string): number {
   return Number(amount.replace(/zł/gi, '').replace(/\s/g, '').replace(',', '.'));
 }
@@ -163,20 +164,20 @@ function watchForErrors(page: Page) {
   };
 }
 
-async function fetchStudentPlans(page: Page): Promise<PlanInfo[]> {
+async function fetchIndividualPlans(page: Page): Promise<PlanInfo[]> {
   const response = await page.request.get('/api/v1/subscription-plans');
   expect(response.status(), 'the public plan catalogue').toBe(200);
   const { data } = await json<{ data: PlanInfo[] }>(response);
   return data
-    .filter((plan) => plan.isActive && plan.scope === 'personal' && plan.audience === 'student')
+    .filter((plan) => plan.isActive && plan.scope === 'personal')
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 
-/** The student ladder section: the plan list, its comparison table and its caption. */
-function studentLadder(page: Page) {
-  return page
-    .locator('#pricing-plans section')
-    .filter({ has: page.getByRole('heading', { level: 2, name: copy('ladder_student_title') }) });
+/** The individual ladder section: the plan list, its comparison table and its caption. */
+function individualLadder(page: Page) {
+  return page.locator('#pricing-plans section').filter({
+    has: page.getByRole('heading', { level: 2, name: copy('ladder_individual_title') }),
+  });
 }
 
 /** The `<li>` of one plan, addressed by the `h3` handle the page gives it. */
@@ -184,7 +185,7 @@ function planRow(page: Page, key: string) {
   return page.locator('#pricing-plans li').filter({ has: page.locator(`h3#${key}`) });
 }
 
-test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FAQ', () => {
+test.describe('@case:PUB-04 @area:PUB @prio:P2 individual ladder, comparison and FAQ', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test.beforeEach(async ({ context, baseURL }) => {
@@ -194,7 +195,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
     await context.addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
   });
 
-  test('renders the student price list, its comparison table and the FAQ from the catalogue', async ({
+  test('renders the individual price list, its comparison table and the FAQ from the catalogue', async ({
     page,
   }) => {
     const errors = watchForErrors(page);
@@ -215,17 +216,17 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
       page.getByRole('heading', { level: 1, name: copy('title'), exact: true }),
     ).toBeVisible();
 
-    const plans = await fetchStudentPlans(page);
+    const plans = await fetchIndividualPlans(page);
     expect(
       plans.map((plan) => plan.key),
-      'the student ladder is Base, Spark, Ace and Pro',
-    ).toEqual([...STUDENT_PLAN_KEYS]);
+      'the individual ladder is Free, Plus, Pro and Max',
+    ).toEqual([...INDIVIDUAL_PLAN_KEYS]);
 
     // Step 2 — one row per configured plan, in catalogue order, with the name,
     // the price, the description and a registration action.
-    const ladder = studentLadder(page);
+    const ladder = individualLadder(page);
     await expect(
-      ladder.getByRole('heading', { level: 2, name: copy('ladder_student_title'), exact: true }),
+      ladder.getByRole('heading', { level: 2, name: copy('ladder_individual_title'), exact: true }),
     ).toBeVisible();
     await expect(ladder.locator('ul > li')).toHaveCount(plans.length);
 
@@ -236,7 +237,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
       // The row's handle is the plan's own name, under the ladder it belongs to.
       await expect(row.locator(`h3#${plan.key}`)).toHaveText(shortPlanName(plan.name));
 
-      // Price: the configured grosze value rendered as PLN, e.g. 999 → "9,99 zł".
+      // Price: the configured grosze value rendered as PLN, e.g. 1999 → "19,99 zł".
       const priceLine = (await row.locator('p').first().innerText())
         .replace(/\u00a0/g, ' ')
         .replace(/\s+/g, ' ')
@@ -278,9 +279,9 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
 
     // Step 3 — the differences-only comparison table for this ladder.
     const table = ladder.locator('table');
-    await expect(table, 'one comparison table for the student ladder').toHaveCount(1);
+    await expect(table, 'one comparison table for the individual ladder').toHaveCount(1);
 
-    const caption = copy('comparison_caption_student');
+    const caption = copy('comparison_caption_individual');
     await expect(table.locator('caption')).toHaveText(caption);
     // The scrollable region is named and focusable, so a truncated reading stays
     // keyboard-navigable (it is the table's container, whatever it scrolls to).
@@ -354,7 +355,8 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
         ).toHaveText(printLimit(plan.limits[key]));
       }
     }
-    // The ladder really does exercise both glyphs, not only plain numbers.
+    // The ladder exercises the "not offered" glyph: Free has no AI tokens, and
+    // the individual ladder carries no cap the catalogue would print as ∞.
     const printedLimits = await table
       .locator('tbody tr')
       .evaluateAll((tableRows) =>
@@ -364,8 +366,8 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
           ),
         ),
       );
-    expect(printedLimits, 'an uncapped plan prints ∞').toContain(UNLIMITED);
     expect(printedLimits, 'a plan without a cap prints —').toContain(ABSENT);
+    expect(printedLimits, 'no individual plan is uncapped').not.toContain(UNLIMITED);
 
     // Step 4 — the FAQ: collapsed on load, single-open, answers still in the DOM.
     await expect(
@@ -417,8 +419,8 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student ladder, comparison and FA
     // Adjacent regression: a reload renders the same catalogue, so no pricing
     // state lives only in the first client render.
     await page.reload();
-    await expect(planRow(page, STUDENT_PLAN_KEYS[0])).toHaveCount(1);
-    await expect(studentLadder(page).locator('ul > li')).toHaveCount(plans.length);
+    await expect(planRow(page, INDIVIDUAL_PLAN_KEYS[0])).toHaveCount(1);
+    await expect(individualLadder(page).locator('ul > li')).toHaveCount(plans.length);
 
     errors.expectClean();
   });

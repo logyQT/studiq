@@ -40,8 +40,8 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 - Świeża organizacja nie ma **żadnych puli miejsc** (`plan_seat_allocations` zostało
   usunięte migracją `20260915000003`), więc warunek „istniejący przydział” spec buduje
   przez API produktu — te same żądania, które wysyła okno „Przydziel miejsce”:
-  `POST /api/v1/organization/seats/pools` (`pro`, 2 miejsca — plan o `audience: student`
-  pasujący do persony kont `member`) i dwa `POST /api/v1/organization/seats/assignments`. Setup jest
+  `POST /api/v1/organization/seats/pools` (`pro`, 2 miejsca — plan osobisty bez
+  `audience` od #1193) i dwa `POST /api/v1/organization/seats/assignments`. Setup jest
   idempotentny: powtórzony przebieg w tym samym tenancie czyści własne przydziały i
   ustawia pulę z powrotem na 2 miejsca.
 - Kroki 1 wykonuje UI: przycisk „Zwolnij miejsce” (`aria-label`) w wierszu przydziału na
@@ -73,14 +73,14 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
   tej samej puli zostaje.
 - Po zwolnieniu `GET /api/v1/me/plan` zwalnianego członka zwraca `base` (jego plan
   osobisty), a limity wracają do wartości planu bazowego; wcześniej (z przydziałem `pro`)
-  zwracał `pro` z limitami `-1`.
+  zwracał `pro` z limitami Max (np. `max_flashcards: 25000`).
 
 ## Observed 2026-11-20 (2b-3) — the roster is now declared
 
 The `content` profile's default educator is a real Teacher since 2b-3 (the roster read in
 D25 needs an org role that carries `group.manage`/`group.invite`), but this case needs both
-seeded people on the org **Member** role: a `pro` seat assignment validates the plan
-`audience` against the account's persona (D33) and refuses an educator or manager account,
+seeded people on the org **Member** role: at the time a `pro` seat assignment validated the plan `audience` against the
+account's persona (D33; retired by #1193) and refused an educator or manager account,
 and the spec asserts `accountType === 'student'` (and `orgRoleName === 'member'`) for
 `users.student` and `users.teacher` before it buys the pool. The spec now fails on the
 default (the untested control account is no longer a member), so the case declares its own
@@ -93,8 +93,9 @@ untouched.
 ## Observed 2026-11-22 (3d) — the second seat holder is a student
 
 D29 moves the Teacher role's content reads to `group`, retiring the 2b-3 workaround (the
-`content` profile's educator is an org Teacher again). A `pro` seat is persona-aware and
-still refuses an educator account for a student-audience pool, so the seat case keeps its
+`content` profile's educator is an org Teacher again). At that time a `pro` seat was
+persona-aware and refused an educator account for a student-audience pool (retired by
+#1193), so the seat case keeps its
 two seated people with the **student** persona and no longer borrows the educator as the
 control: the case's profile declares `users.student2` (account type `student`, org
 `member`) beside `users.student`, and the spec assigns/releases both `pro` seats with that
@@ -102,10 +103,11 @@ pair. The roster read (D25) and the plan `audience` are what the `student2` acco
 for — the case's own subject (release the seat, the counter moves, the member falls back
 to their personal plan) is unchanged.
 
-## Observed 2026-11-22 (4b) — „role-aware” is persona/`audience`
+## Observed 2026-11-22 (4b) — „role-aware” was persona/`audience`
 
-Phase 4b deleted the seats page's role/tier maps (R37): the assign picker filters pools by
-the member's `accountType` against the pool plan's `audience` (the roster endpoint now
-returns `accountType`), and the purchase picker lists the catalogue's personal
-seat-eligible plans. No behaviour change for this case: it buys `pro` for two
-student-persona members.
+Phase 4b deleted the seats page's role/tier maps (R37): at that time the assign picker
+filtered pools by the member's `accountType` against the pool plan's `audience` (the roster
+endpoint returns `accountType`), and the purchase picker lists the catalogue's personal
+seat-eligible plans. **#1193 retires the persona filter**: the picker offers every pool of
+the org, and `assignSeat` accepts any member. No behaviour change for this case's subject:
+it buys `pro` for two student-persona members and releases one seat.

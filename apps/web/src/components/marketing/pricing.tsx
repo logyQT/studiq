@@ -39,28 +39,28 @@ export function Pricing() {
   const locale = useLocale();
 
   const {
-    data: student,
-    isLoading: studentLoading,
-    isError: studentFailed,
+    data: personal,
+    isLoading: personalLoading,
+    isError: personalFailed,
   } = useApiQuery<PlanInfo[]>({
-    queryKey: ['subscription-plans', 'active', 'student'],
-    url: '/api/v1/subscription-plans?scope=personal&audience=student',
+    queryKey: ['subscription-plans', 'active', 'personal'],
+    url: '/api/v1/subscription-plans?scope=personal',
   });
   const {
-    data: manager,
-    isLoading: managerLoading,
-    isError: managerFailed,
+    data: organization,
+    isLoading: organizationLoading,
+    isError: organizationFailed,
   } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active', 'organization'],
     url: '/api/v1/subscription-plans?scope=organization',
   });
-  const { free, premium, organizationFrom } = pickLandingPlans(student ?? [], manager ?? []);
+  const { free, premium, organizationFrom } = pickLandingPlans(personal ?? [], organization ?? []);
 
   // A price is a number from the database or it is absent. The em dash is the
   // not-included mark on /pricing, so it cannot stand in for "still loading".
   const price = (plan: PlanInfo | null) => (plan ? formatPlanPrice(plan, locale) : null);
-  const pricesPending = studentLoading || managerLoading;
-  const pricesFailed = (studentFailed || managerFailed) && !pricesPending;
+  const pricesPending = personalLoading || organizationLoading;
+  const pricesFailed = (personalFailed || organizationFailed) && !pricesPending;
 
   const freeRows = [t('free_questions'), t('free_flashcards'), t('free_quizzes'), t('free_stats')];
 

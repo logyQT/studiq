@@ -1667,6 +1667,24 @@ interpretation.
 > schema changes keep the manual pinned-CLI regeneration, reviewed by the
 > integrator. (Phase 8, `feat/authority-8`.)
 
+> **2026-11-26 (B1, #1193).** One individual ladder supersedes D2, D14 and D32
+> where they make a personal plan's `audience` significant. A personal plan
+> carries no audience (`audience = NULL`, the same shape an organization plan
+> has); `audience` no longer keys a ladder, a checkout, a seat pool or a free-plan
+> fallback. The personal plans are Free / Plus / Pro / Max on the keys
+> `base` / `spark` / `ace` / `pro`; `lite`, `guide`, `creator`, `master` and
+> `solo` retire to `base`. Persona no longer filters a plan purchase: any
+> signed-in reader may buy any active personal plan, and `handle_new_user()`
+> mints `base` for every persona, managers included. Authority is still the
+> permission and entitlement layer, never the persona. The organization ladder
+> keeps its scope/audience shape.
+>
+> This retires D33's seat persona check: `assignSeat` no longer compares the
+> target's `profiles.account_type` to the pool plan's `audience`, because a
+> personal plan carries no audience. A seat pool is offered to any member of
+> the organization; `addPool` still requires an active `scope='personal'` plan
+> whose keys are all `seatEligible`.
+
 ---
 
 ## 16. Non-goals

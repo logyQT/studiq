@@ -182,7 +182,7 @@ export class BillingService {
 
     // Plan/owner rules are shared with the mock completion path (workstream A),
     // so the two drivers cannot drift on what may be bought or by whom.
-    const purchasable = await resolvePurchasablePlan(this.repository, planKey, ctx.accountType);
+    const purchasable = await resolvePurchasablePlan(this.repository, planKey);
     if (isFailure(purchasable)) return purchasable;
 
     const plan = purchasable.data.plan;
@@ -414,11 +414,7 @@ export class BillingService {
     if (isFailure(prepared)) return prepared;
     const owner = prepared.data;
 
-    const targetResult = await resolvePurchasablePlan(
-      this.repository,
-      targetPlanKey,
-      ctx.accountType,
-    );
+    const targetResult = await resolvePurchasablePlan(this.repository, targetPlanKey);
     if (isFailure(targetResult)) return targetResult;
 
     const target = targetResult.data.plan;
