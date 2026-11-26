@@ -213,6 +213,29 @@ export function reportBuildFailure(result: BuildResult, app: BuildApp = 'web'): 
 }
 
 /**
+ * Report the build when its process cleanup failed. The cleanup error is the result
+ * of the command, so the compiler output and the build status must not be lost.
+ */
+function reportCleanupFailure(
+  outcome: SpawnOutcome,
+  app: BuildApp,
+  invalidated: string | null,
+): void {
+  const lines = buildOutputLines(outcome.output, app);
+  let ended = `ended with exit code ${outcome.status}`;
+  if (outcome.signal !== null) ended = `was stopped by ${outcome.signal}`;
+  if (outcome.timedOut) ended = 'did not end in the time limit';
+  const status = `the build command ${ended}. Then the process cleanup failed. Full log: .dev/env.log`;
+  appendBuildLog([...lines, status]);
+  printBuildLines([...lines.slice(-FAILURE_TAIL_LINES), status]);
+  if (invalidated !== null) {
+    writeStderrLine(
+      `build: moved the artifact aside to ${relative(REPO_ROOT, invalidated)}; it is not served and not current`,
+    );
+  }
+}
+
+/**
  * Report a successful build: its warnings, then one line with the duration.
  *
  * `logBuildOutput` used to run only on failure, so a build with warnings looked
@@ -350,6 +373,16 @@ export interface ProductionBuildDeps {
 
 const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild };
 
+/** The result that `spawnBuild` had when its cleanup failed, by cleanup error. */
+const resultsBeforeCleanupError = new WeakMap<Error, SpawnOutcome>();
+
+/** Test seams of `spawnBuild`; production uses the defaults. */
+export interface SpawnBuildSeams {
+  command?: BuildCommand;
+  killGroup?: (pgid: number) => Promise<boolean>;
+  timeoutMs?: number;
+}
+
 /**
  * Spawn the build as its own process group and enforce the build budget.
  *
@@ -360,12 +393,22 @@ const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild
  * grace, then SIGKILLs before the slot is released. Without a slot
  * (`--no-slot`/`--no-lock`) the group is still killed on every exit path; there
  * is just no record for another process to reclaim.
+ *
+ * If the cleanup fails, the promise rejects with the cleanup error, so the build
+ * always ends.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
  */
-function spawnBuild(
+export function spawnBuild(
   slot: BuildSlotHandle | null,
   options: ProductionBuildOptions,
+  seams: SpawnBuildSeams = {},
 ): Promise<SpawnOutcome> {
-  const command = buildCommand(options.app);
+  const {
+    command = buildCommand(options.app),
+    killGroup = killProcessGroup,
+    timeoutMs = BUILD_TIMEOUT_MS,
+  } = seams;
   if (!command.oomAdjusted) {
     appendEnvLog('build: oom_score_adj is not available on this platform; skipped');
   }
@@ -393,13 +436,32 @@ function spawnBuild(
     child.stderr?.on('data', collect);
 
     let timedOut = false;
+    const outcomeNow = (status: number | null, signal: NodeJS.Signals | null): SpawnOutcome => ({
+      status,
+      signal,
+      timedOut,
+      output: truncated ? `${output}\n[build output truncated]` : output,
+      durationMs: Date.now() - startedAt,
+    });
+    const failCleanup = (error: unknown, outcome: SpawnOutcome): void => {
+      if (error instanceof Error) resultsBeforeCleanupError.set(error, outcome);
+      reject(error);
+    };
+    /** The cleanup of a build that ran too long failed: end without the child. */
+    const abandon = (error: unknown): void => {
+      clearInterval(progress);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      child.unref();
+      failCleanup(error, outcomeNow(null, null));
+    };
     const timer = setTimeout(() => {
       timedOut = true;
       writeStderrLine(
         `build: exceeded ${Math.round(BUILD_TIMEOUT_MS / 60_000)} minutes; killing the build's process group`,
       );
-      void killProcessGroup(pgid ?? 0);
-    }, BUILD_TIMEOUT_MS);
+      killGroup(pgid ?? 0).catch(abandon);
+    }, timeoutMs);
     const progress = setInterval(() => {
       slot?.heartbeat();
       const elapsed = formatDuration(Date.now() - startedAt);
@@ -413,15 +475,10 @@ function spawnBuild(
     const finish = (status: number | null, signal: NodeJS.Signals | null): void => {
       clearTimeout(timer);
       clearInterval(progress);
-      void killProcessGroup(pgid ?? 0).then(() => {
-        resolve({
-          status,
-          signal,
-          timedOut,
-          output: truncated ? `${output}\n[build output truncated]` : output,
-          durationMs: Date.now() - startedAt,
-        });
-      });
+      killGroup(pgid ?? 0).then(
+        () => resolve(outcomeNow(status, signal)),
+        (error: unknown) => failCleanup(error, outcomeNow(status, signal)),
+      );
     };
     child.on('error', (error) => {
       clearTimeout(timer);
@@ -725,10 +782,13 @@ async function buildOnce(
     outcome = await deps.spawnBuild(slot, options);
   } catch (error) {
     // A spawn that threw still may have written part of `.next`.
+    let moved: string | null = null;
     if (web) {
-      invalidateFailedArtifact(deps);
+      moved = invalidateFailedArtifact(deps);
       deps.onInvalidate?.();
     }
+    const unfinished = error instanceof Error ? resultsBeforeCleanupError.get(error) : undefined;
+    if (unfinished) reportCleanupFailure(unfinished, options.app, moved);
     throw error;
   }
   const fingerprintAfter = web ? readTreeFingerprint(readFingerprint, input, 'after') : '';
