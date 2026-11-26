@@ -20,6 +20,10 @@ import { latestShippedFunction } from '#test/integration/test-utils';
 const PASSWORD = 'ReserveTokens!';
 const MIGRATION = 'supabase/migrations/20261125130000_reserve_ai_tokens.sql';
 const MIGRATION_SOURCE = readFileSync(MIGRATION, 'utf8');
+// #1482 closes the phase-7 residual: the stats triggers are definer functions
+// and every write grant on the activity table is revoked.
+const ACTIVITY_MIGRATION = 'supabase/migrations/20261126120000_daily_activity_definer_only.sql';
+const ACTIVITY_MIGRATION_SOURCE = readFileSync(ACTIVITY_MIGRATION, 'utf8');
 
 function requireLocalDatabaseUrl(): string {
   const raw = process.env.SUPABASE_DB_URL;
@@ -62,11 +66,45 @@ function shippedDeleteRevoke(): string {
   return statement;
 }
 
+/**
+ * The #1482 revokes, replayed from the migration so a mutation to that file
+ * reaches the running stack. The privilege case below asserts the resulting
+ * grants, so removing INSERT/UPDATE from this file leaves the restored grant
+ * visible to that assertion.
+ */
+function shippedActivityRevokes(): string[] {
+  return ACTIVITY_MIGRATION_SOURCE.split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^revoke\b.*\bon public\.user_daily_activity\b/i.test(line));
+}
+
 async function installShippedRevokes(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await sql.unsafe(SHIPPED_FUNCTION);
+    // The review trigger runs as the caller when it is not definer, so the
+    // revoke below is only safe with the shipped body installed.
+    await sql.unsafe(latestShippedFunction('increment_reviews'));
     await sql.unsafe(shippedDeleteRevoke());
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * Recreate the pre-#1482 write grant, then replay the migration's revokes. A
+ * stack that already applied the migration has them revoked, so the grant keeps
+ * this case independent of stack age and gives a mutation reach: remove
+ * INSERT/UPDATE from the file and the restored grant survives into the
+ * assertions below.
+ */
+async function restoreThenRevokeActivityWrites(): Promise<void> {
+  const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+  try {
+    await sql.unsafe('grant insert, update on public.user_daily_activity to authenticated');
+    for (const statement of shippedActivityRevokes()) {
+      await sql.unsafe(statement);
+    }
   } finally {
     await sql.end();
   }
@@ -117,6 +155,21 @@ describe('reserve_ai_tokens', () => {
     return data.ai_input_tokens + data.ai_output_tokens;
   }
 
+  /** The day's review counters, read with the service role so RLS cannot hide them. */
+  async function storedReviewCounters(): Promise<{
+    reviews_count: number;
+    reviews_correct: number;
+  } | null> {
+    const { data, error } = await service
+      .from('user_daily_activity')
+      .select('reviews_count, reviews_correct')
+      .eq('user_id', userId)
+      .eq('date', day)
+      .maybeSingle();
+    if (error) throw new Error(`activity read failed: ${error.message}`);
+    return data ?? null;
+  }
+
   async function clear(): Promise<void> {
     const { error } = await service
       .from('user_daily_activity')
@@ -146,6 +199,7 @@ describe('reserve_ai_tokens', () => {
   afterAll(async () => {
     if (userId) {
       await service.from('user_daily_activity').delete().eq('user_id', userId);
+      await service.from('flashcard_practice').delete().eq('user_id', userId);
       await service.auth.admin.deleteUser(userId).catch(() => {});
     }
   });
@@ -345,5 +399,134 @@ describe('reserve_ai_tokens', () => {
     } finally {
       await sql.end();
     }
+  });
+
+  // #1482: the daily-stats triggers are definer functions, so the write grants
+  // that used to be their permission are gone. These cases replay the shipped
+  // bodies and revokes on the running stack, then prove both sides: a real
+  // session cannot write the row, and the triggers still book.
+
+  it('installs both stats triggers as definer functions that pin an empty search_path', async () => {
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      const rows = await sql<
+        Array<{ proname: string; prosecdef: boolean; proconfig: string[] | null }>
+      >`
+        select p.proname, p.prosecdef, p.proconfig
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.proname in ('increment_reviews', 'increment_quizzes')
+        order by p.proname
+      `;
+
+      expect(rows.map((row) => row.proname)).toEqual(['increment_quizzes', 'increment_reviews']);
+      for (const row of rows) {
+        expect(row.prosecdef, `${row.proname} must be security definer`).toBe(true);
+        expect(row.proconfig, `${row.proname} must pin an empty search_path`).toContain(
+          'search_path=""',
+        );
+      }
+    } finally {
+      await sql.end();
+    }
+  });
+
+  it('refuses direct PostgREST writes to the activity row and keeps the read', async () => {
+    await restoreThenRevokeActivityWrites();
+    await clear();
+    const { error: reserveError } = await session.rpc('reserve_ai_tokens', {
+      p_day: day,
+      p_input_tokens: 3,
+      p_output_tokens: 4,
+      p_limit: -1,
+    });
+    expect(reserveError).toBeNull();
+    expect(await storedTotal()).toBe(7);
+
+    // The reported attack: a signed-in user writes the day's row directly and
+    // zeroes the meter without touching the RPC or the pre-stream gate. R41: the
+    // requests carry a real access token, so this is the caller's own row under
+    // the real grants, not a mocked `auth.uid()`.
+    const updated = await session
+      .from('user_daily_activity')
+      .update({ ai_input_tokens: 0, ai_output_tokens: 0 })
+      .eq('user_id', userId)
+      .eq('date', day);
+    expect(updated.error?.code).toBe('42501');
+
+    const inserted = await session
+      .from('user_daily_activity')
+      .insert({ user_id: userId, date: day, ai_input_tokens: 0, ai_output_tokens: 0 });
+    expect(inserted.error?.code).toBe('42501');
+
+    // An upsert needs INSERT and UPDATE; both are refused, so the conflict path
+    // cannot become a write either.
+    const upserted = await session
+      .from('user_daily_activity')
+      .upsert({ user_id: userId, date: day, ai_input_tokens: 0, ai_output_tokens: 0 });
+    expect(upserted.error?.code).toBe('42501');
+
+    // A refused write is not a silent success: the stored meter did not move.
+    expect(await storedTotal()).toBe(7);
+
+    // The stats surfaces read this table on every page; the read must survive.
+    const { data, error } = await session
+      .from('user_daily_activity')
+      .select('ai_input_tokens, ai_output_tokens')
+      .eq('user_id', userId)
+      .eq('date', day)
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toMatchObject({ ai_input_tokens: 3, ai_output_tokens: 4 });
+
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      const privilegeRows = await sql<
+        Array<{
+          insertable: boolean;
+          updatable: boolean;
+          deletable: boolean;
+          selectable: boolean;
+        }>
+      >`
+        select has_table_privilege('authenticated', 'public.user_daily_activity', 'INSERT')
+                 as insertable,
+               has_table_privilege('authenticated', 'public.user_daily_activity', 'UPDATE')
+                 as updatable,
+               has_table_privilege('authenticated', 'public.user_daily_activity', 'DELETE')
+                 as deletable,
+               has_table_privilege('authenticated', 'public.user_daily_activity', 'SELECT')
+                 as selectable
+      `;
+      expect(privilegeRows[0]).toEqual({
+        insertable: false,
+        updatable: false,
+        deletable: false,
+        selectable: true,
+      });
+    } finally {
+      await sql.end();
+    }
+  });
+
+  it('books a review through the definer trigger when a signed-in student practices', async () => {
+    await clear();
+
+    // The practice write comes from a real signed-in session, so the trigger
+    // runs with `authenticated` as its caller. Without `security definer` it
+    // needs the INSERT grant this change revokes and the insert fails 42501;
+    // with it, the activity row is booked as before.
+    const { error } = await session.from('flashcard_practice').insert({
+      user_id: userId,
+      was_correct: true,
+      practiced_at: new Date().toISOString(),
+    });
+    expect(error).toBeNull();
+
+    expect(await storedReviewCounters()).toMatchObject({
+      reviews_count: 1,
+      reviews_correct: 1,
+    });
   });
 });
