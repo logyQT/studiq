@@ -58,7 +58,7 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 - Zalogowany czytelnik dostaje akcję zakupu przy każdym płatnym planie indywidualnym: jedna
   drabinka obsługuje każdą personę (#1193). Plan organizacji nadal wymaga organizacji, w której
   czytelnik może rozliczać plan.
-- Wyróżnienie „Zalecany” ma dokładnie jeden plan w sekcji: Plus (`spark`).
+- Wyróżnienie „Zalecany” ma dokładnie jeden plan w sekcji: Pro (`ace`).
 - Tabela pod sekcją zawiera tylko różnice między planami; nad nią jedna linia
   „Wszystkie plany obejmują: …”. Brak limitu to „—”, a liczby są grupowane (np. 25 000).
   Drabinka indywidualna nie ma wartości -1 i nie zawiera limitów organizacyjnych
@@ -74,7 +74,7 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
   Maks. fiszki, Maks. talie, Maks. pytania, Maks. banki pytań, Próby dziennie,
   Tokeny AI / dzień. Limity organizacyjne (Maks. studentów, Maks. grup) pojawiają się tylko
   w sekcji organizacji.
-- „Zalecany” to stała per drabinka (Plus / Hub), a nie pole w katalogu planów.
+- „Zalecany” to stała per drabinka (Pro / Hub), a nie pole w katalogu planów.
 - Ceny i funkcje są globalną konfiguracją planów, więc spec nie wpisuje ich na sztywno:
   pobiera katalog przez `GET /api/v1/subscription-plans` i sprawdza, że plany, tabele i akcje
   renderują dokładnie tę konfigurację (grosze → zł, -1 → „∞”, brak → „—”).

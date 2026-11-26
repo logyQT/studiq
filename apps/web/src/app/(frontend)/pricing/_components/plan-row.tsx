@@ -1,14 +1,12 @@
 'use client';
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
-import { Button } from '@studiq/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { CtaButton } from '@/components/marketing/ui/cta-button';
-import { CheckoutButton } from '@/components/pricing/checkout-button';
+import { PlanAction } from '@/components/pricing/plan-action';
 import { formatPlanPrice } from '@/lib/landing-pricing';
-import { ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { planCopy } from '@/lib/pricing-copy';
+import { isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
 import { pricingPlanAction } from '@/lib/pricing-plan-action';
-import { cn } from '@/lib/utils';
 
 interface PlanRowProps {
   plan: PlanInfo;
@@ -45,13 +43,11 @@ export function PlanRow({
   const isFree = plan.priceMonthly === 0;
   /** Sales-led tier: it is priced per institution, not per seat. */
   const contactOnly = plan.key === 'campus';
-  const descKey = `plan_${plan.key}_desc`;
-  const noteKey = `plan_${plan.key}_note`;
-  const ctaKey = ctaMessageKey(plan);
-  const description = t.has(descKey) ? t(descKey) : null;
-  const note = t.has(noteKey) ? t(noteKey) : null;
+  const { description, note } = planCopy(t, plan);
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
+  // The ladder has one signal fill; the plan the reader already owns never takes it.
+  const primary = recommended && !isCurrent;
   const action = pricingPlanAction({ signedIn, isCurrent, isFree, contactOnly, hasActivePlan });
 
   return (
@@ -92,67 +88,15 @@ export function PlanRow({
       </div>
 
       <div className="mt-4 md:col-span-2 md:col-start-11 md:row-start-1 md:mt-0 md:justify-self-end">
-        {action === 'contact' ? (
-          /*
-           * Campus is a 699 zł conversation, not a self-serve checkout, and the
-           * label says so in both states: signing in must not turn a sales
-           * contact into a purchase (one behaviour per label).
-           */
-          <CtaButton href="/contact" tone="quiet" fullWidth className="whitespace-nowrap">
-            {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
-          </CtaButton>
-        ) : action === 'register' ? (
-          <CtaButton
-            href="/register"
-            tone={recommended ? 'signal' : 'quiet'}
-            fullWidth
-            className="whitespace-nowrap"
-          >
-            {isFree ? t('cta_free') : t('cta_register')}
-          </CtaButton>
-        ) : action === 'current' ? (
-          <Button
-            variant="outline"
-            disabled
-            className="h-11 w-full rounded-control px-6 text-sm font-semibold whitespace-nowrap"
-          >
-            {t('cta_current')}
-          </Button>
-        ) : action === 'change-plan' ? (
-          /*
-           * A second subscription is refused by the server, so the subscriber's
-           * upgrade, downgrade and proration run on the billing page, which owns
-           * the plan change.
-           */
-          <CtaButton
-            href={billingHref}
-            tone={recommended ? 'signal' : 'quiet'}
-            fullWidth
-            className="whitespace-nowrap"
-          >
-            {t('cta_change_plan')}
-          </CtaButton>
-        ) : action === 'checkout' ? (
-          /*
-           * The server decides whether an organization plan is billable by this
-           * caller; the button reports its refusal.
-           */
-          <CheckoutButton
-            planKey={plan.key}
-            orgId={plan.scope === 'organization' ? orgId : undefined}
-            variant={recommended ? 'default' : 'outline'}
-            className={cn(
-              'h-11 w-full rounded-control px-6 text-sm font-semibold',
-              // The kit's outline edge is the decorative `--border` (1.32:1); a
-              // button identified by its edge needs `--input` (3.23:1).
-              recommended
-                ? 'border-transparent bg-signal text-signal-foreground hover:bg-signal/90'
-                : 'border-input',
-            )}
-          >
-            {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
-          </CheckoutButton>
-        ) : null}
+        <PlanAction
+          plan={plan}
+          action={action}
+          tone={primary ? 'signal' : 'quiet'}
+          billingHref={billingHref}
+          orgId={orgId}
+          registerLabel={isFree ? t('cta_free') : t('cta_register')}
+          className="whitespace-nowrap"
+        />
       </div>
     </li>
   );

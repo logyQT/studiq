@@ -61,8 +61,8 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
   odpowiedni dla Twoich potrzeb”, followed by a four-column grid of plan cards.
 - `/app/upgrade` (student) and `/edu/upgrade` (educator) show the same individual
   catalogue in catalogue order: StudiQ Free (0 zł, features Fiszki/Testy, „Zacznij za
-  darmo”), StudiQ Plus (19,99 zł/miesiąc, „Wybierz Plus”, „Zalecany”), StudiQ Pro
-  (39,99 zł/miesiąc, „Wybierz Pro”), StudiQ Max (79,99 zł/miesiąc, „Wybierz Maks”).
+  darmo”), StudiQ Plus (19,99 zł/miesiąc, „Wybierz Plus”), StudiQ Pro
+  (39,99 zł/miesiąc, „Wybierz Pro”, „Zalecany”), StudiQ Max (79,99 zł/miesiąc, „Wybierz Maks”).
   The Free card carries the „Twój plan” badge on both pages.
 - The purchase buttons are live: „Wybierz Plus” creates a mock checkout session and
   opens `/checkout?session_id=…&plan_id=spark` („Podsumowanie zamówienia”, „StudiQ

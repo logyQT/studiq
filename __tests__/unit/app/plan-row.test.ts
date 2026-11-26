@@ -29,26 +29,53 @@ function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
   };
 }
 
-function render({
-  isCurrent = false,
-  hasActivePlan,
-}: {
+const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
+  { key: 'base', name: 'StudiQ Free', priceMonthly: 0 },
+  { key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 },
+  { key: 'ace', name: 'StudiQ Pro', priceMonthly: 3999 },
+  { key: 'pro', name: 'StudiQ Max', priceMonthly: 7999 },
+];
+
+interface RowOptions {
+  planKey?: string;
   isCurrent?: boolean;
+  signedIn?: boolean;
   hasActivePlan: boolean | null;
-}): string {
+}
+
+function rowElement({
+  planKey = 'spark',
+  isCurrent = false,
+  signedIn = true,
+  hasActivePlan,
+}: RowOptions) {
+  const fixture = LADDER.find((candidate) => candidate.key === planKey);
+  return createElement(PlanRow, {
+    plan: fixture ? plan(fixture) : plan(),
+    isCurrent,
+    signedIn,
+    hasActivePlan,
+    billingHref: '/app/billing',
+  });
+}
+
+function render(options: RowOptions): string {
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
       { locale, messages: pl, timeZone: 'UTC' },
-      createElement(PlanRow, {
-        plan: plan(),
-        isCurrent,
-        signedIn: true,
-        hasActivePlan,
-        billingHref: '/app/billing',
-      }),
+      rowElement(options),
     ),
   );
+}
+
+/** The class list of every action element the markup renders: a link or a button. */
+function actionClasses(markup: string): string[] {
+  return [...markup.matchAll(/<(?:a|button)\b[^>]*\bclass="([^"]*)"/g)].map((match) => match[1]);
+}
+
+function toneTokens(classes: string): string[] {
+  return classes.split(/\s+/);
 }
 
 describe('PlanRow action', () => {
@@ -70,5 +97,76 @@ describe('PlanRow action', () => {
     expect(markup).toContain(t('cta_change_plan'));
     expect(markup).not.toContain(t('cta_spark'));
     expect(markup).not.toContain(t('cta_current'));
+  });
+
+  it('gives the recommended paid plan the single signal fill', () => {
+    const classes = actionClasses(render({ planKey: 'ace', hasActivePlan: false }));
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('bg-signal');
+    expect(classes[0]).toContain('rounded-control');
+    expect(classes[0]).toContain('h-11');
+  });
+
+  it('keeps every other paid plan quiet', () => {
+    const classes = actionClasses(render({ planKey: 'spark', hasActivePlan: false }));
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('border-input');
+    expect(toneTokens(classes[0])).not.toContain('bg-signal');
+    expect(classes[0]).toContain('rounded-control');
+    expect(classes[0]).toContain('h-11');
+  });
+
+  it('keeps the current plan disabled and quiet even when the ladder recommends it', () => {
+    const markup = render({ planKey: 'ace', isCurrent: true, hasActivePlan: true });
+    const classes = actionClasses(markup);
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('border-input');
+    expect(toneTokens(classes[0])).not.toContain('bg-signal');
+    expect(markup).toMatch(/<button[^>]*\bdisabled\b/);
+  });
+
+  it('keeps the free register action quiet for a signed-out reader', () => {
+    const classes = actionClasses(
+      render({ planKey: 'base', signedIn: false, hasActivePlan: null }),
+    );
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('border-input');
+    expect(toneTokens(classes[0])).not.toContain('bg-signal');
+  });
+
+  it('shares one control class and one signal fill across the whole ladder', () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        NextIntlClientProvider,
+        { locale, messages: pl, timeZone: 'UTC' },
+        createElement(
+          'ul',
+          null,
+          ...LADDER.map((fixture) =>
+            createElement(PlanRow, {
+              key: fixture.key,
+              plan: plan(fixture),
+              isCurrent: fixture.key === 'base',
+              signedIn: true,
+              hasActivePlan: false,
+              billingHref: '/app/billing',
+            }),
+          ),
+        ),
+      ),
+    );
+    const classes = actionClasses(markup);
+
+    expect(classes).toHaveLength(LADDER.length);
+    for (const action of classes) {
+      expect(action).toContain('rounded-control');
+      expect(action).toContain('h-11');
+    }
+    const signalActions = classes.filter((action) => toneTokens(action).includes('bg-signal'));
+    expect(signalActions).toHaveLength(1);
   });
 });

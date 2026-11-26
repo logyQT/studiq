@@ -29,38 +29,54 @@ function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
   };
 }
 
-function render({
-  isCurrentPlan = false,
-  hasActivePlan,
-  paid = true,
-  planKey = 'ace',
-}: {
-  isCurrentPlan?: boolean;
-  hasActivePlan: boolean | null;
-  paid?: boolean;
+const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
+  { key: 'base', name: 'StudiQ Free', priceMonthly: 0 },
+  { key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 },
+  { key: 'ace', name: 'StudiQ Pro', priceMonthly: 3999 },
+  { key: 'pro', name: 'StudiQ Max', priceMonthly: 7999 },
+];
+
+interface CardOptions {
   planKey?: string;
-}): string {
+  isCurrentPlan?: boolean;
+  signedIn?: boolean;
+  hasActivePlan: boolean | null;
+}
+
+function cardElement({
+  planKey = 'ace',
+  isCurrentPlan = false,
+  signedIn = true,
+  hasActivePlan,
+}: CardOptions) {
+  const fixture = LADDER.find((candidate) => candidate.key === planKey) ?? LADDER[2];
+  return createElement(PlanCard, {
+    plan: plan(fixture),
+    isCurrentPlan,
+    user: signedIn ? { id: 'u-1' } : null,
+    t,
+    hasActivePlan,
+    billingHref: '/app/billing',
+  });
+}
+
+function render(options: CardOptions): string {
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
       { locale, messages: pl, timeZone: 'UTC' },
-      createElement(PlanCard, {
-        plan: plan(
-          paid
-            ? {
-                key: planKey,
-                name: `StudiQ ${planKey.charAt(0).toUpperCase()}${planKey.slice(1)}`,
-              }
-            : { key: 'base', name: 'StudiQ Base', priceMonthly: 0 },
-        ),
-        isCurrentPlan,
-        user: { id: 'u-1' },
-        t,
-        hasActivePlan,
-        billingHref: '/app/billing',
-      }),
+      cardElement(options),
     ),
   );
+}
+
+/** The class list of every action element the markup renders: a link or a button. */
+function actionClasses(markup: string): string[] {
+  return [...markup.matchAll(/<(?:a|button)\b[^>]*\bclass="([^"]*)"/g)].map((match) => match[1]);
+}
+
+function toneTokens(classes: string): string[] {
+  return classes.split(/\s+/);
 }
 
 describe('PlanCard action', () => {
@@ -92,30 +108,98 @@ describe('PlanCard action', () => {
   it('prints no action while the plan read is pending or failed', () => {
     const markup = render({ hasActivePlan: null });
 
-    expect(markup).toContain('StudiQ Ace');
+    expect(markup).toContain('StudiQ Pro');
     expect(markup).not.toContain('href="/app/billing"');
     expect(markup).not.toContain(t('cta_ace'));
     expect(markup).not.toMatch(/<button[^>]*/);
   });
 
   it('keeps the free plan link to the app for a signed-in reader', () => {
-    const markup = render({ hasActivePlan: false, paid: false });
+    const markup = render({ planKey: 'base', hasActivePlan: false });
 
     expect(markup).toContain('href="/app"');
     expect(markup).not.toContain('href="/app/billing"');
+  });
+
+  it('gives the recommended paid card the single signal fill', () => {
+    const classes = actionClasses(render({ planKey: 'ace', hasActivePlan: false }));
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('bg-signal');
+    expect(classes[0]).toContain('rounded-control');
+    expect(classes[0]).toContain('h-11');
+  });
+
+  it('keeps every other paid card quiet', () => {
+    const classes = actionClasses(render({ planKey: 'spark', hasActivePlan: false }));
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('border-input');
+    expect(toneTokens(classes[0])).not.toContain('bg-signal');
+  });
+
+  it('keeps the current plan disabled and quiet even when the ladder recommends it', () => {
+    const markup = render({ planKey: 'ace', isCurrentPlan: true, hasActivePlan: true });
+    const classes = actionClasses(markup);
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('border-input');
+    expect(toneTokens(classes[0])).not.toContain('bg-signal');
+    expect(markup).toMatch(/<button[^>]*\bdisabled\b/);
+  });
+
+  it('gives the recommended plan the signal fill for a signed-out reader', () => {
+    const classes = actionClasses(render({ planKey: 'ace', signedIn: false, hasActivePlan: null }));
+
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('bg-signal');
+    expect(classes[0]).toContain('rounded-control');
+  });
+
+  it('shares one control class and one signal fill across the whole grid', () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        NextIntlClientProvider,
+        { locale, messages: pl, timeZone: 'UTC' },
+        createElement(
+          'div',
+          null,
+          ...LADDER.map((fixture) =>
+            createElement(PlanCard, {
+              key: fixture.key,
+              plan: plan(fixture),
+              isCurrentPlan: fixture.key === 'base',
+              user: { id: 'u-1' },
+              t,
+              hasActivePlan: false,
+              billingHref: '/app/billing',
+            }),
+          ),
+        ),
+      ),
+    );
+    const classes = actionClasses(markup);
+
+    expect(classes).toHaveLength(LADDER.length);
+    for (const action of classes) {
+      expect(action).toContain('rounded-control');
+      expect(action).toContain('h-11');
+    }
+    const signalActions = classes.filter((action) => toneTokens(action).includes('bg-signal'));
+    expect(signalActions).toHaveLength(1);
   });
 });
 
 describe('PlanCard badges', () => {
   it('prints the current badge and not the recommended badge on a current recommended plan', () => {
-    const markup = render({ planKey: 'spark', isCurrentPlan: true, hasActivePlan: true });
+    const markup = render({ planKey: 'ace', isCurrentPlan: true, hasActivePlan: true });
 
     expect(markup).toContain(t('current_plan_badge'));
     expect(markup).not.toContain(t('recommended_badge'));
   });
 
   it('prints the recommended badge on a recommended plan the reader does not own', () => {
-    const markup = render({ planKey: 'spark', hasActivePlan: true });
+    const markup = render({ planKey: 'ace', hasActivePlan: true });
 
     expect(markup).toContain(t('recommended_badge'));
     expect(markup).not.toContain(t('current_plan_badge'));

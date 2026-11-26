@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ interface CtaLinkProps extends CtaButtonBaseProps {
   onClick?: () => void;
   submit?: never;
   disabled?: never;
+  action?: never;
 }
 
 /**
@@ -41,9 +43,27 @@ interface CtaSubmitProps extends CtaButtonBaseProps {
   disabled?: boolean;
   href?: never;
   onClick?: never;
+  action?: never;
 }
 
-type CtaButtonProps = CtaLinkProps | CtaSubmitProps;
+/**
+ * A handler button: the plan checkout posts, then sends the window to the payment
+ * page. It carries the link's class builder, so a row that mixes a navigation and
+ * a POST does not mix two button looks.
+ *
+ * `onClick` is optional because a disabled action (`cta_current`) has nothing to
+ * run; `loading` disables the button and shows the spinner in its label.
+ */
+interface CtaActionProps extends CtaButtonBaseProps {
+  action: 'button';
+  onClick?: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  href?: never;
+  submit?: never;
+}
+
+type CtaButtonProps = CtaLinkProps | CtaSubmitProps | CtaActionProps;
 
 const TONE: Record<Tone, string> = {
   // 44px tall, not the kit's 40px: DESIGN.md §Accessibility promises it for CTAs.
@@ -82,6 +102,20 @@ export function CtaButton(props: CtaButtonProps) {
         disabled={props.disabled}
         className={cn(className, 'disabled:opacity-60')}
       >
+        {children}
+      </button>
+    );
+  }
+
+  if (props.action === 'button') {
+    return (
+      <button
+        type="button"
+        onClick={props.onClick}
+        disabled={props.disabled || props.loading}
+        className={cn(className, 'disabled:opacity-60')}
+      >
+        {props.loading ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
         {children}
       </button>
     );

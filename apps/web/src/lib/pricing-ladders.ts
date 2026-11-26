@@ -4,9 +4,10 @@ import { getVisibleLimitKeys } from '@/lib/pricing-limits';
 /**
  * The one plan per ladder that carries the page's single `signal` action. Every
  * other row stays quiet, so a ladder has one destination rather than four
- * (DESIGN §Dosage: one primary action per screen).
+ * (DESIGN §Dosage: one primary action per screen): Pro on the individual ladder,
+ * Hub on the organization ladder.
  */
-const RECOMMENDED_PLAN_KEYS: readonly string[] = ['spark', 'hub'];
+const RECOMMENDED_PLAN_KEYS: readonly string[] = ['ace', 'hub'];
 
 export function isRecommendedPlan(key: string): boolean {
   return RECOMMENDED_PLAN_KEYS.includes(key);
